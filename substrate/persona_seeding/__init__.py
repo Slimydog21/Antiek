@@ -6,11 +6,12 @@ from .descriptors import (
     SubRunDescriptor,
     build_sub_run_descriptors,
     parse_sub_run_descriptor,
+    parse_sub_run_descriptors,
 )
 from .questions import PersonaQuestions, QuestionGenerator, generate_questions
 
 __all__ = [
     "BudgetSlice", "GroundingFact", "Persona", "PersonaQuestions", "QuestionGenerator",
     "SubRunDescriptor", "build_sub_run_descriptors", "derive_personas", "generate_questions",
-    "grounding_facts", "parse_sub_run_descriptor",
+    "grounding_facts", "parse_sub_run_descriptor", "parse_sub_run_descriptors",
 ]

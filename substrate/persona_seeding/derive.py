@@ -44,6 +44,8 @@ class Persona:
     def __post_init__(self) -> None:
         for field in ("persona_id", "name", "stance"):
             object.__setattr__(self, field, _text(getattr(self, field), field))
+        if "/" in self.persona_id:
+            raise ValueError("persona_id must not contain '/'")
         if self.provenance not in ("grounded", "generic"):
             raise ValueError("invalid persona provenance")
         ids = tuple(_text(item, "grounding_id") for item in self.grounding_ids)
@@ -82,15 +84,24 @@ def derive_personas(
     aid = _text(asset_id, "asset_id")
     facts = _parse_facts(aid, twin_question_notes, graph_neighbors)
     personas: list[Persona] = []
-    for fact in facts[:5]:
+    selected = list(facts[:5])
+    overflow: list[list[GroundingFact]] = [[] for _ in selected]
+    for index, fact in enumerate(facts[5:]):
+        overflow[index % len(selected)].append(fact)
+    for index, fact in enumerate(selected):
+        persona_facts = (fact, *overflow[index])
         source = "operator question" if fact.kind == "twin_question" else "graph neighbor"
         digest = hashlib.sha256(f"{aid}:{fact.kind}:{fact.grounding_id}".encode()).hexdigest()[:12]
         personas.append(Persona(
             persona_id=f"persona_{digest}",
-            name=f"{source.title()} examiner",
-            stance=f"Examine the asset through the {source} `{fact.text}`.",
+            name=f"{source.title()} examiner — {fact.text[:48]}",
+            stance=(
+                f"Examine the asset through {source} evidence: "
+                + "; ".join(f"`{item.text}`" for item in persona_facts)
+                + "."
+            ),
             provenance="grounded",
-            grounding_ids=(fact.grounding_id,),
+            grounding_ids=tuple(item.grounding_id for item in persona_facts),
         ))
     for index, (name, stance) in enumerate(_FALLBACKS):
         if len(personas) >= 3:
@@ -138,4 +149,10 @@ def _parse_facts(asset_id: str, notes: Sequence[object], neighbors: Sequence[obj
                 raise ValueError(f"conflicting grounding identity: {fact.grounding_id}")
             raise ValueError(f"duplicate grounding identity: {fact.grounding_id}")
         by_id[fact.grounding_id] = fact
-    return tuple(sorted(facts, key=lambda fact: (fact.kind, fact.grounding_id, fact.text)))
+    priority = {"twin_question": 0, "graph_neighbor": 1}
+    return tuple(
+        sorted(
+            facts,
+            key=lambda fact: (priority[fact.kind], fact.grounding_id, fact.text),
+        )
+    )

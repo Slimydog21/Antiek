@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from collections.abc import Sequence
+from typing import Any
 
 import pytest
 
@@ -14,8 +15,11 @@ from substrate.persona_seeding import (
     build_sub_run_descriptors,
     derive_personas,
     generate_questions,
+    grounding_facts,
     parse_sub_run_descriptor,
+    parse_sub_run_descriptors,
 )
+from substrate.persona_seeding.descriptors import _split_breadth_depth
 from substrate.research_budget import TierBudget
 
 NOTES = (
@@ -118,7 +122,7 @@ def test_dedup_never_invents_questions_missing_from_generator_output() -> None:
         del persona, facts, count
         return ("What evidence supports adoption?",)
 
-    with pytest.raises(ValueError, match="did not provide enough distinct"):
+    with pytest.raises(ValueError, match="no globally distinct"):
         generate_questions(
             personas,
             facts=(),
@@ -159,7 +163,19 @@ def test_descriptors_are_isolated_immutable_budgeted_and_round_trip() -> None:
     assert sum(d.budget.token_budget for d in descriptors) <= parent.token_budget
     assert sum(d.budget.max_tool_calls for d in descriptors) <= parent.max_tool_calls
     assert all(d.visible_persona_ids == (d.persona.persona_id,) for d in descriptors)
-    assert all(parse_sub_run_descriptor(json.loads(json.dumps(d.to_payload()))) == d for d in descriptors)
+    assert all(
+        parse_sub_run_descriptor(
+            json.loads(json.dumps(d.to_payload())),
+            parent_budget=parent,
+            grounding_facts=_facts(),
+        )
+        == d
+        for d in descriptors
+    )
+    payloads = [json.loads(json.dumps(d.to_payload())) for d in descriptors]
+    assert parse_sub_run_descriptors(
+        payloads, parent_budget=parent, grounding_facts=_facts(),
+    ) == descriptors
     with pytest.raises((AttributeError, TypeError)):
         descriptors[0].questions += ("mutation",)  # type: ignore[misc]
 
@@ -171,16 +187,20 @@ def test_descriptor_parser_rejects_bool_nan_duplicate_identity_and_over_budget()
             "run", ((persona, ("Q?",)),), parent_budget=TierBudget(1, 1, 10, 1),
             budget_slices=(BudgetSlice(2, 1, 10, 1),),
         )
-    payload = {
+    payload: dict[str, Any] = {
         "run_id": "run/persona-1", "parent_run_id": "run", "persona": persona.to_payload(),
         "questions": ["Q?"], "budget": {"breadth": True, "depth": 1, "token_budget": 10, "max_tool_calls": 1},
         "corpus_refs": [], "visible_persona_ids": ["persona-1"],
     }
     with pytest.raises(TypeError):
-        parse_sub_run_descriptor(payload)
+        parse_sub_run_descriptor(
+            payload, parent_budget=TierBudget(1, 1, 10, 1), grounding_facts=(),
+        )
     payload["budget"]["breadth"] = math.nan
     with pytest.raises(TypeError):
-        parse_sub_run_descriptor(payload)
+        parse_sub_run_descriptor(
+            payload, parent_budget=TierBudget(1, 1, 10, 1), grounding_facts=(),
+        )
 
 
 def test_public_descriptor_constructor_enforces_identity_and_isolation() -> None:
@@ -191,7 +211,7 @@ def test_public_descriptor_constructor_enforces_identity_and_isolation() -> None
             "parent",
             persona,
             ("Q?",),
-            BudgetSlice(1, 0, 1, 0),
+            BudgetSlice(1, 0, 1, 1),
             (),
             ("p1",),
         )
@@ -201,19 +221,149 @@ def test_public_descriptor_constructor_enforces_identity_and_isolation() -> None
             "parent",
             persona,
             ("Q?",),
-            BudgetSlice(1, 0, 1, 0),
+            BudgetSlice(1, 0, 1, 1),
             (),
             ("p2",),
         )
-    with pytest.raises(ValueError, match="entirely zero"):
-        SubRunDescriptor(
-            "parent/p1",
-            "parent",
-            persona,
-            ("Q?",),
-            BudgetSlice(0, 0, 0, 0),
-            (),
-            ("p1",),
+    with pytest.raises(ValueError, match="dispatchable"):
+        BudgetSlice(0, 0, 0, 0)
+
+
+def test_persona_provenance_constructor_invariants_are_red_proven() -> None:
+    with pytest.raises(ValueError, match="requires grounding"):
+        Persona("grounded", "Grounded", "Evidence", "grounded", ())
+    with pytest.raises(ValueError, match="cannot claim grounding"):
+        Persona("generic", "Generic", "Fallback", "generic", ("note-1",))
+
+
+def test_operator_questions_are_prioritized_and_no_grounding_fact_is_dropped() -> None:
+    neighbors = tuple(
+        {"node_id": f"node-{index}", "canonical_label": f"Neighbor {index}"}
+        for index in range(7)
+    )
+    personas = derive_personas(
+        "asset-1", twin_question_notes=NOTES, graph_neighbors=neighbors,
+    )
+    represented = {gid for persona in personas for gid in persona.grounding_ids}
+    expected = {note["note_id"] for note in NOTES} | {
+        neighbor["node_id"] for neighbor in neighbors
+    }
+    assert len(personas) == 5
+    assert personas[0].grounding_ids[0] == "note-cost"
+    assert personas[1].grounding_ids[0] == "note-risk"
+    assert represented == expected
+
+
+@pytest.mark.parametrize(
+    "budget",
+    [TierBudget(2, 1, 100, 4), TierBudget(8, 2, 1000, 8), TierBudget(20, 4, 4000, 20)],
+)
+def test_default_generation_survives_near_duplicate_and_non_latin_grounding(
+    budget: TierBudget,
+) -> None:
+    neighbors = (
+        {"node_id": "node-a", "canonical_label": "AlphaFold-3"},
+        {"node_id": "node-b", "canonical_label": "AlphaFold 3"},
+        {"node_id": "node-ar", "canonical_label": "قيود السياسة"},
+        {"node_id": "node-zh", "canonical_label": "政策约束"},
+    )
+    personas = derive_personas(
+        "asset-1", twin_question_notes=(), graph_neighbors=neighbors,
+    )
+    generated = generate_questions(
+        personas,
+        facts=grounding_facts(
+            "asset-1", twin_question_notes=(), graph_neighbors=neighbors,
+        ),
+        budget=budget,
+    )
+    assert len(generated) == len(personas)
+    assert all(item.questions for item in generated)
+    assert len({question for item in generated for question in item.questions}) == sum(
+        len(item.questions) for item in generated
+    )
+
+
+def test_question_dedup_degrades_to_partial_distinct_output_not_crash() -> None:
+    personas = (
+        Persona("p1", "One", "Generic fallback one", "generic", ()),
+        Persona("p2", "Two", "Generic fallback two", "generic", ()),
+    )
+
+    def partly_colliding(
+        persona: Persona, facts: tuple[GroundingFact, ...], count: int,
+    ) -> Sequence[str]:
+        del facts, count
+        return ("Shared question?", f"Unique for {persona.persona_id}?")
+
+    generated = generate_questions(
+        personas,
+        facts=(),
+        budget=TierBudget(4, 1, 100, 4),
+        generator=partly_colliding,
+    )
+    assert [len(item.questions) for item in generated] == [2, 1]
+
+
+def test_descriptor_floor_and_parse_boundary_revalidate_authorities() -> None:
+    personas = tuple(
+        Persona(f"p{index}", f"P{index}", "Generic fallback", "generic", ())
+        for index in range(5)
+    )
+    pairs = tuple((persona, ("Q?",)) for persona in personas)
+    with pytest.raises(ValueError, match="one tool call per persona"):
+        build_sub_run_descriptors(
+            "run", pairs, parent_budget=TierBudget(5, 1, 100, 4),
+        )
+
+    grounded = Persona("p-ground", "Ground", "Grounded", "grounded", ("note-risk",))
+    descriptor = SubRunDescriptor(
+        "run/p-ground", "run", grounded, ("Q?",), BudgetSlice(1, 1, 10, 1),
+        (), ("p-ground",),
+    )
+    payload = descriptor.to_payload()
+    with pytest.raises(ValueError, match="does not resolve"):
+        parse_sub_run_descriptor(
+            payload, parent_budget=TierBudget(1, 1, 10, 1), grounding_facts=(),
+        )
+    payload["budget"]["max_tool_calls"] = 1_000_000
+    with pytest.raises(ValueError, match="exceed"):
+        parse_sub_run_descriptor(
+            payload, parent_budget=TierBudget(1, 1, 10, 1), grounding_facts=_facts(),
+        )
+    payload = descriptor.to_payload()
+    payload["unknown"] = "smuggled"
+    with pytest.raises(ValueError, match="keys mismatch"):
+        parse_sub_run_descriptor(
+            payload, parent_budget=TierBudget(1, 1, 10, 1), grounding_facts=_facts(),
+        )
+    with pytest.raises(ValueError, match="must not contain"):
+        Persona("parent/child", "Bad", "Bad", "generic", ())
+
+    with pytest.raises(ValueError, match="breadth or depth"):
+        BudgetSlice(0, 0, 100, 1)
+
+    funded = personas[:3]
+    descriptors = build_sub_run_descriptors(
+        "funded",
+        tuple((persona, ("Q?",)) for persona in funded),
+        parent_budget=TierBudget(2, 1, 30, 3),
+    )
+    assert all(item.budget.breadth + item.budget.depth >= 1 for item in descriptors)
+    assert all(item.budget.token_budget >= 1 for item in descriptors)
+    assert all(item.budget.max_tool_calls >= 1 for item in descriptors)
+    with pytest.raises(ValueError, match="cannot fund"):
+        _split_breadth_depth(1, 1, 3)
+
+    first = descriptors[0].to_payload()
+    second = descriptors[1].to_payload()
+    first["budget"] = {"breadth": 2, "depth": 1, "token_budget": 20, "max_tool_calls": 2}
+    second["budget"] = {"breadth": 2, "depth": 1, "token_budget": 20, "max_tool_calls": 2}
+    with pytest.raises(ValueError, match="exceed"):
+        parse_sub_run_descriptors(
+            (first, second),
+            parent_budget=TierBudget(2, 1, 30, 3),
+            grounding_facts=(),
         )
 
 

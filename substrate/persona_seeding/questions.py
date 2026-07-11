@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import re
+import unicodedata
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
@@ -20,13 +20,15 @@ class PersonaQuestions:
 
 
 def _normalized(text: str) -> str:
-    words = re.findall(r"[a-z0-9]+", text.casefold())
+    canonical = unicodedata.normalize("NFKC", text).casefold()
+    words = "".join(char if char.isalnum() else " " for char in canonical).split()
     return " ".join(word for word in words if word not in {"a", "an", "the"})
 
 
 def _default_generator(persona: Persona, facts: tuple[GroundingFact, ...], count: int) -> Sequence[str]:
     relevant = [fact.text for fact in facts if fact.grounding_id in persona.grounding_ids]
-    subject = relevant[0] if relevant else persona.stance
+    subject = "; ".join(relevant) if relevant else persona.stance
+    grounding = ", ".join(persona.grounding_ids) or persona.persona_id
     stems = (
         "What evidence would confirm or weaken",
         "Which competing explanation best challenges",
@@ -34,7 +36,10 @@ def _default_generator(persona: Persona, facts: tuple[GroundingFact, ...], count
         "Which primary source could resolve uncertainty about",
         "What practical failure mode is most relevant to",
     )
-    return tuple(f"{stems[index % len(stems)]} {subject}?" for index in range(count))
+    return tuple(
+        f"For grounding {grounding}, {stems[index % len(stems)].lower()} {subject}?"
+        for index in range(count)
+    )
 
 
 def generate_questions(
@@ -84,10 +89,10 @@ def generate_questions(
                 selected.append(cleaned)
             if len(selected) == count:
                 break
-        if len(selected) < count:
+        if not selected:
             raise ValueError(
-                "question generator did not provide enough distinct "
-                f"questions for persona {persona.persona_id}"
+                "question generator provided no globally distinct "
+                f"question for persona {persona.persona_id}"
             )
         output.append(PersonaQuestions(persona, tuple(selected)))
     if len({item.questions for item in output}) != len(output):

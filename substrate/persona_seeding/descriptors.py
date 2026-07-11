@@ -8,7 +8,7 @@ from typing import Any, Literal, cast
 
 from substrate.research_budget import TierBudget
 
-from .derive import Persona
+from .derive import GroundingFact, Persona
 from .questions import PersonaQuestions
 
 
@@ -36,6 +36,14 @@ class BudgetSlice:
     def __post_init__(self) -> None:
         for field in ("breadth", "depth", "token_budget", "max_tool_calls"):
             object.__setattr__(self, field, _integer(getattr(self, field), field))
+        if self.token_budget == 0 or self.max_tool_calls == 0:
+            raise ValueError(
+                "dispatchable budget slice requires token_budget and max_tool_calls"
+            )
+        if self.breadth == 0 and self.depth == 0:
+            raise ValueError(
+                "dispatchable budget slice requires breadth or depth"
+            )
 
     def to_payload(self) -> dict[str, int]:
         return {field: getattr(self, field) for field in ("breadth", "depth", "token_budget", "max_tool_calls")}
@@ -54,6 +62,8 @@ class SubRunDescriptor:
     def __post_init__(self) -> None:
         object.__setattr__(self, "run_id", _string(self.run_id, "run_id"))
         object.__setattr__(self, "parent_run_id", _string(self.parent_run_id, "parent_run_id"))
+        if "/" in self.parent_run_id:
+            raise ValueError("parent_run_id must not contain '/'")
         if not isinstance(self.persona, Persona) or not isinstance(self.budget, BudgetSlice):
             raise TypeError("persona and budget must use canonical contract types")
         questions = tuple(_string(item, "question") for item in self.questions)
@@ -90,6 +100,45 @@ def _split(total: int, count: int) -> tuple[int, ...]:
     return tuple(base + (index < remainder) for index in range(count))
 
 
+def _split_breadth_depth(
+    breadth: int, depth: int, count: int,
+) -> tuple[tuple[int, ...], tuple[int, ...]]:
+    """Split both axes while ensuring every lane can perform research."""
+    if count <= 0:
+        raise ValueError("split count must be positive")
+    if count > breadth + depth:
+        raise ValueError("breadth and depth cannot fund every lane")
+    breadth_parts = list(_split(breadth, count))
+    depth_parts = list(_split(depth, count))
+    for empty in (
+        index
+        for index in range(count)
+        if breadth_parts[index] == 0 and depth_parts[index] == 0
+    ):
+        donor = next(
+            (
+                index
+                for index in range(count)
+                if breadth_parts[index] > 0
+                and breadth_parts[index] + depth_parts[index] > 1
+            ),
+            None,
+        )
+        if donor is not None:
+            breadth_parts[donor] -= 1
+            breadth_parts[empty] += 1
+            continue
+        donor = next(
+            index
+            for index in range(count)
+            if depth_parts[index] > 0
+            and breadth_parts[index] + depth_parts[index] > 1
+        )
+        depth_parts[donor] -= 1
+        depth_parts[empty] += 1
+    return tuple(breadth_parts), tuple(depth_parts)
+
+
 def build_sub_run_descriptors(
     parent_run_id: str,
     persona_questions: Sequence[PersonaQuestions | tuple[Persona, tuple[str, ...]]],
@@ -111,12 +160,28 @@ def build_sub_run_descriptors(
     identities = [persona.persona_id for persona, _ in pairs]
     if len(identities) != len(set(identities)):
         raise ValueError("duplicate persona identity")
+    if len(pairs) > parent_budget.max_tool_calls:
+        raise ValueError("parent budget cannot fund one tool call per persona")
+    if len(pairs) > parent_budget.token_budget:
+        raise ValueError("parent budget cannot fund one token per persona")
+    if len(pairs) > parent_budget.breadth + parent_budget.depth:
+        raise ValueError("parent budget cannot fund breadth or depth per persona")
     refs = tuple(_string(ref, "corpus_ref") for ref in corpus_refs)
     if len(refs) != len(set(refs)):
         raise ValueError("duplicate corpus identity")
     if budget_slices is None:
-        fields = tuple(_split(getattr(parent_budget, field), len(pairs)) for field in ("breadth", "depth", "token_budget", "max_tool_calls"))
-        slices = tuple(BudgetSlice(*(values[index] for values in fields)) for index in range(len(pairs)))
+        breadth_parts, depth_parts = _split_breadth_depth(
+            parent_budget.breadth, parent_budget.depth, len(pairs),
+        )
+        token_parts = _split(parent_budget.token_budget, len(pairs))
+        tool_parts = _split(parent_budget.max_tool_calls, len(pairs))
+        slices = tuple(
+            BudgetSlice(
+                breadth_parts[index], depth_parts[index],
+                token_parts[index], tool_parts[index],
+            )
+            for index in range(len(pairs))
+        )
     else:
         slices = tuple(budget_slices)
         if len(slices) != len(pairs) or any(not isinstance(item, BudgetSlice) for item in slices):
@@ -139,13 +204,46 @@ def _assert_within_parent(slices: Sequence[BudgetSlice], parent: TierBudget) -> 
             raise ValueError(f"budget slices exceed parent {field}")
 
 
-def parse_sub_run_descriptor(payload: object) -> SubRunDescriptor:
+def _require_exact_keys(
+    payload: Mapping[object, object], expected: frozenset[str], context: str,
+) -> None:
+    if any(not isinstance(key, str) for key in payload):
+        raise ValueError(f"{context} keys mismatch; non-string key present")
+    actual = {cast(str, key) for key in payload}
+    if actual != expected:
+        raise ValueError(
+            f"{context} keys mismatch; missing={sorted(expected - actual)} "
+            f"unknown={sorted(actual - expected)}"
+        )
+
+
+def parse_sub_run_descriptor(
+    payload: object,
+    *,
+    parent_budget: TierBudget,
+    grounding_facts: Sequence[GroundingFact],
+) -> SubRunDescriptor:
     if not isinstance(payload, Mapping):
         raise TypeError("descriptor payload must be a mapping")
+    _require_exact_keys(
+        payload,
+        frozenset({"run_id", "parent_run_id", "persona", "questions", "budget", "corpus_refs", "visible_persona_ids"}),
+        "descriptor",
+    )
     persona_raw = payload.get("persona")
     budget_raw = payload.get("budget")
     if not isinstance(persona_raw, Mapping) or not isinstance(budget_raw, Mapping):
         raise TypeError("persona and budget must be mappings")
+    _require_exact_keys(
+        persona_raw,
+        frozenset({"persona_id", "name", "stance", "provenance", "grounding_ids"}),
+        "persona",
+    )
+    _require_exact_keys(
+        budget_raw,
+        frozenset({"breadth", "depth", "token_budget", "max_tool_calls"}),
+        "budget",
+    )
     ids_raw = persona_raw.get("grounding_ids")
     questions_raw = payload.get("questions")
     refs_raw = payload.get("corpus_refs")
@@ -167,9 +265,48 @@ def parse_sub_run_descriptor(payload: object) -> SubRunDescriptor:
         tuple(_string(item, "grounding_id") for item in ids),
     )
     budget = BudgetSlice(*(_integer(budget_raw.get(field), field) for field in ("breadth", "depth", "token_budget", "max_tool_calls")))
+    canonical_facts = tuple(grounding_facts)
+    if any(not isinstance(fact, GroundingFact) for fact in canonical_facts):
+        raise TypeError("grounding_facts contains an invalid value")
+    available = {fact.grounding_id for fact in canonical_facts}
+    if len(available) != len(canonical_facts):
+        raise ValueError("duplicate grounding identity")
+    if not set(persona.grounding_ids) <= available:
+        raise ValueError("persona grounding does not resolve from inputs")
+    _assert_within_parent((budget,), parent_budget)
     return SubRunDescriptor(
         _string(payload.get("run_id"), "run_id"), _string(payload.get("parent_run_id"), "parent_run_id"), persona,
         tuple(_string(item, "question") for item in questions), budget,
         tuple(_string(item, "corpus_ref") for item in refs),
         tuple(_string(item, "visible_persona_id") for item in visible),
     )
+
+
+def parse_sub_run_descriptors(
+    payloads: object,
+    *,
+    parent_budget: TierBudget,
+    grounding_facts: Sequence[GroundingFact],
+) -> tuple[SubRunDescriptor, ...]:
+    """Parse one complete sibling bundle and revalidate aggregate authority."""
+    if isinstance(payloads, (str, bytes)) or not isinstance(payloads, Sequence):
+        raise TypeError("descriptor bundle must be a sequence")
+    if not payloads:
+        raise ValueError("descriptor bundle must be non-empty")
+    descriptors = tuple(
+        parse_sub_run_descriptor(
+            payload,
+            parent_budget=parent_budget,
+            grounding_facts=grounding_facts,
+        )
+        for payload in payloads
+    )
+    run_ids = [item.run_id for item in descriptors]
+    persona_ids = [item.persona.persona_id for item in descriptors]
+    if len(run_ids) != len(set(run_ids)) or len(persona_ids) != len(set(persona_ids)):
+        raise ValueError("descriptor bundle contains duplicate identity")
+    parent_ids = {item.parent_run_id for item in descriptors}
+    if len(parent_ids) != 1:
+        raise ValueError("descriptor bundle crosses parent runs")
+    _assert_within_parent(tuple(item.budget for item in descriptors), parent_budget)
+    return descriptors
