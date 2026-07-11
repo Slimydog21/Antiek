@@ -97,7 +97,7 @@ class UnknownCallOutcome(RuntimeError):
     def __init__(self, hold: CallHold, provider_error: Exception) -> None:
         self.hold = hold
         self.provider_error = provider_error
-        super().__init__(f"Unknown outcome for hold {hold.hold_id}: {provider_error}")
+        super().__init__(f"Unknown provider outcome retained for hold {hold.hold_id}")
 
 
 class UnknownOutcomePersistenceError(RuntimeError):
@@ -123,9 +123,7 @@ class UnknownOutcomePersistenceError(RuntimeError):
         self.provider_error = provider_error
         self.bookkeeping_error = bookkeeping_error
         super().__init__(
-            f"Persistence failure transitioning hold {hold.hold_id} "
-            f"to unknown: {bookkeeping_error} "
-            f"(original provider error: {provider_error})"
+            f"Unknown-outcome persistence failed for hold {hold.hold_id}"
         )
 
 
@@ -947,8 +945,8 @@ class BudgetLedger:
                     hold,
                     error,
                     bookkeeping_error,
-                ) from bookkeeping_error
-            raise UnknownCallOutcome(durable_hold, error) from error
+                ) from None
+            raise UnknownCallOutcome(durable_hold, error) from None
 
         try:
             result, actual_cents = call()
