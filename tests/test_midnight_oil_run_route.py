@@ -85,8 +85,8 @@ def test_api_run_and_auto_deposit(tmp_path):
         "/midnight-oil/run",
         json={"job_id": job_id, "auto_deposit": True, "spent_per_goal": 0.05},
     )
-    assert r1.status_code == 409, r1.text
-    assert r1.json() == {"detail": "Midnight Oil dispatch is disabled"}
+    assert r1.status_code == 400, r1.text
+    assert r1.json() == {"detail": "spend consent header is required"}
     unchanged = client.get(f"/midnight-oil/jobs/{job_id}")
     assert unchanged.status_code == 200
     assert unchanged.json()["spawn_ids"] == []
@@ -100,4 +100,5 @@ def test_api_run_and_auto_deposit(tmp_path):
         "/midnight-oil/run",
         json={"job_id": c2.json()["job_id"]},
     )
-    assert bad.status_code == 409
+    assert bad.status_code == 400
+    assert bad.json() == {"detail": "spend consent header is required"}

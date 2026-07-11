@@ -128,7 +128,10 @@ def test_schema_migration_is_idempotent_and_backfills_approved_cents(tmp_path) -
             "dispatch_completed_at_ms",
         ):
             assert required in columns
-        assert all("token" not in column and "key" not in column for column in columns)
+        assert all(
+            "token" not in column and "secret" not in column and "signing" not in column
+            for column in columns
+        )
         row = conn.execute(
             """
             SELECT owner_user_id, state_version, approved_ceiling_cents,
@@ -641,7 +644,7 @@ def test_concurrent_schema_migration_converges(tmp_path) -> None:
         thread.join()
     assert errors == []
     with sqlite3.connect(db_path) as conn:
-        assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert conn.execute("PRAGMA user_version").fetchone()[0] == 2
         columns = {row[1] for row in conn.execute("PRAGMA table_info(midnight_oil_jobs)")}
         row = conn.execute(
             "SELECT job_id, approved_ceiling_cents, consent_granted_by_user_id, "

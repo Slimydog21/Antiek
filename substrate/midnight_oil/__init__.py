@@ -24,6 +24,7 @@ from .job import (
     get_job,
 )
 from .job_store import SqliteDurableJobStore, create_production_job_store
+from .operation_queue import provider_idempotency_key
 from .product_path import (
     ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV,
     MidnightOilProductResult,
@@ -40,12 +41,16 @@ from .product_path import (
     offline_goal_step_fn,
     product_result_html,
     resolve_worker_step_fn,
+    run_authorized_job,
     run_job_offline,
 )
 from .worker import (
     ProjectFn,
     StepFn,
+    WorkerLease,
     WorkerStepResult,
+    lease_authorized_operation,
+    run_leased_worker_iteration,
     run_worker_iteration,
     run_worker_loop,
 )
@@ -63,6 +68,7 @@ __all__ = [
     "SqliteDurableJobStore",
     "StepFn",
     "WorkerStepResult",
+    "WorkerLease",
     "approve_job",
     "approve_price_ceiling",
     "clear_midnight_oil_live_step",
@@ -77,11 +83,15 @@ __all__ = [
     "live_step_enabled",
     "live_step_fn_installed",
     "live_step_status_payload",
+    "lease_authorized_operation",
+    "run_leased_worker_iteration",
     "product_result_html",
+    "provider_idempotency_key",
     "offline_goal_project_fn",
     "offline_goal_step_fn",
     "recommend_price_ceiling",
     "resolve_worker_step_fn",
+    "run_authorized_job",
     "run_job_offline",
     "run_worker_iteration",
     "run_worker_loop",

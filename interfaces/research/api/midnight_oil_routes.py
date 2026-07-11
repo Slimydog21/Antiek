@@ -18,7 +18,7 @@ from dataclasses import dataclass, replace
 from decimal import ROUND_FLOOR, Decimal
 from typing import Any, Protocol
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request, Response
+from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRoute
@@ -32,9 +32,11 @@ from substrate.midnight_oil.job import (
     OperationState,
 )
 from substrate.midnight_oil.job_store import SqliteDurableJobStore, create_production_job_store
+from substrate.midnight_oil.operation_queue import DurableOperationQueue, OperationQueue
 from substrate.midnight_oil.spend_consent import (
     MAX_CEILING_CENTS,
     ConsentReceipt,
+    ConsentRejected,
     JobConsentConfig,
     SpendConsentStore,
     decode_and_verify,
@@ -57,6 +59,11 @@ class _AuthenticatedRoute(APIRoute):
 
         async def authenticated_handler(request: Request) -> Response:
             try:
+                if request.url.path == "/midnight-oil/run" and request.scope.get("query_string"):
+                    # Query credentials are invalid, but the raw request target is
+                    # also an access-log boundary. Remove it before server logging.
+                    request.state.midnight_oil_had_query = True
+                    request.scope["query_string"] = b""
                 _require_identity(request)
                 response = await route_handler(request)
             except RequestValidationError as exc:
@@ -124,6 +131,7 @@ class OwnerAuthorityStore(Protocol):
         consent_recorded_at_ms: object,
         consent_note: object,
         force_below_recommended: object,
+        dispatch_claimed_at_ms: object = ...,
     ) -> MidnightOilJob | None: ...
 
 
@@ -138,6 +146,7 @@ class MidnightOilDependencies:
     active_key_id: str
     signing_key: bytes
     verification_keys: Mapping[str, bytes]
+    operation_queue: OperationQueue | None = None
     clock_ms: Callable[[], int] = _system_clock_ms
     random_bytes: Callable[[int], bytes] = secrets.token_bytes
     test_mode: bool = False
@@ -170,6 +179,7 @@ class MidnightOilDependencies:
             if (
                 type(self.jobs) is not SqliteDurableJobStore
                 or type(self.consents) is not SpendConsentStore
+                or type(self.operation_queue) is not DurableOperationQueue
             ):
                 raise ValueError("production Midnight Oil requires durable stores")
             if (
@@ -209,8 +219,9 @@ def production_dependencies_from_env(
     env = os.environ if environ is None else environ
     job_path = env.get("ANTIEK_MIDNIGHT_OIL_DB", "").strip()
     consent_path = env.get("ANTIEK_MIDNIGHT_OIL_CONSENT_DB", "").strip()
+    queue_path = env.get("ANTIEK_MIDNIGHT_OIL_QUEUE_DB", "").strip()
     active_key_id = env.get("ANTIEK_MIDNIGHT_OIL_ACTIVE_KEY_ID", "")
-    if not job_path or not consent_path or not active_key_id:
+    if not job_path or not consent_path or not queue_path or not active_key_id:
         raise RuntimeError("durable Midnight Oil paths and active key id are required")
     if active_key_id != active_key_id.strip() or len(active_key_id) > 64:
         raise RuntimeError("active consent key id must be canonical")
@@ -235,6 +246,7 @@ def production_dependencies_from_env(
         active_key_id=active_key_id,
         signing_key=signing_key,
         verification_keys=keyring,
+        operation_queue=DurableOperationQueue(queue_path),
     )
 
 
@@ -503,8 +515,88 @@ def _dispatch_disabled(request: Request, job_id: str) -> None:
 
 
 @midnight_oil_router.post("/run")
-def post_run(request: Request, body: RunBody) -> None:
-    _dispatch_disabled(request, body.job_id)
+def post_run(
+    request: Request,
+    body: RunBody,
+    spend_consent: str | None = Header(default=None, alias="X-Midnight-Oil-Spend-Consent"),
+) -> dict[str, object]:
+    """Claim durable authority and enqueue it; provider work belongs to workers."""
+    owner = _owner(request)
+    dependencies, durable_job = _owned(request, body.job_id)
+    authority = durable_job.authority
+    if getattr(request.state, "midnight_oil_had_query", False):
+        raise HTTPException(status_code=400, detail="spend consent is accepted only by header")
+    values = request.headers.getlist("x-midnight-oil-spend-consent")
+    if len(values) != 1 or not spend_consent:
+        raise HTTPException(status_code=400, detail="spend consent header is required")
+    if (
+        authority is None
+        or authority.operation_id is None
+        or authority.approved_ceiling_cents is None
+        or dependencies.operation_queue is None
+    ):
+        raise HTTPException(status_code=409, detail="job has no durable spend authority")
+    config = _config(durable_job)
+    try:
+        now = dependencies.clock_ms()
+        claim = dependencies.consents.claim(
+            spend_consent,
+            expected_operator_id=owner,
+            expected_config=config,
+            expected_operation_id=authority.operation_id,
+            expected_ceiling_cents=authority.approved_ceiling_cents,
+            now_ms=now,
+            verification_keys=dependencies.verification_keys,
+            allow_expired_recovery=True,
+        )
+    except ConsentRejected:
+        raise HTTPException(status_code=403, detail="spend consent rejected") from None
+
+    if authority.operation_state == "approved":
+        changed = dependencies.jobs.compare_and_set_authority(
+            body.job_id,
+            owner,
+            expected_version=authority.state_version,
+            expected_state="approved",
+            expected_operation_id=authority.operation_id,
+            operation_id=authority.operation_id,
+            next_state="dispatch_claimed",
+            dispatch_claimed_at_ms=claim.claimed_at_ms,
+        )
+        if changed is not None:
+            durable_job = changed
+
+    latest = dependencies.jobs.get_job_for_owner(body.job_id, owner)
+    if latest is None or latest.authority is None:
+        raise HTTPException(status_code=503, detail="operation authority is unavailable")
+    current = latest.authority
+    if current.operation_id != claim.receipt.operation_id:
+        raise HTTPException(status_code=409, detail="operation conflicts with durable authority")
+    if current.operation_state == "approved":
+        raise HTTPException(status_code=503, detail="operation transition did not persist")
+
+    queue = dependencies.operation_queue
+    queued = queue.get(current.operation_id)
+    if current.operation_state == "dispatch_claimed" and queued is None:
+        queued, _ = queue.enqueue_once(
+            operation_id=current.operation_id,
+            owner_user_id=owner,
+            job_id=body.job_id,
+            enqueued_at_ms=now,
+            options={
+                "max_steps": None,
+                "auto_deposit": False,
+                "draft_combined": True,
+                "force_offline": True,
+            },
+        )
+    if queued is not None and (queued.owner_user_id, queued.job_id) != (owner, body.job_id):
+        raise HTTPException(status_code=409, detail="operation queue conflicts with authority")
+    return {
+        "job_id": body.job_id,
+        "operation_id": current.operation_id,
+        "state": current.operation_state,
+    }
 
 
 @midnight_oil_router.post("/deposit")

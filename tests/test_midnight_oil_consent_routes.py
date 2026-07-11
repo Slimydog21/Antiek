@@ -642,6 +642,7 @@ def test_live_startup_refuses_missing_and_malformed_configuration(tmp_path: Path
     malformed = {
         "ANTIEK_MIDNIGHT_OIL_DB": str(tmp_path / "jobs.sqlite3"),
         "ANTIEK_MIDNIGHT_OIL_CONSENT_DB": str(tmp_path / "consents.sqlite3"),
+        "ANTIEK_MIDNIGHT_OIL_QUEUE_DB": str(tmp_path / "operations.sqlite3"),
         "ANTIEK_MIDNIGHT_OIL_ACTIVE_KEY_ID": "key-1",
         "ANTIEK_MIDNIGHT_OIL_SIGNING_KEY_B64": "not base64",
         "ANTIEK_MIDNIGHT_OIL_VERIFY_KEYS_JSON": "{}",
@@ -746,6 +747,7 @@ def test_production_key_ids_reject_noncanonical_configuration(tmp_path: Path) ->
     base = {
         "ANTIEK_MIDNIGHT_OIL_DB": str(tmp_path / "jobs.sqlite3"),
         "ANTIEK_MIDNIGHT_OIL_CONSENT_DB": str(tmp_path / "consents.sqlite3"),
+        "ANTIEK_MIDNIGHT_OIL_QUEUE_DB": str(tmp_path / "operations.sqlite3"),
         "ANTIEK_MIDNIGHT_OIL_ACTIVE_KEY_ID": "key-1",
         "ANTIEK_MIDNIGHT_OIL_SIGNING_KEY_B64": encoded,
         "ANTIEK_MIDNIGHT_OIL_VERIFY_KEYS_JSON": json.dumps({"key-1": encoded}),

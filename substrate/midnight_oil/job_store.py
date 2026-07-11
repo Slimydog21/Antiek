@@ -37,7 +37,7 @@ from .job import (
 )
 
 _TABLE_NAME: Final = "midnight_oil_jobs"
-_SCHEMA_VERSION: Final = 1
+_SCHEMA_VERSION: Final = 2
 _LEGACY_OWNER_USER_ID: Final = "__operator__"
 _CREATE_TABLE_SQL: Final = f"""
 CREATE TABLE IF NOT EXISTS {_TABLE_NAME} (
@@ -52,6 +52,8 @@ CREATE TABLE IF NOT EXISTS {_TABLE_NAME} (
     spent_usd REAL NOT NULL DEFAULT 0,
     asset_id TEXT,
     spawn_ids_json TEXT NOT NULL,
+    completed_step_keys_json TEXT NOT NULL DEFAULT '[]',
+    returned_step_keys_json TEXT NOT NULL DEFAULT '[]',
     started_at_ms INTEGER,
     elapsed_ms INTEGER NOT NULL DEFAULT 0,
     force_below_recommended INTEGER NOT NULL DEFAULT 0,
@@ -83,6 +85,8 @@ _ALL_COLUMNS: Final[tuple[str, ...]] = (
     "spent_usd",
     "asset_id",
     "spawn_ids_json",
+    "completed_step_keys_json",
+    "returned_step_keys_json",
     "started_at_ms",
     "elapsed_ms",
     "force_below_recommended",
@@ -110,6 +114,14 @@ _ADD_COLUMN_SQL: Final[dict[str, str]] = {
     ),
     "spawn_ids_json": (
         "ALTER TABLE midnight_oil_jobs ADD COLUMN spawn_ids_json TEXT NOT NULL DEFAULT '[]'"
+    ),
+    "completed_step_keys_json": (
+        "ALTER TABLE midnight_oil_jobs "
+        "ADD COLUMN completed_step_keys_json TEXT NOT NULL DEFAULT '[]'"
+    ),
+    "returned_step_keys_json": (
+        "ALTER TABLE midnight_oil_jobs "
+        "ADD COLUMN returned_step_keys_json TEXT NOT NULL DEFAULT '[]'"
     ),
     "research_tier": (
         "ALTER TABLE midnight_oil_jobs ADD COLUMN research_tier TEXT NOT NULL DEFAULT 'deep'"
@@ -159,7 +171,10 @@ def _legacy_usd_to_cents_floor(value: object | None) -> int | None:
         cents = (Decimal(str(value)) * 100).to_integral_value(rounding=ROUND_FLOOR)
     except InvalidOperation as exc:
         raise ValueError("approved_ceiling_usd must be a finite USD amount") from exc
-    return _validate_cents(int(cents), field_name="approved_ceiling_cents", allow_none=True)
+    return cast(
+        int | None,
+        _validate_cents(int(cents), field_name="approved_ceiling_cents", allow_none=True),
+    )
 
 
 def _operation_state_from_status(status: object) -> OperationState:
@@ -207,6 +222,12 @@ def _row_to_job(row: Mapping[str, Any]) -> MidnightOilJob:
         "spent_usd": row["spent_usd"],
         "asset_id": row["asset_id"],
         "spawn_ids": _decode_string_array(row["spawn_ids_json"], field_name="spawn_ids_json"),
+        "completed_step_keys": _decode_string_array(
+            row["completed_step_keys_json"], field_name="completed_step_keys_json"
+        ),
+        "returned_step_keys": _decode_string_array(
+            row["returned_step_keys_json"], field_name="returned_step_keys_json"
+        ),
         "started_at_ms": row["started_at_ms"],
         "elapsed_ms": row["elapsed_ms"],
         "force_below_recommended": bool(row["force_below_recommended"]),
@@ -276,6 +297,8 @@ def _job_to_sql_row(owner_user_id: str, job: MidnightOilJob) -> dict[str, Any]:
         "spent_usd": float(row.get("spent_usd") or 0.0),
         "asset_id": row.get("asset_id"),
         "spawn_ids_json": _json_dump(cast(list[str], row["spawn_ids"])),
+        "completed_step_keys_json": _json_dump(cast(list[str], row["completed_step_keys"])),
+        "returned_step_keys_json": _json_dump(cast(list[str], row["returned_step_keys"])),
         "started_at_ms": row.get("started_at_ms"),
         "elapsed_ms": int(row.get("elapsed_ms") or 0),
         "force_below_recommended": 1 if row.get("force_below_recommended") else 0,
@@ -365,6 +388,65 @@ class SqliteDurableJobStore:
         if row is None:
             return None
         return _row_to_job(row)
+
+    def update_execution_for_owner(
+        self, owner_user_id: str, job: MidnightOilJob
+    ) -> MidnightOilJob:
+        """Persist worker-owned fields without changing durable authority."""
+        self.ensure_schema()
+        current = self.get_job_for_owner(job.job_id, owner_user_id)
+        if current is None or current.authority is None:
+            raise KeyError(job.job_id)
+        def immutable(value: MidnightOilJob) -> tuple[object, ...]:
+            return (
+                value.job_id,
+                value.goals,
+                value.duration_minutes,
+                value.model_id,
+                value.recommended_price_ceiling_usd,
+                value.asset_id,
+                value.research_tier,
+                value.fanout_depth,
+                value.force_below_recommended,
+            )
+        if immutable(job) != immutable(current):
+            raise ValueError("worker cannot change immutable durable job configuration")
+        if job.authority not in {None, current.authority}:
+            raise ValueError("worker cannot change durable operation authority")
+        proposed = replace(job, authority=current.authority)
+        row = _job_to_sql_row(owner_user_id, proposed)
+        execution_columns = (
+            "status",
+            "approved_ceiling_usd",
+            "spent_usd",
+            "spawn_ids_json",
+            "completed_step_keys_json",
+            "returned_step_keys_json",
+            "started_at_ms",
+            "elapsed_ms",
+            "notes",
+        )
+        with closing(self._connect()) as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            cursor = conn.execute(
+                f"UPDATE {_TABLE_NAME} SET "
+                + ", ".join(f"{column} = ?" for column in execution_columns)
+                + " WHERE owner_user_id = ? AND job_id = ? AND state_version = ?",
+                [
+                    *(row[column] for column in execution_columns),
+                    owner_user_id,
+                    job.job_id,
+                    current.authority.state_version,
+                ],
+            )
+            if cursor.rowcount != 1:
+                conn.rollback()
+                raise RuntimeError("durable operation authority changed during worker checkpoint")
+            conn.commit()
+        stored = self.get_job_for_owner(job.job_id, owner_user_id)
+        if stored is None:
+            raise RuntimeError("durable worker checkpoint vanished")
+        return stored
 
     def compare_and_set_authority(
         self,
@@ -676,6 +758,18 @@ class SqliteDurableJobStore:
             else:
                 parsed_spawn_ids = list(spawn_ids or [])
             spawn_ids_json = _json_dump([str(item) for item in parsed_spawn_ids])
+        completed_step_keys_json = _json_dump(
+            _decode_string_array(
+                row_map.get("completed_step_keys_json", "[]"),
+                field_name="completed_step_keys_json",
+            )
+        )
+        returned_step_keys_json = _json_dump(
+            _decode_string_array(
+                row_map.get("returned_step_keys_json", "[]"),
+                field_name="returned_step_keys_json",
+            )
+        )
         status = _validate_job_status(row_map.get("status"))
         operation_state = row_map.get("operation_state") or _operation_state_from_status(status)
         operation_state = _validate_operation_state(operation_state)
@@ -754,6 +848,8 @@ class SqliteDurableJobStore:
             "spent_usd": float(row_map.get("spent_usd") or 0.0),
             "asset_id": row_map.get("asset_id"),
             "spawn_ids_json": spawn_ids_json,
+            "completed_step_keys_json": completed_step_keys_json,
+            "returned_step_keys_json": returned_step_keys_json,
             "started_at_ms": row_map.get("started_at_ms"),
             "elapsed_ms": int(row_map.get("elapsed_ms") or 0),
             "force_below_recommended": 1 if row_map.get("force_below_recommended") else 0,
@@ -794,6 +890,25 @@ class SqliteDurableJobStore:
                 """,
                 (cents, row["owner_user_id"], row["job_id"]),
             )
+
+
+class OwnerBoundDurableJobStore:
+    """Bind the legacy worker store protocol to one durable owner scope."""
+
+    def __init__(self, store: SqliteDurableJobStore, owner_user_id: str) -> None:
+        self.store = store
+        self.owner_user_id = _validate_identifier(owner_user_id, field_name="owner_user_id")
+
+    def get_job(self, job_id: str) -> dict[str, Any] | None:
+        job = self.store.get_job_for_owner(job_id, self.owner_user_id)
+        return None if job is None else _job_to_row(job)
+
+    def put_job(self, row: dict[str, Any]) -> None:
+        job = _job_from_row(row)
+        self.store.update_execution_for_owner(self.owner_user_id, job)
+
+    def budget_db_path(self) -> str:
+        return f"{self.store.db_path}.budget.duckdb"
 
 
 def create_production_job_store(db_path: str | None) -> SqliteDurableJobStore:

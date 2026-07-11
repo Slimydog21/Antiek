@@ -5,6 +5,8 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
+
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
@@ -61,7 +63,8 @@ def test_live_injector_requires_env_and_fn():
     job_id = _approved_job(store)
     calls: list[str] = []
 
-    def live_fn(job):
+    def live_fn(job, idempotency_key):
+        assert idempotency_key
         calls.append(job.job_id)
         idx = len(job.spawn_ids)
         return WorkerStepResult(
@@ -76,12 +79,9 @@ def test_live_injector_requires_env_and_fn():
     os.environ[ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV] = "1"
     configure_midnight_oil_live_step(live_fn, lambda _j: 0.02)
     try:
-        out = run_job_offline(job_id, store=store)
-        assert out["offline"] is False
-        assert out["live_step"] is True
-        assert out["view_format"] == "html"
-        assert calls  # injector was used
-        assert out["spawn_ids"]
+        with pytest.raises(RuntimeError, match="durable fencing"):
+            run_job_offline(job_id, store=store)
+        assert calls == []
     finally:
         clear_midnight_oil_live_step()
         os.environ.pop(ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV, None)
@@ -91,7 +91,8 @@ def test_force_offline_ignores_live_config():
     store = InMemoryJobStore()
     job_id = _approved_job(store)
 
-    def live_fn(job):
+    def live_fn(job, idempotency_key):
+        del job, idempotency_key
         raise AssertionError("must not be called when force_offline")
 
     os.environ[ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV] = "1"

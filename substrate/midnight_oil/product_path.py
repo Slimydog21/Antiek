@@ -21,7 +21,9 @@ from .job import (
 )
 
 if TYPE_CHECKING:
-    from .worker import WorkerStepResult
+    from .job_store import SqliteDurableJobStore
+    from .operation_queue import OperationQueue
+    from .worker import Clock, IdempotentStepFn, WorkerStepResult
 
 
 @dataclass(frozen=True)
@@ -277,7 +279,8 @@ def offline_goal_project_fn(
 # step_fn; still never auto-enables without both env + configure call.
 ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV = "ANTIEK_MIDNIGHT_OIL_LIVE_STEP"
 
-_LiveStepFn = Callable[[MidnightOilJob], "WorkerStepResult"]
+_LiveStepFn = Callable[[MidnightOilJob, str], "WorkerStepResult"]
+_OfflineStepFn = Callable[[MidnightOilJob], "WorkerStepResult"]
 _LiveProjectFn = Callable[[MidnightOilJob], float]
 _live_step_fn: _LiveStepFn | None = None
 _live_project_fn: _LiveProjectFn | None = None
@@ -378,7 +381,7 @@ def resolve_worker_step_fn(
     force_offline: bool = False,
     step_fn: _LiveStepFn | None = None,
     project_fn: _LiveProjectFn | None = None,
-) -> tuple[_LiveStepFn, _LiveProjectFn, bool]:
+) -> tuple[_OfflineStepFn, _LiveProjectFn, bool]:
     """Return (step_fn, project_fn, used_live).
 
     Live path requires: not force_offline, env enabled, and either explicit
@@ -400,9 +403,13 @@ def resolve_worker_step_fn(
                     "explicit live step_fn requires an explicit project_fn "
                     "(reserve-before-spend needs a projected max cost per step)"
                 )
-            return (step_fn, project_fn, True)
+            return (cast(Callable[[MidnightOilJob], "WorkerStepResult"], step_fn), project_fn, True)
         if _live_step_fn is not None and _live_project_fn is not None:
-            return (_live_step_fn, _live_project_fn, True)
+            return (
+                cast(Callable[[MidnightOilJob], "WorkerStepResult"], _live_step_fn),
+                _live_project_fn,
+                True,
+            )
     return offline
 
 
@@ -444,6 +451,10 @@ def run_job_offline(
         step_fn=step_fn,
         project_fn=project_fn,
     )
+    if used_live:
+        raise RuntimeError(
+            "live Midnight Oil execution requires run_authorized_job durable fencing"
+        )
 
     final = run_worker_loop(
         job_id,
@@ -485,3 +496,72 @@ def run_job_offline(
         "notes_list": notes_list,
         "html": job_summary_html(final),
     }
+
+
+def run_authorized_job(
+    operation_id: str,
+    *,
+    owner_user_id: str,
+    job_id: str,
+    authority_store: SqliteDurableJobStore,
+    operation_queue: OperationQueue,
+    worker_id: str,
+    now_ms: int,
+    lease_duration_ms: int,
+    max_steps: int = 100,
+    advance_ms_per_step: int = 60_000,
+    step_fn: IdempotentStepFn | None = None,
+    project_fn: _LiveProjectFn | None = None,
+    clock: Clock | None = None,
+) -> MidnightOilJob:
+    """The only live execution entry: lease, fence, checkpoint, then advance."""
+    from .job_store import OwnerBoundDurableJobStore
+    from .worker import FakeClock, lease_authorized_operation, run_leased_worker_iteration
+
+    paid_step = _live_step_fn if step_fn is None else step_fn
+    projected = _live_project_fn if project_fn is None else project_fn
+    if paid_step is None or projected is None:
+        raise RuntimeError("durable live step and projected cost are required")
+    if type(now_ms) is not int or now_ms < 0:
+        raise ValueError("now_ms must be a non-negative integer")
+    if type(lease_duration_ms) is not int or lease_duration_ms <= 0:
+        raise ValueError("lease_duration_ms must be a positive integer")
+    if type(max_steps) is not int or max_steps <= 0:
+        raise ValueError("max_steps must be a positive integer")
+    if type(advance_ms_per_step) is not int or advance_ms_per_step < 0:
+        raise ValueError("advance_ms_per_step must be a non-negative integer")
+    execution_store = OwnerBoundDurableJobStore(authority_store, owner_user_id)
+    execution_clock = FakeClock(now_ms) if clock is None else clock
+    final: MidnightOilJob | None = None
+    for _ in range(max_steps):
+        lease_started_at_ms = execution_clock.now_ms()
+        lease_deadline_ms = lease_started_at_ms + lease_duration_ms
+        if lease_deadline_ms > 2**63 - 1:
+            raise ValueError("lease deadline exceeds the durable integer range")
+        lease = lease_authorized_operation(
+            operation_id=operation_id,
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            owner_jobs=authority_store,
+            operation_queue=operation_queue,
+            jobs=execution_store,
+            worker_id=worker_id,
+            now_ms=lease_started_at_ms,
+            lease_expires_at_ms=lease_deadline_ms,
+        )
+        final = run_leased_worker_iteration(
+            lease,
+            operation_queue=operation_queue,
+            owner_jobs=authority_store,
+            store=execution_store,
+            step_fn=paid_step,
+            project_fn=projected,
+            clock=execution_clock,
+        )
+        if final.status in {"complete", "timed_out", "budget_halted", "failed"}:
+            return final
+        if hasattr(execution_clock, "advance"):
+            cast(Any, execution_clock).advance(advance_ms_per_step)
+    if final is None:
+        raise ValueError("max_steps must permit at least one durable iteration")
+    return final
