@@ -51,7 +51,7 @@ def test_unknown_success_ignored() -> None:
     assert p.task_weights[0].n_failure == 0
 
 
-def test_prior_weights_recorded() -> None:
+def test_prior_weights_annotate_only_do_not_invent_tasks() -> None:
     p = propose_next_week_weights(
         [{"task": "general", "success": True}],
         prior_weights={"general": 0.4, "deep_research": 0.6},
@@ -59,8 +59,48 @@ def test_prior_weights_recorded() -> None:
     )
     by_task = {t.task: t for t in p.task_weights}
     assert by_task["general"].prior_weight == 0.4
-    # deep_research present from prior even without usage
-    assert "deep_research" in by_task
+    # prior-only tasks without usage must not be invented
+    assert "deep_research" not in by_task
+
+
+def test_string_success_does_not_invent_outcome() -> None:
+    p = propose_next_week_weights(
+        [{"task": "t", "success": "yes"}],  # type: ignore[dict-item]
+        week_id="w",
+    )
+    assert p.incomplete is True
+    assert p.task_weights == []
+
+
+def test_failures_outrank_many_successes() -> None:
+    p = propose_next_week_weights(
+        [{"task": "failing", "success": False}]
+        + [{"task": "winning", "success": True} for _ in range(20)],
+        week_id="w",
+        min_weight=0.0,
+    )
+    by_task = {t.task: t for t in p.task_weights}
+    assert by_task["failing"].weight > by_task["winning"].weight
+
+
+def test_weights_sum_exactly_one() -> None:
+    p = propose_next_week_weights(
+        [{"task": f"t{i}", "success": True} for i in range(6)],
+        week_id="w",
+        min_weight=0.0,
+    )
+    total = sum(t.weight for t in p.task_weights)
+    assert total == 1.0
+
+
+def test_prior_with_only_unknown_outcomes_incomplete() -> None:
+    p = propose_next_week_weights(
+        [{"task": "t", "success": None}],
+        prior_weights={"a": 0.5, "b": 0.5},
+        week_id="w",
+    )
+    assert p.incomplete is True
+    assert p.task_weights == []
 
 
 def test_http_usage_learn_route() -> None:

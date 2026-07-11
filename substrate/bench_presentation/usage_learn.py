@@ -6,13 +6,14 @@ for the next week. This module only **proposes** — it does not mutate the
 authoritative antiek_bench package, run live judges, or dispatch models.
 
 Inputs are injected:
-* ``usage_events`` — per-task outcomes observed in production (success/fail,
-  optional quality signal, model_id)
-* optional ``prior_weights`` — last week's task weights (default uniform)
+* ``usage_events`` — per-task outcomes observed in production (success bool)
+* optional ``prior_weights`` — last week's task weights (annotation only)
 
 Honesty:
-* Empty usage → empty proposal with incomplete=True (never invent weights)
-* Weights always sum to 1.0 when non-empty
+* Empty / unusable usage → incomplete, no invented weights
+* ``success`` must be real bool (strings never invent outcomes)
+* Failure-driven mass only (successes do not outrank failures)
+* Published weights sum to exactly 1.0 when non-empty
 * Authority always ``advisory``
 """
 
@@ -65,17 +66,26 @@ class UsageLearnProposal:
 
 
 def _as_bool_success(raw: Any) -> bool | None:
+    """Only real booleans count — never invent outcomes from strings."""
     if isinstance(raw, bool):
         return raw
-    if raw is None:
-        return None
-    if isinstance(raw, str):
-        s = raw.strip().lower()
-        if s in {"1", "true", "yes", "success", "ok", "pass"}:
-            return True
-        if s in {"0", "false", "no", "fail", "failed", "error"}:
-            return False
     return None
+
+
+def _normalize_exact(weights: dict[str, float]) -> dict[str, float]:
+    """Round to 6 dp then adjust the largest residual so sum is exactly 1.0."""
+    if not weights:
+        return {}
+    rounded = {t: round(w, 6) for t, w in weights.items()}
+    total = sum(rounded.values())
+    if total <= 0:
+        return rounded
+    # Force exact 1.0 by correcting the max-weight task
+    drift = round(1.0 - total, 6)
+    if drift != 0.0:
+        top = max(rounded.items(), key=lambda kv: (kv[1], kv[0]))[0]
+        rounded[top] = round(rounded[top] + drift, 6)
+    return rounded
 
 
 def propose_next_week_weights(
@@ -88,10 +98,10 @@ def propose_next_week_weights(
     """Propose next-week sub-benchmark weights from usage outcomes.
 
     Heuristic (transparent, not ML):
-    * Tasks with more failures get **higher** weight next week (stress where
-      quality slipped).
-    * Tasks with only successes keep prior weight floored at ``min_weight``.
-    * Unknown success flags are ignored (do not invent outcomes).
+    * Mass for task t = ``n_failure + 1`` (Laplace). Successes do **not** add
+      mass — failure concentration drives up-weighting.
+    * ``prior_weights`` only annotate tasks that appear in usable usage.
+    * Unknown/non-bool success flags are ignored (do not invent outcomes).
     """
     notes: list[str] = [
         "authority=advisory — proposal only; does not mutate antiek_bench",
@@ -110,7 +120,6 @@ def propose_next_week_weights(
             notes=notes,
         )
 
-    # Aggregate per task
     success: dict[str, int] = {}
     failure: dict[str, int] = {}
     unknown_flags = 0
@@ -128,7 +137,8 @@ def propose_next_week_weights(
     if unknown_flags:
         notes.append(f"ignored {unknown_flags} events with non-boolean success")
 
-    tasks = sorted(set(success) | set(failure) | set(prior_weights or {}))
+    # Only tasks with at least one usable outcome (not prior-only invention).
+    tasks = sorted(set(success) | set(failure))
     if not tasks:
         notes.append("no usable success/failure outcomes — incomplete")
         return UsageLearnProposal(
@@ -140,22 +150,20 @@ def propose_next_week_weights(
             notes=notes,
         )
 
-    # Mass: failure_count + 1 (Laplace) so zero-failure tasks keep a floor share
-    raw_mass: dict[str, float] = {}
-    for t in tasks:
-        n_f = failure.get(t, 0)
-        n_s = success.get(t, 0)
-        # more failures → more mass; successes lightly reinforce presence
-        raw_mass[t] = float(n_f) + 1.0 + 0.1 * float(n_s)
-
+    # Failure-driven mass only.
+    raw_mass: dict[str, float] = {
+        t: float(failure.get(t, 0)) + 1.0 for t in tasks
+    }
     total = sum(raw_mass.values()) or 1.0
-    # Normalize then enforce min_weight floor and re-normalize
     weights = {t: raw_mass[t] / total for t in tasks}
+
     if min_weight > 0 and len(tasks) * min_weight < 1.0:
         for t in tasks:
             weights[t] = max(weights[t], min_weight)
         s2 = sum(weights.values())
         weights = {t: weights[t] / s2 for t in tasks}
+
+    weights = _normalize_exact(weights)
 
     proposals: list[TaskWeightProposal] = []
     for t in tasks:
@@ -173,23 +181,21 @@ def propose_next_week_weights(
                 f"(stress underperforming task)"
             )
         elif n_f == 0 and n_s > 0:
-            rationale = f"stable: only successes={n_s}; keep floored presence"
+            rationale = f"stable: only successes={n_s}; Laplace base mass only"
         else:
             rationale = f"balanced: successes={n_s} failures={n_f}"
         proposals.append(
             TaskWeightProposal(
                 task=t,
-                weight=round(weights[t], 6),
+                weight=weights[t],
                 prior_weight=prior,
                 n_success=n_s,
                 n_failure=n_f,
                 rationale=rationale,
             )
         )
-    # Highest weight first for presentation
     proposals.sort(key=lambda p: (-p.weight, p.task))
 
-    # Suggest new sub-tasks when a task has high failure rate and volume
     suggested: list[str] = []
     for p in proposals:
         total_t = p.n_success + p.n_failure
