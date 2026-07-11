@@ -30,6 +30,12 @@ def client():
     reset_marketplace_host_store()
     reset_bench_usage_store()
     app = FastAPI()
+
+    @app.middleware("http")
+    async def test_identity(request, call_next):  # type: ignore[no-untyped-def]
+        request.state.user_id = request.headers.get("x-test-user", "researcher")
+        return await call_next(request)
+
     register_marketplace_host_routes(app)
     return TestClient(app)
 
@@ -70,6 +76,7 @@ def test_purchase_host_records_book_qa_usage(client) -> None:
             "content_b64": content,
             "seed_twins": False,
         },
+        headers={"x-test-user": "buyer"},
     )
     assert r.status_code == 200
     body = r.json()

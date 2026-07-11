@@ -28,6 +28,12 @@ def test_host_seeds_twins_by_default():
     reset_engagement_stores()
     reset_marketplace_host_store()
     app = FastAPI()
+
+    @app.middleware("http")
+    async def operator_identity(request, call_next):  # type: ignore[no-untyped-def]
+        request.state.user_id = "__operator__"
+        return await call_next(request)
+
     register_marketplace_host_routes(app)
     register_engagement_routes(app)
     client = TestClient(app)
@@ -45,6 +51,7 @@ def test_host_seeds_twins_by_default():
     )
     assert r.status_code == 200, r.text
     body = r.json()
+    assert body["owner_id"] == "__operator__"
     assert body["view_format"] == "html"
     assert body.get("twins") is not None
     assert body["twins"].get("seeded") is True
@@ -57,6 +64,12 @@ def test_host_can_skip_seed():
     reset_engagement_stores()
     reset_marketplace_host_store()
     app = FastAPI()
+
+    @app.middleware("http")
+    async def operator_identity(request, call_next):  # type: ignore[no-untyped-def]
+        request.state.user_id = "__operator__"
+        return await call_next(request)
+
     register_marketplace_host_routes(app)
     client = TestClient(app)
     cat = client.get("/marketplace/catalog").json()
