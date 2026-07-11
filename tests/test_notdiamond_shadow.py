@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import pytest
 
-from substrate.model_decision.notdiamond_shadow import (
+from substrate.advisory.notdiamond_shadow import (
     NotDiamondShadowError,
+    ShadowRecord,
     assert_not_production_authority,
     record_shadow_comparison,
 )
@@ -43,7 +44,7 @@ def test_shadow_disagreement() -> None:
     assert rec.agreement is False
     d = rec.to_dict()
     assert d["authority"] == "shadow"
-    assert d["authorized_dispatch"] if False else True  # no such field
+    assert "authorized_dispatch" not in d
     assert "authorized" not in d
 
 
@@ -63,16 +64,41 @@ def test_empty_local_raises() -> None:
 
 
 def test_reject_production_authority_claim() -> None:
-    rec = record_shadow_comparison(task="t", local_model_id="m1", enabled=True, nd_recommended_model_id="m1")
+    rec = record_shadow_comparison(
+        task="t", local_model_id="m1", enabled=True, nd_recommended_model_id="m1"
+    )
     assert_not_production_authority(rec)
     with pytest.raises(NotDiamondShadowError):
         assert_not_production_authority({"authority": "production"})
 
 
+def test_authority_forced_shadow_on_record() -> None:
+    rec = ShadowRecord(
+        enabled=True,
+        task="t",
+        local_model_id="m1",
+        nd_recommended_model_id="m2",
+        agreement=False,
+        notes=[],
+    )
+    assert rec.authority == "shadow"
+    assert rec.to_dict()["authority"] == "shadow"
+
+
+def test_disabled_discards_nd_recommendation() -> None:
+    rec = record_shadow_comparison(
+        task="t",
+        local_model_id="m1",
+        nd_recommended_model_id="nd-would-say-this",
+        enabled=False,
+    )
+    assert rec.nd_recommended_model_id is None
+
+
 def test_no_network_in_module_source() -> None:
     import inspect
 
-    import substrate.model_decision.notdiamond_shadow as mod
+    import substrate.advisory.notdiamond_shadow as mod
 
     src = inspect.getsource(mod)
     for banned in ("urllib", "httpx", "requests", "aiohttp", "socket.", "fetch("):

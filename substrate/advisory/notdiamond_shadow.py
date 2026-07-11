@@ -1,13 +1,12 @@
 """NotDiamond shadow log — advisory only (§16 REJECT as production router).
 
-Operator vision residual: when evaluating model routers, log what NotDiamond
-*would* recommend beside the local selection, without ever dispatching through ND.
+Operator vision residual: log what NotDiamond *would* recommend beside the
+local selection, without ever dispatching through ND.
 
 Rules:
 * ``enabled`` kill switch defaults to False (shadow off).
-* Records are advisory; ``authority`` is always ``"shadow"`` — never production.
-* No network I/O in this module (inject recommendation strings from outside).
-* Never returns a model id as the production choice — only a shadow comparison.
+* ``authority`` is always forced to ``"shadow"`` — never production.
+* No network I/O (inject recommendation strings from outside).
 """
 
 from __future__ import annotations
@@ -24,12 +23,16 @@ class NotDiamondShadowError(ValueError):
 @dataclass(frozen=True)
 class ShadowRecord:
     enabled: bool
-    authority: str
     task: str
     local_model_id: str
     nd_recommended_model_id: str | None
     agreement: bool | None
     notes: list[str] = field(default_factory=list)
+    # Forced invariant — not a constructor parameter callers can spoof.
+    authority: str = field(default="shadow", init=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "authority", "shadow")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -51,11 +54,7 @@ def record_shadow_comparison(
     enabled: bool = False,
     extra_notes: Sequence[str] | None = None,
 ) -> ShadowRecord:
-    """Build an advisory shadow comparison record.
-
-    When ``enabled`` is False, still returns a record with notes that shadow
-    is off — never fabricates an ND recommendation.
-    """
+    """Build an advisory shadow comparison record."""
     t = (task or "").strip() or "general"
     local = (local_model_id or "").strip()
     if not local:
@@ -64,7 +63,6 @@ def record_shadow_comparison(
     if enabled is not True:
         return ShadowRecord(
             enabled=False,
-            authority="shadow",
             task=t,
             local_model_id=local,
             nd_recommended_model_id=None,
@@ -80,9 +78,8 @@ def record_shadow_comparison(
     if nd == "":
         nd = None
 
-    agreement: bool | None
     if nd is None:
-        agreement = None
+        agreement: bool | None = None
         notes = [
             "kill_switch=on but nd_recommended_model_id missing — agreement unknown",
             "authority=shadow — never production dispatch",
@@ -100,7 +97,6 @@ def record_shadow_comparison(
 
     return ShadowRecord(
         enabled=True,
-        authority="shadow",
         task=t,
         local_model_id=local,
         nd_recommended_model_id=nd,
