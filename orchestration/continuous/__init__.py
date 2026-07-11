@@ -36,6 +36,12 @@ from .daemon import (
     no_op_spawn,
     run_one_iteration,
 )
+from .spawn_cost import (
+    actual_was_reported,
+    install_spawn_cost_hooks,
+    report_actual_cost,
+    wrap_spawn_fn,
+)
 from .research_topic import ResearchTopic, topic_id_for
 from .scoring import (
     GapEntry,
@@ -63,11 +69,15 @@ __all__ = [
     "ResearchTopic",
     "SpawnFn",
     "Suggestion",
+    "actual_was_reported",
     "build_suggestions",
+    "install_spawn_cost_hooks",
     "no_op_spawn",
     "normalize_gap_description",
     "policy_is_daemon",
+    "report_actual_cost",
     "run_one_iteration",
     "score_gap",
     "topic_id_for",
+    "wrap_spawn_fn",
 ]
