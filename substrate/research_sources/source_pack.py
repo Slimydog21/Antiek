@@ -37,9 +37,9 @@ class SourcePackEntry:
     source: str
     pack_status: PackStatus
     readiness_status: str
-    adapter_importable: bool
-    offline_probe_ok: bool
-    runner_consumes_today: bool
+    adapter_importable: bool | None
+    offline_probe_ok: bool | None
+    runner_consumes_today: bool | None
     note: str
 
     def to_dict(self) -> dict[str, Any]:
@@ -107,13 +107,14 @@ def _entry_from_readiness(
     selected: bool,
 ) -> SourcePackEntry:
     if readiness is None:
+        # Do not invent bool readiness fields when probe is absent.
         return SourcePackEntry(
             source=source,
             pack_status="unavailable",
             readiness_status="missing",
-            adapter_importable=False,
-            offline_probe_ok=False,
-            runner_consumes_today=False,
+            adapter_importable=None,
+            offline_probe_ok=None,
+            runner_consumes_today=None,
             note="no readiness probe supplied for this source",
         )
 
@@ -170,11 +171,16 @@ def build_source_pack(
 ) -> SourcePack:
     """Build an advisory deep-research source pack from selection + readiness."""
     sel = _normalize_selected(selected)
-    readiness_by_source = readiness_by_source or {}
-    # Reject unknown keys in readiness map
-    for key in readiness_by_source:
-        if str(key).strip().lower() not in KNOWN_SOURCES:
+    raw_map = readiness_by_source or {}
+    # Normalize readiness keys to lowercase; reject unknowns.
+    normalized: dict[str, SourceReadiness | Mapping[str, Any]] = {}
+    for key, val in raw_map.items():
+        name = str(key).strip().lower()
+        if name not in KNOWN_SOURCES:
             raise SourcePackError(f"unknown readiness key {key!r}")
+        if name in normalized:
+            raise SourcePackError(f"duplicate readiness key after normalize: {name}")
+        normalized[name] = val
 
     entries: list[SourcePackEntry] = []
     notes: list[str] = [
@@ -182,7 +188,7 @@ def build_source_pack(
         "authority=advisory_preflight",
     ]
     for src in sorted(KNOWN_SOURCES):
-        rd = readiness_by_source.get(src)
+        rd = normalized.get(src)
         entry = _entry_from_readiness(src, rd, selected=src in sel)
         entries.append(entry)
         if src in sel and entry.pack_status == "unavailable":

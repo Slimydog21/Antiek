@@ -109,3 +109,27 @@ def test_mapping_requires_bool_fields() -> None:
                 },
             },
         )
+
+
+def test_missing_readiness_uses_null_bools_not_false() -> None:
+    pack = build_source_pack(["arxiv"], {})
+    arxiv = next(e for e in pack.entries if e.source == "arxiv")
+    assert arxiv.runner_consumes_today is None
+    assert arxiv.offline_probe_ok is None
+    assert arxiv.adapter_importable is None
+
+
+def test_readiness_key_case_normalized() -> None:
+    pack = build_source_pack(
+        ["arxiv"],
+        {
+            "ARXIV": {
+                "status": "ready",
+                "adapter_importable": True,
+                "offline_probe_ok": True,
+                "runner_consumes_today": False,
+                "note": "ok",
+            },
+        },
+    )
+    assert pack.included_count == 1

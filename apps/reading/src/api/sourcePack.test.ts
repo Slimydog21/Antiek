@@ -53,6 +53,27 @@ describe("parseSourcePackResult", () => {
       parseSourcePackResult({ ...sample, authority: "live" }),
     ).toThrow(/authority/);
   });
+
+  it("rejects unknown source and unavailable+runner_true", () => {
+    expect(() =>
+      parseSourcePackResult({
+        ...sample,
+        entries: [{ ...sample.entries[0], source: "nyt" }],
+      }),
+    ).toThrow(/unknown source/);
+    expect(() =>
+      parseSourcePackResult({
+        ...sample,
+        entries: [
+          {
+            ...sample.entries[0],
+            readiness_status: "unavailable",
+            runner_consumes_today: true,
+          },
+        ],
+      }),
+    ).toThrow(/runner_consumes_today/);
+  });
 });
 
 describe("postSourcePack", () => {

@@ -8,13 +8,20 @@
 
 import { API_BASE, apiFetch } from "../lib/api";
 
+const KNOWN_SOURCES = new Set([
+  "arxiv",
+  "substack",
+  "web",
+  "operator_corpus",
+]);
+
 export interface SourcePackEntry {
   source: string;
   pack_status: "included" | "excluded" | "unavailable";
   readiness_status: string;
-  adapter_importable: boolean;
-  offline_probe_ok: boolean;
-  runner_consumes_today: boolean;
+  adapter_importable: boolean | null;
+  offline_probe_ok: boolean | null;
+  runner_consumes_today: boolean | null;
   note: string;
 }
 
@@ -51,6 +58,14 @@ async function readOkBody(res: Response): Promise<unknown> {
   return res.json() as Promise<unknown>;
 }
 
+function parseOptionalBool(raw: unknown, field: string): boolean | null {
+  if (raw === null) return null;
+  if (typeof raw !== "boolean") {
+    throw new Error(`source pack entry rejected: ${field} must be boolean|null`);
+  }
+  return raw;
+}
+
 function parseEntry(raw: unknown): SourcePackEntry {
   if (!raw || typeof raw !== "object") {
     throw new Error("source pack entry must be an object");
@@ -59,6 +74,10 @@ function parseEntry(raw: unknown): SourcePackEntry {
   if (typeof o.source !== "string" || !o.source.trim()) {
     throw new Error("source pack entry rejected: source required");
   }
+  const source = o.source.trim().toLowerCase();
+  if (!KNOWN_SOURCES.has(source)) {
+    throw new Error(`source pack entry rejected: unknown source ${source}`);
+  }
   if (
     o.pack_status !== "included" &&
     o.pack_status !== "excluded" &&
@@ -66,28 +85,30 @@ function parseEntry(raw: unknown): SourcePackEntry {
   ) {
     throw new Error("source pack entry rejected: pack_status invalid");
   }
-  for (const f of [
-    "adapter_importable",
-    "offline_probe_ok",
-    "runner_consumes_today",
-  ] as const) {
-    if (typeof o[f] !== "boolean") {
-      throw new Error(`source pack entry rejected: ${f} must be boolean`);
-    }
-  }
   if (typeof o.readiness_status !== "string") {
     throw new Error("source pack entry rejected: readiness_status must be string");
   }
   if (typeof o.note !== "string") {
     throw new Error("source pack entry rejected: note must be string");
   }
+  const adapter = parseOptionalBool(o.adapter_importable, "adapter_importable");
+  const offline = parseOptionalBool(o.offline_probe_ok, "offline_probe_ok");
+  const runner = parseOptionalBool(o.runner_consumes_today, "runner_consumes_today");
+  if (
+    (o.readiness_status === "unavailable" || o.readiness_status === "stub") &&
+    runner === true
+  ) {
+    throw new Error(
+      "source pack entry rejected: runner_consumes_today cannot be true when unavailable/stub",
+    );
+  }
   return {
-    source: o.source,
+    source,
     pack_status: o.pack_status,
     readiness_status: o.readiness_status,
-    adapter_importable: o.adapter_importable as boolean,
-    offline_probe_ok: o.offline_probe_ok as boolean,
-    runner_consumes_today: o.runner_consumes_today as boolean,
+    adapter_importable: adapter,
+    offline_probe_ok: offline,
+    runner_consumes_today: runner,
     note: o.note,
   };
 }
