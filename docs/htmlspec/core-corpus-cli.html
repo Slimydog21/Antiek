@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>CORE corpus operator CLI</title></head>
+<body>
+<main>
+<h1>CORE scholarly metadata → durable offline corpus</h1>
+<p>One explicitly confirmed, key-bearing search uses the existing CORE connector against its fixed official v3 endpoint. It records metadata and abstracts only. Provider availability and declared full-text licenses are preserved as evidence but never promoted into blanket serving authority.</p>
+<h2>Runtime contract</h2>
+<ul>
+<li><code>sync-search QUERY --yes</code> requires <code>ANTIEK_CORE_API_KEY</code>, permits 1–100 records, one 20-second request, no redirects, and at most a 10 MiB response.</li>
+<li>Validated records publish atomically to a private, schema-bound, digest-verified SQLite authority before success is emitted.</li>
+<li><code>search</code> and <code>fetch</code> reopen that authority without network access. Fetch provenance is <code>source_terms_governed_metadata</code>.</li>
+<li>Provider bodies, exception strings, and API keys never appear in operator output.</li>
+</ul>
+<h2>Non-goals</h2>
+<p>No PDF/full-text fetch, servability inference, pagination daemon, arbitrary URL, application route, frontend, event, graph mutation, merge, deploy, or live CI request.</p>
+<h2>Acceptance</h2>
+<pre>uv run --with pytest --with mypy python -m pytest tests/test_papers_core.py tests/test_core_corpus_cli.py -q
+uv run --with mypy --with pytest mypy --strict --explicit-package-bases acquisition/core_cache tools/core_corpus.py tests/test_core_corpus_cli.py
+uv run --with ruff ruff check acquisition/core_cache tools/core_corpus.py tests/test_core_corpus_cli.py
+uv run --python 3.12 python -m compileall -q acquisition/core_cache tools/core_corpus.py
+python tools/core_corpus.py --help
+git diff --check</pre>
+</main>
+</body></html>
