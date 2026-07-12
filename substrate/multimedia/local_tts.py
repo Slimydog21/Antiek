@@ -19,6 +19,9 @@ from typing import Literal
 from runtime.db_lock import FlockWriteCoordinator, connect_read
 
 from .chapter_tts_production import PreparedChapterTTSRequest
+from .local_audible_tts import PreparedAudibleSpanTTSRequest
+
+LocalSpeechRequest = PreparedChapterTTSRequest | PreparedAudibleSpanTTSRequest
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _MAX_TEXT_BYTES = 256 * 1024
@@ -111,7 +114,7 @@ class LocalTTSAdapter:
         ).hexdigest()
 
     def synthesize(
-        self, request: PreparedChapterTTSRequest, *, now: datetime
+        self, request: LocalSpeechRequest, *, now: datetime
     ) -> LocalTTSArtifact:
         request = _request(request)
         self._verify_executables()
@@ -178,7 +181,7 @@ class LocalTTSAdapter:
             raise LocalTTSError("local TTS synthesis failed") from exc
         return artifact
 
-    def reopen(self, request: PreparedChapterTTSRequest) -> LocalTTSArtifact:
+    def reopen(self, request: LocalSpeechRequest) -> LocalTTSArtifact:
         """Verify an existing successful artifact without invoking synthesis."""
         request = _request(request)
         self._verify_executables()
@@ -188,7 +191,7 @@ class LocalTTSAdapter:
         return self._reopen(row, request)
 
     def recover(
-        self, request: PreparedChapterTTSRequest
+        self, request: LocalSpeechRequest
     ) -> LocalTTSArtifact:
         """Finalize a validated pending WAV without invoking synthesis again."""
         request = _request(request)
@@ -262,7 +265,7 @@ class LocalTTSAdapter:
 
     def _finalize(
         self,
-        request: PreparedChapterTTSRequest,
+        request: LocalSpeechRequest,
         row_values: list[object],
         pending: Path,
         output: Path,
@@ -352,7 +355,7 @@ class LocalTTSAdapter:
         except Exception:
             return None
 
-    def _verify_row(self, row, request: PreparedChapterTTSRequest) -> None:  # noqa: ANN001
+    def _verify_row(self, row, request: LocalSpeechRequest) -> None:  # noqa: ANN001
         if (
             row is None
             or len(row) != 14
@@ -368,7 +371,7 @@ class LocalTTSAdapter:
         ):
             raise LocalTTSError("stored local TTS integrity failed")
 
-    def _reopen(self, row, request: PreparedChapterTTSRequest) -> LocalTTSArtifact:  # noqa: ANN001
+    def _reopen(self, row, request: LocalSpeechRequest) -> LocalTTSArtifact:  # noqa: ANN001
         self._verify_executables()
         self._verify_row(row, request)
         if row[3] != "succeeded" or not row[6] or float(row[7]) <= 0:
@@ -433,9 +436,9 @@ class LocalTTSAdapter:
             raise ValueError("local TTS voice is unavailable")
 
 
-def _request(value: PreparedChapterTTSRequest) -> PreparedChapterTTSRequest:
+def _request(value: LocalSpeechRequest) -> LocalSpeechRequest:
     if (
-        not isinstance(value, PreparedChapterTTSRequest)
+        not isinstance(value, (PreparedChapterTTSRequest, PreparedAudibleSpanTTSRequest))
         or value.route_policy != "cheapest"
         or value.provider != "local_executable_tts"
         or value.model != "macos-say-v1"
@@ -447,9 +450,14 @@ def _request(value: PreparedChapterTTSRequest) -> PreparedChapterTTSRequest:
     return value
 
 
-def _request_id(request: PreparedChapterTTSRequest, config_digest: str) -> str:
+def _request_id(request: LocalSpeechRequest, config_digest: str) -> str:
+    unit_binding = (
+        f"{request.chapter_id}\0{request.paragraph_id}"
+        if isinstance(request, PreparedAudibleSpanTTSRequest)
+        else request.chapter_id
+    )
     return "mmlocaltts_" + hashlib.sha256(
-        f"{request.asset_id}\0{request.revision_id}\0{request.chapter_id}\0"
+        f"{request.asset_id}\0{request.revision_id}\0{unit_binding}\0"
         f"{request.body_digest}\0{config_digest}".encode()
     ).hexdigest()
 
@@ -580,6 +588,6 @@ def _fsync_directory(path: Path) -> None:
 
 
 __all__ = [
-    "LocalTTSAdapter", "LocalTTSArtifact", "LocalTTSConfig", "LocalTTSError",
+    "LocalSpeechRequest", "LocalTTSAdapter", "LocalTTSArtifact", "LocalTTSConfig", "LocalTTSError",
     "LocalTTSOutcomeUnknown",
 ]
