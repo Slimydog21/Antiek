@@ -90,6 +90,8 @@ def register_model_decision_twin_search_html_native_mo_weekly_src_write_pack_com
 
 
 __all__ = [
+    "TwinSearchPackBody",
+    "DecisionBody",
     "model_decision_twin_search_html_native_mo_weekly_src_write_pack_compose_router",
     "register_model_decision_twin_search_html_native_mo_weekly_src_write_pack_compose_routes",
 ]
