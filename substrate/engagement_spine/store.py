@@ -8,11 +8,23 @@ existing single-writer graph path.
 
 from __future__ import annotations
 
+import fcntl
+import hashlib
+import hmac
 import json
+import os
 import threading
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
+
+_DOCUMENT_REVISION_DOMAIN = b"antiek.engagement.parent-revision.v1\0"
+
+
+def document_revision_sha256(doc: dict[str, Any] | None) -> str:
+    """Content revision used by every canonical document CAS writer."""
+    payload = json.dumps(doc or {}, sort_keys=True, separators=(",", ":")).encode()
+    return hashlib.sha256(_DOCUMENT_REVISION_DOMAIN + payload).hexdigest()
 
 
 @runtime_checkable
@@ -24,6 +36,9 @@ class EngagementStore(Protocol):
     def list_twins(self, asset_id: str) -> list[dict[str, Any]]: ...
     def put_document(self, document_id: str, doc: dict[str, Any]) -> None: ...
     def get_document(self, document_id: str) -> dict[str, Any] | None: ...
+    def compare_and_set_document(
+        self, document_id: str, expected_sha256: str, doc: dict[str, Any]
+    ) -> bool: ...
 
 
 @dataclass
@@ -46,11 +61,7 @@ class InMemoryEngagementStore:
 
     def list_spawns(self, asset_id: str) -> list[dict[str, Any]]:
         with self._lock:
-            return [
-                dict(s)
-                for s in self._spawns.values()
-                if s.get("parent_asset_id") == asset_id
-            ]
+            return [dict(s) for s in self._spawns.values() if s.get("parent_asset_id") == asset_id]
 
     def put_twin(self, note: dict[str, Any]) -> None:
         with self._lock:
@@ -75,12 +86,23 @@ class InMemoryEngagementStore:
             row = self._docs.get(document_id)
             return dict(row) if row is not None else None
 
+    def compare_and_set_document(
+        self, document_id: str, expected_sha256: str, doc: dict[str, Any]
+    ) -> bool:
+        with self._lock:
+            current = self._docs.get(document_id)
+            if not hmac.compare_digest(document_revision_sha256(current), expected_sha256):
+                return False
+            self._docs[document_id] = dict(doc)
+            return True
+
 
 @dataclass
 class FileEngagementStore:
     """JSON-file durable store (one directory tree). Offline-safe."""
 
     root: Path
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False)
 
     def __post_init__(self) -> None:
         self.root = Path(self.root)
@@ -98,6 +120,17 @@ class FileEngagementStore:
     def _doc_path(self, document_id: str) -> Path:
         safe = document_id.replace("/", "_")
         return self.root / "docs" / f"{safe}.json"
+
+    def _write_document_unlocked(self, path: Path, doc: dict[str, Any]) -> None:
+        temp = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            with temp.open("w", encoding="utf-8") as handle:
+                json.dump(doc, handle, sort_keys=True, indent=2)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp, path)
+        finally:
+            temp.unlink(missing_ok=True)
 
     def put_spawn(self, spawn: dict[str, Any]) -> None:
         path = self._spawn_path(spawn["spawn_id"])
@@ -141,7 +174,11 @@ class FileEngagementStore:
 
     def put_document(self, document_id: str, doc: dict[str, Any]) -> None:
         path = self._doc_path(document_id)
-        path.write_text(json.dumps(doc, sort_keys=True, indent=2), encoding="utf-8")
+        lock_path = path.with_suffix(".lock")
+        with self._lock, lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            self._write_document_unlocked(path, doc)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
     def get_document(self, document_id: str) -> dict[str, Any] | None:
         path = self._doc_path(document_id)
@@ -149,6 +186,26 @@ class FileEngagementStore:
             return None
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
+
+    def compare_and_set_document(
+        self, document_id: str, expected_sha256: str, doc: dict[str, Any]
+    ) -> bool:
+        path = self._doc_path(document_id)
+        lock_path = path.with_suffix(".lock")
+        with self._lock, lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            current: dict[str, Any] | None = None
+            if path.is_file():
+                decoded = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(decoded, dict):
+                    raise ValueError("durable document must be a JSON object")
+                current = decoded
+            if not hmac.compare_digest(document_revision_sha256(current), expected_sha256):
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                return False
+            self._write_document_unlocked(path, doc)
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            return True
 
 
 def spawn_to_dict(obj: Any) -> dict[str, Any]:

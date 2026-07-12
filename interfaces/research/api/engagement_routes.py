@@ -24,16 +24,23 @@ Surfaces:
   POST /engagement/context-search
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
+  GET  /engagement/sessions/asset/{parent_asset_id}
+  GET  /engagement/sessions/{session_id}
+  PUT  /engagement/sessions/{session_id}/view
+  POST /engagement/sessions/context
+  POST /engagement/sessions/collective
+  POST /engagement/sessions/merge
 """
 
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from substrate.engagement_spine import (
     HighlightSelection,
@@ -53,10 +60,23 @@ from substrate.engagement_spine import (
     twin_promote_context_payload,
     twins_product_payload,
 )
-from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
+from substrate.engagement_spine.store import (
+    EngagementStore,
+    FileEngagementStore,
+    document_revision_sha256,
+)
 from substrate.floating_session import (
+    compare_and_set_view_mode,
     complete_session_with_context_flywheel,
+    get_session,
+    list_sessions_for_asset,
+    merge_sessions,
     open_from_highlight_with_references,
+    project_session_html,
+    session_context_html,
+    session_research_context,
+    sessions_collective_html,
+    sessions_collective_research,
 )
 from substrate.floating_session.store import (
     FileSessionStore,
@@ -273,6 +293,59 @@ class SessionFlywheelBody(BaseModel):
     include_twin_promote: bool = True
 
 
+class _ClosedSessionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+
+class SessionViewBody(_ClosedSessionBody):
+    mode: Literal["floating", "full"]
+    expected_mode: Literal["floating", "full"] | None = None
+
+
+class SessionContextBody(_ClosedSessionBody):
+    session_id: str = Field(pattern=r"^fsess_[0-9a-f]{16}$")
+    query: str | None = Field(default=None, max_length=8_000)
+    include_twin_preview: bool = False
+    include_prompt_block: bool = False
+    include_html: bool = True
+
+
+class SessionsCollectiveBody(_ClosedSessionBody):
+    session_ids: list[str] = Field(min_length=1, max_length=32)
+    query: str | None = Field(default=None, max_length=8_000)
+    include_twin_preview: bool = False
+    allow_cross_asset: bool = False
+    include_prompt_block: bool = False
+    include_html: bool = True
+
+    @model_validator(mode="after")
+    def _canonical_sessions(self) -> SessionsCollectiveBody:
+        if len(set(self.session_ids)) != len(self.session_ids) or any(
+            not session_id.startswith("fsess_") or len(session_id) != 22
+            for session_id in self.session_ids
+        ):
+            raise ValueError("session_ids must be unique canonical session identities")
+        return self
+
+
+class SessionsMergeBody(_ClosedSessionBody):
+    parent_asset_id: str = Field(min_length=1, max_length=512)
+    session_ids: list[str] = Field(min_length=1, max_length=32)
+    mode: Literal["into_parent", "draft_combined"] = "draft_combined"
+    confirm_parent_write: bool = False
+    expected_parent_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    include_html: bool = True
+
+    @model_validator(mode="after")
+    def _canonical_sessions(self) -> SessionsMergeBody:
+        if len(set(self.session_ids)) != len(self.session_ids) or any(
+            not session_id.startswith("fsess_") or len(session_id) != 22
+            for session_id in self.session_ids
+        ):
+            raise ValueError("session_ids must be unique canonical session identities")
+        return self
+
+
 # ── routes ───────────────────────────────────────────────────────────────
 
 
@@ -313,9 +386,7 @@ def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
 @engagement_router.post("/attach-refs")
 def post_attach_refs(body: AttachRefsBody) -> dict[str, Any]:
     try:
-        spawn, merged = attach_source_references(
-            body.spawn_id, body.references, store=_eng()
-        )
+        spawn, merged = attach_source_references(body.spawn_id, body.references, store=_eng())
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
@@ -476,9 +547,7 @@ def hydrate_live_status_payload(
     offline_honest = not any_live
     notes: list[str] = []
     if offline_honest:
-        notes.append(
-            "Hydrate default: offline-honest identity — no live body injectors installed."
-        )
+        notes.append("Hydrate default: offline-honest identity — no live body injectors installed.")
     else:
         notes.append(
             "At least one live hydrate injector is process-installed "
@@ -513,13 +582,11 @@ def hydrate_live_status_payload(
         "generic_fetch_publication_installed": generic_injector,
         "notes": notes,
         "html": (
-            "<section data-view-format=\"html\" data-product-panel=\"hydrate_live_status\">"
+            '<section data-view-format="html" data-product-panel="hydrate_live_status">'
             f"<p>offline_honest={str(offline_honest).lower()} · "
             f"arxiv_injector={str(arxiv_injector).lower()} · "
             f"substack_injector={str(substack_injector).lower()}</p>"
-            "<ul>"
-            + "".join(f"<li>{n}</li>" for n in notes)
-            + "</ul></section>"
+            "<ul>" + "".join(f"<li>{n}</li>" for n in notes) + "</ul></section>"
         ),
     }
 
@@ -561,8 +628,7 @@ def twin_seed_live_status_payload(
     notes: list[str] = []
     if offline_honest:
         notes.append(
-            "Twin seed default: offline-honest identity stubs "
-            "(UI panels force_offline=true)."
+            "Twin seed default: offline-honest identity stubs (UI panels force_offline=true)."
         )
     else:
         notes.append(
@@ -575,10 +641,7 @@ def twin_seed_live_status_payload(
             f"{ANTIEK_TWIN_SEED_USE_DISPATCH_ENV}=off — manual configure required."
         )
     if live_env and use_dispatch and not injector_installed:
-        notes.append(
-            "Dual-gate on but live seed fn not installed "
-            "(boot wiring may have failed)."
-        )
+        notes.append("Dual-gate on but live seed fn not installed (boot wiring may have failed).")
     return {
         "view_format": "html",
         "product_panel": "twin_seed_live_status",
@@ -591,13 +654,11 @@ def twin_seed_live_status_payload(
         "use_dispatch_env_flag": ANTIEK_TWIN_SEED_USE_DISPATCH_ENV,
         "notes": notes,
         "html": (
-            "<section data-view-format=\"html\" data-product-panel=\"twin_seed_live_status\">"
+            '<section data-view-format="html" data-product-panel="twin_seed_live_status">'
             f"<p>offline_honest={str(offline_honest).lower()} · "
             f"live_env={str(live_env).lower()} · "
             f"injector={str(injector_installed).lower()}</p>"
-            "<ul>"
-            + "".join(f"<li>{n}</li>" for n in notes)
-            + "</ul></section>"
+            "<ul>" + "".join(f"<li>{n}</li>" for n in notes) + "</ul></section>"
         ),
     }
 
@@ -626,13 +687,9 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     if hydrate_fetch_publication is not None:
         adapters.append(hydrate_fetch_publication)
     if hydrate_arxiv_fetch_by_id is not None:
-        adapters.append(
-            arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id)
-        )
+        adapters.append(arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id))
     if hydrate_substack_fetch_post is not None:
-        adapters.append(
-            substack_post_fetch_publication(fetch_post=hydrate_substack_fetch_post)
-        )
+        adapters.append(substack_post_fetch_publication(fetch_post=hydrate_substack_fetch_post))
     fetcher = compose_fetch_publication(*adapters) if adapters else None
     try:
         asset = hydrate_reference(
@@ -662,9 +719,7 @@ def post_progress(body: ProgressRecordBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    payload = progress_payload(
-        body.spawn_id, store=_eng(), include_html=body.include_html
-    )
+    payload = progress_payload(body.spawn_id, store=_eng(), include_html=body.include_html)
     payload["recorded"] = ev.to_dict()
     return payload
 
@@ -678,9 +733,7 @@ def post_progress_seed(body: ProgressSeedBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return progress_payload(
-        body.spawn_id, store=_eng(), include_html=body.include_html
-    )
+    return progress_payload(body.spawn_id, store=_eng(), include_html=body.include_html)
 
 
 @engagement_router.get("/progress/{spawn_id}")
@@ -906,6 +959,55 @@ def _record_session_open_usage(
     )
 
 
+def _verified_session(session_id: str):  # type: ignore[no-untyped-def]
+    try:
+        session = get_session(session_id, session_store=_sess(), engagement_store=_eng())
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="invalid session identity") from exc
+    if session is None:
+        raise HTTPException(status_code=404, detail="session not found")
+    spawn = _eng().get_spawn(session.spawn_id)
+    if spawn is None:
+        raise HTTPException(status_code=409, detail="session provenance requires reconciliation")
+    if (
+        spawn.get("parent_asset_id") != session.parent_asset_id
+        or spawn.get("investigation_id") != session.investigation_id
+    ):
+        raise HTTPException(status_code=409, detail="session provenance requires reconciliation")
+    return session
+
+
+def _session_payload(session: Any, *, include_html: bool) -> dict[str, Any]:
+    out: dict[str, Any] = {
+        "session_id": session.session_id,
+        "parent_asset_id": session.parent_asset_id,
+        "spawn_id": session.spawn_id,
+        "investigation_id": session.investigation_id,
+        "view_mode": session.view_mode,
+        "selection_text": session.selection_text,
+        "region_id": session.region_id,
+        "model_id": session.model_id,
+        "goal": session.goal,
+        "status": session.status,
+        "research_tier": session.research_tier,
+        "view_format": "html",
+    }
+    if include_html:
+        rendered = project_session_html(
+            session.session_id,
+            session_store=_sess(),
+            engagement_store=_eng(),
+        )
+        if len(rendered.encode("utf-8")) > 2_000_000:
+            raise HTTPException(status_code=413, detail="session HTML exceeds response cap")
+        out["html"] = rendered
+    return out
+
+
+def _parent_revision_sha256(parent_asset_id: str) -> str:
+    return document_revision_sha256(_eng().get_document(parent_asset_id))
+
+
 @engagement_router.post("/sessions/open")
 def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
     try:
@@ -1002,6 +1104,168 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
     return out
 
 
+@engagement_router.get("/sessions/asset/{parent_asset_id}")
+def get_sessions_for_asset(parent_asset_id: str, include_html: bool = False) -> dict[str, Any]:
+    if not parent_asset_id.strip() or len(parent_asset_id) > 512 or ".." in parent_asset_id:
+        raise HTTPException(status_code=400, detail="invalid parent asset identity")
+    try:
+        sessions = sorted(
+            list_sessions_for_asset(parent_asset_id, session_store=_sess()),
+            key=lambda row: row.session_id,
+        )
+    except (ValueError, OSError) as exc:
+        raise HTTPException(
+            status_code=409, detail="session index requires reconciliation"
+        ) from exc
+    verified = [_verified_session(row.session_id) for row in sessions]
+    return {
+        "parent_asset_id": parent_asset_id,
+        "sessions": [_session_payload(session, include_html=include_html) for session in verified],
+        "count": len(verified),
+        "view_format": "html",
+    }
+
+
+@engagement_router.get("/sessions/{session_id}")
+def get_session_route(session_id: str, include_html: bool = True) -> dict[str, Any]:
+    return _session_payload(_verified_session(session_id), include_html=include_html)
+
+
+@engagement_router.put("/sessions/{session_id}/view")
+def put_session_view(session_id: str, body: SessionViewBody) -> dict[str, Any]:
+    _verified_session(session_id)
+    try:
+        updated, applied = compare_and_set_view_mode(
+            session_id,
+            body.mode,
+            expected_mode=body.expected_mode,
+            session_store=_sess(),
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="session view update failed") from exc
+    if not applied:
+        raise HTTPException(status_code=409, detail="session view changed concurrently")
+    return _session_payload(updated, include_html=True)
+
+
+@engagement_router.post("/sessions/context")
+def post_session_context(body: SessionContextBody) -> dict[str, Any]:
+    _verified_session(body.session_id)
+    try:
+        pack = session_research_context(
+            body.session_id,
+            session_store=_sess(),
+            engagement_store=_eng(),
+            query=body.query,
+            promote_insight_fn=(_offline_promote_insight if body.include_twin_preview else None),
+            promote_question_fn=(_offline_promote_question if body.include_twin_preview else None),
+            include_twin_promote=body.include_twin_preview,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="session context is invalid") from exc
+    out = pack.to_dict()
+    out["twin_context_mode"] = (
+        "preview_non_mutating" if body.include_twin_preview else "not_requested"
+    )
+    if body.include_prompt_block:
+        out["prompt_block"] = pack.prompt_block()
+    if body.include_html:
+        out["html"] = session_context_html(
+            body.session_id,
+            session_store=_sess(),
+            engagement_store=_eng(),
+            query=body.query,
+            include_twin_promote=False,
+        )
+    return out
+
+
+@engagement_router.post("/sessions/collective")
+def post_sessions_collective(body: SessionsCollectiveBody) -> dict[str, Any]:
+    sessions = [_verified_session(session_id) for session_id in body.session_ids]
+    assets = tuple(dict.fromkeys(session.parent_asset_id for session in sessions))
+    if len(assets) > 1 and not body.allow_cross_asset:
+        raise HTTPException(
+            status_code=400,
+            detail="cross-asset collective research requires explicit approval",
+        )
+    try:
+        unit = sessions_collective_research(
+            body.session_ids,
+            session_store=_sess(),
+            engagement_store=_eng(),
+            query=body.query,
+            promote_insight_fn=(_offline_promote_insight if body.include_twin_preview else None),
+            promote_question_fn=(_offline_promote_question if body.include_twin_preview else None),
+            include_twin_promote=body.include_twin_preview,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(
+            status_code=400, detail="collective session context is invalid"
+        ) from exc
+    out = unit.to_dict()
+    out["source_session_ids"] = list(body.session_ids)
+    out["twin_context_mode"] = (
+        "preview_non_mutating" if body.include_twin_preview else "not_requested"
+    )
+    if body.include_prompt_block:
+        out["prompt_block"] = unit.prompt_block()
+    if body.include_html:
+        out["html"] = sessions_collective_html(
+            body.session_ids,
+            session_store=_sess(),
+            engagement_store=_eng(),
+            query=body.query,
+            include_twin_promote=False,
+        )
+    return out
+
+
+@engagement_router.post("/sessions/merge")
+def post_sessions_merge(body: SessionsMergeBody) -> dict[str, Any]:
+    sessions = [_verified_session(session_id) for session_id in body.session_ids]
+    if any(session.parent_asset_id != body.parent_asset_id for session in sessions):
+        raise HTTPException(status_code=400, detail="session merge cannot cross parent assets")
+    if any(session.status != "complete" for session in sessions):
+        raise HTTPException(status_code=400, detail="only completed sessions can merge")
+    if body.mode == "into_parent" and (
+        not body.confirm_parent_write or body.expected_parent_sha256 is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="into-parent merge requires confirmation and parent revision",
+        )
+    parent_before = _parent_revision_sha256(body.parent_asset_id)
+    try:
+        merged = merge_sessions(
+            body.parent_asset_id,
+            body.session_ids,
+            session_store=_sess(),
+            engagement_store=_eng(),
+            mode=body.mode,
+            expected_parent_sha256=(
+                body.expected_parent_sha256 if body.mode == "into_parent" else None
+            ),
+        )
+    except (KeyError, ValueError) as exc:
+        status = 409 if "revision conflicts" in str(exc) else 400
+        raise HTTPException(status_code=status, detail="session merge is invalid") from exc
+    merged["view_format"] = "html"
+    merged["draft_leaves_parent"] = body.mode == "draft_combined"
+    merged["parent_revision_sha256"] = parent_before
+    merged["result_parent_sha256"] = (
+        merged["document_sha256"] if body.mode == "into_parent" else parent_before
+    )
+    if body.include_html:
+        merged["html"] = project_session_html(
+            body.session_ids[0],
+            session_store=_sess(),
+            engagement_store=_eng(),
+            merge_result=merged,
+        )
+    return merged
+
+
 # Offline content-addressed promote hooks so API tests never need DuckDB.
 # Production can swap to real promote_* by mounting a different factory later.
 def _offline_promote_insight(
@@ -1014,7 +1278,6 @@ def _offline_promote_insight(
     con: Any = None,
     **kwargs: Any,
 ) -> str:
-    import hashlib
 
     canon = " ".join(text.lower().split())
     digest = hashlib.sha256(f"insight:{canon}".encode()).hexdigest()[:16]
@@ -1031,7 +1294,6 @@ def _offline_promote_question(
     con: Any = None,
     **kwargs: Any,
 ) -> str:
-    import hashlib
 
     canon = " ".join(text.lower().split())
     digest = hashlib.sha256(f"question:{canon}".encode()).hexdigest()[:16]

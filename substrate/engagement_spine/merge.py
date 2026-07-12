@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 from .spawn import ResearchSpawn, _from_row
-from .store import EngagementStore
+from .store import EngagementStore, document_revision_sha256
 from .twin import TwinNote
 from .twin import _from_row as twin_from_row
 
@@ -33,6 +33,7 @@ class MergeResult:
     source_spawn_ids: tuple[str, ...]
     doc_model: dict[str, Any]
     sections_merged: int
+    document_sha256: str
 
 
 def merge_spawn_outputs(
@@ -43,6 +44,7 @@ def merge_spawn_outputs(
     mode: MergeMode = "into_parent",
     parent_title: str | None = None,
     parent_body: str | None = None,
+    expected_parent_sha256: str | None = None,
 ) -> MergeResult:
     """Merge one or more completed spawns into parent or a draft document.
 
@@ -67,9 +69,7 @@ def merge_spawn_outputs(
                 f"spawn {sid} belongs to {spawn.parent_asset_id}, not {parent_asset_id}"
             )
         if spawn.status != "complete":
-            raise ValueError(
-                f"spawn {sid} status is {spawn.status!r}; only complete spawns merge"
-            )
+            raise ValueError(f"spawn {sid} status is {spawn.status!r}; only complete spawns merge")
         spawns.append(spawn)
 
     twins = [twin_from_row(r) for r in store.list_twins(parent_asset_id)]
@@ -94,18 +94,24 @@ def merge_spawn_outputs(
         ).hexdigest()[:12]
         document_id = f"draft_{parent_asset_id}_{digest}"
 
-    store.put_document(
-        document_id,
-        {
-            "document_id": document_id,
-            "parent_asset_id": parent_asset_id,
-            "title": title,
-            "body_text": body,
-            "mode": mode,
-            "source_spawn_ids": list(spawn_ids),
-            "doc_model": doc_model,
-        },
-    )
+    merged_document = {
+        "document_id": document_id,
+        "parent_asset_id": parent_asset_id,
+        "title": title,
+        "body_text": body,
+        "mode": mode,
+        "source_spawn_ids": list(spawn_ids),
+        "doc_model": doc_model,
+    }
+    if mode == "into_parent":
+        # A confirmed content merge is not authority to erase unrelated
+        # ownership, licensing, marketplace, revision, or provenance fields.
+        merged_document = {**existing, **merged_document}
+    if mode == "into_parent" and expected_parent_sha256 is not None:
+        if not store.compare_and_set_document(document_id, expected_parent_sha256, merged_document):
+            raise ValueError("parent revision conflicts with the confirmed preview")
+    else:
+        store.put_document(document_id, merged_document)
 
     sections = 1 + len(spawns) + (1 if twins else 0)
     return MergeResult(
@@ -115,6 +121,7 @@ def merge_spawn_outputs(
         source_spawn_ids=tuple(spawn_ids),
         doc_model=doc_model,
         sections_merged=sections,
+        document_sha256=document_revision_sha256(merged_document),
     )
 
 
@@ -304,12 +311,8 @@ def _build_doc_model(
         content.append(_para(body.strip(), "p-source"))
 
     for i, spawn in enumerate(spawns):
-        content.append(
-            _heading(f"Deep research: {spawn.goal[:80]}", 2, f"h-spawn-{i}")
-        )
-        content.append(
-            _para(f"Selection: {spawn.selection_text}", f"p-sel-{i}")
-        )
+        content.append(_heading(f"Deep research: {spawn.goal[:80]}", 2, f"h-spawn-{i}"))
+        content.append(_para(f"Selection: {spawn.selection_text}", f"p-sel-{i}"))
         if spawn.output_text:
             content.append(_para(spawn.output_text, f"p-out-{i}"))
         for j, insight in enumerate(spawn.output_insights):

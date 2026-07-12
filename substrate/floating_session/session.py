@@ -43,9 +43,7 @@ class FloatingSession:
 
 
 def _session_id(parent_asset_id: str, spawn_id: str) -> str:
-    digest = hashlib.sha256(f"fsess:v1:{parent_asset_id}:{spawn_id}".encode()).hexdigest()[
-        :16
-    ]
+    digest = hashlib.sha256(f"fsess:v1:{parent_asset_id}:{spawn_id}".encode()).hexdigest()[:16]
     return f"fsess_{digest}"
 
 
@@ -150,6 +148,24 @@ def set_view_mode(
     return _from_row(row)
 
 
+def compare_and_set_view_mode(
+    session_id: str,
+    mode: ViewMode,
+    *,
+    expected_mode: ViewMode | None,
+    session_store: SessionStore,
+) -> tuple[FloatingSession, bool]:
+    """Atomically update view mode within the configured store boundary."""
+    if mode not in ("floating", "full") or expected_mode not in (
+        None,
+        "floating",
+        "full",
+    ):
+        raise ValueError("invalid view mode authority")
+    row, applied = session_store.compare_and_set_view(session_id, expected_mode, mode)
+    return _from_row(row), applied
+
+
 def get_session(
     session_id: str,
     *,
@@ -163,9 +179,7 @@ def get_session(
     if engagement_store is not None:
         spawn = get_spawn(session.spawn_id, store=engagement_store)
         if spawn is not None and spawn.status != session.status:
-            row = dict(row)
-            row["status"] = spawn.status
-            session_store.put_session(row)
+            row = session_store.update_status(session_id, spawn.status)
             session = _from_row(row)
     return session
 
@@ -231,10 +245,7 @@ def complete_session_research(
                 source_spawn_id=spawn_id,
                 investigation_id=inv,
             )
-    row = dict(row)
-    row["status"] = "complete"
-    session_store.put_session(row)
-    return _from_row(row)
+    return _from_row(session_store.update_status(session_id, "complete"))
 
 
 def merge_sessions(
@@ -246,6 +257,7 @@ def merge_sessions(
     mode: Literal["into_parent", "draft_combined"] = "draft_combined",
     parent_title: str | None = None,
     parent_body: str | None = None,
+    expected_parent_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Merge one or more completed sessions via spine ``merge_spawn_outputs``.
 
@@ -260,8 +272,7 @@ def merge_sessions(
             raise KeyError(f"unknown session_id: {sid}")
         if row.get("parent_asset_id") != parent_asset_id:
             raise ValueError(
-                f"session {sid} parent is {row.get('parent_asset_id')}, "
-                f"not {parent_asset_id}"
+                f"session {sid} parent is {row.get('parent_asset_id')}, not {parent_asset_id}"
             )
         spawn_ids.append(str(row["spawn_id"]))
 
@@ -272,6 +283,7 @@ def merge_sessions(
         mode=mode,
         parent_title=parent_title,
         parent_body=parent_body,
+        expected_parent_sha256=expected_parent_sha256,
     )
     return {
         "mode": result.mode,
@@ -281,4 +293,5 @@ def merge_sessions(
         "source_session_ids": list(session_ids),
         "doc_model": result.doc_model,
         "sections_merged": result.sections_merged,
+        "document_sha256": result.document_sha256,
     }

@@ -29,6 +29,7 @@ from .product_path import (
 from .session import (
     FloatingSession,
     ViewMode,
+    compare_and_set_view_mode,
     complete_session_research,
     get_session,
     list_sessions_for_asset,
@@ -64,6 +65,7 @@ __all__ = [
     "SessionFlywheelResult",
     "attach_session_source_references",
     "complete_session_research",
+    "compare_and_set_view_mode",
     "complete_session_with_context_flywheel",
     "get_session",
     "list_session_window_descriptors",

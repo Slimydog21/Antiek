@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 
 import pytest
 
@@ -25,7 +26,10 @@ from substrate.floating_session import (  # noqa: E402
     project_session_html,
     set_view_mode,
 )
-from substrate.floating_session.store import InMemorySessionStore  # noqa: E402
+from substrate.floating_session.store import (  # noqa: E402
+    FileSessionStore,
+    InMemorySessionStore,
+)
 
 
 @pytest.fixture
@@ -78,11 +82,24 @@ def test_open_idempotent_same_region(eng, sessions):
     assert len(listed) == 1
 
 
+def test_file_session_store_rejects_filename_identity_substitution(tmp_path):
+    store = FileSessionStore(tmp_path)
+    requested = "fsess_0123456789abcdef"
+    substituted = "fsess_fedcba9876543210"
+    path = tmp_path / "sessions" / f"{requested}.json"
+    path.write_text(
+        '{"session_id":"' + substituted + '","parent_asset_id":"asset"}',
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="identity conflicts"):
+        store.get_session(requested)
+    with pytest.raises(ValueError, match="identity conflicts"):
+        store.list_sessions("asset")
+
+
 def test_set_view_mode_floating_full(eng, sessions):
     sel = HighlightSelection(asset_id="a", selection_text="passage", region_id="r1")
-    s = open_from_highlight(
-        sel, engagement_store=eng, session_store=sessions, view_mode="floating"
-    )
+    s = open_from_highlight(sel, engagement_store=eng, session_store=sessions, view_mode="floating")
     full = set_view_mode(s.session_id, "full", session_store=sessions)
     assert full.view_mode == "full"
     assert full.session_id == s.session_id
@@ -180,9 +197,7 @@ def test_project_session_html_not_pdf(eng, sessions):
         session_store=sessions,
         model_id="composer-2.5",
     )
-    html = project_session_html(
-        s.session_id, session_store=sessions, engagement_store=eng
-    )
+    html = project_session_html(s.session_id, session_store=sessions, engagement_store=eng)
     assert s.session_id in html or s.spawn_id in html
     assert "doc-h" in html or "HTML-first" in html
     assert not html.lstrip().lower().startswith("%pdf")
@@ -226,9 +241,7 @@ def test_get_session_refreshes_status(eng, sessions):
         engagement_store=eng,
         output_text="done",
     )
-    again = get_session(
-        s.session_id, session_store=sessions, engagement_store=eng
-    )
+    again = get_session(s.session_id, session_store=sessions, engagement_store=eng)
     assert again is not None
     assert again.status == "complete"
 
@@ -281,3 +294,44 @@ def test_complete_session_can_skip_twin_record(eng, sessions):
         record_twins=False,
     )
     assert list_twin_notes("doc-notwin", store=eng) == []
+
+
+def test_status_refresh_cannot_clobber_concurrent_view_cas():
+    store = InMemorySessionStore()
+    session_id = "fsess_0123456789abcdef"
+    store.put_session(
+        {
+            "session_id": session_id,
+            "parent_asset_id": "asset-race",
+            "spawn_id": "spawn-race",
+            "status": "reserved",
+            "view_mode": "floating",
+        }
+    )
+    barrier = threading.Barrier(3)
+
+    def refresh_status() -> None:
+        barrier.wait()
+        store.update_status(session_id, "complete")
+
+    def expand_view() -> None:
+        barrier.wait()
+        store.compare_and_set_view(session_id, "floating", "full")
+
+    workers = [
+        threading.Thread(target=refresh_status),
+        threading.Thread(target=expand_view),
+    ]
+    for worker in workers:
+        worker.start()
+    barrier.wait()
+    for worker in workers:
+        worker.join()
+
+    assert store.get_session(session_id) == {
+        "session_id": session_id,
+        "parent_asset_id": "asset-race",
+        "spawn_id": "spawn-race",
+        "status": "complete",
+        "view_mode": "full",
+    }

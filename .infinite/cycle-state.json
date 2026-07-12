@@ -1,7 +1,7 @@
 {
-  "cycle": 6,
-  "phase": "ARCHITECT",
-  "subgoal": "Re-derive and execute the highest-impact remaining Antiek workstation sprint",
+  "cycle": 7,
+  "phase": "RE_DERIVE",
+  "subgoal": "Execute FSW-SPR-02 owner isolation, durable receipts, and browser window lifecycle",
   "lanes": [],
   "engineHealth": {
     "grok": "ok",
@@ -14,5 +14,5 @@
     "conclave": "ok"
   },
   "consecutiveNoDelta": 0,
-  "updatedAt": "2026-07-12T05:50:00Z"
+  "updatedAt": "2026-07-12T09:03:16Z"
 }

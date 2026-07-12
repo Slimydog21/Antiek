@@ -156,6 +156,198 @@ def test_session_open_and_flywheel(client):
     assert body["usage_event"].get("task_class") == "wrestle"
 
 
+def test_session_workstation_lifecycle_collective_and_merge(client):
+    def open_session(asset: str, region: str, text: str) -> str:
+        response = client.post(
+            "/engagement/sessions/open",
+            json={
+                "asset_id": asset,
+                "selection_text": text,
+                "region_id": region,
+                "references": ["https://arxiv.org/abs/1706.03762"],
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()["session_id"]
+
+    first = open_session("asset-a", "r1", "<script>alert(1)</script> first")
+    second = open_session("asset-a", "r2", "second")
+    foreign = open_session("asset-b", "r3", "foreign")
+
+    listed = client.get("/engagement/sessions/asset/asset-a")
+    assert listed.status_code == 200
+    assert listed.json()["count"] == 2
+    assert [row["session_id"] for row in listed.json()["sessions"]] == sorted(
+        [first, second]
+    )
+
+    projected = client.get(f"/engagement/sessions/{first}")
+    assert projected.status_code == 200
+    assert projected.json()["view_format"] == "html"
+    assert "<script>alert(1)</script>" not in projected.json()["html"]
+
+    full = client.put(
+        f"/engagement/sessions/{first}/view",
+        json={"mode": "full", "expected_mode": "floating"},
+    )
+    assert full.status_code == 200
+    assert full.json()["view_mode"] == "full"
+    replay = client.put(
+        f"/engagement/sessions/{first}/view",
+        json={"mode": "full", "expected_mode": "floating"},
+    )
+    assert replay.status_code == 200
+    stale = client.put(
+        f"/engagement/sessions/{first}/view",
+        json={"mode": "floating", "expected_mode": "floating"},
+    )
+    assert stale.status_code == 409
+
+    completed_ids = (first, second, foreign)
+    for session_id in completed_ids:
+        done = client.post(
+            "/engagement/sessions/complete-flywheel",
+            json={
+                "session_id": session_id,
+                "output_text": f"Research output for {session_id}",
+                "insights": [f"Insight from {session_id}"],
+                "questions": [f"Question from {session_id}?"],
+            },
+        )
+        assert done.status_code == 200, done.text
+
+    context = client.post(
+        "/engagement/sessions/context",
+        json={
+            "session_id": first,
+            "include_twin_preview": True,
+            "include_prompt_block": True,
+            "include_html": True,
+        },
+    )
+    assert context.status_code == 200, context.text
+    assert context.json()["twin_count"] >= 1
+    assert "prompt_block" in context.json()
+    assert "html" in context.json()
+    assert context.json()["twin_context_mode"] == "preview_non_mutating"
+
+    refused = client.post(
+        "/engagement/sessions/collective",
+        json={"session_ids": [first, foreign]},
+    )
+    assert refused.status_code == 400
+    collective = client.post(
+        "/engagement/sessions/collective",
+        json={
+            "session_ids": [first, foreign],
+            "allow_cross_asset": True,
+            "include_twin_preview": True,
+            "include_prompt_block": True,
+        },
+    )
+    assert collective.status_code == 200, collective.text
+    assert collective.json()["spawn_count"] == 2
+    assert set(collective.json()["asset_ids"]) == {"asset-a", "asset-b"}
+    assert collective.json()["source_session_ids"] == [first, foreign]
+
+    eng_mod._eng().put_document(
+        "asset-a",
+        {
+            "document_id": "asset-a",
+            "title": "Parent",
+            "body_text": "Authoritative parent body.",
+            "license": "operator-owned",
+            "revision": 7,
+        },
+    )
+    draft = client.post(
+        "/engagement/sessions/merge",
+        json={"parent_asset_id": "asset-a", "session_ids": [first, second]},
+    )
+    assert draft.status_code == 200, draft.text
+    assert draft.json()["mode"] == "draft_combined"
+    assert draft.json()["draft_leaves_parent"] is True
+    assert eng_mod._eng().get_document("asset-a")["body_text"] == (
+        "Authoritative parent body."
+    )
+    unconfirmed = client.post(
+        "/engagement/sessions/merge",
+        json={
+            "parent_asset_id": "asset-a",
+            "session_ids": [first],
+            "mode": "into_parent",
+        },
+    )
+    assert unconfirmed.status_code == 400
+    parent_revision = draft.json()["parent_revision_sha256"]
+    committed = client.post(
+        "/engagement/sessions/merge",
+        json={
+            "parent_asset_id": "asset-a",
+            "session_ids": [first, second],
+            "mode": "into_parent",
+            "confirm_parent_write": True,
+            "expected_parent_sha256": parent_revision,
+        },
+    )
+    assert committed.status_code == 200, committed.text
+    assert committed.json()["document_id"] == "asset-a"
+    parent_after = eng_mod._eng().get_document("asset-a")
+    assert parent_after is not None
+    assert parent_after["license"] == "operator-owned"
+    assert parent_after["revision"] == 7
+    replay = client.post(
+        "/engagement/sessions/merge",
+        json={
+            "parent_asset_id": "asset-a",
+            "session_ids": [first, second],
+            "mode": "into_parent",
+            "confirm_parent_write": True,
+            "expected_parent_sha256": parent_revision,
+        },
+    )
+    assert replay.status_code == 409
+
+
+def test_session_workstation_contract_rejects_unsafe_shapes(client):
+    unknown = client.get("/engagement/sessions/../../secret")
+    assert unknown.status_code in {400, 404}
+    extra = client.post(
+        "/engagement/sessions/context",
+        json={"session_id": "fsess_0123456789abcdef", "unexpected": True},
+    )
+    assert extra.status_code == 422
+    duplicate = client.post(
+        "/engagement/sessions/collective",
+        json={
+            "session_ids": [
+                "fsess_0123456789abcdef",
+                "fsess_0123456789abcdef",
+            ]
+        },
+    )
+    assert duplicate.status_code == 422
+
+    opened = client.post(
+        "/engagement/sessions/open",
+        json={"asset_id": "parent-safe", "selection_text": "unfinished"},
+    )
+    assert opened.status_code == 200
+    session_id = opened.json()["session_id"]
+    incomplete = client.post(
+        "/engagement/sessions/merge",
+        json={"parent_asset_id": "parent-safe", "session_ids": [session_id]},
+    )
+    assert incomplete.status_code == 400
+
+    row = eng_mod._sess().get_session(session_id)
+    assert row is not None
+    row["parent_asset_id"] = "tampered-parent"
+    eng_mod._sess().put_session(row)
+    integrity = client.get(f"/engagement/sessions/{session_id}")
+    assert integrity.status_code == 409
+
+
 def test_session_open_twin_chase_usage_source(client):
     """Residual (nw): Twin chase goal_hint → usage source=twin_chase."""
     r = client.post(

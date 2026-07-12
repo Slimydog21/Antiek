@@ -28,7 +28,12 @@ from substrate.engagement_spine import (  # noqa: E402
     record_twin_question,
     spawn_from_highlight,
 )
-from substrate.engagement_spine.store import FileEngagementStore as _FileStore  # noqa: E402
+from substrate.engagement_spine.store import (  # noqa: E402
+    FileEngagementStore as _FileStore,
+)
+from substrate.engagement_spine.store import (  # noqa: E402
+    document_revision_sha256,
+)
 
 
 @pytest.fixture
@@ -73,9 +78,7 @@ def test_spawn_records_research_tier_wrestle(store):
         selection_text="Long-horizon claim to wrestle with.",
         region_id="r-wrestle-1",
     )
-    spawn = spawn_from_highlight(
-        sel, store=store, model_id="glm-5.2", research_tier="wrestle"
-    )
+    spawn = spawn_from_highlight(sel, store=store, model_id="glm-5.2", research_tier="wrestle")
     assert spawn.research_tier == "wrestle"
     again = get_spawn(spawn.spawn_id, store=store)
     assert again is not None
@@ -284,3 +287,16 @@ def test_goal_hint_overrides_default_goal(store):
         store=store,
     )
     assert s.goal == "Compare to retrieval-augmented generation"
+
+
+@pytest.mark.parametrize("backend", ["memory", "file"])
+def test_document_compare_and_set_rejects_intervening_canonical_write(backend, tmp_path):
+    target = InMemoryEngagementStore() if backend == "memory" else _FileStore(tmp_path)
+    target.put_document("asset-cas", {"body_text": "preview"})
+    expected = document_revision_sha256(target.get_document("asset-cas"))
+    target.put_document("asset-cas", {"body_text": "newer canonical edit"})
+
+    applied = target.compare_and_set_document("asset-cas", expected, {"body_text": "stale merge"})
+
+    assert applied is False
+    assert target.get_document("asset-cas") == {"body_text": "newer canonical edit"}

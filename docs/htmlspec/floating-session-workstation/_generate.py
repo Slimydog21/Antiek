@@ -1,0 +1,140 @@
+"""Generate the self-contained floating-session workstation htmlspec."""
+
+from __future__ import annotations
+
+import html
+from pathlib import Path
+from typing import Any
+
+ROOT = Path(__file__).resolve().parent
+STYLE = Path("/Users/slimydog/.agents/skills/htmlspec/templates/style.css")
+DATE = "2026-07-12"
+
+
+def esc(value: object) -> str:
+    return html.escape(str(value), quote=True)
+
+
+def shell(title: str, body: str, *, wide: bool = False) -> str:
+    css = STYLE.read_text(encoding="utf-8")
+    cls = "page page--wide" if wide else "page"
+    return (
+        '<!doctype html><html lang="en"><head><meta charset="utf-8" />'
+        '<meta name="viewport" content="width=device-width,initial-scale=1" />'
+        f"<title>{esc(title)}</title><style>{css}</style></head>"
+        f'<body><main class="{cls}">{body}</main></body></html>\n'
+    )
+
+
+def rigor(cards: dict[str, str]) -> str:
+    return '<section class="block"><h2>Rigor — operating manual</h2><div class="rigor">' + "".join(
+        f'<article class="rigor-card"><span class="label">{esc(name)}</span>'
+        f"<p>{esc(text)}</p></article>"
+        for name, text in cards.items()
+    ) + "</div></section>"
+
+
+SPRINTS: list[dict[str, Any]] = [
+    {
+        "id": "FSW-SPR-01",
+        "slug": "closed-session-lifecycle-api",
+        "title": "Closed floating-session lifecycle API",
+        "status": "done",
+        "wave": 1,
+        "goal": "Expose reopen, asset-scoped list, float/full CAS, recursive context, collective units, and confirmed merge through the existing engagement single writers.",
+        "files": "interfaces/research/api/engagement_routes.py; substrate/floating_session/store.py; tests/test_engagement_routes.py",
+        "milestones": [
+            ("Close every request", "Use strict extra-forbid models, bounded canonical session IDs, unique lists, explicit cross-asset approval, atomic store view CAS, and revision-bound confirmed parent writes.", "Malformed, duplicate, traversal-shaped, stale-view, accidental cross-asset, incomplete-merge, unconfirmed-parent, and stale-parent requests fail before mutation."),
+            ("Verify session provenance", "For every route, refresh the session from its spawn and require matching parent asset and investigation identity.", "Missing session is 404; missing or conflicting spawn linkage is a sanitized 409, never silently projected."),
+            ("Compose existing context and merge writers", "Call session_research_context, sessions_collective_research, merge_sessions, and the canonical HTML projectors; do not fork twin, reference, or merge logic.", "Twin context is explicitly labeled non-mutating preview, cross-asset collective requires opt-in, draft merge leaves parent bytes unchanged, and into-parent uses the canonical store's exact revision CAS."),
+            ("Prove the workstation lifecycle", "Drive open→list/get→view CAS→complete twins→context→cross-asset collective→draft→confirmed parent merge through TestClient.", "HTML is escaped and every response identifies view_format=html with exact source session provenance."),
+        ],
+        "out": "No frontend window chrome, new merge writer, global session enumeration, commercial book work, or claim of multi-user ownership isolation.",
+        "gates": "uv run pytest -q tests/test_engagement_routes.py tests/test_floating_session.py tests/test_floating_session_context_bridge.py tests/test_session_context_flywheel.py; uv run mypy substrate/floating_session/store.py interfaces/research/api/engagement_routes.py; uv run ruff check substrate/floating_session/store.py interfaces/research/api/engagement_routes.py tests/test_engagement_routes.py",
+        "rigor": {
+            "1 · Intellectual honesty": "The current engagement rows contain no owner_user_id. Call this a single-operator/local workstation surface that may sit behind the app's auth mount, not authenticated ownership isolation, and return 409 when session↔spawn provenance drifts.",
+            "2 · Fairness": "Cross-asset collective research is useful and intentionally allowed only after allow_cross_asset=true; destructive cross-parent merge remains forbidden so one asset cannot absorb another by UI selection error.",
+            "3 · Rigor": "Test atomic stale view CAS, escaped selection HTML, incomplete sessions, parent-byte preservation in draft mode, metadata preservation, and stale parent-hash refusal for into_parent—not only successful JSON shapes.",
+            "4 · Diligence": "Reuse get_session, set_view_mode, session_research_context, sessions_collective_research, merge_sessions, and canonical HTML projectors. A second session or merge store is a defect.",
+            "5 · Defensibility": "Keep prompt blocks opt-in and label twin context as preview_non_mutating because it enlarges the response without writing the graph. Bind parent merge to the draft-returned hash at the canonical store write; the result hash describes the exact bytes written even if a later writer advances the parent.",
+        },
+        "pattern": "adversarial-verification",
+        "lenses": "session↔spawn integrity and cross-asset leakage; parent mutation and HTML injection",
+    },
+    {
+        "id": "FSW-SPR-02",
+        "slug": "owned-durable-window-client",
+        "title": "Owned durable window client + merge receipts",
+        "status": "ready",
+        "wave": 2,
+        "goal": "Promote the single-operator API into an owner-scoped, multi-worker-safe browser workstation with durable merge idempotency and real floating/full window controls.",
+        "files": "substrate/floating_session/{store,session}.py; substrate/engagement_spine/store.py; interfaces/research/api/engagement_routes.py; interfaces/research/frontend/src/**; tests/test_session_workstation_owned.py",
+        "milestones": [
+            ("Bind ownership", "Add owner_user_id to sessions, spawns, twins, and documents; make every store lookup and route require the authenticated owner.", "Foreign sessions are indistinguishable from missing; list is owner+asset scoped; migration refuses ambiguous rows instead of guessing ownership."),
+            ("Make mutations multi-worker safe", "Replace write_text updates with atomic temp+fsync+replace under a cross-process coordinator or transactional database CAS.", "Two processes cannot lose view, completion, twin, or merge updates; injected crash leaves either the prior or complete next record."),
+            ("Persist merge receipts", "Claim a bounded idempotency key against owner+parent+ordered sessions+mode+parent revision before mutation; settle the exact result afterward.", "Same key/material replays, conflicting material returns 409, and crash after write-before-response recovers without duplicate or stale parent mutation."),
+            ("Wire window chrome", "Consume list/get/view/context/collective/merge routes from the browser window store with reopen, float/full, selection, collective prompt, draft preview, and confirmed merge UI.", "A browser E2E reopens after reload, stops accidental cross-asset collective, previews draft without parent change, and confirms the final merge."),
+        ],
+        "out": "No provider dispatch, no automatic merge, no global public collaboration, and no weakening of the HTML-only asset contract.",
+        "gates": "uv run pytest -q tests/test_session_workstation_owned.py; pnpm --dir interfaces/research/frontend test -- session-workstation; two-process crash/CAS harness; hardenx --strict --no-color .",
+        "rigor": {
+            "1 · Intellectual honesty": "Do not infer owner identity from asset_id, session_id, or filesystem location. Existing ownerless rows are migration-reconciliation cases until an operator supplies a defensible mapping.",
+            "2 · Fairness": "Steelman retaining the single-operator file stores: they are simpler and adequate locally. Replace them only at the multi-user boundary, where foreign-row ambiguity and lost updates impose the cost on users rather than maintainers.",
+            "3 · Rigor": "Use two-process races and crash injection around receipt claim, parent write, and receipt settlement; one happy-path browser test cannot prove exactly-once merge behavior.",
+            "4 · Diligence": "Read the app auth middleware, owner-bound Midnight Oil store, frontend windowsStore, and engagement file writers before choosing the coordinator/database. Reuse an existing owner/CAS convention where compatible.",
+            "5 · Defensibility": "Record the owner migration, idempotency material hash, parent revision rule, and lock order in code and the handoff. A later agent must reconstruct why a merge replay was accepted or quarantined.",
+        },
+        "pattern": "fan-out-and-synthesize",
+        "lenses": "owner isolation/migration; two-process receipt and parent-write crash safety; browser reload/confirmation behavior",
+    },
+]
+
+
+def sprint_page(row: dict[str, Any]) -> str:
+    milestones = "".join(
+        f'<div class="milestone"><div class="num">{index}</div><div><div class="title">{esc(title)}</div>'
+        f'<p class="desc">{esc(desc)}</p><div class="criteria"><strong>Acceptance:</strong> {esc(criteria)}</div></div></div>'
+        for index, (title, desc, criteria) in enumerate(row["milestones"], 1)
+    )
+    body = f"""<header class="hero"><p class="eyebrow"><a href="index.html">&larr; Floating-session workstation</a> · {esc(row['id'])}</p><h1>{esc(row['title'])}</h1><p class="tagline">{esc(row['goal'])}</p><div class="meta-row"><span class="tag tag--blue">Wave {esc(row['wave'])}</span><span class="tag tag--{'green' if row['status']=='done' else 'yellow'}">{esc(row['status'])}</span><span class="tag tag--grey">4 milestones</span></div></header>
+<section class="block"><h2>Parent context</h2><p>Antiek already has floating-session, engagement-spine, twin-note, collective-context, and merge substrate. This sprint owns the exact product seam named below and must compose those single writers.</p><p>The hard boundary is HTML-native research continuity: sessions remain traceable to their parent asset and spawn, context is explicit, and destructive parent mutation is never implicit.</p></section>
+<section class="block"><h2>Goal</h2><p>{esc(row['goal'])}</p><p><strong>Owning files:</strong> <code>{esc(row['files'])}</code></p></section>
+<section class="block"><h2>Technical milestones</h2>{milestones}</section>
+{rigor(row['rigor'])}
+<section class="block"><h2>Dependencies</h2><ul><li>Existing engagement_spine and floating_session canonical writers.</li><li>Authenticated operator middleware for production exposure.</li><li>Wave 2 waits for FSW-SPR-01 contract stability.</li></ul></section>
+<section class="block"><h2>Out of scope</h2><p>{esc(row['out'])}</p></section>
+<section class="block"><h2>Verification gates</h2><pre><code>{esc(row['gates'])}</code></pre><p>Every command must exit 0. Skipped gates are recorded as NOT RUN.</p></section>
+<section class="block"><h2>Handoff packet</h2><pre><code>## {esc(row['id'])} handoff\nStatus: done | partial | blocked\nFiles touched: path:line + reason\nMilestones: exact result per item\nGates: command + exit + count\nAssumptions and rejected alternative\nOpen questions and next-start condition</code></pre></section>
+<section class="block" id="harness-hint" data-harness-pattern="{esc(row['pattern'])}" data-harness-fanout-unit="file-disjoint owner/store/frontend seams" data-harness-verifier-lenses="{esc(row['lenses'])}" data-harness-rounds-floor="1" data-harness-rounds-cap="6"><h2>Execution harness hint</h2><p>{esc(row['lenses'])}</p></section>
+<footer class="spec-footer">{esc(row['id'])} · generated {DATE} · source: active Antiek /goal Cycle 6</footer>"""
+    return shell(f"{row['id']} · {row['title']}", body)
+
+
+def index_page() -> str:
+    cards = "".join(
+        f'<a class="sprint-card" href="sprint-{index:02d}-{row["slug"]}.html"><span class="id">{esc(row["id"])}</span><span class="title">{esc(row["title"])}</span><span class="goal">{esc(row["goal"])}</span><span class="footer"><span class="tag tag--blue">Wave {row["wave"]}</span><span class="tag tag--{"green" if row["status"]=="done" else "yellow"}">{row["status"]}</span></span></a>'
+        for index, row in enumerate(SPRINTS, 1)
+    )
+    body = f"""<header class="hero"><p class="eyebrow">Master spec · ANT-FSW</p><h1>Floating-session research workstation</h1><p class="tagline">Make every highlight research window reopenable, context-bearing, collectively promptable, and safely mergeable.</p><div class="meta-row"><span class="tag tag--blue">Status: sprint 1 executed · sprint 2 ready</span><span class="tag tag--yellow">Owner: Antiek /infinite</span><span class="tag tag--grey">2 sprints · 2 waves</span></div></header>
+<section id="spec-lineage" class="block" data-spec-depth="0" data-parent-spec=""><h2>Spec lineage</h2><p>Root spec. No parent and no child specs yet; ownership and browser implementation remain Sprint 2 rather than a decorative subtree.</p><ul class="child-specs"></ul></section>
+<section class="block"><h2>Goal</h2><p>Close the missing API lifecycle over Antiek's existing floating-session substrate, then define the exact ownership, durability, idempotency, and browser work required for a multi-user workstation.</p><h3>Success criteria</h3><ul><li>Session identity maps to one matching spawn/asset/investigation or fails reconciliation.</li><li>Context and collective operations are explicit, bounded, HTML-native, and cross-asset conscious.</li><li>Draft merge leaves parent content unchanged; parent merge requires confirmation plus the exact previewed parent hash and preserves unrelated metadata.</li><li>Future ownership and multi-worker work has executable crash and browser gates.</li></ul></section>
+<section class="block"><h2>Architecture overview</h2><div class="dep-graph">Highlight → FloatingSession → verified Spawn provenance\n             ├→ context pack → HTML / optional prompt\n             ├→ collective unit (cross-asset opt-in)\n             └→ draft preview → confirmed parent merge\nFuture: authenticated owner + CAS/receipt store + browser windowsStore</div><h3>Key invariants</h3><ul><li>No second twin, context, collective, merge, or HTML writer.</li><li>No global session enumeration and no claim of owner isolation until owner columns exist.</li><li>No implicit graph promotion, prompt-body exposure, cross-asset collective, or parent mutation.</li></ul></section>
+<section class="block"><h2>Sprint roster</h2><div class="sprint-grid">{cards}</div></section>
+<section class="block"><h2>Rejected alternatives</h2><table class="spec"><thead><tr><th>Alternative</th><th>Why rejected</th><th>Reconsider if</th></tr></thead><tbody><tr><td>New session/merge service</td><td>Duplicates shipped engagement_spine writers and breaks recursive twin provenance.</td><td>The canonical spine is deliberately retired through a migration.</td></tr><tr><td>Silent cross-asset collective</td><td>A multi-selection mistake can mix unrelated or future foreign-owner context.</td><td>Ownership policy explicitly defines shared workspaces and UI communicates scope.</td></tr><tr><td>Automatic into-parent merge</td><td>Destroys the draft-review boundary the product vision explicitly asks for.</td><td>Never; confirmation may become a richer review transaction, not disappear.</td></tr><tr><td>Claim multi-user readiness on file stores</td><td>Rows lack owners; parent-document CAS is cross-process safe, but session, twin, receipt, and broader mutation coordination is not yet comprehensively multi-process.</td><td>FSW-SPR-02 owner migration and race/crash gates pass.</td></tr></tbody></table></section>
+<section class="block"><h2>Open questions</h2><table class="spec"><tbody><tr><td>Which authenticated workspace owns pre-owner rows?</td><td>Do not guess; operator-supplied migration mapping or quarantine.</td><td>Operator + Sprint 2 executor</td></tr><tr><td>Which browser surface owns window state?</td><td>Extend the shipped windowsStore rather than create another chrome store.</td><td>Frontend implementation archaeology</td></tr></tbody></table></section>
+<section class="block" id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="FSW-SPR-01"><h2>Execution harness hint</h2><p>SPR-01 is a tight existing-writer composition. SPR-02 may fan out owner/store and frontend work only in isolated file scopes, then synthesize behind crash and browser gates.</p></section>
+<footer class="spec-footer">Generated by htmlspec · source: active Antiek /goal Cycle 6 · {DATE}</footer>"""
+    return shell("Floating-session workstation — Master Spec", body, wide=True)
+
+
+def main() -> None:
+    ROOT.mkdir(parents=True, exist_ok=True)
+    (ROOT / "index.html").write_text(index_page(), encoding="utf-8")
+    for index, row in enumerate(SPRINTS, 1):
+        (ROOT / f"sprint-{index:02d}-{row['slug']}.html").write_text(
+            sprint_page(row), encoding="utf-8"
+        )
+
+
+if __name__ == "__main__":
+    main()
