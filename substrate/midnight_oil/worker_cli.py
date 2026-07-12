@@ -19,7 +19,7 @@ from substrate.graph.retrieval_substrate import RetrievalSubstrate, make_substra
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding
 
 from .job import get_job, put_job_state
-from .job_store import OperationState
+from .job_store import InvalidStoredJob, OperationState
 from .live import (
     LiveExecutionFailed,
     RouterIdempotentDispatch,
@@ -35,7 +35,13 @@ from .runtime import (
     build_runtime_stores,
     install_attested_providers,
 )
-from .worker import WorkerLease, lease_authorized_operation
+from .worker import (
+    LeaseContentionError,
+    LeaseValidationError,
+    OperationNotDispatchableError,
+    WorkerLease,
+    lease_authorized_operation,
+)
 
 WorkerResult = Literal[
     "no_work",
@@ -192,12 +198,21 @@ def _recover_terminal(
     clock_ms: Callable[[], int],
 ) -> WorkerPhaseRecord:
     queue = runtime.stores.operation_queue
-    leased, won = queue.lease(
-        operation_id=operation_id,
-        worker_id=worker_id,
-        leased_at_ms=now_ms,
-        lease_expires_at_ms=now_ms + runtime.config.worker_lease_ms,
-    )
+    try:
+        leased, won = queue.lease(
+            operation_id=operation_id,
+            worker_id=worker_id,
+            leased_at_ms=now_ms,
+            lease_expires_at_ms=now_ms + runtime.config.worker_lease_ms,
+        )
+    except KeyError:
+        return WorkerPhaseRecord(
+            result="contended",
+            phase="terminal_queue_resolved",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+        )
     if not won:
         return WorkerPhaseRecord(
             result="contended",
@@ -206,9 +221,30 @@ def _recover_terminal(
             operation_id=operation_id,
             job_id=job_id,
         )
-    authority = runtime.stores.owner_jobs.get_job(
-        owner_user_id=owner_user_id, job_id=job_id
-    )
+    try:
+        authority = runtime.stores.owner_jobs.get_job(
+            owner_user_id=owner_user_id, job_id=job_id
+        )
+    except (InvalidStoredJob, TypeError, ValueError):
+        if not queue.acknowledge_terminal(
+            operation_id=operation_id,
+            worker_id=worker_id,
+            lease_generation=leased.lease_generation,
+            terminal_state="failed_reconcile",
+            completed_at_ms=now_ms,
+        ):
+            raise RuntimeError(
+                "malformed authority quarantine lost its queue fence"
+            ) from None
+        return WorkerPhaseRecord(
+            result="reconcile_required",
+            phase="lease_validation_authority_malformed",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+            lease_generation=leased.lease_generation,
+            error_code="authority_malformed",
+        )
     if authority is None or authority.operation_id != operation_id:
         raise ValueError("terminal recovery lacks matching owner authority")
     deposit = resume_terminal_deposit(
@@ -269,6 +305,146 @@ def _recover_terminal(
     )
 
 
+def _quarantine_lease_validation(
+    runtime: MidnightOilWorkerRuntime,
+    *,
+    operation_id: str,
+    owner_user_id: str,
+    job_id: str,
+    worker_id: str,
+    now_ms: int,
+) -> WorkerPhaseRecord:
+    queue = runtime.stores.operation_queue
+    try:
+        leased, won = queue.lease(
+            operation_id=operation_id,
+            worker_id=worker_id,
+            leased_at_ms=now_ms,
+            lease_expires_at_ms=now_ms + runtime.config.worker_lease_ms,
+        )
+    except KeyError:
+        return WorkerPhaseRecord(
+            result="contended",
+            phase="lease_validation_queue_resolved",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+        )
+    if not won:
+        return WorkerPhaseRecord(
+            result="contended",
+            phase="lease_validation_quarantine_contended",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+        )
+    try:
+        authority = runtime.stores.owner_jobs.get_job(
+            owner_user_id=owner_user_id, job_id=job_id
+        )
+    except (InvalidStoredJob, TypeError, ValueError):
+        if not queue.acknowledge_terminal(
+            operation_id=operation_id,
+            worker_id=worker_id,
+            lease_generation=leased.lease_generation,
+            terminal_state="failed_reconcile",
+            completed_at_ms=now_ms,
+        ):
+            raise RuntimeError(
+                "malformed authority quarantine lost its queue fence"
+            ) from None
+        return WorkerPhaseRecord(
+            result="reconcile_required",
+            phase="lease_validation_authority_malformed",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+            lease_generation=leased.lease_generation,
+            error_code="authority_malformed",
+        )
+    quarantined_here = False
+    quarantined_from: OperationState | None = None
+    if (
+        authority is not None
+        and authority.operation_id == operation_id
+        and authority.operation_state
+        in {
+            OperationState.CONSENT_ISSUED,
+            OperationState.QUEUED,
+            OperationState.RUNNING,
+        }
+    ):
+        quarantined_from = authority.operation_state
+        changed = runtime.stores.owner_jobs.compare_and_set(
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            expected_version=authority.state_version,
+            expected_state=authority.operation_state,
+            operation_id=operation_id,
+            next_state=OperationState.FAILED_RECONCILE,
+            completed_at_ms=now_ms,
+        )
+        quarantined_here = changed.applied
+        authority = changed.job
+    if (
+        authority is None
+        or authority.operation_id != operation_id
+        or authority.operation_state
+        not in {
+            OperationState.COMPLETE,
+            OperationState.FAILED,
+            OperationState.BUDGET_HALTED,
+            OperationState.TIMED_OUT,
+            OperationState.FAILED_RECONCILE,
+        }
+    ):
+        return WorkerPhaseRecord(
+            result="contended",
+            phase="lease_validation_authority_contended",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+            lease_generation=leased.lease_generation,
+        )
+    if not quarantined_here:
+        return _recover_terminal(
+            runtime,
+            operation_id=operation_id,
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            worker_id=worker_id,
+            now_ms=now_ms,
+            clock_ms=lambda: now_ms,
+        )
+    if quarantined_from is OperationState.RUNNING:
+        return _recover_terminal(
+            runtime,
+            operation_id=operation_id,
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            worker_id=worker_id,
+            now_ms=now_ms,
+            clock_ms=lambda: now_ms,
+        )
+    if not queue.acknowledge_terminal(
+        operation_id=operation_id,
+        worker_id=worker_id,
+        lease_generation=leased.lease_generation,
+        terminal_state=_terminal_state(authority.operation_state),
+        completed_at_ms=now_ms,
+    ):
+        raise RuntimeError("lease validation quarantine lost its queue fence")
+    return WorkerPhaseRecord(
+        result="reconcile_required",
+        phase="lease_validation_quarantined",
+        worker_id=worker_id,
+        operation_id=operation_id,
+        job_id=job_id,
+        lease_generation=leased.lease_generation,
+        error_code="lease_validation",
+    )
+
+
 def run_worker_once(
     runtime: MidnightOilWorkerRuntime,
     *,
@@ -289,9 +465,12 @@ def run_worker_once(
         return WorkerPhaseRecord(
             result="no_work", phase="queue_empty", worker_id=worker_id
         )
-    authority = runtime.stores.owner_jobs.get_job(
-        owner_user_id=queued.owner_user_id, job_id=queued.job_id
-    )
+    try:
+        authority = runtime.stores.owner_jobs.get_job(
+            owner_user_id=queued.owner_user_id, job_id=queued.job_id
+        )
+    except (InvalidStoredJob, TypeError, ValueError):
+        authority = None
     if authority is None or authority.operation_id != queued.operation_id:
         leased, won = runtime.stores.operation_queue.lease(
             operation_id=queued.operation_id,
@@ -343,13 +522,60 @@ def run_worker_once(
             now_ms=now_ms,
             lease_expires_at_ms=now_ms + runtime.config.worker_lease_ms,
         )
-    except ValueError:
+    except LeaseContentionError:
         return WorkerPhaseRecord(
             result="contended",
             phase="lease_not_acquired",
             worker_id=worker_id,
             operation_id=queued.operation_id,
             job_id=queued.job_id,
+        )
+    except OperationNotDispatchableError:
+        try:
+            refreshed = runtime.stores.owner_jobs.get_job(
+                owner_user_id=queued.owner_user_id, job_id=queued.job_id
+            )
+        except (InvalidStoredJob, TypeError, ValueError):
+            return _quarantine_lease_validation(
+                runtime,
+                operation_id=queued.operation_id,
+                owner_user_id=queued.owner_user_id,
+                job_id=queued.job_id,
+                worker_id=worker_id,
+                now_ms=now_ms,
+            )
+        if refreshed is not None and refreshed.operation_state in {
+            OperationState.COMPLETE,
+            OperationState.FAILED,
+            OperationState.BUDGET_HALTED,
+            OperationState.TIMED_OUT,
+            OperationState.FAILED_RECONCILE,
+        }:
+            return _recover_terminal(
+                runtime,
+                operation_id=queued.operation_id,
+                owner_user_id=queued.owner_user_id,
+                job_id=queued.job_id,
+                worker_id=worker_id,
+                now_ms=now_ms,
+                clock_ms=clock_ms,
+            )
+        return _quarantine_lease_validation(
+            runtime,
+            operation_id=queued.operation_id,
+            owner_user_id=queued.owner_user_id,
+            job_id=queued.job_id,
+            worker_id=worker_id,
+            now_ms=now_ms,
+        )
+    except LeaseValidationError:
+        return _quarantine_lease_validation(
+            runtime,
+            operation_id=queued.operation_id,
+            owner_user_id=queued.owner_user_id,
+            job_id=queued.job_id,
+            worker_id=worker_id,
+            now_ms=now_ms,
         )
     running_authority = runtime.stores.owner_jobs.get_job(
         owner_user_id=lease.owner_user_id, job_id=lease.job_id

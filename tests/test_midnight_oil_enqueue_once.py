@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 
 from substrate.midnight_oil.budget_ledger import UnknownCallOutcome
-from substrate.midnight_oil.job_store import CompareAndSetResult, OperationState
+from substrate.midnight_oil.job_store import (
+    CompareAndSetResult,
+    InvalidStoredJob,
+    OperationState,
+)
 from substrate.midnight_oil.operation_queue import (
     DurableOperationQueue,
     provider_idempotency_key,
@@ -195,6 +199,29 @@ def test_worker_has_one_lease_and_stable_step_idempotency(tmp_path: Path) -> Non
     assert first.operation_id == operation_id
     assert provider_idempotency_key(operation_id, 0) == provider_idempotency_key(operation_id, 0)
     assert provider_idempotency_key(operation_id, 0) != provider_idempotency_key(operation_id, 1)
+
+
+def test_lease_recheck_normalizes_malformed_authority_for_quarantine(
+    tmp_path: Path,
+) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    deps.owner_jobs.get_job = lambda **kwargs: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        InvalidStoredJob("corrupt authority canary")
+    )
+    with pytest.raises(ValueError, match="durable operation is malformed") as caught:
+        lease_authorized_operation(
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            jobs=deps.jobs,
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id="job-owned",
+            worker_id="worker-a",
+            now_ms=1_000_001,
+            lease_expires_at_ms=1_060_001,
+        )
+    assert "corrupt authority canary" not in str(caught.value)
 
 
 def test_worker_propagates_key_and_same_worker_resumes_before_dispatch(tmp_path: Path) -> None:

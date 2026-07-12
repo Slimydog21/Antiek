@@ -165,8 +165,12 @@ _COLUMNS: Final = (
 
 _TRANSITIONS: Final[dict[OperationState, frozenset[OperationState]]] = {
     OperationState.NONE: frozenset({OperationState.CONSENT_ISSUED}),
-    OperationState.CONSENT_ISSUED: frozenset({OperationState.QUEUED}),
-    OperationState.QUEUED: frozenset({OperationState.RUNNING}),
+    OperationState.CONSENT_ISSUED: frozenset(
+        {OperationState.QUEUED, OperationState.FAILED_RECONCILE}
+    ),
+    OperationState.QUEUED: frozenset(
+        {OperationState.RUNNING, OperationState.FAILED_RECONCILE}
+    ),
     OperationState.RUNNING: frozenset(
         {
             OperationState.COMPLETE,
@@ -250,8 +254,12 @@ def _transition_timestamps(
     )
     if before is OperationState.CONSENT_ISSUED and after is OperationState.QUEUED:
         valid = values[0] is not None and values[1:] == (None, None, None)
+    elif before is OperationState.CONSENT_ISSUED and after is OperationState.FAILED_RECONCILE:
+        valid = values[:3] == (None, None, None) and values[3] is not None
     elif before is OperationState.QUEUED and after is OperationState.RUNNING:
         valid = values[0] is None and values[1] is not None and values[2:] == (None, None)
+    elif before is OperationState.QUEUED and after is OperationState.FAILED_RECONCILE:
+        valid = values[:3] == (None, None, None) and values[3] is not None
     elif before is OperationState.RUNNING:
         valid = values[0] is None and values[1] is None and values[3] is not None
     else:
@@ -341,16 +349,29 @@ def _validate_state_coherence(job: OwnerJob) -> None:
     queued_or_later = job.operation_state not in {
         OperationState.NONE,
         OperationState.CONSENT_ISSUED,
+        OperationState.FAILED_RECONCILE,
     }
-    if queued_or_later != (job.consent_claimed_at_ms is not None):
+    if queued_or_later != (job.consent_claimed_at_ms is not None) and not (
+        job.operation_state is OperationState.FAILED_RECONCILE
+        and job.consent_claimed_at_ms is not None
+    ):
         raise ValueError("claimed timestamp must exist exactly for queued-or-later states")
     running_or_later = job.operation_state not in {
         OperationState.NONE,
         OperationState.CONSENT_ISSUED,
         OperationState.QUEUED,
+        OperationState.FAILED_RECONCILE,
     }
-    if running_or_later != (job.dispatch_started_at_ms is not None):
+    if running_or_later != (job.dispatch_started_at_ms is not None) and not (
+        job.operation_state is OperationState.FAILED_RECONCILE
+        and job.dispatch_started_at_ms is not None
+    ):
         raise ValueError("dispatch start must exist exactly for running-or-later states")
+    if job.operation_state is OperationState.FAILED_RECONCILE and (
+        (job.dispatch_started_at_ms is not None and job.consent_claimed_at_ms is None)
+        or (job.dispatched_at_ms is not None and job.dispatch_started_at_ms is None)
+    ):
+        raise ValueError("reconciliation timestamps must preserve authorization order")
     if job.operation_state is OperationState.RUNNING and job.completed_at_ms is not None:
         raise ValueError("running state cannot be completed")
     terminal = not _TRANSITIONS[job.operation_state]

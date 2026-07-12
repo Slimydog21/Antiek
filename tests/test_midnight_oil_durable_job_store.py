@@ -91,6 +91,26 @@ def test_authority_input_is_closed(overrides: dict[str, object], match: str) -> 
         store.put_job(replace(_job(), **overrides))  # type: ignore[arg-type]
 
 
+def test_reconciliation_cannot_claim_dispatch_without_consent_claim() -> None:
+    store = MemoryStore()
+    with pytest.raises(ValueError, match="authorization order"):
+        store.put_job(
+            replace(
+                _job(),
+                state_version=3,
+                approved_ceiling_cents=100,
+                consent_receipt_id="receipt",
+                consent_config_hash="c" * 64,
+                consent_issued_at_ms=100,
+                consent_expires_at_ms=1_000,
+                operation_id="operation-1",
+                operation_state=OperationState.FAILED_RECONCILE,
+                dispatch_started_at_ms=300,
+                completed_at_ms=400,
+            )
+        )
+
+
 def test_cas_rejects_stale_version_state_operation_and_owner_without_mutation(
     tmp_path: Path,
 ) -> None:

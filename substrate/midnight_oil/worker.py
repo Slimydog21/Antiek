@@ -17,7 +17,7 @@ from .job import (
     _job_from_row,
     put_job_state,
 )
-from .job_store import OperationState, OwnerJobStore
+from .job_store import InvalidStoredJob, OperationState, OwnerJobStore
 from .operation_queue import OperationQueue, provider_idempotency_key
 
 _WORKER_ROLE = "research"
@@ -110,6 +110,22 @@ StepFn = Callable[[MidnightOilJob], WorkerStepResult]
 ProjectFn = Callable[[MidnightOilJob], float]
 
 
+class LeaseAuthorizationError(ValueError):
+    """A durable operation cannot currently produce an authorized lease."""
+
+
+class LeaseValidationError(LeaseAuthorizationError):
+    """Durable operation inputs conflict and require operator reconciliation."""
+
+
+class LeaseContentionError(LeaseAuthorizationError):
+    """A valid operation lost a transient queue-lease race."""
+
+
+class OperationNotDispatchableError(LeaseAuthorizationError):
+    """Authority changed state before the lease could be acquired."""
+
+
 @dataclass(frozen=True)
 class WorkerLease:
     operation_id: str
@@ -136,16 +152,19 @@ def lease_authorized_operation(
     lease_expires_at_ms: int,
 ) -> WorkerLease:
     """Recheck immutable authority, owner-CAS, then acquire one queue lease."""
-    authority = owner_jobs.get_job(owner_user_id=owner_user_id, job_id=job_id)
-    queued = operation_queue.get(operation_id)
-    legacy_row = jobs.get_job(job_id)
+    try:
+        authority = owner_jobs.get_job(owner_user_id=owner_user_id, job_id=job_id)
+        queued = operation_queue.get(operation_id)
+        legacy_row = jobs.get_job(job_id)
+    except (InvalidStoredJob, TypeError, ValueError) as exc:
+        raise LeaseValidationError("durable operation is malformed") from exc
     if authority is None or queued is None or legacy_row is None:
-        raise ValueError("durable operation is incomplete")
+        raise LeaseValidationError("durable operation is incomplete")
     if authority.operation_id != operation_id or (
         queued.owner_user_id,
         queued.job_id,
     ) != (owner_user_id, job_id):
-        raise ValueError("operation identity conflicts with durable authority")
+        raise LeaseValidationError("operation identity conflicts with durable authority")
     payload = authority.payload
     durable_goals = payload.get("goals")
     immutable_matches = (
@@ -159,13 +178,22 @@ def lease_authorized_operation(
         and legacy_row.get("asset_id") == payload.get("asset_id")
     )
     if not immutable_matches or authority.approved_ceiling_cents is None:
-        raise ValueError("job configuration requires reconciliation")
+        raise LeaseValidationError("job configuration requires reconciliation")
     expected_usd = authority.approved_ceiling_cents / 100
     existing_ceiling = legacy_row.get("approved_ceiling_usd")
-    if existing_ceiling is not None and _usd_to_cents(
-        float(existing_ceiling), ceiling=True, field="approved_ceiling_usd"
-    ) != authority.approved_ceiling_cents:
-        raise ValueError("legacy ceiling conflicts with durable authority")
+    if existing_ceiling is not None:
+        try:
+            existing_ceiling_cents = _usd_to_cents(
+                float(existing_ceiling), ceiling=True, field="approved_ceiling_usd"
+            )
+        except (TypeError, ValueError) as exc:
+            raise LeaseValidationError(
+                "legacy ceiling conflicts with durable authority"
+            ) from exc
+        if existing_ceiling_cents != authority.approved_ceiling_cents:
+            raise LeaseValidationError(
+                "legacy ceiling conflicts with durable authority"
+            )
     if authority.operation_state is OperationState.QUEUED:
         transitioned = owner_jobs.compare_and_set(
             owner_user_id=owner_user_id,
@@ -189,14 +217,17 @@ def lease_authorized_operation(
         and repair_key in tuple(legacy_row.get("completed_step_keys") or ())
     )
     if authority.operation_state is not OperationState.RUNNING and not terminal_repair:
-        raise ValueError("operation is not dispatchable")
+        raise OperationNotDispatchableError("operation is not dispatchable")
     # Project authority before exposing the dispatchable lease. A crash after
     # this idempotent write but before lease can be recovered without dispatch.
     updated = dict(legacy_row)
     updated["approved_ceiling_usd"] = expected_usd
     if updated.get("status") in {"awaiting_approval", "draft"}:
         updated["status"] = "approved"
-    jobs.put_job(updated)
+    try:
+        jobs.put_job(updated)
+    except ValueError as exc:
+        raise LeaseValidationError("job projection requires reconciliation") from exc
     leased, won = operation_queue.lease(
         operation_id=operation_id,
         worker_id=worker_id,
@@ -204,9 +235,9 @@ def lease_authorized_operation(
         lease_expires_at_ms=lease_expires_at_ms,
     )
     if not won:
-        raise ValueError("operation is already leased")
+        raise LeaseContentionError("operation is already leased")
     if leased.state != "running":
-        raise ValueError("operation lease did not persist")
+        raise LeaseValidationError("operation lease did not persist")
     return WorkerLease(
         operation_id,
         owner_user_id,

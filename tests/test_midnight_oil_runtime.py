@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import sqlite3
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -30,7 +31,11 @@ from substrate.dispatch import (
 )
 from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
-from substrate.midnight_oil.job import create_job, put_job_state
+from substrate.midnight_oil.job import (
+    MidnightOilStepEvidence,
+    create_job,
+    put_job_state,
+)
 from substrate.midnight_oil.job_store import OperationState, OwnerJob
 from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfig,
@@ -223,6 +228,7 @@ def test_missing_secret_reports_configuration_without_naming_secret(tmp_path: Pa
     "mode",
     [
         "normal",
+        "invalid_ceiling",
         "stop_after_paid",
         "config_drift",
         "deposit_crash",
@@ -370,6 +376,25 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         )
         assert blocked.result == "blocked_provider"
         assert blocked.deposit_document_id
+        assert paid.keys == []
+        assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
+        return
+    if mode == "invalid_ceiling":
+        raw = worker.stores.jobs.get_job(job_id)
+        assert raw is not None
+        raw["approved_ceiling_usd"] = "invalid"
+        with sqlite3.connect(worker.stores.jobs.path) as connection:
+            connection.execute(
+                "UPDATE midnight_oil_job_details SET row_json = ? WHERE job_id = ?",
+                (json.dumps(raw), job_id),
+            )
+        quarantined = run_worker_once(
+            worker,
+            worker_id="runtime-worker-invalid-ceiling",
+            embedding_model=_Embedding(),
+        )
+        assert quarantined.result == "reconcile_required"
+        assert quarantined.phase == "lease_validation_quarantined"
         assert paid.keys == []
         assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
         return
@@ -605,6 +630,240 @@ def test_terminal_failure_without_paid_evidence_deposits_and_archives(
     assert runtime.stores.operation_queue.next_claimable(now_ms=5) is None
 
 
+def test_validation_quarantine_race_recovers_concurrently_terminal_work(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import substrate.midnight_oil.worker_cli as worker_module
+
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    job = create_job(
+        ["Concurrent terminal recovery must retain its deposit."],
+        10,
+        store=runtime.stores.jobs,
+        job_id="race-job",
+        asset_id="race-asset",
+    )
+    put_job_state(replace(job, status="failed"), store=runtime.stores.jobs)
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="operator-runtime",
+            job_id=job.job_id,
+            state_version=3,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="race-operation",
+            operation_state=OperationState.QUEUED,
+            dispatch_started_at_ms=None,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="race-operation",
+        owner_user_id="operator-runtime",
+        job_id=job.job_id,
+        enqueued_at_ms=2,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+
+    def terminal_race(**kwargs):  # type: ignore[no-untyped-def]
+        del kwargs
+        current = runtime.stores.owner_jobs.get_job(
+            owner_user_id="operator-runtime", job_id=job.job_id
+        )
+        assert current is not None
+        changed = runtime.stores.owner_jobs.compare_and_set(
+            owner_user_id="operator-runtime",
+            job_id=job.job_id,
+            expected_version=current.state_version,
+            expected_state=OperationState.QUEUED,
+            operation_id="race-operation",
+            next_state=OperationState.FAILED_RECONCILE,
+            completed_at_ms=4,
+        )
+        assert changed.applied
+        raise worker_module.LeaseValidationError("stale validation snapshot")
+
+    monkeypatch.setattr(worker_module, "lease_authorized_operation", terminal_race)
+    recovered = run_worker_once(
+        runtime,
+        worker_id="race-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 4,
+    )
+    assert recovered.result == "reconcile_required"
+    assert recovered.phase == "terminal_archived"
+    assert recovered.deposit_document_id
+    assert runtime.stores.operation_queue.next_claimable(now_ms=5) is None
+
+
+def test_running_validation_quarantine_recovers_paid_evidence_before_archive(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import substrate.midnight_oil.worker_cli as worker_module
+
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    ensure_initialized(str(runtime.config.graph_db_path))
+    job = create_job(
+        ["Paid evidence must survive quarantine."],
+        10,
+        store=runtime.stores.jobs,
+        job_id="paid-poison-job",
+        asset_id="paid-poison-asset",
+    )
+    put_job_state(
+        replace(
+            job,
+            status="failed",
+            step_evidence=(
+                MidnightOilStepEvidence(
+                    step_key="paid-step",
+                    spawn_id="paid-spawn",
+                    output_text="Durable paid evidence.",
+                    insights=("Evidence survived.",),
+                    questions=("What remains?",),
+                ),
+            ),
+        ),
+        store=runtime.stores.jobs,
+    )
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="operator-runtime",
+            job_id=job.job_id,
+            state_version=4,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="paid-poison-operation",
+            operation_state=OperationState.RUNNING,
+            dispatch_started_at_ms=3,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="paid-poison-operation",
+        owner_user_id="operator-runtime",
+        job_id=job.job_id,
+        enqueued_at_ms=2,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    runtime.stores.operation_queue.lease(
+        operation_id="paid-poison-operation",
+        worker_id="expired-worker",
+        leased_at_ms=3,
+        lease_expires_at_ms=4,
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "lease_authorized_operation",
+        lambda **kwargs: (_ for _ in ()).throw(
+            worker_module.LeaseValidationError("corrupt running projection")
+        ),
+    )
+    recovered = run_worker_once(
+        runtime,
+        worker_id="recovery-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 5,
+    )
+    assert recovered.result == "reconcile_required"
+    assert recovered.phase == "terminal_archived"
+    assert recovered.deposit_document_id
+    assert recovered.graph_deliverable_id
+    assert runtime.stores.operation_queue.next_claimable(now_ms=6) is None
+
+
+def test_validation_quarantine_tolerates_concurrent_queue_removal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import substrate.midnight_oil.worker_cli as worker_module
+
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="removed-owner",
+            job_id="removed-job",
+            state_version=2,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=None,
+            operation_id="removed-operation",
+            operation_state=OperationState.CONSENT_ISSUED,
+            dispatch_started_at_ms=None,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="removed-operation",
+        owner_user_id="removed-owner",
+        job_id="removed-job",
+        enqueued_at_ms=1,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+
+    def remove_then_fail(**kwargs):  # type: ignore[no-untyped-def]
+        del kwargs
+        leased, won = runtime.stores.operation_queue.lease(
+            operation_id="removed-operation",
+            worker_id="winning-worker",
+            leased_at_ms=2,
+            lease_expires_at_ms=20_000,
+        )
+        assert won
+        assert runtime.stores.operation_queue.acknowledge_terminal(
+            operation_id="removed-operation",
+            worker_id="winning-worker",
+            lease_generation=leased.lease_generation,
+            terminal_state="failed_reconcile",
+            completed_at_ms=2,
+        )
+        raise worker_module.LeaseValidationError("stale selected row")
+
+    monkeypatch.setattr(worker_module, "lease_authorized_operation", remove_then_fail)
+    record = run_worker_once(
+        runtime,
+        worker_id="losing-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 2,
+    )
+    assert record.result == "contended"
+    assert record.phase == "lease_validation_queue_resolved"
+
+
 def test_missing_authority_is_quarantined_without_starving_queue(tmp_path: Path) -> None:
     path, environment, _ = _runtime_files(tmp_path)
     runtime = build_worker_runtime(path, environ=environment)
@@ -629,3 +888,181 @@ def test_missing_authority_is_quarantined_without_starving_queue(tmp_path: Path)
     assert record.result == "reconcile_required"
     assert record.phase == "authority_quarantined"
     assert runtime.stores.operation_queue.next_claimable(now_ms=3) is None
+
+
+def test_malformed_authority_is_quarantined_without_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="malformed-operation",
+        owner_user_id="malformed-owner",
+        job_id="malformed-job",
+        enqueued_at_ms=1,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    monkeypatch.setattr(
+        runtime.stores.owner_jobs,
+        "get_job",
+        lambda **kwargs: (_ for _ in ()).throw(ValueError("corrupt owner row")),
+    )
+    record = run_worker_once(
+        runtime,
+        worker_id="quarantine-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 2,
+    )
+    assert record.result == "reconcile_required"
+    assert record.phase == "authority_quarantined"
+    assert "corrupt owner row" not in record.to_json()
+    assert runtime.stores.operation_queue.next_claimable(now_ms=3) is None
+
+
+def test_malformed_dispatch_refresh_is_quarantined_without_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import substrate.midnight_oil.worker_cli as worker_module
+
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    authority = OwnerJob(
+        owner_user_id="refresh-owner",
+        job_id="refresh-job",
+        state_version=2,
+        approved_ceiling_cents=100,
+        consent_receipt_id="receipt",
+        consent_config_hash="c" * 64,
+        consent_issued_at_ms=1,
+        consent_expires_at_ms=100,
+        consent_claimed_at_ms=None,
+        operation_id="refresh-operation",
+        operation_state=OperationState.CONSENT_ISSUED,
+        dispatch_started_at_ms=None,
+        dispatched_at_ms=None,
+        completed_at_ms=None,
+        payload={},
+    )
+    runtime.stores.owner_jobs.put_job(authority)
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="refresh-operation",
+        owner_user_id="refresh-owner",
+        job_id="refresh-job",
+        enqueued_at_ms=1,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    reads = 0
+
+    def malformed_after_selection(**kwargs):  # type: ignore[no-untyped-def]
+        nonlocal reads
+        del kwargs
+        reads += 1
+        if reads == 1:
+            return authority
+        raise ValueError("corrupt refreshed owner row")
+
+    monkeypatch.setattr(runtime.stores.owner_jobs, "get_job", malformed_after_selection)
+    monkeypatch.setattr(
+        worker_module,
+        "lease_authorized_operation",
+        lambda **kwargs: (_ for _ in ()).throw(
+            worker_module.OperationNotDispatchableError("state changed")
+        ),
+    )
+    record = run_worker_once(
+        runtime,
+        worker_id="refresh-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 2,
+    )
+    assert record.result == "reconcile_required"
+    assert record.phase == "lease_validation_authority_malformed"
+    assert "corrupt refreshed owner row" not in record.to_json()
+    assert runtime.stores.operation_queue.next_claimable(now_ms=3) is None
+
+
+@pytest.mark.parametrize(
+    ("initial_state", "claimed_at_ms"),
+    [
+        (OperationState.CONSENT_ISSUED, None),
+        (OperationState.QUEUED, 2),
+    ],
+)
+def test_missing_details_poison_is_quarantined_instead_of_hot_looping(
+    tmp_path: Path,
+    initial_state: OperationState,
+    claimed_at_ms: int | None,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="operator-runtime",
+            job_id="poison-job",
+            state_version=3,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=claimed_at_ms,
+            operation_id="poison-operation",
+            operation_state=initial_state,
+            dispatch_started_at_ms=None,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="poison-operation",
+        owner_user_id="operator-runtime",
+        job_id="poison-job",
+        enqueued_at_ms=2,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="valid-operation-behind-poison",
+        owner_user_id="next-owner",
+        job_id="next-job",
+        enqueued_at_ms=2,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    quarantined = run_worker_once(
+        runtime,
+        worker_id="quarantine-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 3,
+    )
+    assert quarantined.result == "reconcile_required"
+    assert quarantined.phase == "lease_validation_quarantined"
+    assert quarantined.error_code == "lease_validation"
+    authority = runtime.stores.owner_jobs.get_job(
+        owner_user_id="operator-runtime", job_id="poison-job"
+    )
+    assert authority is not None
+    assert authority.operation_state is OperationState.FAILED_RECONCILE
+    assert authority.dispatch_started_at_ms is None
+    next_claimable = runtime.stores.operation_queue.next_claimable(now_ms=4)
+    assert next_claimable is not None
+    assert next_claimable.operation_id == "valid-operation-behind-poison"
