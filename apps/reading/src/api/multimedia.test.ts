@@ -11,7 +11,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   approveMultimediaDryRun,
+  attestMultimediaVisualCandidate,
   authorizeMultimediaNarration,
+  authorizeMultimediaVisual,
   createMultimediaDraft,
   failedGateIds,
   getAssetReconciliationLinks,
@@ -20,15 +22,20 @@ import {
   getMultimediaAsset,
   getMultimediaPlayback,
   getNarrationRunReconciliation,
+  materializeMultimediaVisualCandidates,
   listMultimediaAssets,
   listMultimediaJobs,
   prepareMultimediaLiveExecution,
+  pollMultimediaVisualGeneration,
+  previewMultimediaVisualCandidate,
   manualGateIds,
   runMultimediaHardening,
   registerMultimediaProduction,
+  registerMultimediaReviewedVisuals,
   produceAuthorizedMultimedia,
   executeChapterTtsReconciliation,
   steerMultimediaAsset,
+  submitMultimediaVisualGeneration,
 } from "./multimedia";
 import type { MultimediaAssetRecord } from "./multimedia";
 
@@ -276,6 +283,73 @@ describe("multimedia API client", () => {
     await expect(getMultimediaReviewedVisualSet("mm-1", "rev-1")).rejects.toThrow(
       "identity_conflict",
     );
+  });
+
+  it("cross-binds the complete generated visual command chain", async () => {
+    const authority = {
+      chapter_id: "chapter-1", scene_id: "scene-1", width: 1280, height: 720,
+      seed: 1, request_body_digest: "e".repeat(64),
+      quote: { quote_id: "quote-1", model: "imagen-3", ceiling_microdollars: 250_000, expires_at: "2026-07-12T01:10:00Z" },
+      authorization: {
+        version: 2, authorization_id: "mmauth2-visual", request_id: "visual-1",
+        operator_id: "owner-1", asset_id: "mm-1", revision_id: "rev-1",
+        provider: "krea", route_policy: "balanced", model: "imagen-3",
+        endpoint_capability: "text-to-image", catalog_version: "1",
+        catalog_digest: "a".repeat(64), quote_id: "quote-1",
+        quote_expires_at: "2026-07-12T01:10:00Z", recovery_authority_id: "recovery-1",
+        recovery_verification_key_digest: "b".repeat(64), approved_ceiling_microdollars: 250_000,
+        request_body_digest: "e".repeat(64), issued_at: "2026-07-12T01:00:00Z",
+        expires_at: "2026-07-12T01:15:00Z", signature: "f".repeat(64),
+      },
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, authority));
+    await authorizeMultimediaVisual("mm-1", {
+      request_id: "visual-1", expected_revision_id: "rev-1", chapter_id: "chapter-1",
+      approved_ceiling_microdollars: 250_000, operator_acknowledged_spend: true,
+    });
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/visual-authorizations",
+      expect.objectContaining({ method: "POST" }),
+    );
+
+    const submitted = { execution_id: "exec-1", authorization_id: "mmauth2-visual", provider_job_id: "job-1", status: "submitted", candidate_count: 0 };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, submitted));
+    await submitMultimediaVisualGeneration("mm-1", "visual-1", "rev-1", "mmauth2-visual");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...submitted, status: "succeeded", candidate_count: 1 }));
+    await pollMultimediaVisualGeneration("mm-1", "exec-1", "rev-1", "mmauth2-visual");
+
+    const candidates = { execution_id: "exec-1", candidates: [{ candidate_id: "candidate-1", artifact_receipt_id: "artifact-1", media_type: "image/png", byte_count: 100 }] };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, candidates));
+    await materializeMultimediaVisualCandidates("mm-1", "exec-1", "visual-1", "rev-1");
+
+    const blob = new Blob(["png"], { type: "image/png" });
+    mockFetch().mockResolvedValueOnce({
+      ok: true, status: 200, headers: new Headers({ "Content-Type": "image/png" }),
+      blob: async () => blob,
+    } as Response);
+    expect(await previewMultimediaVisualCandidate("mm-1", "rev-1", "candidate-1")).toBe(blob);
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { artifact_receipt_id: "artifact-1", reviewer_id: "owner-1", attested_at: "2026-07-12T01:20:00Z" }));
+    await attestMultimediaVisualCandidate("mm-1", "rev-1", "candidate-1");
+
+    const reviewed = { set_id: "set-1", asset_id: "mm-1", revision_id: "rev-1", chapter_ids: ["chapter-1"], scene_ids: ["scene-1"], candidate_ids: ["candidate-1"], selection_digest: "c".repeat(64), created_at: "2026-07-12T01:21:00Z" };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, reviewed));
+    expect((await registerMultimediaReviewedVisuals("mm-1", "rev-1", "set-request", [{ chapter_id: "chapter-1", candidate_id: "candidate-1" }])).set_id).toBe("set-1");
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...authority,
+      authorization: { ...authority.authorization, version: 1 },
+    }));
+    await expect(authorizeMultimediaVisual("mm-1", {
+      request_id: "visual-1", expected_revision_id: "rev-1", chapter_id: "chapter-1",
+      approved_ceiling_microdollars: 250_000, operator_acknowledged_spend: true,
+    })).rejects.toThrow("identity_conflict");
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...reviewed, scene_ids: [] }));
+    await expect(registerMultimediaReviewedVisuals("mm-1", "rev-1", "set-request", [{ chapter_id: "chapter-1", candidate_id: "candidate-1" }])).rejects.toThrow("identity_conflict");
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
+    await expect(pollMultimediaVisualGeneration("mm-1", "exec-1", "rev-1", "mmauth2-visual")).rejects.toThrow("multimedia_visual_generation_unavailable");
   });
 
   it("cross-binds authorized production to the selected asset revision", async () => {

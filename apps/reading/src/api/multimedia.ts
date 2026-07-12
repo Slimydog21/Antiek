@@ -258,6 +258,48 @@ export interface MultimediaReviewedVisualSet {
   created_at: string;
 }
 
+export interface MultimediaVisualAuthorization {
+  chapter_id: string;
+  scene_id: string;
+  width: number;
+  height: number;
+  seed: number;
+  request_body_digest: string;
+  quote: {
+    quote_id: string;
+    model: string;
+    ceiling_microdollars: number;
+    expires_at: string;
+  };
+  authorization: MultimediaNarrationAuthorization["authorization"];
+}
+
+export interface MultimediaVisualGeneration {
+  execution_id: string;
+  authorization_id: string;
+  provider_job_id: string | null;
+  status: string;
+  candidate_count: number;
+}
+
+export interface MultimediaVisualCandidate {
+  candidate_id: string;
+  artifact_receipt_id: string;
+  media_type: string;
+  byte_count: number;
+}
+
+export interface MultimediaVisualCandidateSet {
+  execution_id: string;
+  candidates: MultimediaVisualCandidate[];
+}
+
+export interface MultimediaVisualAttestation {
+  artifact_receipt_id: string;
+  reviewer_id: string;
+  attested_at: string;
+}
+
 export interface MultimediaJobRecord {
   job_id: string;
   asset_id: string;
@@ -487,6 +529,210 @@ export async function getMultimediaReviewedVisualSet(
     result.revision_id !== revisionId ||
     result.chapter_ids.length !== result.scene_ids.length ||
     result.chapter_ids.length !== result.candidate_ids.length
+  ) {
+    throw new Error("multimedia_reviewed_visuals_identity_conflict");
+  }
+  return result;
+}
+
+export async function authorizeMultimediaVisual(
+  assetId: string,
+  request: {
+    request_id: string;
+    expected_revision_id: string;
+    chapter_id: string;
+    approved_ceiling_microdollars: number;
+    operator_acknowledged_spend: true;
+  },
+): Promise<MultimediaVisualAuthorization> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-authorizations`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+  );
+  if (resp.status === 404) throw new Error("multimedia_visual_authorization_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_visual_authorization_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_authorization_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-authorizations: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualAuthorization;
+  if (
+    result.chapter_id !== request.chapter_id ||
+    result.authorization.asset_id !== assetId ||
+    result.authorization.revision_id !== request.expected_revision_id ||
+    result.authorization.request_id !== request.request_id ||
+    result.authorization.authorization_id.length < 1 ||
+    result.authorization.version !== 2 ||
+    result.authorization.request_body_digest !== result.request_body_digest ||
+    result.quote.quote_id !== result.authorization.quote_id ||
+    result.quote.ceiling_microdollars !== request.approved_ceiling_microdollars ||
+    result.authorization.endpoint_capability !== "text-to-image"
+  ) {
+    throw new Error("multimedia_visual_authorization_identity_conflict");
+  }
+  return result;
+}
+
+export async function submitMultimediaVisualGeneration(
+  assetId: string,
+  requestId: string,
+  revisionId: string,
+  expectedAuthorizationId: string,
+): Promise<MultimediaVisualGeneration> {
+  return visualGenerationCommand(assetId, "", {
+    request_id: requestId,
+    expected_revision_id: revisionId,
+  }, expectedAuthorizationId);
+}
+
+export async function pollMultimediaVisualGeneration(
+  assetId: string,
+  executionId: string,
+  revisionId: string,
+  expectedAuthorizationId: string,
+): Promise<MultimediaVisualGeneration> {
+  return visualGenerationCommand(
+    assetId,
+    `/${encodeURIComponent(executionId)}/poll`,
+    { expected_revision_id: revisionId },
+    expectedAuthorizationId,
+    executionId,
+  );
+}
+
+async function visualGenerationCommand(
+  assetId: string,
+  suffix: string,
+  body: Record<string, string>,
+  expectedAuthorizationId: string,
+  expectedExecutionId?: string,
+): Promise<MultimediaVisualGeneration> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-generations${suffix}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (resp.status === 404) throw new Error("multimedia_visual_generation_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_visual_generation_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_generation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-generations: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualGeneration;
+  if (
+    result.authorization_id !== expectedAuthorizationId ||
+    !result.execution_id ||
+    (expectedExecutionId !== undefined && result.execution_id !== expectedExecutionId)
+  ) {
+    throw new Error("multimedia_visual_generation_identity_conflict");
+  }
+  return result;
+}
+
+export async function materializeMultimediaVisualCandidates(
+  assetId: string,
+  executionId: string,
+  authorityRequestId: string,
+  revisionId: string,
+): Promise<MultimediaVisualCandidateSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-generations/${encodeURIComponent(executionId)}/materialize`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authority_request_id: authorityRequestId, expected_revision_id: revisionId }),
+    },
+  );
+  if (resp.status === 409) throw new Error("multimedia_visual_materialization_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_materialization_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-generations/{id}/materialize: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualCandidateSet;
+  const candidateIds = result.candidates.map((candidate) => candidate.candidate_id);
+  if (
+    result.execution_id !== executionId ||
+    !result.candidates.length ||
+    new Set(candidateIds).size !== candidateIds.length ||
+    result.candidates.some(
+      (candidate) =>
+        !candidate.candidate_id ||
+        !candidate.artifact_receipt_id ||
+        !["image/png", "image/jpeg"].includes(candidate.media_type) ||
+        !Number.isSafeInteger(candidate.byte_count) ||
+        candidate.byte_count < 1,
+    )
+  ) {
+    throw new Error("multimedia_visual_materialization_identity_conflict");
+  }
+  return result;
+}
+
+export async function previewMultimediaVisualCandidate(
+  assetId: string,
+  revisionId: string,
+  candidateId: string,
+): Promise<Blob> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-candidates/${encodeURIComponent(candidateId)}/content?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_visual_candidate_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_visual_review_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/visual-candidates/{id}/content: HTTP ${resp.status}`);
+  const type = resp.headers.get("Content-Type")?.split(";", 1)[0];
+  if (type !== "image/png" && type !== "image/jpeg") {
+    throw new Error("multimedia_visual_candidate_media_conflict");
+  }
+  return resp.blob();
+}
+
+export async function attestMultimediaVisualCandidate(
+  assetId: string,
+  revisionId: string,
+  candidateId: string,
+): Promise<MultimediaVisualAttestation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-candidates/${encodeURIComponent(candidateId)}/attestation`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        operator_acknowledged_generated_provenance: true,
+      }),
+    },
+  );
+  if (resp.status === 409) throw new Error("multimedia_visual_attestation_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_review_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-candidates/{id}/attestation: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualAttestation;
+  if (!result.artifact_receipt_id || !result.reviewer_id || !result.attested_at) {
+    throw new Error("multimedia_visual_attestation_identity_conflict");
+  }
+  return result;
+}
+
+export async function registerMultimediaReviewedVisuals(
+  assetId: string,
+  revisionId: string,
+  requestId: string,
+  bindings: Array<{ chapter_id: string; candidate_id: string }>,
+): Promise<MultimediaReviewedVisualSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/reviewed-visuals`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_id: requestId, expected_revision_id: revisionId, bindings }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_reviewed_visuals_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_reviewed_visuals_conflict");
+  if (resp.status === 503) throw new Error("multimedia_reviewed_visuals_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/reviewed-visuals: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaReviewedVisualSet;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.chapter_ids.length !== bindings.length ||
+    result.scene_ids.length !== bindings.length ||
+    !result.selection_digest ||
+    result.candidate_ids.some((candidateId, index) => candidateId !== bindings[index]?.candidate_id) ||
+    result.chapter_ids.some((chapterId, index) => chapterId !== bindings[index]?.chapter_id)
   ) {
     throw new Error("multimedia_reviewed_visuals_identity_conflict");
   }

@@ -27,6 +27,7 @@ import type {
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
+import { VisualReviewPanel } from "./VisualReviewPanel";
 import { projectMultimediaPlan } from "./planProjection";
 
 type Mode = "video" | "audio" | "hybrid";
@@ -909,24 +910,26 @@ export default function Multimedia() {
                 )}
 
                 {selectedRecord && selectedRecord.mode !== "audio" && (
-                  <section className="border-t border-rule pt-3 dark:border-charcoal-1">
-                    <div className="flex items-center justify-between gap-3 text-[12px]">
-                      <span className="text-shadow-1 dark:text-moonlight">Reviewed visuals</span>
-                      <span className="font-mono text-ink dark:text-bright">
-                        {reviewedVisualStatus === "ready" && reviewedVisualSet
-                          ? `${reviewedVisualSet.scene_ids.length} scenes bound`
-                          : reviewedVisualStatus === "loading"
-                            ? "Checking reviewed set"
-                            : reviewedVisualStatus === "error"
-                              ? "Status unavailable"
-                              : "Awaiting reviewed candidates"}
-                      </span>
-                    </div>
-                    {reviewedVisualSet && (
-                      <p className="mt-1 truncate font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                        {reviewedVisualSet.set_id}
+                  <>
+                    {reviewedVisualStatus === "loading" ? (
+                      <p className="border-t border-rule pt-4 font-mono text-[11px] text-shadow-2 dark:border-charcoal-1 dark:text-moonlight">
+                        Checking visual sequence...
                       </p>
+                    ) : reviewedVisualStatus === "error" ? (
+                      <p className="border-t border-rule pt-4 font-mono text-[11px] text-emperor dark:border-charcoal-1">
+                        Status unavailable
+                      </p>
+                    ) : (
+                      <VisualReviewPanel
+                        record={selectedRecord}
+                        reviewedSet={reviewedVisualSet}
+                        onRegistered={(value) => {
+                          setReviewedVisualSet(value);
+                          setReviewedVisualStatus("ready");
+                        }}
+                      />
                     )}
+                    <section className="border-t border-rule pt-3 dark:border-charcoal-1">
                     <LemonButton
                       type="button"
                       variant="secondary"
@@ -939,7 +942,8 @@ export default function Multimedia() {
                     >
                       {productionWorkerPending ? "Producing..." : "Produce documentary"}
                     </LemonButton>
-                  </section>
+                    </section>
+                  </>
                 )}
 
                 <div className="flex flex-wrap items-center gap-2">
