@@ -80,6 +80,8 @@ def register_antiek_bench_weekly_source_attach_write_twin_fullscreen_draft_compo
 
 
 __all__ = [
+    "WeeklyLearnBody",
+    "SourcePackBody",
     "antiek_bench_weekly_source_attach_write_twin_fullscreen_draft_compose_router",
     "register_antiek_bench_weekly_source_attach_write_twin_fullscreen_draft_compose_routes",
 ]
