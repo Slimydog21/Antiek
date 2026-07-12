@@ -90,6 +90,12 @@ def create_midnight_oil_production_app(
 
     environment = os.environ if environ is None else environ
     runtime = build_midnight_oil_api_runtime(config_path, environ=environment)
+    from .engagement_routes import install_engagement_stores
+
+    install_engagement_stores(
+        engagement_store=runtime.stores.engagement_store,
+        session_store=runtime.stores.session_store,
+    )
     app = create_app(
         register_providers=False,
         enable_midnight_oil=True,

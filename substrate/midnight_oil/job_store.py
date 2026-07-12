@@ -328,6 +328,13 @@ _PAYLOAD_FIELDS: Final = frozenset(
         "live_max_input_bytes",
         "swarm_live_plan_json",
         "swarm_live_plan_hash",
+        "execution_id",
+        "collective_unit_id",
+        "collective_preview_sha256",
+        "floating_session_id",
+        "floating_spawn_id",
+        "context_binding_sha256",
+        "context_parent_asset_id",
     }
 )
 
@@ -739,9 +746,7 @@ class DurableOwnerJobStore:
         config_hash = _text(consent_config_hash, "consent_config_hash")
         issued = _optional_nonnegative_int(consent_issued_at_ms, "consent_issued_at_ms")
         expiry = _positive_int(consent_expires_at_ms, "consent_expires_at_ms")
-        stage_plan_hash = _optional_hash(
-            consent_stage_plan_hash, "consent_stage_plan_hash"
-        )
+        stage_plan_hash = _optional_hash(consent_stage_plan_hash, "consent_stage_plan_hash")
         if ceiling is None or issued is None or expiry <= issued:
             raise ValueError("complete consent authority is required")
         if type(expected_version) is not int or expected_version < 0:

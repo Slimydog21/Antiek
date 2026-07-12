@@ -206,19 +206,26 @@ export type MidnightOilConsentResetResponse = {
 
 export async function issueMidnightOilSpendConsent(body: {
   job_id: string;
+  ceiling_cents?: number | null;
   ceiling_usd?: number | null;
   use_recommended?: boolean;
   force_below?: boolean;
 }): Promise<MidnightOilSpendConsentResponse> {
-  const scaledCeiling =
-    body.ceiling_usd == null ? null : body.ceiling_usd * 100;
-  const ceilingCents = scaledCeiling == null ? null : Math.round(scaledCeiling);
+  if (body.ceiling_cents != null && body.ceiling_usd != null) {
+    throw new Error("Choose integer cents or legacy USD, not both");
+  }
+  const scaledCeiling = body.ceiling_usd == null ? null : body.ceiling_usd * 100;
+  const ceilingCents =
+    body.ceiling_cents == null
+      ? scaledCeiling == null
+        ? null
+        : Math.round(scaledCeiling)
+      : body.ceiling_cents;
   if (
     ceilingCents != null &&
     (!Number.isSafeInteger(ceilingCents) ||
       ceilingCents < 1 ||
-      scaledCeiling == null ||
-      Math.abs(scaledCeiling - ceilingCents) > 1e-7)
+      (scaledCeiling != null && Math.abs(scaledCeiling - ceilingCents) > 1e-7))
   ) {
     throw new Error("Midnight Oil ceiling must be positive with at most two decimals");
   }

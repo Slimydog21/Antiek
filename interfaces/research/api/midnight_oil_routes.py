@@ -27,6 +27,7 @@ from substrate.midnight_oil import (
     MidnightOilExecutionReceipt,
     MidnightOilExecutionRequest,
     MidnightOilPreflight,
+    MidnightOilProductResult,
     MidnightOilRequest,
     create_with_recommended_ceiling,
     deposit_job_results,
@@ -39,7 +40,12 @@ from substrate.midnight_oil import (
 from substrate.midnight_oil.budget_ledger import BudgetLedger, ReservationNotFound
 from substrate.midnight_oil.consent_stage_coordinator import ConsentStagePlanCoordinator
 from substrate.midnight_oil.durable_job import DurableJobStore
-from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
+from substrate.midnight_oil.job import (
+    InMemoryJobStore,
+    JobStore,
+    MidnightOilJob,
+    put_job_state,
+)
 from substrate.midnight_oil.job_store import (
     DurableOwnerJobStore,
     OperationState,
@@ -226,6 +232,7 @@ def _owner_payload(
     *,
     live_plan: LiveExecutionPlan | None = None,
     swarm_plan: SwarmLivePlan | None = None,
+    context_binding: Mapping[str, str] | None = None,
 ) -> dict[str, object]:
     if live_plan is not None and swarm_plan is not None:
         raise ValueError("legacy and swarm live authority cannot coexist")
@@ -234,6 +241,7 @@ def _owner_payload(
             rounding=ROUND_FLOOR
         )
     )
+    binding = context_binding or {}
     return {
         "goals": list(job.goals),
         "duration_minutes": job.duration_minutes,
@@ -254,16 +262,90 @@ def _owner_payload(
         "live_max_input_bytes": (None if live_plan is None else live_plan.max_input_bytes),
         "swarm_live_plan_json": (None if swarm_plan is None else swarm_plan.model_dump_json()),
         "swarm_live_plan_hash": None if swarm_plan is None else swarm_plan.plan_hash,
+        "execution_id": binding.get("execution_id"),
+        "collective_unit_id": binding.get("collective_unit_id"),
+        "collective_preview_sha256": binding.get("collective_preview_sha256"),
+        "floating_session_id": binding.get("floating_session_id"),
+        "floating_spawn_id": binding.get("floating_spawn_id"),
+        "context_binding_sha256": binding.get("context_binding_sha256"),
+        "context_parent_asset_id": binding.get("context_parent_asset_id"),
     }
 
 
-@midnight_oil_router.post("/create")
-def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
-    deps = _deps(request)
-    owner = _owner(request)
-    try:
+def create_job_authority(
+    *,
+    deps: MidnightOilDependencies,
+    owner: str,
+    body: CreateJobBody,
+    job_id: str | None = None,
+    asset_id: str | None = None,
+    context_binding: Mapping[str, str] | None = None,
+) -> MidnightOilProductResult:
+    """Create or replay one exact owner job without issuing spend authority."""
+    if job_id is None:
         job_id = deps.random_token(20)
+    if asset_id is None:
         asset_id = deps.random_token(28)
+    existing = deps.owner_jobs.get_job(owner_user_id=owner, job_id=job_id)
+    if existing is not None:
+        config = _config(existing)
+        expected_binding = dict(context_binding or {})
+        binding_keys = (
+            "execution_id",
+            "collective_unit_id",
+            "collective_preview_sha256",
+            "floating_session_id",
+            "floating_spawn_id",
+            "context_binding_sha256",
+            "context_parent_asset_id",
+        )
+        stored_binding = {
+            key: existing.payload[key]
+            for key in binding_keys
+            if existing.payload.get(key) is not None
+        }
+        if (
+            config.goals != tuple(body.goals)
+            or config.duration_minutes != body.duration_minutes
+            or config.model_id != body.model_id
+            or config.fanout_depth != body.fanout_depth
+            or config.research_tier != (body.research_tier or "deep")
+            or config.asset_id != asset_id
+            or stored_binding != expected_binding
+        ):
+            raise ValueError("job identity conflicts with existing authority")
+        existing_detail = get_job(job_id, store=deps.jobs)
+        if existing_detail is None:
+            if (
+                existing.operation_state is not OperationState.NONE
+                or existing.state_version != 0
+                or existing.consent_receipt_id is not None
+                or existing.operation_id is not None
+                or existing.dispatch_started_at_ms is not None
+            ):
+                raise ValueError("non-pristine job detail requires reconciliation")
+            display = existing.payload.get("display_usd")
+            if not isinstance(display, (int, float)) or isinstance(display, bool):
+                raise ValueError("stored job recommendation requires reconciliation")
+            existing_detail = MidnightOilJob(
+                job_id=job_id,
+                goals=config.goals,
+                duration_minutes=config.duration_minutes,
+                model_id=config.model_id,
+                recommended_price_ceiling_usd=float(display),
+                status="awaiting_approval",
+                asset_id=config.asset_id,
+                research_tier=config.research_tier,
+                fanout_depth=config.fanout_depth,
+            )
+            put_job_state(existing_detail, store=deps.jobs)
+        elif not _legacy_matches_authority(existing_detail, config):
+            raise ValueError("job detail conflicts with existing authority")
+        return MidnightOilProductResult(
+            job=existing_detail,
+            recommended_price_ceiling_usd=existing_detail.recommended_price_ceiling_usd,
+        )
+    try:
         if (
             type(job_id) is not str
             or not 8 <= len(job_id) <= 512
@@ -291,51 +373,75 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
                 raise RuntimeError("live execution plan resolver returned invalid data")
         else:
             live_plan = None
-        deps.owner_jobs.put_job(
-            OwnerJob(
-                owner_user_id=owner,
-                job_id=result.job.job_id,
-                state_version=0,
-                approved_ceiling_cents=None,
-                consent_receipt_id=None,
-                consent_config_hash=None,
-                consent_issued_at_ms=None,
-                consent_expires_at_ms=None,
-                consent_claimed_at_ms=None,
-                operation_id=None,
-                operation_state=OperationState.NONE,
-                dispatch_started_at_ms=None,
-                dispatched_at_ms=None,
-                completed_at_ms=None,
-                payload=_owner_payload(
-                    result.job,
-                    live_plan=(live_plan if isinstance(live_plan, LiveExecutionPlan) else None),
-                    swarm_plan=(live_plan if isinstance(live_plan, SwarmLivePlan) else None),
-                ),
-            )
+        authority = OwnerJob(
+            owner_user_id=owner,
+            job_id=result.job.job_id,
+            state_version=0,
+            approved_ceiling_cents=None,
+            consent_receipt_id=None,
+            consent_config_hash=None,
+            consent_issued_at_ms=None,
+            consent_expires_at_ms=None,
+            consent_claimed_at_ms=None,
+            operation_id=None,
+            operation_state=OperationState.NONE,
+            dispatch_started_at_ms=None,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload=_owner_payload(
+                result.job,
+                live_plan=(live_plan if isinstance(live_plan, LiveExecutionPlan) else None),
+                swarm_plan=(live_plan if isinstance(live_plan, SwarmLivePlan) else None),
+                context_binding=context_binding,
+            ),
         )
+        try:
+            deps.owner_jobs.put_job(authority)
+        except ValueError:
+            return create_job_authority(
+                deps=deps,
+                owner=owner,
+                body=body,
+                job_id=job_id,
+                asset_id=asset_id,
+                context_binding=context_binding,
+            )
         legacy_row = staging.get_job(result.job.job_id)
         if legacy_row is None:
             raise RuntimeError("staged Midnight Oil job disappeared")
-        try:
-            deps.jobs.put_job(legacy_row)
-        except Exception:
-            # A write may commit and still raise. Delete authority only after a
-            # successful read proves the detail row was not persisted.
+        persisted_row = deps.jobs.get_job(result.job.job_id)
+        if persisted_row is not None:
+            if persisted_row != legacy_row:
+                raise ValueError("job detail conflicts with existing authority")
+        else:
             try:
-                persisted = deps.jobs.get_job(result.job.job_id)
-                read_confirmed = True
+                deps.jobs.put_job(legacy_row)
             except Exception:
-                persisted = None
-                read_confirmed = False
-            if read_confirmed and persisted is None:
-                deps.owner_jobs.delete_uninitialized_job(
-                    owner_user_id=owner, job_id=result.job.job_id
-                )
-            raise HTTPException(status_code=503, detail="job persistence unavailable") from None
+                # A write may commit and still raise. Delete authority only after a
+                # successful read proves the detail row was not persisted.
+                try:
+                    persisted_row = deps.jobs.get_job(result.job.job_id)
+                    read_confirmed = True
+                except Exception:
+                    persisted_row = None
+                    read_confirmed = False
+                if read_confirmed and persisted_row is None:
+                    deps.owner_jobs.delete_uninitialized_job(
+                        owner_user_id=owner, job_id=result.job.job_id
+                    )
+                raise
+        return result
+    except (TypeError, AttributeError):
+        raise ValueError("job creation material is invalid") from None
+
+
+@midnight_oil_router.post("/create")
+def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
+    try:
+        result = create_job_authority(deps=_deps(request), owner=_owner(request), body=body)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except RuntimeError:
+    except (RuntimeError, OSError):
         raise HTTPException(status_code=503, detail="job creation unavailable") from None
     out = result.to_dict()
     out["html"] = product_result_html(result)
@@ -389,8 +495,7 @@ def _config(row: OwnerJob) -> JobConsentConfig:
         if swarm_plan.gather_per_goal != fanout:
             raise ValueError("swarm authority conflicts with job fanout")
         if model_id is not None and model_id not in {
-            route.split("/", 1)[1]
-            for route in swarm_plan.role("synthesizer").allowed_routes
+            route.split("/", 1)[1] for route in swarm_plan.role("synthesizer").allowed_routes
         }:
             raise ValueError("swarm authority conflicts with selected model")
     if live_plan_hash is None:
@@ -420,6 +525,11 @@ def _config(row: OwnerJob) -> JobConsentConfig:
             else None
             if live_plan is None
             else live_plan.plan_hash
+        ),
+        context_binding_sha256=(
+            str(payload["context_binding_sha256"])
+            if payload.get("context_binding_sha256") is not None
+            else None
         ),
     )
 
@@ -566,9 +676,7 @@ def post_spend_consent(
                 consent_config_hash=receipt.config_hash,
                 consent_issued_at_ms=receipt.issued_at_ms,
                 consent_expires_at_ms=receipt.expires_at_ms,
-                consent_stage_plan_hash=(
-                    None if stage_plan is None else stage_plan.plan_hash
-                ),
+                consent_stage_plan_hash=(None if stage_plan is None else stage_plan.plan_hash),
             )
     except Exception:
         raise HTTPException(
@@ -717,9 +825,7 @@ def get_job_status_route(request: Request, job_id: str, response: Response) -> d
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     try:
-        config = replace(
-            _config(authority), stage_plan_hash=authority.consent_stage_plan_hash
-        )
+        config = replace(_config(authority), stage_plan_hash=authority.consent_stage_plan_hash)
         if not _legacy_matches_authority(job, config):
             raise LifecycleIntegrityError("job detail conflicts with owner authority")
         budget_path = deps.jobs.budget_db_path()
@@ -846,9 +952,7 @@ def post_run(
         raise _run_error(503, "durable operation queue is unavailable")
     try:
         now = deps.clock_ms()
-        config = replace(
-            _config(authority), stage_plan_hash=authority.consent_stage_plan_hash
-        )
+        config = replace(_config(authority), stage_plan_hash=authority.consent_stage_plan_hash)
         legacy = get_job(body.job_id, store=deps.jobs)
         if legacy is None:
             raise _run_error(404, "job not found")
@@ -972,10 +1076,12 @@ def post_run(
 
 @midnight_oil_router.post("/deposit")
 def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
-    from interfaces.research.api.engagement_routes import _eng, get_bench_usage_store
+    from interfaces.research.api.engagement_routes import get_bench_usage_store
     from substrate.engagement_spine import progress_payload
 
     deps, authority = _owned(request, body.job_id)
+    if deps.engagement_store is None:
+        raise HTTPException(status_code=503, detail="engagement store is unavailable")
     terminal = {
         OperationState.COMPLETE,
         OperationState.FAILED,
@@ -1001,7 +1107,7 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
         deposit = deposit_job_results(
             body.job_id,
             job_store=deps.jobs,
-            engagement_store=_eng(),
+            engagement_store=deps.engagement_store,
             job_snapshot=job,
             draft_combined=body.draft_combined,
             bench_usage_store=get_bench_usage_store(create_if_missing=True),
@@ -1017,7 +1123,7 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
         try:
             progress = progress_payload(
                 deposit.spawn_ids[0],
-                store=_eng(),
+                store=deps.engagement_store,
                 include_html=body.include_progress_html,
                 owner_id=authority.owner_user_id,
             )
@@ -1040,6 +1146,30 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
         "product_panel": "midnight_oil_deposit",
         "source": "midnight_oil.deposit_job_results",
     }
+
+
+@midnight_oil_router.get("/jobs/{job_id}/twins")
+def get_job_twins_route(request: Request, job_id: str) -> dict[str, Any]:
+    from substrate.engagement_spine import twins_product_payload
+
+    deps, authority = _owned(request, job_id)
+    if deps.engagement_store is None:
+        raise HTTPException(status_code=503, detail="engagement store is unavailable")
+    job = get_job(job_id, store=deps.jobs)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    try:
+        config = _config(authority)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="stored job configuration is invalid") from exc
+    if not _legacy_matches_authority(job, config) or not job.asset_id:
+        raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
+    return twins_product_payload(
+        job.asset_id,
+        store=deps.engagement_store,
+        include_html=True,
+        owner_id=authority.owner_user_id,
+    )
 
 
 @midnight_oil_router.get("/live-step-status")

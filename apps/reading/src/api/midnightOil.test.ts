@@ -120,6 +120,24 @@ describe("midnightOil API client", () => {
     expect(JSON.stringify(out)).not.toContain("ephemeral-consent-token");
   });
 
+  it("sends exact integer cents without a USD float round trip", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ token: "ephemeral", operation_id: "op", ceiling_cents: 251 }),
+    });
+    await issueMidnightOilSpendConsent({
+      job_id: "moil_exact_cents",
+      ceiling_cents: 251,
+      force_below: false,
+    });
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body)).toEqual({
+      ceiling_cents: 251,
+      use_recommended: false,
+      force_below: false,
+    });
+  });
+
   it("getMidnightOilJob fetches by id", async () => {
     mockFetch.mockResolvedValue({
       ok: true,

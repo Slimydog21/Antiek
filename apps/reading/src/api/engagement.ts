@@ -160,6 +160,42 @@ export type CollectiveWrittenAnalysis = {
   state: "draft";
 };
 
+export type CollectiveExecutionPreparation = {
+  schema_version: 1;
+  execution_id: string;
+  collective_unit_id: string;
+  collective_preview_sha256: string;
+  session_id: string;
+  spawn_id: string;
+  job_id: string;
+  state: string;
+  operation_state: string;
+  recommended_ceiling_cents: number;
+  context_binding_sha256: string;
+  receipt_id: string;
+  goal_truncated: boolean;
+  view_format: "html";
+};
+
+export type CollectiveExecutionStatus = {
+  schema_version: 1;
+  execution_id: string;
+  collective_unit_id: string;
+  session_id: string;
+  spawn_id: string;
+  job_id: string;
+  state: string;
+  phase: string;
+  operation_state: string;
+  session_status: string;
+  deposit_state: string;
+  deposit_document_id: string | null;
+  context_ready: boolean;
+  provider_calls_started: boolean;
+  status_href: string;
+  view_format: "html";
+};
+
 export type SessionFlywheelResponse = {
   session_id: string;
   spawn_id: string;
@@ -1211,6 +1247,36 @@ export async function launchCollectiveResearch(
   const res = await apiFetch(
     `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/launch-research`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  return readJson(res);
+}
+
+export async function prepareCollectiveExecution(
+  unitId: string,
+  body: {
+    session_id: string;
+    expected_preview_sha256: string;
+    idempotency_key: string;
+    duration_minutes: number;
+    model_id?: string | null;
+    research_tier?: "fast" | "deep" | "wrestle" | null;
+    fanout_depth?: number;
+  },
+): Promise<CollectiveExecutionPreparation> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/execution/prepare`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  return readJson(res);
+}
+
+export async function getCollectiveExecutionStatus(
+  unitId: string,
+  executionId: string,
+): Promise<CollectiveExecutionStatus> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/execution/${encodeURIComponent(executionId)}`,
+    { cache: "no-store" },
   );
   return readJson(res);
 }

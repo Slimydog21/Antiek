@@ -24,6 +24,7 @@ from substrate.dispatch import (
     register_provider,
 )
 from substrate.engagement_spine.store import FileEngagementStore
+from substrate.floating_session.store import FileSessionStore
 
 from .durable_job import DurableJobStore
 from .job_store import DurableOwnerJobStore
@@ -247,6 +248,7 @@ class MidnightOilRuntimeStores:
     consents: SpendConsentStore
     operation_queue: DurableOperationQueue
     engagement_store: FileEngagementStore
+    session_store: FileSessionStore
 
 
 def build_runtime_stores(config: MidnightOilRuntimeConfig) -> MidnightOilRuntimeStores:
@@ -258,6 +260,7 @@ def build_runtime_stores(config: MidnightOilRuntimeConfig) -> MidnightOilRuntime
         consents=SpendConsentStore(config.state_dir / "spend-consents.sqlite3"),
         operation_queue=DurableOperationQueue(config.state_dir / "operations.sqlite3"),
         engagement_store=FileEngagementStore(config.engagement_dir),
+        session_store=FileSessionStore(config.engagement_dir / "floating_sessions"),
     )
 
 

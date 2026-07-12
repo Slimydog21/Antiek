@@ -59,13 +59,18 @@ class JobConsentConfig:
     asset_id: str | None
     live_execution_plan_hash: str | None = None
     stage_plan_hash: str | None = None
+    context_binding_sha256: str | None = None
 
     def canonical_hash(self) -> str:
         material = asdict(self)
-        if self.stage_plan_hash is None:
+        if self.context_binding_sha256 is not None:
+            domain = b"antiek.midnight-oil.job-config.v3\x00"
+        else:
+            material.pop("context_binding_sha256")
+        if self.context_binding_sha256 is None and self.stage_plan_hash is None:
             material.pop("stage_plan_hash")
             domain = b"antiek.midnight-oil.job-config.v1\x00"
-        else:
+        elif self.context_binding_sha256 is None:
             domain = b"antiek.midnight-oil.job-config.v2\x00"
         payload = _canonical_json(material)
         return hashlib.sha256(domain + payload).hexdigest()
@@ -153,6 +158,14 @@ def _validate_config(config: JobConsentConfig) -> None:
             raise ValueError("stage plan hash must be SHA-256 hex") from exc
         if config.live_execution_plan_hash is None:
             raise ValueError("stage plan requires live execution authority")
+    if config.context_binding_sha256 is not None:
+        _validate_text(config.context_binding_sha256, maximum=64)
+        if len(config.context_binding_sha256) != 64:
+            raise ValueError("context binding must be SHA-256 hex")
+        try:
+            bytes.fromhex(config.context_binding_sha256)
+        except ValueError as exc:
+            raise ValueError("context binding must be SHA-256 hex") from exc
     if type(config.duration_minutes) is not int or not 1 <= config.duration_minutes <= 10_080:
         raise ValueError("duration is outside consent bounds")
     if type(config.fanout_depth) is not int or not 1 <= config.fanout_depth <= 64:
@@ -374,9 +387,7 @@ class SpendConsentStore:
                     connection.execute("ROLLBACK")
                     raise ConsentRejected(ConsentRejection.EXPIRED)
                 connection.execute("COMMIT")
-                return ClaimResult(
-                    receipt=receipt, claimed_now=False, claimed_at_ms=int(row[1])
-                )
+                return ClaimResult(receipt=receipt, claimed_now=False, claimed_at_ms=int(row[1]))
             if now_ms < receipt.issued_at_ms:
                 connection.execute("ROLLBACK")
                 raise ConsentRejected(ConsentRejection.NOT_YET_VALID)

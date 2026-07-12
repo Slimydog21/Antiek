@@ -39,15 +39,19 @@ class ProgressEvent:
     message: str
     ts: float
     sequence: int
+    effect_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out: dict[str, Any] = {
             "spawn_id": self.spawn_id,
             "stage": self.stage,
             "message": self.message,
             "ts": self.ts,
             "sequence": self.sequence,
         }
+        if self.effect_id is not None:
+            out["effect_id"] = self.effect_id
+        return out
 
 
 def _run_key(spawn_id: str) -> str:
@@ -62,6 +66,7 @@ def record_progress(
     store: EngagementStore,
     ts: float | None = None,
     owner_id: str = "__operator__",
+    effect_id: str | None = None,
 ) -> ProgressEvent:
     """Append one progress event for a spawn. Raises if stage invalid or spawn missing."""
     if not spawn_id.strip():
@@ -73,6 +78,10 @@ def record_progress(
         )
     if store.get_owned_spawn(spawn_id, owner_id) is None:
         raise KeyError(f"unknown spawn_id: {spawn_id}")
+    if effect_id is not None and (
+        not effect_id.strip() or effect_id != effect_id.strip() or len(effect_id) > 256
+    ):
+        raise ValueError("progress effect_id must be canonical bounded text")
 
     key = _run_key(spawn_id)
     # Progress log lives in the document store under a reserved key.
@@ -81,12 +90,27 @@ def record_progress(
     def append(doc: dict[str, Any] | None) -> dict[str, Any]:
         nonlocal recorded
         events = list((doc or {}).get("events") or [])
+        if effect_id is not None:
+            replay = next(
+                (event for event in events if event.get("effect_id") == effect_id), None
+            )
+            if replay is not None:
+                recorded = ProgressEvent(
+                    spawn_id=str(replay.get("spawn_id") or spawn_id),
+                    stage=str(replay.get("stage") or stage_s),  # type: ignore[arg-type]
+                    message=str(replay.get("message") or ""),
+                    ts=float(replay.get("ts") or 0),
+                    sequence=int(replay.get("sequence") or 0),
+                    effect_id=effect_id,
+                )
+                return dict(doc or {})
         recorded = ProgressEvent(
             spawn_id=spawn_id,
             stage=stage_s,  # type: ignore[arg-type]
             message=str(message or "").strip()[:500],
             ts=float(ts if ts is not None else time.time()),
             sequence=len(events) + 1,
+            effect_id=effect_id,
         )
         events.append(recorded.to_dict())
         return {
@@ -120,6 +144,7 @@ def list_progress(
                 message=str(e.get("message") or ""),
                 ts=float(e.get("ts") or 0),
                 sequence=int(e.get("sequence") or 0),
+                effect_id=(str(e["effect_id"]) if e.get("effect_id") is not None else None),
             )
         )
     return out

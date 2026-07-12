@@ -45,6 +45,12 @@ const getOwnedCollectiveUnit = vi.hoisted(() => vi.fn());
 const getOwnedCollectiveWrittenAnalysis = vi.hoisted(() => vi.fn());
 const fetchEngagementSession = vi.hoisted(() => vi.fn());
 const listOwnedEngagementSessions = vi.hoisted(() => vi.fn());
+const prepareCollectiveExecution = vi.hoisted(() => vi.fn());
+const getCollectiveExecutionStatus = vi.hoisted(() => vi.fn());
+const resetMidnightOilSpendConsent = vi.hoisted(() => vi.fn());
+const issueMidnightOilSpendConsent = vi.hoisted(() => vi.fn());
+const enqueueMidnightOilJob = vi.hoisted(() => vi.fn());
+const getMidnightOilLifecycle = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/engagement", () => ({
   updateEngagementSessionView: (body: {
@@ -62,6 +68,15 @@ vi.mock("../../api/engagement", () => ({
   getOwnedCollectiveWrittenAnalysis,
   fetchEngagementSession,
   listOwnedEngagementSessions,
+  prepareCollectiveExecution,
+  getCollectiveExecutionStatus,
+}));
+
+vi.mock("../../api/midnightOil", () => ({
+  resetMidnightOilSpendConsent,
+  issueMidnightOilSpendConsent,
+  enqueueMidnightOilJob,
+  getMidnightOilLifecycle,
 }));
 
 vi.mock("../../api/settings", () => ({
@@ -234,6 +249,60 @@ const FIXTURE = {
 };
 
 describe("DeepResearchSessionHost", () => {
+  it("mounts explicit consent execution only for a collective-bound session", () => {
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        source_collective_id="cunit_111111111111111111111111"
+        source_collective_preview_sha256={"a".repeat(64)}
+      />,
+    );
+    const panel = screen.getByTestId("collective-execution-panel");
+    expect(panel.getAttribute("data-execution-state")).toBe("not_prepared");
+    expect(panel.getAttribute("data-consent-token-persisted")).toBe("false");
+    expect(screen.getByText("Review execution budget")).toBeTruthy();
+  });
+
+  it("recovers an issued but unqueued ephemeral consent before reissue", async () => {
+    prepareCollectiveExecution.mockResolvedValueOnce({
+      schema_version: 1,
+      execution_id: "cexec_111111111111111111111111",
+      collective_unit_id: "cunit_111111111111111111111111",
+      collective_preview_sha256: "a".repeat(64),
+      session_id: FIXTURE.session_id,
+      spawn_id: FIXTURE.spawn_id,
+      job_id: "moil_111111111111111111111111",
+      state: "consent_issued",
+      operation_state: "consent_issued",
+      recommended_ceiling_cents: 250,
+      context_binding_sha256: "b".repeat(64),
+      receipt_id: "receipt",
+      goal_truncated: false,
+      view_format: "html",
+    });
+    getCollectiveExecutionStatus.mockResolvedValue({
+      state: "consent_issued",
+      phase: "awaiting_enqueue",
+      provider_calls_started: false,
+      context_ready: false,
+      session_status: "reserved",
+    });
+    resetMidnightOilSpendConsent.mockResolvedValueOnce({ state: "consent_required" });
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        source_collective_id="cunit_111111111111111111111111"
+        source_collective_preview_sha256={"a".repeat(64)}
+      />,
+    );
+    fireEvent.click(screen.getByText("Review execution budget"));
+    await screen.findByText("Reconcile unqueued consent");
+    fireEvent.click(screen.getByText("Reconcile unqueued consent"));
+    await waitFor(() => expect(resetMidnightOilSpendConsent).toHaveBeenCalledWith(
+      "moil_111111111111111111111111",
+    ));
+    expect(await screen.findByText("Approve ceiling and queue")).toBeTruthy();
+  });
   afterEach(() => {
     cleanup();
   });
@@ -247,6 +316,17 @@ describe("DeepResearchSessionHost", () => {
     getOwnedCollectiveUnit.mockReset();
     getOwnedCollectiveWrittenAnalysis.mockReset();
     fetchEngagementSession.mockReset();
+    prepareCollectiveExecution.mockReset();
+    getCollectiveExecutionStatus.mockReset();
+    resetMidnightOilSpendConsent.mockReset();
+    issueMidnightOilSpendConsent.mockReset();
+    enqueueMidnightOilJob.mockReset();
+    getMidnightOilLifecycle.mockReset().mockResolvedValue({
+      confirmed_spent_cents: 0,
+      reserved_cents: 0,
+      remaining_cents: 250,
+      unknown_outcome: false,
+    });
     listOwnedCollectiveUnits.mockReset().mockResolvedValue({
       owner_id: "alice",
       collectives: [],

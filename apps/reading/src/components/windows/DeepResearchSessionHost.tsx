@@ -77,6 +77,7 @@ import {
   mapResearchTierToProgressPollMs,
 } from "../../lib/researchTier";
 import { CollectiveResearchPanel } from "../engagement/CollectiveResearchPanel";
+import { CollectiveExecutionPanel } from "../engagement/CollectiveExecutionPanel";
 import { DecisionTreeDriverBadge } from "../engagement/DecisionTreeDriverBadge";
 import { PublicationAttachPanel } from "../engagement/PublicationAttachPanel";
 import { ResearchContextPanel } from "../engagement/ResearchContextPanel";
@@ -113,6 +114,8 @@ export type DeepResearchSessionHostProps = {
   goal?: string;
   /** Residual (jk): research tier from session open payload when present. */
   research_tier?: string;
+  source_collective_id?: string;
+  source_collective_preview_sha256?: string;
   /**
    * Residual (afx): highlight → DR path honesty when opened via FloatMenu /
    * openDeepResearchFromHighlight (parity seamless-highlight-dr).
@@ -227,6 +230,10 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       onContextNeedsRefresh();
     },
     [onContextNeedsRefresh, patchWindowPayload, windowId],
+  );
+  const onExecutionTerminal = useCallback(
+    (nextStatus: string) => onSessionCompleted({ status: nextStatus }),
+    [onSessionCompleted],
   );
   // Residual (ob/oc): re-read recent ring when windows change or clear recent.
   const [recentTick, setRecentTick] = useState(0);
@@ -1090,6 +1097,19 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           onResearchTierChange={setResearchTier}
         />
       </section>
+
+      {rawSessionId &&
+      props.source_collective_id?.trim() &&
+      props.source_collective_preview_sha256?.trim() ? (
+        <CollectiveExecutionPanel
+          unitId={props.source_collective_id.trim()}
+          previewSha256={props.source_collective_preview_sha256.trim()}
+          sessionId={rawSessionId}
+          modelId={props.model_id?.trim() || null}
+          researchTier={researchTier}
+          onTerminal={onExecutionTerminal}
+        />
+      ) : null}
 
       {/* Product mount: twin + source-ref research context for this session's
           parent asset / spawn. Panel owns fetch/attach; host only passes identity. */}

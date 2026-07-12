@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import secrets
+import sqlite3
 import traceback
 from dataclasses import replace
 from pathlib import Path
@@ -33,6 +34,7 @@ from substrate.midnight_oil.job_store import (
 from substrate.midnight_oil.job_store import (
     TestOnlyInMemoryOwnerJobStore as MemoryOwnerStore,
 )
+from substrate.midnight_oil.live import LiveExecutionPlan
 from substrate.midnight_oil.operation_queue import DurableOperationQueue
 from substrate.midnight_oil.spend_consent import SpendConsentStore
 from substrate.midnight_oil.worker import (
@@ -78,6 +80,188 @@ def _client(deps: MidnightOilDependencies) -> TestClient:
     register_midnight_oil_routes(app, dependencies=deps)
     register_engagement_routes(app)
     return TestClient(app)
+
+
+def test_confirmed_collective_prepares_one_context_signed_live_job(tmp_path: Path) -> None:
+    reset_engagement_stores(root=tmp_path / "workstation")
+    plan = LiveExecutionPlan(
+        allowed_routes=("test-provider/test-model",),
+        projected_max_cents=25,
+        dispatch_config_hash="1" * 64,
+        max_input_bytes=32_000,
+    )
+    deps = replace(_dependencies(tmp_path), live_plan_resolver=lambda _job: plan)
+    client = _client(deps)
+    headers = {"x-test-user": "alice"}
+    source_sessions: list[str] = []
+    for index in (1, 2):
+        opened = client.post(
+            "/engagement/sessions/open",
+            headers=headers,
+            json={
+                "asset_id": f"collective-source-{index}",
+                "selection_text": f"Evidence question {index}",
+                "region_id": f"collective-region-{index}",
+            },
+        )
+        assert opened.status_code == 200, opened.text
+        source_sessions.append(opened.json()["session_id"])
+        completed = client.post(
+            "/engagement/sessions/complete-flywheel",
+            headers=headers,
+            json={
+                "session_id": opened.json()["session_id"],
+                "output_text": f"Durable finding {index}",
+                "insights": [f"Evidence insight {index}"],
+            },
+        )
+        assert completed.status_code == 200, completed.text
+    preview_request = {
+        "session_ids": source_sessions,
+        "allow_cross_asset": True,
+        "include_prompt_block": True,
+    }
+    preview = client.post(
+        "/engagement/sessions/collective", headers=headers, json=preview_request
+    )
+    assert preview.status_code == 200, preview.text
+    confirmed = client.post(
+        "/engagement/sessions/collective/confirm",
+        headers=headers,
+        json={
+            **preview_request,
+            "expected_preview_sha256": preview.json()["collective_preview_sha256"],
+            "idempotency_key": "prepare-confirm-001",
+        },
+    )
+    assert confirmed.status_code == 200, confirmed.text
+    unit_id = confirmed.json()["collective_unit_id"]
+    launched = client.post(
+        f"/engagement/sessions/collective/{unit_id}/launch-research",
+        headers=headers,
+        json={
+            "idempotency_key": "prepare-launch-001",
+            "anchor_asset_id": "collective-source-1",
+            "research_tier": "wrestle",
+        },
+    )
+    assert launched.status_code == 200, launched.text
+    prepare_request = {
+        "session_id": launched.json()["session_id"],
+        "expected_preview_sha256": confirmed.json()["preview_sha256"],
+        "idempotency_key": "execution-prepare-001",
+        "duration_minutes": 90,
+        "fanout_depth": 4,
+        "model_id": "test-model",
+        "research_tier": "wrestle",
+    }
+    prepared = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers=headers,
+        json=prepare_request,
+    )
+    assert prepared.status_code == 200, prepared.text
+    body = prepared.json()
+    assert body["state"] == "consent_required"
+    assert type(body["recommended_ceiling_cents"]) is int
+    assert len(body["context_binding_sha256"]) == 64
+    replay = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers=headers,
+        json=prepare_request,
+    )
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["job_id"] == body["job_id"]
+    assert replay.json()["execution_id"] == body["execution_id"]
+    alternate_key_replay = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers=headers,
+        json={**prepare_request, "idempotency_key": "execution-prepare-002"},
+    )
+    assert alternate_key_replay.status_code == 200, alternate_key_replay.text
+    assert alternate_key_replay.json()["job_id"] == body["job_id"]
+    with sqlite3.connect(tmp_path / "details.sqlite3") as connection:
+        connection.execute(
+            "DELETE FROM midnight_oil_job_details WHERE job_id = ?", (body["job_id"],)
+        )
+
+    def resolver_must_not_replay(_job):  # type: ignore[no-untyped-def]
+        raise AssertionError("stored authority must repair without mutable resolver replay")
+
+    client.app.state.midnight_oil_dependencies = replace(
+        deps, live_plan_resolver=resolver_must_not_replay
+    )
+    repaired = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers=headers,
+        json=prepare_request,
+    )
+    assert repaired.status_code == 200, repaired.text
+    assert repaired.json()["job_id"] == body["job_id"]
+    conflict = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers=headers,
+        json={**prepare_request, "duration_minutes": 91},
+    )
+    assert conflict.status_code == 409
+    foreign = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers={"x-test-user": "bob"},
+        json=prepare_request,
+    )
+    assert foreign.status_code == 404
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id=body["job_id"])
+    assert authority is not None
+    assert authority.payload["floating_session_id"] == launched.json()["session_id"]
+    assert authority.payload["collective_unit_id"] == unit_id
+    status_href = (
+        f"/engagement/sessions/collective/{unit_id}/execution/{body['execution_id']}"
+    )
+    prepared_status = client.get(status_href, headers=headers)
+    assert prepared_status.status_code == 200, prepared_status.text
+    assert prepared_status.json()["state"] == "consent_required"
+    assert prepared_status.json()["provider_calls_started"] is False
+    issued = client.post(
+        f"/midnight-oil/jobs/{body['job_id']}/spend-consent",
+        headers=headers,
+        json={"use_recommended": True},
+    )
+    assert issued.status_code == 200, issued.text
+    signed = deps.owner_jobs.get_job(owner_user_id="alice", job_id=body["job_id"])
+    assert signed is not None
+    assert signed.consent_config_hash is not None
+    assert issued.json()["token"] not in str(signed.payload)
+    consented_status = client.get(status_href, headers=headers)
+    assert consented_status.json()["state"] == "consent_issued"
+    queued = client.post(
+        "/midnight-oil/run",
+        headers={**headers, "X-Midnight-Oil-Spend-Consent": issued.json()["token"]},
+        json={"job_id": body["job_id"]},
+    )
+    assert queued.status_code == 200, queued.text
+    queued_status = client.get(status_href, headers=headers)
+    assert queued_status.json()["state"] == "queued"
+    assert queued_status.json()["phase"] == "awaiting_worker"
+    assert queued_status.json()["provider_calls_started"] is False
+    queued_replay = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers=headers,
+        json=prepare_request,
+    )
+    assert queued_replay.status_code == 200, queued_replay.text
+    assert queued_replay.json()["job_id"] == body["job_id"]
+    assert queued_replay.json()["state"] == "queued"
+    with sqlite3.connect(tmp_path / "details.sqlite3") as connection:
+        connection.execute(
+            "DELETE FROM midnight_oil_job_details WHERE job_id = ?", (body["job_id"],)
+        )
+    unsafe_reconstruction = client.post(
+        f"/engagement/sessions/collective/{unit_id}/execution/prepare",
+        headers=headers,
+        json=prepare_request,
+    )
+    assert unsafe_reconstruction.status_code == 409
+    assert "requires reconciliation" in unsafe_reconstruction.text
 
 
 def test_restart_safe_authorized_path_produces_html_twins_without_token_retention(
@@ -170,10 +354,9 @@ def test_restart_safe_authorized_path_produces_html_twins_without_token_retentio
     assert body["view_format"] == "html"
     assert "<" in body["html"] and "pdf" not in body["html"].lower()
     assert body["twin_count"] >= 2
-    reset_engagement_stores(root=engagement_root)
     restarted_client = _client(_dependencies(tmp_path))
     twins = restarted_client.get(
-        f"/engagement/twins/{body['asset_id']}", headers=headers
+        f"/midnight-oil/jobs/{job_id}/twins", headers=headers
     )
     assert twins.status_code == 200
     assert len(twins.json()["notes"]) >= 2

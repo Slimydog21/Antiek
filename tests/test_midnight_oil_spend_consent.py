@@ -95,7 +95,7 @@ def test_stage_plan_uses_v2_config_hash_without_changing_legacy_v1() -> None:
     legacy_material = {
         key: value
         for key, value in legacy.__dict__.items()
-        if key != "stage_plan_hash"
+        if key not in {"stage_plan_hash", "context_binding_sha256"}
     }
     encoded = json.dumps(
         legacy_material, sort_keys=True, separators=(",", ":"), ensure_ascii=False
@@ -113,6 +113,14 @@ def test_stage_plan_uses_v2_config_hash_without_changing_legacy_v1() -> None:
     second = replace(first, stage_plan_hash="c" * 64)
     assert first.canonical_hash() != legacy.canonical_hash()
     assert second.canonical_hash() != first.canonical_hash()
+
+
+def test_context_binding_uses_v3_and_changes_signed_configuration() -> None:
+    legacy = config()
+    first = replace(legacy, context_binding_sha256="1" * 64)
+    second = replace(legacy, context_binding_sha256="2" * 64)
+    assert first.canonical_hash() != legacy.canonical_hash()
+    assert first.canonical_hash() != second.canonical_hash()
 
 
 def test_reopen_preserves_claim_state(tmp_path: Path) -> None:

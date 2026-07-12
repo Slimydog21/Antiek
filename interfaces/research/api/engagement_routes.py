@@ -189,6 +189,15 @@ def reset_engagement_stores(*, root: Path | None = None) -> None:
         _merge_receipt_store = InMemoryMergeReceiptStore()
 
 
+def install_engagement_stores(
+    *, engagement_store: EngagementStore, session_store: SessionStore
+) -> None:
+    """Install composition-root-owned stores without constructing a second truth."""
+    global _engagement_store, _session_store
+    _engagement_store = engagement_store
+    _session_store = session_store
+
+
 def _eng() -> EngagementStore:
     global _engagement_store
     if _engagement_store is None:
@@ -415,6 +424,16 @@ class CollectiveLaunchResearchBody(_ClosedSessionBody):
     research_tier: Literal["fast", "deep", "wrestle"] | None = None
 
 
+class CollectiveExecutionPrepareBody(_ClosedSessionBody):
+    session_id: str = Field(pattern=r"^fsess_[0-9a-f]{16}$")
+    expected_preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str = Field(min_length=8, max_length=128)
+    duration_minutes: int = Field(ge=1, le=10_080)
+    model_id: str | None = Field(default=None, max_length=200)
+    research_tier: Literal["fast", "deep", "wrestle"] | None = None
+    fanout_depth: int = Field(default=3, ge=1, le=64)
+
+
 class CollectiveWrittenAnalysisBody(_ClosedSessionBody):
     idempotency_key: str = Field(min_length=8, max_length=128)
 
@@ -515,6 +534,90 @@ def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
         "region_id": spawn.region_id,
         "source_references": list(spawn.source_references),
         "research_tier": getattr(spawn, "research_tier", None) or "deep",
+        "view_format": "html",
+    }
+
+
+@engagement_router.get("/sessions/collective/{unit_id}/execution/{execution_id}")
+def get_collective_execution_status(
+    unit_id: str, execution_id: str, request: Request
+) -> dict[str, Any]:
+    from interfaces.research.api.midnight_oil_routes import _deps as midnight_oil_dependencies
+    from substrate.midnight_oil import get_job as get_midnight_oil_job
+    from substrate.midnight_oil.job_store import OperationState
+
+    owner_id = _request_owner(request)
+    unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective execution not found")
+    if len(execution_id) != 30 or not execution_id.startswith("cexec_"):
+        raise HTTPException(status_code=404, detail="collective execution not found")
+    identity_digest = hashlib.sha256(
+        f"antiek:collective-execution-job:v1\0{owner_id}\0{execution_id}".encode()
+    ).hexdigest()[:24]
+    job_id = f"moil_{identity_digest}"
+    try:
+        deps = midnight_oil_dependencies(request)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail="Midnight Oil execution is unavailable") from exc
+    authority = deps.owner_jobs.get_job(owner_user_id=owner_id, job_id=job_id)
+    if (
+        authority is None
+        or authority.payload.get("execution_id") != execution_id
+        or authority.payload.get("collective_unit_id") != unit_id
+        or authority.payload.get("collective_preview_sha256") != unit.get("preview_sha256")
+    ):
+        raise HTTPException(status_code=404, detail="collective execution not found")
+    session_id = str(authority.payload.get("floating_session_id") or "")
+    session = _verified_session(session_id, owner_id)
+    if (
+        authority.payload.get("floating_spawn_id") != session.spawn_id
+        or session.source_collective_id != unit_id
+        or session.source_collective_preview_sha256 != unit.get("preview_sha256")
+    ):
+        raise HTTPException(status_code=409, detail="execution binding requires reconciliation")
+    job = get_midnight_oil_job(job_id, store=deps.jobs)
+    if job is None:
+        raise HTTPException(status_code=409, detail="execution detail requires reconciliation")
+    operation = authority.operation_state
+    if operation is OperationState.NONE:
+        state, phase = "consent_required", "awaiting_consent"
+    elif operation is OperationState.CONSENT_ISSUED:
+        state, phase = "consent_issued", "awaiting_enqueue"
+    elif operation is OperationState.QUEUED:
+        state, phase = "queued", "awaiting_worker"
+    elif operation is OperationState.RUNNING:
+        state, phase = "running", "provider_work"
+    elif job.deposit_state != "complete":
+        state, phase = "finalizing", "deposit"
+    else:
+        effect_id = f"ceffect_{execution_id.removeprefix('cexec_')}"
+        effect = _eng().get_owned_document(effect_id, owner_id)
+        if (
+            effect is None
+            or effect.get("document_type") != "collective_execution_effect"
+            or effect.get("execution_id") != execution_id
+            or effect.get("state") != "applied"
+        ):
+            state, phase = "finalizing", "flywheel"
+        else:
+            state, phase = operation.value, "terminal"
+    return {
+        "schema_version": 1,
+        "execution_id": execution_id,
+        "collective_unit_id": unit_id,
+        "session_id": session.session_id,
+        "spawn_id": session.spawn_id,
+        "job_id": job_id,
+        "state": state,
+        "phase": phase,
+        "operation_state": operation.value,
+        "session_status": session.status,
+        "deposit_state": job.deposit_state,
+        "deposit_document_id": job.deposit_document_id,
+        "context_ready": session.status == "complete",
+        "provider_calls_started": authority.dispatch_started_at_ms is not None,
+        "status_href": f"/midnight-oil/jobs/{job_id}/status",
         "view_format": "html",
     }
 
@@ -2247,6 +2350,169 @@ def post_collective_launch_research(
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _session_payload(session, include_html=True)
+
+
+@engagement_router.post("/sessions/collective/{unit_id}/execution/prepare")
+def post_collective_execution_prepare(
+    unit_id: str, body: CollectiveExecutionPrepareBody, request: Request
+) -> dict[str, Any]:
+    """Bind one confirmed unit/session to one non-spending Midnight Oil job."""
+    from interfaces.research.api.midnight_oil_routes import (
+        CreateJobBody,
+        create_job_authority,
+    )
+    from interfaces.research.api.midnight_oil_routes import (
+        _deps as midnight_oil_dependencies,
+    )
+    from substrate.midnight_oil.session_flywheel import context_binding_sha256
+
+    owner_id = _request_owner(request)
+    unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    session = _verified_session(body.session_id, owner_id)
+    durable_preview = str(unit.get("preview_sha256") or "")
+    if not hmac.compare_digest(durable_preview, body.expected_preview_sha256):
+        raise HTTPException(status_code=409, detail="collective preview changed before execution")
+    if (
+        session.source_collective_id != unit_id
+        or session.source_collective_preview_sha256 != durable_preview
+    ):
+        raise HTTPException(
+            status_code=409, detail="session is not bound to this collective revision"
+        )
+    material = dict(unit.get("material") or {})
+    source = dict(material.get("unit") or {})
+    if session.parent_asset_id not in (source.get("asset_ids") or []):
+        raise HTTPException(status_code=409, detail="session anchor requires reconciliation")
+    if session.status not in {"reserved", "running"}:
+        raise HTTPException(status_code=409, detail="session is not execution-ready")
+
+    prepare_material = {
+        "collective_unit_id": unit_id,
+        "collective_preview_sha256": durable_preview,
+        "floating_session_id": session.session_id,
+        "floating_spawn_id": session.spawn_id,
+        "parent_asset_id": session.parent_asset_id,
+        "duration_minutes": body.duration_minutes,
+        "model_id": body.model_id or session.model_id,
+        "research_tier": body.research_tier or session.research_tier,
+        "fanout_depth": body.fanout_depth,
+        "live": True,
+    }
+    try:
+        receipt = claim_collective_action(
+            store=_eng(),
+            owner_id=owner_id,
+            unit_id=unit_id,
+            action="execution_prepare",
+            idempotency_key=body.idempotency_key,
+            material=prepare_material,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    execution_id = (
+        "cexec_"
+        + hashlib.sha256(
+            f"antiek:collective-execution:v1\0{owner_id}\0{unit_id}\0{session.session_id}".encode()
+        ).hexdigest()[:24]
+    )
+    binding_hash = context_binding_sha256(
+        owner_id=owner_id,
+        execution_id=execution_id,
+        collective_unit_id=unit_id,
+        collective_preview_sha256=durable_preview,
+        floating_session_id=session.session_id,
+        floating_spawn_id=session.spawn_id,
+        parent_asset_id=session.parent_asset_id,
+        duration_minutes=body.duration_minutes,
+        model_id=body.model_id or session.model_id,
+        research_tier=body.research_tier or session.research_tier,
+        fanout_depth=body.fanout_depth,
+    )
+    binding = {
+        "execution_id": execution_id,
+        "collective_unit_id": unit_id,
+        "collective_preview_sha256": durable_preview,
+        "floating_session_id": session.session_id,
+        "floating_spawn_id": session.spawn_id,
+        "context_binding_sha256": binding_hash,
+        "context_parent_asset_id": session.parent_asset_id,
+    }
+    identity_digest = hashlib.sha256(
+        f"antiek:collective-execution-job:v1\0{owner_id}\0{execution_id}".encode()
+    ).hexdigest()[:24]
+    job_id = f"moil_{identity_digest}"
+    asset_id = f"moil_asset_{identity_digest}"
+    prompt = str(material.get("prompt_block") or "").strip()
+    goal = (f"Continue confirmed collective research unit {unit_id}.\n\n{prompt}")[:4096]
+    if not goal.strip():
+        raise HTTPException(status_code=409, detail="collective prompt requires reconciliation")
+    try:
+        deps = midnight_oil_dependencies(request)
+        result = create_job_authority(
+            deps=deps,
+            owner=owner_id,
+            body=CreateJobBody(
+                goals=[goal],
+                duration_minutes=body.duration_minutes,
+                model_id=body.model_id or session.model_id,
+                fanout_depth=body.fanout_depth,
+                research_tier=body.research_tier or session.research_tier,
+                live=True,
+            ),
+            job_id=job_id,
+            asset_id=asset_id,
+            context_binding=binding,
+        )
+        settled = settle_collective_action(
+            store=_eng(),
+            owner_id=owner_id,
+            receipt_id=str(receipt["receipt_id"]),
+            material_sha256=str(receipt["material_sha256"]),
+            result={
+                "execution_id": execution_id,
+                "job_id": job_id,
+                "session_id": session.session_id,
+                "spawn_id": session.spawn_id,
+                "context_binding_sha256": binding_hash,
+            },
+        )
+        authority = deps.owner_jobs.get_job(owner_user_id=owner_id, job_id=job_id)
+        if (
+            authority is None
+            or authority.payload.get("context_binding_sha256") != binding_hash
+        ):
+            raise ValueError("execution authority requires reconciliation")
+        recommended = authority.payload.get("recommended_ceiling_cents")
+        if type(recommended) is not int:
+            raise ValueError("execution ceiling requires reconciliation")
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503, detail="Midnight Oil execution is unavailable"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "schema_version": 1,
+        "execution_id": execution_id,
+        "collective_unit_id": unit_id,
+        "collective_preview_sha256": durable_preview,
+        "session_id": session.session_id,
+        "spawn_id": session.spawn_id,
+        "job_id": result.job.job_id,
+        "state": (
+            "consent_required"
+            if authority.operation_state.value == "none"
+            else authority.operation_state.value
+        ),
+        "operation_state": authority.operation_state.value,
+        "recommended_ceiling_cents": recommended,
+        "context_binding_sha256": binding_hash,
+        "receipt_id": settled.get("receipt_id"),
+        "goal_truncated": len(prompt) + len(unit_id) + 48 > 4096,
+        "view_format": "html",
+    }
 
 
 @engagement_router.post("/sessions/collective/{unit_id}/written-analysis")

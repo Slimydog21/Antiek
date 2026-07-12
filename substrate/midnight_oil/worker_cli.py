@@ -39,6 +39,7 @@ from .runtime import (
     build_runtime_stores,
     install_attested_providers,
 )
+from .session_flywheel import finalize_bound_session, validate_context_binding
 from .spend_consent import JobConsentConfig
 from .swarm_plan import RouterSwarmDispatch, SwarmLivePlan, swarm_plan_from_authority
 from .worker import WorkerLease, lease_authorized_operation
@@ -98,9 +99,7 @@ class MidnightOilWorkerRuntime:
     dispatch_config: DispatchConfig
 
 
-_SWARM_VALIDATOR_SHA256 = hashlib.sha256(
-    b"antiek.midnight-oil.live-swarm-validator.v1"
-).hexdigest()
+_SWARM_VALIDATOR_SHA256 = hashlib.sha256(b"antiek.midnight-oil.live-swarm-validator.v1").hexdigest()
 
 
 def _validated_swarm_runtime(
@@ -131,6 +130,7 @@ def _validated_swarm_runtime(
     job = get_job(lease.job_id, store=runtime.stores.jobs)
     if job is None:
         raise ValueError("swarm execution lacks job details")
+    validate_context_binding(authority, job)
     signed = JobConsentConfig(
         job_id=job.job_id,
         goals=job.goals,
@@ -141,6 +141,11 @@ def _validated_swarm_runtime(
         asset_id=job.asset_id,
         live_execution_plan_hash=swarm.plan_hash,
         stage_plan_hash=plan.plan_hash,
+        context_binding_sha256=(
+            str(authority.payload["context_binding_sha256"])
+            if authority.payload.get("context_binding_sha256") is not None
+            else None
+        ),
     )
     if signed.canonical_hash() != authority.consent_config_hash:
         raise ValueError("stage plan conflicts with signed consent configuration")
@@ -153,9 +158,7 @@ def _validated_swarm_runtime(
     ledger.ensure_schema()
     role_budgets: dict[str, int] = {
         role.role: sum(
-            stage.projected_max_cents
-            for stage in plan.stages
-            if stage.router_role == role.role
+            stage.projected_max_cents for stage in plan.stages if stage.router_role == role.role
         )
         for role in swarm.roles
     }
@@ -176,9 +179,7 @@ def _gather_input(
     if item.kind != "gather" or item.shard_index is None:
         return {}, ()
     planner = next(
-        row
-        for row in plan.stages
-        if row.goal_index == item.goal_index and row.kind == "planner"
+        row for row in plan.stages if row.goal_index == item.goal_index and row.kind == "planner"
     )
     checkpoint = runtime.stores.jobs.get_stage_effect(lease.job_id, planner.stage_key)
     if checkpoint is None:
@@ -445,9 +446,7 @@ def _recover_terminal(
             operation_id=operation_id,
             job_id=job_id,
         )
-    authority = runtime.stores.owner_jobs.get_job(
-        owner_user_id=owner_user_id, job_id=job_id
-    )
+    authority = runtime.stores.owner_jobs.get_job(owner_user_id=owner_user_id, job_id=job_id)
     if authority is None or authority.operation_id != operation_id:
         raise ValueError("terminal recovery lacks matching owner authority")
     deposit = resume_terminal_deposit(
@@ -455,6 +454,15 @@ def _recover_terminal(
         store=runtime.stores.jobs,
         engagement_store=runtime.stores.engagement_store,
         owner_user_id=owner_user_id,
+    )
+    recovered_job = get_job(job_id, store=runtime.stores.jobs)
+    if recovered_job is None:
+        raise RuntimeError("terminal recovery lost job details")
+    finalize_bound_session(
+        authority=authority,
+        job=recovered_job,
+        engagement_store=runtime.stores.engagement_store,
+        session_store=runtime.stores.session_store,
     )
     recovery_lease = WorkerLease(
         operation_id=operation_id,
@@ -526,9 +534,7 @@ def run_worker_once(
     now_ms = clock_ms()
     queued = runtime.stores.operation_queue.next_claimable(now_ms=now_ms)
     if queued is None:
-        return WorkerPhaseRecord(
-            result="no_work", phase="queue_empty", worker_id=worker_id
-        )
+        return WorkerPhaseRecord(result="no_work", phase="queue_empty", worker_id=worker_id)
     authority = runtime.stores.owner_jobs.get_job(
         owner_user_id=queued.owner_user_id, job_id=queued.job_id
     )
@@ -639,9 +645,7 @@ def run_worker_once(
                 lease_generation=lease.lease_generation,
                 error_code="configuration_blocked",
             )
-        _archive_current_lease(
-            runtime, lease, terminal_state=target, clock_ms=clock_ms
-        )
+        _archive_current_lease(runtime, lease, terminal_state=target, clock_ms=clock_ms)
         return WorkerPhaseRecord(
             result="blocked_provider",
             phase="configuration_archived",
@@ -690,31 +694,24 @@ def run_worker_once(
                 )
         except LiveExecutionFailed as failure:
             reconcile_failure = (
-                failure.reconcile
-                if isinstance(failure, _SwarmStageFailed)
-                else True
+                failure.reconcile if isinstance(failure, _SwarmStageFailed) else True
             )
             authority_after_failure = runtime.stores.owner_jobs.get_job(
                 owner_user_id=lease.owner_user_id, job_id=lease.job_id
             )
-            if (
-                authority_after_failure is not None
-                and authority_after_failure.operation_state
-                in {
-                    OperationState.COMPLETE,
-                    OperationState.FAILED,
-                    OperationState.BUDGET_HALTED,
-                    OperationState.TIMED_OUT,
-                    OperationState.FAILED_RECONCILE,
-                }
-            ):
+            if authority_after_failure is not None and authority_after_failure.operation_state in {
+                OperationState.COMPLETE,
+                OperationState.FAILED,
+                OperationState.BUDGET_HALTED,
+                OperationState.TIMED_OUT,
+                OperationState.FAILED_RECONCILE,
+            }:
                 _mark_failed_before_network(
                     runtime,
                     lease,
                     clock_ms=clock_ms,
                     reconcile=(
-                        authority_after_failure.operation_state
-                        is OperationState.FAILED_RECONCILE
+                        authority_after_failure.operation_state is OperationState.FAILED_RECONCILE
                     ),
                     reason="live_execution_failed",
                 )
@@ -765,14 +762,10 @@ def run_worker_once(
                     lease_generation=lease.lease_generation,
                     error_code="live_execution_failed",
                 )
-            _archive_current_lease(
-                runtime, lease, terminal_state=target, clock_ms=clock_ms
-            )
+            _archive_current_lease(runtime, lease, terminal_state=target, clock_ms=clock_ms)
             return WorkerPhaseRecord(
                 result=(
-                    "reconcile_required"
-                    if target is OperationState.FAILED_RECONCILE
-                    else "failed"
+                    "reconcile_required" if target is OperationState.FAILED_RECONCILE else "failed"
                 ),
                 phase="paid_iteration_archived",
                 worker_id=worker_id,
@@ -802,8 +795,7 @@ def run_worker_once(
                     lease,
                     clock_ms=clock_ms,
                     reconcile=(
-                        authority_after_exception.operation_state
-                        is OperationState.FAILED_RECONCILE
+                        authority_after_exception.operation_state is OperationState.FAILED_RECONCILE
                     ),
                     reason="ambiguous_iteration",
                 )
@@ -841,9 +833,7 @@ def run_worker_once(
                     lease_generation=lease.lease_generation,
                     error_code="ambiguous_iteration",
                 )
-            _archive_current_lease(
-                runtime, lease, terminal_state=target, clock_ms=clock_ms
-            )
+            _archive_current_lease(runtime, lease, terminal_state=target, clock_ms=clock_ms)
             return WorkerPhaseRecord(
                 result="reconcile_required",
                 phase="ambiguous_iteration_archived",
@@ -860,11 +850,7 @@ def run_worker_once(
     if is_swarm and swarm_run is not None and not swarm_run[1]:
         return WorkerPhaseRecord(
             result="lease_pending",
-            phase=(
-                "shutdown_after_swarm_stage"
-                if stop_requested()
-                else "swarm_stage_settled"
-            ),
+            phase=("shutdown_after_swarm_stage" if stop_requested() else "swarm_stage_settled"),
             worker_id=worker_id,
             operation_id=lease.operation_id,
             job_id=lease.job_id,
@@ -900,12 +886,30 @@ def run_worker_once(
     terminal_job = get_job(lease.job_id, store=runtime.stores.jobs)
     if terminal_job is None:
         raise RuntimeError("deposited operation lost job details")
-    if not terminal_job.step_evidence:
-        terminal_authority = runtime.stores.owner_jobs.get_job(
-            owner_user_id=lease.owner_user_id, job_id=lease.job_id
+    terminal_authority = runtime.stores.owner_jobs.get_job(
+        owner_user_id=lease.owner_user_id, job_id=lease.job_id
+    )
+    if terminal_authority is None:
+        raise RuntimeError("deposited operation lost terminal authority")
+    try:
+        finalize_bound_session(
+            authority=terminal_authority,
+            job=terminal_job,
+            engagement_store=runtime.stores.engagement_store,
+            session_store=runtime.stores.session_store,
         )
-        if terminal_authority is None:
-            raise RuntimeError("deposited operation lost terminal authority")
+    except Exception:
+        return WorkerPhaseRecord(
+            result="deposit_pending",
+            phase="session_flywheel_pending",
+            worker_id=worker_id,
+            operation_id=lease.operation_id,
+            job_id=lease.job_id,
+            lease_generation=lease.lease_generation,
+            deposit_document_id=deposit.document_id,
+            error_code="session_flywheel_pending",
+        )
+    if not terminal_job.step_evidence:
         _renew(runtime, lease, clock_ms=clock_ms)
         _archive_current_lease(
             runtime,

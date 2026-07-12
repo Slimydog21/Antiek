@@ -4,12 +4,14 @@ import {
   confirmSessionTwins,
   fetchResearchContext,
   getOwnedCollectiveUnit,
+  getCollectiveExecutionStatus,
   listEngagementSessions,
   listOwnedEngagementSessions,
   listOwnedCollectiveUnits,
   mergeEngagementSessions,
   mergeSpawnOutputs,
   openEngagementSession,
+  prepareCollectiveExecution,
   spawnFromHighlight,
   updateEngagementSessionView,
 } from "./engagement";
@@ -243,6 +245,33 @@ describe("engagement API client", () => {
     expect(listUrl).not.toContain("owner_id=");
     expect(mockFetch.mock.calls[1][0]).toBe(
       "/engagement/sessions/collective/cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
+    );
+  });
+
+  it("prepares and polls a collective execution without caller owner authority", async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ job_id: "moil_1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ state: "queued" }) });
+    await prepareCollectiveExecution("cunit_aaaaaaaaaaaaaaaaaaaaaaaa", {
+      session_id: "fsess_0123456789abcdef",
+      expected_preview_sha256: "b".repeat(64),
+      idempotency_key: "execution-prepare-001",
+      duration_minutes: 60,
+      model_id: "test-model",
+      research_tier: "wrestle",
+      fanout_depth: 3,
+    });
+    await getCollectiveExecutionStatus(
+      "cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
+      "cexec_cccccccccccccccccccccccc",
+    );
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "/engagement/sessions/collective/cunit_aaaaaaaaaaaaaaaaaaaaaaaa/execution/prepare",
+    );
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body)).not.toHaveProperty("owner_id");
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      "/engagement/sessions/collective/cunit_aaaaaaaaaaaaaaaaaaaaaaaa/execution/cexec_cccccccccccccccccccccccc",
     );
   });
 
