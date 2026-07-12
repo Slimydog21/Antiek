@@ -23,6 +23,7 @@ import {
   prepareMultimediaLiveExecution,
   manualGateIds,
   runMultimediaHardening,
+  registerMultimediaProduction,
   executeChapterTtsReconciliation,
   steerMultimediaAsset,
 } from "./multimedia";
@@ -153,6 +154,7 @@ describe("multimedia API client", () => {
     const playback = {
       asset_id: "mm-1",
       revision_id: "rev-1",
+      receipt_sha256: "c".repeat(64),
       duration_seconds: 20,
       video_sha256: "a".repeat(64),
       audio_sha256: "b".repeat(64),
@@ -173,6 +175,38 @@ describe("multimedia API client", () => {
 
     mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...playback, revision_id: "rev-other" }));
     await expect(getMultimediaPlayback("mm-1", "rev-1")).rejects.toThrow("identity_conflict");
+  });
+
+  it("registers only the expected production revision", async () => {
+    const produced = {
+      ...record,
+      production_link: {
+        schema_version: "antiek.multimedia-production-link.v1",
+        owner_identity_digest: "d".repeat(64),
+        asset_id: "mm 1",
+        revision_id: "rev-1",
+        receipt_sha256: "c".repeat(64),
+        video_sha256: "a".repeat(64),
+        audio_sha256: "b".repeat(64),
+        duration_seconds: 20,
+        width_px: 1280,
+        height_px: 720,
+        chapter_ids: ["chapter-1"],
+      },
+      asset: { ...record.asset, asset_id: "mm 1" },
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, produced));
+    await registerMultimediaProduction("mm 1", "rev-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm%201/production-registration",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ expected_revision_id: "rev-1" }),
+      }),
+    );
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...produced, production_link: { ...produced.production_link, revision_id: "rev-other" } }));
+    await expect(registerMultimediaProduction("mm 1", "rev-1")).rejects.toThrow("identity_conflict");
   });
 
   it("surfaces a typed not-found error for a 404 job list", async () => {

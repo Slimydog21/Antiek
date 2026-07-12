@@ -40,6 +40,7 @@ export interface MultimediaAssetSummary {
   latest_job_kind: MultimediaJobKind | null;
   knowledge_finalized?: boolean;
   twin_document_id?: string | null;
+  production_ready?: boolean;
 }
 
 export interface MultimediaKnowledgeLink {
@@ -130,6 +131,21 @@ export interface MultimediaAssetRecord {
   jobs: MultimediaJobRecord[];
   knowledge_link?: MultimediaKnowledgeLink | null;
   knowledge_finalization_revision_id?: string | null;
+  production_link?: MultimediaProductionLink | null;
+}
+
+export interface MultimediaProductionLink {
+  schema_version: "antiek.multimedia-production-link.v1";
+  owner_identity_digest: string;
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  video_sha256: string;
+  audio_sha256: string;
+  duration_seconds: number;
+  width_px: number;
+  height_px: number;
+  chapter_ids: string[];
 }
 
 export interface MultimediaSourceCitationWire {
@@ -189,6 +205,7 @@ export interface MultimediaPlanWire {
 export interface MultimediaPlayback {
   asset_id: string;
   revision_id: string;
+  receipt_sha256: string;
   duration_seconds: number;
   video_sha256: string;
   audio_sha256: string;
@@ -345,6 +362,34 @@ export async function getMultimediaPlayback(
     video_url: `${API_BASE}${playback.video_url}`,
     audio_url: `${API_BASE}${playback.audio_url}`,
   };
+}
+
+export async function registerMultimediaProduction(
+  assetId: string,
+  expectedRevisionId: string,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/production-registration`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected_revision_id: expectedRevisionId }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_production_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_production_conflict");
+  if (resp.status === 503) throw new Error("multimedia_playback_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/production-registration: HTTP ${resp.status}`);
+  const record = (await resp.json()) as MultimediaAssetRecord;
+  if (
+    record.asset.asset_id !== assetId ||
+    record.asset.revision_id !== expectedRevisionId ||
+    record.production_link?.asset_id !== assetId ||
+    record.production_link.revision_id !== expectedRevisionId
+  ) {
+    throw new Error("multimedia_production_identity_conflict");
+  }
+  return record;
 }
 
 export async function listMultimediaJobs(assetId: string): Promise<MultimediaJobList> {

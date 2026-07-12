@@ -9,6 +9,7 @@ import {
   getMultimediaPlayback,
   listMultimediaAssets,
   runMultimediaHardening,
+  registerMultimediaProduction,
   steerMultimediaAsset,
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord } from "../../api/multimedia";
@@ -27,6 +28,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     getMultimediaPlayback: vi.fn(),
     listMultimediaAssets: vi.fn(),
     runMultimediaHardening: vi.fn(),
+    registerMultimediaProduction: vi.fn(),
     steerMultimediaAsset: vi.fn(),
   };
 });
@@ -37,6 +39,7 @@ const mockGet = vi.mocked(getMultimediaAsset);
 const mockPlayback = vi.mocked(getMultimediaPlayback);
 const mockList = vi.mocked(listMultimediaAssets);
 const mockHarden = vi.mocked(runMultimediaHardening);
+const mockRegisterProduction = vi.mocked(registerMultimediaProduction);
 const mockSteer = vi.mocked(steerMultimediaAsset);
 
 const serverPlan: MultimediaPlanWire = {
@@ -137,6 +140,7 @@ beforeEach(() => {
   mockPlayback.mockResolvedValue({
     asset_id: "mm-1",
     revision_id: "rev-1",
+    receipt_sha256: "c".repeat(64),
     duration_seconds: 30,
     video_sha256: "a".repeat(64),
     audio_sha256: "b".repeat(64),
@@ -147,6 +151,22 @@ beforeEach(() => {
     chapter_ids: ["server-intro", "server-mechanism"],
     video_url: "/multimedia/assets/mm-1/playback/rev-1/video",
     audio_url: "/multimedia/assets/mm-1/playback/rev-1/audio",
+  });
+  mockRegisterProduction.mockResolvedValue({
+    ...approvedRecord,
+    production_link: {
+      schema_version: "antiek.multimedia-production-link.v1",
+      owner_identity_digest: "d".repeat(64),
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      receipt_sha256: "c".repeat(64),
+      video_sha256: "a".repeat(64),
+      audio_sha256: "b".repeat(64),
+      duration_seconds: 30,
+      width_px: 1920,
+      height_px: 1080,
+      chapter_ids: ["server-intro", "server-mechanism"],
+    },
   });
   mockApprove.mockResolvedValue(approvedRecord);
   mockSteer.mockResolvedValue(steeredRecord);
@@ -209,6 +229,17 @@ describe("Multimedia workstation", () => {
     await screen.findByText("No verified media receipt");
     expect(screen.queryByLabelText(/Video playback for/)).toBeNull();
     expect(screen.queryByText("Ken Burns preview")).toBeNull();
+  });
+
+  it("registers an existing verified receipt before presenting produced media", async () => {
+    mockPlayback.mockRejectedValueOnce(new Error("multimedia_playback_unavailable"));
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    const register = await screen.findByRole("button", { name: "Register produced media" });
+    fireEvent.click(register);
+
+    await waitFor(() => expect(mockRegisterProduction).toHaveBeenCalledWith("mm-1", "rev-1"));
+    expect(await screen.findByLabelText(/Video playback for/)).toBeTruthy();
   });
 
   it("blocks approval while the persisted plan contains an unsourced factual line", async () => {

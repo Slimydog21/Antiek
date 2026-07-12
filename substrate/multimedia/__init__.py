@@ -71,6 +71,11 @@ from .playback import (
     SourceCard,
     build_playback_read_model,
 )
+from .production_registration import (
+    MultimediaProductionRegistrationError,
+    MultimediaProductionRegistrationRequest,
+    register_multimedia_production,
+)
 from .provider_router import (
     BudgetExceeded,
     KreaProviderAdapter,
@@ -234,4 +239,7 @@ __all__ = [
     "PlaybackMediaMetadata",
     "VerifiedPlaybackError",
     "VerifiedPlaybackRuntime",
+    "MultimediaProductionRegistrationError",
+    "MultimediaProductionRegistrationRequest",
+    "register_multimedia_production",
 ]

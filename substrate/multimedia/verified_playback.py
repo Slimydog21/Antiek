@@ -30,6 +30,7 @@ class UnsatisfiableMediaRange(VerifiedPlaybackError):
 class PlaybackMediaMetadata:
     asset_id: str
     revision_id: str
+    receipt_sha256: str
     duration_seconds: float
     video_sha256: str
     audio_sha256: str
@@ -48,6 +49,7 @@ class MediaByteRange:
     end: int
     total: int
     sha256: str
+    receipt_sha256: str
     media_type: Literal["video/mp4", "audio/wav"]
 
 
@@ -67,11 +69,13 @@ class VerifiedPlaybackRuntime:
 
     def metadata(self, *, asset_id: str, revision_id: str) -> PlaybackMediaMetadata:
         receipt = self._receipt(asset_id, revision_id)
+        receipt_sha256 = hashlib.sha256(receipt.to_json().encode("utf-8")).hexdigest()
         render = receipt.render.manifest
         narration = receipt.narration.manifest
         return PlaybackMediaMetadata(
             asset_id=asset_id,
             revision_id=revision_id,
+            receipt_sha256=receipt_sha256,
             duration_seconds=render.duration_seconds,
             video_sha256=render.output_sha256,
             audio_sha256=narration.output_sha256,
@@ -91,6 +95,7 @@ class VerifiedPlaybackRuntime:
         range_header: str | None,
     ) -> MediaByteRange:
         receipt = self._receipt(asset_id, revision_id)
+        receipt_sha256 = hashlib.sha256(receipt.to_json().encode("utf-8")).hexdigest()
         if kind == "video":
             path = receipt.render.manifest.output_path
             digest = receipt.render.manifest.output_sha256
@@ -121,6 +126,7 @@ class VerifiedPlaybackRuntime:
             end=end,
             total=size,
             sha256=digest,
+            receipt_sha256=receipt_sha256,
             media_type=media_type,
         )
 

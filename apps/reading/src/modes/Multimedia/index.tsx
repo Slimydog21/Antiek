@@ -10,6 +10,7 @@ import {
   listMultimediaAssets,
   manualGateIds,
   runMultimediaHardening,
+  registerMultimediaProduction,
   steerMultimediaAsset,
 } from "../../api/multimedia";
 import type {
@@ -173,6 +174,7 @@ function distributeMinutes(total: number): number[] {
 
 export default function Multimedia() {
   const openRequestId = useRef(0);
+  const productionRequestId = useRef(0);
   const [topic, setTopic] = useState("The aircraft program that made cheap long-haul travel possible");
   const [duration, setDuration] = useState(30);
   const [customDuration, setCustomDuration] = useState("30");
@@ -195,6 +197,12 @@ export default function Multimedia() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [playback, setPlayback] = useState<MultimediaPlaybackRecord | null>(null);
   const [playbackLoading, setPlaybackLoading] = useState(false);
+  const [productionRegistrationPending, setProductionRegistrationPending] = useState(false);
+
+  useEffect(() => {
+    productionRequestId.current += 1;
+    setProductionRegistrationPending(false);
+  }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -379,6 +387,31 @@ export default function Multimedia() {
       setRenderState("failed");
     } finally {
       setPendingCommand(null);
+    }
+  }
+
+  async function registerProducedMedia() {
+    if (!selectedRecord || productionRegistrationPending) return;
+    const requestedAssetId = selectedRecord.asset.asset_id;
+    const requestedRevisionId = selectedRecord.asset.revision_id;
+    const requestedRecord = selectedRecord;
+    const requestId = ++productionRequestId.current;
+    setProductionRegistrationPending(true);
+    try {
+      const record = await registerMultimediaProduction(
+        requestedAssetId,
+        requestedRevisionId,
+      );
+      if (requestId === productionRequestId.current) {
+        setSelectedRecord((current) => (current === requestedRecord ? record : current));
+      }
+      if (requestId === productionRequestId.current) setApiError(null);
+    } catch {
+      if (requestId === productionRequestId.current) {
+        setApiError("No verified production receipt is available for this revision.");
+      }
+    } finally {
+      if (requestId === productionRequestId.current) setProductionRegistrationPending(false);
     }
   }
 
@@ -853,6 +886,17 @@ export default function Multimedia() {
                         <p className="mt-2 text-[13px] text-moonlight">
                           This revision has plan and transcript data, but no verified video or narration is available to play.
                         </p>
+                        {selectedRecord && !selectedRecord.production_link && (
+                          <LemonButton
+                            type="button"
+                            variant="secondary"
+                            className="mt-3"
+                            onClick={registerProducedMedia}
+                            disabled={productionRegistrationPending}
+                          >
+                            {productionRegistrationPending ? "Checking receipt..." : "Register produced media"}
+                          </LemonButton>
+                        )}
                       </div>
                     )}
                   </div>

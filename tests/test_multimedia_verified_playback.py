@@ -44,6 +44,7 @@ def _runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> tuple[VerifiedP
         revision_id="rev-1",
         render=SimpleNamespace(manifest=render_manifest),
         narration=SimpleNamespace(manifest=narration_manifest),
+        to_json=lambda: '{"asset_id":"mm-1","revision_id":"rev-1"}',
     )
     monkeypatch.setattr(
         "substrate.multimedia.verified_playback.EducationalVideoReceipt.reopen_from_file",

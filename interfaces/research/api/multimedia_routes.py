@@ -26,6 +26,10 @@ from substrate.multimedia.knowledge_finalization import (
     read_multimedia_twin_document,
     recover_multimedia_knowledge_finalization,
 )
+from substrate.multimedia.production_registration import (
+    MultimediaProductionRegistrationRequest,
+    register_multimedia_production,
+)
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
     LiveProviderExecutionRequest,
@@ -286,11 +290,20 @@ def register_multimedia_routes(app: FastAPI) -> None:
         app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
     playback_runtime = multimedia_playback_runtime_from_environment()
     if playback_runtime is not None:
+        playback = playback_runtime.playback
         playback_runtime = replace(
             playback_runtime,
-            asset_revision_resolver=lambda asset_id, operator_id: get_store()
-            .get(asset_id, owner_id=operator_id)
-            .asset.revision_id,
+            asset_authority_resolver=lambda asset_id, operator_id: (
+                (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
+                record.production_link,
+            ),
+            production_registrar=lambda asset_id, revision_id, operator_id: register_multimedia_production(
+                asset_id,
+                MultimediaProductionRegistrationRequest(expected_revision_id=revision_id),
+                owner_id=operator_id,
+                store=get_store(),
+                playback=playback,
+            ),
         )
         app.dependency_overrides[get_multimedia_playback_runtime] = lambda: playback_runtime
 
