@@ -84,4 +84,6 @@ def register_settings_add_model_nd_shadow_competition_dr_mo_compose_routes(
 __all__ = [
     "settings_add_model_nd_shadow_competition_dr_mo_compose_router",
     "register_settings_add_model_nd_shadow_competition_dr_mo_compose_routes",
+    "SettingsBody",
+    "NdPackBody",
 ]
