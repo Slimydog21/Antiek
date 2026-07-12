@@ -9,7 +9,7 @@ import os
 import re
 import stat
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
 
@@ -78,7 +78,11 @@ class ResolvedReviewedVisualSet:
 
 class VisualCandidateResolver(Protocol):
     def __call__(
-        self, record: MultimediaAssetRecord, chapter_id: str, candidate_id: str
+        self,
+        record: MultimediaAssetRecord,
+        owner_id: str,
+        chapter_id: str,
+        candidate_id: str,
     ) -> ReviewedVisualSelection: ...
 
 
@@ -306,11 +310,16 @@ def register_reviewed_visuals(
     try:
         for chapter, binding in zip(chapters, request.bindings, strict=True):
             selection = ReviewedVisualSelection.model_validate(
-                candidate_resolver(record, chapter.chapter_id, binding.candidate_id).model_dump(
-                    mode="python"
-                )
+                candidate_resolver(
+                    record, owner_id, chapter.chapter_id, binding.candidate_id
+                ).model_dump(mode="python")
             )
-            if selection.scene_id != f"scene-{chapter.chapter_id}":
+            scenes = tuple(
+                row
+                for row in record.plan.scenes
+                if row.chapter_id == chapter.chapter_id and row.scene_id == selection.scene_id
+            )
+            if len(scenes) != 1:
                 raise ReviewedVisualRegistryError("visual candidate scene conflicts")
             if selection.source_chunk_ids != chapter.source_chunk_ids:
                 raise ReviewedVisualRegistryError("visual candidate grounding conflicts")
@@ -337,7 +346,7 @@ def register_reviewed_visuals(
     final = _record(asset_id, owner_id, store)
     if final.asset.revision_id != request.expected_revision_id:
         raise ReviewedVisualRegistryError("multimedia visual revision changed during review")
-    return receipt
+    return replace(receipt, chapter_ids=tuple(row.chapter_id for row in chapters))
 
 
 def get_reviewed_visuals(
@@ -351,10 +360,32 @@ def get_reviewed_visuals(
     record = _record(asset_id, owner_id, store)
     if record.asset.revision_id != revision_id:
         raise ReviewedVisualRegistryError("reviewed visual set is unavailable")
-    return registry.get(
+    resolved = registry.get(
         owner_identity_digest=record.asset.owner_user_id,
         asset_id=asset_id,
         revision_id=revision_id,
+    )
+    chapter_ids: list[str] = []
+    for selection in resolved.selections:
+        matches = tuple(
+            chapter.chapter_id
+            for chapter in record.plan.chapters
+            if tuple(chapter.source_chunk_ids) == tuple(selection.source_chunk_ids)
+            and (
+                any(
+                    scene.scene_id == selection.scene_id
+                    and scene.chapter_id == chapter.chapter_id
+                    for scene in record.plan.scenes
+                )
+                or selection.scene_id == f"scene-{chapter.chapter_id}"
+            )
+        )
+        if len(matches) != 1:
+            raise ReviewedVisualRegistryError("reviewed visual chapter binding is unavailable")
+        chapter_ids.append(matches[0])
+    return replace(
+        resolved,
+        receipt=replace(resolved.receipt, chapter_ids=tuple(chapter_ids)),
     )
 
 

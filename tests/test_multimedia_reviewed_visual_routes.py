@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import hashlib
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -38,12 +38,14 @@ def _setup(tmp_path: Path, *, operator: str = "owner-1"):
     root = tmp_path / "candidates"
     root.mkdir()
 
-    def resolver(record, chapter_id: str, candidate_id: str):
+    def resolver(record, owner_id: str, chapter_id: str, candidate_id: str):
+        assert owner_id == "owner-1"
         chapter = next(row for row in record.plan.chapters if row.chapter_id == chapter_id)
         path = root / f"{candidate_id}.ppm"
         path.write_bytes(f"P6\n1 1\n255\n{candidate_id}".encode())
+        scene = next(row for row in record.plan.scenes if row.chapter_id == chapter_id)
         return ReviewedVisualSelection(
-            scene_id=f"scene-{chapter_id}",
+            scene_id=scene.scene_id,
             path=str(path),
             expected_sha256=hashlib.sha256(path.read_bytes()).hexdigest(),
             visual_label="generated",
@@ -145,56 +147,42 @@ def test_stale_incomplete_and_changed_replay_fail(tmp_path: Path) -> None:
     assert client.post(url, json=changed).status_code == 409
 
 
-def test_environment_catalog_is_all_or_nothing_and_server_bound(tmp_path: Path) -> None:
-    client, ready, spoken = _setup(tmp_path)
-    injected = client.app.dependency_overrides[get_multimedia_reviewed_visual_runtime]()
-    catalog_path = tmp_path / "catalog.json"
-    rows = []
-    for index, chapter in enumerate(spoken):
-        candidate_id = f"catalog-{index}"
-        selection = injected.candidate_resolver(ready, chapter.chapter_id, candidate_id)
-        rows.append(
-            {
-                "asset_id": ready.asset.asset_id,
-                "candidate_id": candidate_id,
-                "chapter_id": chapter.chapter_id,
-                "revision_id": ready.asset.revision_id,
-                "selection": selection.model_dump(mode="json"),
-            }
-        )
-    catalog_path.write_text(json.dumps({"schema_version": 1, "candidates": rows}))
-    catalog_path.chmod(0o600)
+def test_environment_authorities_are_all_or_nothing(tmp_path: Path) -> None:
+    _client, _ready, _spoken = _setup(tmp_path)
     values = {
         "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_ENABLED": "true",
         "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_DB_PATH": str(tmp_path / "env.duckdb"),
         "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_INTEGRITY_KEY_HEX": "11" * 32,
-        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_CATALOG_PATH": str(catalog_path),
+        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_AUTHORITY_DB_PATH": str(tmp_path / "auth.duckdb"),
+        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_AUTHORITY_SIGNING_KEY_HEX": "22" * 32,
+        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_EXECUTION_DB_PATH": str(tmp_path / "exec.duckdb"),
+        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_EXECUTION_SIGNING_KEY_HEX": "33" * 32,
+        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_OPERATOR_VERIFY_KEY_HEX": "44" * 32,
+        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_EVIDENCE_AUTHORITY_KEY_HEX": "55" * 32,
+        "ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_AUTHORIZED_REVIEWER_IDS": "owner-1",
     }
     runtime = multimedia_reviewed_visual_runtime_from_environment(
-        store=injected.store, environ=values
+        store=_client.app.dependency_overrides[get_multimedia_reviewed_visual_runtime]().store,
+        environ=values,
     )
     assert runtime is not None
-    resolved = runtime.candidate_resolver(ready, spoken[0].chapter_id, "catalog-0")
-    assert resolved.scene_id == f"scene-{spoken[0].chapter_id}"
-    try:
-        runtime.candidate_resolver(ready, spoken[-1].chapter_id, "catalog-0")
-    except LookupError:
-        pass
-    else:
-        raise AssertionError("candidate must be bound to its catalog chapter")
-
     assert multimedia_reviewed_visual_runtime_from_environment(
-        store=injected.store, environ={}
+        store=runtime.store, environ={}
     ) is None
-    values.pop("ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_CATALOG_PATH")
+    values.pop("ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_AUTHORITY_DB_PATH")
     try:
-        multimedia_reviewed_visual_runtime_from_environment(
-            store=injected.store, environ=values
-        )
+        multimedia_reviewed_visual_runtime_from_environment(store=runtime.store, environ=values)
     except RuntimeError as exc:
         assert "incomplete" in str(exc)
     else:
         raise AssertionError("partial reviewed visual configuration must fail")
+
+    values["ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_AUTHORITY_DB_PATH"] = str(
+        tmp_path / "auth.duckdb"
+    )
+    values["ANTIEK_MULTIMEDIA_REVIEWED_VISUAL_AUTHORIZED_REVIEWER_IDS"] = " , "
+    with pytest.raises(RuntimeError, match="invalid"):
+        multimedia_reviewed_visual_runtime_from_environment(store=runtime.store, environ=values)
 
 
 def test_app_registration_composes_reviewed_visual_runtime(tmp_path: Path, monkeypatch) -> None:

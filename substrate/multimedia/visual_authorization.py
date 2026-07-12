@@ -73,6 +73,13 @@ class VisualAuthorizationResult:
     authorization: MultimediaExecutionAuthorizationV2
 
 
+@dataclass(frozen=True)
+class VisualAuthorizationBinding:
+    chapter_id: str
+    scene_id: str
+    authorization: MultimediaExecutionAuthorizationV2
+
+
 class VisualAuthorizationRegistry:
     def __init__(self, *, db_path: str, signing_key: bytes) -> None:
         if not db_path or not isinstance(signing_key, bytes) or len(signing_key) < 32:
@@ -260,6 +267,82 @@ class VisualAuthorizationRegistry:
             now=now,
         )
 
+    def resolve_binding(
+        self,
+        *,
+        authorization_id: str,
+        owner_id: str,
+        asset_id: str,
+        revision_id: str,
+    ) -> VisualAuthorizationBinding:
+        """Resolve one signed authority row without reissuing or extending it."""
+        if not _ID.fullmatch(authorization_id):
+            raise VisualAuthorizationError("visual authorization identifier is invalid")
+        owner_digest = hashlib.sha256(owner_id.encode()).hexdigest()
+        coordinator = FlockWriteCoordinator(self._db_path)
+        with coordinator.acquire_write_context("multimedia.visual_authorization.resolve") as ctx:
+            ctx.execute(_DDL)
+            rows = ctx.execute(
+                "SELECT * FROM multimedia_visual_authorizations "
+                "WHERE owner_identity_digest=? ORDER BY request_id LIMIT 4097",
+                [owner_digest],
+            ).fetchall()
+        if len(rows) > 4096:
+            raise VisualAuthorizationError("visual authorization lookup is unavailable")
+        matched: list[VisualAuthorizationBinding] = []
+        for row in rows:
+            if len(row) != 9 or not isinstance(row[8], str) or not hmac.compare_digest(
+                row[8], _mac(list(row[:8]), self._key)
+            ):
+                raise VisualAuthorizationError("stored visual authorization integrity failed")
+            try:
+                authorization = MultimediaExecutionAuthorizationV2.from_dict(json.loads(row[7]))
+                verify_async_execution_authorization(
+                    authorization,
+                    signing_key=self._key,
+                    operator_id=authorization.operator_id,
+                    asset_id=authorization.asset_id,
+                    revision_id=authorization.revision_id,
+                    provider="krea",
+                    route_policy=authorization.route_policy,
+                    model=authorization.model,
+                    endpoint_capability=authorization.endpoint_capability,
+                    catalog_version=authorization.catalog_version,
+                    catalog_digest=authorization.catalog_digest,
+                    quote_id=authorization.quote_id,
+                    recovery_authority_id=authorization.recovery_authority_id,
+                    recovery_verification_key_digest=(
+                        authorization.recovery_verification_key_digest
+                    ),
+                    approved_ceiling_microdollars=(
+                        authorization.approved_ceiling_microdollars
+                    ),
+                    request_body_digest=authorization.request_body_digest,
+                    # This is retrospective provenance verification. A completed
+                    # execution must remain usable after its spend authority expires.
+                    now=datetime.fromisoformat(
+                        authorization.issued_at.replace("Z", "+00:00")
+                    ),
+                )
+            except Exception as exc:
+                raise VisualAuthorizationError(
+                    "stored visual authorization integrity failed"
+                ) from exc
+            if authorization.authorization_id == authorization_id:
+                matched.append(
+                    VisualAuthorizationBinding(str(row[3]), str(row[4]), authorization)
+                )
+        if len(matched) != 1:
+            raise VisualAuthorizationError("visual authorization is unavailable")
+        binding = matched[0]
+        if (
+            binding.authorization.operator_id != owner_id
+            or binding.authorization.asset_id != asset_id
+            or binding.authorization.revision_id != revision_id
+        ):
+            raise VisualAuthorizationError("visual authorization authority conflicts")
+        return binding
+
     def _replay(self, row, request_hash, prepared, terms, now):  # noqa: ANN001
         if len(row) != 9 or not isinstance(row[8], str) or not hmac.compare_digest(
             row[8], _mac(list(row[:8]), self._key)
@@ -314,6 +397,6 @@ def _mac(values: list[object], key: bytes) -> str:
 
 
 __all__ = [
-    "VisualAuthorizationError", "VisualAuthorizationRegistry", "VisualAuthorizationRequest",
-    "VisualAuthorizationResult", "VisualAuthorizationTerms",
+    "VisualAuthorizationBinding", "VisualAuthorizationError", "VisualAuthorizationRegistry",
+    "VisualAuthorizationRequest", "VisualAuthorizationResult", "VisualAuthorizationTerms",
 ]

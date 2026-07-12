@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import os
-import stat
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
@@ -12,6 +10,9 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from substrate.multimedia.generated_visual_candidate_resolver import (
+    GeneratedVisualCandidateResolver,
+)
 from substrate.multimedia.read_model import MultimediaAssetStore
 from substrate.multimedia.reviewed_visual_registry import (
     RegisterReviewedVisualsRequest,
@@ -23,7 +24,8 @@ from substrate.multimedia.reviewed_visual_registry import (
     get_reviewed_visuals,
     register_reviewed_visuals,
 )
-from substrate.multimedia.visual_selection import ReviewedVisualSelection
+from substrate.multimedia.visual_authorization import VisualAuthorizationRegistry
+from substrate.multimedia.visual_evidence_authority import VisualEvidenceAuthority
 
 from .multimedia_reconciliation_routes import authenticated_multimedia_operator
 
@@ -79,7 +81,13 @@ def multimedia_reviewed_visual_runtime_from_environment(
     fields = {
         "db_path": values.get(f"{prefix}DB_PATH", "").strip(),
         "integrity_key": values.get(f"{prefix}INTEGRITY_KEY_HEX", "").strip(),
-        "catalog_path": values.get(f"{prefix}CATALOG_PATH", "").strip(),
+        "authority_db_path": values.get(f"{prefix}AUTHORITY_DB_PATH", "").strip(),
+        "authority_key": values.get(f"{prefix}AUTHORITY_SIGNING_KEY_HEX", "").strip(),
+        "execution_db_path": values.get(f"{prefix}EXECUTION_DB_PATH", "").strip(),
+        "execution_key": values.get(f"{prefix}EXECUTION_SIGNING_KEY_HEX", "").strip(),
+        "operator_verify_key": values.get(f"{prefix}OPERATOR_VERIFY_KEY_HEX", "").strip(),
+        "evidence_key": values.get(f"{prefix}EVIDENCE_AUTHORITY_KEY_HEX", "").strip(),
+        "reviewer_ids": values.get(f"{prefix}AUTHORIZED_REVIEWER_IDS", "").strip(),
     }
     if not enabled and not any(fields.values()):
         return None
@@ -87,31 +95,48 @@ def multimedia_reviewed_visual_runtime_from_environment(
         raise RuntimeError("multimedia reviewed visual configuration is incomplete")
     try:
         integrity_key = bytes.fromhex(fields["integrity_key"])
+        authority_key = bytes.fromhex(fields["authority_key"])
+        execution_key = bytes.fromhex(fields["execution_key"])
+        operator_verify_key = bytes.fromhex(fields["operator_verify_key"])
+        evidence_key = bytes.fromhex(fields["evidence_key"])
     except ValueError:
         raise RuntimeError("multimedia reviewed visual configuration is invalid") from None
-    if len(integrity_key) < 32:
+    if (
+        len(integrity_key) < 32
+        or len(authority_key) < 32
+        or len(execution_key) < 32
+        or len(operator_verify_key) != 32
+        or len(evidence_key) < 32
+    ):
         raise RuntimeError("multimedia reviewed visual configuration is invalid")
-    candidates = _load_candidate_catalog(fields["catalog_path"])
-
-    def resolve(record, chapter_id: str, candidate_id: str) -> ReviewedVisualSelection:
-        candidate = candidates.get(candidate_id)
-        if candidate is None:
-            raise LookupError("candidate is unavailable")
-        asset_id, revision_id, bound_chapter, selection = candidate
-        if (
-            asset_id != record.asset.asset_id
-            or revision_id != record.asset.revision_id
-            or bound_chapter != chapter_id
-        ):
-            raise LookupError("candidate is unavailable")
-        return selection
+    reviewers = frozenset(
+        value.strip() for value in fields["reviewer_ids"].split(",") if value.strip()
+    )
+    if not reviewers:
+        raise RuntimeError("multimedia reviewed visual configuration is invalid")
+    try:
+        resolver = GeneratedVisualCandidateResolver(
+            execution_db_path=fields["execution_db_path"],
+            execution_signing_key=execution_key,
+            authorization_registry=VisualAuthorizationRegistry(
+                db_path=fields["authority_db_path"], signing_key=authority_key
+            ),
+            evidence_authority=VisualEvidenceAuthority(
+                db_path=fields["execution_db_path"],
+                operator_verify_key=operator_verify_key,
+                evidence_authority_key=evidence_key,
+                authorized_reviewer_ids=reviewers,
+            ),
+        )
+    except ValueError:
+        raise RuntimeError("multimedia reviewed visual configuration is invalid") from None
 
     return MultimediaReviewedVisualRuntime(
         store=store,
         registry=ReviewedVisualRegistry(
             db_path=fields["db_path"], integrity_key=integrity_key
         ),
-        candidate_resolver=resolve,
+        candidate_resolver=resolver,
         clock=lambda: datetime.now(UTC),
     )
 
@@ -188,70 +213,6 @@ def read_multimedia_reviewed_visuals(
 
 def _response(receipt: ReviewedVisualSetReceipt) -> ReviewedVisualSetResponse:
     return ReviewedVisualSetResponse.model_validate(asdict(receipt))
-
-
-def _load_candidate_catalog(
-    path_value: str,
-) -> dict[str, tuple[str, str, str, ReviewedVisualSelection]]:
-    try:
-        metadata = os.lstat(path_value)
-        if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISREG(metadata.st_mode):
-            raise RuntimeError("multimedia reviewed visual catalog is invalid")
-        if stat.S_IMODE(metadata.st_mode) & 0o077:
-            raise RuntimeError("multimedia reviewed visual catalog must be private")
-        if metadata.st_size <= 0 or metadata.st_size > 4 * 1024 * 1024:
-            raise RuntimeError("multimedia reviewed visual catalog is invalid")
-        fd = os.open(path_value, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
-    except OSError as exc:
-        raise RuntimeError("multimedia reviewed visual catalog is unavailable") from exc
-    try:
-        opened = os.fstat(fd)
-        if (metadata.st_dev, metadata.st_ino) != (opened.st_dev, opened.st_ino):
-            raise RuntimeError("multimedia reviewed visual catalog changed while reading")
-        chunks: list[bytes] = []
-        total = 0
-        while chunk := os.read(fd, 1024 * 1024):
-            total += len(chunk)
-            if total > 4 * 1024 * 1024:
-                raise RuntimeError("multimedia reviewed visual catalog is invalid")
-            chunks.append(chunk)
-        after = os.fstat(fd)
-        if (opened.st_size, opened.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
-            raise RuntimeError("multimedia reviewed visual catalog changed while reading")
-        payload = b"".join(chunks)
-    finally:
-        os.close(fd)
-    if len(payload) != metadata.st_size:
-        raise RuntimeError("multimedia reviewed visual catalog changed while reading")
-    try:
-        decoded = json.loads(payload)
-        if not isinstance(decoded, dict) or decoded.get("schema_version") != 1:
-            raise ValueError
-        rows = decoded.get("candidates")
-        if not isinstance(rows, list) or not rows or len(rows) > 4096:
-            raise ValueError
-        catalog: dict[str, tuple[str, str, str, ReviewedVisualSelection]] = {}
-        for row in rows:
-            if not isinstance(row, dict) or set(row) != {
-                "asset_id",
-                "candidate_id",
-                "chapter_id",
-                "revision_id",
-                "selection",
-            }:
-                raise ValueError
-            candidate_id = str(row["candidate_id"])
-            if not candidate_id or len(candidate_id) > 128 or candidate_id in catalog:
-                raise ValueError
-            catalog[candidate_id] = (
-                str(row["asset_id"]),
-                str(row["revision_id"]),
-                str(row["chapter_id"]),
-                ReviewedVisualSelection.model_validate(row["selection"]),
-            )
-    except (json.JSONDecodeError, TypeError, ValueError) as exc:
-        raise RuntimeError("multimedia reviewed visual catalog is invalid") from exc
-    return catalog
 
 
 __all__ = [
