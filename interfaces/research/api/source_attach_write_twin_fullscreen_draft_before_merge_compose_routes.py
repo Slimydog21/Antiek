@@ -78,6 +78,8 @@ def register_source_attach_write_twin_fullscreen_draft_before_merge_compose_rout
 
 
 __all__ = [
+    "SourcesBody",
+    "WritePackBody",
     "source_attach_write_twin_fullscreen_draft_before_merge_compose_router",
     "register_source_attach_write_twin_fullscreen_draft_before_merge_compose_routes",
 ]
