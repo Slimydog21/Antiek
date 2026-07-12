@@ -40,6 +40,12 @@ from substrate.multimedia.read_model import (
     SteeringRequest,
 )
 
+from .multimedia_local_routes import (
+    get_multimedia_local_runtime,
+    get_multimedia_local_runtime_optional,
+    multimedia_local_router,
+)
+from .multimedia_local_runtime import multimedia_local_runtime_from_environment
 from .multimedia_narration_authorization_routes import (
     get_multimedia_narration_authorization_runtime,
     multimedia_narration_authorization_router,
@@ -96,6 +102,7 @@ from .multimedia_visual_review_routes import (
 
 multimedia_router = APIRouter(prefix="/multimedia", tags=["multimedia"])
 multimedia_router.include_router(multimedia_reconciliation_router)
+multimedia_router.include_router(multimedia_local_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
@@ -338,6 +345,12 @@ def register_multimedia_routes(app: FastAPI) -> None:
     knowledge_runtime = multimedia_knowledge_runtime_from_environment()
     if knowledge_runtime is not None:
         app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
+    local_runtime = multimedia_local_runtime_from_environment(store=get_store())
+    if local_runtime is not None:
+        app.dependency_overrides[get_multimedia_local_runtime_optional] = (
+            lambda: local_runtime
+        )
+        app.dependency_overrides[get_multimedia_local_runtime] = lambda: local_runtime
     playback_runtime = multimedia_playback_runtime_from_environment()
     if playback_runtime is not None:
         playback = playback_runtime.playback
