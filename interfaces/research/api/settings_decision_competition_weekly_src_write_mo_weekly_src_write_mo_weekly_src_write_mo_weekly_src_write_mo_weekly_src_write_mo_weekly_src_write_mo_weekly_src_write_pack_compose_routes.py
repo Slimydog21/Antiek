@@ -79,6 +79,7 @@ def _surface(result: Any) -> dict[str, Any]:
         "parent_asset_id": getattr(result, "parent_asset_id", None),
         "asset_id": getattr(result, "asset_id", None),
         "week_aligned": getattr(result, "week_aligned", False),
+        "session_aligned": getattr(result, "session_aligned", False),
         "pack_ready": result.pack_ready,
         "live_router_authorized": False,
         "secrets_stored": False,
