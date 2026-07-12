@@ -242,6 +242,23 @@ jobs:
         run: |
           python tools/lint/contact_guard_check.py
 
+      - name: Compose-tier HTML-escaping gate
+        # compose-xss-guard: forbid raw-HTML-interpolation in substrate compose
+        # modules. An AST check that fails (exit 1) when a substrate/*_compose*.py
+        # module builds an HTML tag by interpolating an unescaped value (f-string
+        # attribute/content, .format, %, + concatenation). Makes the recurring
+        # raw-HTML-interpolation XSS class structurally impossible at CI: the
+        # class was found in PRs #962 (recursive_twin_note_taker_compose) and
+        # #955 (write_mode_twin_draft_merge_compose), BOTH Strix-PASS. The
+        # codebase escapes correctly in render.py::_esc and the frontend
+        # _DOM_MUTATION gate; the compose tier was the only un-gated surface.
+        # Models boundary_check.py / serve_guard_check.py (same path:line output,
+        # same exit-code contract, no `|| echo` swallow — the step's pass/fail IS
+        # the gate's verdict). Escaper allow-list = html.escape / _esc / *_escape
+        # / any .escape attr (the render.py convention). Sub-second on substrate/.
+        run: |
+          python tools/compose_html_escape_check.py substrate
+
       - name: Merge-age gate (anti-stranding)
         # SPR-01 (Antiek Flywheel Foundation). Reds when the PR's base is more
         # than N=25 commits behind origin/main — the stale-base stranding that
