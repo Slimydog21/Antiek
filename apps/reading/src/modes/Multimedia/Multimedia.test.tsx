@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
 import Multimedia, { formatRecordCost, shouldUseLocalAudiblePlayback } from "./index";
 import {
@@ -314,10 +315,13 @@ describe("Multimedia workstation", () => {
   });
 
   it("requires explicit ceiling acknowledgement before issuing narration authority", async () => {
+    const user = userEvent.setup();
     await reviewPlan();
     const authorize = screen.getByRole("button", { name: "Authorize narration" });
     expect(authorize.getAttribute("disabled")).not.toBeNull();
-    fireEvent.click(screen.getByLabelText("Approve this maximum"));
+    const acknowledgement = screen.getByRole("checkbox", { name: "Approve this maximum" });
+    await user.click(acknowledgement);
+    expect((acknowledgement as HTMLInputElement).checked).toBe(true);
     await waitFor(() => expect(
       screen.getByRole("button", { name: "Authorize narration" }).getAttribute("disabled"),
     ).toBeNull(), { timeout: 5_000 });
