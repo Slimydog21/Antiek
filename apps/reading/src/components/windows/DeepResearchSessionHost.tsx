@@ -56,12 +56,18 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   confirmSessionsCollective,
   createCollectiveWrittenAnalysis,
+  fetchEngagementSession,
   fetchSessionsCollective,
+  getOwnedCollectiveUnit,
+  getOwnedCollectiveWrittenAnalysis,
   launchCollectiveResearch,
+  listOwnedCollectiveUnits,
   listOwnedEngagementSessions,
   mergeEngagementSessions,
   type CollectiveResponse,
   type ConfirmedCollectiveUnit,
+  type CollectiveLineageEdge,
+  type OwnedCollectiveSummary,
   type SessionLifecycleResponse,
   type SessionMergeResponse,
 } from "../../api/engagement";
@@ -146,6 +152,11 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   useInWindow();
 
   const rawSessionId = props.session_id?.trim() || "";
+  const savedHostAuthorityRef = useRef("");
+  savedHostAuthorityRef.current = JSON.stringify({
+    owner_id: props.owner_id?.trim() || "",
+    session_id: rawSessionId,
+  });
   const sessionId = rawSessionId || "(missing session_id)";
   const spawnId = props.spawn_id?.trim() || "(missing spawn_id)";
   const parent = props.parent_asset_id?.trim() || "(missing parent)";
@@ -419,9 +430,180 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   >(null);
   const [confirmedCollective, setConfirmedCollective] =
     useState<ConfirmedCollectiveUnit | null>(null);
+  const [ownedCollectives, setOwnedCollectives] = useState<OwnedCollectiveSummary[]>([]);
+  const [collectiveDiscoveryState, setCollectiveDiscoveryState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [collectiveDiscoveryError, setCollectiveDiscoveryError] = useState<string | null>(null);
+  const [collectiveDiscoveryErrorPhase, setCollectiveDiscoveryErrorPhase] = useState<
+    "initial" | "more" | null
+  >(null);
+  const [nextCollectiveCursor, setNextCollectiveCursor] = useState<string | null>(null);
+  const nextCollectiveCursorRef = useRef<string | null>(null);
+  nextCollectiveCursorRef.current = nextCollectiveCursor;
+  const collectiveDiscoveryGeneration = useRef(0);
+  const [collectiveDiscoveryMoreBusy, setCollectiveDiscoveryMoreBusy] = useState(false);
+  const [collectiveDiscoveryTick, setCollectiveDiscoveryTick] = useState(0);
+  const refreshCollectiveDiscovery = useCallback(() => {
+    collectiveDiscoveryGeneration.current += 1;
+    setCollectiveDiscoveryTick((tick) => tick + 1);
+  }, []);
   const collectiveConfirmKey = useRef(newBrowserMergeKey());
   const collectiveResearchKey = useRef(newBrowserMergeKey());
   const collectiveWritingKey = useRef(newBrowserMergeKey());
+  useEffect(() => {
+    if (!rawSessionId) return;
+    let cancelled = false;
+    const requestGeneration = ++collectiveDiscoveryGeneration.current;
+    setCollectiveDiscoveryState("loading");
+    setCollectiveDiscoveryError(null);
+    setCollectiveDiscoveryErrorPhase(null);
+    void listOwnedCollectiveUnits({ limit: 5 })
+      .then((page) => {
+        if (cancelled || requestGeneration !== collectiveDiscoveryGeneration.current) return;
+        setOwnedCollectives(page.collectives);
+        setNextCollectiveCursor(page.next_cursor);
+        setCollectiveDiscoveryState("ready");
+      })
+      .catch((error) => {
+        if (cancelled || requestGeneration !== collectiveDiscoveryGeneration.current) return;
+        setCollectiveDiscoveryState("error");
+        setCollectiveDiscoveryErrorPhase("initial");
+        setCollectiveDiscoveryError(
+          error instanceof Error ? error.message : "Collective discovery failed",
+        );
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [collectiveDiscoveryTick, props.owner_id, rawSessionId]);
+  const loadMoreCollectives = useCallback(async () => {
+    if (!nextCollectiveCursor || collectiveDiscoveryMoreBusy) return;
+    setCollectiveDiscoveryMoreBusy(true);
+    setCollectiveDiscoveryError(null);
+    setCollectiveDiscoveryErrorPhase(null);
+    const requestGeneration = collectiveDiscoveryGeneration.current;
+    const requestCursor = nextCollectiveCursor;
+    try {
+      const page = await listOwnedCollectiveUnits({
+        limit: 5,
+        cursor: requestCursor,
+      });
+      if (
+        requestGeneration !== collectiveDiscoveryGeneration.current ||
+        requestCursor !== nextCollectiveCursorRef.current
+      ) return;
+      setOwnedCollectives((current) => {
+        const merged = new Map(current.map((row) => [row.collective_unit_id, row]));
+        for (const row of page.collectives) merged.set(row.collective_unit_id, row);
+        return [...merged.values()];
+      });
+      setNextCollectiveCursor(page.next_cursor);
+    } catch (error) {
+      if (
+        requestGeneration !== collectiveDiscoveryGeneration.current ||
+        requestCursor !== nextCollectiveCursorRef.current
+      ) return;
+      setCollectiveDiscoveryErrorPhase("more");
+      setCollectiveDiscoveryError(
+        error instanceof Error ? error.message : "Collective discovery failed",
+      );
+    } finally {
+      setCollectiveDiscoveryMoreBusy(false);
+    }
+  }, [collectiveDiscoveryMoreBusy, nextCollectiveCursor]);
+  const loadSavedCollective = useCallback(async (unitId: string, reopenHtml: boolean) => {
+    setSessionMergeBusy(true);
+    setSessionMergeError(null);
+    const requestRevision = selectionRevision.current;
+    const requestAuthority = collectiveAuthoritySignatureRef.current;
+    const requestHostAuthority = savedHostAuthorityRef.current;
+    try {
+      const unit = await getOwnedCollectiveUnit(unitId);
+      if (reopenHtml) {
+        openWindow(
+          "hosted_html_document",
+          {
+            document_id: unit.collective_unit_id,
+            title: "Saved collective research unit",
+            html: unit.html,
+            view_format: "html",
+            source: "collective_unit_prompt",
+            collective_id: unit.collective_unit_id,
+            spawn_count: unit.material.unit.spawn_count,
+          },
+          {
+            id: `win:collective-unit:${unit.collective_unit_id}`,
+            title: "Saved collective research",
+          },
+        );
+      } else {
+        if (
+          requestRevision !== selectionRevision.current ||
+          requestAuthority !== collectiveAuthoritySignatureRef.current ||
+          requestHostAuthority !== savedHostAuthorityRef.current
+        ) return;
+        collectiveResearchKey.current = newBrowserMergeKey();
+        collectiveWritingKey.current = newBrowserMergeKey();
+        setSessionMerge(null);
+        setPreviewedSessionIds([]);
+        setSessionCollective({
+          ...unit.material.unit,
+          source_session_ids: unit.material.source_session_ids,
+          html: unit.html,
+        });
+        setConfirmedCollective(unit);
+      }
+    } catch (error) {
+      setSessionMergeError(error instanceof Error ? error.message : "Collective reopen failed");
+    } finally {
+      setSessionMergeBusy(false);
+    }
+  }, []);
+  const openLineageChild = useCallback(
+    async (unitId: string, edge: CollectiveLineageEdge) => {
+      setSessionMergeBusy(true);
+      setSessionMergeError(null);
+      try {
+        if (edge.child_kind === "research_session") {
+          const session = await fetchEngagementSession(edge.child_id, false);
+          openDeepResearchFromHighlight({
+            session_id: session.session_id,
+            spawn_id: session.spawn_id,
+            investigation_id: session.investigation_id,
+            asset_id: session.parent_asset_id,
+            selection_text: session.selection_text,
+            owner_id: session.owner_id,
+            status: session.status,
+            model_id: session.model_id ?? undefined,
+            goal: session.goal,
+            research_tier: session.research_tier ?? undefined,
+          });
+        } else {
+          const draft = await getOwnedCollectiveWrittenAnalysis(unitId, edge.child_id);
+          openWindow(
+            "hosted_html_document",
+            {
+              document_id: draft.document_id,
+              title: "Collective research analysis draft",
+              html: draft.html,
+              view_format: "html",
+              source: "collective_research",
+            },
+            {
+              id: `win:collective-analysis:${draft.document_id}`,
+              title: "Collective analysis",
+            },
+          );
+        }
+      } catch (error) {
+        setSessionMergeError(error instanceof Error ? error.message : "Lineage reopen failed");
+      } finally {
+        setSessionMergeBusy(false);
+      }
+    },
+    [],
+  );
   const [sessionMergeError, setSessionMergeError] = useState<string | null>(null);
   const [sessionMergeBusy, setSessionMergeBusy] = useState(false);
   const [previewedSessionIds, setPreviewedSessionIds] = useState<string[]>([]);
@@ -521,6 +703,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         requestAuthority !== collectiveAuthoritySignatureRef.current
       ) return;
       setConfirmedCollective(confirmed);
+      refreshCollectiveDiscovery();
     } catch (error) {
       setConfirmedCollective(null);
       setSessionMergeError(error instanceof Error ? error.message : "Collective confirmation failed");
@@ -536,7 +719,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   ]);
   const continueConfirmedCollective = useCallback(async () => {
     if (!confirmedCollective) return;
-    const anchor = props.parent_asset_id?.trim() || confirmedCollective.material.unit.asset_ids?.[0];
+    const memberAssets = confirmedCollective.material.unit.asset_ids ?? [];
+    const currentAsset = props.parent_asset_id?.trim();
+    const anchor = currentAsset && memberAssets.includes(currentAsset) ? currentAsset : memberAssets[0];
     if (!anchor) return;
     setSessionMergeBusy(true);
     setSessionMergeError(null);
@@ -560,6 +745,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         goal: session.goal,
         research_tier: session.research_tier ?? undefined,
       });
+      refreshCollectiveDiscovery();
     } catch (error) {
       setSessionMergeError(error instanceof Error ? error.message : "Collective research launch failed");
     } finally {
@@ -586,6 +772,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         },
         { id: `win:collective-analysis:${draft.document_id}`, title: "Collective analysis" },
       );
+      refreshCollectiveDiscovery();
     } catch (error) {
       setSessionMergeError(error instanceof Error ? error.message : "Written analysis failed");
     } finally {
@@ -1042,6 +1229,103 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             onMerged={onContextNeedsRefresh}
             researchTier={researchTier}
           />
+        </section>
+      ) : null}
+
+      {rawSessionId ? (
+        <section
+          className="mt-2 space-y-3 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="owned-collective-history"
+          data-view-format="html"
+        >
+          <div>
+            <h2 className="text-xs font-medium uppercase tracking-wide">
+              Saved collective research
+            </h2>
+            <p className="text-[10px] font-mono opacity-75">
+              Durable owner units · descendants show live execution state
+            </p>
+          </div>
+          {collectiveDiscoveryState === "loading" ? (
+            <p role="status" className="text-xs">Loading saved units…</p>
+          ) : null}
+          {collectiveDiscoveryError ? (
+            <div className="flex items-center gap-2 text-xs">
+              <p role="alert">{collectiveDiscoveryError}</p>
+              <button
+                type="button"
+                className="rounded border border-ink/30 px-2 py-1 text-[10px]"
+                onClick={() => {
+                  if (collectiveDiscoveryErrorPhase === "more") {
+                    void loadMoreCollectives();
+                  } else {
+                    refreshCollectiveDiscovery();
+                  }
+                }}
+              >
+                Retry saved units
+              </button>
+            </div>
+          ) : null}
+          {collectiveDiscoveryState === "ready" && ownedCollectives.length === 0 ? (
+            <p className="text-xs opacity-75">No saved collective units yet.</p>
+          ) : null}
+          <ul className="space-y-2" aria-label="Saved collective research units">
+            {ownedCollectives.map((unit) => (
+              <li key={unit.collective_unit_id} className="rounded border border-ink/20 p-2">
+                <p className="font-mono text-[10px]">{unit.collective_unit_id}</p>
+                <p className="text-xs">
+                  {unit.asset_ids.length} asset{unit.asset_ids.length === 1 ? "" : "s"} · {unit.spawn_count} source session{unit.spawn_count === 1 ? "" : "s"} · {unit.recommended_research_tier || "deep"}
+                </p>
+                <ul className="text-[10px] opacity-80" aria-label={`Lineage for ${unit.collective_unit_id}`}>
+                  {unit.lineage.map((edge) => (
+                    <li key={edge.edge_id}>
+                      <button
+                        type="button"
+                        className="underline disabled:no-underline"
+                        disabled={
+                          sessionMergeBusy || edge.current_state === "reconciliation_required"
+                        }
+                        onClick={() => void openLineageChild(unit.collective_unit_id, edge)}
+                      >
+                        {edge.child_kind === "research_session" ? "Research" : "Written analysis"}: {edge.current_state}
+                      </button>
+                    </li>
+                  ))}
+                  {unit.lineage.length === 0 ? <li>No descendants yet</li> : null}
+                  {unit.lineage_next_cursor ? <li>More descendants available in unit detail</li> : null}
+                </ul>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    type="button"
+                    className="rounded border border-ink/30 px-2 py-1 text-[10px]"
+                    disabled={sessionMergeBusy}
+                    onClick={() => void loadSavedCollective(unit.collective_unit_id, true)}
+                  >
+                    Reopen HTML
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded border border-ink/30 px-2 py-1 text-[10px]"
+                    disabled={sessionMergeBusy}
+                    onClick={() => void loadSavedCollective(unit.collective_unit_id, false)}
+                  >
+                    Use saved unit
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+          {nextCollectiveCursor ? (
+            <button
+              type="button"
+              className="rounded border border-ink/30 px-2 py-1 text-[10px]"
+              disabled={collectiveDiscoveryMoreBusy}
+              onClick={() => void loadMoreCollectives()}
+            >
+              {collectiveDiscoveryMoreBusy ? "Loading…" : "Load more saved units"}
+            </button>
+          ) : null}
         </section>
       ) : null}
 

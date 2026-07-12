@@ -104,6 +104,49 @@ export type ConfirmedCollectiveUnit = {
   html: string;
   view_format: "html";
   material: { source_session_ids: string[]; unit: CollectiveResponse; prompt_block: string };
+  lineage?: CollectiveLineageEdge[];
+  lineage_next_cursor?: string | null;
+};
+
+export type CollectiveLineageEdge = {
+  edge_id: string;
+  parent_collective_id: string;
+  parent_preview_sha256: string;
+  child_kind: "research_session" | "written_analysis";
+  child_id: string;
+  initial_state: string;
+  current_state: string;
+  created_at: string;
+  research_tier?: string | null;
+  model_id?: string | null;
+};
+
+export type OwnedCollectiveSummary = {
+  collective_unit_id: string;
+  preview_sha256: string;
+  created_at?: string | null;
+  state: "confirmed";
+  source_session_ids: string[];
+  asset_ids: string[];
+  spawn_count: number;
+  twin_count: number;
+  ref_count: number;
+  output_count: number;
+  recommended_research_tier?: string | null;
+  query?: string | null;
+  lineage: CollectiveLineageEdge[];
+  lineage_count: number;
+  lineage_count_is_lower_bound?: boolean;
+  lineage_next_cursor?: string | null;
+  view_format: "html";
+};
+
+export type OwnedCollectivesPage = {
+  owner_id: string;
+  collectives: OwnedCollectiveSummary[];
+  count: number;
+  next_cursor: string | null;
+  view_format: "html";
 };
 
 export type CollectiveWrittenAnalysis = {
@@ -1183,6 +1226,38 @@ export async function createCollectiveWrittenAnalysis(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ idempotency_key: idempotencyKey }),
     },
+  );
+  return readJson(res);
+}
+
+export async function listOwnedCollectiveUnits(options: {
+  limit?: number;
+  cursor?: string | null;
+} = {}): Promise<OwnedCollectivesPage> {
+  const query = new URLSearchParams();
+  query.set("limit", String(options.limit ?? 5));
+  if (options.cursor) query.set("cursor", options.cursor);
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/owned?${query.toString()}`,
+  );
+  return readJson(res);
+}
+
+export async function getOwnedCollectiveUnit(
+  unitId: string,
+): Promise<ConfirmedCollectiveUnit> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}`,
+  );
+  return readJson(res);
+}
+
+export async function getOwnedCollectiveWrittenAnalysis(
+  unitId: string,
+  documentId: string,
+): Promise<CollectiveWrittenAnalysis> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/written-analysis/${encodeURIComponent(documentId)}`,
   );
   return readJson(res);
 }

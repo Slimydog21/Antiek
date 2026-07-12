@@ -94,12 +94,15 @@ from substrate.floating_session import (
     sessions_collective_research,
 )
 from substrate.floating_session.collective_unit import (
+    append_collective_lineage,
     claim_collective_action,
     collective_preview_material,
     collective_preview_sha256,
     confirm_collective_unit,
     create_written_analysis,
     get_collective_unit,
+    list_collective_lineage,
+    list_collective_units,
     settle_collective_action,
 )
 from substrate.floating_session.merge_receipt import (
@@ -1955,6 +1958,188 @@ def post_sessions_collective_confirm(
     return durable
 
 
+def _project_collective_lineage(
+    unit: dict[str, Any],
+    owner_id: str,
+    *,
+    cursor: str | None = None,
+    limit: int = 20,
+) -> tuple[list[dict[str, Any]], str | None]:
+    lineage = list_collective_lineage(
+        store=_eng(),
+        owner_id=owner_id,
+        unit=unit,
+        after_edge_id=cursor,
+        limit=limit + 1,
+    )
+    has_more = len(lineage) > limit
+    projected: list[dict[str, Any]] = []
+    for raw in lineage[:limit]:
+        if not isinstance(raw, dict):
+            raise ValueError("collective lineage edge requires reconciliation")
+        edge = dict(raw)
+        kind = edge.get("child_kind")
+        child_id = str(edge.get("child_id") or "")
+        if kind == "research_session":
+            try:
+                session = _verified_session(child_id, owner_id)
+            except HTTPException:
+                edge["current_state"] = "reconciliation_required"
+            else:
+                edge["current_state"] = session.status
+                edge["research_tier"] = session.research_tier
+                edge["model_id"] = session.model_id
+        elif kind == "written_analysis":
+            draft = _eng().get_owned_document(child_id, owner_id)
+            if (
+                draft is None
+                or draft.get("document_type") != "collective_written_analysis"
+                or draft.get("source_collective_id") != unit.get("collective_unit_id")
+            ):
+                edge["current_state"] = "reconciliation_required"
+            else:
+                edge["current_state"] = str(draft.get("state") or "draft")
+        else:
+            raise ValueError("collective lineage child kind requires reconciliation")
+        projected.append(edge)
+    return projected, (str(projected[-1]["edge_id"]) if has_more and projected else None)
+
+
+def _collective_summary(unit: dict[str, Any], owner_id: str) -> dict[str, Any]:
+    material = dict(unit.get("material") or {})
+    source = dict(material.get("unit") or {})
+    lineage, lineage_cursor = _project_collective_lineage(unit, owner_id, limit=5)
+    return {
+        "collective_unit_id": unit["collective_unit_id"],
+        "preview_sha256": unit["preview_sha256"],
+        "created_at": unit.get("created_at"),
+        "state": unit.get("state"),
+        "source_session_ids": list(material.get("source_session_ids") or []),
+        "asset_ids": list(source.get("asset_ids") or []),
+        "spawn_count": int(source.get("spawn_count") or 0),
+        "twin_count": int(source.get("twin_count") or 0),
+        "ref_count": int(source.get("ref_count") or 0),
+        "output_count": int(source.get("output_count") or 0),
+        "recommended_research_tier": source.get("recommended_research_tier"),
+        "query": material.get("query"),
+        "lineage": lineage,
+        "lineage_count": len(lineage),
+        "lineage_count_is_lower_bound": lineage_cursor is not None,
+        "lineage_next_cursor": lineage_cursor,
+        "view_format": "html",
+    }
+
+
+@engagement_router.get("/sessions/collective/owned")
+def get_owned_collective_units(
+    request: Request,
+    limit: int = Query(default=5, ge=1, le=20),
+    cursor: str | None = Query(default=None, max_length=30),
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    if cursor is not None and (
+        len(cursor) != 30
+        or not cursor.startswith("cunit_")
+        or any(char not in "0123456789abcdef" for char in cursor[6:])
+    ):
+        raise HTTPException(status_code=400, detail="invalid collective cursor")
+    try:
+        rows = list_collective_units(
+            store=_eng(), owner_id=owner_id, after_unit_id=cursor, limit=limit + 1
+        )
+        has_more = len(rows) > limit
+        page = rows[:limit]
+        summaries = [_collective_summary(unit, owner_id) for unit in page]
+    except ValueError as exc:
+        if "exceeds byte cap" in str(exc):
+            raise HTTPException(
+                status_code=413, detail="collective discovery page exceeds byte cap"
+            ) from exc
+        detail = (
+            "collective cursor is not available"
+            if "cursor is not available" in str(exc)
+            else "collective discovery requires reconciliation"
+        )
+        raise HTTPException(status_code=409, detail=detail) from exc
+    response = {
+        "owner_id": owner_id,
+        "collectives": summaries,
+        "count": len(summaries),
+        "next_cursor": (str(page[-1]["collective_unit_id"]) if has_more and page else None),
+        "view_format": "html",
+    }
+    if len(json.dumps(response, ensure_ascii=False).encode("utf-8")) > 2_000_000:
+        raise HTTPException(status_code=413, detail="collective discovery exceeds response cap")
+    return response
+
+
+@engagement_router.get("/sessions/collective/{unit_id}")
+def get_owned_collective_unit(
+    unit_id: str,
+    request: Request,
+    lineage_limit: int = Query(default=20, ge=1, le=100),
+    lineage_cursor: str | None = Query(default=None, max_length=30),
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    try:
+        lineage, next_cursor = _project_collective_lineage(
+            unit, owner_id, cursor=lineage_cursor, limit=lineage_limit
+        )
+        return {**unit, "lineage": lineage, "lineage_next_cursor": next_cursor}
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="collective lineage requires reconciliation"
+        ) from exc
+
+
+@engagement_router.get("/sessions/collective/{unit_id}/lineage")
+def get_owned_collective_lineage(
+    unit_id: str,
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=30),
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    try:
+        edges, next_cursor = _project_collective_lineage(unit, owner_id, cursor=cursor, limit=limit)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="collective lineage requires reconciliation"
+        ) from exc
+    return {
+        "collective_unit_id": unit_id,
+        "edges": edges,
+        "count": len(edges),
+        "next_cursor": next_cursor,
+        "view_format": "html",
+    }
+
+
+@engagement_router.get("/sessions/collective/{unit_id}/written-analysis/{document_id}")
+def get_owned_collective_written_analysis(
+    unit_id: str, document_id: str, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    draft = _eng().get_owned_document(document_id, owner_id)
+    if (
+        draft is None
+        or draft.get("document_type") != "collective_written_analysis"
+        or draft.get("source_collective_id") != unit_id
+        or draft.get("source_preview_sha256") != unit.get("preview_sha256")
+    ):
+        raise HTTPException(status_code=404, detail="written analysis not found")
+    return draft
+
+
 @engagement_router.post("/sessions/collective/{unit_id}/launch-research")
 def post_collective_launch_research(
     unit_id: str, body: CollectiveLaunchResearchBody, request: Request
@@ -1989,7 +2174,24 @@ def post_collective_launch_research(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     if receipt.get("state") == "applied" and isinstance(receipt.get("result"), dict):
         replay_session_id = str(receipt["result"].get("session_id") or "")
-        return _session_payload(_verified_session(replay_session_id, owner_id), include_html=True)
+        replay_session = _verified_session(replay_session_id, owner_id)
+        try:
+            append_collective_lineage(
+                store=_eng(),
+                owner_id=owner_id,
+                unit=unit,
+                child_kind="research_session",
+                child_id=replay_session.session_id,
+                initial_state="reserved",
+                created_at=str(receipt.get("created_at") or ""),
+                provenance={
+                    "receipt_id": receipt.get("receipt_id"),
+                    "spawn_id": replay_session.spawn_id,
+                },
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return _session_payload(replay_session, include_html=True)
     region_digest = hashlib.sha256(
         f"collective-launch:v1:{unit_id}:{body.idempotency_key}".encode()
     ).hexdigest()[:24]
@@ -2019,12 +2221,28 @@ def post_collective_launch_research(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     try:
-        settle_collective_action(
+        settled = settle_collective_action(
             store=_eng(),
             owner_id=owner_id,
             receipt_id=str(receipt["receipt_id"]),
             material_sha256=str(receipt["material_sha256"]),
             result={"session_id": session.session_id, "spawn_id": session.spawn_id},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    try:
+        append_collective_lineage(
+            store=_eng(),
+            owner_id=owner_id,
+            unit=unit,
+            child_kind="research_session",
+            child_id=session.session_id,
+            initial_state="reserved",
+            created_at=str(settled.get("created_at") or ""),
+            provenance={
+                "receipt_id": settled.get("receipt_id"),
+                "spawn_id": session.spawn_id,
+            },
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -2040,12 +2258,23 @@ def post_collective_written_analysis(
     if unit is None:
         raise HTTPException(status_code=404, detail="collective unit not found")
     try:
-        return create_written_analysis(
+        draft = create_written_analysis(
             store=_eng(),
             owner_id=owner_id,
             unit=unit,
             idempotency_key=body.idempotency_key,
         )
+        append_collective_lineage(
+            store=_eng(),
+            owner_id=owner_id,
+            unit=unit,
+            child_kind="written_analysis",
+            child_id=str(draft["document_id"]),
+            initial_state="draft",
+            created_at=str(draft.get("created_at") or ""),
+            provenance={"request_sha256": draft.get("request_sha256")},
+        )
+        return draft
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 

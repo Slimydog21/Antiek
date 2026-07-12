@@ -390,7 +390,100 @@ def test_session_workstation_contract_rejects_unsafe_shapes(client):
     assert integrity.status_code == 409
 
 
-def test_confirmed_collective_can_launch_research_and_html_draft(client):
+def test_owned_collective_discovery_pages_canonical_rows(client):
+    unit_ids: list[str] = []
+    for index in range(2):
+        material = {
+            "owner_id": "__operator__",
+            "source_session_ids": ["fsess_1111111111111111"],
+            "query": f"unit-{index}",
+            "unit": {
+                "asset_ids": ["asset"],
+                "spawn_count": 0,
+                "twin_count": 0,
+                "ref_count": 0,
+                "output_count": 0,
+                "recommended_research_tier": "deep",
+            },
+        }
+        preview_sha = eng_mod.collective_preview_sha256(material)
+        unit_id = f"cunit_{preview_sha[:24]}"
+        unit_ids.append(unit_id)
+        eng_mod._eng().mutate_owned_document(
+            unit_id,
+            "__operator__",
+            lambda _current, uid=unit_id, sha=preview_sha, mat=material: {
+                "document_type": "collective_research_unit",
+                "collective_unit_id": uid,
+                "preview_sha256": sha,
+                "created_at": "2026-07-12T00:00:00Z",
+                "state": "confirmed",
+                "material": mat,
+                "html": "<article>unit</article>",
+                "view_format": "html",
+            },
+        )
+    unit_ids.sort()
+    first_unit = eng_mod._eng().get_owned_document(unit_ids[0], "__operator__")
+    assert first_unit is not None
+    for index in range(7):
+        eng_mod.append_collective_lineage(
+            store=eng_mod._eng(),
+            owner_id="__operator__",
+            unit=first_unit,
+            child_kind="written_analysis",
+            child_id=f"collective_draft_{index:024x}",
+            initial_state="draft",
+            created_at=f"2026-07-12T00:00:0{index}Z",
+            provenance={"request_sha256": f"request-{index}"},
+        )
+
+    first = client.get("/engagement/sessions/collective/owned?limit=1")
+    assert first.status_code == 200, first.text
+    assert [row["collective_unit_id"] for row in first.json()["collectives"]] == [unit_ids[0]]
+    assert first.json()["next_cursor"] == unit_ids[0]
+    first_summary = first.json()["collectives"][0]
+    assert len(first_summary["lineage"]) == 5
+    assert first_summary["lineage_count_is_lower_bound"] is True
+    assert first_summary["lineage_next_cursor"].startswith("cedge_")
+    next_lineage = client.get(
+        f"/engagement/sessions/collective/{unit_ids[0]}/lineage",
+        params={"limit": 5, "cursor": first_summary["lineage_next_cursor"]},
+    )
+    assert next_lineage.status_code == 200, next_lineage.text
+    assert next_lineage.json()["count"] == 2
+    assert next_lineage.json()["next_cursor"] is None
+    second = client.get(
+        "/engagement/sessions/collective/owned",
+        params={"limit": 1, "cursor": first.json()["next_cursor"]},
+    )
+    assert second.status_code == 200, second.text
+    assert [row["collective_unit_id"] for row in second.json()["collectives"]] == [unit_ids[1]]
+    assert second.json()["next_cursor"] is None
+    unavailable = client.get(
+        "/engagement/sessions/collective/owned",
+        params={"cursor": "cunit_ffffffffffffffffffffffff"},
+    )
+    assert unavailable.status_code == 409
+    physical_row = eng_mod._eng().get_owned_document(unit_ids[0], "__operator__")
+    assert physical_row is not None
+    eng_mod._eng().put_document(unit_ids[0], {**physical_row, "collective_unit_id": unit_ids[1]})
+    identity_drift = client.get("/engagement/sessions/collective/owned?limit=1")
+    assert identity_drift.status_code == 409
+    tampered_material = dict(physical_row["material"])
+    eng_mod._eng().put_document(
+        unit_ids[0],
+        {
+            **physical_row,
+            "collective_unit_id": unit_ids[0],
+            "material": {**tampered_material, "query": "tampered after confirmation"},
+        },
+    )
+    cryptographic_drift = client.get("/engagement/sessions/collective/owned?limit=1")
+    assert cryptographic_drift.status_code == 409
+
+
+def test_confirmed_collective_can_launch_research_and_html_draft(client, monkeypatch):
     session_ids: list[str] = []
     for index, asset in enumerate(("collective-a", "collective-b"), 1):
         opened = client.post(
@@ -449,6 +542,23 @@ def test_confirmed_collective_can_launch_research_and_html_draft(client):
     )
     assert replay.json()["collective_unit_id"] == unit_id
 
+    append_lineage = eng_mod.append_collective_lineage
+
+    def fail_after_child(**_kwargs):
+        raise ValueError("injected child-before-lineage crash")
+
+    monkeypatch.setattr(eng_mod, "append_collective_lineage", fail_after_child)
+    interrupted = client.post(
+        f"/engagement/sessions/collective/{unit_id}/launch-research",
+        json={
+            "idempotency_key": "collective-launch-001",
+            "anchor_asset_id": "collective-a",
+            "view_mode": "floating",
+            "research_tier": "wrestle",
+        },
+    )
+    assert interrupted.status_code == 409
+    monkeypatch.setattr(eng_mod, "append_collective_lineage", append_lineage)
     launched = client.post(
         f"/engagement/sessions/collective/{unit_id}/launch-research",
         json={
@@ -499,6 +609,46 @@ def test_confirmed_collective_can_launch_research_and_html_draft(client):
     assert "&lt;script&gt;hostile" in draft.json()["html"]
     assert "<script>hostile" not in draft.json()["html"]
     assert "Twin insight" in draft.json()["html"]
+    reopened_draft = client.get(
+        f"/engagement/sessions/collective/{unit_id}/written-analysis/{draft.json()['document_id']}"
+    )
+    assert reopened_draft.status_code == 200, reopened_draft.text
+    assert reopened_draft.json()["html"] == draft.json()["html"]
+
+    discovery = client.get("/engagement/sessions/collective/owned?limit=1")
+    assert discovery.status_code == 200, discovery.text
+    assert discovery.json()["count"] == 1
+    assert discovery.json()["collectives"][0]["collective_unit_id"] == unit_id
+    assert {edge["child_kind"] for edge in discovery.json()["collectives"][0]["lineage"]} == {
+        "research_session",
+        "written_analysis",
+    }
+    assert (
+        next(
+            edge
+            for edge in discovery.json()["collectives"][0]["lineage"]
+            if edge["child_kind"] == "research_session"
+        )["current_state"]
+        == "reserved"
+    )
+
+    child_complete = client.post(
+        "/engagement/sessions/complete-flywheel",
+        json={
+            "session_id": launched.json()["session_id"],
+            "output_text": "Cohesive child result",
+            "insights": [],
+            "questions": [],
+        },
+    )
+    assert child_complete.status_code == 200
+    detail = client.get(f"/engagement/sessions/collective/{unit_id}")
+    assert detail.status_code == 200, detail.text
+    research_edge = next(
+        edge for edge in detail.json()["lineage"] if edge["child_kind"] == "research_session"
+    )
+    assert research_edge["current_state"] == "complete"
+    assert detail.json()["material"]["source_session_ids"] == session_ids
 
     source_before = eng_mod._eng().get_owned_spawn(preview.json()["spawn_ids"][0], "__operator__")
     stale = client.post(
@@ -532,6 +682,14 @@ def test_confirmed_collective_can_launch_research_and_html_draft(client):
         },
     )
     assert oversized.status_code == 422
+    lineage_id = f"collective_lineage_{unit_id}"
+    lineage = eng_mod._eng().get_owned_document(lineage_id, "__operator__")
+    assert lineage is not None
+    forged_edges = list(lineage["edges"])
+    forged_edges[0] = {**forged_edges[0], "edge_id": f"cedge_{'f' * 24}"}
+    eng_mod._eng().put_document(lineage_id, {**lineage, "edges": forged_edges})
+    forged = client.get(f"/engagement/sessions/collective/{unit_id}/lineage")
+    assert forged.status_code == 409
 
 
 def test_session_open_twin_chase_usage_source(client):

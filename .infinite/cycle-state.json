@@ -1,7 +1,7 @@
 {
-  "cycle": 14,
+  "cycle": 15,
   "phase": "INVESTIGATE",
-  "subgoal": "Discover, reopen, and navigate durable collective units and descendant lineage",
+  "subgoal": "Execute reserved cohesive research with consent, budget, routing, and recovery",
   "lanes": [],
   "engineHealth": {
     "grok": "ok",
@@ -16,7 +16,8 @@
   "consecutiveNoDelta": 0,
   "hardenx_verdicts": [
     {"cycle": 12, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
-    {"cycle": 13, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
+    {"cycle": 13, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
+    {"cycle": 14, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
   ],
-  "updatedAt": "2026-07-12T18:09:00Z"
+  "updatedAt": "2026-07-12T18:46:00Z"
 }

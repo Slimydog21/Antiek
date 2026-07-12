@@ -13,6 +13,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
@@ -20,6 +21,8 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 _DOCUMENT_REVISION_DOMAIN = b"antiek.engagement.parent-revision.v1\0"
+_LOGICAL_PREFIX = re.compile(r"^[a-z][a-z0-9_]{1,63}$")
+_OWNED_LISTING_BYTE_CAP = 32_000_000
 
 
 def document_revision_sha256(doc: dict[str, Any] | None) -> str:
@@ -47,15 +50,22 @@ def _document_owner_matches(row: dict[str, Any], owner_id: str) -> bool:
     return embedded == owner_id
 
 
+def _validate_owned_listing(owner_id: str, logical_prefix: str, limit: int) -> None:
+    if not owner_id.strip():
+        raise ValueError("owner_id is required")
+    if _LOGICAL_PREFIX.fullmatch(logical_prefix) is None:
+        raise ValueError("logical document prefix is outside the listing contract")
+    if not 1 <= limit <= 101:
+        raise ValueError("owned document listing limit is outside the contract")
+
+
 @runtime_checkable
 class EngagementStore(Protocol):
     def put_spawn(self, spawn: dict[str, Any]) -> None: ...
     def get_spawn(self, spawn_id: str) -> dict[str, Any] | None: ...
     def list_spawns(self, asset_id: str) -> list[dict[str, Any]]: ...
     def put_twin(self, note: dict[str, Any]) -> None: ...
-    def list_twins(
-        self, asset_id: str, owner_id: str = "__operator__"
-    ) -> list[dict[str, Any]]: ...
+    def list_twins(self, asset_id: str, owner_id: str = "__operator__") -> list[dict[str, Any]]: ...
     def put_document(self, document_id: str, doc: dict[str, Any]) -> None: ...
     def get_document(self, document_id: str) -> dict[str, Any] | None: ...
     def compare_and_set_document(
@@ -77,6 +87,14 @@ class EngagementStore(Protocol):
         owner_id: str,
         mutation: Callable[[dict[str, Any] | None], dict[str, Any]],
     ) -> dict[str, Any]: ...
+    def list_owned_documents(
+        self,
+        owner_id: str,
+        *,
+        logical_prefix: str,
+        after_logical_id: str | None,
+        limit: int,
+    ) -> list[tuple[str, dict[str, Any]]]: ...
 
 
 @dataclass
@@ -135,9 +153,7 @@ class InMemoryEngagementStore:
                     return
             bucket.append(dict(note))
 
-    def list_twins(
-        self, asset_id: str, owner_id: str = "__operator__"
-    ) -> list[dict[str, Any]]:
+    def list_twins(self, asset_id: str, owner_id: str = "__operator__") -> list[dict[str, Any]]:
         with self._lock:
             return [dict(n) for n in self._twins.get((owner_id, asset_id), [])]
 
@@ -150,9 +166,7 @@ class InMemoryEngagementStore:
             row = self._docs.get(document_id)
             return dict(row) if row is not None else None
 
-    def get_owned_document(
-        self, logical_document_id: str, owner_id: str
-    ) -> dict[str, Any] | None:
+    def get_owned_document(self, logical_document_id: str, owner_id: str) -> dict[str, Any] | None:
         row = self.get_document(owned_document_id(owner_id, logical_document_id))
         if row is None or not _document_owner_matches(row, owner_id):
             return None
@@ -175,6 +189,48 @@ class InMemoryEngagementStore:
             updated = {**updated, "owner_id": owner_id}
             self._docs[document_id] = dict(updated)
             return dict(updated)
+
+    def list_owned_documents(
+        self,
+        owner_id: str,
+        *,
+        logical_prefix: str,
+        after_logical_id: str | None,
+        limit: int,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        _validate_owned_listing(owner_id, logical_prefix, limit)
+        physical_prefix = owned_document_id(owner_id, logical_prefix)
+        physical_after = (
+            owned_document_id(owner_id, after_logical_id) if after_logical_id is not None else None
+        )
+        with self._lock:
+            identities = sorted(
+                identity for identity in self._docs if identity.startswith(physical_prefix)
+            )
+            if physical_after is not None:
+                try:
+                    cursor_index = identities.index(physical_after)
+                except ValueError as exc:
+                    raise ValueError("owned document cursor is not available") from exc
+                identities = identities[cursor_index + 1 :]
+            rows: list[tuple[str, dict[str, Any]]] = []
+            encoded_bytes = 0
+            for identity in identities[:limit]:
+                row = self._docs[identity]
+                encoded_bytes += len(
+                    json.dumps(row, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+                )
+                if encoded_bytes > _OWNED_LISTING_BYTE_CAP:
+                    raise ValueError("owned document listing exceeds byte cap")
+                if not _document_owner_matches(row, owner_id):
+                    raise ValueError("owned document listing requires reconciliation")
+                logical_id = (
+                    identity
+                    if owner_id == "__operator__"
+                    else identity.removeprefix(physical_prefix.removesuffix(logical_prefix))
+                )
+                rows.append((logical_id, dict(row)))
+            return rows
 
     def compare_and_set_document(
         self, document_id: str, expected_sha256: str, doc: dict[str, Any]
@@ -242,9 +298,7 @@ class FileEngagementStore:
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
 
-    def get_owned_document(
-        self, logical_document_id: str, owner_id: str
-    ) -> dict[str, Any] | None:
+    def get_owned_document(self, logical_document_id: str, owner_id: str) -> dict[str, Any] | None:
         row = self.get_document(owned_document_id(owner_id, logical_document_id))
         if row is None or not _document_owner_matches(row, owner_id):
             return None
@@ -275,6 +329,50 @@ class FileEngagementStore:
             updated = {**updated, "owner_id": owner_id}
             self._write_document_unlocked(path, updated)
             return dict(updated)
+
+    def list_owned_documents(
+        self,
+        owner_id: str,
+        *,
+        logical_prefix: str,
+        after_logical_id: str | None,
+        limit: int,
+    ) -> list[tuple[str, dict[str, Any]]]:
+        """Keyset-page owner rows by safe logical filename prefix.
+
+        Directory enumeration may inspect matching names, but only the requested
+        ``limit`` rows are deserialized. Canonical rows are discovery authority,
+        so a crash after row replacement needs no second index repair.
+        """
+        _validate_owned_listing(owner_id, logical_prefix, limit)
+        physical_prefix = owned_document_id(owner_id, logical_prefix)
+        physical_after = (
+            owned_document_id(owner_id, after_logical_id) if after_logical_id is not None else None
+        )
+        paths = sorted((self.root / "docs").glob(f"{physical_prefix}*.json"))
+        identities = [path.stem for path in paths]
+        if physical_after is not None:
+            try:
+                cursor_index = identities.index(physical_after)
+            except ValueError as exc:
+                raise ValueError("owned document cursor is not available") from exc
+            paths = paths[cursor_index + 1 :]
+        rows: list[tuple[str, dict[str, Any]]] = []
+        encoded_bytes = 0
+        for path in paths[:limit]:
+            encoded_bytes += path.stat().st_size
+            if encoded_bytes > _OWNED_LISTING_BYTE_CAP:
+                raise ValueError("owned document listing exceeds byte cap")
+            decoded = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(decoded, dict) or not _document_owner_matches(decoded, owner_id):
+                raise ValueError("owned document listing requires reconciliation")
+            logical_id = (
+                path.stem
+                if owner_id == "__operator__"
+                else path.stem.removeprefix(physical_prefix.removesuffix(logical_prefix))
+            )
+            rows.append((logical_id, decoded))
+        return rows
 
     def get_owned_spawn(self, spawn_id: str, owner_id: str) -> dict[str, Any] | None:
         row = self.get_spawn(spawn_id)
@@ -330,9 +428,7 @@ class FileEngagementStore:
                 notes.append(note)
             self._write_document_unlocked(path, notes)
 
-    def list_twins(
-        self, asset_id: str, owner_id: str = "__operator__"
-    ) -> list[dict[str, Any]]:
+    def list_twins(self, asset_id: str, owner_id: str = "__operator__") -> list[dict[str, Any]]:
         path = self._twin_path(asset_id, owner_id)
         if not path.is_file():
             return []

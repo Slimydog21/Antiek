@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Make confirmed owner-native collective research units discoverable and reopenable across reloads/devices, with durable descendant lineage and honest execution state, so saved research branches become a navigable knowledge-work graph rather than one-window state.
+Turn an owner-bound cohesive research reservation into explicitly consented, budget-ceiling-enforced, model-routed provider execution that streams durable progress, settles actual usage honestly, completes the session flywheel, and remains recoverable across worker/process failure.
 
 ## Derivation trail
 
@@ -21,3 +21,4 @@ Make confirmed owner-native collective research units discoverable and reopenabl
 - Cycle 11 activated real multi-user credentials with opaque stable accounts, one-time magic links, revocable server sessions, server-derived scopes, deny-by-default legacy-route authorization, honest browser logout, and Alice/Bob credential-to-owner isolation. With identity now real, the narrowest product gap is exposing owner-resolved multi-session selection and collective composition in the workstation rather than leaving that capability behind low-level APIs and global-ID assumptions.
 - Cycle 12 delivered owner-wide durable session discovery, startup index reconciliation, store-level cursor paging, explicit checkbox selection, cross-asset consent, live status reconciliation, exact late-response authority, and per-preview merge receipts. Users can now review a collective context safely; the next narrow seam is making that reviewed unit itself durable and actionable as a new cohesive research or writing branch.
 - Cycle 13 delivered hash-pinned reviewed collective confirmation, immutable owner-native units with complete session/spawn/asset/investigation/output/twin/reference provenance, settled idempotent cohesive-research descendants, HTML-first written-analysis drafts, exact UI invalidation, and bounded ingestion/storage/prompt surfaces. The unit is durable but discovery still lives only in the confirming window, so reload/device continuity and lineage navigation are now the narrowest daily-workstation gap.
+- Cycle 14 delivered owner-prefixed, keyset-paged saved-unit discovery; cryptographically self-validating unit rows; capped and independently paged descendant lineage; replay repair after child-before-lineage crashes; live session/spawn state projection; real-credential cross-owner isolation; and reload-safe HTML/unit/child navigation. The remaining execution-honesty gap is now explicit: Continue as cohesive research reserves a session but does not dispatch paid work or enforce the displayed budget ceiling.

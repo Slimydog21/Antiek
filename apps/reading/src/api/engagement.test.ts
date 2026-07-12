@@ -3,8 +3,10 @@ import {
   attachSourceRefs,
   confirmSessionTwins,
   fetchResearchContext,
+  getOwnedCollectiveUnit,
   listEngagementSessions,
   listOwnedEngagementSessions,
+  listOwnedCollectiveUnits,
   mergeEngagementSessions,
   mergeSpawnOutputs,
   openEngagementSession,
@@ -217,6 +219,31 @@ describe("engagement API client", () => {
     expect(url).toContain("cursor=fsess_0123456789abcdef");
     expect(url).toContain("limit=25");
     expect(url).not.toContain("owner_id=");
+  });
+
+  it("pages and resolves owner collectives without caller-supplied owner identity", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ collectives: [], count: 0, next_cursor: null }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ collective_unit_id: "cunit_aaaaaaaaaaaaaaaaaaaaaaaa" }),
+      });
+    await listOwnedCollectiveUnits({
+      cursor: "cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
+      limit: 15,
+    });
+    await getOwnedCollectiveUnit("cunit_aaaaaaaaaaaaaaaaaaaaaaaa");
+    const listUrl = String(mockFetch.mock.calls[0][0]);
+    expect(listUrl).toContain("/engagement/sessions/collective/owned?");
+    expect(listUrl).toContain("cursor=cunit_aaaaaaaaaaaaaaaaaaaaaaaa");
+    expect(listUrl).toContain("limit=15");
+    expect(listUrl).not.toContain("owner_id=");
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      "/engagement/sessions/collective/cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
+    );
   });
 
   it("sends pinned preview authority for confirmed twin promotion", async () => {

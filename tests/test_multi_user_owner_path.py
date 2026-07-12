@@ -52,9 +52,7 @@ def _token_from_email(sender: MockEmailProvider, index: int) -> str:
     return parse_qs(urlparse(match.group(0)).query)["token"][0]
 
 
-def test_registration_modes_fail_closed_and_operator_stays_explicit(
-    monkeypatch, tmp_path
-):
+def test_registration_modes_fail_closed_and_operator_stays_explicit(monkeypatch, tmp_path):
     from interfaces.research.api.app import create_app
 
     sender = MockEmailProvider(log_to_stdout=False)
@@ -75,14 +73,10 @@ def test_registration_modes_fail_closed_and_operator_stays_explicit(
     assert hidden.json() == {"sent": True}
     assert sender.sent == []
 
-    operator_request = client.post(
-        "/auth/request", json={"email": "operator@example.com"}
-    )
+    operator_request = client.post("/auth/request", json={"email": "operator@example.com"})
     assert operator_request.status_code == 200
     operator_token = _token_from_email(sender, 0)
-    callback = client.get(
-        f"/auth/callback?token={operator_token}", follow_redirects=False
-    )
+    callback = client.get(f"/auth/callback?token={operator_token}", follow_redirects=False)
     assert callback.status_code == 302
     identity = client.get("/auth/me").json()
     assert identity["user_id"] == "__operator__"
@@ -91,13 +85,9 @@ def test_registration_modes_fail_closed_and_operator_stays_explicit(
 
     monkeypatch.setenv("ANTIEK_AUTH_REGISTRATION_MODE", "allowlist")
     monkeypatch.setenv("ANTIEK_USER_EMAIL", "user@example.com")
-    allowlist_app = create_app(
-        register_wrestling=False, register_providers=False, cors_origins=[]
-    )
+    allowlist_app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     allowlist_client = TestClient(allowlist_app)
-    allowed = allowlist_client.post(
-        "/auth/request", json={"email": "user@example.com"}
-    )
+    allowed = allowlist_client.post("/auth/request", json={"email": "user@example.com"})
     assert allowed.status_code == 200
     assert len(sender.sent) == 2
 
@@ -115,9 +105,7 @@ def test_multi_user_dev_login_mints_a_durable_operator_session(monkeypatch, tmp_
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     client = TestClient(app)
 
-    login = client.get(
-        "/auth/dev-login?token=local-browser-bootstrap", follow_redirects=False
-    )
+    login = client.get("/auth/dev-login?token=local-browser-bootstrap", follow_redirects=False)
     assert login.status_code == 302
     identity = client.get("/auth/me")
     assert identity.status_code == 200
@@ -139,15 +127,11 @@ def test_multi_user_dev_login_mints_a_durable_operator_session(monkeypatch, tmp_
     assert rejected.status_code == 401
 
     assert client.post("/auth/logout").status_code == 204
-    revoked = TestClient(app).get(
-        "/auth/me", headers={"Cookie": f"ANTIEK_SESSION={valid_cookie}"}
-    )
+    revoked = TestClient(app).get("/auth/me", headers={"Cookie": f"ANTIEK_SESSION={valid_cookie}"})
     assert revoked.status_code == 401
 
 
-def test_real_user_credentials_reach_only_their_owner_research_path(
-    monkeypatch, tmp_path
-):
+def test_real_user_credentials_reach_only_their_owner_research_path(monkeypatch, tmp_path):
     from interfaces.research.api.app import create_app
 
     auth_db = tmp_path / "auth.sqlite3"
@@ -230,13 +214,9 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
         requested = client.post("/auth/request", json={"email": email})
         assert requested.status_code == 200
         token = _token_from_email(sender, email_index)
-        callback = client.get(
-            f"/auth/callback?token={token}", follow_redirects=False
-        )
+        callback = client.get(f"/auth/callback?token={token}", follow_redirects=False)
         assert callback.status_code == 302
-        replay = TestClient(app).get(
-            f"/auth/callback?token={token}", follow_redirects=False
-        )
+        replay = TestClient(app).get(f"/auth/callback?token={token}", follow_redirects=False)
         assert "magic_link_invalid" in replay.headers["location"]
         identity = client.get("/auth/me")
         assert identity.status_code == 200
@@ -284,9 +264,7 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
             json={"parent_asset_id": "shared-asset", "spawn_ids": []},
         )
         assert legacy.status_code == 403
-        response = client.post(
-            "/thought-partner", json={"prompt": "private photonic memory"}
-        )
+        response = client.post("/thought-partner", json={"prompt": "private photonic memory"})
         assert response.status_code == 200, response.text
         return provider.calls[-1]["prompt"], session_id
 
@@ -313,14 +291,11 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
     alice_other_id = alice_other.json()["session_id"]
     alice_discovery = alice.get("/engagement/sessions/owned")
     assert alice_discovery.status_code == 200
-    alice_discovered_ids = {
-        row["session_id"] for row in alice_discovery.json()["sessions"]
-    }
+    alice_discovered_ids = {row["session_id"] for row in alice_discovery.json()["sessions"]}
     assert {alice_session_id, alice_other_id} <= alice_discovered_ids
     assert bob_session_id not in alice_discovered_ids
     bob_discovered_ids = {
-        row["session_id"]
-        for row in bob.get("/engagement/sessions/owned").json()["sessions"]
+        row["session_id"] for row in bob.get("/engagement/sessions/owned").json()["sessions"]
     }
     assert bob_session_id in bob_discovered_ids
     assert alice_session_id not in bob_discovered_ids
@@ -333,6 +308,28 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
         },
     )
     assert cross_asset_preview.status_code == 200, cross_asset_preview.text
+    confirmed_collective = alice.post(
+        "/engagement/sessions/collective/confirm",
+        json={
+            "session_ids": [alice_session_id, alice_other_id],
+            "allow_cross_asset": True,
+            "include_html": True,
+            "expected_preview_sha256": cross_asset_preview.json()["collective_preview_sha256"],
+            "idempotency_key": "alice-owned-collective-discovery",
+        },
+    )
+    assert confirmed_collective.status_code == 200, confirmed_collective.text
+    alice_unit_id = confirmed_collective.json()["collective_unit_id"]
+    alice_collectives = alice.get("/engagement/sessions/collective/owned")
+    assert alice_collectives.status_code == 200, alice_collectives.text
+    assert alice_unit_id in {
+        row["collective_unit_id"] for row in alice_collectives.json()["collectives"]
+    }
+    assert bob.get(f"/engagement/sessions/collective/{alice_unit_id}").status_code == 404
+    assert alice_unit_id not in {
+        row["collective_unit_id"]
+        for row in bob.get("/engagement/sessions/collective/owned").json()["collectives"]
+    }
     foreign_collective = alice.post(
         "/engagement/sessions/collective",
         json={
@@ -343,9 +340,7 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
     assert foreign_collective.status_code == 404
     assert "alice@example.com" not in owner_graph_db_path(alice_id)
     assert "bob@example.com" not in owner_graph_db_path(bob_id)
-    owner_db = connect_write(
-        owner_graph_db_path(alice_id), purpose="multi_user_identifier_audit"
-    )
+    owner_db = connect_write(owner_graph_db_path(alice_id), purpose="multi_user_identifier_audit")
     try:
         owner_identifiers = [
             row[0] for row in owner_db.execute("SELECT node_id FROM nodes").fetchall()
@@ -378,9 +373,7 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
     assert operator.json()["is_operator"] is True
 
     assert alice.post("/auth/logout").status_code == 204
-    replay = TestClient(app).get(
-        "/auth/me", headers={"Cookie": f"ANTIEK_SESSION={alice_cookie}"}
-    )
+    replay = TestClient(app).get("/auth/me", headers={"Cookie": f"ANTIEK_SESSION={alice_cookie}"})
     assert replay.status_code == 401
 
     alice_id_again, _ = login(alice, "alice@example.com", 2)

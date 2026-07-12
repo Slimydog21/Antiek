@@ -40,6 +40,10 @@ const fetchSessionsCollective = vi.hoisted(() => vi.fn());
 const confirmSessionsCollective = vi.hoisted(() => vi.fn());
 const launchCollectiveResearch = vi.hoisted(() => vi.fn());
 const createCollectiveWrittenAnalysis = vi.hoisted(() => vi.fn());
+const listOwnedCollectiveUnits = vi.hoisted(() => vi.fn());
+const getOwnedCollectiveUnit = vi.hoisted(() => vi.fn());
+const getOwnedCollectiveWrittenAnalysis = vi.hoisted(() => vi.fn());
+const fetchEngagementSession = vi.hoisted(() => vi.fn());
 const listOwnedEngagementSessions = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/engagement", () => ({
@@ -53,6 +57,10 @@ vi.mock("../../api/engagement", () => ({
   confirmSessionsCollective,
   launchCollectiveResearch,
   createCollectiveWrittenAnalysis,
+  listOwnedCollectiveUnits,
+  getOwnedCollectiveUnit,
+  getOwnedCollectiveWrittenAnalysis,
+  fetchEngagementSession,
   listOwnedEngagementSessions,
 }));
 
@@ -236,6 +244,16 @@ describe("DeepResearchSessionHost", () => {
     confirmSessionsCollective.mockReset();
     launchCollectiveResearch.mockReset();
     createCollectiveWrittenAnalysis.mockReset();
+    getOwnedCollectiveUnit.mockReset();
+    getOwnedCollectiveWrittenAnalysis.mockReset();
+    fetchEngagementSession.mockReset();
+    listOwnedCollectiveUnits.mockReset().mockResolvedValue({
+      owner_id: "alice",
+      collectives: [],
+      count: 0,
+      next_cursor: null,
+      view_format: "html",
+    });
     listOwnedEngagementSessions.mockReset().mockResolvedValue({
       owner_id: "alice",
       sessions: [{ ...FIXTURE, source_references: [] }],
@@ -993,6 +1011,265 @@ describe("DeepResearchSessionHost", () => {
     expect((screen.getByTestId("continue-session-collective") as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(screen.getByLabelText("Select Second"));
     expect(screen.queryByTestId("confirmed-session-collective")).toBeNull();
+  });
+
+  it("rediscovers and reuses a saved collective with live lineage after reload", async () => {
+    useWindows.getState().reset();
+    listOwnedCollectiveUnits.mockResolvedValueOnce({
+      owner_id: "alice",
+      collectives: [
+        {
+          collective_unit_id: "cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
+          preview_sha256: "a".repeat(64),
+          created_at: "2026-07-12T00:00:00Z",
+          state: "confirmed",
+          source_session_ids: ["fsess_launch_1", "fsess_saved_2"],
+          asset_ids: ["launch-asset", "saved-asset"],
+          spawn_count: 2,
+          twin_count: 1,
+          ref_count: 1,
+          output_count: 2,
+          recommended_research_tier: "wrestle",
+          query: null,
+          lineage: [
+            {
+              edge_id: "cedge_saved",
+              parent_collective_id: "cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
+              parent_preview_sha256: "a".repeat(64),
+              child_kind: "research_session",
+              child_id: "fsess_child_saved",
+              initial_state: "reserved",
+              current_state: "running",
+              created_at: "2026-07-12T00:01:00Z",
+            },
+          ],
+          lineage_count: 1,
+          view_format: "html",
+        },
+      ],
+      count: 1,
+      next_cursor: null,
+      view_format: "html",
+    });
+    getOwnedCollectiveUnit.mockResolvedValue({
+      collective_unit_id: "cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
+      preview_sha256: "a".repeat(64),
+      state: "confirmed",
+      html: "<article>Saved exact unit</article>",
+      view_format: "html",
+      material: {
+        source_session_ids: ["fsess_launch_1", "fsess_saved_2"],
+        unit: { asset_ids: ["launch-asset", "saved-asset"], spawn_count: 2 },
+        prompt_block: "Saved prompt",
+      },
+      lineage: [],
+    });
+    fetchEngagementSession.mockResolvedValueOnce({
+      ...FIXTURE,
+      session_id: "fsess_child_saved",
+      spawn_id: "spn_child_saved",
+      selection_text: "saved child",
+      source_references: [],
+    });
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    expect(await screen.findByText("cunit_aaaaaaaaaaaaaaaaaaaaaaaa")).toBeTruthy();
+    expect(screen.getByText("Research: running")).toBeTruthy();
+    fireEvent.click(screen.getByText("Research: running"));
+    await waitFor(() => expect(fetchEngagementSession).toHaveBeenCalledWith("fsess_child_saved", false));
+    expect(
+      Object.values(useWindows.getState().windows).some(
+        (win) => win.kind === "deep_research_session" && win.payload.session_id === "fsess_child_saved",
+      ),
+    ).toBe(true);
+    fireEvent.click(screen.getByText("Use saved unit"));
+    expect(await screen.findByTestId("confirmed-session-collective")).toBeTruthy();
+    expect(
+      screen.getByTestId("session-collective-preview").getAttribute("srcdoc"),
+    ).toContain("Saved exact unit");
+    expect((screen.getByTestId("continue-session-collective") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByText("Reopen HTML"));
+    await waitFor(() => expect(getOwnedCollectiveUnit).toHaveBeenCalledTimes(2));
+    expect(
+      Object.values(useWindows.getState().windows).some(
+        (win) => win.kind === "hosted_html_document" && win.payload.html === "<article>Saved exact unit</article>",
+      ),
+    ).toBe(true);
+  });
+
+  it("discards a late saved-unit activation after selection drift", async () => {
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, source_references: [] },
+        { ...FIXTURE, session_id: "fsess_saved_peer", goal: "Saved peer", source_references: [] },
+      ],
+      count: 2,
+      next_cursor: null,
+      view_format: "html",
+    });
+    listOwnedCollectiveUnits.mockResolvedValueOnce({
+      owner_id: "alice",
+      collectives: [
+        {
+          collective_unit_id: "cunit_bbbbbbbbbbbbbbbbbbbbbbbb",
+          preview_sha256: "b".repeat(64),
+          state: "confirmed",
+          source_session_ids: [],
+          asset_ids: ["launch-asset"],
+          spawn_count: 1,
+          twin_count: 0,
+          ref_count: 0,
+          output_count: 1,
+          recommended_research_tier: "deep",
+          lineage: [],
+          lineage_count: 0,
+          view_format: "html",
+        },
+      ],
+      count: 1,
+      next_cursor: null,
+      view_format: "html",
+    });
+    let resolveSaved!: (value: unknown) => void;
+    getOwnedCollectiveUnit.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveSaved = resolve; }),
+    );
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    await screen.findByText("cunit_bbbbbbbbbbbbbbbbbbbbbbbb");
+    fireEvent.click(screen.getByText("Use saved unit"));
+    await screen.findByText(/2 owned · 1 selected/i);
+    fireEvent.click(screen.getByLabelText("Select Saved peer"));
+    resolveSaved({
+      collective_unit_id: "cunit_bbbbbbbbbbbbbbbbbbbbbbbb",
+      preview_sha256: "b".repeat(64),
+      state: "confirmed",
+      html: "<article>stale saved unit</article>",
+      view_format: "html",
+      material: { source_session_ids: [], unit: { asset_ids: ["launch-asset"] }, prompt_block: "" },
+    });
+    await waitFor(() => expect(getOwnedCollectiveUnit).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId("confirmed-session-collective")).toBeNull();
+  });
+
+  it("retries a later saved-unit page without losing the loaded page", async () => {
+    const summary = (id: string) => ({
+      collective_unit_id: id,
+      preview_sha256: "c".repeat(64),
+      created_at: "2026-07-12T00:00:00Z",
+      state: "confirmed",
+      source_session_ids: [],
+      asset_ids: ["launch-asset"],
+      spawn_count: 1,
+      twin_count: 0,
+      ref_count: 0,
+      output_count: 1,
+      recommended_research_tier: "deep",
+      query: null,
+      lineage: [],
+      lineage_count: 0,
+      view_format: "html",
+    });
+    listOwnedCollectiveUnits
+      .mockResolvedValueOnce({
+        owner_id: "alice",
+        collectives: [summary("cunit_111111111111111111111111")],
+        count: 1,
+        next_cursor: "cunit_111111111111111111111111",
+        view_format: "html",
+      })
+      .mockRejectedValueOnce(new Error("Later page unavailable"))
+      .mockResolvedValueOnce({
+        owner_id: "alice",
+        collectives: [summary("cunit_222222222222222222222222")],
+        count: 1,
+        next_cursor: null,
+        view_format: "html",
+      });
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    await screen.findByText("cunit_111111111111111111111111");
+    fireEvent.click(screen.getByText("Load more saved units"));
+    expect(await screen.findByText("Later page unavailable")).toBeTruthy();
+    expect(screen.getByText("cunit_111111111111111111111111")).toBeTruthy();
+    fireEvent.click(screen.getByText("Retry saved units"));
+    expect(await screen.findByText("cunit_222222222222222222222222")).toBeTruthy();
+    expect(listOwnedCollectiveUnits).toHaveBeenLastCalledWith({
+      limit: 5,
+      cursor: "cunit_111111111111111111111111",
+    });
+  });
+
+  it("discards an old saved-unit page after a descendant refresh", async () => {
+    const makeSummary = (id: string) => ({
+      collective_unit_id: id,
+      preview_sha256: "d".repeat(64),
+      state: "confirmed",
+      source_session_ids: ["fsess_launch_1"],
+      asset_ids: ["launch-asset"],
+      spawn_count: 1,
+      twin_count: 0,
+      ref_count: 0,
+      output_count: 1,
+      recommended_research_tier: "deep",
+      lineage: [],
+      lineage_count: 0,
+      view_format: "html",
+    });
+    let resolveOldPage!: (value: unknown) => void;
+    listOwnedCollectiveUnits
+      .mockResolvedValueOnce({
+        owner_id: "alice",
+        collectives: [makeSummary("cunit_111111111111111111111111")],
+        count: 1,
+        next_cursor: "cunit_111111111111111111111111",
+        view_format: "html",
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveOldPage = resolve; }))
+      .mockResolvedValueOnce({
+        owner_id: "alice",
+        collectives: [makeSummary("cunit_333333333333333333333333")],
+        count: 1,
+        next_cursor: null,
+        view_format: "html",
+      });
+    getOwnedCollectiveUnit.mockResolvedValueOnce({
+      collective_unit_id: "cunit_111111111111111111111111",
+      preview_sha256: "d".repeat(64),
+      state: "confirmed",
+      html: "<article>saved</article>",
+      view_format: "html",
+      material: {
+        source_session_ids: ["fsess_launch_1"],
+        unit: { asset_ids: ["launch-asset"], spawn_count: 1 },
+        prompt_block: "saved",
+      },
+    });
+    createCollectiveWrittenAnalysis.mockResolvedValueOnce({
+      document_id: "collective_draft_111111111111111111111111",
+      source_collective_id: "cunit_111111111111111111111111",
+      source_preview_sha256: "d".repeat(64),
+      source_session_ids: ["fsess_launch_1"],
+      source_spawn_ids: [],
+      html: "<article>draft</article>",
+      view_format: "html",
+      state: "draft",
+    });
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    await screen.findByText("cunit_111111111111111111111111");
+    fireEvent.click(screen.getByText("Load more saved units"));
+    fireEvent.click(screen.getByText("Use saved unit"));
+    await screen.findByTestId("confirmed-session-collective");
+    fireEvent.click(screen.getByTestId("write-session-collective"));
+    await screen.findByText("cunit_333333333333333333333333");
+    resolveOldPage({
+      owner_id: "alice",
+      collectives: [makeSummary("cunit_222222222222222222222222")],
+      count: 1,
+      next_cursor: null,
+      view_format: "html",
+    });
+    await waitFor(() => expect(listOwnedCollectiveUnits).toHaveBeenCalledTimes(3));
+    expect(screen.queryByText("cunit_222222222222222222222222")).toBeNull();
+    expect(screen.getByText("cunit_333333333333333333333333")).toBeTruthy();
   });
 
   it("discards a late collective confirmation after membership drift", async () => {
