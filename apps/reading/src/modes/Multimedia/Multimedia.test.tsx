@@ -318,7 +318,10 @@ describe("Multimedia workstation", () => {
     const authorize = screen.getByRole("button", { name: "Authorize narration" });
     expect(authorize.getAttribute("disabled")).not.toBeNull();
     fireEvent.click(screen.getByLabelText("Approve this maximum"));
-    fireEvent.click(authorize);
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: "Authorize narration" }).getAttribute("disabled"),
+    ).toBeNull());
+    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
 
     await waitFor(() => expect(mockAuthorizeNarration).toHaveBeenCalledWith(
       "mm-1",
@@ -467,9 +470,7 @@ describe("Multimedia workstation", () => {
 
     const transcript = screen.getByTestId("multimedia-transcript");
     expect(within(transcript).getByText(/server-backed mechanism uses exact cited evidence/)).toBeTruthy();
-    expect(screen.getByTestId("multimedia-source-detail").textContent).toContain(
-      "server-chunk",
-    );
+    expect(screen.getByTestId("multimedia-source-detail").textContent).toContain("section 4");
   });
 
   it("renders persisted plan truth instead of the aircraft fixture", async () => {

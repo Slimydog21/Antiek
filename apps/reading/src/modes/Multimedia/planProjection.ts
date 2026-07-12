@@ -171,7 +171,7 @@ export function projectMultimediaPlan(input: unknown): PlanProjectionResult {
     id: citation.chunk_id,
     title: citation.document_id,
     status: "cited" as const,
-    detail: [citation.locator, `Chunk ${citation.chunk_id}`].filter(Boolean).join(" · "),
+    detail: citation.locator || "Source reference",
   }));
   return {
     ok: true,

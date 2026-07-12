@@ -60,7 +60,7 @@ describe("projectMultimediaPlan", () => {
       id: "chunk-1",
       title: "doc-packaging",
       status: "cited",
-      detail: "§2 · Chunk chunk-1",
+      detail: "§2",
     }]);
   });
 
