@@ -1,8 +1,12 @@
 {
   "cycle": 15,
-  "phase": "INVESTIGATE",
+  "phase": "EXECUTE",
   "subgoal": "Execute reserved cohesive research with consent, budget, routing, and recovery",
-  "lanes": [],
+  "lanes": [
+    "owner-native terminal deposit (published 57548774d)",
+    "FSW-SPR-10 consented cohesive execution (authored)",
+    "replay-safe collective/session/job execution binding (next)"
+  ],
   "engineHealth": {
     "grok": "ok",
     "mimo": "ok",
@@ -19,5 +23,5 @@
     {"cycle": 13, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 14, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
   ],
-  "updatedAt": "2026-07-12T18:46:00Z"
+  "updatedAt": "2026-07-12T19:20:00Z"
 }
