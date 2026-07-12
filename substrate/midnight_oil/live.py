@@ -43,7 +43,7 @@ from .graph_projection import (
     project_terminal_job_to_graph,
 )
 from .job import JobStore, MidnightOilJob, get_job
-from .job_store import OperationState, OwnerJobStore
+from .job_store import OperationState, OwnerJob, OwnerJobStore
 from .operation_queue import OperationQueue
 from .spend_consent import JobConsentConfig
 from .worker import (
@@ -168,7 +168,8 @@ class LiveExecutionPlan:
 
 
 class IdempotentDispatch(Protocol):
-    plan_hash: str
+    @property
+    def plan_hash(self) -> str: ...
 
     def __call__(
         self,
@@ -178,6 +179,21 @@ class IdempotentDispatch(Protocol):
         investigation_id: str,
         idempotency_key: str,
     ) -> DispatchResult: ...
+
+
+def live_plan_from_authority(authority: OwnerJob) -> LiveExecutionPlan:
+    """Rebuild the signed plan from the closed flattened authority payload."""
+
+    return LiveExecutionPlan.from_payload(
+        {
+            "plan_hash": authority.payload.get("live_plan_hash"),
+            "allowed_routes": authority.payload.get("live_allowed_routes"),
+            "projected_max_cents": authority.payload.get("live_projected_max_cents"),
+            "source_policy": authority.payload.get("live_source_policy"),
+            "dispatch_config_hash": authority.payload.get("live_dispatch_config_hash"),
+            "max_input_bytes": authority.payload.get("live_max_input_bytes"),
+        }
+    )
 
 
 def _tier_contract(tier: TierConfig | None) -> object:
@@ -431,20 +447,7 @@ class LiveOperatorCorpusStep:
         )
         if authority is None:
             raise ValueError("live step lacks durable authority")
-        plan = LiveExecutionPlan.from_payload(
-            {
-                "plan_hash": authority.payload.get("live_plan_hash"),
-                "allowed_routes": authority.payload.get("live_allowed_routes"),
-                "projected_max_cents": authority.payload.get(
-                    "live_projected_max_cents"
-                ),
-                "source_policy": authority.payload.get("live_source_policy"),
-                "dispatch_config_hash": authority.payload.get(
-                    "live_dispatch_config_hash"
-                ),
-                "max_input_bytes": authority.payload.get("live_max_input_bytes"),
-            }
-        )
+        plan = live_plan_from_authority(authority)
         if self.dispatch.plan_hash != plan.plan_hash:
             raise ValueError("live dispatch implementation conflicts with signed plan")
         return plan
@@ -554,6 +557,7 @@ def run_authorized_live_iteration(
     retrieval: RetrievalSubstrate,
     dispatch: IdempotentDispatch,
     clock: Clock,
+    lease_renewal_ms: int | None = None,
 ) -> MidnightOilJob:
     """Canonical production consumer entry for one fenced live operation."""
 
@@ -575,6 +579,7 @@ def run_authorized_live_iteration(
             step_fn=step,
             project_fn=project,
             clock=clock,
+            lease_renewal_ms=lease_renewal_ms,
         )
     except Exception as exc:
         authority = owner_jobs.get_job(

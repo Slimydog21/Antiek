@@ -1,0 +1,18 @@
+{
+  "state_dir": "/var/lib/antiek/midnight-oil",
+  "graph_db_path": "/var/lib/antiek/graph.duckdb",
+  "engagement_dir": "/var/lib/antiek/engagement",
+  "dispatch_config_path": "/opt/antiek/substrate/dispatch/config.yaml",
+  "retrieval_kind": "vss",
+  "embedding_model_name": "all-MiniLM-L6-v2",
+  "consent_active_key_id": "primary-2026-07",
+  "consent_signing_key_env": "ANTIEK_MO_CONSENT_KEY_PRIMARY",
+  "consent_verification_key_envs": {
+    "primary-2026-07": "ANTIEK_MO_CONSENT_KEY_PRIMARY"
+  },
+  "provider_attestation_paths": [
+    "/etc/antiek/midnight-oil/provider-attestation.json"
+  ],
+  "worker_lease_ms": 300000,
+  "worker_poll_ms": 5000
+}

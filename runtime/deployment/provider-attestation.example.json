@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "provider_name": "replace-with-configured-provider",
+  "base_url": "https://provider.example.invalid",
+  "chat_completions_path": "/v1/chat/completions",
+  "api_key_env": "PROVIDER_API_KEY",
+  "endpoint_sha256": "replace-with-provider_endpoint_sha256-output",
+  "dispatch_config_sha256": "replace-with-sha256-of-the-exact-dispatch-config-file",
+  "evidence_ref": "urn:replace-with-operator-verified-contract-evidence",
+  "verified_at": "2026-07-12T00:00:00Z"
+}

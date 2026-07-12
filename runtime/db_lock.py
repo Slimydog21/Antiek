@@ -48,8 +48,8 @@ import errno
 import fcntl
 import os
 import time
-from collections.abc import Iterable, Sequence
-from typing import Any, Protocol, runtime_checkable
+from collections.abc import Iterable, Iterator, Sequence
+from typing import Any, Literal, Protocol, runtime_checkable
 
 import duckdb
 
@@ -88,10 +88,8 @@ def _stale_pid_check(lock_path: str) -> None:
     try:
         os.kill(pid, 0)
     except (ProcessLookupError, PermissionError):
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(lock_path)
-        except OSError:
-            pass
 
 
 class WriteLockTimeout(RuntimeError):
@@ -162,14 +160,10 @@ def _log_write_event(
                 con.close()
         finally:
             if acquired:
-                try:
+                with contextlib.suppress(OSError):
                     fcntl.flock(fd, fcntl.LOCK_UN)
-                except OSError:
-                    pass
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
     except Exception as e:  # pragma: no cover — observability is best-effort
         # If write_log doesn't exist yet (pre-migration), or any other failure,
         # don't propagate. A single line on stderr is enough for ops.
@@ -201,6 +195,7 @@ class LockedConnection:
         db_path: str = "",
         purpose: str = "",
         acquired_at: float = 0.0,
+        log_on_close: bool = True,
     ):
         self._con = con
         self._lock_fd = lock_fd
@@ -210,18 +205,25 @@ class LockedConnection:
         self._purpose = purpose or "-"
         self._acquired_at = acquired_at or time.monotonic()
         self._error: str | None = None
+        self._log_on_close = log_on_close
 
-    def __getattr__(self, name):
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._con, name)
 
-    def __enter__(self):
+    def __enter__(self) -> LockedConnection:
         return self
 
-    def __exit__(self, exc_type, exc, tb):
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: object,
+    ) -> Literal[False]:
+        del exc_type, tb
         if exc is not None:
             # Capture the in-flight exception so write_log records the failure
             # mode. Don't suppress it — we still return False.
-            self._error = f"{exc_type.__name__}: {exc}"
+            self._error = f"{type(exc).__name__}: {exc}"
         self.close()
         return False
 
@@ -235,13 +237,11 @@ class LockedConnection:
             try:
                 fcntl.flock(self._lock_fd, fcntl.LOCK_UN)
             finally:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(self._lock_fd)
-                except OSError:
-                    pass
         # Log AFTER the lock is released, on a fresh connection (briefly
         # re-locked). The main pipeline never blocks on this.
-        if self._db_path:
+        if self._db_path and self._log_on_close:
             duration = max(0.0, time.monotonic() - self._acquired_at)
             _log_write_event(
                 self._db_path,
@@ -258,6 +258,7 @@ def connect_write(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     poll_interval_s: float = 0.25,
     purpose: str = "",
+    log_on_close: bool = True,
 ) -> LockedConnection:
     """Acquire an exclusive flock on the sidecar lock file, then open DuckDB
     for write. Returns a LockedConnection that releases the lock on close().
@@ -307,15 +308,13 @@ def connect_write(
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
                         f"Another writer is holding it; inspect with `lsof {lock_path}`."
-                    )
+                    ) from None
                 time.sleep(poll_interval_s)
     except WriteLockTimeout:
         raise
     except Exception:
-        try:
+        with contextlib.suppress(OSError):
             os.close(fd)
-        except OSError:
-            pass
         raise
 
     # Stamp pid + purpose + ISO timestamp for ops debugging — best-effort.
@@ -334,6 +333,7 @@ def connect_write(
         db_path=db_path,
         purpose=purpose or "-",
         acquired_at=time.monotonic(),
+        log_on_close=log_on_close,
     )
 
 
@@ -448,7 +448,9 @@ class WriteCoordinator(Protocol):
     Callers select the active coordinator via `init_db.get_write_coordinator()`.
     """
 
-    def acquire_write_context(self, purpose: str): ...
+    def acquire_write_context(
+        self, purpose: str
+    ) -> contextlib.AbstractContextManager[WriteContext]: ...
 
 
 class FlockWriteCoordinator:
@@ -479,7 +481,7 @@ class FlockWriteCoordinator:
         self.timeout_s = timeout_s
 
     @contextlib.contextmanager
-    def acquire_write_context(self, purpose: str):
+    def acquire_write_context(self, purpose: str) -> Iterator[LockedConnection]:
         if not purpose:
             raise ValueError(
                 "WriteCoordinator.acquire_write_context: purpose is mandatory. "
@@ -491,7 +493,7 @@ class FlockWriteCoordinator:
         if self._lock_path_override is not None:
             # Use a manual flock + duckdb open instead of connect_write so
             # the override actually takes effect.
-            yield from self._acquire_with_override(purpose)
+            yield from self._acquire_with_override(purpose, log_on_close=True)
             return
         con = connect_write(self.db_path, timeout_s=self.timeout_s, purpose=purpose)
         try:
@@ -502,11 +504,39 @@ class FlockWriteCoordinator:
         finally:
             con.close()
 
-    def _acquire_with_override(self, purpose: str):
+    @contextlib.contextmanager
+    def acquire_read_context(self, purpose: str) -> Iterator[LockedConnection]:
+        """Serialize a read using DuckDB's read-write connection mode.
+
+        This avoids DuckDB's same-process mixed read_only/read-write
+        configuration error while keeping the read free of write-log effects.
+        """
+
+        if not purpose:
+            raise ValueError("read context purpose is mandatory")
+        if self._lock_path_override is not None:
+            yield from self._acquire_with_override(purpose, log_on_close=False)
+            return
+        con = connect_write(
+            self.db_path,
+            timeout_s=self.timeout_s,
+            purpose=purpose,
+            log_on_close=False,
+        )
+        try:
+            yield con
+        finally:
+            con.close()
+
+    def _acquire_with_override(
+        self, purpose: str, *, log_on_close: bool
+    ) -> Iterator[LockedConnection]:
         """Test-only path: honor a non-default lock_path. Mirrors connect_write
         but uses self._lock_path_override.
         """
-        lock_path = self._lock_path_override  # type: ignore[assignment]
+        lock_path = self._lock_path_override
+        if lock_path is None:  # pragma: no cover - caller guards this path
+            raise RuntimeError("override lock path is missing")
         parent = os.path.dirname(lock_path)
         if parent and not os.path.exists(parent):
             os.makedirs(parent, exist_ok=True)
@@ -524,13 +554,11 @@ class FlockWriteCoordinator:
                         os.close(fd)
                         raise WriteLockTimeout(
                             f"Could not acquire write lock on {lock_path} within {self.timeout_s}s."
-                        )
+                        ) from None
                     time.sleep(0.1)
         except Exception:
-            try:
+            with contextlib.suppress(OSError):
                 os.close(fd)
-            except OSError:
-                pass
             raise
         try:
             os.ftruncate(fd, 0)
@@ -541,6 +569,7 @@ class FlockWriteCoordinator:
         wrapped = LockedConnection(
             con, fd, lock_path,
             db_path=self.db_path, purpose=purpose, acquired_at=time.monotonic(),
+            log_on_close=log_on_close,
         )
         try:
             yield wrapped

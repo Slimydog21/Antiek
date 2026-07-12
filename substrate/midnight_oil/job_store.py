@@ -21,7 +21,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from runtime.db_lock import FlockWriteCoordinator, connect_read
+from runtime.db_lock import FlockWriteCoordinator
 
 SCHEMA_VERSION: Final = 3
 MAX_APPROVED_CEILING_CENTS: Final = 1_000_000_000
@@ -129,6 +129,18 @@ CREATE TABLE IF NOT EXISTS midnight_oil_jobs (
     schema_version INTEGER NOT NULL,
     PRIMARY KEY (owner_user_id, job_id),
     UNIQUE (job_id)
+)
+"""
+
+_WRITE_LOG_DDL: Final = """
+CREATE SEQUENCE IF NOT EXISTS seq_write_log_id START 1;
+CREATE TABLE IF NOT EXISTS write_log (
+    log_id BIGINT PRIMARY KEY DEFAULT nextval('seq_write_log_id'),
+    purpose TEXT NOT NULL,
+    duration_s DOUBLE NOT NULL DEFAULT 0.0,
+    success BOOLEAN NOT NULL DEFAULT TRUE,
+    error TEXT,
+    logged_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 )
 """
 
@@ -493,6 +505,7 @@ class DurableOwnerJobStore:
     def ensure_schema(self) -> None:
         with self._coordinator.acquire_write_context("midnight_oil.job_store") as connection:
             connection.execute(_DDL)
+            connection.execute(_WRITE_LOG_DDL)
             info = connection.execute("PRAGMA table_info('midnight_oil_jobs')").fetchall()
             names = {str(column[1]) for column in info}
             if set(_COLUMNS).issubset(names):
@@ -623,15 +636,19 @@ class DurableOwnerJobStore:
     def get_job(self, *, owner_user_id: str, job_id: str) -> OwnerJob | None:
         owner = _text(owner_user_id, "owner_user_id")
         jid = _text(job_id, "job_id")
-        connection = connect_read(str(self.path))
-        try:
+        # Use the same coordinated read-write connection mode as mutations.
+        # DuckDB rejects a read_only=True connection in one thread while the
+        # same process has a read-write connection open in another. Authority
+        # reads are short and must serialize with CAS writes anyway, so the
+        # flock coordinator is the truthful cross-thread/process boundary.
+        with self._coordinator.acquire_read_context(
+            "midnight_oil.job_store.read_authority"
+        ) as connection:
             row = connection.execute(
                 f"SELECT {', '.join(_COLUMNS)} FROM midnight_oil_jobs "
                 "WHERE owner_user_id = ? AND job_id = ?",
                 [owner, jid],
             ).fetchone()
-        finally:
-            connection.close()
         return None if row is None else _decode(tuple(row))
 
     def delete_uninitialized_job(self, *, owner_user_id: str, job_id: str) -> bool:

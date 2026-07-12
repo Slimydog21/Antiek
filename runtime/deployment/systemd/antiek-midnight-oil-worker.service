@@ -1,0 +1,23 @@
+[Unit]
+Description=Antiek Midnight Oil durable research worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=antiek
+Group=antiek
+WorkingDirectory=/opt/antiek
+EnvironmentFile=/etc/antiek/midnight-oil/secrets.env
+ExecStart=/opt/antiek/.venv/bin/antiek midnight-oil-worker --config /etc/antiek/midnight-oil/runtime.json --worker-id %H-midnight-oil --poll
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+ReadWritePaths=/var/lib/antiek
+
+[Install]
+WantedBy=multi-user.target

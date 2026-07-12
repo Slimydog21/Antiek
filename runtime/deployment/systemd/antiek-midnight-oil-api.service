@@ -1,0 +1,24 @@
+[Unit]
+Description=Antiek API with owner-authorized Midnight Oil routes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=antiek
+Group=antiek
+WorkingDirectory=/opt/antiek
+EnvironmentFile=/etc/antiek/midnight-oil/secrets.env
+Environment=ANTIEK_MIDNIGHT_OIL_CONFIG=/etc/antiek/midnight-oil/runtime.json
+ExecStart=/opt/antiek/.venv/bin/uvicorn interfaces.research.api.midnight_oil_runtime:production_app --factory --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+ReadWritePaths=/var/lib/antiek
+
+[Install]
+WantedBy=multi-user.target

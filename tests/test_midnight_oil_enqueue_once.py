@@ -530,3 +530,167 @@ def test_provider_crossing_lease_expiry_advances_inside_operation_fence(tmp_path
     )
     assert result.status == "complete"
     assert queue.get(operation_id).next_step_index == 1  # type: ignore[union-attr]
+
+
+def test_queue_discovers_claimable_and_archives_terminal_once(tmp_path: Path) -> None:
+    queue = DurableOperationQueue(tmp_path / "worker-queue.sqlite3")
+    queued, inserted = queue.enqueue_once(
+        operation_id="operation-runtime",
+        owner_user_id="owner-runtime",
+        job_id="job-runtime",
+        enqueued_at_ms=10,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    assert inserted
+    assert queue.next_claimable(now_ms=10) == queued
+    leased, won = queue.lease(
+        operation_id=queued.operation_id,
+        worker_id="worker-runtime",
+        leased_at_ms=11,
+        lease_expires_at_ms=20,
+    )
+    assert won
+    assert queue.next_claimable(now_ms=19) is None
+    assert queue.next_claimable(now_ms=20) == leased
+    assert queue.acknowledge_terminal(
+        operation_id=leased.operation_id,
+        worker_id="worker-runtime",
+        lease_generation=leased.lease_generation,
+        terminal_state="complete",
+        completed_at_ms=21,
+    )
+    assert queue.get(leased.operation_id) is None
+    assert queue.next_claimable(now_ms=22) is None
+    assert queue.acknowledge_terminal(
+        operation_id=leased.operation_id,
+        worker_id="worker-runtime",
+        lease_generation=leased.lease_generation,
+        terminal_state="complete",
+        completed_at_ms=22,
+    )
+    with pytest.raises(ValueError, match="already terminal"):
+        queue.enqueue_once(
+            operation_id="operation-runtime",
+            owner_user_id="owner-runtime",
+            job_id="job-runtime",
+            enqueued_at_ms=23,
+            options={
+                "max_steps": None,
+                "auto_deposit": True,
+                "draft_combined": True,
+                "force_offline": False,
+            },
+        )
+
+
+def test_terminal_acknowledgement_is_generation_fenced(tmp_path: Path) -> None:
+    queue = DurableOperationQueue(tmp_path / "worker-queue.sqlite3")
+    queue.enqueue_once(
+        operation_id="operation-runtime",
+        owner_user_id="owner-runtime",
+        job_id="job-runtime",
+        enqueued_at_ms=10,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    leased, _ = queue.lease(
+        operation_id="operation-runtime",
+        worker_id="worker-runtime",
+        leased_at_ms=11,
+        lease_expires_at_ms=20,
+    )
+    assert not queue.acknowledge_terminal(
+        operation_id=leased.operation_id,
+        worker_id="worker-runtime",
+        lease_generation=leased.lease_generation + 1,
+        terminal_state="complete",
+        completed_at_ms=12,
+    )
+    assert queue.get(leased.operation_id) is not None
+
+
+def test_paid_fence_renews_same_generation_before_releasing_lock(tmp_path: Path) -> None:
+    queue = DurableOperationQueue(tmp_path / "worker-queue.sqlite3")
+    queue.enqueue_once(
+        operation_id="operation-renew",
+        owner_user_id="owner-renew",
+        job_id="job-renew",
+        enqueued_at_ms=10,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    leased, _ = queue.lease(
+        operation_id="operation-renew",
+        worker_id="worker-renew",
+        leased_at_ms=11,
+        lease_expires_at_ms=20,
+    )
+    result = queue.run_fenced(
+        operation_id=leased.operation_id,
+        worker_id="worker-renew",
+        lease_generation=leased.lease_generation,
+        now_ms=12,
+        expected_step_index=0,
+        action=lambda: ("paid-return", True),
+        renew_expires_at_ms=lambda: 200,
+    )
+    assert result == "paid-return"
+    renewed = queue.get(leased.operation_id)
+    assert renewed is not None
+    assert renewed.lease_generation == leased.lease_generation
+    assert renewed.lease_expires_at_ms == 200
+    assert renewed.next_step_index == 1
+
+
+def test_exceptional_paid_fence_renews_before_exposing_takeover(tmp_path: Path) -> None:
+    queue = DurableOperationQueue(tmp_path / "worker-queue.sqlite3")
+    queue.enqueue_once(
+        operation_id="operation-error-renew",
+        owner_user_id="owner-renew",
+        job_id="job-renew",
+        enqueued_at_ms=10,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    leased, _ = queue.lease(
+        operation_id="operation-error-renew",
+        worker_id="worker-renew",
+        leased_at_ms=11,
+        lease_expires_at_ms=20,
+    )
+
+    def timeout_after_provider() -> tuple[str, bool]:
+        raise RuntimeError("ambiguous provider timeout")
+
+    with pytest.raises(RuntimeError, match="ambiguous provider timeout"):
+        queue.run_fenced(
+            operation_id=leased.operation_id,
+            worker_id="worker-renew",
+            lease_generation=leased.lease_generation,
+            now_ms=12,
+            expected_step_index=0,
+            action=timeout_after_provider,
+            renew_expires_at_ms=lambda: 200,
+        )
+    renewed = queue.get(leased.operation_id)
+    assert renewed is not None
+    assert renewed.lease_generation == leased.lease_generation
+    assert renewed.lease_expires_at_ms == 200
+    assert queue.next_claimable(now_ms=199) is None

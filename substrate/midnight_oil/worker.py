@@ -311,10 +311,13 @@ def run_leased_worker_iteration(
     step_fn: IdempotentStepFn,
     project_fn: ProjectFn,
     clock: Clock,
+    lease_renewal_ms: int | None = None,
     on_spawn: Callable[[MidnightOilJob, WorkerStepResult], None] | None = None,
 ) -> MidnightOilJob:
     """Execute all paid side effects under the durable lease coordinator."""
     key = lease.idempotency_key(lease.step_index)
+    if lease_renewal_ms is not None and lease_renewal_ms <= 0:
+        raise ValueError("lease renewal must be positive")
 
     def action() -> tuple[MidnightOilJob, bool]:
         result = _run_leased_worker_iteration_fenced(
@@ -337,6 +340,11 @@ def run_leased_worker_iteration(
         now_ms=clock.now_ms(),
         expected_step_index=lease.step_index,
         action=action,
+        renew_expires_at_ms=(
+            None
+            if lease_renewal_ms is None
+            else lambda: clock.now_ms() + lease_renewal_ms
+        ),
     )
 
 

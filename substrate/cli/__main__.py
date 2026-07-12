@@ -19,6 +19,8 @@ def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
         from substrate.cli.compact import main
     elif name == "queue":
         from substrate.cli.queue import main
+    elif name == "midnight-oil-worker":
+        from substrate.midnight_oil.worker_cli import main
     elif name == "lint":
         import importlib.util
         from pathlib import Path
@@ -37,7 +39,16 @@ def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
     return main
 
 
-SUBCOMMANDS = ("burn", "branch", "hooks", "harness", "compact", "queue", "lint")
+SUBCOMMANDS = (
+    "burn",
+    "branch",
+    "hooks",
+    "harness",
+    "compact",
+    "queue",
+    "midnight-oil-worker",
+    "lint",
+)
 
 
 def _print_usage() -> None:
@@ -51,6 +62,7 @@ def _print_usage() -> None:
         "  harness   Per-project harness fork / apply / diff / status\n"
         "  compact   Manual compaction\n"
         "  queue     Bounded-queue inspection\n"
+        "  midnight-oil-worker  Durable autonomous research worker\n"
         "  lint      Context-injection static analysis\n"
         "\n"
         "Run `antiek <subcommand> --help` for subcommand-specific flags.\n"
