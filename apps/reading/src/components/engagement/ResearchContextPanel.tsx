@@ -841,7 +841,7 @@ export function ResearchContextPanel({
             (evidence.research_tier || "").trim().toLowerCase() || ""
           }
           data-citation-trust={
-            (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+            evidence.chain_complete === true ? "grounded" : "ungrounded"
           }
         >
           {/* Residual (hu/kd): machine-readable competitive citation + depth. */}
@@ -850,11 +850,17 @@ export function ResearchContextPanel({
             data-insight-count={String(evidence.insight_count ?? 0)}
             data-question-count={String(evidence.question_count ?? 0)}
             data-ref-count={String(evidence.ref_count ?? 0)}
+            data-grounded-insight-count={String(
+              evidence.grounded_insight_count ?? 0,
+            )}
+            data-ungrounded-insight-count={String(
+              evidence.ungrounded_insight_count ?? evidence.insight_count ?? 0,
+            )}
             data-research-tier={
               (evidence.research_tier || "").trim().toLowerCase() || ""
             }
             data-citation-trust={
-              (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+              evidence.chain_complete === true ? "grounded" : "ungrounded"
             }
             data-view-format="html"
             role="status"
@@ -862,7 +868,8 @@ export function ResearchContextPanel({
             Evidence pack · insights={evidence.insight_count ?? 0} · questions=
             {evidence.question_count ?? 0} · refs={evidence.ref_count ?? 0} ·
             trust=
-            {(evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"}
+            {evidence.chain_complete === true ? "grounded" : "ungrounded"}
+            {` · explicitly grounded=${evidence.grounded_insight_count ?? 0}/${evidence.insight_count ?? 0}`}
             {evidence.research_tier
               ? ` · tier=${evidence.research_tier}`
               : ""}
@@ -876,13 +883,9 @@ export function ResearchContextPanel({
             data-question-count={String(evidence.question_count ?? 0)}
             data-ref-count={String(evidence.ref_count ?? 0)}
             data-citation-trust={
-              (evidence.ref_count ?? 0) > 0 ? "grounded" : "ungrounded"
+              evidence.chain_complete === true ? "grounded" : "ungrounded"
             }
-            data-chain-complete={String(
-              evidence.chain_complete ??
-                ((evidence.insight_count ?? 0) > 0 &&
-                  (evidence.ref_count ?? 0) > 0),
-            )}
+            data-chain-complete={String(evidence.chain_complete === true)}
             data-hop-stage-count={String(
               (evidence.citation_chain || []).length,
             )}
@@ -894,10 +897,10 @@ export function ResearchContextPanel({
             questions=<strong>{evidence.question_count ?? 0}</strong>
             {" → "}
             source refs=<strong>{evidence.ref_count ?? 0}</strong>
-            {(evidence.ref_count ?? 0) > 0 && (evidence.insight_count ?? 0) > 0
-              ? " · multi-hop grounding path present (competitive citation bar)"
+            {evidence.chain_complete === true
+              ? ` · explicit grounding ${evidence.grounded_insight_count ?? evidence.insight_count ?? 0}/${evidence.insight_count ?? 0} (competitive citation bar)`
               : (evidence.ref_count ?? 0) > 0
-                ? " · refs present · seed insights for full chain"
+                ? ` · refs present but ${evidence.ungrounded_insight_count ?? evidence.insight_count ?? 0} insight(s) remain ungrounded`
                 : " · incomplete chain · attach pubs / seed twins (never invent sources)"}
           </div>
           {/* Residual (api): competitive citation hop pipeline completeness. */}
@@ -1103,9 +1106,7 @@ export function ResearchContextPanel({
               data-testid="evidence-citation-chain-hops"
               data-view-format="html"
               data-chain-complete={String(
-                evidence.chain_complete ??
-                  ((evidence.insight_count ?? 0) > 0 &&
-                    (evidence.ref_count ?? 0) > 0),
+                evidence.chain_complete === true,
               )}
               data-hop-stage-count={String(evidence.citation_chain!.length)}
               aria-label="Citation chain multi-hop navigation"
@@ -1232,7 +1233,7 @@ export function ResearchContextPanel({
             </p>
           ) : null}
           {/* Residual (dm): competitive bar — never pretend citations exist. */}
-          {(evidence.ref_count ?? 0) === 0 ? (
+          {evidence.chain_complete !== true ? (
             <div
               className="meta font-mono text-[11px] text-emperor space-y-1"
               data-testid="evidence-citation-trust"
@@ -1241,9 +1242,9 @@ export function ResearchContextPanel({
               role="status"
             >
               <p>
-                Citation trust: ungrounded — attach arxiv/substack/URL refs or
-                seed twins before treating this pack as competitive-grade
-                synthesis.
+                Citation trust: ungrounded. Explicitly cite attached
+                arxiv/substack/URL refs from every insight before treating this
+                pack as competitive-grade synthesis.
               </p>
               {/* Residual (up): prep links when ungrounded (never silent live hydrate). */}
               <p className="space-x-2 opacity-90">
@@ -1279,11 +1280,15 @@ export function ResearchContextPanel({
               data-testid="evidence-citation-trust"
               data-citation-trust="grounded"
               data-ref-count={String(evidence.ref_count ?? 0)}
+              data-grounded-insight-count={String(
+                evidence.grounded_insight_count ?? 0,
+              )}
               data-offline-hydrate-default="true"
               role="status"
             >
               <p>
-                Citation trust: grounded · {evidence.ref_count} source ref(s)
+                Citation trust: grounded · {evidence.grounded_insight_count ?? evidence.insight_count ?? 0}/
+                {evidence.insight_count ?? 0} insights explicitly cite {evidence.ref_count} source ref(s)
               </p>
               {/* Residual (va): grounded packs still surface L1/L2 maintain-prep. */}
               <p className="space-x-2 opacity-90">

@@ -8,6 +8,9 @@ import {
 } from "./TwinNotesPanel";
 
 const fetchTwinNotes = vi.fn<typeof import("../../api/engagement").fetchTwinNotes>();
+const fetchResearchContext = vi.fn<
+  typeof import("../../api/engagement").fetchResearchContext
+>();
 const recordTwinNote = vi.fn<(...args: unknown[]) => unknown>();
 const promoteTwinsToContext = vi.fn<(...args: unknown[]) => unknown>();
 const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
@@ -23,6 +26,8 @@ const buildTwinPromoteWriteHref = vi.fn<typeof import("../../workspace/twinWrite
 
 vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...(args as Parameters<typeof fetchTwinNotes>)),
+  fetchResearchContext: (...args: unknown[]) =>
+    fetchResearchContext(...(args as Parameters<typeof fetchResearchContext>)),
   recordTwinNote: (...args: unknown[]) => recordTwinNote(...(args as Parameters<typeof recordTwinNote>)),
   promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...(args as Parameters<typeof promoteTwinsToContext>)),
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
@@ -227,6 +232,17 @@ describe("TwinNotesPanel", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
     fetchTwinNotes.mockReset();
+    fetchResearchContext.mockReset();
+    fetchResearchContext.mockResolvedValue({
+      asset_id: "paper",
+      spawn_id: "spn_1",
+      twin_count: 0,
+      ref_count: 0,
+      twin_units: [],
+      source_references: [],
+      prompt_block: "",
+      view_format: "html",
+    });
     recordTwinNote.mockReset();
     promoteTwinsToContext.mockReset();
     openWindow.mockClear();
@@ -698,6 +714,7 @@ describe("TwinNotesPanel", () => {
       kind: "insight",
       text: "Attention is routing.",
       source_spawn_id: "spn_1",
+      source_ref_ids: [],
       include_html: true,
     });
     expect(screen.getByTestId("twin-notes-html").innerHTML).toMatch(
@@ -706,6 +723,56 @@ describe("TwinNotesPanel", () => {
     expect(
       screen.getByTestId("twin-notes-panel").getAttribute("data-view-format"),
     ).toBe("html");
+  });
+
+  it("records explicit citations only from the spawn's attached references", async () => {
+    fetchResearchContext.mockResolvedValue({
+      asset_id: "paper",
+      spawn_id: "spn_cited",
+      twin_count: 0,
+      ref_count: 1,
+      twin_units: [],
+      source_references: [
+        {
+          ref_id: "sref_attached",
+          kind: "arxiv",
+          raw: "arxiv:1706.03762",
+          canonical_url: "https://arxiv.org/abs/1706.03762",
+          external_id: "1706.03762",
+          title_hint: "Attention Is All You Need",
+        },
+      ],
+      prompt_block: "",
+      view_format: "html",
+    });
+    recordTwinNote.mockResolvedValue({
+      asset_id: "paper",
+      note_count: 1,
+      insight_count: 1,
+      question_count: 0,
+      notes: [],
+      view_format: "html",
+      product_panel: "twin_notes",
+      source: "engagement_spine.twin",
+    });
+    render(<TwinNotesPanel assetId="paper" spawnId="spn_cited" />);
+    const citation = await screen.findByTestId(
+      "twin-source-citation-sref_attached",
+    );
+    fireEvent.click(citation);
+    fireEvent.change(screen.getByTestId("twin-text"), {
+      target: { value: "Transformers use attention-only routing." },
+    });
+    fireEvent.click(screen.getByTestId("twin-record"));
+
+    await waitFor(() =>
+      expect(recordTwinNote).toHaveBeenCalledWith(
+        expect.objectContaining({
+          source_spawn_id: "spn_cited",
+          source_ref_ids: ["sref_attached"],
+        }),
+      ),
+    );
   });
 
   it("promotes twins into context units", async () => {

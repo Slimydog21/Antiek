@@ -66,7 +66,7 @@ describe("citation hop pipeline pure helpers (api)", () => {
     expect(mid.present_count).toBe(2);
     expect(mid.total).toBe(3);
     expect(mid.coverage_ratio).toBeCloseTo(2 / 3);
-    expect(mid.chain_complete).toBe(true);
+    expect(mid.chain_complete).toBe(false);
     expect(mid.insight_count).toBe(2);
     expect(mid.question_count).toBe(0);
     expect(mid.ref_count).toBe(1);
@@ -80,6 +80,7 @@ describe("citation hop pipeline pure helpers (api)", () => {
       insight_count: 1,
       question_count: 1,
       ref_count: 1,
+      chain_complete: true,
     });
     expect(full.present).toEqual(["insights", "questions", "sources"]);
     expect(full.missing).toEqual([]);
@@ -853,6 +854,11 @@ describe("ResearchContextPanel", () => {
       insight_count: 1,
       question_count: 0,
       ref_count: 1,
+      grounded_insight_count: 1,
+      ungrounded_insight_count: 0,
+      grounding_links: [
+        { note_id: "note_1", insight_index: 0, source_ref_ids: ["s1"] },
+      ],
       insights: ["Attention is routing."],
       questions: [],
       source_references: [
@@ -973,9 +979,12 @@ describe("ResearchContextPanel", () => {
     expect(metrics.getAttribute("data-insight-count")).toBe("1");
     expect(metrics.getAttribute("data-question-count")).toBe("0");
     expect(metrics.getAttribute("data-ref-count")).toBe("1");
+    expect(metrics.getAttribute("data-grounded-insight-count")).toBe("1");
+    expect(metrics.getAttribute("data-ungrounded-insight-count")).toBe("0");
     expect(metrics.getAttribute("data-citation-trust")).toBe("grounded");
     expect(metrics.getAttribute("data-view-format")).toBe("html");
     expect(metrics.textContent).toMatch(/Evidence pack/);
+    expect(metrics.textContent).toMatch(/explicitly grounded=1\/1/);
     // Residual (aij): competitive citation chain honesty (insight→question→ref).
     const chain = screen.getByTestId("evidence-citation-chain");
     expect(chain.getAttribute("data-insight-count")).toBe("1");
@@ -984,7 +993,7 @@ describe("ResearchContextPanel", () => {
     expect(chain.getAttribute("data-chain-complete")).toBe("true");
     expect(chain.getAttribute("data-hop-stage-count")).toBe("2");
     expect(chain.textContent).toMatch(/Citation chain/i);
-    expect(chain.textContent).toMatch(/multi-hop grounding/i);
+    expect(chain.textContent).toMatch(/explicit grounding 1\/1/i);
     // Residual (api): competitive citation hop pipeline completeness.
     // Residual (aqa): prefers substrate citation_hop_pipeline when present.
     const hopPipe = screen.getByTestId("evidence-citation-hop-pipeline");

@@ -33,6 +33,7 @@ class TwinNote:
     source_revision_sha256: str | None = None
     created_at: str | None = None
     source_event_ids: tuple[str, ...] = ()
+    source_ref_ids: tuple[str, ...] = ()
 
 
 def _note_id(asset_id: str, kind: TwinKind, text: str) -> str:
@@ -43,9 +44,7 @@ def _note_id(asset_id: str, kind: TwinKind, text: str) -> str:
 
 def _generated_note_id(asset_id: str, kind: TwinKind, text: str, origin: str) -> str:
     canon = " ".join(text.strip().lower().split())
-    digest = hashlib.sha256(
-        f"{origin}:{asset_id}:{kind}:{canon}".encode()
-    ).hexdigest()[:16]
+    digest = hashlib.sha256(f"{origin}:{asset_id}:{kind}:{canon}".encode()).hexdigest()[:16]
     return f"twin_generated_{digest}"
 
 
@@ -56,6 +55,7 @@ def record_twin_insight(
     store: EngagementStore,
     source_spawn_id: str | None = None,
     investigation_id: str | None = None,
+    source_ref_ids: Sequence[str] | None = None,
 ) -> TwinNote:
     return _record(
         asset_id,
@@ -64,6 +64,7 @@ def record_twin_insight(
         store=store,
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
+        source_ref_ids=source_ref_ids,
     )
 
 
@@ -74,6 +75,7 @@ def record_twin_question(
     store: EngagementStore,
     source_spawn_id: str | None = None,
     investigation_id: str | None = None,
+    source_ref_ids: Sequence[str] | None = None,
 ) -> TwinNote:
     return _record(
         asset_id,
@@ -82,6 +84,7 @@ def record_twin_question(
         store=store,
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
+        source_ref_ids=source_ref_ids,
         created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
 
@@ -94,6 +97,7 @@ def _record(
     store: EngagementStore,
     source_spawn_id: str | None,
     investigation_id: str | None,
+    source_ref_ids: Sequence[str] | None = None,
     created_at: str | None = None,
 ) -> TwinNote:
     if not asset_id or not asset_id.strip():
@@ -101,6 +105,25 @@ def _record(
     cleaned = text.strip()
     if not cleaned:
         raise ValueError("text is required")
+    cited_refs: tuple[str, ...] = ()
+    if source_ref_ids:
+        if not source_spawn_id:
+            raise ValueError("source_ref_ids require source_spawn_id")
+        from .source_refs import list_source_references
+
+        spawn = store.get_spawn(source_spawn_id)
+        if spawn is None:
+            raise ValueError("source_spawn_id does not exist")
+        if str(spawn.get("parent_asset_id") or "").strip() != asset_id.strip():
+            raise ValueError("source_spawn_id does not belong to asset_id")
+        attached = {ref.ref_id for ref in list_source_references(source_spawn_id, store=store)}
+        normalized = tuple(dict.fromkeys(str(ref_id).strip() for ref_id in source_ref_ids))
+        if len(normalized) > 20 or any(not ref_id or len(ref_id) > 100 for ref_id in normalized):
+            raise ValueError("source_ref_ids must contain 1-20 bounded identifiers")
+        unknown = [ref_id for ref_id in normalized if ref_id not in attached]
+        if unknown:
+            raise ValueError(f"source_ref_ids are not attached to spawn: {unknown[0]}")
+        cited_refs = normalized
     note = TwinNote(
         note_id=_note_id(asset_id.strip(), kind, cleaned),
         asset_id=asset_id.strip(),
@@ -109,6 +132,7 @@ def _record(
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
         created_at=created_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        source_ref_ids=cited_refs,
     )
     store.put_twin(_to_row(note))
     return note
@@ -174,6 +198,7 @@ def record_twin_product(
     text: str,
     source_spawn_id: str | None = None,
     investigation_id: str | None = None,
+    source_ref_ids: Sequence[str] | None = None,
     include_html: bool = False,
 ) -> dict[str, Any]:
     """Product entry: record one twin note then return full twin payload."""
@@ -184,6 +209,7 @@ def record_twin_product(
             store=store,
             source_spawn_id=source_spawn_id,
             investigation_id=investigation_id,
+            source_ref_ids=source_ref_ids,
         )
     elif kind == "question":
         record_twin_question(
@@ -192,6 +218,7 @@ def record_twin_product(
             store=store,
             source_spawn_id=source_spawn_id,
             investigation_id=investigation_id,
+            source_ref_ids=source_ref_ids,
         )
     else:
         raise ValueError(f"invalid twin kind: {kind!r}")
@@ -250,9 +277,7 @@ def converge_reviewed_twins(
             created_at=created_at,
         ),
     ]
-    store.replace_twins_for_origin(
-        aid, origin, [_to_row(note) for note in notes]
-    )
+    store.replace_twins_for_origin(aid, origin, [_to_row(note) for note in notes])
     payload = twins_product_payload(aid, store=store, include_html=False)
     payload["canonical_review_sha256"] = revision
     payload["seeded"] = True
@@ -326,9 +351,7 @@ def seed_twins_for_asset(
 
             row = store.get_spawn(sid) or {}
             payload["source_spawn_id"] = sid
-            payload["research_tier"] = normalize_research_tier(
-                row.get("research_tier")
-            )
+            payload["research_tier"] = normalize_research_tier(row.get("research_tier"))
         else:
             payload["research_tier"] = None
         return payload
@@ -341,11 +364,7 @@ def seed_twins_for_asset(
     used_live = False
     pairs: list[tuple[str, str]] = []
     candidate = live_fn if live_fn is not None else _twin_seed_live_fn
-    if (
-        not force_offline
-        and twin_seed_live_enabled()
-        and candidate is not None
-    ):
+    if not force_offline and twin_seed_live_enabled() and candidate is not None:
         try:
             raw_pairs = candidate(t, body_text or "")
             for kind, text in raw_pairs:
@@ -369,19 +388,13 @@ def seed_twins_for_asset(
     for missing_kind in {"insight", "question"} - existing_kinds:
         chosen.setdefault(missing_kind, defaults[missing_kind])
     pairs = list(chosen.items())
-    used_live = bool(pairs) and all(
-        live_choices.get(kind) == text for kind, text in pairs
-    )
+    used_live = bool(pairs) and all(live_choices.get(kind) == text for kind, text in pairs)
 
     for kind, text in pairs:
         if kind == "insight":
-            record_twin_insight(
-                aid, text, store=store, source_spawn_id=source_spawn_id
-            )
+            record_twin_insight(aid, text, store=store, source_spawn_id=source_spawn_id)
         else:
-            record_twin_question(
-                aid, text, store=store, source_spawn_id=source_spawn_id
-            )
+            record_twin_question(aid, text, store=store, source_spawn_id=source_spawn_id)
 
     payload = twins_product_payload(aid, store=store, include_html=False)
     payload["seeded"] = True
@@ -450,9 +463,7 @@ def project_twins_html(payload: dict[str, Any]) -> str:
         blocks.append(
             {
                 "type": "paragraph",
-                "content": [
-                    {"type": "text", "text": f"{label}: {row.get('text') or ''}"}
-                ],
+                "content": [{"type": "text", "text": f"{label}: {row.get('text') or ''}"}],
             }
         )
     if len(blocks) == 2:
@@ -489,6 +500,7 @@ def _to_row(note: TwinNote) -> dict[str, Any]:
         "source_revision_sha256": note.source_revision_sha256,
         "created_at": note.created_at,
         "source_event_ids": list(note.source_event_ids),
+        "source_ref_ids": list(note.source_ref_ids),
     }
 
 
@@ -504,4 +516,5 @@ def _from_row(row: dict[str, Any]) -> TwinNote:
         source_revision_sha256=row.get("source_revision_sha256"),
         created_at=row.get("created_at"),
         source_event_ids=tuple(row.get("source_event_ids") or ()),
+        source_ref_ids=tuple(row.get("source_ref_ids") or ()),
     )

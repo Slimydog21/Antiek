@@ -73,12 +73,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   fetchTwinNotes,
+  fetchResearchContext,
   promoteTwinsToContext,
   recordTwinNote,
   seedTwinNotes,
   type TwinNotesResponse,
   type TwinPromoteContextResponse,
 } from "../../api/engagement";
+import type { SourceReference } from "../../workspace/researchContextPack";
 import { launchFloatingDeepResearch } from "../../modes/Reading/launchFloatingDeepResearch";
 import {
   buildTwinPromoteWriteHref,
@@ -270,6 +272,10 @@ export function TwinNotesPanel({
   );
   const [text, setText] = useState("");
   const [kind, setKind] = useState<"insight" | "question">("insight");
+  const [sourceReferences, setSourceReferences] = useState<SourceReference[]>([]);
+  const [selectedSourceRefIds, setSelectedSourceRefIds] = useState<Set<string>>(
+    new Set(),
+  );
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [seedStatus, setSeedStatus] = useState<string | null>(null);
@@ -561,6 +567,30 @@ export function TwinNotesPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoLoad, assetId, autoSeedIfEmpty, autoPromoteAfterLoad]);
 
+  useEffect(() => {
+    const sid = (spawnId || "").trim();
+    if (!sid) {
+      setSourceReferences([]);
+      setSelectedSourceRefIds(new Set());
+      return;
+    }
+    let cancelled = false;
+    void fetchResearchContext({
+      asset_id: assetId,
+      spawn_id: sid,
+      include_twin_promote: false,
+    })
+      .then((context) => {
+        if (!cancelled) setSourceReferences(context.source_references || []);
+      })
+      .catch(() => {
+        if (!cancelled) setSourceReferences([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId, spawnId]);
+
   const record = useCallback(async () => {
     if (!text.trim()) return;
     setBusy(true);
@@ -571,6 +601,7 @@ export function TwinNotesPanel({
         kind,
         text: text.trim(),
         source_spawn_id: spawnId,
+        source_ref_ids: [...selectedSourceRefIds],
         include_html: true,
       });
       if (t.view_format !== "html") {
@@ -578,12 +609,13 @@ export function TwinNotesPanel({
       }
       setTwins(t);
       setText("");
+      setSelectedSourceRefIds(new Set());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
-  }, [assetId, kind, text, spawnId]);
+  }, [assetId, kind, text, spawnId, selectedSourceRefIds]);
 
   /** Residual (mr): notes visible under list filter. */
   const visibleNotes = useMemo(() => {
@@ -1213,6 +1245,33 @@ export function TwinNotesPanel({
           disabled={busy}
           style={{ minWidth: "12rem", flex: 1 }}
         />
+        {spawnId && sourceReferences.length > 0 ? (
+          <fieldset
+            className="flex max-w-full flex-wrap gap-2 rounded border px-2 py-1 text-[10px] font-mono"
+            data-testid="twin-source-citations"
+          >
+            <legend>Cite attached sources</legend>
+            {sourceReferences.map((reference) => (
+              <label key={reference.ref_id} className="flex items-center gap-1">
+                <input
+                  type="checkbox"
+                  data-testid={`twin-source-citation-${reference.ref_id}`}
+                  checked={selectedSourceRefIds.has(reference.ref_id)}
+                  disabled={busy}
+                  onChange={() =>
+                    setSelectedSourceRefIds((current) => {
+                      const next = new Set(current);
+                      if (next.has(reference.ref_id)) next.delete(reference.ref_id);
+                      else next.add(reference.ref_id);
+                      return next;
+                    })
+                  }
+                />
+                {reference.title_hint || reference.canonical_url || reference.raw}
+              </label>
+            ))}
+          </fieldset>
+        ) : null}
         <button
           type="button"
           data-testid="twin-record"

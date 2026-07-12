@@ -79,12 +79,8 @@ _request_engagement_store: ContextVar[EngagementStore | None] = ContextVar(
 _request_session_store: ContextVar[SessionStore | None] = ContextVar(
     "request_session_store", default=None
 )
-_request_promote_insight: ContextVar[Any] = ContextVar(
-    "request_promote_insight", default=None
-)
-_request_promote_question: ContextVar[Any] = ContextVar(
-    "request_promote_question", default=None
-)
+_request_promote_insight: ContextVar[Any] = ContextVar("request_promote_insight", default=None)
+_request_promote_question: ContextVar[Any] = ContextVar("request_promote_question", default=None)
 _request_graph_path: ContextVar[Path | None] = ContextVar(
     "request_engagement_graph_path", default=None
 )
@@ -223,12 +219,8 @@ def bind_engagement_stores(
     async def engagement_composition(request: Any, call_next: Any) -> Any:
         eng_token = _request_engagement_store.set(engagement_store)
         session_token = _request_session_store.set(session_store)
-        insight_token = _request_promote_insight.set(
-            app.state.engagement_promote_insight
-        )
-        question_token = _request_promote_question.set(
-            app.state.engagement_promote_question
-        )
+        insight_token = _request_promote_insight.set(app.state.engagement_promote_insight)
+        question_token = _request_promote_question.set(app.state.engagement_promote_question)
         graph_token = _request_graph_path.set(graph_path)
         try:
             return await call_next(request)
@@ -359,6 +351,7 @@ class TwinRecordBody(BaseModel):
     text: str = Field(min_length=1)
     source_spawn_id: str | None = None
     investigation_id: str | None = None
+    source_ref_ids: list[str] = Field(default_factory=list, max_length=20)
     include_html: bool = True
 
 
@@ -442,9 +435,7 @@ def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
 @engagement_router.post("/attach-refs")
 def post_attach_refs(body: AttachRefsBody) -> dict[str, Any]:
     try:
-        spawn, merged = attach_source_references(
-            body.spawn_id, body.references, store=_eng()
-        )
+        spawn, merged = attach_source_references(body.spawn_id, body.references, store=_eng())
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
@@ -616,9 +607,7 @@ def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any
         raise HTTPException(status_code=404, detail="canonical target not found") from exc
     except CanonicalMergeConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    twins = _converge_canonical_twins(
-        committed.deliverable_id, doc_model, committed.draft_sha256
-    )
+    twins = _converge_canonical_twins(committed.deliverable_id, doc_model, committed.draft_sha256)
     return {
         "deliverable_id": committed.deliverable_id,
         "draft_document_id": committed.draft_document_id,
@@ -670,8 +659,8 @@ def get_canonical_merge_html(deliverable_id: str) -> dict[str, Any]:
             con = _request_graph_connection.get()
             if con is None:
                 raise RuntimeError("canonical HTML reload requires graph authority")
-            model, section_id, revision, draft_sha = (
-                load_latest_reviewed_document_model(con, deliverable_id)
+            model, section_id, revision, draft_sha = load_latest_reviewed_document_model(
+                con, deliverable_id
             )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="canonical research not found") from exc
@@ -758,9 +747,7 @@ def hydrate_live_status_payload(
     offline_honest = not any_live
     notes: list[str] = []
     if offline_honest:
-        notes.append(
-            "Hydrate default: offline-honest identity — no live body injectors installed."
-        )
+        notes.append("Hydrate default: offline-honest identity; no live body injectors installed.")
     else:
         notes.append(
             "At least one live hydrate injector is process-installed "
@@ -795,13 +782,11 @@ def hydrate_live_status_payload(
         "generic_fetch_publication_installed": generic_injector,
         "notes": notes,
         "html": (
-            "<section data-view-format=\"html\" data-product-panel=\"hydrate_live_status\">"
+            '<section data-view-format="html" data-product-panel="hydrate_live_status">'
             f"<p>offline_honest={str(offline_honest).lower()} · "
             f"arxiv_injector={str(arxiv_injector).lower()} · "
             f"substack_injector={str(substack_injector).lower()}</p>"
-            "<ul>"
-            + "".join(f"<li>{n}</li>" for n in notes)
-            + "</ul></section>"
+            "<ul>" + "".join(f"<li>{n}</li>" for n in notes) + "</ul></section>"
         ),
     }
 
@@ -843,8 +828,7 @@ def twin_seed_live_status_payload(
     notes: list[str] = []
     if offline_honest:
         notes.append(
-            "Twin seed default: offline-honest identity stubs "
-            "(UI panels force_offline=true)."
+            "Twin seed default: offline-honest identity stubs (UI panels force_offline=true)."
         )
     else:
         notes.append(
@@ -857,10 +841,7 @@ def twin_seed_live_status_payload(
             f"{ANTIEK_TWIN_SEED_USE_DISPATCH_ENV}=off — manual configure required."
         )
     if live_env and use_dispatch and not injector_installed:
-        notes.append(
-            "Dual-gate on but live seed fn not installed "
-            "(boot wiring may have failed)."
-        )
+        notes.append("Dual-gate on but live seed fn not installed (boot wiring may have failed).")
     return {
         "view_format": "html",
         "product_panel": "twin_seed_live_status",
@@ -873,13 +854,11 @@ def twin_seed_live_status_payload(
         "use_dispatch_env_flag": ANTIEK_TWIN_SEED_USE_DISPATCH_ENV,
         "notes": notes,
         "html": (
-            "<section data-view-format=\"html\" data-product-panel=\"twin_seed_live_status\">"
+            '<section data-view-format="html" data-product-panel="twin_seed_live_status">'
             f"<p>offline_honest={str(offline_honest).lower()} · "
             f"live_env={str(live_env).lower()} · "
             f"injector={str(injector_installed).lower()}</p>"
-            "<ul>"
-            + "".join(f"<li>{n}</li>" for n in notes)
-            + "</ul></section>"
+            "<ul>" + "".join(f"<li>{n}</li>" for n in notes) + "</ul></section>"
         ),
     }
 
@@ -908,13 +887,9 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     if hydrate_fetch_publication is not None:
         adapters.append(hydrate_fetch_publication)
     if hydrate_arxiv_fetch_by_id is not None:
-        adapters.append(
-            arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id)
-        )
+        adapters.append(arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id))
     if hydrate_substack_fetch_post is not None:
-        adapters.append(
-            substack_post_fetch_publication(fetch_post=hydrate_substack_fetch_post)
-        )
+        adapters.append(substack_post_fetch_publication(fetch_post=hydrate_substack_fetch_post))
     fetcher = compose_fetch_publication(*adapters) if adapters else None
     try:
         asset = hydrate_reference(
@@ -944,9 +919,7 @@ def post_progress(body: ProgressRecordBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    payload = progress_payload(
-        body.spawn_id, store=_eng(), include_html=body.include_html
-    )
+    payload = progress_payload(body.spawn_id, store=_eng(), include_html=body.include_html)
     payload["recorded"] = ev.to_dict()
     return payload
 
@@ -960,9 +933,7 @@ def post_progress_seed(body: ProgressSeedBody) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    return progress_payload(
-        body.spawn_id, store=_eng(), include_html=body.include_html
-    )
+    return progress_payload(body.spawn_id, store=_eng(), include_html=body.include_html)
 
 
 @engagement_router.get("/progress/{spawn_id}")
@@ -1038,6 +1009,7 @@ def post_twins(body: TwinRecordBody) -> dict[str, Any]:
             text=body.text,
             source_spawn_id=body.source_spawn_id,
             investigation_id=body.investigation_id,
+            source_ref_ids=body.source_ref_ids,
             include_html=body.include_html,
         )
     except ValueError as e:
@@ -1125,10 +1097,8 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
                 store=_eng(),
                 query=body.query,
                 investigation_id=body.investigation_id,
-                promote_insight_fn=_request_promote_insight.get()
-                or twin_promote_insight_fn,
-                promote_question_fn=_request_promote_question.get()
-                or twin_promote_question_fn,
+                promote_insight_fn=_request_promote_insight.get() or twin_promote_insight_fn,
+                promote_question_fn=_request_promote_question.get() or twin_promote_question_fn,
                 include_html=body.include_html,
                 kinds=body.kinds,
                 note_ids=body.note_ids,
@@ -1278,9 +1248,7 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
                 record_twins=body.record_twins,
                 include_twin_promote=body.include_twin_promote,
                 promote_insight_fn=(
-                    live_insight or _offline_promote_insight
-                    if body.include_twin_promote
-                    else None
+                    live_insight or _offline_promote_insight if body.include_twin_promote else None
                 ),
                 promote_question_fn=(
                     live_question or _offline_promote_question

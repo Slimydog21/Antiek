@@ -405,8 +405,15 @@ export type EvidencePackResponse = {
    * Never invents supported_by edges — sequential stages with anchors only.
    */
   citation_chain?: CitationChainHop[];
-  /** Residual (air): true when insights and source refs both non-empty. */
+  /** True only when every insight explicitly links to an attached source ref. */
   chain_complete?: boolean;
+  grounded_insight_count?: number;
+  ungrounded_insight_count?: number;
+  grounding_links?: Array<{
+    note_id: string;
+    insight_index: number;
+    source_ref_ids: string[];
+  }>;
   /**
    * Residual (apz/aqa): substrate hop pipeline completeness summary
    * (present/missing/coverage_ratio · never invent empty hops).
@@ -550,6 +557,7 @@ export type TwinNotesResponse = {
     text: string;
     source_spawn_id?: string | null;
     investigation_id?: string | null;
+    source_ref_ids?: string[];
   }>;
   /** Residual (la/lb): reserved spawn research_tier when seed/list scoped. */
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
@@ -580,6 +588,7 @@ export async function recordTwinNote(body: {
   text: string;
   source_spawn_id?: string | null;
   investigation_id?: string | null;
+  source_ref_ids?: string[];
   include_html?: boolean;
 }): Promise<TwinNotesResponse> {
   const res = await apiFetch(`${API_BASE}/engagement/twins`, {
@@ -591,6 +600,7 @@ export async function recordTwinNote(body: {
       text: body.text,
       source_spawn_id: body.source_spawn_id ?? null,
       investigation_id: body.investigation_id ?? null,
+      source_ref_ids: body.source_ref_ids ?? [],
       include_html: body.include_html ?? true,
     }),
   });

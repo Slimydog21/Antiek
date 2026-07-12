@@ -233,8 +233,9 @@ export function citationHopStageProgress(opts: {
   );
   const total = CITATION_HOP_PIPELINE_STAGES.length;
   const present_count = present.length;
-  const chain_complete =
-    opts.chain_complete === true || (insight_count > 0 && ref_count > 0);
+  // Counts prove only co-presence, not that a claim cites a source. The
+  // substrate must attest an explicit insight-to-source-reference link.
+  const chain_complete = opts.chain_complete === true;
   return {
     stages: CITATION_HOP_PIPELINE_STAGES,
     present,

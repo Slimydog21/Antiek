@@ -112,9 +112,11 @@ def build_citation_chain_hops(
 def citation_chain_complete(
     insight_count: int,
     ref_count: int,
+    grounded_insight_count: int = 0,
 ) -> bool:
-    """True when multi-hop path has both claims and sources (questions optional)."""
-    return int(insight_count or 0) > 0 and int(ref_count or 0) > 0
+    """True only when every insight explicitly cites an attached source."""
+    insights = int(insight_count or 0)
+    return insights > 0 and int(ref_count or 0) > 0 and int(grounded_insight_count or 0) == insights
 
 
 # Residual (apz): closed hop pipeline stages (parity frontend CITATION_HOP_PIPELINE_STAGES).
@@ -137,22 +139,13 @@ def citation_hop_pipeline_progress(
     chain = citation_chain or []
     for stage in CITATION_HOP_PIPELINE_STAGES:
         hop_row = next(
-            (
-                h
-                for h in chain
-                if isinstance(h, dict)
-                and str(h.get("hop") or "").lower() == stage
-            ),
+            (h for h in chain if isinstance(h, dict) and str(h.get("hop") or "").lower() == stage),
             None,
         )
         if hop_row is not None:
             count = hop_row.get("count")
             items = hop_row.get("items") or []
-            n = (
-                int(count)
-                if isinstance(count, (int, float)) and count == count
-                else len(items)
-            )
+            n = int(count) if isinstance(count, (int, float)) and count == count else len(items)
             if n > 0:
                 present.append(stage)
                 continue
@@ -167,10 +160,7 @@ def citation_hop_pipeline_progress(
     missing = [s for s in CITATION_HOP_PIPELINE_STAGES if s not in present]
     total = len(CITATION_HOP_PIPELINE_STAGES)
     present_count = len(present)
-    complete = (
-        chain_complete is True
-        or (int(insight_count or 0) > 0 and int(ref_count or 0) > 0)
-    )
+    complete = chain_complete is True
     return {
         "stages": list(CITATION_HOP_PIPELINE_STAGES),
         "present": present,
@@ -204,6 +194,12 @@ def evidence_pack_payload(
 
     if not asset_id.strip():
         raise ValueError("asset_id is required")
+    if spawn_id:
+        spawn = store.get_spawn(spawn_id)
+        if spawn is None:
+            raise ValueError("spawn_id does not exist")
+        if str(spawn.get("parent_asset_id") or "").strip() != asset_id.strip():
+            raise ValueError("spawn_id does not belong to asset_id")
     twins = list_twin_notes(asset_id, store=store)
     refs = list_source_references(spawn_id, store=store) if spawn_id else []
     # Also collect refs from any spawns if spawn_id omitted? keep explicit.
@@ -212,12 +208,25 @@ def evidence_pack_payload(
     insight_texts = [t.text for t in insights]
     question_texts = [t.text for t in questions]
     ref_dicts = [r.to_dict() for r in refs]
+    ref_by_id = {r.ref_id: r.to_dict() for r in refs}
+    grounding_links: list[dict[str, Any]] = []
+    for index, note in enumerate(insights):
+        cited = [ref_id for ref_id in note.source_ref_ids if ref_id in ref_by_id]
+        if cited:
+            grounding_links.append(
+                {
+                    "note_id": note.note_id,
+                    "insight_index": index,
+                    "source_ref_ids": cited,
+                }
+            )
+    grounded_insight_count = len(grounding_links)
     research_tier = None
     if spawn_id:
         row = store.get_spawn(spawn_id) or {}
         research_tier = normalize_research_tier(row.get("research_tier"))
     chain = build_citation_chain_hops(insight_texts, question_texts, ref_dicts)
-    chain_complete = citation_chain_complete(len(insights), len(refs))
+    chain_complete = citation_chain_complete(len(insights), len(refs), grounded_insight_count)
     hop_pipeline = citation_hop_pipeline_progress(
         insight_count=len(insights),
         question_count=len(questions),
@@ -229,7 +238,9 @@ def evidence_pack_payload(
     # on evidence surface · never invent multi-stage coverage).
     world_class = competitive_dr_world_class_readiness(
         stage_coverage_ratio=None,
-        hop_coverage_ratio=float(hop_pipeline.get("coverage_ratio") or 0),
+        hop_coverage_ratio=(
+            float(hop_pipeline.get("coverage_ratio") or 0) if chain_complete else 0.0
+        ),
         stage_is_terminal=None,
     )
     payload: dict[str, Any] = {
@@ -241,6 +252,9 @@ def evidence_pack_payload(
         "insights": insight_texts,
         "questions": question_texts,
         "source_references": ref_dicts,
+        "grounding_links": grounding_links,
+        "grounded_insight_count": grounded_insight_count,
+        "ungrounded_insight_count": len(insights) - grounded_insight_count,
         "citation_chain": chain,
         "chain_complete": chain_complete,
         # Residual (apz): hop pipeline completeness for competitive citation bar.
@@ -258,9 +272,9 @@ def evidence_pack_payload(
             "Empty evidence pack — record twin notes or attach arxiv/substack refs."
         ]
     if include_html:
-        payload["html"] = project_evidence_html(payload, refs_html_fn=lambda: (
-            source_references_html(refs) if refs else ""
-        ))
+        payload["html"] = project_evidence_html(
+            payload, refs_html_fn=lambda: source_references_html(refs) if refs else ""
+        )
     return payload
 
 
@@ -277,10 +291,7 @@ def project_evidence_html(
             payload.get("questions") or [],
             payload.get("source_references") or [],
         )
-    chain_complete = bool(payload.get("chain_complete")) or citation_chain_complete(
-        int(payload.get("insight_count") or 0),
-        int(payload.get("ref_count") or 0),
-    )
+    chain_complete = bool(payload.get("chain_complete"))
     blocks: list[dict[str, Any]] = [
         {
             "type": "heading",
@@ -311,9 +322,7 @@ def project_evidence_html(
     # Residual (air): multi-hop nav strip (stage labels only — no invented edges).
     if chain:
         hop_labels = " → ".join(
-            f"{h.get('label')}({h.get('count')})"
-            for h in chain
-            if isinstance(h, dict)
+            f"{h.get('label')}({h.get('count')})" for h in chain if isinstance(h, dict)
         )
         blocks.append(
             {
@@ -340,16 +349,8 @@ def project_evidence_html(
     present_n = int(hop_pipe.get("present_count") or 0)
     total_n = int(hop_pipe.get("total") or len(CITATION_HOP_PIPELINE_STAGES))
     missing = hop_pipe.get("missing") or []
-    missing_s = (
-        f" · missing={', '.join(str(m) for m in missing)}"
-        if missing
-        else ""
-    )
-    complete_s = (
-        " · chain complete"
-        if hop_pipe.get("chain_complete")
-        else ""
-    )
+    missing_s = f" · missing={', '.join(str(m) for m in missing)}" if missing else ""
+    complete_s = " · chain complete" if hop_pipe.get("chain_complete") else ""
     blocks.append(
         {
             "type": "paragraph",
@@ -367,6 +368,37 @@ def project_evidence_html(
             ],
         }
     )
+    grounded_count = int(payload.get("grounded_insight_count") or 0)
+    insight_count = int(payload.get("insight_count") or 0)
+    blocks.append(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Explicit grounding: {grounded_count}/{insight_count} insights linked"
+                        + (" · complete" if chain_complete else " · incomplete")
+                    ),
+                }
+            ],
+        }
+    )
+    for link in payload.get("grounding_links") or []:
+        if not isinstance(link, dict):
+            continue
+        refs = ", ".join(str(ref_id) for ref_id in link.get("source_ref_ids") or [])
+        blocks.append(
+            {
+                "type": "paragraph",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Grounding link: {link.get('note_id')} → {refs}",
+                    }
+                ],
+            }
+        )
     for hop in chain:
         if not isinstance(hop, dict):
             continue
@@ -433,21 +465,13 @@ def competitive_dr_world_class_readiness(
 ) -> dict[str, Any]:
     """Combine multi-stage + hop coverage without inventing unknown halves."""
     stage_ratio = (
-        max(0.0, min(1.0, float(stage_coverage_ratio)))
-        if stage_coverage_ratio is not None
-        else 0.0
+        max(0.0, min(1.0, float(stage_coverage_ratio))) if stage_coverage_ratio is not None else 0.0
     )
     hop_ratio = (
-        max(0.0, min(1.0, float(hop_coverage_ratio)))
-        if hop_coverage_ratio is not None
-        else None
+        max(0.0, min(1.0, float(hop_coverage_ratio))) if hop_coverage_ratio is not None else None
     )
-    multi_stage_ready = stage_ratio >= stage_ready_threshold or bool(
-        stage_is_terminal
-    )
-    citation_hops_ready = (
-        None if hop_ratio is None else hop_ratio >= hop_ready_threshold
-    )
+    multi_stage_ready = stage_ratio >= stage_ready_threshold or bool(stage_is_terminal)
+    citation_hops_ready = None if hop_ratio is None else hop_ratio >= hop_ready_threshold
     if multi_stage_ready and citation_hops_ready is True:
         world_class_bar = "multi_stage_and_hops"
     elif multi_stage_ready:
@@ -461,9 +485,7 @@ def competitive_dr_world_class_readiness(
         else "multi-stage pipeline incomplete (plan→gather→synthesize→cite→terminal)"
     )
     if citation_hops_ready is None:
-        notes.append(
-            "citation hops unknown · open evidence pack (never invent hops)"
-        )
+        notes.append("citation hops unknown · open evidence pack (never invent hops)")
     elif citation_hops_ready:
         notes.append("citation hop pipeline ready (insights→questions→sources)")
     else:
