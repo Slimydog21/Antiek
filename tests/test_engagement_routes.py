@@ -6,7 +6,7 @@ import os
 import sys
 
 import pytest
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -21,10 +21,22 @@ from interfaces.research.api.engagement_routes import (  # noqa: E402
 from substrate.engagement_spine import record_twin_insight  # noqa: E402
 
 
+def _operator_app() -> FastAPI:
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_operator(request: Request, call_next):
+        request.state.user_id = "__operator__"
+        request.state.auth_method = "test_operator"
+        return await call_next(request)
+
+    return app
+
+
 @pytest.fixture
 def client():
     reset_engagement_stores()
-    app = FastAPI()
+    app = _operator_app()
     register_engagement_routes(app)
     return TestClient(app)
 
@@ -288,6 +300,7 @@ def test_session_workstation_lifecycle_collective_and_merge(client):
             "mode": "into_parent",
             "confirm_parent_write": True,
             "expected_parent_sha256": parent_revision,
+            "idempotency_key": "merge-lifecycle-001",
         },
     )
     assert committed.status_code == 200, committed.text
@@ -304,9 +317,14 @@ def test_session_workstation_lifecycle_collective_and_merge(client):
             "mode": "into_parent",
             "confirm_parent_write": True,
             "expected_parent_sha256": parent_revision,
+            "idempotency_key": "merge-lifecycle-001",
         },
     )
-    assert replay.status_code == 409
+    assert replay.status_code == 200
+    assert replay.json()["merge_receipt_id"] == committed.json()["merge_receipt_id"]
+    assert replay.json()["result_parent_sha256"] == committed.json()[
+        "result_parent_sha256"
+    ]
 
 
 def test_session_workstation_contract_rejects_unsafe_shapes(client):
@@ -427,7 +445,7 @@ def test_durable_file_store_survives_reset_rebuild(tmp_path, monkeypatch):
     """ANTIEK_ENGAGEMENT_DIR → FileEngagementStore; data survives store rebuild."""
     monkeypatch.setenv("ANTIEK_ENGAGEMENT_DIR", str(tmp_path / "eng-data"))
     reset_engagement_stores()
-    app = FastAPI()
+    app = _operator_app()
     register_engagement_routes(app)
     c = TestClient(app)
     r = c.post(
@@ -444,7 +462,7 @@ def test_durable_file_store_survives_reset_rebuild(tmp_path, monkeypatch):
 
     # Rebuild stores from same dir (simulates process restart)
     reset_engagement_stores()
-    app2 = FastAPI()
+    app2 = _operator_app()
     register_engagement_routes(app2)
     c2 = TestClient(app2)
     r2 = c2.post(
@@ -455,3 +473,168 @@ def test_durable_file_store_survives_reset_rebuild(tmp_path, monkeypatch):
     kinds = {ref["kind"] for ref in r2.json()["source_references"]}
     assert "arxiv" in kinds
     assert "substack" in kinds
+
+
+def test_session_routes_isolate_authenticated_owners():
+    reset_engagement_stores()
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_test_owner(request: Request, call_next):
+        request.state.user_id = request.headers.get("x-test-owner", "__operator__")
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    c = TestClient(app)
+
+    def open_for(owner: str) -> dict:
+        response = c.post(
+            "/engagement/sessions/open",
+            headers={"x-test-owner": owner},
+            json={
+                "asset_id": "shared-logical-asset",
+                "selection_text": "same highlighted passage",
+                "region_id": "same-region",
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    alice = open_for("alice")
+    bob = open_for("bob")
+    assert alice["session_id"] != bob["session_id"]
+    assert alice["spawn_id"] != bob["spawn_id"]
+    assert alice["owner_id"] == "alice"
+    assert bob["owner_id"] == "bob"
+
+    hidden = c.get(
+        f"/engagement/sessions/{alice['session_id']}",
+        headers={"x-test-owner": "bob"},
+    )
+    assert hidden.status_code == 404
+    alice_list = c.get(
+        "/engagement/sessions/asset/shared-logical-asset",
+        headers={"x-test-owner": "alice"},
+    ).json()
+    bob_list = c.get(
+        "/engagement/sessions/asset/shared-logical-asset",
+        headers={"x-test-owner": "bob"},
+    ).json()
+    assert [row["session_id"] for row in alice_list["sessions"]] == [
+        alice["session_id"]
+    ]
+    assert [row["session_id"] for row in bob_list["sessions"]] == [bob["session_id"]]
+
+    for owner, session, insight in (
+        ("alice", alice, "alice private finding"),
+        ("bob", bob, "bob private finding"),
+    ):
+        completed = c.post(
+            "/engagement/sessions/complete-flywheel",
+            headers={"x-test-owner": owner},
+            json={
+                "session_id": session["session_id"],
+                "output_text": insight,
+                "insights": [insight],
+            },
+        )
+        assert completed.status_code == 200, completed.text
+    alice_context = c.post(
+        "/engagement/sessions/context",
+        headers={"x-test-owner": "alice"},
+        json={"session_id": alice["session_id"], "include_twin_preview": True},
+    ).json()
+    context_text = str(alice_context["twin_units"])
+    assert "alice private finding" in context_text
+    assert "bob private finding" not in context_text
+    legacy_bypass = c.post(
+        "/engagement/merge",
+        headers={"x-test-owner": "alice"},
+        json={
+            "parent_asset_id": "shared-logical-asset",
+            "spawn_ids": [alice["spawn_id"]],
+        },
+    )
+    assert legacy_bypass.status_code == 403
+
+
+def test_session_routes_require_explicit_identity(monkeypatch):
+    monkeypatch.delenv("ANTIEK_ALLOW_UNAUTHENTICATED_LOCAL", raising=False)
+    reset_engagement_stores()
+    app = FastAPI()
+    register_engagement_routes(app)
+    response = TestClient(app).post(
+        "/engagement/sessions/open",
+        json={"asset_id": "asset", "selection_text": "passage"},
+    )
+    assert response.status_code == 401
+
+
+def test_ownerless_legacy_session_is_quarantined(client):
+    session_id = "fsess_3333333333333333"
+    eng_mod._sess().put_session(
+        {
+            "session_id": session_id,
+            "parent_asset_id": "legacy-asset",
+            "spawn_id": "spn_legacy",
+            "investigation_id": "inv_legacy",
+            "status": "reserved",
+            "view_mode": "floating",
+        }
+    )
+    response = client.get(f"/engagement/sessions/{session_id}")
+    assert response.status_code == 409
+    assert response.json()["detail"] == "session ownership requires reconciliation"
+
+
+def test_confirmed_merge_recovers_after_parent_write_before_receipt_settle(
+    client, monkeypatch
+):
+    opened = client.post(
+        "/engagement/sessions/open",
+        json={
+            "asset_id": "crash-parent",
+            "selection_text": "receipt crash seam",
+            "region_id": "crash-region",
+        },
+    ).json()
+    session_id = opened["session_id"]
+    done = client.post(
+        "/engagement/sessions/complete-flywheel",
+        json={"session_id": session_id, "output_text": "finished research"},
+    )
+    assert done.status_code == 200
+    draft = client.post(
+        "/engagement/sessions/merge",
+        json={"parent_asset_id": "crash-parent", "session_ids": [session_id]},
+    ).json()
+
+    store = eng_mod._receipts()
+    real_settle = store.settle
+    calls = 0
+
+    def crash_once(receipt_id: str, material_sha256: str, result_sha256: str):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("injected crash after parent CAS")
+        return real_settle(receipt_id, material_sha256, result_sha256)
+
+    monkeypatch.setattr(store, "settle", crash_once)
+    body = {
+        "parent_asset_id": "crash-parent",
+        "session_ids": [session_id],
+        "mode": "into_parent",
+        "confirm_parent_write": True,
+        "expected_parent_sha256": draft["parent_revision_sha256"],
+        "idempotency_key": "crash-recovery-key",
+    }
+    with pytest.raises(RuntimeError, match="injected crash"):
+        client.post("/engagement/sessions/merge", json=body)
+
+    recovered = client.post("/engagement/sessions/merge", json=body)
+    assert recovered.status_code == 200, recovered.text
+    assert recovered.json()["merge_receipt_state"] == "applied"
+    assert recovered.json()["result_parent_sha256"] == recovered.json()[
+        "document_sha256"
+    ]

@@ -102,6 +102,7 @@ def assemble_research_context(
     embedding_provider: Any = None,
     con: Any = None,
     include_twin_promote: bool = True,
+    owner_id: str = "__operator__",
 ) -> ResearchContextPack:
     """Product entry: twin promote/search + spawn source refs → one pack.
 
@@ -125,6 +126,7 @@ def assemble_research_context(
             promote_question_fn=promote_question_fn,
             embedding_provider=embedding_provider,
             con=con,
+            owner_id=owner_id,
         )
         twin_units = pack.context_units
         if inv is None and pack.promoted:

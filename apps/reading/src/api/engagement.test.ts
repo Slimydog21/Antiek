@@ -2,9 +2,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachSourceRefs,
   fetchResearchContext,
+  listEngagementSessions,
+  mergeEngagementSessions,
   mergeSpawnOutputs,
   openEngagementSession,
   spawnFromHighlight,
+  updateEngagementSessionView,
 } from "./engagement";
 
 const mockFetch = vi.fn();
@@ -134,6 +137,68 @@ describe("engagement API client", () => {
     const body = JSON.parse(init.body);
     expect(body.mode).toBe("draft_combined");
     expect(body.include_html).toBe(true);
+  });
+
+  it("lists durable sessions and persists view CAS", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          parent_asset_id: "book-1",
+          sessions: [],
+          count: 0,
+          view_format: "html",
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          session_id: "fsess_0123456789abcdef",
+          view_mode: "full",
+          view_format: "html",
+        }),
+      });
+    await listEngagementSessions("book-1");
+    await updateEngagementSessionView({
+      session_id: "fsess_0123456789abcdef",
+      mode: "full",
+      expected_mode: "floating",
+    });
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "/engagement/sessions/asset/book-1?include_html=false",
+    );
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      "/engagement/sessions/fsess_0123456789abcdef/view",
+    );
+    const init = mockFetch.mock.calls[1][1] as { body: string };
+    expect(JSON.parse(init.body)).toEqual({
+      mode: "full",
+      expected_mode: "floating",
+    });
+  });
+
+  it("sends confirmed merge receipt authority", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        mode: "into_parent",
+        merge_receipt_id: "mrcpt_123",
+        merge_receipt_state: "applied",
+      }),
+    });
+    await mergeEngagementSessions({
+      parent_asset_id: "book-1",
+      session_ids: ["fsess_0123456789abcdef"],
+      mode: "into_parent",
+      confirm_parent_write: true,
+      expected_parent_sha256: "a".repeat(64),
+      idempotency_key: "browser-confirm-001",
+    });
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    const body = JSON.parse(init.body);
+    expect(body.idempotency_key).toBe("browser-confirm-001");
+    expect(body.expected_parent_sha256).toBe("a".repeat(64));
+    expect(body.confirm_parent_write).toBe(true);
   });
 
   it("throws on non-ok", async () => {

@@ -35,6 +35,12 @@ from substrate.graph.insight_question import graph_db_path
 from substrate.graph.schema import init_database_at_path
 
 
+@pytest.fixture(autouse=True)
+def _explicit_local_operator_authority(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Standalone API fixtures opt into the otherwise-closed local principal."""
+    monkeypatch.setenv("ANTIEK_ALLOW_UNAUTHENTICATED_LOCAL", "1")
+
+
 def _real_store_path() -> str:
     """Canonical real operator store, symlinks resolved (realpath)."""
     return real_operator_graph_db_path()

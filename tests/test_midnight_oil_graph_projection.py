@@ -393,7 +393,9 @@ def test_existing_conflicting_graph_row_prevents_false_receipt(tmp_path: Path) -
 
 
 def test_goal_secret_never_enters_graph_or_typed_events(tmp_path: Path) -> None:
-    secret = "sk-supersecret123456789"
+    # Deliberately credential-shaped content without impersonating a real
+    # provider token prefix (keeps leak scanners meaningful and quiet).
+    secret = "credential-marker-supersecret123456789"
     store = DurableJobStore(tmp_path / "jobs.sqlite3")
     job_id = _terminal_job(store, goal=f"Investigate {secret}")
     owner_jobs, engagement = _projection_dependencies(job_id)

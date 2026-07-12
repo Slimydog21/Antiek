@@ -56,12 +56,16 @@ class ResearchSpawn:
     # Residual (ji): closed research tier {fast, deep, wrestle} — queryable
     # on reserved spawn; default deep when absent (legacy rows).
     research_tier: str = DEFAULT_RESEARCH_TIER
+    owner_id: str = "__operator__"
 
 
-def _stable_spawn_id(asset_id: str, selection_text: str, region_id: str | None) -> str:
+def _stable_spawn_id(
+    asset_id: str, selection_text: str, region_id: str | None, owner_id: str
+) -> str:
     """Content-addressed when region_id present; otherwise random (new work)."""
     if region_id:
-        raw = f"spawn:v1:{asset_id}:{region_id}:{selection_text.strip()}"
+        owner_scope = "" if owner_id == "__operator__" else f":owner:{owner_id}"
+        raw = f"spawn:v1{owner_scope}:{asset_id}:{region_id}:{selection_text.strip()}"
         digest = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
         return f"spn_{digest}"
     return f"spn_{uuid.uuid4().hex[:16]}"
@@ -87,6 +91,7 @@ def spawn_from_highlight(
     model_id: str | None = None,
     force_new: bool = False,
     research_tier: str | None = None,
+    owner_id: str = "__operator__",
 ) -> ResearchSpawn:
     """Reserve a deep-research work unit from a highlight/selection.
 
@@ -103,21 +108,26 @@ def spawn_from_highlight(
         raise ValueError("selection_text is required")
 
     tier = normalize_research_tier(research_tier)
+    owner = (owner_id or "").strip()
+    if not owner:
+        raise ValueError("owner_id is required")
 
     if selection.region_id and not force_new:
         # Prefer existing spawn for this region on this asset.
         for existing in store.list_spawns(selection.asset_id):
-            if existing.get("region_id") == selection.region_id:
+            existing_owner = str(existing.get("owner_id") or "__operator__")
+            if existing_owner == owner and existing.get("region_id") == selection.region_id:
                 return _from_row(existing)
 
     spawn_id = _stable_spawn_id(
         selection.asset_id,
         selection.selection_text,
         None if force_new else selection.region_id,
+        owner,
     )
     if not force_new:
         prior = store.get_spawn(spawn_id)
-        if prior is not None:
+        if prior is not None and str(prior.get("owner_id") or "__operator__") == owner:
             return _from_row(prior)
 
     inv_id = _investigation_id_for(spawn_id)
@@ -131,6 +141,7 @@ def spawn_from_highlight(
         model_id=model_id,
         region_id=selection.region_id,
         research_tier=tier,
+        owner_id=owner,
     )
     store.put_spawn(_to_row(spawn))
     return spawn
@@ -145,6 +156,7 @@ def ensure_spawn(
     selection_text: str = "",
     model_id: str | None = None,
     region_id: str | None = None,
+    owner_id: str = "__operator__",
 ) -> ResearchSpawn:
     """Return existing spawn or mint a reserved row with a caller-chosen id.
 
@@ -175,6 +187,7 @@ def ensure_spawn(
         status="reserved",
         model_id=model_id,
         region_id=region_id,
+        owner_id=(owner_id or "__operator__").strip(),
     )
     store.put_spawn(_to_row(spawn))
     return spawn
@@ -231,6 +244,7 @@ def _to_row(spawn: ResearchSpawn) -> dict[str, Any]:
         "output_questions": list(spawn.output_questions),
         "source_references": list(spawn.source_references or ()),
         "research_tier": normalize_research_tier(spawn.research_tier),
+        "owner_id": spawn.owner_id,
     }
 
 
@@ -252,4 +266,5 @@ def _from_row(row: dict[str, Any]) -> ResearchSpawn:
         output_questions=tuple(row.get("output_questions") or ()),
         source_references=tuple(dict(r) for r in refs if isinstance(r, dict)),
         research_tier=normalize_research_tier(row.get("research_tier")),
+        owner_id=str(row.get("owner_id") or "__operator__"),
     )

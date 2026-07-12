@@ -39,6 +39,7 @@ def open_from_highlight_with_references(
     view_mode: ViewMode = "floating",
     force_new: bool = False,
     research_tier: str | None = None,
+    owner_id: str = "__operator__",
 ) -> FloatingSession:
     """Open floating session from highlight and attach source references.
 
@@ -54,10 +55,14 @@ def open_from_highlight_with_references(
         model_id=model_id,
         force_new=force_new,
         research_tier=research_tier,
+        owner_id=owner_id,
     )
-    sid = _session_id(spawn.parent_asset_id, spawn.spawn_id)
+    sid = _session_id(spawn.parent_asset_id, spawn.spawn_id, spawn.owner_id)
     existing = session_store.get_session(sid)
     if existing is not None and not force_new:
+        # Idempotent replay also reconciles a durable owner index interrupted
+        # after the canonical row replace.
+        session_store.put_session(existing)
         return _from_row(existing)
 
     session = FloatingSession(
@@ -74,6 +79,7 @@ def open_from_highlight_with_references(
         research_tier=normalize_research_tier(
             getattr(spawn, "research_tier", None),
         ),
+        owner_id=spawn.owner_id,
     )
     session_store.put_session(_to_row(session))
     return session
@@ -117,6 +123,7 @@ def session_research_context(
         promote_insight_fn=promote_insight_fn,
         promote_question_fn=promote_question_fn,
         include_twin_promote=include_twin_promote,
+        owner_id=str(row.get("owner_id") or "__operator__"),
     )
 
 

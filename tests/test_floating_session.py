@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import multiprocessing
 import os
 import sys
 import threading
@@ -30,6 +31,13 @@ from substrate.floating_session.store import (  # noqa: E402
     FileSessionStore,
     InMemorySessionStore,
 )
+
+
+def _file_view_cas_worker(root, session_id, target, barrier, queue):
+    store = FileSessionStore(root)
+    barrier.wait()
+    _row, applied = store.compare_and_set_view(session_id, "initial", target)
+    queue.put((target, applied))
 
 
 @pytest.fixture
@@ -93,6 +101,9 @@ def test_file_session_store_rejects_filename_identity_substitution(tmp_path):
     )
     with pytest.raises(ValueError, match="identity conflicts"):
         store.get_session(requested)
+    store._index_path("__operator__", "asset").write_text(
+        f'["{requested}"]', encoding="utf-8"
+    )
     with pytest.raises(ValueError, match="identity conflicts"):
         store.list_sessions("asset")
 
@@ -335,3 +346,101 @@ def test_status_refresh_cannot_clobber_concurrent_view_cas():
         "status": "complete",
         "view_mode": "full",
     }
+
+
+def test_file_session_view_cas_is_cross_process(tmp_path):
+    store = FileSessionStore(tmp_path)
+    session_id = "fsess_abcdef0123456789"
+    store.put_session(
+        {
+            "session_id": session_id,
+            "parent_asset_id": "asset-process-race",
+            "spawn_id": "spawn-process-race",
+            "status": "reserved",
+            "view_mode": "initial",
+        }
+    )
+    ctx = multiprocessing.get_context("spawn")
+    barrier = ctx.Barrier(3)
+    queue = ctx.Queue()
+    workers = [
+        ctx.Process(
+            target=_file_view_cas_worker,
+            args=(tmp_path, session_id, target, barrier, queue),
+        )
+        for target in ("floating", "full")
+    ]
+    for worker in workers:
+        worker.start()
+    barrier.wait()
+    results = [queue.get(timeout=5) for _ in workers]
+    for worker in workers:
+        worker.join(timeout=5)
+        assert worker.exitcode == 0
+
+    assert sorted(applied for _target, applied in results) == [False, True]
+    assert store.get_session(session_id)["view_mode"] in {"floating", "full"}
+
+
+def test_owner_index_never_deserializes_foreign_malformed_session(tmp_path):
+    store = FileSessionStore(tmp_path)
+    alice_id = "fsess_1111111111111111"
+    store.put_session(
+        {
+            "session_id": alice_id,
+            "parent_asset_id": "shared-asset",
+            "spawn_id": "alice-spawn",
+            "owner_id": "alice",
+            "status": "reserved",
+            "view_mode": "floating",
+        }
+    )
+    bob_id = "fsess_2222222222222222"
+    (tmp_path / "sessions" / f"{bob_id}.json").write_text(
+        "not-json", encoding="utf-8"
+    )
+    store._index_path("bob", "shared-asset").write_text(
+        f'["{bob_id}"]', encoding="utf-8"
+    )
+
+    rows = store.list_sessions("shared-asset", "alice")
+    assert [row["session_id"] for row in rows] == [alice_id]
+
+
+def test_replayed_open_repairs_crash_between_session_row_and_owner_index(
+    tmp_path, monkeypatch
+):
+    engagement = InMemoryEngagementStore()
+    sessions = FileSessionStore(tmp_path)
+    selection = HighlightSelection(
+        asset_id="repair-asset",
+        selection_text="recover the durable reopen index",
+        region_id="repair-region",
+    )
+    real_index = sessions._index_session
+    calls = 0
+
+    def crash_once(row):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("injected row-before-index crash")
+        return real_index(row)
+
+    monkeypatch.setattr(sessions, "_index_session", crash_once)
+    with pytest.raises(RuntimeError, match="row-before-index"):
+        open_from_highlight(
+            selection,
+            engagement_store=engagement,
+            session_store=sessions,
+            owner_id="alice",
+        )
+
+    recovered = open_from_highlight(
+        selection,
+        engagement_store=engagement,
+        session_store=sessions,
+        owner_id="alice",
+    )
+    listed = sessions.list_sessions("repair-asset", "alice")
+    assert [row["session_id"] for row in listed] == [recovered.session_id]

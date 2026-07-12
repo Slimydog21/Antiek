@@ -21,6 +21,7 @@ const {
   apiFetchMock,
   launchFloatingDeepResearchMock,
   fetchDepthTiersMock,
+  reopenDeepResearchWindowsForAssetMock,
 } = vi.hoisted(() => ({
   getBookMock: vi.fn<(...args: unknown[]) => unknown>(),
   getFullTextMock: vi.fn<(...args: unknown[]) => unknown>(),
@@ -55,6 +56,14 @@ const {
     active_preset: null,
     tiers: [],
   })),
+  reopenDeepResearchWindowsForAssetMock: vi.fn<
+    (assetId: string) => Promise<string[]>
+  >(async () => ["wdr_restored"]),
+}));
+
+vi.mock("../../workspace/deepResearchWindow", () => ({
+  reopenDeepResearchWindowsForAsset: (assetId: string) =>
+    reopenDeepResearchWindowsForAssetMock(assetId),
 }));
 
 vi.mock("./launchFloatingDeepResearch", () => ({
@@ -303,6 +312,9 @@ describe("BookReader", () => {
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
     navigateMock.mockReset();
+    reopenDeepResearchWindowsForAssetMock.mockReset().mockResolvedValue([
+      "wdr_restored",
+    ]);
     fetchDepthTiersMock.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -330,6 +342,18 @@ describe("BookReader", () => {
     expect(screen.getByText(/Page 1 of 2/)).toBeTruthy(); // pager text (matcher spans nodes)
     fireEvent.click(screen.getByRole("button", { name: /Next/ }));
     await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
+  });
+
+  it("rehydrates durable research windows for the opened reading asset", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    await waitFor(() =>
+      expect(screen.getByTestId("durable-research-session-restore").textContent).toContain(
+        "Restored 1 research window",
+      ),
+    );
+    expect(reopenDeepResearchWindowsForAssetMock).toHaveBeenCalledWith("doc-1");
   });
 
   it("shows the preview banner and snippet for a gated book", async () => {

@@ -28,11 +28,17 @@ class TwinNote:
     text: str
     source_spawn_id: str | None = None
     investigation_id: str | None = None
+    owner_id: str = "__operator__"
 
 
-def _note_id(asset_id: str, kind: TwinKind, text: str) -> str:
+def _note_id(
+    asset_id: str, kind: TwinKind, text: str, owner_id: str = "__operator__"
+) -> str:
     canon = " ".join(text.strip().lower().split())
-    digest = hashlib.sha256(f"{asset_id}:{kind}:{canon}".encode()).hexdigest()[:16]
+    owner_scope = "" if owner_id == "__operator__" else f"owner:{owner_id}:"
+    digest = hashlib.sha256(
+        f"{owner_scope}{asset_id}:{kind}:{canon}".encode()
+    ).hexdigest()[:16]
     return f"twin_{digest}"
 
 
@@ -43,6 +49,7 @@ def record_twin_insight(
     store: EngagementStore,
     source_spawn_id: str | None = None,
     investigation_id: str | None = None,
+    owner_id: str = "__operator__",
 ) -> TwinNote:
     return _record(
         asset_id,
@@ -51,6 +58,7 @@ def record_twin_insight(
         store=store,
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
+        owner_id=owner_id,
     )
 
 
@@ -61,6 +69,7 @@ def record_twin_question(
     store: EngagementStore,
     source_spawn_id: str | None = None,
     investigation_id: str | None = None,
+    owner_id: str = "__operator__",
 ) -> TwinNote:
     return _record(
         asset_id,
@@ -69,6 +78,7 @@ def record_twin_question(
         store=store,
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
+        owner_id=owner_id,
     )
 
 
@@ -80,6 +90,7 @@ def _record(
     store: EngagementStore,
     source_spawn_id: str | None,
     investigation_id: str | None,
+    owner_id: str,
 ) -> TwinNote:
     if not asset_id or not asset_id.strip():
         raise ValueError("asset_id is required")
@@ -87,19 +98,22 @@ def _record(
     if not cleaned:
         raise ValueError("text is required")
     note = TwinNote(
-        note_id=_note_id(asset_id.strip(), kind, cleaned),
+        note_id=_note_id(asset_id.strip(), kind, cleaned, owner_id),
         asset_id=asset_id.strip(),
         kind=kind,
         text=cleaned,
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
+        owner_id=owner_id,
     )
     store.put_twin(_to_row(note))
     return note
 
 
-def list_twin_notes(asset_id: str, *, store: EngagementStore) -> list[TwinNote]:
-    return [_from_row(r) for r in store.list_twins(asset_id)]
+def list_twin_notes(
+    asset_id: str, *, store: EngagementStore, owner_id: str = "__operator__"
+) -> list[TwinNote]:
+    return [_from_row(r) for r in store.list_twins(asset_id, owner_id)]
 
 
 def twins_product_payload(
@@ -108,6 +122,7 @@ def twins_product_payload(
     store: EngagementStore,
     include_html: bool = False,
     spawn_id: str | None = None,
+    owner_id: str = "__operator__",
 ) -> dict[str, Any]:
     """Product entry: list twin notes for an asset (HTML-capable).
 
@@ -116,7 +131,7 @@ def twins_product_payload(
     """
     if not asset_id or not str(asset_id).strip():
         raise ValueError("asset_id is required")
-    notes = list_twin_notes(asset_id, store=store)
+    notes = list_twin_notes(asset_id, store=store, owner_id=owner_id)
     insights = [n for n in notes if n.kind == "insight"]
     questions = [n for n in notes if n.kind == "question"]
     research_tier = None
@@ -398,6 +413,7 @@ def _to_row(note: TwinNote) -> dict[str, Any]:
         "text": note.text,
         "source_spawn_id": note.source_spawn_id,
         "investigation_id": note.investigation_id,
+        "owner_id": note.owner_id,
     }
 
 
@@ -409,4 +425,5 @@ def _from_row(row: dict[str, Any]) -> TwinNote:
         text=row["text"],
         source_spawn_id=row.get("source_spawn_id"),
         investigation_id=row.get("investigation_id"),
+        owner_id=str(row.get("owner_id") or "__operator__"),
     )

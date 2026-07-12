@@ -23,6 +23,7 @@ import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
+import { reopenDeepResearchWindowsForAsset } from "../../workspace/deepResearchWindow";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
@@ -49,6 +50,7 @@ export default function BookReader() {
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [restoredResearchCount, setRestoredResearchCount] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +78,21 @@ export default function BookReader() {
         if (!cancelled) setLoading(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, [documentId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRestoredResearchCount(null);
+    void reopenDeepResearchWindowsForAsset(documentId)
+      .then((ids) => {
+        if (!cancelled) setRestoredResearchCount(ids.length);
+      })
+      .catch(() => {
+        if (!cancelled) setRestoredResearchCount(-1);
+      });
     return () => {
       cancelled = true;
     };
@@ -345,6 +362,19 @@ export default function BookReader() {
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight mb-3 truncate">
           {book.author ?? "Unknown author"}
         </p>
+        {restoredResearchCount !== null ? (
+          <p
+            className="mb-3 text-[10px] font-mono text-shadow-1 dark:text-moonlight"
+            data-testid="durable-research-session-restore"
+            data-restore-state={restoredResearchCount < 0 ? "failed" : "settled"}
+          >
+            {restoredResearchCount < 0
+              ? "Research windows could not be restored"
+              : restoredResearchCount === 0
+                ? "No saved research windows"
+                : `Restored ${restoredResearchCount} research window${restoredResearchCount === 1 ? "" : "s"}`}
+          </p>
+        ) : null}
         <TocPanel toc={book.toc} currentPageIndex={pageIndex} onJump={setPageIndex} />
       </aside>
 

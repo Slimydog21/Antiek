@@ -39,7 +39,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from substrate.engagement_spine import (
@@ -64,6 +64,7 @@ from substrate.engagement_spine.store import (
     EngagementStore,
     FileEngagementStore,
     document_revision_sha256,
+    owned_document_id,
 )
 from substrate.floating_session import (
     compare_and_set_view_mode,
@@ -78,6 +79,13 @@ from substrate.floating_session import (
     sessions_collective_html,
     sessions_collective_research,
 )
+from substrate.floating_session.merge_receipt import (
+    FileMergeReceiptStore,
+    InMemoryMergeReceiptStore,
+    MergeReceiptStore,
+    merge_material_sha256,
+    merge_receipt_id,
+)
 from substrate.floating_session.store import (
     FileSessionStore,
     InMemorySessionStore,
@@ -89,6 +97,7 @@ engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
 # Lazily constructed stores. Tests call reset_engagement_stores().
 _engagement_store: EngagementStore | None = None
 _session_store: SessionStore | None = None
+_merge_receipt_store: MergeReceiptStore | None = None
 _bench_usage_store: Any = None
 
 
@@ -133,16 +142,18 @@ def reset_engagement_stores(*, root: Path | None = None) -> None:
     If ``root`` is provided, use file stores at that path. Else honor
     ``ANTIEK_ENGAGEMENT_DIR``, else in-memory.
     """
-    global _engagement_store, _session_store
+    global _engagement_store, _merge_receipt_store, _session_store
     base = root if root is not None else engagement_data_dir()
     if base is not None:
         base = Path(base)
         base.mkdir(parents=True, exist_ok=True)
         _engagement_store = FileEngagementStore(base / "engagement")
         _session_store = FileSessionStore(base / "sessions")
+        _merge_receipt_store = FileMergeReceiptStore(base / "merge_receipts")
     else:
         _engagement_store = InMemoryEngagementStore()
         _session_store = InMemorySessionStore()
+        _merge_receipt_store = InMemoryMergeReceiptStore()
 
 
 def _eng() -> EngagementStore:
@@ -169,6 +180,30 @@ def _sess() -> SessionStore:
         reset_engagement_stores()
     assert _session_store is not None
     return _session_store
+
+
+def _receipts() -> MergeReceiptStore:
+    global _merge_receipt_store
+    if _merge_receipt_store is None:
+        reset_engagement_stores()
+    assert _merge_receipt_store is not None
+    return _merge_receipt_store
+
+
+def _request_owner(request: Request) -> str:
+    """Read middleware-authenticated identity; no implicit principal exists."""
+    owner = str(getattr(request.state, "user_id", "") or "").strip()
+    if not owner and os.environ.get("ANTIEK_ALLOW_UNAUTHENTICATED_LOCAL") == "1":
+        owner = "__operator__"
+    if not owner:
+        raise HTTPException(status_code=401, detail="authenticated identity is unavailable")
+    return owner
+
+
+def _require_legacy_operator(request: Request) -> None:
+    """Close legacy global engagement routes until their stores are owner-native."""
+    if _request_owner(request) != "__operator__":
+        raise HTTPException(status_code=403, detail="owner-scoped session route required")
 
 
 # ── request / response models ────────────────────────────────────────────
@@ -335,6 +370,7 @@ class SessionsMergeBody(_ClosedSessionBody):
     confirm_parent_write: bool = False
     expected_parent_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     include_html: bool = True
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=128)
 
     @model_validator(mode="after")
     def _canonical_sessions(self) -> SessionsMergeBody:
@@ -349,7 +385,7 @@ class SessionsMergeBody(_ClosedSessionBody):
 # ── routes ───────────────────────────────────────────────────────────────
 
 
-@engagement_router.post("/spawn-from-highlight")
+@engagement_router.post("/spawn-from-highlight", dependencies=[Depends(_require_legacy_operator)])
 def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
     try:
         sel = HighlightSelection(
@@ -383,7 +419,7 @@ def post_spawn_from_highlight(body: HighlightBody) -> dict[str, Any]:
     }
 
 
-@engagement_router.post("/attach-refs")
+@engagement_router.post("/attach-refs", dependencies=[Depends(_require_legacy_operator)])
 def post_attach_refs(body: AttachRefsBody) -> dict[str, Any]:
     try:
         spawn, merged = attach_source_references(body.spawn_id, body.references, store=_eng())
@@ -400,7 +436,7 @@ def post_attach_refs(body: AttachRefsBody) -> dict[str, Any]:
     }
 
 
-@engagement_router.post("/research-context")
+@engagement_router.post("/research-context", dependencies=[Depends(_require_legacy_operator)])
 def post_research_context(body: ResearchContextBody) -> dict[str, Any]:
     try:
         pack = assemble_research_context(
@@ -422,7 +458,7 @@ def post_research_context(body: ResearchContextBody) -> dict[str, Any]:
     return out
 
 
-@engagement_router.post("/collective")
+@engagement_router.post("/collective", dependencies=[Depends(_require_legacy_operator)])
 def post_collective(body: CollectiveBody) -> dict[str, Any]:
     try:
         unit = merge_spawns_collective(
@@ -456,7 +492,7 @@ def post_collective(body: CollectiveBody) -> dict[str, Any]:
     return out
 
 
-@engagement_router.post("/merge")
+@engagement_router.post("/merge", dependencies=[Depends(_require_legacy_operator)])
 def post_merge(body: MergeBody) -> dict[str, Any]:
     """Merge completed spawn outputs into parent or a draft-combined document.
 
@@ -591,7 +627,7 @@ def hydrate_live_status_payload(
     }
 
 
-@engagement_router.get("/hydrate-live-status")
+@engagement_router.get("/hydrate-live-status", dependencies=[Depends(_require_legacy_operator)])
 def get_hydrate_live_status() -> dict[str, Any]:
     """GET residual (hq): offline-vs-live hydrate injector readiness (HTML-first)."""
     return hydrate_live_status_payload()
@@ -663,13 +699,13 @@ def twin_seed_live_status_payload(
     }
 
 
-@engagement_router.get("/twin-seed-live-status")
+@engagement_router.get("/twin-seed-live-status", dependencies=[Depends(_require_legacy_operator)])
 def get_twin_seed_live_status() -> dict[str, Any]:
     """GET residual (hs): offline-vs-live twin seed readiness (HTML-first)."""
     return twin_seed_live_status_payload()
 
 
-@engagement_router.post("/hydrate-ref")
+@engagement_router.post("/hydrate-ref", dependencies=[Depends(_require_legacy_operator)])
 def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     """Land arxiv/substack/url as an HTML-first asset (offline-safe by default).
 
@@ -705,7 +741,7 @@ def post_hydrate_ref(body: HydrateRefBody) -> dict[str, Any]:
     return asset.to_dict()
 
 
-@engagement_router.post("/progress")
+@engagement_router.post("/progress", dependencies=[Depends(_require_legacy_operator)])
 def post_progress(body: ProgressRecordBody) -> dict[str, Any]:
     """Append one plan/gather/synthesize/cite (or terminal) progress event."""
     try:
@@ -724,7 +760,7 @@ def post_progress(body: ProgressRecordBody) -> dict[str, Any]:
     return payload
 
 
-@engagement_router.post("/progress/seed")
+@engagement_router.post("/progress/seed", dependencies=[Depends(_require_legacy_operator)])
 def post_progress_seed(body: ProgressSeedBody) -> dict[str, Any]:
     """Seed default plan→gather→synthesize→cite skeleton for a spawn."""
     try:
@@ -736,7 +772,7 @@ def post_progress_seed(body: ProgressSeedBody) -> dict[str, Any]:
     return progress_payload(body.spawn_id, store=_eng(), include_html=body.include_html)
 
 
-@engagement_router.get("/progress/{spawn_id}")
+@engagement_router.get("/progress/{spawn_id}", dependencies=[Depends(_require_legacy_operator)])
 def get_progress(spawn_id: str, include_html: bool = False) -> dict[str, Any]:
     """Read progress events for a spawn (HTML-capable)."""
     if _eng().get_spawn(spawn_id) is None:
@@ -744,7 +780,7 @@ def get_progress(spawn_id: str, include_html: bool = False) -> dict[str, Any]:
     return progress_payload(spawn_id, store=_eng(), include_html=include_html)
 
 
-@engagement_router.post("/evidence-pack")
+@engagement_router.post("/evidence-pack", dependencies=[Depends(_require_legacy_operator)])
 def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
     """HTML-first evidence pack from twin notes + spawn source refs."""
     try:
@@ -758,7 +794,7 @@ def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@engagement_router.get("/twins/{asset_id}")
+@engagement_router.get("/twins/{asset_id}", dependencies=[Depends(_require_legacy_operator)])
 def get_twins(
     asset_id: str,
     include_html: bool = False,
@@ -779,7 +815,7 @@ def get_twins(
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@engagement_router.post("/twins")
+@engagement_router.post("/twins", dependencies=[Depends(_require_legacy_operator)])
 def post_twins(body: TwinRecordBody) -> dict[str, Any]:
     """Record one twin insight or question (recursive note-taker product path)."""
     try:
@@ -813,7 +849,7 @@ class TwinSeedBody(BaseModel):
     has_body: bool | None = None
 
 
-@engagement_router.post("/twins/seed")
+@engagement_router.post("/twins/seed", dependencies=[Depends(_require_legacy_operator)])
 def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
     """Seed insight + question twins for an asset (idempotent offline default)."""
     from substrate.engagement_spine import seed_twins_for_asset
@@ -862,7 +898,7 @@ def post_twins_seed(body: TwinSeedBody) -> dict[str, Any]:
     return out
 
 
-@engagement_router.post("/twins/promote-context")
+@engagement_router.post("/twins/promote-context", dependencies=[Depends(_require_legacy_operator)])
 def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
     """Promote asset twins into the depth graph and research context units.
 
@@ -886,7 +922,7 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@engagement_router.post("/context-search")
+@engagement_router.post("/context-search", dependencies=[Depends(_require_legacy_operator)])
 def post_context_search(body: ContextSearchBody) -> dict[str, Any]:
     """Search twin substrate + source refs for research context assembly."""
     try:
@@ -959,8 +995,17 @@ def _record_session_open_usage(
     )
 
 
-def _verified_session(session_id: str):  # type: ignore[no-untyped-def]
+def _verified_session(session_id: str, owner_id: str):  # type: ignore[no-untyped-def]
     try:
+        raw_session = _sess().get_session(session_id)
+        if raw_session is None:
+            raise HTTPException(status_code=404, detail="session not found")
+        if "owner_id" not in raw_session:
+            raise HTTPException(
+                status_code=409, detail="session ownership requires reconciliation"
+            )
+        if raw_session.get("owner_id") != owner_id:
+            raise HTTPException(status_code=404, detail="session not found")
         session = get_session(session_id, session_store=_sess(), engagement_store=_eng())
     except ValueError as exc:
         raise HTTPException(status_code=400, detail="invalid session identity") from exc
@@ -972,6 +1017,7 @@ def _verified_session(session_id: str):  # type: ignore[no-untyped-def]
     if (
         spawn.get("parent_asset_id") != session.parent_asset_id
         or spawn.get("investigation_id") != session.investigation_id
+        or spawn.get("owner_id") != owner_id
     ):
         raise HTTPException(status_code=409, detail="session provenance requires reconciliation")
     return session
@@ -991,6 +1037,7 @@ def _session_payload(session: Any, *, include_html: bool) -> dict[str, Any]:
         "status": session.status,
         "research_tier": session.research_tier,
         "view_format": "html",
+        "owner_id": session.owner_id,
     }
     if include_html:
         rendered = project_session_html(
@@ -1004,12 +1051,15 @@ def _session_payload(session: Any, *, include_html: bool) -> dict[str, Any]:
     return out
 
 
-def _parent_revision_sha256(parent_asset_id: str) -> str:
-    return document_revision_sha256(_eng().get_document(parent_asset_id))
+def _parent_revision_sha256(parent_asset_id: str, owner_id: str) -> str:
+    return document_revision_sha256(
+        _eng().get_document(owned_document_id(owner_id, parent_asset_id))
+    )
 
 
 @engagement_router.post("/sessions/open")
-def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
+def post_session_open(body: SessionOpenBody, request: Request) -> dict[str, Any]:
+    owner_id = _request_owner(request)
     try:
         sel = HighlightSelection(
             asset_id=body.asset_id,
@@ -1027,6 +1077,7 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
             view_mode=body.view_mode,
             force_new=body.force_new,
             research_tier=body.research_tier,
+            owner_id=owner_id,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -1043,6 +1094,7 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
         "goal": session.goal,
         "research_tier": resolved_tier,
         "view_format": "html",
+        "owner_id": session.owner_id,
     }
     # Residual (nw): Antiek-bench usage for floating DR + twin chase opens.
     try:
@@ -1060,7 +1112,8 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/sessions/complete-flywheel")
-def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
+def post_session_complete_flywheel(body: SessionFlywheelBody, request: Request) -> dict[str, Any]:
+    _verified_session(body.session_id, _request_owner(request))
     try:
         result = complete_session_with_context_flywheel(
             body.session_id,
@@ -1105,19 +1158,22 @@ def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
 
 
 @engagement_router.get("/sessions/asset/{parent_asset_id}")
-def get_sessions_for_asset(parent_asset_id: str, include_html: bool = False) -> dict[str, Any]:
+def get_sessions_for_asset(
+    parent_asset_id: str, request: Request, include_html: bool = False
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
     if not parent_asset_id.strip() or len(parent_asset_id) > 512 or ".." in parent_asset_id:
         raise HTTPException(status_code=400, detail="invalid parent asset identity")
     try:
         sessions = sorted(
-            list_sessions_for_asset(parent_asset_id, session_store=_sess()),
+            list_sessions_for_asset(parent_asset_id, session_store=_sess(), owner_id=owner_id),
             key=lambda row: row.session_id,
         )
     except (ValueError, OSError) as exc:
         raise HTTPException(
             status_code=409, detail="session index requires reconciliation"
         ) from exc
-    verified = [_verified_session(row.session_id) for row in sessions]
+    verified = [_verified_session(row.session_id, owner_id) for row in sessions]
     return {
         "parent_asset_id": parent_asset_id,
         "sessions": [_session_payload(session, include_html=include_html) for session in verified],
@@ -1127,13 +1183,18 @@ def get_sessions_for_asset(parent_asset_id: str, include_html: bool = False) -> 
 
 
 @engagement_router.get("/sessions/{session_id}")
-def get_session_route(session_id: str, include_html: bool = True) -> dict[str, Any]:
-    return _session_payload(_verified_session(session_id), include_html=include_html)
+def get_session_route(
+    session_id: str, request: Request, include_html: bool = True
+) -> dict[str, Any]:
+    return _session_payload(
+        _verified_session(session_id, _request_owner(request)),
+        include_html=include_html,
+    )
 
 
 @engagement_router.put("/sessions/{session_id}/view")
-def put_session_view(session_id: str, body: SessionViewBody) -> dict[str, Any]:
-    _verified_session(session_id)
+def put_session_view(session_id: str, body: SessionViewBody, request: Request) -> dict[str, Any]:
+    _verified_session(session_id, _request_owner(request))
     try:
         updated, applied = compare_and_set_view_mode(
             session_id,
@@ -1149,8 +1210,8 @@ def put_session_view(session_id: str, body: SessionViewBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/sessions/context")
-def post_session_context(body: SessionContextBody) -> dict[str, Any]:
-    _verified_session(body.session_id)
+def post_session_context(body: SessionContextBody, request: Request) -> dict[str, Any]:
+    _verified_session(body.session_id, _request_owner(request))
     try:
         pack = session_research_context(
             body.session_id,
@@ -1181,8 +1242,9 @@ def post_session_context(body: SessionContextBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/sessions/collective")
-def post_sessions_collective(body: SessionsCollectiveBody) -> dict[str, Any]:
-    sessions = [_verified_session(session_id) for session_id in body.session_ids]
+def post_sessions_collective(body: SessionsCollectiveBody, request: Request) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    sessions = [_verified_session(session_id, owner_id) for session_id in body.session_ids]
     assets = tuple(dict.fromkeys(session.parent_asset_id for session in sessions))
     if len(assets) > 1 and not body.allow_cross_asset:
         raise HTTPException(
@@ -1222,34 +1284,117 @@ def post_sessions_collective(body: SessionsCollectiveBody) -> dict[str, Any]:
 
 
 @engagement_router.post("/sessions/merge")
-def post_sessions_merge(body: SessionsMergeBody) -> dict[str, Any]:
-    sessions = [_verified_session(session_id) for session_id in body.session_ids]
+def post_sessions_merge(body: SessionsMergeBody, request: Request) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    sessions = [_verified_session(session_id, owner_id) for session_id in body.session_ids]
     if any(session.parent_asset_id != body.parent_asset_id for session in sessions):
         raise HTTPException(status_code=400, detail="session merge cannot cross parent assets")
     if any(session.status != "complete" for session in sessions):
         raise HTTPException(status_code=400, detail="only completed sessions can merge")
     if body.mode == "into_parent" and (
-        not body.confirm_parent_write or body.expected_parent_sha256 is None
+        not body.confirm_parent_write
+        or body.expected_parent_sha256 is None
+        or body.idempotency_key is None
     ):
         raise HTTPException(
             status_code=400,
-            detail="into-parent merge requires confirmation and parent revision",
-        )
-    parent_before = _parent_revision_sha256(body.parent_asset_id)
-    try:
-        merged = merge_sessions(
-            body.parent_asset_id,
-            body.session_ids,
-            session_store=_sess(),
-            engagement_store=_eng(),
-            mode=body.mode,
-            expected_parent_sha256=(
-                body.expected_parent_sha256 if body.mode == "into_parent" else None
+            detail=(
+                "into-parent merge requires confirmation, parent revision, "
+                "and idempotency key"
             ),
         )
+    parent_before = _parent_revision_sha256(body.parent_asset_id, owner_id)
+    receipt_id: str | None = None
+    material_sha: str | None = None
+    receipt_row: dict[str, Any] | None = None
+    merged: dict[str, Any] = {}
+    if body.mode == "into_parent":
+        material = {
+            "owner_id": owner_id,
+            "parent_asset_id": body.parent_asset_id,
+            "session_ids": list(body.session_ids),
+            "mode": body.mode,
+            "expected_parent_sha256": body.expected_parent_sha256,
+        }
+        material_sha = merge_material_sha256(material)
+        receipt_id = merge_receipt_id(owner_id, body.idempotency_key or "")
+        try:
+            receipt_row, _created = _receipts().claim(
+                {
+                    "receipt_id": receipt_id,
+                    "owner_id": owner_id,
+                    "idempotency_key": body.idempotency_key,
+                    "material_sha256": material_sha,
+                    "expected_parent_sha256": body.expected_parent_sha256,
+                    "state": "claimed",
+                }
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=409, detail="idempotency key conflicts") from exc
+
+        if receipt_row.get("state") in ("prepared", "applied"):
+            result_sha = str(receipt_row.get("result_sha256") or "")
+            current_sha = _parent_revision_sha256(body.parent_asset_id, owner_id)
+            if current_sha == result_sha:
+                if receipt_row.get("state") == "prepared":
+                    receipt_row = _receipts().settle(
+                        receipt_id, material_sha, result_sha
+                    )
+                stored = receipt_row.get("result")
+                if not isinstance(stored, dict):
+                    raise HTTPException(
+                        status_code=409, detail="merge receipt requires reconciliation"
+                    )
+                merged = dict(stored)
+            elif current_sha != body.expected_parent_sha256:
+                raise HTTPException(status_code=409, detail="parent changed after preview")
+            else:
+                merged = {}
+        else:
+            merged = {}
+
+    def prepare_receipt(result: dict[str, Any]) -> None:
+        if receipt_id is not None and material_sha is not None:
+            _receipts().prepare(receipt_id, material_sha, result)
+
+    try:
+        if not merged:
+            merged = merge_sessions(
+                body.parent_asset_id,
+                body.session_ids,
+                session_store=_sess(),
+                engagement_store=_eng(),
+                mode=body.mode,
+                expected_parent_sha256=(
+                    body.expected_parent_sha256 if body.mode == "into_parent" else None
+                ),
+                owner_id=owner_id,
+                before_write=prepare_receipt if body.mode == "into_parent" else None,
+            )
     except (KeyError, ValueError) as exc:
-        status = 409 if "revision conflicts" in str(exc) else 400
-        raise HTTPException(status_code=status, detail="session merge is invalid") from exc
+        if (
+            "revision conflicts" in str(exc)
+            and receipt_id is not None
+            and material_sha is not None
+        ):
+            replay, _ = _receipts().claim(receipt_row or {})
+            result_sha = str(replay.get("result_sha256") or "")
+            stored = replay.get("result")
+            if (
+                result_sha
+                and _parent_revision_sha256(body.parent_asset_id, owner_id) == result_sha
+                and isinstance(stored, dict)
+            ):
+                _receipts().settle(receipt_id, material_sha, result_sha)
+                merged = dict(stored)
+            else:
+                raise HTTPException(status_code=409, detail="parent changed after preview") from exc
+        else:
+            raise HTTPException(status_code=400, detail="session merge is invalid") from exc
+    if receipt_id is not None and material_sha is not None:
+        _receipts().settle(receipt_id, material_sha, str(merged["document_sha256"]))
+        merged["merge_receipt_id"] = receipt_id
+        merged["merge_receipt_state"] = "applied"
     merged["view_format"] = "html"
     merged["draft_leaves_parent"] = body.mode == "draft_combined"
     merged["parent_revision_sha256"] = parent_before

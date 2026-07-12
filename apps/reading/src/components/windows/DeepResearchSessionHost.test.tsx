@@ -28,6 +28,23 @@ const fetchDepthTiers = vi.hoisted(() =>
     notes: [] as string[],
   })),
 );
+const updateEngagementSessionView = vi.hoisted(() =>
+  vi.fn(async (body: { session_id: string; mode: "floating" | "full" }) => ({
+    session_id: body.session_id,
+    view_mode: body.mode,
+    view_format: "html" as const,
+  })),
+);
+const mergeEngagementSessions = vi.hoisted(() => vi.fn());
+
+vi.mock("../../api/engagement", () => ({
+  updateEngagementSessionView: (body: {
+    session_id: string;
+    mode: "floating" | "full";
+  }) => updateEngagementSessionView(body),
+  listEngagementSessions: vi.fn(),
+  mergeEngagementSessions,
+}));
 
 vi.mock("../../api/settings", () => ({
   fetchSettingsBudget: vi.fn(async () => ({
@@ -203,6 +220,7 @@ describe("DeepResearchSessionHost", () => {
   });
 
   beforeEach(() => {
+    mergeEngagementSessions.mockReset();
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -588,7 +606,7 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.queryByTestId("deep-research-spawn-merge-mount")).toBeNull();
   });
 
-  it("exposes expand full / restore floating controls (ce)", () => {
+  it("exposes expand full / restore floating controls (ce)", async () => {
     useWindows.getState().reset();
     const id = openWindow(
       DEEP_RESEARCH_WINDOW_KIND,
@@ -627,7 +645,60 @@ describe("DeepResearchSessionHost", () => {
     expect(path.textContent).toMatch(/into parent/i);
     expect(path.textContent).toMatch(/1 selected|ready/i);
     fireEvent.click(expand);
-    expect(useWindows.getState().windows[id]?.mode).toBe("full");
+    await waitFor(() => {
+      expect(useWindows.getState().windows[id]?.mode).toBe("full");
+    });
+  });
+
+  it("previews then confirms a receipt-bound session merge", async () => {
+    mergeEngagementSessions
+      .mockResolvedValueOnce({
+        mode: "draft_combined",
+        parent_asset_id: "launch-asset",
+        document_id: "draft_launch",
+        source_spawn_ids: ["spn_launch_1"],
+        source_session_ids: ["fsess_launch_1"],
+        sections_merged: 2,
+        document_sha256: "b".repeat(64),
+        parent_revision_sha256: "a".repeat(64),
+        result_parent_sha256: "a".repeat(64),
+        draft_leaves_parent: true,
+        view_format: "html",
+        html: "<article><p>Safe draft preview</p></article>",
+      })
+      .mockResolvedValueOnce({
+        mode: "into_parent",
+        parent_asset_id: "launch-asset",
+        document_id: "launch-asset",
+        source_spawn_ids: ["spn_launch_1"],
+        source_session_ids: ["fsess_launch_1"],
+        sections_merged: 2,
+        document_sha256: "b".repeat(64),
+        parent_revision_sha256: "a".repeat(64),
+        result_parent_sha256: "b".repeat(64),
+        draft_leaves_parent: false,
+        view_format: "html",
+        merge_receipt_id: "mrcpt_0123456789abcdef01234567",
+        merge_receipt_state: "applied",
+      });
+    render(<DeepResearchSessionHost {...FIXTURE} status="complete" />);
+    fireEvent.click(screen.getByTestId("preview-session-merge"));
+    await screen.findByTestId("session-merge-draft-preview");
+    const confirm = screen.getByTestId("confirm-session-merge");
+    expect((confirm as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(confirm);
+    await screen.findByTestId("session-merge-receipt");
+    expect(mergeEngagementSessions).toHaveBeenCalledTimes(2);
+    expect(mergeEngagementSessions.mock.calls[1][0]).toEqual(
+      expect.objectContaining({
+        mode: "into_parent",
+        confirm_parent_write: true,
+        expected_parent_sha256: "a".repeat(64),
+      }),
+    );
+    expect(mergeEngagementSessions.mock.calls[1][0].idempotency_key).toMatch(
+      /^browser-merge-/,
+    );
   });
 
   it("path choices require parent+spawn for draft/into-parent readiness (aqw)", () => {

@@ -27,13 +27,26 @@ def document_revision_sha256(doc: dict[str, Any] | None) -> str:
     return hashlib.sha256(_DOCUMENT_REVISION_DOMAIN + payload).hexdigest()
 
 
+def owned_document_id(owner_id: str, logical_document_id: str) -> str:
+    """Map a logical document into an account namespace without leaking identity."""
+    owner = (owner_id or "").strip()
+    if not owner:
+        raise ValueError("owner_id is required")
+    if owner == "__operator__":
+        return logical_document_id
+    digest = hashlib.sha256(f"antiek-owner:v1:{owner}".encode()).hexdigest()[:16]
+    return f"owner_{digest}_{logical_document_id}"
+
+
 @runtime_checkable
 class EngagementStore(Protocol):
     def put_spawn(self, spawn: dict[str, Any]) -> None: ...
     def get_spawn(self, spawn_id: str) -> dict[str, Any] | None: ...
     def list_spawns(self, asset_id: str) -> list[dict[str, Any]]: ...
     def put_twin(self, note: dict[str, Any]) -> None: ...
-    def list_twins(self, asset_id: str) -> list[dict[str, Any]]: ...
+    def list_twins(
+        self, asset_id: str, owner_id: str = "__operator__"
+    ) -> list[dict[str, Any]]: ...
     def put_document(self, document_id: str, doc: dict[str, Any]) -> None: ...
     def get_document(self, document_id: str) -> dict[str, Any] | None: ...
     def compare_and_set_document(
@@ -46,7 +59,7 @@ class InMemoryEngagementStore:
     """Thread-safe in-process store for tests and single-process runners."""
 
     _spawns: dict[str, dict[str, Any]] = field(default_factory=dict)
-    _twins: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
+    _twins: dict[tuple[str, str], list[dict[str, Any]]] = field(default_factory=dict)
     _docs: dict[str, dict[str, Any]] = field(default_factory=dict)
     _lock: threading.RLock = field(default_factory=threading.RLock)
 
@@ -65,7 +78,8 @@ class InMemoryEngagementStore:
 
     def put_twin(self, note: dict[str, Any]) -> None:
         with self._lock:
-            bucket = self._twins.setdefault(note["asset_id"], [])
+            owner = str(note.get("owner_id") or "__operator__")
+            bucket = self._twins.setdefault((owner, note["asset_id"]), [])
             # Idempotent on note_id
             for i, existing in enumerate(bucket):
                 if existing.get("note_id") == note["note_id"]:
@@ -73,9 +87,11 @@ class InMemoryEngagementStore:
                     return
             bucket.append(dict(note))
 
-    def list_twins(self, asset_id: str) -> list[dict[str, Any]]:
+    def list_twins(
+        self, asset_id: str, owner_id: str = "__operator__"
+    ) -> list[dict[str, Any]]:
         with self._lock:
-            return [dict(n) for n in self._twins.get(asset_id, [])]
+            return [dict(n) for n in self._twins.get((owner_id, asset_id), [])]
 
     def put_document(self, document_id: str, doc: dict[str, Any]) -> None:
         with self._lock:
@@ -113,8 +129,9 @@ class FileEngagementStore:
     def _spawn_path(self, spawn_id: str) -> Path:
         return self.root / "spawns" / f"{spawn_id}.json"
 
-    def _twin_path(self, asset_id: str) -> Path:
-        safe = asset_id.replace("/", "_")
+    def _twin_path(self, asset_id: str, owner_id: str = "__operator__") -> Path:
+        logical = owned_document_id(owner_id, asset_id)
+        safe = logical.replace("/", "_")
         return self.root / "twins" / f"{safe}.json"
 
     def _doc_path(self, document_id: str) -> Path:
@@ -129,6 +146,11 @@ class FileEngagementStore:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.replace(temp, path)
+            directory_fd = os.open(path.parent, os.O_RDONLY)
+            try:
+                os.fsync(directory_fd)
+            finally:
+                os.close(directory_fd)
         finally:
             temp.unlink(missing_ok=True)
 
@@ -152,7 +174,8 @@ class FileEngagementStore:
         return out
 
     def put_twin(self, note: dict[str, Any]) -> None:
-        path = self._twin_path(note["asset_id"])
+        owner = str(note.get("owner_id") or "__operator__")
+        path = self._twin_path(note["asset_id"], owner)
         notes: list[dict[str, Any]] = []
         if path.is_file():
             notes = json.loads(path.read_text(encoding="utf-8"))
@@ -166,8 +189,10 @@ class FileEngagementStore:
             notes.append(note)
         path.write_text(json.dumps(notes, sort_keys=True, indent=2), encoding="utf-8")
 
-    def list_twins(self, asset_id: str) -> list[dict[str, Any]]:
-        path = self._twin_path(asset_id)
+    def list_twins(
+        self, asset_id: str, owner_id: str = "__operator__"
+    ) -> list[dict[str, Any]]:
+        path = self._twin_path(asset_id, owner_id)
         if not path.is_file():
             return []
         return list(json.loads(path.read_text(encoding="utf-8")))

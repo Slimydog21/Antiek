@@ -252,6 +252,7 @@ def promote_twin_notes_for_asset(
     con: Any = None,
     kinds: Sequence[TwinKind] | None = None,
     note_ids: Sequence[str] | None = None,
+    owner_id: str = "__operator__",
 ) -> list[TwinPromoteResult]:
     """Promote all (or filtered) twin notes for a parent asset.
 
@@ -261,7 +262,7 @@ def promote_twin_notes_for_asset(
     """
     if not asset_id or not asset_id.strip():
         raise ValueError("asset_id is required")
-    notes = list_twin_notes(asset_id, store=store)
+    notes = list_twin_notes(asset_id, store=store, owner_id=owner_id)
     if kinds is not None:
         allowed = set(kinds)
         notes = [n for n in notes if n.kind in allowed]
@@ -339,6 +340,7 @@ def promote_and_context_for_asset(
     con: Any = None,
     kinds: Sequence[TwinKind] | None = None,
     note_ids: Sequence[str] | None = None,
+    owner_id: str = "__operator__",
 ) -> TwinPromoteContextResult:
     """Product entry: twin notes → promote_* → search/context units.
 
@@ -357,6 +359,7 @@ def promote_and_context_for_asset(
         con=con,
         kinds=kinds,
         note_ids=note_ids,
+        owner_id=owner_id,
     )
     units = [result_to_context_unit(p) for p in promoted]
     filtered = search_twin_context(units, query=query, asset_id=asset_id.strip())

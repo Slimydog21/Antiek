@@ -14,11 +14,12 @@ Both produce a TipTap-shaped doc-model suitable for HTML projection.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal
 
 from .spawn import ResearchSpawn, _from_row
-from .store import EngagementStore, document_revision_sha256
+from .store import EngagementStore, document_revision_sha256, owned_document_id
 from .twin import TwinNote
 from .twin import _from_row as twin_from_row
 
@@ -45,6 +46,8 @@ def merge_spawn_outputs(
     parent_title: str | None = None,
     parent_body: str | None = None,
     expected_parent_sha256: str | None = None,
+    owner_id: str = "__operator__",
+    before_write: Callable[[MergeResult], None] | None = None,
 ) -> MergeResult:
     """Merge one or more completed spawns into parent or a draft document.
 
@@ -64,6 +67,8 @@ def merge_spawn_outputs(
         if row is None:
             raise KeyError(f"unknown spawn_id: {sid}")
         spawn = _from_row(row)
+        if spawn.owner_id != owner_id:
+            raise ValueError(f"spawn {sid} does not belong to merge owner")
         if spawn.parent_asset_id != parent_asset_id:
             raise ValueError(
                 f"spawn {sid} belongs to {spawn.parent_asset_id}, not {parent_asset_id}"
@@ -72,8 +77,11 @@ def merge_spawn_outputs(
             raise ValueError(f"spawn {sid} status is {spawn.status!r}; only complete spawns merge")
         spawns.append(spawn)
 
-    twins = [twin_from_row(r) for r in store.list_twins(parent_asset_id)]
-    existing = store.get_document(parent_asset_id) or {}
+    twins = [
+        twin_from_row(r) for r in store.list_twins(parent_asset_id, owner_id)
+    ]
+    parent_document_id = owned_document_id(owner_id, parent_asset_id)
+    existing = store.get_document(parent_document_id) or {}
     title = parent_title or existing.get("title") or f"Asset {parent_asset_id}"
     body = parent_body if parent_body is not None else existing.get("body_text") or ""
 
@@ -87,7 +95,7 @@ def merge_spawn_outputs(
     )
 
     if mode == "into_parent":
-        document_id = parent_asset_id
+        document_id = parent_document_id
     else:
         digest = hashlib.sha256(
             f"draft:{parent_asset_id}:{','.join(sorted(spawn_ids))}".encode()
@@ -102,19 +110,14 @@ def merge_spawn_outputs(
         "mode": mode,
         "source_spawn_ids": list(spawn_ids),
         "doc_model": doc_model,
+        "owner_id": owner_id,
     }
     if mode == "into_parent":
         # A confirmed content merge is not authority to erase unrelated
         # ownership, licensing, marketplace, revision, or provenance fields.
         merged_document = {**existing, **merged_document}
-    if mode == "into_parent" and expected_parent_sha256 is not None:
-        if not store.compare_and_set_document(document_id, expected_parent_sha256, merged_document):
-            raise ValueError("parent revision conflicts with the confirmed preview")
-    else:
-        store.put_document(document_id, merged_document)
-
     sections = 1 + len(spawns) + (1 if twins else 0)
-    return MergeResult(
+    result = MergeResult(
         mode=mode,
         parent_asset_id=parent_asset_id,
         document_id=document_id,
@@ -123,6 +126,16 @@ def merge_spawn_outputs(
         sections_merged=sections,
         document_sha256=document_revision_sha256(merged_document),
     )
+    if before_write is not None:
+        before_write(result)
+
+    if mode == "into_parent" and expected_parent_sha256 is not None:
+        if not store.compare_and_set_document(document_id, expected_parent_sha256, merged_document):
+            raise ValueError("parent revision conflicts with the confirmed preview")
+    else:
+        store.put_document(document_id, merged_document)
+
+    return result
 
 
 def merge_product_payload(

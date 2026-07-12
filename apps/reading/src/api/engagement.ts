@@ -55,6 +55,7 @@ export type SessionOpenResponse = {
   goal?: string;
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
+  owner_id?: string;
   /**
    * Residual (nw/asu): Antiek-bench usage event recorded on open
    * (floating_deep_research | twin_chase | highlight_dr_launch) for recursive suite rewrite.
@@ -724,4 +725,98 @@ export async function completeSessionFlywheel(body: {
     body: JSON.stringify(body),
   });
   return readJson<SessionFlywheelResponse>(res);
+}
+
+export type SessionLifecycleResponse = SessionOpenResponse & {
+  html?: string;
+};
+
+export type SessionListResponse = {
+  parent_asset_id: string;
+  sessions: SessionLifecycleResponse[];
+  count: number;
+  view_format: "html";
+};
+
+export async function fetchEngagementSession(
+  sessionId: string,
+  includeHtml = true,
+): Promise<SessionLifecycleResponse> {
+  const params = includeHtml ? "?include_html=true" : "?include_html=false";
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(sessionId)}${params}`,
+  );
+  return readJson<SessionLifecycleResponse>(res);
+}
+
+export async function listEngagementSessions(
+  parentAssetId: string,
+  includeHtml = false,
+): Promise<SessionListResponse> {
+  const params = includeHtml ? "?include_html=true" : "?include_html=false";
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/asset/${encodeURIComponent(parentAssetId)}${params}`,
+  );
+  return readJson<SessionListResponse>(res);
+}
+
+export async function updateEngagementSessionView(body: {
+  session_id: string;
+  mode: "floating" | "full";
+  expected_mode?: "floating" | "full" | null;
+}): Promise<SessionLifecycleResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(body.session_id)}/view`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        mode: body.mode,
+        expected_mode: body.expected_mode ?? null,
+      }),
+    },
+  );
+  return readJson<SessionLifecycleResponse>(res);
+}
+
+export type SessionMergeResponse = {
+  mode: MergeMode;
+  parent_asset_id: string;
+  document_id: string;
+  source_spawn_ids: string[];
+  source_session_ids: string[];
+  sections_merged: number;
+  document_sha256: string;
+  parent_revision_sha256: string;
+  result_parent_sha256: string;
+  draft_leaves_parent: boolean;
+  view_format: "html";
+  merge_receipt_id?: string;
+  merge_receipt_state?: "applied";
+  html?: string;
+};
+
+export async function mergeEngagementSessions(body: {
+  parent_asset_id: string;
+  session_ids: string[];
+  mode?: MergeMode;
+  confirm_parent_write?: boolean;
+  expected_parent_sha256?: string | null;
+  idempotency_key?: string | null;
+  include_html?: boolean;
+}): Promise<SessionMergeResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/sessions/merge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      parent_asset_id: body.parent_asset_id,
+      session_ids: body.session_ids,
+      mode: body.mode ?? "draft_combined",
+      confirm_parent_write: Boolean(body.confirm_parent_write),
+      expected_parent_sha256: body.expected_parent_sha256 ?? null,
+      idempotency_key: body.idempotency_key ?? null,
+      include_html: body.include_html ?? true,
+    }),
+  });
+  return readJson<SessionMergeResponse>(res);
 }

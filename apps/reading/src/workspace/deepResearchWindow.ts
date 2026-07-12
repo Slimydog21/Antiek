@@ -18,6 +18,10 @@
  */
 
 import { isWindowEligible, openWindow } from "../components/windows/openWindow";
+import {
+  listEngagementSessions,
+  updateEngagementSessionView,
+} from "../api/engagement";
 import { useWindows } from "./windowsStore";
 import type { OpenWindowOptions, WindowMode } from "./windowsStore";
 
@@ -102,6 +106,44 @@ export function syncDeepResearchWindowMode(
   if (!win) return;
   if (mode === "full") store.expand(id);
   else store.restore(id);
+}
+
+/** Persist mode authority first, then mirror the accepted mode into window chrome. */
+export async function syncDeepResearchWindowModeDurably(
+  sessionId: string,
+  mode: WindowMode,
+  expectedMode: WindowMode,
+): Promise<void> {
+  const accepted = await updateEngagementSessionView({
+    session_id: sessionId,
+    mode,
+    expected_mode: expectedMode,
+  });
+  syncDeepResearchWindowMode(
+    accepted.session_id,
+    accepted.view_mode === "full" ? "full" : "floating",
+  );
+}
+
+/** Reopen the authenticated owner's durable sessions for one logical asset. */
+export async function reopenDeepResearchWindowsForAsset(
+  parentAssetId: string,
+): Promise<string[]> {
+  const response = await listEngagementSessions(parentAssetId, false);
+  return response.sessions.map((session) =>
+    openDeepResearchFromHighlight({
+      asset_id: session.parent_asset_id,
+      selection_text: session.selection_text,
+      session_id: session.session_id,
+      spawn_id: session.spawn_id,
+      investigation_id: session.investigation_id,
+      status: session.status,
+      goal: session.goal,
+      model_id: session.model_id ?? undefined,
+      mode: session.view_mode === "full" ? "full" : "floating",
+      research_tier: session.research_tier ?? undefined,
+    }),
+  );
 }
 
 /**

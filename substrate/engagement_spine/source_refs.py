@@ -384,6 +384,7 @@ def spawn_from_highlight_with_references(
     model_id: str | None = None,
     force_new: bool = False,
     research_tier: str | None = None,
+    owner_id: str = "__operator__",
 ) -> Any:
     """Product entry: reserve spawn from highlight, then attach source refs.
 
@@ -398,6 +399,7 @@ def spawn_from_highlight_with_references(
         model_id=model_id,
         force_new=force_new,
         research_tier=research_tier,
+        owner_id=owner_id,
     )
     if not references:
         return spawn

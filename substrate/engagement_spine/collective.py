@@ -141,10 +141,15 @@ def merge_spawns_collective(
     all_twins: list[TwinContextUnit] = []
     all_refs: list[SourceReference] = []
     tier_list: list[str] = []
+    owner_ids: set[str] = set()
 
     for sid in ids:
         row = store.get_spawn(sid)
         assert row is not None
+        owner_id = str(row.get("owner_id") or "__operator__")
+        owner_ids.add(owner_id)
+        if len(owner_ids) > 1:
+            raise ValueError("collective spawns cannot cross owners")
         asset = str(row.get("parent_asset_id") or "").strip()
         if not asset:
             raise ValueError(f"spawn {sid} missing parent_asset_id")
@@ -165,6 +170,7 @@ def merge_spawns_collective(
             embedding_provider=embedding_provider,
             con=con,
             include_twin_promote=include_twin_promote,
+            owner_id=owner_id,
         )
         packs.append(pack)
         all_twins.extend(pack.twin_units)

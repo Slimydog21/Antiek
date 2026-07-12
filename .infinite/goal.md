@@ -6,10 +6,12 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Complete SPR-08.2 by composing the accepted durable stage/evidence contracts into a causally real, restart-safe planner → bounded gather barrier → verifier → synthesizer provider runtime with exact effect IDs and no duplicate paid calls.
+Make the remaining engagement capabilities owner-native across stores, session APIs, and browser controls so authenticated research windows retain publication attach, progress, evidence, recursive context, and collective work without reopening global legacy authority.
 
 ## Derivation trail
 
-- SPR-08.1 established stage authority, budget fencing, and durable persistence.
-- Commit `4cd62e247` established the independently accepted typed evidence chain.
-- The highest-value remaining seam is provider invocation/orchestration; HTML deposit cannot be truthful until real role execution is durable.
+- Commit `b27d4fc2c` closed the backend session lifecycle and exact parent-document CAS.
+- Current archaeology found the browser host already substantial, but session rows lacked owner identity, confirmed merges lacked replay receipts, server modes were not authoritative in chrome, and reload discarded durable sessions.
+- FSW-SPR-02 is therefore the narrowest high-leverage bridge from shipped substrate to the user's daily reading/research workstation; broader account-scoping and full collective/merge browser E2E remain explicit follow-ons.
+- Cycle 7 delivered owner-bound sessions/twins/documents, recoverable merge receipts, server-authoritative window mode, reload rehydration, and visible draft→confirmed merge; operator-only legacy routes now prevent bypass.
+- The next load-bearing seam is capability parity: non-operator windows must use owner-native attach/progress/evidence/context/collective paths backed by store-enforced authority rather than losing those tools or reopening global IDs.

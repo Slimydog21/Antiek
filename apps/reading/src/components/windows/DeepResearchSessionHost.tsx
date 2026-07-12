@@ -51,8 +51,12 @@
  * research context (domain-aware chase/search survives into DR session).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  mergeEngagementSessions,
+  type SessionMergeResponse,
+} from "../../api/engagement";
 import { fetchDepthTiers } from "../../api/settings";
 import {
   mapDepthTierToResearchTier,
@@ -71,7 +75,7 @@ import { SessionFlywheelPanel } from "../engagement/SessionFlywheelPanel";
 import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
-import { syncDeepResearchWindowMode } from "../../workspace/deepResearchWindow";
+import { syncDeepResearchWindowModeDurably } from "../../workspace/deepResearchWindow";
 import { parseResearchDomainsFromGoal } from "../../workspace/domainSearchDefaults";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import { researchPathChoicesReadiness } from "../../workspace/researchPathChoices";
@@ -209,10 +213,95 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       }),
     [props.spawn_id, props.available_spawn_ids, windows, recentSpawnIds],
   );
+  const availableSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (rawSessionId) ids.add(rawSessionId);
+    for (const window of Object.values(windows)) {
+      if (window.kind !== "deep_research_session") continue;
+      const parentId = String(window.payload.parent_asset_id || "").trim();
+      const sessionId = String(window.payload.session_id || "").trim();
+      if (parentId === props.parent_asset_id?.trim() && sessionId) ids.add(sessionId);
+    }
+    return [...ids];
+  }, [props.parent_asset_id, rawSessionId, windows]);
+  const [sessionMerge, setSessionMerge] = useState<SessionMergeResponse | null>(null);
+  const [sessionMergeError, setSessionMergeError] = useState<string | null>(null);
+  const [sessionMergeBusy, setSessionMergeBusy] = useState(false);
+  const mergeKey = useRef(
+    `browser-merge-${
+      typeof crypto !== "undefined" && crypto.randomUUID
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2)
+    }`,
+  );
+  const previewSessionMerge = useCallback(async () => {
+    const parentAssetId = props.parent_asset_id?.trim();
+    if (!parentAssetId || availableSessionIds.length === 0) return;
+    setSessionMergeBusy(true);
+    setSessionMergeError(null);
+    try {
+      setSessionMerge(
+        await mergeEngagementSessions({
+          parent_asset_id: parentAssetId,
+          session_ids: availableSessionIds,
+          mode: "draft_combined",
+          include_html: true,
+        }),
+      );
+    } catch (error) {
+      setSessionMergeError(error instanceof Error ? error.message : "Draft merge failed");
+    } finally {
+      setSessionMergeBusy(false);
+    }
+  }, [availableSessionIds, props.parent_asset_id]);
+  const confirmSessionMerge = useCallback(async () => {
+    const parentAssetId = props.parent_asset_id?.trim();
+    if (!parentAssetId || !sessionMerge?.parent_revision_sha256) return;
+    setSessionMergeBusy(true);
+    setSessionMergeError(null);
+    try {
+      const committed = await mergeEngagementSessions({
+        parent_asset_id: parentAssetId,
+        session_ids: availableSessionIds,
+        mode: "into_parent",
+        confirm_parent_write: true,
+        expected_parent_sha256: sessionMerge.parent_revision_sha256,
+        idempotency_key: mergeKey.current,
+        include_html: true,
+      });
+      setSessionMerge(committed);
+      onContextNeedsRefresh();
+    } catch (error) {
+      setSessionMergeError(
+        error instanceof Error ? error.message : "Confirmed merge failed",
+      );
+    } finally {
+      setSessionMergeBusy(false);
+    }
+  }, [availableSessionIds, onContextNeedsRefresh, props.parent_asset_id, sessionMerge]);
 
   const windowId = props.__windowId?.trim() || "";
   const hostWindow = windowId ? windows[windowId] : undefined;
   const isFull = hostWindow?.mode === "full";
+  const [modeSyncError, setModeSyncError] = useState<string | null>(null);
+  const persistWindowMode = useCallback(
+    async (target: "floating" | "full") => {
+      if (!rawSessionId || !hostWindow) return;
+      setModeSyncError(null);
+      try {
+        await syncDeepResearchWindowModeDurably(
+          rawSessionId,
+          target,
+          hostWindow.mode,
+        );
+      } catch (error) {
+        setModeSyncError(
+          error instanceof Error ? error.message : "Session view update failed",
+        );
+      }
+    },
+    [hostWindow, rawSessionId],
+  );
 
   /** Residual (qv): twin_seed-only Write handoff (selection+goal; no invent doc). */
   const writeHref = useMemo(
@@ -295,6 +384,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                 data-view-format="html"
                 data-seamless-highlight-dr={String(seamlessHighlightDr)}
                 data-window-mode={hostWindow?.mode ?? "unknown"}
+                data-mode-sync-error={modeSyncError ? "true" : "false"}
               >
                 <button
                   type="button"
@@ -305,7 +395,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                   data-float-full-ready={String(pathChoices.float_full_ready)}
                   data-html-first="true"
                   disabled={isFull || !pathChoices.float_full_ready}
-                  onClick={() => syncDeepResearchWindowMode(rawSessionId, "full")}
+                  onClick={() => void persistWindowMode("full")}
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
                   title={
                     !pathChoices.float_full_ready
@@ -326,9 +416,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                   data-float-full-ready={String(pathChoices.float_full_ready)}
                   data-html-first="true"
                   disabled={!isFull || !pathChoices.float_full_ready}
-                  onClick={() =>
-                    syncDeepResearchWindowMode(rawSessionId, "floating")
-                  }
+                  onClick={() => void persistWindowMode("floating")}
                   className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono hover:bg-ink/5 disabled:opacity-40 dark:border-bright/30"
                   title={
                     !pathChoices.float_full_ready
@@ -340,6 +428,11 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                 >
                   Restore floating
                 </button>
+                {modeSyncError ? (
+                  <p className="w-full text-right text-[10px] text-red-700" role="alert">
+                    {modeSyncError}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             {/* Residual (aqw/aqz): path choices via researchPathChoicesReadiness pure helper. */}
@@ -608,6 +701,55 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             onMerged={onContextNeedsRefresh}
             researchTier={researchTier}
           />
+        </section>
+      ) : null}
+
+      {rawSessionId && props.parent_asset_id?.trim() ? (
+        <section
+          className="mt-2 space-y-3 border-t border-black/10 pt-4 dark:border-white/10"
+          data-testid="durable-session-merge-panel"
+          data-session-count={String(availableSessionIds.length)}
+          data-merge-state={sessionMerge?.merge_receipt_state ?? sessionMerge?.mode ?? "idle"}
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
+              disabled={sessionMergeBusy}
+              onClick={() => void previewSessionMerge()}
+              data-testid="preview-session-merge"
+            >
+              Preview {availableSessionIds.length > 1 ? "collective " : ""}draft
+            </button>
+            <button
+              type="button"
+              className="rounded border border-ink bg-ink px-3 py-1.5 text-xs text-white disabled:opacity-40"
+              disabled={
+                sessionMergeBusy ||
+                sessionMerge?.mode !== "draft_combined" ||
+                !sessionMerge.parent_revision_sha256
+              }
+              onClick={() => void confirmSessionMerge()}
+              data-testid="confirm-session-merge"
+            >
+              Confirm merge into reading asset
+            </button>
+          </div>
+          {sessionMergeError ? <p role="alert">{sessionMergeError}</p> : null}
+          {sessionMerge?.merge_receipt_id ? (
+            <p className="text-[10px] font-mono" data-testid="session-merge-receipt">
+              Applied receipt {sessionMerge.merge_receipt_id}
+            </p>
+          ) : null}
+          {sessionMerge?.html && sessionMerge.mode === "draft_combined" ? (
+            <iframe
+              title="Combined research draft preview"
+              sandbox=""
+              srcDoc={sessionMerge.html}
+              className="h-64 w-full rounded border border-black/10 bg-white"
+              data-testid="session-merge-draft-preview"
+            />
+          ) : null}
         </section>
       ) : null}
 

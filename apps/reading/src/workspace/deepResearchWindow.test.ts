@@ -1,11 +1,21 @@
 /**
  * Product path: openDeepResearchFromHighlight → registry + windowsStore.
  */
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+
+const listEngagementSessions = vi.hoisted(() => vi.fn());
+const updateEngagementSessionView = vi.hoisted(() => vi.fn());
+
+vi.mock("../api/engagement", () => ({
+  listEngagementSessions,
+  updateEngagementSessionView,
+}));
 
 import {
   DEEP_RESEARCH_WINDOW_KIND,
   openDeepResearchFromHighlight,
+  reopenDeepResearchWindowsForAsset,
+  syncDeepResearchWindowModeDurably,
   windowIdForSession,
 } from "./deepResearchWindow";
 import { isWindowEligible } from "../components/windows/openWindow";
@@ -24,6 +34,8 @@ const FIXTURE = {
 
 beforeEach(() => {
   useWindows.getState().reset();
+  listEngagementSessions.mockReset();
+  updateEngagementSessionView.mockReset();
 });
 
 describe("openDeepResearchFromHighlight", () => {
@@ -68,5 +80,49 @@ describe("openDeepResearchFromHighlight", () => {
     const win = useWindows.getState().windows[id];
     expect(win.payload.seamless_highlight_dr).toBe(true);
     expect(win.payload.view_format).toBe("html");
+  });
+
+  it("reopens owner-scoped durable sessions after reload", async () => {
+    listEngagementSessions.mockResolvedValue({
+      parent_asset_id: "launch-asset",
+      count: 1,
+      view_format: "html",
+      sessions: [
+        {
+          ...FIXTURE,
+          parent_asset_id: FIXTURE.asset_id,
+          view_mode: "full",
+          view_format: "html",
+        },
+      ],
+    });
+    const ids = await reopenDeepResearchWindowsForAsset("launch-asset");
+    expect(ids).toEqual([windowIdForSession(FIXTURE.session_id)]);
+    expect(useWindows.getState().windows[ids[0]]?.mode).toBe("full");
+  });
+
+  it("updates server view CAS before mirroring local chrome", async () => {
+    const id = openDeepResearchFromHighlight(FIXTURE);
+    let release!: () => void;
+    updateEngagementSessionView.mockReturnValue(
+      new Promise((resolve) => {
+        release = () =>
+          resolve({
+            ...FIXTURE,
+            parent_asset_id: FIXTURE.asset_id,
+            view_mode: "full",
+            view_format: "html",
+          });
+      }),
+    );
+    const pending = syncDeepResearchWindowModeDurably(
+      FIXTURE.session_id,
+      "full",
+      "floating",
+    );
+    expect(useWindows.getState().windows[id]?.mode).toBe("floating");
+    release();
+    await pending;
+    expect(useWindows.getState().windows[id]?.mode).toBe("full");
   });
 });
