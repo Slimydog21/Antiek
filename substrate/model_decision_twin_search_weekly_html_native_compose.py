@@ -1,0 +1,334 @@
+"""Model decision-tree + usage bar over twin search + weekly HTML-native (pure).
+
+live_router_authorized / secrets_stored / live_meter_read always False.
+remote_index_queried / suite_rewritten / pdf_primary always False.
+production_router_verdict always REJECT.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+from substrate.settings_decision_tree_usage_bar_compose import (
+    SettingsDecisionTreeUsageBarCompose,
+    SettingsDecisionTreeUsageBarComposeError,
+    compose_settings_decision_tree_usage_bar,
+)
+from substrate.twin_search_antiek_bench_weekly_html_native_compose import (
+    TwinSearchAntiekBenchWeeklyHtmlNativeCompose,
+    TwinSearchAntiekBenchWeeklyHtmlNativeComposeError,
+    compose_twin_search_antiek_bench_weekly_html_native,
+)
+
+
+class ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(ValueError):
+    """Fail-closed validation for model decision + twin search weekly pack."""
+
+
+@dataclass(frozen=True)
+class ModelDecisionTwinSearchWeeklyHtmlNativeCompose:
+    week_id: str
+    session_id: str
+    parent_asset_id: str
+    asset_id: str
+    decision: SettingsDecisionTreeUsageBarCompose
+    twin_search_pack: TwinSearchAntiekBenchWeeklyHtmlNativeCompose
+    pack_ready: bool
+    live_router_authorized: bool
+    secrets_stored: bool
+    live_meter_read: bool
+    remote_index_queried: bool
+    backlog_mutated: bool
+    store_mutated: bool
+    suite_rewritten: bool
+    pdf_view_authorized: bool
+    pdf_primary: bool
+    twin_written: bool
+    prompts_injected: bool
+    live_dispatch_authorized: bool
+    inventory_mutated: bool
+    live_dispatched: bool
+    pack_dispatched: bool
+    merge_executed: bool
+    live_execution_authorized: bool
+    charge_executed: bool
+    draft_written: bool
+    record_persisted: bool
+    analysis_written: bool
+    production_router_verdict: str
+    purchase_executed: bool
+    hosted: bool
+    notes: tuple[str, ...]
+    authority: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "week_id": self.week_id,
+            "session_id": self.session_id,
+            "parent_asset_id": self.parent_asset_id,
+            "asset_id": self.asset_id,
+            "decision": self.decision.to_dict(),
+            "twin_search_pack": self.twin_search_pack.to_dict(),
+            "pack_ready": self.pack_ready,
+            "live_router_authorized": False,
+            "secrets_stored": False,
+            "live_meter_read": False,
+            "remote_index_queried": False,
+            "backlog_mutated": False,
+            "store_mutated": False,
+            "suite_rewritten": False,
+            "pdf_view_authorized": False,
+            "pdf_primary": False,
+            "twin_written": False,
+            "prompts_injected": False,
+            "live_dispatch_authorized": False,
+            "inventory_mutated": False,
+            "live_dispatched": False,
+            "pack_dispatched": False,
+            "merge_executed": False,
+            "live_execution_authorized": False,
+            "charge_executed": False,
+            "draft_written": False,
+            "record_persisted": False,
+            "analysis_written": False,
+            "production_router_verdict": "REJECT",
+            "purchase_executed": False,
+            "hosted": False,
+            "notes": list(self.notes),
+            "authority": (
+                "model_decision_twin_search_weekly_html_native_compose_advisory"
+            ),
+        }
+
+
+def _require_nonempty(value: object, *, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(
+            f"{field} must be a non-empty string"
+        )
+    return value.strip()
+
+
+def compose_model_decision_twin_search_weekly_html_native(
+    *,
+    decision: object,
+    twin_search_pack: object,
+    operator_ack: object,
+    require_both: object | None = None,
+    block_on_budget_exceed: object | None = None,
+) -> ModelDecisionTwinSearchWeeklyHtmlNativeCompose:
+    """Model decision + twin search weekly HTML-native. Never live-routes."""
+    if not isinstance(operator_ack, bool):
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(
+            "operator_ack must be an explicit boolean"
+        )
+    if not isinstance(decision, dict):
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(
+            "decision must be an object"
+        )
+    if not isinstance(twin_search_pack, dict):
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(
+            "twin_search_pack must be an object"
+        )
+
+    require = True if require_both is None else require_both
+    if not isinstance(require, bool):
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(
+            "require_both must be boolean when set"
+        )
+    block_budget = (
+        True if block_on_budget_exceed is None else block_on_budget_exceed
+    )
+    if not isinstance(block_budget, bool):
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(
+            "block_on_budget_exceed must be boolean when set"
+        )
+
+    notes: list[str] = [
+        "live_router_authorized=false · secrets_stored=false · live_meter_read=false",
+        "remote_index_queried=false · suite_rewritten=false · pdf_primary=false",
+        "production_router_verdict=REJECT",
+    ]
+
+    try:
+        dec = compose_settings_decision_tree_usage_bar(
+            selected_model_id=decision.get("selected_model_id"),
+            models=decision.get("models"),
+            daily_cap_usd=decision.get("daily_cap_usd"),
+            spent_usd=decision.get("spent_usd"),
+            operator_ack=operator_ack,
+            projected_cost_usd_high=decision.get("projected_cost_usd_high"),
+            projected_cost_usd_low=decision.get("projected_cost_usd_low"),
+            bench_bests=decision.get("bench_bests"),
+            focus_task=decision.get("focus_task"),
+            nd_shadow=decision.get("nd_shadow"),
+            pending_add_model_ids=decision.get("pending_add_model_ids"),
+        )
+    except SettingsDecisionTreeUsageBarComposeError as e:
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(str(e)) from e
+    notes.extend(f"[decision] {n}" for n in dec.notes)
+
+    try:
+        tsp = compose_twin_search_antiek_bench_weekly_html_native(
+            search_query=twin_search_pack.get("search_query"),
+            twin_records=twin_search_pack.get("twin_records"),
+            weekly_html=twin_search_pack.get("weekly_html"),
+            operator_ack=operator_ack,
+            search_limit=twin_search_pack.get("search_limit"),
+            require_both=twin_search_pack.get("require_both"),
+        )
+    except TwinSearchAntiekBenchWeeklyHtmlNativeComposeError as e:
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(str(e)) from e
+    notes.extend(f"[twin_search_pack] {n}" for n in tsp.notes)
+
+    week = _require_nonempty(tsp.week_id, field="week_id")
+    session = _require_nonempty(tsp.session_id, field="session_id")
+    asset = _require_nonempty(tsp.asset_id, field="asset_id")
+    parent = _require_nonempty(tsp.parent_asset_id, field="parent_asset_id")
+
+    budget_ok = (not block_budget) or (dec.would_exceed is not True)
+    if not budget_ok:
+        notes.append(
+            "would_exceed=true — pack_ready blocked by budget projection gate"
+        )
+
+    if require:
+        pack_ready = (
+            dec.decision_ready is True
+            and tsp.pack_ready is True
+            and budget_ok
+            and dec.live_router_authorized is False
+            and dec.secrets_stored is False
+            and tsp.remote_index_queried is False
+            and tsp.suite_rewritten is False
+            and tsp.production_router_verdict == "REJECT"
+            and tsp.pdf_primary is False
+            and tsp.twin_written is False
+            and tsp.charge_executed is False
+            and operator_ack is True
+        )
+    else:
+        pack_ready = (
+            operator_ack is True
+            and budget_ok
+            and dec.live_router_authorized is False
+            and tsp.production_router_verdict == "REJECT"
+            and tsp.pdf_primary is False
+            and (dec.decision_ready is True or tsp.pack_ready is True)
+        )
+
+    if pack_ready:
+        notes.append(
+            "pack_ready=true — model decision + twin search weekly HTML-native "
+            "ready; still pure"
+        )
+    else:
+        notes.append(
+            "pack_ready=false — decision, twin_search_pack, budget, or "
+            "operator_ack gate open"
+        )
+
+    if (
+        dec.live_router_authorized is not False
+        or dec.secrets_stored is not False
+        or dec.live_meter_read is not False
+        or tsp.remote_index_queried is not False
+        or tsp.suite_rewritten is not False
+        or tsp.pdf_primary is not False
+        or tsp.twin_written is not False
+        or tsp.charge_executed is not False
+        or tsp.production_router_verdict != "REJECT"
+    ):
+        raise ModelDecisionTwinSearchWeeklyHtmlNativeComposeError(
+            "invariant: honesty flags must remain false"
+        )
+
+    notes.extend(
+        (
+            "live_router_authorized=false",
+            "secrets_stored=false",
+            "live_meter_read=false",
+            "remote_index_queried=false",
+            "backlog_mutated=false",
+            "store_mutated=false",
+            "suite_rewritten=false",
+            "pdf_view_authorized=false",
+            "pdf_primary=false",
+            "twin_written=false",
+            "prompts_injected=false",
+            "live_dispatch_authorized=false",
+            "inventory_mutated=false",
+            "live_dispatched=false",
+            "pack_dispatched=false",
+            "merge_executed=false",
+            "live_execution_authorized=false",
+            "charge_executed=false",
+            "draft_written=false",
+            "record_persisted=false",
+            "analysis_written=false",
+            "production_router_verdict=REJECT",
+            "purchase_executed=false",
+            "hosted=false",
+        )
+    )
+
+    return ModelDecisionTwinSearchWeeklyHtmlNativeCompose(
+        week_id=week,
+        session_id=session,
+        parent_asset_id=parent,
+        asset_id=asset,
+        decision=dec,
+        twin_search_pack=tsp,
+        pack_ready=pack_ready,
+        live_router_authorized=False,
+        secrets_stored=False,
+        live_meter_read=False,
+        remote_index_queried=False,
+        backlog_mutated=False,
+        store_mutated=False,
+        suite_rewritten=False,
+        pdf_view_authorized=False,
+        pdf_primary=False,
+        twin_written=False,
+        prompts_injected=False,
+        live_dispatch_authorized=False,
+        inventory_mutated=False,
+        live_dispatched=False,
+        pack_dispatched=False,
+        merge_executed=False,
+        live_execution_authorized=False,
+        charge_executed=False,
+        draft_written=False,
+        record_persisted=False,
+        analysis_written=False,
+        production_router_verdict="REJECT",
+        purchase_executed=False,
+        hosted=False,
+        notes=tuple(notes),
+        authority=(
+            "model_decision_twin_search_weekly_html_native_compose_advisory"
+        ),
+    )
+
+
+def format_model_decision_twin_search_weekly_html_native_summary(
+    c: ModelDecisionTwinSearchWeeklyHtmlNativeCompose,
+) -> str:
+    return (
+        f"pack_ready={c.pack_ready} · "
+        f"decision_ready={c.decision.decision_ready} · "
+        f"search_ready={c.twin_search_pack.pack_ready} · "
+        f"would_exceed={c.decision.would_exceed} · "
+        f"week={c.week_id} · "
+        f"verdict={c.production_router_verdict} · "
+        f"live_router_authorized=false · suite_rewritten=false · pdf_primary=false"
+    )
+
+
+__all__ = [
+    "ModelDecisionTwinSearchWeeklyHtmlNativeCompose",
+    "ModelDecisionTwinSearchWeeklyHtmlNativeComposeError",
+    "compose_model_decision_twin_search_weekly_html_native",
+    "format_model_decision_twin_search_weekly_html_native_summary",
+]
