@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { track } from "../../lib/analytics";
 import {
@@ -9,6 +9,8 @@ import {
   reorderNotebookBlocks,
 } from "../../lib/api";
 import { ArtifactExport } from "../../components/ArtifactExport";
+import { fetchTwinNotes } from "../../api/engagement";
+import type { TwinNotesResponse } from "../../api/engagement";
 import NotebookCanvas from "./NotebookCanvas";
 import type {
   NotebookBlockResponse,
@@ -31,23 +33,51 @@ export default function Notebook() {
   const params = useParams<{ notebookId?: string }>();
   const notebookId = params.notebookId ?? null;
   const [notebook, setNotebook] = useState<NotebookResponse | null>(null);
+  const [twinNotes, setTwinNotes] = useState<TwinNotesResponse["notes"]>([]);
+  const [twinNotesLoaded, setTwinNotesLoaded] = useState<boolean>(false);
+  const loadGeneration = useRef(0);
+  const activeNotebookId = useRef<string | null>(notebookId);
+  activeNotebookId.current = notebookId;
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
+    const generation = ++loadGeneration.current;
     if (!notebookId) {
       setNotebook(null);
+      setTwinNotes([]);
+      setTwinNotesLoaded(true);
       return;
     }
     setLoading(true);
     setError(null);
+    setNotebook(null);
+    setTwinNotes([]);
+    setTwinNotesLoaded(false);
     try {
       const data = (await getNotebook(notebookId)) as NotebookResponse;
+      if (generation !== loadGeneration.current) return;
       setNotebook(data);
+      if (data.document_id) {
+        try {
+          const twins = await fetchTwinNotes(data.document_id);
+          if (generation !== loadGeneration.current) return;
+          setTwinNotes(twins.notes || []);
+        } catch {
+          if (generation !== loadGeneration.current) return;
+          setTwinNotes([]);
+        } finally {
+          if (generation === loadGeneration.current) setTwinNotesLoaded(true);
+        }
+      } else {
+        setTwinNotes([]);
+        setTwinNotesLoaded(true);
+      }
     } catch (e: unknown) {
+      if (generation !== loadGeneration.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (generation === loadGeneration.current) setLoading(false);
     }
   }, [notebookId]);
 
@@ -58,11 +88,14 @@ export default function Notebook() {
   const appendBlock = useCallback(
     async (req: { block_type: string; content: unknown; ref_id?: string | null }) => {
       if (!notebookId) return;
+      const requestedNotebookId = notebookId;
       try {
         const data = (await appendNotebookBlock(notebookId, req)) as NotebookResponse;
+        if (activeNotebookId.current !== requestedNotebookId) return;
         track("notebook_block_appended", { block_type: req.block_type });
         setNotebook(data);
       } catch (e: unknown) {
+        if (activeNotebookId.current !== requestedNotebookId) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     },
@@ -72,11 +105,14 @@ export default function Notebook() {
   const deleteBlock = useCallback(
     async (blockId: string) => {
       if (!notebookId) return;
+      const requestedNotebookId = notebookId;
       try {
         const data = (await deleteNotebookBlock(notebookId, blockId)) as NotebookResponse;
+        if (activeNotebookId.current !== requestedNotebookId) return;
         track("notebook_block_deleted");
         setNotebook(data);
       } catch (e: unknown) {
+        if (activeNotebookId.current !== requestedNotebookId) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     },
@@ -86,12 +122,15 @@ export default function Notebook() {
   const editBlock = useCallback(
     async (blockId: string, content: Record<string, unknown>) => {
       if (!notebookId) return;
+      const requestedNotebookId = notebookId;
       try {
         const data = (await patchNotebookBlock(
           notebookId, blockId, { content },
         )) as NotebookResponse;
+        if (activeNotebookId.current !== requestedNotebookId) return;
         setNotebook(data);
       } catch (e: unknown) {
+        if (activeNotebookId.current !== requestedNotebookId) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     },
@@ -101,6 +140,7 @@ export default function Notebook() {
   const moveBlock = useCallback(
     async (blockId: string, direction: "up" | "down") => {
       if (!notebookId || !notebook) return;
+      const requestedNotebookId = notebookId;
       const sorted = [...notebook.blocks].sort(
         (a, b) => a.block_index - b.block_index,
       );
@@ -114,8 +154,10 @@ export default function Notebook() {
         const data = (await reorderNotebookBlocks(
           notebookId, newOrder,
         )) as NotebookResponse;
+        if (activeNotebookId.current !== requestedNotebookId) return;
         setNotebook(data);
       } catch (e: unknown) {
+        if (activeNotebookId.current !== requestedNotebookId) return;
         setError(e instanceof Error ? e.message : String(e));
       }
     },
@@ -149,6 +191,8 @@ export default function Notebook() {
               onDeleteBlock={deleteBlock}
               onMoveBlock={moveBlock}
               onEditBlock={editBlock}
+              twinNotes={twinNotes}
+              twinNotesLoaded={twinNotesLoaded}
             />
           </>
         )}

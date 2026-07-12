@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import type { TwinNotesResponse } from "../../api/engagement";
 import type { NotebookBlockResponse, NotebookResponse } from "./types";
 
 interface Props {
@@ -12,6 +13,8 @@ interface Props {
   onDeleteBlock?: (blockId: string) => Promise<void>;
   onMoveBlock?: (blockId: string, direction: "up" | "down") => Promise<void>;
   onEditBlock?: (blockId: string, content: Record<string, unknown>) => Promise<void>;
+  twinNotes?: TwinNotesResponse["notes"];
+  twinNotesLoaded?: boolean;
 }
 
 /**
@@ -31,8 +34,11 @@ export default function NotebookCanvas({
   onDeleteBlock,
   onMoveBlock,
   onEditBlock,
+  twinNotes = [],
+  twinNotesLoaded = true,
 }: Props) {
   const blockCount = notebook.blocks.length;
+  const twinsById = new Map(twinNotes.map((note) => [note.note_id, note]));
   return (
     <article className="max-w-3xl mx-auto px-8 py-10 space-y-6">
       <header className="space-y-1">
@@ -48,7 +54,21 @@ export default function NotebookCanvas({
       <div className="space-y-4">
         {notebook.blocks.map((block, idx) => (
           <div key={block.block_id} className="group relative">
-            <BlockOrEditor block={block} onEditBlock={onEditBlock} />
+            <BlockOrEditor
+              block={block}
+              onEditBlock={onEditBlock}
+              resolvedTwinText={
+                block.ref_id ? twinsById.get(block.ref_id)?.text : undefined
+              }
+              twinUnavailable={
+                twinNotesLoaded &&
+                Boolean(block.ref_id?.startsWith("twin_")) &&
+                !twinsById.has(block.ref_id || "")
+              }
+              twinPending={
+                !twinNotesLoaded && Boolean(block.ref_id?.startsWith("twin_"))
+              }
+            />
             {(onDeleteBlock || onMoveBlock) && (
               <BlockControls
                 blockId={block.block_id}
@@ -63,7 +83,11 @@ export default function NotebookCanvas({
         ))}
       </div>
 
-      <AppendProseAffordance onAppendBlock={onAppendBlock} />
+      <AppendProseAffordance
+        onAppendBlock={onAppendBlock}
+        twinNotes={twinNotes}
+        assetId={notebook.document_id}
+      />
     </article>
   );
 }
@@ -71,9 +95,15 @@ export default function NotebookCanvas({
 function BlockOrEditor({
   block,
   onEditBlock,
+  resolvedTwinText,
+  twinUnavailable,
+  twinPending,
 }: {
   block: NotebookBlockResponse;
   onEditBlock: Props["onEditBlock"];
+  resolvedTwinText?: string;
+  twinUnavailable?: boolean;
+  twinPending?: boolean;
 }) {
   const [editing, setEditing] = useState<boolean>(false);
   const [draft, setDraft] = useState<string>(
@@ -81,7 +111,14 @@ function BlockOrEditor({
   );
 
   if (!onEditBlock || block.block_type !== "prose") {
-    return <BlockView block={block} />;
+    return (
+      <BlockView
+        block={block}
+        resolvedTwinText={resolvedTwinText}
+        twinUnavailable={twinUnavailable}
+        twinPending={twinPending}
+      />
+    );
   }
   if (editing) {
     return (
@@ -196,7 +233,17 @@ function BlockControls({
   );
 }
 
-function BlockView({ block }: { block: NotebookBlockResponse }) {
+function BlockView({
+  block,
+  resolvedTwinText,
+  twinUnavailable,
+  twinPending,
+}: {
+  block: NotebookBlockResponse;
+  resolvedTwinText?: string;
+  twinUnavailable?: boolean;
+  twinPending?: boolean;
+}) {
   switch (block.block_type) {
     case "prose":
       return (
@@ -215,7 +262,9 @@ function BlockView({ block }: { block: NotebookBlockResponse }) {
       return (
         <NoteReferenceBlock
           noteId={block.ref_id}
-          text={String(block.content_json.text ?? "")}
+          text={resolvedTwinText ?? String(block.content_json.text ?? "")}
+          unavailable={Boolean(twinUnavailable)}
+          pending={Boolean(twinPending)}
         />
       );
     case "region_embed":
@@ -296,11 +345,35 @@ function ClaimReferenceBlock({ claimId, text }: { claimId: string | null; text: 
   );
 }
 
-function NoteReferenceBlock({ noteId, text }: { noteId: string | null; text: string }) {
+function NoteReferenceBlock({
+  noteId,
+  text,
+  unavailable = false,
+  pending = false,
+}: {
+  noteId: string | null;
+  text: string;
+  unavailable?: boolean;
+  pending?: boolean;
+}) {
   if (!noteId) {
     return (
       <div className="text-xs italic text-shadow-1 dark:text-moonlight">
         [tombstone: note deleted; prior text: {text}]
+      </div>
+    );
+  }
+  if (unavailable) {
+    return (
+      <div className="text-xs italic text-shadow-1 dark:text-moonlight">
+        [twin note unavailable: {noteId}]
+      </div>
+    );
+  }
+  if (pending) {
+    return (
+      <div className="text-xs italic text-shadow-1 dark:text-moonlight">
+        [loading twin note: {noteId}]
       </div>
     );
   }
@@ -363,8 +436,15 @@ function CrossDocLinkBlock({
 
 function AppendProseAffordance({
   onAppendBlock,
-}: { onAppendBlock: Props["onAppendBlock"] }) {
+  twinNotes,
+  assetId,
+}: {
+  onAppendBlock: Props["onAppendBlock"];
+  twinNotes: TwinNotesResponse["notes"];
+  assetId: string | null;
+}) {
   const [pickerOpen, setPickerOpen] = useState<boolean>(false);
+  const [twinPickerOpen, setTwinPickerOpen] = useState<boolean>(false);
 
   const appendProse = () => {
     const text = prompt("Prose text:");
@@ -424,6 +504,18 @@ function AppendProseAffordance({
     });
     setPickerOpen(false);
   };
+  const appendTwinReference = (note: TwinNotesResponse["notes"][number]) => {
+    void onAppendBlock({
+      block_type: "note",
+      content: {
+        type: "note_block",
+        attrs: { note_id: note.note_id },
+      },
+      ref_id: note.note_id,
+    });
+    setTwinPickerOpen(false);
+    setPickerOpen(false);
+  };
 
   return (
     <div className="space-y-2">
@@ -441,6 +533,38 @@ function AppendProseAffordance({
           <PickerButton label="LaTeX" onClick={appendLatex} />
           <PickerButton label="Claim reference" onClick={appendClaimReference} />
           <PickerButton label="Region embed" onClick={appendRegionRef} />
+          <PickerButton
+            label="Twin note"
+            onClick={() => setTwinPickerOpen((value) => !value)}
+          />
+          {twinPickerOpen && (
+            <div
+              className="col-span-2 space-y-1 border-t border-rule pt-2 dark:border-charcoal-1"
+              data-testid="notebook-twin-picker"
+              data-asset-id={assetId || ""}
+            >
+              {twinNotes.length > 0 ? (
+                twinNotes.map((note) => (
+                  <button
+                    type="button"
+                    key={note.note_id}
+                    data-testid={`notebook-twin-option-${note.note_id}`}
+                    onClick={() => appendTwinReference(note)}
+                    className="block w-full rounded px-2 py-1 text-left text-xs hover:bg-ice-1 dark:hover:bg-charcoal-1"
+                  >
+                    <span className="font-mono opacity-70">{note.kind}</span>{" "}
+                    <span className="font-serif">{note.text}</span>
+                  </button>
+                ))
+              ) : (
+                <p className="text-xs text-shadow-1 dark:text-moonlight">
+                  {assetId
+                    ? "No twin notes exist for this notebook asset yet."
+                    : "Link this notebook to a document before citing twin notes."}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

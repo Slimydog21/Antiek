@@ -46,7 +46,7 @@ def _resolve_db_path() -> str:
 
 
 def resolve_notebook_export(
-    notebook_id: str, *, db_path: str | None = None
+    notebook_id: str, *, db_path: str | None = None, engagement_store: Any | None = None
 ) -> NotebookExportSource | None:
     """Read a notebook into a NotebookExportSource, or None if it does not exist.
 
@@ -70,10 +70,17 @@ def resolve_notebook_export(
         if row is None:
             return None
         block_rows = con.execute(
-            "SELECT content_json FROM notebook_blocks "
+            "SELECT block_type, ref_id, content_json FROM notebook_blocks "
             "WHERE notebook_id = ? ORDER BY block_index",
             [notebook_id],
         ).fetchall()
+        linked_document = None
+        if row[4]:
+            linked_document = con.execute(
+                "SELECT title, content_class, ip_holder_id "
+                "FROM documents WHERE document_id = ?",
+                [row[4]],
+            ).fetchone()
     finally:
         con.close()
 
@@ -81,9 +88,11 @@ def resolve_notebook_export(
 
     blocks = []
     for r in block_rows:
-        cj = r[0]
+        block_type, ref_id, cj = r
         if isinstance(cj, str):
             cj = json.loads(cj)
+        if block_type == "note" and str(ref_id or "").startswith("twin_"):
+            cj = {"type": "note_block", "attrs": {"note_id": str(ref_id)}}
         blocks.append({"content_json": cj})
     content_tiptap = compose(blocks)
 
@@ -92,6 +101,39 @@ def resolve_notebook_export(
 
     ref_ids = collect_ref_ids(content_tiptap)
     resolved_refs = resolve_refs(ref_ids, db_path=db) if ref_ids else {}
+    if ref_ids and row[4]:
+        from interfaces.research.api.engagement_routes import get_engagement_store
+        from substrate.engagement_spine.twin import list_twin_notes
+
+        store = engagement_store or get_engagement_store()
+        wanted = set(ref_ids)
+        linked_title = (
+            str(linked_document[0])
+            if linked_document and linked_document[0]
+            else str(row[1] or row[4])
+        )
+        linked_content_class = (
+            str(linked_document[1])
+            if linked_document and linked_document[1]
+            else None
+        )
+        linked_ip_holder = (
+            str(linked_document[2])
+            if linked_document and linked_document[2]
+            else None
+        )
+        for note in list_twin_notes(str(row[4]), store=store):
+            if note.note_id not in wanted:
+                continue
+            payload_key = "question" if note.kind == "question" else "statement"
+            resolved_refs[note.note_id] = ResolvedRefData(
+                kind=note.kind,
+                content_class=linked_content_class,
+                ip_holder_id=linked_ip_holder,
+                title=linked_title,
+                payload={payload_key: note.text, "text": note.text},
+                source_document_id=str(row[4]),
+            )
 
     return NotebookExportSource(
         content_tiptap=content_tiptap,
