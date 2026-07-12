@@ -113,10 +113,23 @@ export type SessionFlywheelResponse = {
   } | null;
 };
 
+export class EngagementApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "EngagementApiError";
+  }
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`engagement API ${res.status}: ${text.slice(0, 200)}`);
+    throw new EngagementApiError(
+      res.status,
+      `engagement API ${res.status}: ${text.slice(0, 200)}`,
+    );
   }
   return (await res.json()) as T;
 }
@@ -629,6 +642,12 @@ export type TwinPromoteContextResponse = {
   source: string;
   notes: string[];
   html?: string | null;
+  promotion_preview_sha256?: string;
+  promotion_receipt_id?: string;
+  promotion_receipt_state?: "applied" | string;
+  twin_context_mode?: "preview_non_mutating" | "confirmed_mutating" | string;
+  graph_write?: boolean;
+  owner_graph_scope?: "physically_isolated" | "operator_canonical" | string;
 };
 
 export async function promoteTwinsToContext(body: {
@@ -959,6 +978,41 @@ export async function previewSessionTwins(body: {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        query: body.query ?? null,
+        kinds: body.kinds ?? null,
+        note_ids: body.note_ids ?? null,
+        include_html: body.include_html ?? true,
+      }),
+    },
+  );
+  return readJson(res);
+}
+
+export async function confirmSessionTwins(body: {
+  session_id: string;
+  expected_preview_sha256: string;
+  idempotency_key: string;
+  query?: string | null;
+  kinds?: Array<"insight" | "question"> | null;
+  note_ids?: string[] | null;
+  include_html?: boolean;
+}): Promise<
+  TwinPromoteContextResponse & {
+    twin_context_mode: "confirmed_mutating";
+    graph_write: true;
+    promotion_receipt_id: string;
+    promotion_receipt_state: "applied";
+    owner_graph_scope: "physically_isolated" | "operator_canonical";
+  }
+> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(body.session_id)}/twins/promote-confirm`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_preview_sha256: body.expected_preview_sha256,
+        idempotency_key: body.idempotency_key,
         query: body.query ?? null,
         kinds: body.kinds ?? null,
         note_ids: body.note_ids ?? null,

@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Make twin insight/question promotion owner-scoped, idempotent, and explicitly confirmed so the knowledge graph can accept research-session intelligence without cross-account leakage or pretending a preview mutated durable graph state.
+Route owner-native graph reads, search, and prompt context through the same physical owner partition used by confirmed twin promotion, so promoted research-session intelligence actually informs its owner's workstation without leaking into or depending on the operator graph.
 
 ## Derivation trail
 
@@ -16,3 +16,4 @@ Make twin insight/question promotion owner-scoped, idempotent, and explicitly co
 - Cycle 7 delivered owner-bound sessions/twins/documents, recoverable merge receipts, server-authoritative window mode, reload rehydration, and visible draft→confirmed merge; operator-only legacy routes now prevent bypass.
 - The next load-bearing seam is capability parity: non-operator windows must use owner-native attach/progress/evidence/context/collective paths backed by store-enforced authority rather than losing those tools or reopening global IDs.
 - Cycle 8 closed that capability seam and hardened browser identity on auth changes, complete-only merge authority, and mutation honesty. The remaining deliberate preview is now the narrowest blocker to the user's recursive knowledge graph: graph promotion itself lacks owner namespace and confirmed transaction semantics.
+- Cycle 9 delivered physically isolated owner graph writes, hash-pinned preview→confirm authority, owner-bound idempotency receipts, transactional graph/event outbox recovery, and explicit retry-safe browser confirmation. Archaeology then showed the read/search/context surfaces still call `default_db_path()` broadly, so durable personal intelligence is not yet consumed by the owner-native research loop.

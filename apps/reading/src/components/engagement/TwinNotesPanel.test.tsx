@@ -10,6 +10,8 @@ import {
 const fetchTwinNotes = vi.fn<typeof import("../../api/engagement").fetchTwinNotes>();
 const recordTwinNote = vi.fn<(...args: unknown[]) => unknown>();
 const promoteTwinsToContext = vi.fn<(...args: unknown[]) => unknown>();
+const previewSessionTwins = vi.fn<(...args: unknown[]) => unknown>();
+const confirmSessionTwins = vi.fn<(...args: unknown[]) => unknown>();
 const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
 const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
 const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:twin-draft:test");
@@ -25,6 +27,8 @@ vi.mock("../../api/engagement", () => ({
   fetchTwinNotes: (...args: unknown[]) => fetchTwinNotes(...(args as Parameters<typeof fetchTwinNotes>)),
   recordTwinNote: (...args: unknown[]) => recordTwinNote(...(args as Parameters<typeof recordTwinNote>)),
   promoteTwinsToContext: (...args: unknown[]) => promoteTwinsToContext(...(args as Parameters<typeof promoteTwinsToContext>)),
+  previewSessionTwins: (...args: unknown[]) => previewSessionTwins(...args),
+  confirmSessionTwins: (...args: unknown[]) => confirmSessionTwins(...args),
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
 }));
 
@@ -229,6 +233,8 @@ describe("TwinNotesPanel", () => {
     fetchTwinNotes.mockReset();
     recordTwinNote.mockReset();
     promoteTwinsToContext.mockReset();
+    previewSessionTwins.mockReset();
+    confirmSessionTwins.mockReset();
     openWindow.mockClear();
     openWindow.mockReturnValue("win:twin-draft:test");
     storeTwinWriteSeed.mockClear();
@@ -807,6 +813,160 @@ describe("TwinNotesPanel", () => {
     // Residual (aew): promote → Write recursive note-taker path honesty.
     expect(write.getAttribute("data-seamless-twin-write")).toBe("true");
     expect(write.getAttribute("data-asset-id")).toBeTruthy();
+  });
+
+  it("requires a reviewed session preview before confirmed owner-graph mutation", async () => {
+    const onPromoted = vi.fn();
+    const base = {
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [
+        {
+          twin_note_id: "twin_1",
+          graph_node_id: "insight-abc",
+          kind: "insight",
+          text: "Private insight",
+        },
+      ],
+      context_units: [
+        {
+          unit_id: "insight-abc",
+          twin_note_id: "twin_1",
+          kind: "insight",
+          text: "Private insight",
+        },
+      ],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      graph_node_ids: ["insight-abc"],
+    };
+    previewSessionTwins.mockResolvedValue({
+      ...base,
+      twin_context_mode: "preview_non_mutating",
+      graph_write: false,
+      promotion_preview_sha256: "a".repeat(64),
+    });
+    confirmSessionTwins.mockResolvedValue({
+      ...base,
+      twin_context_mode: "confirmed_mutating",
+      graph_write: true,
+      promotion_preview_sha256: "a".repeat(64),
+      promotion_receipt_id: "tpr_1234567890abcdef12345678",
+      promotion_receipt_state: "applied",
+      owner_graph_scope: "physically_isolated",
+    });
+    render(
+      <TwinNotesPanel
+        assetId="paper"
+        sessionId="fsess_0123456789abcdef"
+        onPromoted={onPromoted}
+      />,
+    );
+
+    fireEvent.click(screen.getByTestId("twin-promote-context"));
+    const confirm = await screen.findByTestId("twin-promote-confirm");
+    expect(onPromoted).not.toHaveBeenCalled();
+    expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+      /non-mutating.*review before confirm/i,
+    );
+    fireEvent.click(confirm);
+    await waitFor(() => expect(confirmSessionTwins).toHaveBeenCalledOnce());
+    expect(confirmSessionTwins).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_id: "fsess_0123456789abcdef",
+        expected_preview_sha256: "a".repeat(64),
+      }),
+    );
+    expect(onPromoted).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+      /Confirmed 1.*receipt tpr_/i,
+    );
+  });
+
+  it("clears stale confirmation authority and requires a fresh preview", async () => {
+    previewSessionTwins.mockResolvedValue({
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [],
+      context_units: [],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      twin_context_mode: "preview_non_mutating",
+      graph_write: false,
+      promotion_preview_sha256: "b".repeat(64),
+    });
+    confirmSessionTwins.mockRejectedValue(
+      new Error("engagement API 409: twin promotion preview changed"),
+    );
+    const onPromoted = vi.fn();
+    render(
+      <TwinNotesPanel
+        assetId="paper"
+        sessionId="fsess_0123456789abcdef"
+        onPromoted={onPromoted}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("twin-promote-context"));
+    fireEvent.click(await screen.findByTestId("twin-promote-confirm"));
+    await waitFor(() => expect(confirmSessionTwins).toHaveBeenCalledOnce());
+    expect(onPromoted).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("twin-promote-confirm")).toBeNull();
+    expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+      /re-preview required/i,
+    );
+  });
+
+  it("retries an ambiguous failure with the same idempotency authority", async () => {
+    const preview = {
+      asset_id: "paper",
+      promoted_count: 1,
+      context_unit_count: 1,
+      promoted: [],
+      context_units: [],
+      view_format: "html",
+      product_panel: "twin_promote_context",
+      source: "engagement_spine.twin_promote",
+      notes: [],
+      twin_context_mode: "preview_non_mutating",
+      graph_write: false,
+      promotion_preview_sha256: "c".repeat(64),
+    };
+    previewSessionTwins.mockResolvedValue(preview);
+    confirmSessionTwins
+      .mockRejectedValueOnce(new Error("network response lost"))
+      .mockResolvedValueOnce({
+        ...preview,
+        twin_context_mode: "confirmed_mutating",
+        graph_write: true,
+        promotion_receipt_id: "tpr_abcdef1234567890abcdef12",
+        promotion_receipt_state: "applied",
+        owner_graph_scope: "physically_isolated",
+      });
+    render(
+      <TwinNotesPanel assetId="paper" sessionId="fsess_0123456789abcdef" />,
+    );
+    fireEvent.click(screen.getByTestId("twin-promote-context"));
+    fireEvent.click(await screen.findByTestId("twin-promote-confirm"));
+    await waitFor(() => expect(confirmSessionTwins).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("twin-promote-status").textContent).toMatch(
+      /outcome unknown.*same receipt/i,
+    );
+    const retry = screen.getByTestId("twin-promote-confirm");
+    fireEvent.click(retry);
+    await waitFor(() => expect(confirmSessionTwins).toHaveBeenCalledTimes(2));
+    expect(
+      (confirmSessionTwins.mock.calls[1][0] as { idempotency_key: string })
+        .idempotency_key,
+    ).toBe(
+      (confirmSessionTwins.mock.calls[0][0] as { idempotency_key: string })
+        .idempotency_key,
+    );
   });
 
   it("promotes visible list filter in one click (ms)", async () => {

@@ -72,6 +72,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
+  confirmSessionTwins,
   fetchTwinNotes,
   fetchSessionTwins,
   previewSessionTwins,
@@ -288,6 +289,11 @@ export function TwinNotesPanel({
     seedSkipped: string | null;
   } | null>(null);
   const [promoteStatus, setPromoteStatus] = useState<string | null>(null);
+  const [pendingPromotion, setPendingPromotion] = useState<{
+    kinds: Array<"insight" | "question"> | null;
+    note_ids: string[] | null;
+    idempotency_key: string;
+  } | null>(null);
   /** Residual (mz): chase-selected deep research status chrome. */
   const [chaseStatus, setChaseStatus] = useState<string | null>(null);
   /** Residual (po/pp/px/acq/adi): last twin HTML draft open + Write handoff metrics. */
@@ -726,7 +732,7 @@ export function TwinNotesPanel({
         setPromoted(p);
         // Residual (my): after multi-select promote, clear selection so the
         // browse→select→merge loop is ready for the next batch (honest UX).
-        if (note_ids && note_ids.length > 0) {
+        if (!session && note_ids && note_ids.length > 0) {
           setSelectedNoteIds(new Set());
         }
         const kindLabel = effective === "all" ? "all kinds" : effective;
@@ -738,10 +744,25 @@ export function TwinNotesPanel({
           echoedIds && echoedIds.length > 0
             ? ` · selected=${echoedIds.length}`
             : "";
-        setPromoteStatus(
-          `promoted ${p.promoted_count} twin unit(s) to context (${kindLabel}${selLabel})`,
-        );
-        onPromoted?.(p);
+        if (session) {
+          const nonce =
+            typeof crypto !== "undefined" && crypto.randomUUID
+              ? crypto.randomUUID()
+              : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          setPendingPromotion({
+            kinds,
+            note_ids,
+            idempotency_key: `browser-twin-${nonce}`,
+          });
+          setPromoteStatus(
+            `Previewed ${p.promoted_count} twin unit(s) (${kindLabel}${selLabel}) · non-mutating · review before confirm`,
+          );
+        } else {
+          setPromoteStatus(
+            `Promoted ${p.promoted_count} twin unit(s) to context (${kindLabel}${selLabel})`,
+          );
+          onPromoted?.(p);
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -750,6 +771,69 @@ export function TwinNotesPanel({
     },
     [assetId, onPromoted, promoteKinds, selectedNoteIds, sessionId],
   );
+
+  const confirmPromotion = useCallback(async () => {
+    const session = String(sessionId || "").trim();
+    const previewSha = String(promoted?.promotion_preview_sha256 || "").trim();
+    if (!session || !pendingPromotion || !previewSha) {
+      setError("Preview the selected twin notes before confirming graph promotion");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const confirmed = await confirmSessionTwins({
+        session_id: session,
+        expected_preview_sha256: previewSha,
+        idempotency_key: pendingPromotion.idempotency_key,
+        kinds: pendingPromotion.kinds,
+        note_ids: pendingPromotion.note_ids,
+        include_html: true,
+      });
+      if (!confirmed.graph_write || confirmed.twin_context_mode !== "confirmed_mutating") {
+        throw new Error("server did not confirm an applied owner-graph promotion");
+      }
+      if (
+        confirmed.promotion_receipt_state !== "applied" ||
+        !String(confirmed.promotion_receipt_id || "").trim() ||
+        !["physically_isolated", "operator_canonical"].includes(
+          String(confirmed.owner_graph_scope || ""),
+        )
+      ) {
+        throw new Error("server returned incomplete graph-promotion receipt authority");
+      }
+      const graphLabel =
+        confirmed.owner_graph_scope === "physically_isolated"
+          ? "physically isolated owner graph"
+          : "operator canonical graph";
+      setPromoted(confirmed);
+      setPromoteStatus(
+        `Confirmed ${confirmed.promoted_count} twin unit(s) in ${graphLabel} · receipt ${confirmed.promotion_receipt_id}`,
+      );
+      setPendingPromotion(null);
+      setSelectedNoteIds(new Set());
+      onPromoted?.(confirmed);
+    } catch (e) {
+      const status =
+        typeof e === "object" && e !== null && "status" in e
+          ? Number((e as { status?: unknown }).status)
+          : null;
+      const message = e instanceof Error ? e.message : String(e);
+      const previewConflict = status === 409 || /engagement API 409:/.test(message);
+      if (previewConflict) {
+        setPendingPromotion(null);
+        setPromoted(null);
+        setPromoteStatus("Preview became stale · re-preview required");
+      } else {
+        setPromoteStatus(
+          "Confirmation outcome unknown · retry with the same receipt authority",
+        );
+      }
+      setError(message);
+    } finally {
+      setBusy(false);
+    }
+  }, [onPromoted, pendingPromotion, promoted, sessionId]);
 
   /** Residual (ms): promote using current list filter (browse→merge). */
   const promoteVisible = useCallback(() => {
@@ -1305,8 +1389,21 @@ export function TwinNotesPanel({
               : promoteReadiness.disabled_title
           }
         >
-          Promote to context
+          {sessionId ? "Preview graph promotion" : "Promote to context"}
         </button>
+        {sessionId && pendingPromotion && promoted?.twin_context_mode === "preview_non_mutating" ? (
+          <button
+            type="button"
+            data-testid="twin-promote-confirm"
+            data-preview-sha256={promoted.promotion_preview_sha256 || ""}
+            data-graph-write="false"
+            onClick={() => void confirmPromotion()}
+            disabled={busy || !promoted.promotion_preview_sha256}
+            title="Explicitly confirm the reviewed twin set into your owner-scoped graph; local operator mode uses the canonical graph"
+          >
+            Confirm {promoted.promoted_count} into owner graph
+          </button>
+        ) : null}
         {/* Residual (ms/arx): one-click promote of currently visible kind filter · gated by visible notes. */}
         <button
           type="button"

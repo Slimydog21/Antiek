@@ -34,7 +34,7 @@ Surfaces:
 
 from __future__ import annotations
 
-import hashlib
+import hmac
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -68,6 +68,12 @@ from substrate.engagement_spine.store import (
     document_revision_sha256,
     owned_document_id,
 )
+from substrate.engagement_spine.twin_promotion_receipt import (
+    claim_promotion_receipt,
+    promotion_preview_sha256,
+    promotion_receipt_id,
+    settle_promotion_receipt,
+)
 from substrate.floating_session import (
     attach_session_source_references,
     compare_and_set_view_mode,
@@ -93,6 +99,11 @@ from substrate.floating_session.store import (
     FileSessionStore,
     InMemorySessionStore,
     SessionStore,
+)
+from substrate.graph_per_user.runtime import (
+    owner_graph_db_path,
+    owner_graph_events_dir,
+    owner_graph_path_sha256,
 )
 
 engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
@@ -416,6 +427,11 @@ class SessionTwinPromoteBody(_ClosedSessionBody):
     include_html: bool = True
     kinds: list[Literal["insight", "question"]] | None = None
     note_ids: list[str] | None = Field(default=None, max_length=256)
+
+
+class SessionTwinPromoteConfirmBody(SessionTwinPromoteBody):
+    expected_preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str = Field(min_length=8, max_length=128)
 
 
 class SessionContextSearchBody(_ClosedSessionBody):
@@ -1450,7 +1466,198 @@ def post_session_twins_promote_preview(
         owner_id=owner_id,
     )
     out["twin_context_mode"] = "preview_non_mutating"
+    out["promotion_preview_sha256"] = promotion_preview_sha256(
+        owner_id=owner_id, session_id=session_id, payload=out
+    )
+    out["graph_write"] = False
     return out
+
+
+@engagement_router.post("/sessions/{session_id}/twins/promote-confirm")
+def post_session_twins_promote_confirm(
+    session_id: str, body: SessionTwinPromoteConfirmBody, request: Request
+) -> dict[str, Any]:
+    """Confirm an exact reviewed preview into the owner's physical graph."""
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    request_contract = {
+        "query": body.query,
+        "kinds": body.kinds,
+        "note_ids": body.note_ids,
+        "include_html": body.include_html,
+    }
+    try:
+        receipt_id = promotion_receipt_id(owner_id, body.idempotency_key)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    existing = _eng().get_owned_document(receipt_id, owner_id)
+    frozen_note_ids: list[str] | None = None
+    if existing is not None:
+        material_existing = existing.get("material")
+        if not isinstance(material_existing, dict):
+            raise HTTPException(status_code=409, detail="promotion receipt is malformed")
+        if material_existing.get("request") != request_contract:
+            raise HTTPException(
+                status_code=409,
+                detail="idempotency key was already used for a different promotion request",
+            )
+        if not hmac.compare_digest(
+            str(material_existing.get("promotion_preview_sha256") or ""),
+            body.expected_preview_sha256,
+        ):
+            raise HTTPException(status_code=409, detail="promotion preview receipt conflicts")
+        if existing.get("state") == "applied" and isinstance(existing.get("result"), dict):
+            return dict(existing["result"])
+        frozen_raw = material_existing.get("frozen_note_ids")
+        if not isinstance(frozen_raw, list) or not all(
+            isinstance(note_id, str) for note_id in frozen_raw
+        ):
+            raise HTTPException(status_code=409, detail="promotion receipt note set is malformed")
+        frozen_note_ids = frozen_raw
+    preview = twin_promote_context_payload(
+        session.parent_asset_id,
+        store=_eng(),
+        query=body.query,
+        investigation_id=session.investigation_id,
+        promote_insight_fn=_offline_promote_insight,
+        promote_question_fn=_offline_promote_question,
+        include_html=body.include_html,
+        kinds=body.kinds,
+        note_ids=frozen_note_ids if frozen_note_ids is not None else body.note_ids,
+        owner_id=owner_id,
+    )
+    preview_sha = promotion_preview_sha256(
+        owner_id=owner_id, session_id=session_id, payload=preview
+    )
+    if not hmac.compare_digest(preview_sha, body.expected_preview_sha256):
+        raise HTTPException(status_code=409, detail="twin promotion preview changed")
+    if int(preview.get("promoted_count") or 0) < 1:
+        raise HTTPException(status_code=409, detail="no reviewed twin notes to promote")
+
+    db_path = owner_graph_db_path(owner_id)
+    events_dir = owner_graph_events_dir(owner_id, db_path)
+    frozen_note_ids = [
+        str(row.get("twin_note_id"))
+        for row in preview.get("promoted", [])
+        if isinstance(row, dict) and str(row.get("twin_note_id") or "").strip()
+    ]
+    material = {
+        "owner_id": owner_id,
+        "session_id": session_id,
+        "parent_asset_id": session.parent_asset_id,
+        "investigation_id": session.investigation_id,
+        "promotion_preview_sha256": preview_sha,
+        "graph_path_sha256": owner_graph_path_sha256(db_path),
+        "frozen_note_ids": frozen_note_ids,
+        "kinds": preview.get("kinds") or [],
+        "request": request_contract,
+    }
+    try:
+        receipt, _created = claim_promotion_receipt(
+            store=_eng(),
+            owner_id=owner_id,
+            idempotency_key=body.idempotency_key,
+            material=material,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if receipt.get("state") == "applied" and isinstance(receipt.get("result"), dict):
+        return dict(receipt["result"])
+
+    from runtime.db_lock import connect_write
+    from substrate.graph import ensure_initialized
+    from substrate.graph.promotion_outbox import (
+        ensure_promotion_outbox,
+        flush_promotion_outbox,
+        promotion_event_id,
+        stage_promoted_node_event,
+    )
+
+    ensure_initialized(db_path)
+    con = connect_write(db_path, purpose="confirmed_owner_twin_promotion")
+    try:
+        con.execute("BEGIN")
+        try:
+            ensure_promotion_outbox(con)
+            existing_node_ids = {
+                graph_node_id
+                for graph_node_id in preview.get("graph_node_ids", [])
+                if con.execute(
+                    "SELECT 1 FROM nodes WHERE node_id = ? LIMIT 1",
+                    [graph_node_id],
+                ).fetchone()
+                is not None
+            }
+            promoted = twin_promote_context_payload(
+                session.parent_asset_id,
+                store=_eng(),
+                query=body.query,
+                investigation_id=session.investigation_id,
+                include_html=body.include_html,
+                kinds=body.kinds,
+                note_ids=frozen_note_ids,
+                owner_id=owner_id,
+                con=con,
+                events_dir=events_dir,
+                emit_events=False,
+            )
+            confirmed_sha = promotion_preview_sha256(
+                owner_id=owner_id, session_id=session_id, payload=promoted
+            )
+            if not hmac.compare_digest(confirmed_sha, preview_sha):
+                raise ValueError("promoted twin set diverged from reviewed preview")
+            for row in promoted.get("promoted", []):
+                if not isinstance(row, dict):
+                    continue
+                node_id = str(row.get("graph_node_id") or "")
+                if not node_id or node_id in existing_node_ids:
+                    continue
+                stage_promoted_node_event(
+                    con,
+                    event_id=promotion_event_id(
+                        owner_id=owner_id,
+                        session_id=session_id,
+                        preview_sha256=preview_sha,
+                        node_id=node_id,
+                    ),
+                    investigation_id=session.investigation_id,
+                    node_id=node_id,
+                    canonical_label=str(row.get("text") or ""),
+                    node_type=str(row.get("kind") or ""),
+                    has_embedding=True,
+                )
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+    finally:
+        con.close()
+    flush_promotion_outbox(db_path, events_dir=events_dir)
+
+    receipt_id = str(receipt["receipt_id"])
+    result = {
+        **promoted,
+        "session_id": session_id,
+        "owner_graph_scope": (
+            "operator_canonical" if owner_id == "__operator__" else "physically_isolated"
+        ),
+        "promotion_preview_sha256": preview_sha,
+        "promotion_receipt_id": receipt_id,
+        "promotion_receipt_state": "applied",
+        "twin_context_mode": "confirmed_mutating",
+        "graph_write": True,
+    }
+    try:
+        settled = settle_promotion_receipt(
+            store=_eng(),
+            owner_id=owner_id,
+            receipt_id=receipt_id,
+            material_sha256=str(receipt["material_sha256"]),
+            result=result,
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return dict(settled["result"])
 
 
 @engagement_router.post("/sessions/{session_id}/context-search")
@@ -1685,9 +1892,9 @@ def _offline_promote_insight(
     **kwargs: Any,
 ) -> str:
 
-    canon = " ".join(text.lower().split())
-    digest = hashlib.sha256(f"insight:{canon}".encode()).hexdigest()[:16]
-    return f"insight_{digest}"
+    from substrate.graph.insight_question import insight_node_id
+
+    return insight_node_id(text)
 
 
 def _offline_promote_question(
@@ -1701,9 +1908,9 @@ def _offline_promote_question(
     **kwargs: Any,
 ) -> str:
 
-    canon = " ".join(text.lower().split())
-    digest = hashlib.sha256(f"question:{canon}".encode()).hexdigest()[:16]
-    return f"question_{digest}"
+    from substrate.graph.insight_question import question_node_id
+
+    return question_node_id(text)
 
 
 def register_engagement_routes(app: FastAPI) -> None:

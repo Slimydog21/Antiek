@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI, Request
@@ -18,7 +20,35 @@ from interfaces.research.api.engagement_routes import (  # noqa: E402
     register_engagement_routes,
     reset_engagement_stores,
 )
+from processing.embedding import (  # noqa: E402
+    _reset_default_provider,
+    set_default_embedding_provider,
+)
+from runtime.db_lock import connect_read  # noqa: E402
 from substrate.engagement_spine import record_twin_insight  # noqa: E402
+from substrate.graph_per_user.runtime import (  # noqa: E402
+    owner_graph_db_path,
+    owner_graph_events_dir,
+)
+
+
+class _PromotionEmbedding:
+    dimension = 8
+
+    def encode(self, text: str) -> list[float]:
+        digest = hashlib.sha256(text.encode()).digest()
+        return [byte / 255.0 for byte in digest[: self.dimension]]
+
+
+class _FailSecondPromotionEmbedding(_PromotionEmbedding):
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def encode(self, text: str) -> list[float]:
+        self.calls += 1
+        if self.calls == 2:
+            raise RuntimeError("injected second-note embedding failure")
+        return super().encode(text)
 
 
 def _operator_app() -> FastAPI:
@@ -747,3 +777,283 @@ def test_confirmed_merge_recovers_after_parent_write_before_receipt_settle(
     assert recovered.json()["result_parent_sha256"] == recovered.json()[
         "document_sha256"
     ]
+
+
+def test_confirmed_twin_promotion_is_owner_isolated_and_replayable(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owner-graphs"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    set_default_embedding_provider(_PromotionEmbedding())
+    reset_engagement_stores(root=tmp_path / "engagement")
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_test_owner(request: Request, call_next):
+        request.state.user_id = request.headers.get("x-test-owner", "")
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    client = TestClient(app)
+    sessions: dict[str, dict] = {}
+    try:
+        for owner in ("alice", "bob"):
+            headers = {"x-test-owner": owner}
+            opened = client.post(
+                "/engagement/sessions/open",
+                headers=headers,
+                json={
+                    "asset_id": "same-asset",
+                    "selection_text": "same private source",
+                    "region_id": "same-region",
+                },
+            ).json()
+            sessions[owner] = opened
+            recorded = client.post(
+                f"/engagement/sessions/{opened['session_id']}/twins",
+                headers=headers,
+                json={"kind": "insight", "text": "Identical private insight"},
+            )
+            assert recorded.status_code == 200, recorded.text
+            preview = client.post(
+                f"/engagement/sessions/{opened['session_id']}/twins/promote-preview",
+                headers=headers,
+                json={"kinds": ["insight"]},
+            )
+            assert preview.status_code == 200, preview.text
+            preview_body = preview.json()
+            assert preview_body["graph_write"] is False
+            confirm_body = {
+                "kinds": ["insight"],
+                "expected_preview_sha256": preview_body["promotion_preview_sha256"],
+                "idempotency_key": f"{owner}-confirm-001",
+            }
+            confirmed = client.post(
+                f"/engagement/sessions/{opened['session_id']}/twins/promote-confirm",
+                headers=headers,
+                json=confirm_body,
+            )
+            assert confirmed.status_code == 200, confirmed.text
+            result = confirmed.json()
+            assert result["graph_write"] is True
+            assert result["twin_context_mode"] == "confirmed_mutating"
+            assert result["owner_graph_scope"] == "physically_isolated"
+            replay = client.post(
+                f"/engagement/sessions/{opened['session_id']}/twins/promote-confirm",
+                headers=headers,
+                json=confirm_body,
+            )
+            assert replay.status_code == 200
+            assert replay.json() == result
+
+        alice_path = owner_graph_db_path("alice")
+        bob_path = owner_graph_db_path("bob")
+        assert alice_path != bob_path
+        for path in (alice_path, bob_path):
+            con = connect_read(path)
+            try:
+                rows = con.execute(
+                    "SELECT canonical_label FROM nodes WHERE node_type = 'insight'"
+                ).fetchall()
+            finally:
+                con.close()
+            assert rows == [("Identical private insight",)]
+        for owner, path in (("alice", alice_path), ("bob", bob_path)):
+            events_dir = owner_graph_events_dir(owner, path)
+            assert events_dir is not None
+            event_text = "".join(
+                event_file.read_text(encoding="utf-8")
+                for event_file in Path(events_dir).rglob("*")
+                if event_file.is_file()
+            )
+            assert "Identical private insight" in event_text
+        shared_events = tmp_path / "events"
+        assert not shared_events.exists() or not any(shared_events.rglob("*"))
+
+        hidden = client.post(
+            f"/engagement/sessions/{sessions['alice']['session_id']}/twins/promote-confirm",
+            headers={"x-test-owner": "bob"},
+            json={
+                "kinds": ["insight"],
+                "expected_preview_sha256": "0" * 64,
+                "idempotency_key": "foreign-confirm-001",
+            },
+        )
+        assert hidden.status_code == 404
+    finally:
+        _reset_default_provider()
+
+
+def test_twin_promotion_rejects_preview_drift_before_graph_write(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owner-graphs"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    set_default_embedding_provider(_PromotionEmbedding())
+    reset_engagement_stores(root=tmp_path / "engagement")
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_owner(request: Request, call_next):
+        request.state.user_id = "alice"
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    client = TestClient(app)
+    try:
+        session = client.post(
+            "/engagement/sessions/open",
+            json={"asset_id": "drift-asset", "selection_text": "source"},
+        ).json()
+        route = f"/engagement/sessions/{session['session_id']}/twins"
+        assert client.post(route, json={"kind": "insight", "text": "First"}).status_code == 200
+        preview = client.post(f"{route}/promote-preview", json={}).json()
+        assert client.post(route, json={"kind": "question", "text": "New question?"}).status_code == 200
+        refused = client.post(
+            f"{route}/promote-confirm",
+            json={
+                "expected_preview_sha256": preview["promotion_preview_sha256"],
+                "idempotency_key": "drift-confirm-001",
+            },
+        )
+        assert refused.status_code == 409
+        assert "preview changed" in refused.json()["detail"]
+        assert not os.path.exists(owner_graph_db_path("alice"))
+    finally:
+        _reset_default_provider()
+
+
+def test_twin_promotion_recovers_after_graph_commit_before_receipt_settle(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owner-graphs"))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    set_default_embedding_provider(_PromotionEmbedding())
+    reset_engagement_stores(root=tmp_path / "engagement")
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_owner(request: Request, call_next):
+        request.state.user_id = "alice"
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    client = TestClient(app)
+    try:
+        session = client.post(
+            "/engagement/sessions/open",
+            json={"asset_id": "crash-asset", "selection_text": "source"},
+        ).json()
+        route = f"/engagement/sessions/{session['session_id']}/twins"
+        client.post(route, json={"kind": "insight", "text": "Crash-safe insight"})
+        preview = client.post(f"{route}/promote-preview", json={}).json()
+        body = {
+            "expected_preview_sha256": preview["promotion_preview_sha256"],
+            "idempotency_key": "crash-confirm-001",
+        }
+        real_settle = eng_mod.settle_promotion_receipt
+        calls = 0
+
+        def crash_once(**kwargs):
+            nonlocal calls
+            calls += 1
+            if calls == 1:
+                raise RuntimeError("injected crash after graph commit")
+            return real_settle(**kwargs)
+
+        monkeypatch.setattr(eng_mod, "settle_promotion_receipt", crash_once)
+        with pytest.raises(RuntimeError, match="after graph commit"):
+            client.post(f"{route}/promote-confirm", json=body)
+        recovered = client.post(f"{route}/promote-confirm", json=body)
+        assert recovered.status_code == 200, recovered.text
+        assert recovered.json()["promotion_receipt_state"] == "applied"
+        con = connect_read(owner_graph_db_path("alice"))
+        try:
+            assert con.execute(
+                "SELECT count(*) FROM nodes WHERE canonical_label = 'Crash-safe insight'"
+            ).fetchone()[0] == 1
+        finally:
+            con.close()
+    finally:
+        _reset_default_provider()
+
+
+def test_twin_promotion_rolls_back_graph_and_outbox_before_commit(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owner-graphs"))
+    set_default_embedding_provider(_FailSecondPromotionEmbedding())
+    reset_engagement_stores(root=tmp_path / "engagement")
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_owner(request: Request, call_next):
+        request.state.user_id = "alice"
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    client = TestClient(app)
+    try:
+        session = client.post(
+            "/engagement/sessions/open",
+            json={"asset_id": "atomic-asset", "selection_text": "source"},
+        ).json()
+        route = f"/engagement/sessions/{session['session_id']}/twins"
+        client.post(route, json={"kind": "insight", "text": "First atomic note"})
+        client.post(route, json={"kind": "question", "text": "Second atomic note?"})
+        preview = client.post(f"{route}/promote-preview", json={}).json()
+        body = {
+            "expected_preview_sha256": preview["promotion_preview_sha256"],
+            "idempotency_key": "atomic-confirm-001",
+        }
+        with pytest.raises(RuntimeError, match="second-note embedding failure"):
+            client.post(f"{route}/promote-confirm", json=body)
+
+        graph_path = owner_graph_db_path("alice")
+        con = connect_read(graph_path)
+        try:
+            assert con.execute("SELECT count(*) FROM nodes").fetchone()[0] == 0
+            outbox_exists = con.execute(
+                "SELECT count(*) FROM information_schema.tables "
+                "WHERE table_name = 'twin_promotion_event_outbox'"
+            ).fetchone()[0]
+            if outbox_exists:
+                assert con.execute(
+                    "SELECT count(*) FROM twin_promotion_event_outbox"
+                ).fetchone()[0] == 0
+        finally:
+            con.close()
+        events_dir = owner_graph_events_dir("alice", graph_path)
+        assert events_dir is not None
+        assert not any(Path(events_dir).glob("*.jsonl"))
+
+        set_default_embedding_provider(_PromotionEmbedding())
+        recovered = client.post(f"{route}/promote-confirm", json=body)
+        assert recovered.status_code == 200, recovered.text
+        assert recovered.json()["promoted_count"] == 2
+    finally:
+        _reset_default_provider()
+
+
+def test_operator_confirm_keeps_canonical_graph_compatibility(client, tmp_path, monkeypatch):
+    operator_graph = tmp_path / "operator.duckdb"
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(operator_graph))
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "operator-events"))
+    set_default_embedding_provider(_PromotionEmbedding())
+    try:
+        session = client.post(
+            "/engagement/sessions/open",
+            json={"asset_id": "operator-asset", "selection_text": "source"},
+        ).json()
+        route = f"/engagement/sessions/{session['session_id']}/twins"
+        client.post(route, json={"kind": "insight", "text": "Operator memory"})
+        preview = client.post(f"{route}/promote-preview", json={}).json()
+        confirmed = client.post(
+            f"{route}/promote-confirm",
+            json={
+                "expected_preview_sha256": preview["promotion_preview_sha256"],
+                "idempotency_key": "operator-confirm-001",
+            },
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["owner_graph_scope"] == "operator_canonical"
+        assert operator_graph.is_file()
+        assert owner_graph_db_path("__operator__") == str(operator_graph)
+    finally:
+        _reset_default_provider()

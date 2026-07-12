@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachSourceRefs,
+  confirmSessionTwins,
   fetchResearchContext,
   listEngagementSessions,
   mergeEngagementSessions,
@@ -199,6 +200,37 @@ describe("engagement API client", () => {
     expect(body.idempotency_key).toBe("browser-confirm-001");
     expect(body.expected_parent_sha256).toBe("a".repeat(64));
     expect(body.confirm_parent_write).toBe(true);
+  });
+
+  it("sends pinned preview authority for confirmed twin promotion", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        twin_context_mode: "confirmed_mutating",
+        graph_write: true,
+        promotion_receipt_id: "tpr_123",
+        promotion_receipt_state: "applied",
+      }),
+    });
+    await confirmSessionTwins({
+      session_id: "fsess_0123456789abcdef",
+      expected_preview_sha256: "a".repeat(64),
+      idempotency_key: "browser-twin-confirm-001",
+      kinds: ["insight"],
+      note_ids: ["twin_1"],
+    });
+    expect(mockFetch.mock.calls[0][0]).toBe(
+      "/engagement/sessions/fsess_0123456789abcdef/twins/promote-confirm",
+    );
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body)).toEqual(
+      expect.objectContaining({
+        expected_preview_sha256: "a".repeat(64),
+        idempotency_key: "browser-twin-confirm-001",
+        kinds: ["insight"],
+        note_ids: ["twin_1"],
+      }),
+    );
   });
 
   it("throws on non-ok", async () => {

@@ -379,6 +379,7 @@ def insert_node(
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
     events_dir: str | None = None,
+    emit_event: bool = True,
 ) -> str:
     """Insert one node row AND emit GRAPH_NODE_INSERTED. Returns the
     node_id.
@@ -404,19 +405,20 @@ def insert_node(
     # Typed event AFTER the row commits — the Pydantic Literal validators
     # on node_type and graph_scope raise here if the caller passed
     # something the DB CHECK would also reject. We get both layers.
-    emit_typed(
-        investigation_id,
-        GraphNodeInsertedPayload(
-            node_id=nid,
-            canonical_label=canonical_label,
-            node_type=node_type,  # type: ignore[arg-type]
-            graph_scope=graph_scope,  # type: ignore[arg-type]
-            has_embedding=embedding is not None,
-        ),
-        parent_event_id=parent_event_id,
-        role="connector",
-        events_dir=events_dir,
-    )
+    if emit_event:
+        emit_typed(
+            investigation_id,
+            GraphNodeInsertedPayload(
+                node_id=nid,
+                canonical_label=canonical_label,
+                node_type=node_type,  # type: ignore[arg-type]
+                graph_scope=graph_scope,  # type: ignore[arg-type]
+                has_embedding=embedding is not None,
+            ),
+            parent_event_id=parent_event_id,
+            role="connector",
+            events_dir=events_dir,
+        )
     return nid
 
 
@@ -443,6 +445,7 @@ def insert_edge(
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
     events_dir: str | None = None,
+    emit_event: bool = True,
 ) -> str:
     """Insert one edge row AND emit GRAPH_EDGE_INSERTED. Returns the
     edge_id.
@@ -472,23 +475,24 @@ def insert_edge(
             graph_scope, investigation_id, _maybe_json(metadata),
         ],
     )
-    emit_typed(
-        investigation_id,
-        GraphEdgeInsertedPayload(
-            edge_id=eid,
-            source_node_id=source_node_id,
-            target_node_id=target_node_id,
-            relation=relation,
-            source_document_id=source_document_id,
-            chunk_id=chunk_id,
-            source_tier=int(source_tier),
-            extraction_confidence=float(extraction_confidence),
-            graph_scope=graph_scope,  # type: ignore[arg-type]
-        ),
-        parent_event_id=parent_event_id,
-        role="connector",
-        events_dir=events_dir,
-    )
+    if emit_event:
+        emit_typed(
+            investigation_id,
+            GraphEdgeInsertedPayload(
+                edge_id=eid,
+                source_node_id=source_node_id,
+                target_node_id=target_node_id,
+                relation=relation,
+                source_document_id=source_document_id,
+                chunk_id=chunk_id,
+                source_tier=int(source_tier),
+                extraction_confidence=float(extraction_confidence),
+                graph_scope=graph_scope,  # type: ignore[arg-type]
+            ),
+            parent_event_id=parent_event_id,
+            role="connector",
+            events_dir=events_dir,
+        )
     return eid
 
 

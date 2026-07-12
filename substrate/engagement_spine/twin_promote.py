@@ -174,6 +174,8 @@ def promote_twin_note(
     embedding_provider: Any = None,
     con: Any = None,
     extra_metadata: dict[str, Any] | None = None,
+    events_dir: str | None = None,
+    emit_events: bool = True,
 ) -> TwinPromoteResult:
     """Promote one twin note into a depth-graph insight or question node.
 
@@ -211,6 +213,8 @@ def promote_twin_note(
             metadata=meta,
             embedding_provider=embedding_provider,
             con=con,
+            events_dir=events_dir,
+            emit_events=emit_events,
         )
     elif note.kind == "question":
         fn = promote_question_fn or _default_promote_question()
@@ -221,6 +225,8 @@ def promote_twin_note(
             metadata=meta,
             embedding_provider=embedding_provider,
             con=con,
+            events_dir=events_dir,
+            emit_events=emit_events,
         )
     else:
         raise ValueError(f"unknown twin kind: {note.kind!r}")
@@ -253,6 +259,8 @@ def promote_twin_notes_for_asset(
     kinds: Sequence[TwinKind] | None = None,
     note_ids: Sequence[str] | None = None,
     owner_id: str = "__operator__",
+    events_dir: str | None = None,
+    emit_events: bool = True,
 ) -> list[TwinPromoteResult]:
     """Promote all (or filtered) twin notes for a parent asset.
 
@@ -281,6 +289,8 @@ def promote_twin_notes_for_asset(
                 promote_question_fn=promote_question_fn,
                 embedding_provider=embedding_provider,
                 con=con,
+                events_dir=events_dir,
+                emit_events=emit_events,
             )
         )
     return out
@@ -341,6 +351,8 @@ def promote_and_context_for_asset(
     kinds: Sequence[TwinKind] | None = None,
     note_ids: Sequence[str] | None = None,
     owner_id: str = "__operator__",
+    events_dir: str | None = None,
+    emit_events: bool = True,
 ) -> TwinPromoteContextResult:
     """Product entry: twin notes → promote_* → search/context units.
 
@@ -360,6 +372,8 @@ def promote_and_context_for_asset(
         kinds=kinds,
         note_ids=note_ids,
         owner_id=owner_id,
+        events_dir=events_dir,
+        emit_events=emit_events,
     )
     units = [result_to_context_unit(p) for p in promoted]
     filtered = search_twin_context(units, query=query, asset_id=asset_id.strip())
@@ -420,6 +434,9 @@ def twin_promote_context_payload(
     kinds: Sequence[TwinKind] | None = None,
     note_ids: Sequence[str] | None = None,
     owner_id: str = "__operator__",
+    con: Any = None,
+    events_dir: str | None = None,
+    emit_events: bool = True,
 ) -> dict[str, Any]:
     """Settings/workstation product shape for twin promote → context.
 
@@ -465,6 +482,9 @@ def twin_promote_context_payload(
         kinds=kinds_norm,
         note_ids=note_ids_norm,
         owner_id=owner_id,
+        con=con,
+        events_dir=events_dir,
+        emit_events=emit_events,
     )
     result_dict = result.to_dict()
     # Residual (ajo/ajt): content-addressed depth-graph honesty (pure helper).

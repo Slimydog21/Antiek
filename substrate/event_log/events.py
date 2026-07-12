@@ -76,6 +76,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
 import os
 import sys
@@ -291,6 +292,49 @@ def emit_typed(
     row = event.model_dump(mode="json")
     path = _jsonl_path(investigation_id, events_dir=events_dir)
     _safe(_append_jsonl, path, row)
+    return event_id
+
+
+def emit_typed_idempotent(
+    event_id: str,
+    investigation_id: str,
+    payload: Any,
+    *,
+    role: str | None = None,
+    events_dir: str | None = None,
+) -> str | None:
+    """Append one deterministic typed event at most once.
+
+    Transactional graph outboxes use this after their DuckDB commit. The
+    per-investigation lock makes the read-before-append check cross-process;
+    unlike ordinary telemetry emission, append failure is raised so the
+    outbox row remains pending for recovery.
+    """
+    if _events_disabled():
+        return None
+    event = Event(
+        event_id=event_id,
+        investigation_id=investigation_id,
+        role=role,
+        action_type=payload.action_type,
+        payload=payload,
+        policy_id=DEFAULT_POLICY_ID,
+        param_version=ANTIEK_PARAM_VERSION,
+        schema_version=EVENT_SCHEMA_VERSION,
+        emitted_at=datetime.now(UTC),
+    )
+    row = event.model_dump(mode="json")
+    path = _jsonl_path(investigation_id, events_dir=events_dir)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    lock_path = f"{path}.lock"
+    with open(lock_path, "a+b") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        if os.path.isfile(path):
+            with open(path, encoding="utf-8") as existing:
+                for line in existing:
+                    if f'"event_id":"{event_id}"' in line:
+                        return event_id
+        _append_jsonl(path, row)
     return event_id
 
 

@@ -49,6 +49,7 @@ from __future__ import annotations
 import os
 import sys
 from collections.abc import Sequence
+from contextlib import suppress
 from typing import Any
 
 try:
@@ -142,6 +143,8 @@ def _add_provenance_edges(
     extraction_confidence: float,
     source_document_id: str | None,
     chunk_id: str | None,
+    events_dir: str | None = None,
+    emit_events: bool = True,
 ) -> tuple[list, list]:
     """Create ``relation`` edges from ``source_node_id`` to each target
     node, validating against the controlled vocabulary. Returns
@@ -167,6 +170,8 @@ def _add_provenance_edges(
             investigation_id=investigation_id,
             source_document_id=source_document_id,
             chunk_id=chunk_id,
+            events_dir=events_dir,
+            emit_event=emit_events,
             on_conflict="ignore",
         )
         written.append(eid)
@@ -197,10 +202,8 @@ def _with_connection(con: LockedConnection | None, purpose: str, fn):
             owned.execute("COMMIT")
             return result
         except Exception:
-            try:
+            with suppress(Exception):
                 owned.execute("ROLLBACK")
-            except Exception:  # pragma: no cover
-                pass
             raise
     finally:
         owned.close()
@@ -222,6 +225,8 @@ def promote_insight(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    events_dir: str | None = None,
+    emit_events: bool = True,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -324,6 +329,8 @@ def promote_insight(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            events_dir=events_dir,
+            emit_event=emit_events,
         )
         _written, dangling = _add_provenance_edges(
             c,
@@ -335,6 +342,8 @@ def promote_insight(
             extraction_confidence=edge_conf,
             source_document_id=source_document_id,
             chunk_id=chunk_id,
+            events_dir=events_dir,
+            emit_events=emit_events,
         )
         if dangling:
             _record_dangling(c, nid, "supported_by", dangling)
@@ -359,6 +368,8 @@ def promote_question(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    events_dir: str | None = None,
+    emit_events: bool = True,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -429,18 +440,24 @@ def promote_question(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            events_dir=events_dir,
+            emit_event=emit_events,
         )
         _w1, d1 = _add_provenance_edges(
             c, source_node_id=nid, relation="asks_about", targets=asks_about,
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            events_dir=events_dir,
+            emit_events=emit_events,
         )
         _w2, d2 = _add_provenance_edges(
             c, source_node_id=nid, relation="resolved_by", targets=resolved_by,
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            events_dir=events_dir,
+            emit_events=emit_events,
         )
         if d1:
             _record_dangling(c, nid, "asks_about", d1)
