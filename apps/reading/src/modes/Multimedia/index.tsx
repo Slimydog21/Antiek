@@ -8,6 +8,7 @@ import {
   failedGateIds,
   getMultimediaAsset,
   getMultimediaPlayback,
+  getMultimediaReviewedVisualSet,
   listMultimediaAssets,
   manualGateIds,
   runMultimediaHardening,
@@ -20,6 +21,7 @@ import type {
   MultimediaAssetSummary,
   MultimediaPlayback as MultimediaPlaybackRecord,
   MultimediaNarrationAuthorization,
+  MultimediaReviewedVisualSet,
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
@@ -206,6 +208,8 @@ export default function Multimedia() {
   const [narrationSpendAcknowledged, setNarrationSpendAcknowledged] = useState(false);
   const [narrationAuthorization, setNarrationAuthorization] = useState<MultimediaNarrationAuthorization | null>(null);
   const [narrationAuthorizationPending, setNarrationAuthorizationPending] = useState(false);
+  const [reviewedVisualSet, setReviewedVisualSet] = useState<MultimediaReviewedVisualSet | null>(null);
+  const [reviewedVisualStatus, setReviewedVisualStatus] = useState<"idle" | "loading" | "missing" | "error" | "ready">("idle");
 
   useEffect(() => {
     productionRequestId.current += 1;
@@ -266,6 +270,35 @@ export default function Multimedia() {
       cancelled = true;
     };
   }, [approved, selectedRecord]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setReviewedVisualSet(null);
+    setReviewedVisualStatus("idle");
+    if (!selectedRecord || selectedRecord.mode === "audio") return;
+    const { asset_id: assetId, revision_id: revisionId } = selectedRecord.asset;
+    setReviewedVisualStatus("loading");
+    getMultimediaReviewedVisualSet(assetId, revisionId)
+      .then((result) => {
+        if (!cancelled) {
+          setReviewedVisualSet(result);
+          setReviewedVisualStatus("ready");
+        }
+      })
+      .catch((error: unknown) => {
+        if (!cancelled) {
+          setReviewedVisualSet(null);
+          setReviewedVisualStatus(
+            error instanceof Error && error.message === "multimedia_reviewed_visuals_unavailable"
+              ? "missing"
+              : "error",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedRecord]);
 
   const exampleChapters = useMemo(() => {
     const minutes = distributeMinutes(duration);
@@ -820,6 +853,28 @@ export default function Multimedia() {
                         <dt className="text-shadow-1 dark:text-moonlight">Expires</dt>
                         <dd className="text-ink dark:text-bright">{narrationAuthorization.authorization.expires_at}</dd>
                       </dl>
+                    )}
+                  </section>
+                )}
+
+                {selectedRecord && selectedRecord.mode !== "audio" && (
+                  <section className="border-t border-rule pt-3 dark:border-charcoal-1">
+                    <div className="flex items-center justify-between gap-3 text-[12px]">
+                      <span className="text-shadow-1 dark:text-moonlight">Reviewed visuals</span>
+                      <span className="font-mono text-ink dark:text-bright">
+                        {reviewedVisualStatus === "ready" && reviewedVisualSet
+                          ? `${reviewedVisualSet.scene_ids.length} scenes bound`
+                          : reviewedVisualStatus === "loading"
+                            ? "Checking reviewed set"
+                            : reviewedVisualStatus === "error"
+                              ? "Status unavailable"
+                              : "Awaiting reviewed candidates"}
+                      </span>
+                    </div>
+                    {reviewedVisualSet && (
+                      <p className="mt-1 truncate font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                        {reviewedVisualSet.set_id}
+                      </p>
                     )}
                   </section>
                 )}

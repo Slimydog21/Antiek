@@ -247,6 +247,17 @@ export interface MultimediaNarrationAuthorization {
   };
 }
 
+export interface MultimediaReviewedVisualSet {
+  set_id: string;
+  asset_id: string;
+  revision_id: string;
+  chapter_ids: string[];
+  scene_ids: string[];
+  candidate_ids: string[];
+  selection_digest: string;
+  created_at: string;
+}
+
 export interface MultimediaJobRecord {
   job_id: string;
   asset_id: string;
@@ -455,6 +466,29 @@ export async function authorizeMultimediaNarration(
     result.authorization.endpoint_capability !== "text-to-speech"
   ) {
     throw new Error("multimedia_narration_authorization_identity_conflict");
+  }
+  return result;
+}
+
+export async function getMultimediaReviewedVisualSet(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaReviewedVisualSet> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/reviewed-visuals?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_reviewed_visuals_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reviewed_visuals_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/reviewed-visuals: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaReviewedVisualSet;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.chapter_ids.length !== result.scene_ids.length ||
+    result.chapter_ids.length !== result.candidate_ids.length
+  ) {
+    throw new Error("multimedia_reviewed_visuals_identity_conflict");
   }
   return result;
 }

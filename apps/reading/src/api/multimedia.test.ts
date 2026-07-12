@@ -15,6 +15,7 @@ import {
   createMultimediaDraft,
   failedGateIds,
   getAssetReconciliationLinks,
+  getMultimediaReviewedVisualSet,
   getChapterTtsReconciliation,
   getMultimediaAsset,
   getMultimediaPlayback,
@@ -255,6 +256,25 @@ describe("multimedia API client", () => {
       authorization: { ...response.authorization, endpoint_capability: "image-generation" },
     }));
     await expect(authorizeMultimediaNarration("mm-1", request)).rejects.toThrow("identity_conflict");
+  });
+
+  it("cross-binds reviewed visual status to the selected revision", async () => {
+    const response = {
+      set_id: "mmvset-test",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      chapter_ids: ["chapter-1"],
+      scene_ids: ["scene-chapter-1"],
+      candidate_ids: ["candidate-1"],
+      selection_digest: "a".repeat(64),
+      created_at: "2026-07-12T01:00:00Z",
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, response));
+    expect((await getMultimediaReviewedVisualSet("mm-1", "rev-1")).set_id).toBe("mmvset-test");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...response, revision_id: "rev-other" }));
+    await expect(getMultimediaReviewedVisualSet("mm-1", "rev-1")).rejects.toThrow(
+      "identity_conflict",
+    );
   });
 
   it("surfaces a typed not-found error for a 404 job list", async () => {

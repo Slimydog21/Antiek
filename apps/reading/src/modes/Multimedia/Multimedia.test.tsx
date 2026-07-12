@@ -8,6 +8,7 @@ import {
   createMultimediaDraft,
   getMultimediaAsset,
   getMultimediaPlayback,
+  getMultimediaReviewedVisualSet,
   listMultimediaAssets,
   runMultimediaHardening,
   registerMultimediaProduction,
@@ -28,6 +29,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     createMultimediaDraft: vi.fn(),
     getMultimediaAsset: vi.fn(),
     getMultimediaPlayback: vi.fn(),
+    getMultimediaReviewedVisualSet: vi.fn(),
     listMultimediaAssets: vi.fn(),
     runMultimediaHardening: vi.fn(),
     registerMultimediaProduction: vi.fn(),
@@ -40,6 +42,7 @@ const mockAuthorizeNarration = vi.mocked(authorizeMultimediaNarration);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
 const mockPlayback = vi.mocked(getMultimediaPlayback);
+const mockReviewedVisuals = vi.mocked(getMultimediaReviewedVisualSet);
 const mockList = vi.mocked(listMultimediaAssets);
 const mockHarden = vi.mocked(runMultimediaHardening);
 const mockRegisterProduction = vi.mocked(registerMultimediaProduction);
@@ -120,6 +123,7 @@ const hardenedRecord: MultimediaAssetRecord = {
 };
 
 beforeEach(() => {
+  mockReviewedVisuals.mockRejectedValue(new Error("multimedia_reviewed_visuals_unavailable"));
   mockAuthorizeNarration.mockResolvedValue({
     chapter_id: "server-intro",
     child_revision_id: "tts-child-1",
@@ -270,6 +274,32 @@ describe("Multimedia workstation", () => {
     ));
     expect(await screen.findByText("mmauth2-test")).toBeTruthy();
     expect(screen.getByText("trusted-tts / voice-1")).toBeTruthy();
+  });
+
+  it("shows only owner-bound reviewed visual readiness", async () => {
+    mockReviewedVisuals.mockResolvedValueOnce({
+      set_id: "mmvset-test",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      chapter_ids: ["server-intro", "server-mechanism"],
+      scene_ids: ["scene-server-intro", "scene-server-mechanism"],
+      candidate_ids: ["candidate-1", "candidate-2"],
+      selection_digest: "a".repeat(64),
+      created_at: "2026-07-12T01:00:00Z",
+    });
+    await reviewPlan();
+    expect(await screen.findByText("2 scenes bound")).toBeTruthy();
+    expect(screen.getByText("mmvset-test")).toBeTruthy();
+    expect(screen.queryByText("candidate-1")).toBeNull();
+  });
+
+  it("distinguishes reviewed visual runtime failure from no reviewed set", async () => {
+    mockReviewedVisuals.mockRejectedValueOnce(
+      new Error("multimedia_reviewed_visuals_runtime_unavailable"),
+    );
+    await reviewPlan();
+    expect(await screen.findByText("Status unavailable")).toBeTruthy();
+    expect(screen.queryByText("Awaiting reviewed candidates")).toBeNull();
   });
 
   it("does not present simulated media when verified playback is unavailable", async () => {

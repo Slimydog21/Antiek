@@ -56,11 +56,17 @@ from .multimedia_reconciliation_routes import (
     multimedia_reconciliation_router,
     multimedia_reconciliation_runtime_from_environment,
 )
+from .multimedia_reviewed_visual_routes import (
+    get_multimedia_reviewed_visual_runtime,
+    multimedia_reviewed_visual_router,
+    multimedia_reviewed_visual_runtime_from_environment,
+)
 
 multimedia_router = APIRouter(prefix="/multimedia", tags=["multimedia"])
 multimedia_router.include_router(multimedia_reconciliation_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
+multimedia_router.include_router(multimedia_reviewed_visual_router)
 _STORE = MultimediaAssetStore()
 
 
@@ -318,6 +324,13 @@ def register_multimedia_routes(app: FastAPI) -> None:
     if narration_runtime is not None:
         app.dependency_overrides[get_multimedia_narration_authorization_runtime] = (
             lambda: narration_runtime
+        )
+    reviewed_visual_runtime = multimedia_reviewed_visual_runtime_from_environment(
+        store=get_store()
+    )
+    if reviewed_visual_runtime is not None:
+        app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = (
+            lambda: reviewed_visual_runtime
         )
 
 

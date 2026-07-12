@@ -102,6 +102,16 @@ from .read_model import (
     MultimediaKnowledgeLink,
     SteeringRequest,
 )
+from .reviewed_visual_registry import (
+    RegisterReviewedVisualsRequest,
+    ResolvedReviewedVisualSet,
+    ReviewedVisualRegistry,
+    ReviewedVisualRegistryError,
+    ReviewedVisualSetReceipt,
+    VisualCandidateBinding,
+    get_reviewed_visuals,
+    register_reviewed_visuals,
+)
 from .steering import (
     RevisionPlan,
     SegmentReuse,
@@ -254,4 +264,12 @@ __all__ = [
     "NarrationAuthorizationResult",
     "TrustedNarrationTerms",
     "authorize_multimedia_chapter_narration",
+    "RegisterReviewedVisualsRequest",
+    "ResolvedReviewedVisualSet",
+    "ReviewedVisualRegistry",
+    "ReviewedVisualRegistryError",
+    "ReviewedVisualSetReceipt",
+    "VisualCandidateBinding",
+    "get_reviewed_visuals",
+    "register_reviewed_visuals",
 ]
