@@ -379,8 +379,50 @@ def _compile_manifest(plan: MultimediaPlan, experience: AudioExperience) -> Audi
         expected = tuple(citation.chunk_id for citation in line.citations)
         if expected != span.source_chunk_ids or (expected and claims.get(span.line_id) != expected):
             raise ValueError("audio span source authority drifted from the script")
+    return compile_audible_run_manifest(
+        plan,
+        asset_id=experience.manifest.asset_id,
+        revision_id=experience.manifest.revision_id,
+        transcript_file_id=experience.transcript_file_id,
+        chapters=tuple(
+            RunChapter(
+                chapter_id=chapter.chapter_id,
+                title=chapter.title,
+                sequence=chapter.sequence,
+                start_offset_seconds=chapter.start_offset_seconds,
+                end_offset_seconds=chapter.end_offset_seconds,
+                source_chunk_ids=chapter.source_chunk_ids,
+            )
+            for chapter in experience.chapters
+        ),
+        transcript_spans=spans,
+    )
+
+
+def compile_audible_run_manifest(
+    plan: MultimediaPlan,
+    *,
+    asset_id: str,
+    revision_id: str,
+    transcript_file_id: str,
+    chapters: tuple[RunChapter, ...],
+    transcript_spans: tuple[RunTranscriptSpan, ...],
+) -> AudibleRunManifest:
+    """Compile review metadata from an exact measured transcript timeline."""
+    if not transcript_spans:
+        raise ValueError("audible run requires a measured transcript timeline")
+    lines = {line.line_id: line for line in plan.script_lines}
+    if len(lines) != len(plan.script_lines):
+        raise ValueError("audible run plan contains duplicate script line ids")
+    for span in transcript_spans:
+        line = lines.get(span.line_id)
+        if line is None or line.text != span.spoken_text or line.kind != span.line_kind:
+            raise ValueError("audio span content drifted from the script")
+        expected = tuple(citation.chunk_id for citation in line.citations)
+        if expected != span.source_chunk_ids:
+            raise ValueError("audio span source authority drifted from the script")
     markers: list[RetentionMarker] = []
-    for span in spans:
+    for span in transcript_spans:
         if span.marker_kind in {"remember", "recap"}:
             kind = cast(Literal["remember", "recap"], span.marker_kind)
             markers.append(
@@ -400,33 +442,22 @@ def _compile_manifest(plan: MultimediaPlan, experience: AudioExperience) -> Audi
             source_chunk_ids=span.source_chunk_ids,
             follow_up_prompt=_follow_up_prompt(span.source_chunk_ids),
         )
-        for span in spans
+        for span in transcript_spans
         if span.marker_kind == "content"
         and lines[span.line_id].kind == "factual"
         and span.source_chunk_ids
     )
-    chapters = tuple(
-        RunChapter(
-            chapter_id=chapter.chapter_id,
-            title=chapter.title,
-            sequence=chapter.sequence,
-            start_offset_seconds=chapter.start_offset_seconds,
-            end_offset_seconds=chapter.end_offset_seconds,
-            source_chunk_ids=chapter.source_chunk_ids,
-        )
-        for chapter in experience.chapters
-    )
     return AudibleRunManifest(
-        asset_id=experience.manifest.asset_id,
-        revision_id=experience.manifest.revision_id,
-        total_duration_seconds=experience.total_duration_seconds,
-        transcript_file_id=experience.transcript_file_id,
+        asset_id=asset_id,
+        revision_id=revision_id,
+        total_duration_seconds=transcript_spans[-1].end_offset_seconds,
+        transcript_file_id=transcript_file_id,
         chapters=chapters,
-        transcript_spans=spans,
+        transcript_spans=transcript_spans,
         retention_markers=tuple(markers),
         learned_claims=learned,
         unsourced_line_ids=tuple(
-            span.line_id for span in spans if span.grounding_status == "unsourced"
+            span.line_id for span in transcript_spans if span.grounding_status == "unsourced"
         ),
     )
 
@@ -507,5 +538,6 @@ __all__ = [
     "RunChapter",
     "RunTranscriptSpan",
     "assemble_audible_run",
+    "compile_audible_run_manifest",
     "prepare_audible_run_plan",
 ]
