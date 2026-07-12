@@ -91,6 +91,8 @@ def register_settings_decision_competition_dr_nd_shadow_recursive_twin_presentat
 
 
 __all__ = [
+    "SettingsBody",
+    "CompetitionPackBody",
     "settings_decision_competition_dr_nd_shadow_recursive_twin_presentation_weekly_compose_router",
     "register_settings_decision_competition_dr_nd_shadow_recursive_twin_presentation_weekly_compose_routes",
 ]
