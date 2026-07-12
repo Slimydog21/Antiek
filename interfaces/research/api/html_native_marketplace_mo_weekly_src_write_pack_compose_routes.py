@@ -82,6 +82,8 @@ def register_html_native_marketplace_mo_weekly_src_write_pack_compose_routes(
 
 
 __all__ = [
+    "HtmlViewBody",
+    "MarketPackBody",
     "html_native_marketplace_mo_weekly_src_write_pack_compose_router",
     "register_html_native_marketplace_mo_weekly_src_write_pack_compose_routes",
 ]
