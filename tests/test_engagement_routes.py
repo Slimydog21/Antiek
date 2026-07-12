@@ -219,9 +219,7 @@ def test_session_workstation_lifecycle_collective_and_merge(client):
     listed = client.get("/engagement/sessions/asset/asset-a")
     assert listed.status_code == 200
     assert listed.json()["count"] == 2
-    assert [row["session_id"] for row in listed.json()["sessions"]] == sorted(
-        [first, second]
-    )
+    assert [row["session_id"] for row in listed.json()["sessions"]] == sorted([first, second])
 
     projected = client.get(f"/engagement/sessions/{first}")
     assert projected.status_code == 200
@@ -309,9 +307,7 @@ def test_session_workstation_lifecycle_collective_and_merge(client):
     assert draft.status_code == 200, draft.text
     assert draft.json()["mode"] == "draft_combined"
     assert draft.json()["draft_leaves_parent"] is True
-    assert eng_mod._eng().get_document("asset-a")["body_text"] == (
-        "Authoritative parent body."
-    )
+    assert eng_mod._eng().get_document("asset-a")["body_text"] == ("Authoritative parent body.")
     unconfirmed = client.post(
         "/engagement/sessions/merge",
         json={
@@ -352,9 +348,7 @@ def test_session_workstation_lifecycle_collective_and_merge(client):
     )
     assert replay.status_code == 200
     assert replay.json()["merge_receipt_id"] == committed.json()["merge_receipt_id"]
-    assert replay.json()["result_parent_sha256"] == committed.json()[
-        "result_parent_sha256"
-    ]
+    assert replay.json()["result_parent_sha256"] == committed.json()["result_parent_sha256"]
 
 
 def test_session_workstation_contract_rejects_unsafe_shapes(client):
@@ -394,6 +388,150 @@ def test_session_workstation_contract_rejects_unsafe_shapes(client):
     eng_mod._sess().put_session(row)
     integrity = client.get(f"/engagement/sessions/{session_id}")
     assert integrity.status_code == 409
+
+
+def test_confirmed_collective_can_launch_research_and_html_draft(client):
+    session_ids: list[str] = []
+    for index, asset in enumerate(("collective-a", "collective-b"), 1):
+        opened = client.post(
+            "/engagement/sessions/open",
+            json={
+                "asset_id": asset,
+                "selection_text": f"Question {index}",
+                "region_id": f"source-{index}",
+                "research_tier": "deep",
+            },
+        )
+        assert opened.status_code == 200, opened.text
+        session_ids.append(opened.json()["session_id"])
+        completed = client.post(
+            "/engagement/sessions/complete-flywheel",
+            json={
+                "session_id": opened.json()["session_id"],
+                "output_text": f"<script>hostile {index}</script> research finding",
+                "insights": [f"Twin insight {index}"],
+                "questions": [],
+            },
+        )
+        assert completed.status_code == 200, completed.text
+
+    preview_request = {
+        "session_ids": session_ids,
+        "allow_cross_asset": True,
+        "include_twin_preview": True,
+        "include_prompt_block": True,
+        "include_html": True,
+    }
+    preview = client.post("/engagement/sessions/collective", json=preview_request)
+    assert preview.status_code == 200, preview.text
+    assert preview.json()["output_count"] == 2
+    assert "research finding" in preview.json()["prompt_block"]
+    revision = preview.json()["collective_preview_sha256"]
+
+    confirmation = client.post(
+        "/engagement/sessions/collective/confirm",
+        json={
+            **preview_request,
+            "expected_preview_sha256": revision,
+            "idempotency_key": "collective-confirm-001",
+        },
+    )
+    assert confirmation.status_code == 200, confirmation.text
+    unit_id = confirmation.json()["collective_unit_id"]
+    assert confirmation.json()["preview_sha256"] == revision
+    replay = client.post(
+        "/engagement/sessions/collective/confirm",
+        json={
+            **preview_request,
+            "expected_preview_sha256": revision,
+            "idempotency_key": "collective-confirm-001",
+        },
+    )
+    assert replay.json()["collective_unit_id"] == unit_id
+
+    launched = client.post(
+        f"/engagement/sessions/collective/{unit_id}/launch-research",
+        json={
+            "idempotency_key": "collective-launch-001",
+            "anchor_asset_id": "collective-a",
+            "view_mode": "floating",
+            "research_tier": "wrestle",
+        },
+    )
+    assert launched.status_code == 200, launched.text
+    assert launched.json()["source_collective_id"] == unit_id
+    assert launched.json()["source_collective_preview_sha256"] == revision
+    launched_replay = client.post(
+        f"/engagement/sessions/collective/{unit_id}/launch-research",
+        json={
+            "idempotency_key": "collective-launch-001",
+            "anchor_asset_id": "collective-a",
+            "view_mode": "floating",
+            "research_tier": "wrestle",
+        },
+    )
+    assert launched_replay.json()["session_id"] == launched.json()["session_id"]
+    launch_conflict = client.post(
+        f"/engagement/sessions/collective/{unit_id}/launch-research",
+        json={
+            "idempotency_key": "collective-launch-001",
+            "anchor_asset_id": "collective-a",
+            "view_mode": "full",
+            "research_tier": "wrestle",
+        },
+    )
+    assert launch_conflict.status_code == 409
+    bad_anchor = client.post(
+        f"/engagement/sessions/collective/{unit_id}/launch-research",
+        json={
+            "idempotency_key": "collective-launch-002",
+            "anchor_asset_id": "not-a-member",
+        },
+    )
+    assert bad_anchor.status_code == 400
+
+    draft = client.post(
+        f"/engagement/sessions/collective/{unit_id}/written-analysis",
+        json={"idempotency_key": "collective-writing-001"},
+    )
+    assert draft.status_code == 200, draft.text
+    assert draft.json()["source_session_ids"] == session_ids
+    assert "&lt;script&gt;hostile" in draft.json()["html"]
+    assert "<script>hostile" not in draft.json()["html"]
+    assert "Twin insight" in draft.json()["html"]
+
+    source_before = eng_mod._eng().get_owned_spawn(preview.json()["spawn_ids"][0], "__operator__")
+    stale = client.post(
+        "/engagement/sessions/complete-flywheel",
+        json={
+            "session_id": session_ids[0],
+            "output_text": "Changed after review",
+            "insights": [],
+            "questions": [],
+        },
+    )
+    assert stale.status_code == 200
+    refused = client.post(
+        "/engagement/sessions/collective/confirm",
+        json={
+            **preview_request,
+            "expected_preview_sha256": revision,
+            "idempotency_key": "collective-confirm-stale",
+        },
+    )
+    assert refused.status_code == 409
+    assert source_before is not None
+
+    oversized = client.post(
+        "/engagement/sessions/complete-flywheel",
+        json={
+            "session_id": session_ids[0],
+            "output_text": "x" * 500_001,
+            "insights": [],
+            "questions": [],
+        },
+    )
+    assert oversized.status_code == 422
 
 
 def test_session_open_twin_chase_usage_source(client):
@@ -550,9 +688,7 @@ def test_session_routes_isolate_authenticated_owners():
         "/engagement/sessions/asset/shared-logical-asset",
         headers={"x-test-owner": "bob"},
     ).json()
-    assert [row["session_id"] for row in alice_list["sessions"]] == [
-        alice["session_id"]
-    ]
+    assert [row["session_id"] for row in alice_list["sessions"]] == [alice["session_id"]]
     assert [row["session_id"] for row in bob_list["sessions"]] == [bob["session_id"]]
 
     for owner, session, insight in (
@@ -639,14 +775,15 @@ def test_owner_session_discovery_is_cross_asset_bounded_and_private():
         "asset-b",
     }
 
-    bob_list = client.get(
-        "/engagement/sessions/owned", headers={"x-test-owner": "bob"}
-    ).json()
+    bob_list = client.get("/engagement/sessions/owned", headers={"x-test-owner": "bob"}).json()
     assert [row["session_id"] for row in bob_list["sessions"]] == [bob["session_id"]]
-    assert client.get(
-        "/engagement/sessions/owned?cursor=fsess_0000000000000000",
-        headers={"x-test-owner": "alice"},
-    ).status_code == 400
+    assert (
+        client.get(
+            "/engagement/sessions/owned?cursor=fsess_0000000000000000",
+            headers={"x-test-owner": "alice"},
+        ).status_code
+        == 400
+    )
 
 
 def test_session_routes_require_explicit_identity(monkeypatch):
@@ -673,9 +810,7 @@ def test_owner_graph_readiness_is_authenticated_and_non_disclosing(monkeypatch, 
 
     register_engagement_routes(app)
     client = TestClient(app)
-    response = client.get(
-        "/engagement/graph/readiness", headers={"x-test-owner": "alice"}
-    )
+    response = client.get("/engagement/graph/readiness", headers={"x-test-owner": "alice"})
     assert response.status_code == 200
     assert response.json()["owner_graph_scope"] == "unmaterialized"
     assert response.json()["materialized"] is False
@@ -710,21 +845,15 @@ def test_owner_graph_readiness_is_authenticated_and_non_disclosing(monkeypatch, 
     finally:
         con.close()
     set_default_embedding_provider(HashEmbedding(16))
-    mismatch = client.get(
-        "/engagement/graph/readiness", headers={"x-test-owner": "bob"}
-    )
+    mismatch = client.get("/engagement/graph/readiness", headers={"x-test-owner": "bob"})
     assert mismatch.json()["embedding_space_status"] == "configured_mismatch"
     set_default_embedding_provider(HashEmbedding(8))
-    compatible = client.get(
-        "/engagement/graph/readiness", headers={"x-test-owner": "bob"}
-    )
+    compatible = client.get("/engagement/graph/readiness", headers={"x-test-owner": "bob"})
     assert compatible.json()["embedding_space_status"] == "compatible"
 
     unreadable_path = Path(owner_graph_db_path("alice"))
     unreadable_path.write_text("not a duckdb file", encoding="utf-8")
-    unreadable = client.get(
-        "/engagement/graph/readiness", headers={"x-test-owner": "alice"}
-    )
+    unreadable = client.get("/engagement/graph/readiness", headers={"x-test-owner": "alice"})
     assert unreadable.status_code == 200
     assert unreadable.json()["owner_graph_scope"] == "unreadable"
     assert unreadable.json()["materialized"] is True
@@ -866,9 +995,7 @@ def test_session_capability_parity_is_owner_native():
     assert foreign.status_code == 404
 
 
-def test_confirmed_merge_recovers_after_parent_write_before_receipt_settle(
-    client, monkeypatch
-):
+def test_confirmed_merge_recovers_after_parent_write_before_receipt_settle(client, monkeypatch):
     opened = client.post(
         "/engagement/sessions/open",
         json={
@@ -914,14 +1041,10 @@ def test_confirmed_merge_recovers_after_parent_write_before_receipt_settle(
     recovered = client.post("/engagement/sessions/merge", json=body)
     assert recovered.status_code == 200, recovered.text
     assert recovered.json()["merge_receipt_state"] == "applied"
-    assert recovered.json()["result_parent_sha256"] == recovered.json()[
-        "document_sha256"
-    ]
+    assert recovered.json()["result_parent_sha256"] == recovered.json()["document_sha256"]
 
 
-def test_confirmed_twin_promotion_is_owner_isolated_and_replayable(
-    tmp_path, monkeypatch
-):
+def test_confirmed_twin_promotion_is_owner_isolated_and_replayable(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owner-graphs"))
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     set_default_embedding_provider(_PromotionEmbedding())
@@ -1046,7 +1169,10 @@ def test_twin_promotion_rejects_preview_drift_before_graph_write(tmp_path, monke
         route = f"/engagement/sessions/{session['session_id']}/twins"
         assert client.post(route, json={"kind": "insight", "text": "First"}).status_code == 200
         preview = client.post(f"{route}/promote-preview", json={}).json()
-        assert client.post(route, json={"kind": "question", "text": "New question?"}).status_code == 200
+        assert (
+            client.post(route, json={"kind": "question", "text": "New question?"}).status_code
+            == 200
+        )
         refused = client.post(
             f"{route}/promote-confirm",
             json={
@@ -1061,9 +1187,7 @@ def test_twin_promotion_rejects_preview_drift_before_graph_write(tmp_path, monke
         _reset_default_provider()
 
 
-def test_twin_promotion_recovers_after_graph_commit_before_receipt_settle(
-    tmp_path, monkeypatch
-):
+def test_twin_promotion_recovers_after_graph_commit_before_receipt_settle(tmp_path, monkeypatch):
     monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owner-graphs"))
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     set_default_embedding_provider(_PromotionEmbedding())
@@ -1107,9 +1231,12 @@ def test_twin_promotion_recovers_after_graph_commit_before_receipt_settle(
         assert recovered.json()["promotion_receipt_state"] == "applied"
         con = connect_read(owner_graph_db_path("alice"))
         try:
-            assert con.execute(
-                "SELECT count(*) FROM nodes WHERE canonical_label = 'Crash-safe insight'"
-            ).fetchone()[0] == 1
+            assert (
+                con.execute(
+                    "SELECT count(*) FROM nodes WHERE canonical_label = 'Crash-safe insight'"
+                ).fetchone()[0]
+                == 1
+            )
         finally:
             con.close()
     finally:
@@ -1154,9 +1281,10 @@ def test_twin_promotion_rolls_back_graph_and_outbox_before_commit(tmp_path, monk
                 "WHERE table_name = 'twin_promotion_event_outbox'"
             ).fetchone()[0]
             if outbox_exists:
-                assert con.execute(
-                    "SELECT count(*) FROM twin_promotion_event_outbox"
-                ).fetchone()[0] == 0
+                assert (
+                    con.execute("SELECT count(*) FROM twin_promotion_event_outbox").fetchone()[0]
+                    == 0
+                )
         finally:
             con.close()
         events_dir = owner_graph_events_dir("alice", graph_path)

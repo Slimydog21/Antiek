@@ -37,6 +37,9 @@ const updateEngagementSessionView = vi.hoisted(() =>
 );
 const mergeEngagementSessions = vi.hoisted(() => vi.fn());
 const fetchSessionsCollective = vi.hoisted(() => vi.fn());
+const confirmSessionsCollective = vi.hoisted(() => vi.fn());
+const launchCollectiveResearch = vi.hoisted(() => vi.fn());
+const createCollectiveWrittenAnalysis = vi.hoisted(() => vi.fn());
 const listOwnedEngagementSessions = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/engagement", () => ({
@@ -47,6 +50,9 @@ vi.mock("../../api/engagement", () => ({
   listEngagementSessions: vi.fn(),
   mergeEngagementSessions,
   fetchSessionsCollective,
+  confirmSessionsCollective,
+  launchCollectiveResearch,
+  createCollectiveWrittenAnalysis,
   listOwnedEngagementSessions,
 }));
 
@@ -227,6 +233,9 @@ describe("DeepResearchSessionHost", () => {
   beforeEach(() => {
     mergeEngagementSessions.mockReset();
     fetchSessionsCollective.mockReset();
+    confirmSessionsCollective.mockReset();
+    launchCollectiveResearch.mockReset();
+    createCollectiveWrittenAnalysis.mockReset();
     listOwnedEngagementSessions.mockReset().mockResolvedValue({
       owner_id: "alice",
       sessions: [{ ...FIXTURE, source_references: [] }],
@@ -934,6 +943,94 @@ describe("DeepResearchSessionHost", () => {
     });
     expect(await screen.findByTestId("session-collective-preview")).toBeTruthy();
     expect(screen.queryByTestId("deep-research-collective-mount")).toBeNull();
+  });
+
+  it("confirms the exact reviewed collective before enabling descendants", async () => {
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, source_references: [] },
+        { ...FIXTURE, session_id: "fsess_second", spawn_id: "spn_second", goal: "Second", source_references: [] },
+      ],
+      count: 2,
+      next_cursor: null,
+      view_format: "html",
+    });
+    fetchSessionsCollective.mockResolvedValueOnce({
+      asset_ids: ["launch-asset"],
+      source_session_ids: ["fsess_launch_1", "fsess_second"],
+      collective_preview_sha256: "a".repeat(64),
+      html: "<article>Reviewed</article>",
+    });
+    confirmSessionsCollective.mockResolvedValueOnce({
+      collective_unit_id: "cunit_reviewed",
+      preview_sha256: "a".repeat(64),
+      state: "confirmed",
+      html: "<article>Reviewed</article>",
+      view_format: "html",
+      material: {
+        source_session_ids: ["fsess_launch_1", "fsess_second"],
+        unit: { asset_ids: ["launch-asset"] },
+        prompt_block: "prompt",
+      },
+    });
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    await screen.findByText(/2 owned · 1 selected/i);
+    fireEvent.click(screen.getByLabelText("Select Second"));
+    fireEvent.click(screen.getByTestId("build-session-collective"));
+    await screen.findByTestId("session-collective-preview");
+    expect((screen.getByTestId("continue-session-collective") as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("confirm-session-collective"));
+    expect(
+      (await screen.findByTestId("confirmed-session-collective")).textContent,
+    ).toContain("cunit_reviewed");
+    expect(confirmSessionsCollective).toHaveBeenCalledWith(
+      expect.objectContaining({
+        session_ids: ["fsess_launch_1", "fsess_second"],
+        expected_preview_sha256: "a".repeat(64),
+      }),
+    );
+    expect((screen.getByTestId("continue-session-collective") as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByLabelText("Select Second"));
+    expect(screen.queryByTestId("confirmed-session-collective")).toBeNull();
+  });
+
+  it("discards a late collective confirmation after membership drift", async () => {
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, source_references: [] },
+        { ...FIXTURE, session_id: "fsess_deferred", goal: "Deferred", source_references: [] },
+      ],
+      count: 2,
+      next_cursor: null,
+      view_format: "html",
+    });
+    fetchSessionsCollective.mockResolvedValueOnce({
+      collective_preview_sha256: "b".repeat(64),
+      html: "<article>Reviewed</article>",
+    });
+    let resolveConfirmation!: (value: unknown) => void;
+    confirmSessionsCollective.mockImplementationOnce(
+      () => new Promise((resolve) => { resolveConfirmation = resolve; }),
+    );
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    await screen.findByText(/2 owned · 1 selected/i);
+    fireEvent.click(screen.getByLabelText("Select Deferred"));
+    fireEvent.click(screen.getByTestId("build-session-collective"));
+    await screen.findByTestId("session-collective-preview");
+    fireEvent.click(screen.getByTestId("confirm-session-collective"));
+    fireEvent.click(screen.getByLabelText("Select Deferred"));
+    resolveConfirmation({
+      collective_unit_id: "cunit_stale",
+      preview_sha256: "b".repeat(64),
+      state: "confirmed",
+      html: "<article>stale</article>",
+      view_format: "html",
+      material: { source_session_ids: [], unit: {}, prompt_block: "" },
+    });
+    await waitFor(() => expect(confirmSessionsCollective).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId("confirmed-session-collective")).toBeNull();
   });
 
   it("requires explicit cross-asset consent and sends only checked sessions", async () => {

@@ -92,6 +92,29 @@ export type CollectiveResponse = CollectiveResearchUnit & {
     model_id?: string | null;
   } | null;
   usage_event_error?: string | null;
+  source_session_ids?: string[];
+  collective_preview_sha256?: string;
+  html?: string;
+};
+
+export type ConfirmedCollectiveUnit = {
+  collective_unit_id: string;
+  preview_sha256: string;
+  state: "confirmed";
+  html: string;
+  view_format: "html";
+  material: { source_session_ids: string[]; unit: CollectiveResponse; prompt_block: string };
+};
+
+export type CollectiveWrittenAnalysis = {
+  document_id: string;
+  source_collective_id: string;
+  source_preview_sha256: string;
+  source_session_ids: string[];
+  source_spawn_ids: string[];
+  html: string;
+  view_format: "html";
+  state: "draft";
 };
 
 export type SessionFlywheelResponse = {
@@ -1106,5 +1129,60 @@ export async function fetchSessionsCollective(body: {
       include_html: body.include_html ?? true,
     }),
   });
+  return readJson(res);
+}
+
+export async function confirmSessionsCollective(body: {
+  session_ids: string[];
+  expected_preview_sha256: string;
+  idempotency_key: string;
+  query?: string | null;
+  include_twin_preview?: boolean;
+  allow_cross_asset?: boolean;
+}): Promise<ConfirmedCollectiveUnit> {
+  const res = await apiFetch(`${API_BASE}/engagement/sessions/collective/confirm`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...body,
+      query: body.query ?? null,
+      include_twin_preview: body.include_twin_preview ?? false,
+      allow_cross_asset: body.allow_cross_asset ?? false,
+      include_prompt_block: true,
+      include_html: true,
+    }),
+  });
+  return readJson(res);
+}
+
+export async function launchCollectiveResearch(
+  unitId: string,
+  body: {
+    idempotency_key: string;
+    anchor_asset_id: string;
+    view_mode?: "floating" | "full";
+    model_id?: string | null;
+    research_tier?: "fast" | "deep" | "wrestle" | null;
+  },
+): Promise<SessionOpenResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/launch-research`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  return readJson(res);
+}
+
+export async function createCollectiveWrittenAnalysis(
+  unitId: string,
+  idempotencyKey: string,
+): Promise<CollectiveWrittenAnalysis> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/written-analysis`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idempotency_key: idempotencyKey }),
+    },
+  );
   return readJson(res);
 }

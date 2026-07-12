@@ -8,6 +8,7 @@ the floating deep-research substrate.
 from __future__ import annotations
 
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
 from substrate.dispatch.research_tier import normalize_research_tier
@@ -40,6 +41,8 @@ def open_from_highlight_with_references(
     force_new: bool = False,
     research_tier: str | None = None,
     owner_id: str = "__operator__",
+    source_collective_id: str | None = None,
+    source_collective_preview_sha256: str | None = None,
 ) -> FloatingSession:
     """Open floating session from highlight and attach source references.
 
@@ -80,6 +83,8 @@ def open_from_highlight_with_references(
             getattr(spawn, "research_tier", None),
         ),
         owner_id=spawn.owner_id,
+        source_collective_id=source_collective_id,
+        source_collective_preview_sha256=source_collective_preview_sha256,
     )
     session_store.put_session(_to_row(session))
     return session
@@ -158,7 +163,7 @@ def sessions_collective_research(
         spawn_ids.append(row["spawn_id"])
     if len(owner_ids) != 1 or "" in owner_ids:
         raise ValueError("collective sessions require one explicit owner")
-    return merge_spawns_collective(
+    unit = merge_spawns_collective(
         spawn_ids,
         store=engagement_store,
         query=query,
@@ -166,6 +171,14 @@ def sessions_collective_research(
         promote_question_fn=promote_question_fn,
         include_twin_promote=include_twin_promote,
         owner_id=next(iter(owner_ids)),
+    )
+    session_by_spawn = dict(zip(spawn_ids, session_ids, strict=True))
+    return replace(
+        unit,
+        research_outputs=tuple(
+            {**row, "session_id": session_by_spawn.get(str(row.get("spawn_id")))}
+            for row in unit.research_outputs
+        ),
     )
 
 

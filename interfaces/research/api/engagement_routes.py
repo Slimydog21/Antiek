@@ -35,7 +35,9 @@ Surfaces:
 
 from __future__ import annotations
 
+import hashlib
 import hmac
+import json
 import os
 from pathlib import Path
 from typing import Any, Literal
@@ -48,6 +50,7 @@ from substrate.engagement_spine import (
     InMemoryEngagementStore,
     assemble_research_context,
     attach_source_references,
+    collective_research_html,
     evidence_pack_payload,
     hydrate_reference,
     list_source_references,
@@ -89,6 +92,15 @@ from substrate.floating_session import (
     session_research_context,
     sessions_collective_html,
     sessions_collective_research,
+)
+from substrate.floating_session.collective_unit import (
+    claim_collective_action,
+    collective_preview_material,
+    collective_preview_sha256,
+    confirm_collective_unit,
+    create_written_analysis,
+    get_collective_unit,
+    settle_collective_action,
 )
 from substrate.floating_session.merge_receipt import (
     FileMergeReceiptStore,
@@ -338,12 +350,18 @@ class SessionOpenBody(HighlightBody):
 
 class SessionFlywheelBody(BaseModel):
     session_id: str
-    output_text: str
-    insights: list[str] = Field(default_factory=list)
-    questions: list[str] = Field(default_factory=list)
-    query: str | None = None
+    output_text: str = Field(max_length=500_000)
+    insights: list[str] = Field(default_factory=list, max_length=128)
+    questions: list[str] = Field(default_factory=list, max_length=128)
+    query: str | None = Field(default=None, max_length=8_000)
     record_twins: bool = True
     include_twin_promote: bool = True
+
+    @model_validator(mode="after")
+    def _bounded_notes(self) -> SessionFlywheelBody:
+        if any(len(note) > 20_000 for note in (*self.insights, *self.questions)):
+            raise ValueError("flywheel insight and question text is limited to 20000 characters")
+        return self
 
 
 class _ClosedSessionBody(BaseModel):
@@ -379,6 +397,23 @@ class SessionsCollectiveBody(_ClosedSessionBody):
         ):
             raise ValueError("session_ids must be unique canonical session identities")
         return self
+
+
+class SessionsCollectiveConfirmBody(SessionsCollectiveBody):
+    expected_preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str = Field(min_length=8, max_length=128)
+
+
+class CollectiveLaunchResearchBody(_ClosedSessionBody):
+    idempotency_key: str = Field(min_length=8, max_length=128)
+    anchor_asset_id: str = Field(min_length=1, max_length=512)
+    view_mode: Literal["floating", "full"] = "floating"
+    model_id: str | None = Field(default=None, max_length=200)
+    research_tier: Literal["fast", "deep", "wrestle"] | None = None
+
+
+class CollectiveWrittenAnalysisBody(_ClosedSessionBody):
+    idempotency_key: str = Field(min_length=8, max_length=128)
 
 
 class SessionsMergeBody(_ClosedSessionBody):
@@ -1063,9 +1098,7 @@ def _verified_session(session_id: str, owner_id: str):  # type: ignore[no-untype
         if raw_session is None:
             raise HTTPException(status_code=404, detail="session not found")
         if "owner_id" not in raw_session:
-            raise HTTPException(
-                status_code=409, detail="session ownership requires reconciliation"
-            )
+            raise HTTPException(status_code=409, detail="session ownership requires reconciliation")
         if raw_session.get("owner_id") != owner_id:
             raise HTTPException(status_code=404, detail="session not found")
         session = get_session(session_id, session_store=_sess(), engagement_store=_eng())
@@ -1100,6 +1133,8 @@ def _session_payload(session: Any, *, include_html: bool) -> dict[str, Any]:
         "research_tier": session.research_tier,
         "view_format": "html",
         "owner_id": session.owner_id,
+        "source_collective_id": session.source_collective_id,
+        "source_collective_preview_sha256": session.source_collective_preview_sha256,
     }
     if include_html:
         rendered = project_session_html(
@@ -1136,9 +1171,7 @@ def get_owner_graph_readiness(request: Request) -> dict[str, Any]:
         from runtime.db_lock import connect_read
 
         try:
-            configured_fingerprint = embedding_provider_fingerprint(
-                default_embedding_provider()
-            )
+            configured_fingerprint = embedding_provider_fingerprint(default_embedding_provider())
             with connect_read(path) as con:
                 row = con.execute("SELECT COUNT(*) FROM nodes").fetchone()
                 node_count = int(row[0]) if row else 0
@@ -1169,8 +1202,7 @@ def get_owner_graph_readiness(request: Request) -> dict[str, Any]:
                     if configured_fingerprint in stored_fingerprints
                     and (len(stored_fingerprints) > 1 or legacy_count > 0)
                     else "compatible"
-                    if stored_fingerprints == {configured_fingerprint}
-                    and legacy_count == 0
+                    if stored_fingerprints == {configured_fingerprint} and legacy_count == 0
                     else "configured_mismatch"
                     if configured_fingerprint not in stored_fingerprints
                     else "empty"
@@ -1338,9 +1370,7 @@ def get_owned_sessions(
         )
     except ValueError as exc:
         if str(exc) == "session cursor is not available":
-            raise HTTPException(
-                status_code=400, detail="session cursor is not available"
-            ) from exc
+            raise HTTPException(status_code=400, detail="session cursor is not available") from exc
         raise HTTPException(
             status_code=409, detail="owner session index requires reconciliation"
         ) from exc
@@ -1353,9 +1383,7 @@ def get_owned_sessions(
     page = verified[:limit]
     return {
         "owner_id": owner_id,
-        "sessions": [
-            _session_payload(session, include_html=include_html) for session in page
-        ],
+        "sessions": [_session_payload(session, include_html=include_html) for session in page],
         "count": len(page),
         "next_cursor": page[-1].session_id if has_more and page else None,
         "view_format": "html",
@@ -1415,15 +1443,11 @@ def post_session_references(
                 adapters.append(hydrate_fetch_publication)
             if hydrate_arxiv_fetch_by_id is not None:
                 adapters.append(
-                    arxiv_metadata_fetch_publication(
-                        fetch_by_id=hydrate_arxiv_fetch_by_id
-                    )
+                    arxiv_metadata_fetch_publication(fetch_by_id=hydrate_arxiv_fetch_by_id)
                 )
             if hydrate_substack_fetch_post is not None:
                 adapters.append(
-                    substack_post_fetch_publication(
-                        fetch_post=hydrate_substack_fetch_post
-                    )
+                    substack_post_fetch_publication(fetch_post=hydrate_substack_fetch_post)
                 )
             fetcher = compose_fetch_publication(*adapters) if adapters else None
             for reference in body.references:
@@ -1437,9 +1461,7 @@ def post_session_references(
                     owner_id=owner_id,
                 )
                 hydrated.append(asset.to_dict())
-        refs = list_source_references(
-            session.spawn_id, store=_eng(), owner_id=owner_id
-        )
+        refs = list_source_references(session.spawn_id, store=_eng(), owner_id=owner_id)
     except (KeyError, ValueError) as exc:
         raise HTTPException(status_code=400, detail="session references are invalid") from exc
     return {
@@ -1533,9 +1555,7 @@ def get_session_twins(
 
 
 @engagement_router.post("/sessions/{session_id}/twins")
-def post_session_twin(
-    session_id: str, body: SessionTwinBody, request: Request
-) -> dict[str, Any]:
+def post_session_twin(session_id: str, body: SessionTwinBody, request: Request) -> dict[str, Any]:
     owner_id = _request_owner(request)
     session = _verified_session(session_id, owner_id)
     return record_twin_product(
@@ -1862,14 +1882,172 @@ def post_sessions_collective(body: SessionsCollectiveBody, request: Request) -> 
     if body.include_prompt_block:
         out["prompt_block"] = unit.prompt_block()
     if body.include_html:
-        out["html"] = sessions_collective_html(
+        rendered = sessions_collective_html(
             body.session_ids,
             session_store=_sess(),
             engagement_store=_eng(),
             query=body.query,
             include_twin_promote=False,
         )
+        if len(rendered.encode("utf-8")) > 4_000_000:
+            raise HTTPException(status_code=413, detail="collective HTML exceeds response cap")
+        out["html"] = rendered
+    material = collective_preview_material(
+        owner_id=owner_id,
+        source_session_ids=list(body.session_ids),
+        query=body.query,
+        allow_cross_asset=body.allow_cross_asset,
+        include_twin_preview=body.include_twin_preview,
+        unit=unit.to_dict(),
+        prompt_block=unit.prompt_block(),
+    )
+    if len(json.dumps(material, ensure_ascii=False).encode("utf-8")) > 2_000_000:
+        raise HTTPException(status_code=413, detail="collective preview exceeds response cap")
+    out["collective_preview_sha256"] = collective_preview_sha256(material)
     return out
+
+
+@engagement_router.post("/sessions/collective/confirm")
+def post_sessions_collective_confirm(
+    body: SessionsCollectiveConfirmBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    sessions = [_verified_session(session_id, owner_id) for session_id in body.session_ids]
+    assets = tuple(dict.fromkeys(session.parent_asset_id for session in sessions))
+    if len(assets) > 1 and not body.allow_cross_asset:
+        raise HTTPException(
+            status_code=400,
+            detail="cross-asset collective research requires explicit approval",
+        )
+    try:
+        unit = sessions_collective_research(
+            body.session_ids,
+            session_store=_sess(),
+            engagement_store=_eng(),
+            query=body.query,
+            promote_insight_fn=(_offline_promote_insight if body.include_twin_preview else None),
+            promote_question_fn=(_offline_promote_question if body.include_twin_preview else None),
+            include_twin_promote=body.include_twin_preview,
+        )
+        material = collective_preview_material(
+            owner_id=owner_id,
+            source_session_ids=list(body.session_ids),
+            query=body.query,
+            allow_cross_asset=body.allow_cross_asset,
+            include_twin_preview=body.include_twin_preview,
+            unit=unit.to_dict(),
+            prompt_block=unit.prompt_block(),
+        )
+        if len(json.dumps(material, ensure_ascii=False).encode("utf-8")) > 2_000_000:
+            raise HTTPException(status_code=413, detail="collective preview exceeds response cap")
+        durable = confirm_collective_unit(
+            store=_eng(),
+            owner_id=owner_id,
+            idempotency_key=body.idempotency_key,
+            material=material,
+            expected_preview_sha256=body.expected_preview_sha256,
+            rendered_html=collective_research_html(unit),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="collective source is unavailable") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return durable
+
+
+@engagement_router.post("/sessions/collective/{unit_id}/launch-research")
+def post_collective_launch_research(
+    unit_id: str, body: CollectiveLaunchResearchBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    material = dict(unit.get("material") or {})
+    source = dict(material.get("unit") or {})
+    if body.anchor_asset_id not in (source.get("asset_ids") or []):
+        raise HTTPException(status_code=400, detail="anchor asset is not a collective member")
+    prompt = str(material.get("prompt_block") or "").strip()
+    launch_material = {
+        "collective_unit_id": unit_id,
+        "preview_sha256": unit.get("preview_sha256"),
+        "anchor_asset_id": body.anchor_asset_id,
+        "view_mode": body.view_mode,
+        "model_id": body.model_id,
+        "research_tier": body.research_tier or source.get("recommended_research_tier"),
+    }
+    try:
+        receipt = claim_collective_action(
+            store=_eng(),
+            owner_id=owner_id,
+            unit_id=unit_id,
+            action="research_launch",
+            idempotency_key=body.idempotency_key,
+            material=launch_material,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if receipt.get("state") == "applied" and isinstance(receipt.get("result"), dict):
+        replay_session_id = str(receipt["result"].get("session_id") or "")
+        return _session_payload(_verified_session(replay_session_id, owner_id), include_html=True)
+    region_digest = hashlib.sha256(
+        f"collective-launch:v1:{unit_id}:{body.idempotency_key}".encode()
+    ).hexdigest()[:24]
+    try:
+        session = open_from_highlight_with_references(
+            HighlightSelection(
+                asset_id=body.anchor_asset_id,
+                selection_text=prompt,
+                region_id=f"collective:{region_digest}",
+                goal_hint=f"Continue collective research unit {unit_id} as one cohesive investigation.",
+            ),
+            engagement_store=_eng(),
+            session_store=_sess(),
+            references=[
+                value
+                for ref in source.get("source_references") or []
+                if isinstance(ref, dict)
+                if (value := str(ref.get("canonical_url") or ref.get("raw") or "").strip())
+            ],
+            model_id=body.model_id,
+            view_mode=body.view_mode,
+            research_tier=body.research_tier or source.get("recommended_research_tier"),
+            owner_id=owner_id,
+            source_collective_id=unit_id,
+            source_collective_preview_sha256=str(unit.get("preview_sha256") or ""),
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        settle_collective_action(
+            store=_eng(),
+            owner_id=owner_id,
+            receipt_id=str(receipt["receipt_id"]),
+            material_sha256=str(receipt["material_sha256"]),
+            result={"session_id": session.session_id, "spawn_id": session.spawn_id},
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _session_payload(session, include_html=True)
+
+
+@engagement_router.post("/sessions/collective/{unit_id}/written-analysis")
+def post_collective_written_analysis(
+    unit_id: str, body: CollectiveWrittenAnalysisBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    try:
+        return create_written_analysis(
+            store=_eng(),
+            owner_id=owner_id,
+            unit=unit,
+            idempotency_key=body.idempotency_key,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @engagement_router.post("/sessions/merge")
@@ -1888,8 +2066,7 @@ def post_sessions_merge(body: SessionsMergeBody, request: Request) -> dict[str, 
         raise HTTPException(
             status_code=400,
             detail=(
-                "into-parent merge requires confirmation, parent revision, "
-                "and idempotency key"
+                "into-parent merge requires confirmation, parent revision, and idempotency key"
             ),
         )
     parent_before = _parent_revision_sha256(body.parent_asset_id, owner_id)
@@ -1926,9 +2103,7 @@ def post_sessions_merge(body: SessionsMergeBody, request: Request) -> dict[str, 
             current_sha = _parent_revision_sha256(body.parent_asset_id, owner_id)
             if current_sha == result_sha:
                 if receipt_row.get("state") == "prepared":
-                    receipt_row = _receipts().settle(
-                        receipt_id, material_sha, result_sha
-                    )
+                    receipt_row = _receipts().settle(receipt_id, material_sha, result_sha)
                 stored = receipt_row.get("result")
                 if not isinstance(stored, dict):
                     raise HTTPException(
@@ -1961,11 +2136,7 @@ def post_sessions_merge(body: SessionsMergeBody, request: Request) -> dict[str, 
                 before_write=prepare_receipt if body.mode == "into_parent" else None,
             )
     except (KeyError, ValueError) as exc:
-        if (
-            "revision conflicts" in str(exc)
-            and receipt_id is not None
-            and material_sha is not None
-        ):
+        if "revision conflicts" in str(exc) and receipt_id is not None and material_sha is not None:
             replay, _ = _receipts().claim(receipt_row or {})
             result_sha = str(replay.get("result_sha256") or "")
             stored = replay.get("result")

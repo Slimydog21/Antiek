@@ -43,6 +43,8 @@ class FloatingSession:
     # Residual (ji): closed research tier mirrored from spawn reservation.
     research_tier: str = DEFAULT_RESEARCH_TIER
     owner_id: str = "__operator__"
+    source_collective_id: str | None = None
+    source_collective_preview_sha256: str | None = None
 
 
 def _session_id(parent_asset_id: str, spawn_id: str, owner_id: str = "__operator__") -> str:
@@ -67,6 +69,8 @@ def _to_row(session: FloatingSession) -> dict[str, Any]:
         "status": session.status,
         "research_tier": normalize_research_tier(session.research_tier),
         "owner_id": session.owner_id,
+        "source_collective_id": session.source_collective_id,
+        "source_collective_preview_sha256": session.source_collective_preview_sha256,
     }
 
 
@@ -84,6 +88,8 @@ def _from_row(row: dict[str, Any]) -> FloatingSession:
         status=row.get("status") or "reserved",
         research_tier=normalize_research_tier(row.get("research_tier")),
         owner_id=str(row.get("owner_id") or "__operator__"),
+        source_collective_id=row.get("source_collective_id"),
+        source_collective_preview_sha256=row.get("source_collective_preview_sha256"),
     )
 
 
@@ -204,16 +210,10 @@ def list_sessions_for_asset(
     session_store: SessionStore,
     owner_id: str | None = None,
 ) -> list[FloatingSession]:
-    rows = session_store.list_sessions(
-        parent_asset_id, owner_id or "__operator__"
-    )
+    rows = session_store.list_sessions(parent_asset_id, owner_id or "__operator__")
     if owner_id is None:
         return [_from_row(row) for row in rows]
-    return [
-        _from_row(row)
-        for row in rows
-        if row.get("owner_id") == owner_id
-    ]
+    return [_from_row(row) for row in rows if row.get("owner_id") == owner_id]
 
 
 def list_sessions_for_owner(

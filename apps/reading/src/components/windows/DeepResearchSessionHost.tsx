@@ -54,10 +54,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  confirmSessionsCollective,
+  createCollectiveWrittenAnalysis,
   fetchSessionsCollective,
+  launchCollectiveResearch,
   listOwnedEngagementSessions,
   mergeEngagementSessions,
   type CollectiveResponse,
+  type ConfirmedCollectiveUnit,
   type SessionLifecycleResponse,
   type SessionMergeResponse,
 } from "../../api/engagement";
@@ -80,12 +84,14 @@ import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { syncDeepResearchWindowModeDurably } from "../../workspace/deepResearchWindow";
+import { openDeepResearchFromHighlight } from "../../workspace/deepResearchWindow";
 import { parseResearchDomainsFromGoal } from "../../workspace/domainSearchDefaults";
 import { listRecentDeepResearchSpawnIds } from "../../workspace/recentDeepResearchSpawns";
 import { researchPathChoicesReadiness } from "../../workspace/researchPathChoices";
 import { buildDeepResearchWriteHref } from "../../workspace/twinWriteSeed";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
+import { openWindow } from "./openWindow";
 
 export type DeepResearchSessionHostProps = {
   owner_id?: string;
@@ -411,6 +417,11 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const [sessionCollective, setSessionCollective] = useState<
     (CollectiveResponse & { html?: string }) | null
   >(null);
+  const [confirmedCollective, setConfirmedCollective] =
+    useState<ConfirmedCollectiveUnit | null>(null);
+  const collectiveConfirmKey = useRef(newBrowserMergeKey());
+  const collectiveResearchKey = useRef(newBrowserMergeKey());
+  const collectiveWritingKey = useRef(newBrowserMergeKey());
   const [sessionMergeError, setSessionMergeError] = useState<string | null>(null);
   const [sessionMergeBusy, setSessionMergeBusy] = useState(false);
   const [previewedSessionIds, setPreviewedSessionIds] = useState<string[]>([]);
@@ -424,6 +435,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       return next;
     });
     setSessionCollective(null);
+    setConfirmedCollective(null);
     setSessionMerge(null);
     setPreviewedSessionIds([]);
     setCrossAssetApproved(false);
@@ -458,6 +470,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const buildSessionCollective = useCallback(async () => {
     setSessionMergeBusy(true);
     setSessionMergeError(null);
+    setConfirmedCollective(null);
     const requestRevision = selectionRevision.current;
     const requestAuthority = collectiveAuthoritySignature;
     try {
@@ -472,6 +485,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         requestRevision !== selectionRevision.current ||
         requestAuthority !== collectiveAuthoritySignatureRef.current
       ) return;
+      collectiveConfirmKey.current = newBrowserMergeKey();
+      collectiveResearchKey.current = newBrowserMergeKey();
+      collectiveWritingKey.current = newBrowserMergeKey();
       setSessionCollective(collective);
     } catch (error) {
       setSessionMergeError(
@@ -486,6 +502,96 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     selectedSessionIdList,
     selectionCrossesAssets,
   ]);
+  const confirmSessionCollective = useCallback(async () => {
+    if (!sessionCollective?.collective_preview_sha256) return;
+    setSessionMergeBusy(true);
+    setSessionMergeError(null);
+    const requestRevision = selectionRevision.current;
+    const requestAuthority = collectiveAuthoritySignature;
+    try {
+      const confirmed = await confirmSessionsCollective({
+        session_ids: selectedSessionIdList,
+        include_twin_preview: true,
+        allow_cross_asset: selectionCrossesAssets && crossAssetApproved,
+        expected_preview_sha256: sessionCollective.collective_preview_sha256,
+        idempotency_key: collectiveConfirmKey.current,
+      });
+      if (
+        requestRevision !== selectionRevision.current ||
+        requestAuthority !== collectiveAuthoritySignatureRef.current
+      ) return;
+      setConfirmedCollective(confirmed);
+    } catch (error) {
+      setConfirmedCollective(null);
+      setSessionMergeError(error instanceof Error ? error.message : "Collective confirmation failed");
+    } finally {
+      setSessionMergeBusy(false);
+    }
+  }, [
+    collectiveAuthoritySignature,
+    crossAssetApproved,
+    selectedSessionIdList,
+    selectionCrossesAssets,
+    sessionCollective,
+  ]);
+  const continueConfirmedCollective = useCallback(async () => {
+    if (!confirmedCollective) return;
+    const anchor = props.parent_asset_id?.trim() || confirmedCollective.material.unit.asset_ids?.[0];
+    if (!anchor) return;
+    setSessionMergeBusy(true);
+    setSessionMergeError(null);
+    try {
+      const session = await launchCollectiveResearch(confirmedCollective.collective_unit_id, {
+        idempotency_key: collectiveResearchKey.current,
+        anchor_asset_id: anchor,
+        view_mode: "floating",
+        model_id: props.model_id ?? null,
+        research_tier: researchTier,
+      });
+      openDeepResearchFromHighlight({
+        session_id: session.session_id,
+        spawn_id: session.spawn_id,
+        investigation_id: session.investigation_id,
+        asset_id: session.parent_asset_id,
+        selection_text: session.selection_text,
+        owner_id: session.owner_id,
+        status: session.status,
+        model_id: session.model_id ?? undefined,
+        goal: session.goal,
+        research_tier: session.research_tier ?? undefined,
+      });
+    } catch (error) {
+      setSessionMergeError(error instanceof Error ? error.message : "Collective research launch failed");
+    } finally {
+      setSessionMergeBusy(false);
+    }
+  }, [confirmedCollective, props.model_id, props.parent_asset_id, researchTier]);
+  const writeConfirmedCollective = useCallback(async () => {
+    if (!confirmedCollective) return;
+    setSessionMergeBusy(true);
+    setSessionMergeError(null);
+    try {
+      const draft = await createCollectiveWrittenAnalysis(
+        confirmedCollective.collective_unit_id,
+        collectiveWritingKey.current,
+      );
+      openWindow(
+        "hosted_html_document",
+        {
+          document_id: draft.document_id,
+          title: "Collective research analysis draft",
+          html: draft.html,
+          view_format: "html",
+          source: "collective_research",
+        },
+        { id: `win:collective-analysis:${draft.document_id}`, title: "Collective analysis" },
+      );
+    } catch (error) {
+      setSessionMergeError(error instanceof Error ? error.message : "Written analysis failed");
+    } finally {
+      setSessionMergeBusy(false);
+    }
+  }, [confirmedCollective]);
   const confirmSessionMerge = useCallback(async () => {
     const parentAssetId = props.parent_asset_id?.trim();
     if (!parentAssetId || !sessionMerge?.parent_revision_sha256) return;
@@ -1026,6 +1132,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
                     selectionRevision.current += 1;
                     setCrossAssetApproved(event.currentTarget.checked);
                     setSessionCollective(null);
+                    setConfirmedCollective(null);
                   }}
                 />
                 Include selected sessions from {selectedAssets.size} assets in this preview
@@ -1046,6 +1153,37 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               data-testid="build-session-collective"
             >
               Build collective context
+            </button>
+            <button
+              type="button"
+              className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
+              disabled={
+                sessionMergeBusy ||
+                !sessionCollective?.collective_preview_sha256 ||
+                Boolean(confirmedCollective)
+              }
+              onClick={() => void confirmSessionCollective()}
+              data-testid="confirm-session-collective"
+            >
+              Save reviewed unit
+            </button>
+            <button
+              type="button"
+              className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
+              disabled={sessionMergeBusy || !confirmedCollective}
+              onClick={() => void continueConfirmedCollective()}
+              data-testid="continue-session-collective"
+            >
+              Continue as cohesive research
+            </button>
+            <button
+              type="button"
+              className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
+              disabled={sessionMergeBusy || !confirmedCollective}
+              onClick={() => void writeConfirmedCollective()}
+              data-testid="write-session-collective"
+            >
+              Create written analysis
             </button>
             <button
               type="button"
@@ -1079,6 +1217,11 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           {sessionMerge?.merge_receipt_id ? (
             <p className="text-[10px] font-mono" data-testid="session-merge-receipt">
               Applied receipt {sessionMerge.merge_receipt_id}
+            </p>
+          ) : null}
+          {confirmedCollective ? (
+            <p className="text-[10px] font-mono" data-testid="confirmed-session-collective">
+              Confirmed unit {confirmedCollective.collective_unit_id} · source assets unchanged
             </p>
           ) : null}
           {sessionCollective?.html ? (
