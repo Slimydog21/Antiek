@@ -87,4 +87,6 @@ def register_mo_unattended_source_attach_antiek_bench_rewrite_compose_routes(
 __all__ = [
     "mo_unattended_source_attach_antiek_bench_rewrite_compose_router",
     "register_mo_unattended_source_attach_antiek_bench_rewrite_compose_routes",
+    "MoBody",
+    "ResearchPackBody",
 ]
