@@ -84,6 +84,9 @@ def register_twin_search_html_native_marketplace_mo_weekly_src_write_pack_compos
 
 
 __all__ = [
+    "TwinRecordBody",
+    "HtmlPackBody",
+
     "twin_search_html_native_marketplace_mo_weekly_src_write_pack_compose_router",
     "register_twin_search_html_native_marketplace_mo_weekly_src_write_pack_compose_routes",
 ]
