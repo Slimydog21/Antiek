@@ -1,5 +1,5 @@
 /**
- * SpawnMergePanel — single deep-research spawn → draft or parent merge.
+ * SpawnMergePanel — single deep-research spawn → draft or engagement preview.
  *
  * Residual (ci): highlight → floating DR → merge into the reading asset
  * without multi-select collective friction. Composes shipped
@@ -463,11 +463,11 @@ export function SpawnMergePanel({
               : budgetWarn && !forceOverBudget
                 ? "Over budget — enable force override before parent merge"
                 : seamlessSpawnMerge
-                  ? "Merge into parent reading asset (HTML · seamless highlight→DR→merge)"
-                  : "Merge into parent reading asset"
+                  ? "Create parent preview (canonical asset remains unchanged)"
+                  : "Create parent preview"
           }
         >
-          {busy ? "Merging…" : "Merge into parent"}
+          {busy ? "Merging…" : "Create parent preview"}
         </button>
       </div>
 

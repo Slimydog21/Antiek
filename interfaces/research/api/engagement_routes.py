@@ -317,6 +317,14 @@ class MergeBody(BaseModel):
     include_html: bool = True
 
 
+class CanonicalMergeCommitBody(BaseModel):
+    draft_document_id: str = Field(min_length=1)
+    reviewed_draft_sha256: str = Field(min_length=64, max_length=64)
+    target_deliverable_id: str = Field(min_length=1)
+    expected_revision: str | None = None
+    create_combined: bool = False
+
+
 class HydrateRefBody(BaseModel):
     """Hydrate arxiv/substack/url into an HTML-first engagement asset."""
 
@@ -555,6 +563,98 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
         if isinstance(payload, dict):
             payload["usage_event_error"] = str(exc)
     return payload
+
+
+@engagement_router.post("/merge/commit")
+def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any]:
+    """Commit the exact reviewed draft into canonical graph/write authority."""
+
+    from substrate.engagement_spine.canonical_commit import (
+        CanonicalMergeConflict,
+        commit_reviewed_draft,
+        load_reviewed_document_model,
+    )
+    from substrate.engagement_spine.project import project_to_html
+
+    try:
+        with _graph_promotion_batch():
+            con = _request_graph_connection.get()
+            if con is None:
+                raise RuntimeError("canonical merge commit requires graph authority")
+            committed = commit_reviewed_draft(
+                con=con,
+                engagement_store=_eng(),
+                draft_document_id=body.draft_document_id,
+                target_deliverable_id=body.target_deliverable_id,
+                expected_revision=body.expected_revision,
+                reviewed_draft_sha256=body.reviewed_draft_sha256,
+                create_combined=body.create_combined,
+            )
+            doc_model = load_reviewed_document_model(
+                con, committed.deliverable_id, committed.section_id
+            )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="canonical target not found") from exc
+    except CanonicalMergeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "deliverable_id": committed.deliverable_id,
+        "draft_document_id": committed.draft_document_id,
+        "old_revision": committed.old_revision,
+        "new_revision": committed.new_revision,
+        "section_id": committed.section_id,
+        "node_ids": list(committed.node_ids),
+        "paragraph_count": committed.paragraph_count,
+        "draft_sha256": committed.draft_sha256,
+        "view_format": "html",
+        "html": project_to_html(
+            doc_model,
+            document_id=committed.deliverable_id,
+            creator="engagement_spine.canonical_merge_commit",
+        ),
+    }
+
+
+@engagement_router.get("/merge/revision/{deliverable_id}")
+def get_canonical_merge_revision(deliverable_id: str) -> dict[str, str]:
+    from substrate.engagement_spine.canonical_commit import (
+        canonical_deliverable_revision,
+    )
+
+    try:
+        with _graph_promotion_batch():
+            con = _request_graph_connection.get()
+            if con is None:
+                raise RuntimeError("canonical revision requires graph authority")
+            revision = canonical_deliverable_revision(con, deliverable_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="canonical target not found") from exc
+    return {"deliverable_id": deliverable_id, "revision": revision}
+
+
+@engagement_router.get("/merge/blocks/search")
+def search_canonical_merge_blocks(q: str = "", limit: int = 20) -> dict[str, Any]:
+    """Search committed merge blocks against the same graph authority."""
+
+    from substrate.write.block_search import search_blocks
+
+    with _graph_promotion_batch():
+        con = _request_graph_connection.get()
+        if con is None:
+            raise RuntimeError("canonical merge search requires graph authority")
+        hits = search_blocks(con, query=q, limit=max(1, min(limit, 100)))
+    return {
+        "count": len(hits),
+        "hits": [
+            {
+                "node_id": hit.node_id,
+                "label": hit.label,
+                "node_type": hit.node_type,
+                "score": hit.score,
+            }
+            for hit in hits
+        ],
+    }
 
 
 # Optional injectable publication body fetcher for hydrate-ref (tests / wired apps).

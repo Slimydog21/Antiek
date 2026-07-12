@@ -14,6 +14,7 @@ Both produce a TipTap-shaped doc-model suitable for HTML projection.
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import dataclass
 from typing import Any, Literal
 
@@ -104,6 +105,14 @@ def merge_spawn_outputs(
             "mode": mode,
             "source_spawn_ids": list(spawn_ids),
             "doc_model": doc_model,
+            "draft_sha256": hashlib.sha256(
+                json.dumps(
+                    doc_model,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                    ensure_ascii=False,
+                ).encode("utf-8")
+            ).hexdigest(),
         },
     )
 
@@ -167,13 +176,20 @@ def merge_product_payload(
         "view_format": "html",
         "product_panel": "engagement_merge",
         "source": "engagement_spine.merge_spawn_outputs",
+        "draft_sha256": (
+            (store.get_document(result.document_id) or {}).get("draft_sha256")
+        ),
         "notes": [
             (
-                "Draft-combined document; parent asset unchanged until into_parent merge."
+                "Draft-combined document; parent asset unchanged until canonical commit."
                 if draft_leaves_parent
-                else "Merged into parent asset document in-place."
+                else (
+                    "Engagement-store parent preview updated; canonical reading/write "
+                    "authority is unchanged until a reviewed draft is committed."
+                )
             )
         ],
+        "canonical_committed": False,
     }
     # Honesty: draft mode must not rewrite parent document_id content mode
     if draft_leaves_parent and parent_doc.get("mode") == "into_parent":
@@ -273,10 +289,12 @@ def project_merge_html(
     return html
 
 
-def _para(text: str, block_id: str) -> dict[str, Any]:
+def _para(
+    text: str, block_id: str, *, provenance: dict[str, Any]
+) -> dict[str, Any]:
     return {
         "type": "paragraph",
-        "attrs": {"block_id": block_id},
+        "attrs": {"block_id": block_id, "provenance": provenance},
         "content": [{"type": "text", "text": text}],
     }
 
@@ -301,30 +319,76 @@ def _build_doc_model(
     content: list[dict[str, Any]] = []
     if body.strip():
         content.append(_heading("Source", 2, "h-source"))
-        content.append(_para(body.strip(), "p-source"))
+        content.append(
+            _para(
+                body.strip(),
+                "p-source",
+                provenance={"parent_asset_id": parent_asset_id, "kind": "source"},
+            )
+        )
 
     for i, spawn in enumerate(spawns):
         content.append(
             _heading(f"Deep research: {spawn.goal[:80]}", 2, f"h-spawn-{i}")
         )
         content.append(
-            _para(f"Selection: {spawn.selection_text}", f"p-sel-{i}")
+            _para(
+                f"Selection: {spawn.selection_text}",
+                f"p-sel-{i}",
+                provenance=_spawn_provenance(spawn, kind="selection"),
+            )
         )
         if spawn.output_text:
-            content.append(_para(spawn.output_text, f"p-out-{i}"))
+            content.append(
+                _para(
+                    spawn.output_text,
+                    f"p-out-{i}",
+                    provenance=_spawn_provenance(spawn, kind="research_output"),
+                )
+            )
         for j, insight in enumerate(spawn.output_insights):
-            content.append(_para(f"Insight: {insight}", f"p-ins-{i}-{j}"))
+            content.append(
+                _para(
+                    f"Insight: {insight}",
+                    f"p-ins-{i}-{j}",
+                    provenance=_spawn_provenance(spawn, kind="insight"),
+                )
+            )
         for j, question in enumerate(spawn.output_questions):
-            content.append(_para(f"Question: {question}", f"p-q-{i}-{j}"))
+            content.append(
+                _para(
+                    f"Question: {question}",
+                    f"p-q-{i}-{j}",
+                    provenance=_spawn_provenance(spawn, kind="question"),
+                )
+            )
 
     if twins:
         content.append(_heading("Twin notes", 2, "h-twin"))
         for j, note in enumerate(twins):
             label = "Insight" if note.kind == "insight" else "Question"
-            content.append(_para(f"{label}: {note.text}", f"p-twin-{j}"))
+            content.append(
+                _para(
+                    f"{label}: {note.text}",
+                    f"p-twin-{j}",
+                    provenance={
+                        "parent_asset_id": parent_asset_id,
+                        "kind": f"twin_{note.kind}",
+                        "twin_note_ids": [note.note_id],
+                        "spawn_id": note.source_spawn_id,
+                        "investigation_id": note.investigation_id,
+                    },
+                )
+            )
 
     if not content:
-        content.append(_para("(empty merged document)", "p-empty"))
+        content.append(
+            _para(
+                "(empty merged document)",
+                "p-empty",
+                provenance={"parent_asset_id": parent_asset_id, "kind": "empty"},
+            )
+        )
 
     return {
         "title": title if mode == "into_parent" else f"[Draft] {title}",
@@ -335,4 +399,22 @@ def _build_doc_model(
             "merge_mode": mode,
             "spawn_ids": [s.spawn_id for s in spawns],
         },
+    }
+
+
+def _spawn_provenance(spawn: ResearchSpawn, *, kind: str) -> dict[str, Any]:
+    references = []
+    for reference in spawn.source_references:
+        value = (
+            reference.get("ref_id") or reference.get("reference_id")
+        )
+        if value:
+            references.append(str(value))
+    return {
+        "parent_asset_id": spawn.parent_asset_id,
+        "kind": kind,
+        "spawn_id": spawn.spawn_id,
+        "investigation_id": spawn.investigation_id,
+        "region_id": spawn.region_id,
+        "source_reference_ids": references,
     }

@@ -224,6 +224,319 @@ def test_production_twin_promotion_rolls_back_entire_batch(tmp_path: Path) -> No
         assert con.execute("SELECT count(*) FROM nodes").fetchone()[0] == before
 
 
+def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    from substrate.engagement_spine import (
+        HighlightSelection,
+        complete_spawn,
+        merge_product_payload,
+        spawn_from_highlight,
+    )
+
+    path, environment, _ = _runtime_files(tmp_path)
+    app = create_midnight_oil_production_app(path, environ=environment)
+    client = TestClient(app)
+    store = app.state.engagement_store
+    store.put_document(
+        "source-paper",
+        {"title": "Source paper", "body_text": "Immutable source body."},
+    )
+    spawn = spawn_from_highlight(
+        HighlightSelection(
+            asset_id="source-paper",
+            selection_text="A claim requiring research.",
+            region_id="region-1",
+        ),
+        store=store,
+    )
+    complete_spawn(
+        spawn.spawn_id,
+        store=store,
+        output_text="Reviewed research output.",
+        insights=["Reviewed insight."],
+        questions=["Reviewed question?"],
+    )
+    draft = merge_product_payload(
+        "source-paper",
+        [spawn.spawn_id],
+        store=store,
+        mode="draft_combined",
+        include_html=True,
+    )
+    reviewed_document = json.loads(json.dumps(store.get_document(draft["document_id"])))
+    changed_spawn = store.get_spawn(spawn.spawn_id)
+    assert changed_spawn is not None
+    changed_spawn["output_text"] = "Later mutable spawn output."
+    store.put_spawn(changed_spawn)
+
+    body = {
+        "draft_document_id": draft["document_id"],
+        "reviewed_draft_sha256": draft["draft_sha256"],
+        "target_deliverable_id": "dlv-reviewed-draft",
+        "expected_revision": "new",
+        "create_combined": True,
+    }
+    first = client.post("/engagement/merge/commit", json=body)
+    assert first.status_code == 200, first.text
+    from substrate.engagement_spine.project import project_to_html
+
+    assert first.json()["html"] == project_to_html(
+        reviewed_document["doc_model"],
+        document_id="dlv-reviewed-draft",
+        creator="engagement_spine.canonical_merge_commit",
+    )
+    second = client.post("/engagement/merge/commit", json=body)
+    assert second.status_code == 200
+    assert second.json()["new_revision"] == first.json()["new_revision"]
+    assert second.json()["section_id"] == first.json()["section_id"]
+    copied_draft_id = f"{draft['document_id']}-copy"
+    store.put_document(copied_draft_id, reviewed_document)
+    cross_draft_replay = client.post(
+        "/engagement/merge/commit",
+        json={**body, "draft_document_id": copied_draft_id},
+    )
+    assert cross_draft_replay.status_code == 409
+    canonical = client.get("/deliverables/dlv-reviewed-draft").json()
+    assert canonical["title"] == "Source paper"
+    prose = canonical["sections"][-1]["prose_text"]
+    assert "Reviewed research output." in prose
+    assert "Later mutable spawn output." not in prose
+    assert store.get_document("source-paper") == {
+        "title": "Source paper",
+        "body_text": "Immutable source body.",
+    }
+    revision = client.get("/engagement/merge/revision/dlv-reviewed-draft")
+    assert revision.status_code == 200
+    assert revision.json()["revision"] == first.json()["new_revision"]
+    with connect_read(str(app.state.engagement_graph_db_path)) as con:
+        metadata = json.loads(
+            con.execute(
+                "SELECT metadata FROM deliverables WHERE deliverable_id = ?",
+                ["dlv-reviewed-draft"],
+            ).fetchone()[0]
+        )
+        assert metadata["reviewed_doc_model"] == reviewed_document["doc_model"]
+        assert (
+            con.execute(
+                "SELECT count(*) FROM section_blocks WHERE section_id = ?",
+                [first.json()["section_id"]],
+            ).fetchone()[0]
+            == first.json()["paragraph_count"]
+        )
+        assert (
+            con.execute(
+                "SELECT count(*) FROM outline_blocks WHERE section_id = ?",
+                [first.json()["section_id"]],
+            ).fetchone()[0]
+            == first.json()["paragraph_count"]
+        )
+    search = client.get("/engagement/merge/blocks/search", params={"q": "Reviewed insight"})
+    assert search.status_code == 200
+    assert any("Reviewed insight." in hit["label"] for hit in search.json()["hits"])
+
+    other_target = client.post(
+        "/engagement/merge/commit",
+        json={**body, "target_deliverable_id": "dlv-reviewed-draft-copy"},
+    )
+    assert other_target.status_code == 200, other_target.text
+    assert other_target.json()["section_id"] != first.json()["section_id"]
+
+    newer_draft = merge_product_payload(
+        "source-paper",
+        [spawn.spawn_id],
+        store=store,
+        mode="draft_combined",
+        parent_body="A distinct reviewed revision.",
+    )
+    with connect_read(str(app.state.engagement_graph_db_path)) as con:
+        before_stale = {
+            table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in (
+                "deliverables",
+                "deliverable_sections",
+                "section_blocks",
+                "outline_blocks",
+                "nodes",
+                "edges",
+            )
+        }
+    stale = client.post(
+        "/engagement/merge/commit",
+        json={
+            "draft_document_id": newer_draft["document_id"],
+            "reviewed_draft_sha256": newer_draft["draft_sha256"],
+            "target_deliverable_id": "dlv-reviewed-draft",
+            "expected_revision": "stale-revision",
+            "create_combined": False,
+        },
+    )
+    assert stale.status_code == 409
+    with connect_read(str(app.state.engagement_graph_db_path)) as con:
+        assert {
+            table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in before_stale
+        } == before_stale
+
+    tampered = store.get_document(draft["document_id"])
+    assert tampered is not None
+    tampered["doc_model"]["content"].append(
+        {
+            "type": "paragraph",
+            "attrs": {"provenance": {"kind": "forged"}},
+            "content": [{"type": "text", "text": "Forged after review."}],
+        }
+    )
+    store.put_document(draft["document_id"], tampered)
+    rejected = client.post(
+        "/engagement/merge/commit",
+        json={**body, "target_deliverable_id": "dlv-tampered"},
+    )
+    assert rejected.status_code == 409
+    assert client.get("/deliverables/dlv-tampered").status_code == 404
+
+    # Rewriting both mutable draft content and its store-side hash cannot bypass
+    # the operator-held hash of the exact reviewed bytes.
+    tampered_hash = hashlib.sha256(
+        json.dumps(
+            tampered["doc_model"],
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    tampered["draft_sha256"] = tampered_hash
+    store.put_document(draft["document_id"], tampered)
+    review_token_rejected = client.post(
+        "/engagement/merge/commit",
+        json={**body, "target_deliverable_id": "dlv-review-token"},
+    )
+    assert review_token_rejected.status_code == 409
+    assert client.get("/deliverables/dlv-review-token").status_code == 404
+
+    invalid = json.loads(json.dumps(reviewed_document))
+    first_paragraph = next(
+        block for block in invalid["doc_model"]["content"] if block.get("type") == "paragraph"
+    )
+    first_paragraph["attrs"]["provenance"] = {}
+    invalid_hash = hashlib.sha256(
+        json.dumps(
+            invalid["doc_model"],
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+    ).hexdigest()
+    invalid["draft_sha256"] = invalid_hash
+    store.put_document(draft["document_id"], invalid)
+    invalid_provenance = client.post(
+        "/engagement/merge/commit",
+        json={
+            **body,
+            "reviewed_draft_sha256": invalid_hash,
+            "target_deliverable_id": "dlv-invalid-provenance",
+        },
+    )
+    assert invalid_provenance.status_code == 409
+    assert client.get("/deliverables/dlv-invalid-provenance").status_code == 404
+
+    # An idempotency checkpoint is evidence, not authority: canonical drift
+    # invalidates replay even when its metadata still names this draft.
+    with connect_write(str(app.state.engagement_graph_db_path)) as con:
+        con.execute(
+            "DELETE FROM edges WHERE source_node_id = ?",
+            [first.json()["node_ids"][0]],
+        )
+    store.put_document(draft["document_id"], reviewed_document)
+    drift_rejected = client.post("/engagement/merge/commit", json=body)
+    assert drift_rejected.status_code == 409
+
+
+def test_canonical_merge_commit_rolls_back_after_mid_transaction_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from substrate.engagement_spine import (
+        HighlightSelection,
+        canonical_commit,
+        complete_spawn,
+        merge_product_payload,
+        spawn_from_highlight,
+    )
+
+    path, environment, _ = _runtime_files(tmp_path)
+    app = create_midnight_oil_production_app(path, environ=environment)
+    client = TestClient(app)
+    store = app.state.engagement_store
+    spawn = spawn_from_highlight(
+        HighlightSelection(asset_id="atomic-source", selection_text="Atomic claim"),
+        store=store,
+    )
+    complete_spawn(spawn.spawn_id, store=store, output_text="Atomic output")
+    draft = merge_product_payload(
+        "atomic-source", [spawn.spawn_id], store=store, mode="draft_combined"
+    )
+    colliding_parent_id = canonical_commit.content_addressed_id(
+        "node", "source-asset|atomic-source"
+    )
+    with connect_write(str(app.state.engagement_graph_db_path)) as con:
+        con.execute(
+            "INSERT INTO nodes "
+            "(node_id, canonical_label, node_type, graph_scope, metadata) "
+            "VALUES (?, 'poisoned authority', 'entity', 'depth', '{}')",
+            [colliding_parent_id],
+        )
+    collision = client.post(
+        "/engagement/merge/commit",
+        json={
+            "draft_document_id": draft["document_id"],
+            "reviewed_draft_sha256": draft["draft_sha256"],
+            "target_deliverable_id": "dlv-node-collision",
+            "expected_revision": "new",
+            "create_combined": True,
+        },
+    )
+    assert collision.status_code == 409
+    assert client.get("/deliverables/dlv-node-collision").status_code == 404
+    with connect_write(str(app.state.engagement_graph_db_path)) as con:
+        con.execute("DELETE FROM nodes WHERE node_id = ?", [colliding_parent_id])
+    original = canonical_commit.commit_reviewed_draft
+
+    def fail_after_writes(**kwargs: Any) -> Any:
+        original(**kwargs)
+        raise RuntimeError("injected after canonical writes")
+
+    monkeypatch.setattr(canonical_commit, "commit_reviewed_draft", fail_after_writes)
+    with connect_read(str(app.state.engagement_graph_db_path)) as con:
+        before = {
+            table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in (
+                "deliverables",
+                "deliverable_sections",
+                "section_blocks",
+                "outline_blocks",
+                "nodes",
+                "edges",
+            )
+        }
+    with pytest.raises(RuntimeError, match="injected after canonical writes"):
+        client.post(
+            "/engagement/merge/commit",
+            json={
+                "draft_document_id": draft["document_id"],
+                "reviewed_draft_sha256": draft["draft_sha256"],
+                "target_deliverable_id": "dlv-atomic-failure",
+                "expected_revision": "new",
+                "create_combined": True,
+            },
+        )
+    with connect_read(str(app.state.engagement_graph_db_path)) as con:
+        after = {
+            table: con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+            for table in before
+        }
+    assert after == before
+
+
 def test_worker_no_work_is_structured_and_non_spending(tmp_path: Path) -> None:
     path, environment, _ = _runtime_files(tmp_path)
     runtime = build_worker_runtime(path, environ=environment)
@@ -805,6 +1118,35 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert replayed.json()["twin_count"] == twin_body["note_count"]
         replayed_twins = client.get(f"/engagement/twins/{detail.asset_id}")
         assert replayed_twins.json()["note_count"] == twin_body["note_count"]
+        draft = client.post(
+            "/engagement/merge",
+            json={
+                "parent_asset_id": detail.asset_id,
+                "spawn_ids": list(detail.spawn_ids),
+                "mode": "draft_combined",
+                "include_html": True,
+            },
+        )
+        assert draft.status_code == 200, draft.text
+        committed = client.post(
+            "/engagement/merge/commit",
+            json={
+                "draft_document_id": draft.json()["document_id"],
+                "reviewed_draft_sha256": draft.json()["draft_sha256"],
+                "target_deliverable_id": "dlv-runtime-combined",
+                "expected_revision": "new",
+                "create_combined": True,
+            },
+        )
+        assert committed.status_code == 200, committed.text
+        assert committed.json()["paragraph_count"] >= 3
+        assert committed.json()["node_ids"]
+        canonical = client.get("/deliverables/dlv-runtime-combined")
+        assert canonical.status_code == 200, canonical.text
+        canonical_sections = canonical.json()["sections"]
+        assert canonical_sections
+        assert canonical_sections[-1]["prose_provenance"]
+        assert "Runtime synthesis with durable evidence." in canonical_sections[-1]["prose_text"]
         restarted_app = create_midnight_oil_production_app(path, environ=environment)
         restarted_client = TestClient(restarted_app)
         restarted_twins = restarted_client.get(f"/engagement/twins/{detail.asset_id}")
