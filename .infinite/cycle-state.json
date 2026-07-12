@@ -1,7 +1,7 @@
 {
-  "cycle": 16,
+  "cycle": 17,
   "phase": "INVESTIGATE",
-  "subgoal": "Ground live cohesive research in rights-aware arXiv and Substack evidence",
+  "subgoal": "Build an attested fixed-egress publication connector capability without weakening signed source scope",
   "lanes": [],
   "engineHealth": {
     "grok": "ok",
@@ -18,7 +18,8 @@
     {"cycle": 12, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 13, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 14, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
-    {"cycle": 15, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
+    {"cycle": 15, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
+    {"cycle": 16, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
   ],
-  "updatedAt": "2026-07-12T19:39:00Z"
+  "updatedAt": "2026-07-12T20:12:00Z"
 }
