@@ -43,9 +43,7 @@ def _item(
     predecessors: tuple[str, ...] = (),
     shard: int | None = None,
 ) -> StagePlanItem:
-    key = stage_key(
-        operation_id=OPERATION, goal_index=0, kind=kind, shard_index=shard
-    )
+    key = stage_key(operation_id=OPERATION, goal_index=0, kind=kind, shard_index=shard)
     return StagePlanItem(
         ordinal=ordinal,
         kind=kind,
@@ -163,6 +161,7 @@ def _evidence(item: StagePlanItem, label: str = "planner") -> dict[str, object]:
         "route_receipt": {
             "route_receipt_id": f"route-{label}",
             "event_id": f"event-{label}",
+            "actual_cents": 6,
         },
         "source_receipts": [],
     }
@@ -186,6 +185,7 @@ def _effect(
         route_receipt_id=f"route-{kind if kind != 'gather' else 'gather'}",
         source_receipt_ids=(),
         provider_event_id=f"event-{kind if kind != 'gather' else 'gather'}",
+        actual_cents=6,
     )
     return StageEffectReceipt(
         receipt_id=effect_receipt_id(**fields),  # type: ignore[arg-type]
@@ -197,6 +197,7 @@ def _effect(
         route_receipt_id=f"route-{kind}",
         source_receipt_ids=(),
         provider_event_id=f"event-{kind}",
+        actual_cents=6,
         returned_at_ms=returned_at_ms,
     )
 
@@ -311,6 +312,35 @@ def test_return_replay_ignores_observation_time_and_returns_original(
     )
     assert replay == returned
     assert replay.returned_at_ms == 30
+    persisted = runtime.store.get_stage_effect(runtime.plan.job_id, item.stage_key)
+    assert persisted == (effect, evidence)
+
+
+def test_recovery_read_rejects_structurally_valid_evidence_cost_tampering(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    item, _, reserved = _reserve(runtime)
+    evidence = _evidence(item)
+    runtime.store.checkpoint_stage_returned(
+        job_id=runtime.plan.job_id,
+        stage_key=item.stage_key,
+        expected_revision=reserved.revision,
+        effect=_effect(item, evidence),
+        stage_evidence=evidence,
+        **runtime.kwargs(now_ms=31),  # type: ignore[arg-type]
+    )
+    tampered = json.loads(json.dumps(evidence))
+    tampered["route_receipt"]["actual_cents"] = 5
+    with sqlite3.connect(runtime.store.path) as connection:
+        connection.execute(
+            "UPDATE midnight_oil_stage_effects SET evidence_json = ? WHERE job_id = ?",
+            (json.dumps(tampered), runtime.plan.job_id),
+        )
+    with pytest.raises(ValueError, match="conflicts with its effect receipt"):
+        runtime.store.get_stage_effect(runtime.plan.job_id, item.stage_key)
+    with pytest.raises(ValueError, match="conflicts with its effect receipt"):
+        runtime.store.get_job(runtime.plan.job_id)
 
 
 def test_settle_requires_settled_exact_hold_and_live_lease(tmp_path: Path) -> None:
@@ -332,7 +362,7 @@ def test_settle_requires_settled_exact_hold_and_live_lease(tmp_path: Path) -> No
             expected_revision=returned.revision,
             **runtime.kwargs(now_ms=32),  # type: ignore[arg-type]
         )
-    runtime.ledger.settle(hold, 7)
+    runtime.ledger.settle(hold, 6)
     settled = runtime.store.mark_stage_settled(
         job_id=runtime.plan.job_id,
         stage_key=item.stage_key,
@@ -340,7 +370,7 @@ def test_settle_requires_settled_exact_hold_and_live_lease(tmp_path: Path) -> No
         **runtime.kwargs(now_ms=33),  # type: ignore[arg-type]
     )
     exposure = runtime.ledger.stage_exposure(runtime.plan.job_id, item.stage_key)
-    assert exposure.state == "settled" and exposure.confirmed_cents == 7
+    assert exposure.state == "settled" and exposure.confirmed_cents == 6
     assert settled.state == "settled"
 
 
@@ -434,8 +464,11 @@ def test_caller_fabricated_callhold_cannot_authorize_settlement(tmp_path: Path) 
         **runtime.kwargs(now_ms=31),  # type: ignore[arg-type]
     )
     fake = CallHold(
-        hold_id="fake", run_id=runtime.plan.job_id, role=item.router_role,
-        projected_max_cents=item.projected_max_cents, call_key=item.stage_key
+        hold_id="fake",
+        run_id=runtime.plan.job_id,
+        role=item.router_role,
+        projected_max_cents=item.projected_max_cents,
+        call_key=item.stage_key,
     )
     with pytest.raises(ReservationNotFound):
         runtime.ledger.settle(fake, 1)
@@ -446,7 +479,9 @@ def test_caller_fabricated_callhold_cannot_authorize_settlement(tmp_path: Path) 
             expected_revision=returned.revision,
             **runtime.kwargs(now_ms=32),  # type: ignore[arg-type]
         )
-    assert runtime.ledger.stage_exposure(runtime.plan.job_id, item.stage_key).hold_id == hold.hold_id
+    assert (
+        runtime.ledger.stage_exposure(runtime.plan.job_id, item.stage_key).hold_id == hold.hold_id
+    )
 
 
 def test_budget_exposure_change_before_fence_prevents_stage_commit(tmp_path: Path) -> None:
@@ -539,13 +574,16 @@ def test_exact_replays_need_no_live_or_current_external_authority(tmp_path: Path
         expected_step_index=0,
         action=lambda: (None, True),
     )
-    assert runtime.store.reserve_stage(
-        job_id=runtime.plan.job_id,
-        stage_key=item.stage_key,
-        expected_revision=0,
-        input_evidence_sha256=INPUT_HASH,
-        **runtime.kwargs(now_ms=2_000),  # type: ignore[arg-type]
-    ) == reserved
+    assert (
+        runtime.store.reserve_stage(
+            job_id=runtime.plan.job_id,
+            stage_key=item.stage_key,
+            expected_revision=0,
+            input_evidence_sha256=INPUT_HASH,
+            **runtime.kwargs(now_ms=2_000),  # type: ignore[arg-type]
+        )
+        == reserved
+    )
 
     unknown_runtime = _runtime(tmp_path / "unknown")
     unknown_item, unknown_hold, unknown_reserved = _reserve(unknown_runtime)
@@ -564,12 +602,15 @@ def test_exact_replays_need_no_live_or_current_external_authority(tmp_path: Path
         terminal_state="failed_reconcile",
         completed_at_ms=60,
     )
-    assert unknown_runtime.store.mark_stage_unknown(
-        job_id=unknown_runtime.plan.job_id,
-        stage_key=unknown_item.stage_key,
-        expected_revision=unknown_reserved.revision,
-        **unknown_runtime.kwargs(now_ms=10_000),  # type: ignore[arg-type]
-    ) == unknown
+    assert (
+        unknown_runtime.store.mark_stage_unknown(
+            job_id=unknown_runtime.plan.job_id,
+            stage_key=unknown_item.stage_key,
+            expected_revision=unknown_reserved.revision,
+            **unknown_runtime.kwargs(now_ms=10_000),  # type: ignore[arg-type]
+        )
+        == unknown
+    )
 
     returned_runtime = _runtime(tmp_path / "returned")
     returned_item, returned_hold, returned_reserved = _reserve(returned_runtime)
@@ -591,14 +632,17 @@ def test_exact_replays_need_no_live_or_current_external_authority(tmp_path: Path
         terminal_state="failed",
         completed_at_ms=50,
     )
-    assert returned_runtime.store.checkpoint_stage_returned(
-        job_id=returned_runtime.plan.job_id,
-        stage_key=returned_item.stage_key,
-        expected_revision=returned_reserved.revision,
-        effect=effect.model_copy(update={"returned_at_ms": 9_999}),
-        stage_evidence=evidence,
-        **returned_runtime.kwargs(now_ms=9_999),  # type: ignore[arg-type]
-    ) == returned
+    assert (
+        returned_runtime.store.checkpoint_stage_returned(
+            job_id=returned_runtime.plan.job_id,
+            stage_key=returned_item.stage_key,
+            expected_revision=returned_reserved.revision,
+            effect=effect.model_copy(update={"returned_at_ms": 9_999}),
+            stage_evidence=evidence,
+            **returned_runtime.kwargs(now_ms=9_999),  # type: ignore[arg-type]
+        )
+        == returned
+    )
 
     settled_runtime = _runtime(tmp_path / "settled")
     settled_item, settled_hold, settled_reserved = _reserve(settled_runtime)
@@ -611,7 +655,7 @@ def test_exact_replays_need_no_live_or_current_external_authority(tmp_path: Path
         stage_evidence=settled_evidence,
         **settled_runtime.kwargs(now_ms=31),  # type: ignore[arg-type]
     )
-    settled_runtime.ledger.settle(settled_hold, 3)
+    settled_runtime.ledger.settle(settled_hold, 6)
     settled = settled_runtime.store.mark_stage_settled(
         job_id=settled_runtime.plan.job_id,
         stage_key=settled_item.stage_key,
@@ -625,9 +669,12 @@ def test_exact_replays_need_no_live_or_current_external_authority(tmp_path: Path
         terminal_state="complete",
         completed_at_ms=60,
     )
-    assert settled_runtime.store.mark_stage_settled(
-        job_id=settled_runtime.plan.job_id,
-        stage_key=settled_item.stage_key,
-        expected_revision=settled_returned.revision,
-        **settled_runtime.kwargs(now_ms=10_000),  # type: ignore[arg-type]
-    ) == settled
+    assert (
+        settled_runtime.store.mark_stage_settled(
+            job_id=settled_runtime.plan.job_id,
+            stage_key=settled_item.stage_key,
+            expected_revision=settled_returned.revision,
+            **settled_runtime.kwargs(now_ms=10_000),  # type: ignore[arg-type]
+        )
+        == settled
+    )

@@ -25,9 +25,7 @@ def _ledger(tmp_path: Path) -> BudgetLedger:
 
 def test_stage_key_open_exposure_and_exact_replay_fail_closed(tmp_path: Path) -> None:
     ledger = _ledger(tmp_path)
-    hold = ledger.reserve_call(
-        "run-1", "gatherer", 250, call_key=STAGE_KEY
-    )
+    hold = ledger.reserve_call("run-1", "gatherer", 250, call_key=STAGE_KEY)
     exposure = ledger.stage_exposure("run-1", STAGE_KEY)
     assert exposure.call_key == hold.call_key == STAGE_KEY
     assert exposure.hold_id == hold.hold_id
@@ -86,9 +84,7 @@ def test_guarded_stage_settlement_retains_actual_cents_after_restart(
         "settled",
     )
     with pytest.raises(CallKeyReplay):
-        restarted.guarded_call(
-            "run-1", "gatherer", 250, paid_call, call_key=STAGE_KEY
-        )
+        restarted.guarded_call("run-1", "gatherer", 250, paid_call, call_key=STAGE_KEY)
     assert calls == 1
 
 
@@ -99,9 +95,7 @@ def test_unknown_stage_exposure_reconciles_to_confirmed_actual(tmp_path: Path) -
         raise TimeoutError("provider outcome unknown")
 
     with pytest.raises(UnknownCallOutcome) as unknown:
-        ledger.guarded_call(
-            "run-1", "gatherer", 300, ambiguous, call_key=STAGE_KEY
-        )
+        ledger.guarded_call("run-1", "gatherer", 300, ambiguous, call_key=STAGE_KEY)
     exposure = ledger.stage_exposure("run-1", STAGE_KEY)
     assert (exposure.confirmed_cents, exposure.open_cents) == (0, 0)
     assert (exposure.unknown_cents, exposure.state) == (300, "unknown")
@@ -115,6 +109,66 @@ def test_unknown_stage_exposure_reconciles_to_confirmed_actual(tmp_path: Path) -
     )
 
 
+def test_recovery_can_fail_closed_an_open_stage_hold_without_private_api(
+    tmp_path: Path,
+) -> None:
+    ledger = _ledger(tmp_path)
+    ledger.reserve_call("run-1", "gatherer", 300, call_key=STAGE_KEY)
+    unknown = ledger.mark_stage_call_unknown("run-1", STAGE_KEY)
+    assert (unknown.state, unknown.unknown_cents) == ("unknown", 300)
+    assert ledger.mark_stage_call_unknown("run-1", STAGE_KEY) == unknown
+    ledger.resolve_unknown(unknown.hold_id, 211)
+    with pytest.raises(ValueError, match="only an open"):
+        ledger.mark_stage_call_unknown("run-1", STAGE_KEY)
+
+
+def test_concurrent_recovery_unknown_transition_is_exactly_idempotent(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "stage-budget.duckdb"
+    ledger = _ledger(tmp_path)
+    ledger.reserve_call("run-1", "gatherer", 300, call_key=STAGE_KEY)
+    barrier = threading.Barrier(8)
+
+    def recover(_: int) -> str:
+        contender = BudgetLedger(str(path))
+        barrier.wait()
+        return contender.mark_stage_call_unknown("run-1", STAGE_KEY).state
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        assert list(pool.map(recover, range(8))) == ["unknown"] * 8
+    assert ledger.stage_exposure("run-1", STAGE_KEY).unknown_cents == 300
+
+
+def test_after_reserve_failure_keeps_ambiguous_checkpoint_hold_open(
+    tmp_path: Path,
+) -> None:
+    ledger = _ledger(tmp_path)
+    called = False
+
+    def provider() -> tuple[str, int]:
+        nonlocal called
+        called = True
+        return "impossible", 1
+
+    def checkpoint(_hold: object) -> None:
+        raise RuntimeError("stage reservation CAS failed")
+
+    with pytest.raises(RuntimeError, match="reservation CAS"):
+        ledger.guarded_call(
+            "run-1",
+            "gatherer",
+            300,
+            provider,
+            call_key=STAGE_KEY,
+            after_reserve=checkpoint,
+        )
+    assert not called
+    restarted = BudgetLedger(str(tmp_path / "stage-budget.duckdb"))
+    restarted.ensure_schema()
+    assert restarted.stage_exposure("run-1", STAGE_KEY).state == "open"
+
+
 def test_proven_not_dispatched_stage_remains_non_replayable(tmp_path: Path) -> None:
     ledger = _ledger(tmp_path)
 
@@ -122,9 +176,7 @@ def test_proven_not_dispatched_stage_remains_non_replayable(tmp_path: Path) -> N
         raise CallNotDispatched("failed before network")
 
     with pytest.raises(CallNotDispatched):
-        ledger.guarded_call(
-            "run-1", "gatherer", 200, refused, call_key=STAGE_KEY
-        )
+        ledger.guarded_call("run-1", "gatherer", 200, refused, call_key=STAGE_KEY)
     exposure = ledger.stage_exposure("run-1", STAGE_KEY)
     assert (exposure.confirmed_cents, exposure.open_cents, exposure.unknown_cents) == (
         0,
@@ -146,9 +198,7 @@ def test_concurrent_stage_key_reservation_allocates_one_hold(tmp_path: Path) -> 
         contender.ensure_schema()
         barrier.wait()
         try:
-            contender.reserve_call(
-                "run-1", "gatherer", 225, call_key=STAGE_KEY
-            )
+            contender.reserve_call("run-1", "gatherer", 225, call_key=STAGE_KEY)
         except CallKeyReplay:
             return "replay"
         return "created"

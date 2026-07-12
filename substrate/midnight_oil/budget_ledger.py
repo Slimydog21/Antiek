@@ -103,9 +103,7 @@ class CallKeyReplay(RuntimeError):
 
     def __init__(self, exposure: StageBudgetExposure) -> None:
         self.exposure = exposure
-        super().__init__(
-            f"Call key {exposure.call_key} already has durable state {exposure.state}"
-        )
+        super().__init__(f"Call key {exposure.call_key} already has durable state {exposure.state}")
 
 
 class UnknownCallOutcome(RuntimeError):
@@ -149,9 +147,7 @@ class UnknownOutcomePersistenceError(RuntimeError):
         self.hold = hold
         self.provider_error = provider_error
         self.bookkeeping_error = bookkeeping_error
-        super().__init__(
-            f"Unknown-outcome persistence failed for hold {hold.hold_id}"
-        )
+        super().__init__(f"Unknown-outcome persistence failed for hold {hold.hold_id}")
 
 
 # ---------------------------------------------------------------------------
@@ -321,12 +317,10 @@ class BudgetLedger:
                 "WHERE freed_drawn_cents IS NULL"
             )
             ctx.execute(
-                "ALTER TABLE midnight_oil_call_holds "
-                "ADD COLUMN IF NOT EXISTS call_key TEXT"
+                "ALTER TABLE midnight_oil_call_holds ADD COLUMN IF NOT EXISTS call_key TEXT"
             )
             ctx.execute(
-                "ALTER TABLE midnight_oil_call_holds "
-                "ADD COLUMN IF NOT EXISTS actual_cents BIGINT"
+                "ALTER TABLE midnight_oil_call_holds ADD COLUMN IF NOT EXISTS actual_cents BIGINT"
             )
             ctx.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS midnight_oil_call_key_unique "
@@ -564,9 +558,7 @@ class BudgetLedger:
                         [run_id, checked_call_key],
                     ).fetchone()
                     if existing is not None:
-                        existing_hold, existing_role, existing_projected, state, actual = (
-                            existing
-                        )
+                        existing_hold, existing_role, existing_projected, state, actual = existing
                         if (
                             str(existing_role) != role
                             or int(existing_projected) != projected_max_cents
@@ -1117,6 +1109,55 @@ class BudgetLedger:
         finally:
             con.close()
 
+    def mark_stage_call_unknown(self, run_id: str, call_key: str) -> StageBudgetExposure:
+        """Fail closed an open keyed stage hold after an ambiguous dispatch window."""
+        checked = _call_key(call_key)
+        assert checked is not None
+        with (
+            self._coordinator.acquire_write_context(
+                "midnight_oil.budget_ledger.stage_unknown"
+            ) as ctx,
+            self._txn(ctx),
+        ):
+            row = ctx.execute(
+                "SELECT hold_id, role, projected_max_cents, state, actual_cents "
+                "FROM midnight_oil_call_holds WHERE run_id = ? AND call_key = ?",
+                [run_id, checked],
+            ).fetchone()
+            if row is None:
+                raise ReservationNotFound(checked)
+            hold_id, role, projected, state, actual = row
+            if state == "open":
+                hit = ctx.execute(
+                    "UPDATE midnight_oil_call_holds SET state = 'unknown', "
+                    "updated_at = CURRENT_TIMESTAMP WHERE hold_id = ? AND state = 'open' "
+                    "RETURNING 1",
+                    [hold_id],
+                ).fetchone()
+                if hit is None:
+                    raise RuntimeError("stage hold changed during unknown transition")
+                balance = self._load_balance(ctx, run_id)
+                self._append_ledger(
+                    ctx,
+                    run_id=run_id,
+                    role=str(role),
+                    event="unknown_outcome",
+                    amount_cents=int(projected),
+                    remaining_cents=balance.remaining_cents,
+                )
+                state = "unknown"
+            elif state != "unknown":
+                raise ValueError("only an open stage call may become unknown")
+            return self._stage_exposure_row(
+                run_id=run_id,
+                call_key=checked,
+                hold_id=str(hold_id),
+                role=str(role),
+                projected_cents=int(projected),
+                state=str(state),
+                actual_cents=None if actual is None else int(actual),
+            )
+
     def run_stage_fenced(
         self,
         run_id: str,
@@ -1162,9 +1203,7 @@ class BudgetLedger:
                 actual_cents=None if actual is None else int(actual),
             )
             if exposure.state not in expected_states:
-                raise ValueError(
-                    "stage transition conflicts with authoritative budget exposure"
-                )
+                raise ValueError("stage transition conflicts with authoritative budget exposure")
             return action(exposure)
 
     # --- guarded_call -----------------------------------------------------
@@ -1177,6 +1216,7 @@ class BudgetLedger:
         call: Callable[[], tuple[T, int]],
         *,
         call_key: str | None = None,
+        after_reserve: Callable[[CallHold], None] | None = None,
         before_settle: Callable[[T, int], None] | None = None,
     ) -> tuple[T, RemainingBalance]:
         """Execute *call* with budget guard.
@@ -1202,6 +1242,8 @@ class BudgetLedger:
             projected_max_cents,
             call_key=call_key,
         )
+        if after_reserve is not None:
+            after_reserve(hold)
 
         def raise_unknown(error: Exception) -> NoReturn:
             try:

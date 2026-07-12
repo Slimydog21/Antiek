@@ -301,6 +301,7 @@ def test_typed_effect_receipt_is_content_addressed_and_closed() -> None:
             route_receipt_id="route-1",
             source_receipt_ids=(),
             provider_event_id="event-1",
+            actual_cents=7,
         ),
         stage_key=item.stage_key,
         provider_effect_key=item.provider_effect_key,
@@ -310,6 +311,7 @@ def test_typed_effect_receipt_is_content_addressed_and_closed() -> None:
         route_receipt_id="route-1",
         source_receipt_ids=(),
         provider_event_id="event-1",
+        actual_cents=7,
         returned_at_ms=12,
     )
     assert receipt.output_sha256 == OUTPUT_HASH

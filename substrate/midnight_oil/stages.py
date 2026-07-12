@@ -101,6 +101,7 @@ class StageEffectReceipt(_ClosedModel):
     route_receipt_id: str = Field(min_length=1, max_length=512)
     source_receipt_ids: tuple[str, ...] = ()
     provider_event_id: str = Field(min_length=1, max_length=512)
+    actual_cents: int = Field(ge=0)
     returned_at_ms: int = Field(ge=0)
 
     @model_validator(mode="after")
@@ -125,6 +126,7 @@ class StageEffectReceipt(_ClosedModel):
             route_receipt_id=self.route_receipt_id,
             source_receipt_ids=self.source_receipt_ids,
             provider_event_id=self.provider_event_id,
+            actual_cents=self.actual_cents,
         )
         if self.receipt_id != expected_receipt_id:
             raise ValueError("effect receipt id conflicts with canonical content")
@@ -292,12 +294,15 @@ def effect_receipt_id(
     route_receipt_id: str,
     source_receipt_ids: tuple[str, ...],
     provider_event_id: str,
+    actual_cents: int,
 ) -> str:
     """Return replay-stable identity; local observation time is excluded.
 
     Source receipt order is semantic because it preserves the bounded evidence
     ranking presented to the role. Reordering therefore creates a new receipt.
     """
+    if type(actual_cents) is not int or actual_cents < 0:
+        raise ValueError("actual_cents must be a non-negative integer")
     return hashlib.sha256(
         _canonical_json(
             {
@@ -310,6 +315,7 @@ def effect_receipt_id(
                 "route_receipt_id": route_receipt_id,
                 "source_receipt_ids": list(source_receipt_ids),
                 "provider_event_id": provider_event_id,
+                "actual_cents": actual_cents,
             }
         )
     ).hexdigest()

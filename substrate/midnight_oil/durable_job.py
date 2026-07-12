@@ -84,20 +84,17 @@ class DurableJobStore:
             if row is None:
                 return None
             job = _decode_job(str(row[0]), expected_job_id=job_id)
-            effects = connection.execute(
-                "SELECT evidence_json FROM midnight_oil_stage_effects "
-                "WHERE job_id = ? ORDER BY rowid", (job_id,)
+            effect_rows = connection.execute(
+                "SELECT stage_key FROM midnight_oil_stage_effects WHERE job_id = ? ORDER BY rowid",
+                (job_id,),
             ).fetchall()
+            effects = [self._read_effect(connection, job_id, str(row[0]))[1] for row in effect_rows]
         by_key = {
             str(item.get("step_key")): item
             for item in job.get("step_evidence", ())
             if isinstance(item, dict) and item.get("step_key")
         }
-        for effect_row in effects:
-            value = json.loads(str(effect_row[0]))
-            if not isinstance(value, dict):
-                raise ValueError("stored stage evidence is invalid")
-            evidence = _canonical_stage_evidence(value)
+        for evidence in effects:
             by_key[str(evidence["step_key"])] = evidence
         job["step_evidence"] = list(by_key.values())
         job["returned_step_keys"] = list(
@@ -121,9 +118,12 @@ class DurableJobStore:
             connection.execute("PRAGMA foreign_keys = ON")
             connection.execute("BEGIN IMMEDIATE")
             try:
-                if connection.execute(
-                    "SELECT 1 FROM midnight_oil_job_details WHERE job_id = ?", (plan.job_id,)
-                ).fetchone() is None:
+                if (
+                    connection.execute(
+                        "SELECT 1 FROM midnight_oil_job_details WHERE job_id = ?", (plan.job_id,)
+                    ).fetchone()
+                    is None
+                ):
                     raise KeyError(plan.job_id)
                 existing = connection.execute(
                     "SELECT job_id, plan_json FROM midnight_oil_stage_plans WHERE job_id = ?",
@@ -162,7 +162,8 @@ class DurableJobStore:
         with self._connect() as connection:
             row = connection.execute(
                 "SELECT job_id, stage_key, receipt_json FROM midnight_oil_stage_receipts "
-                "WHERE job_id = ? AND stage_key = ?", (job_id, stage_key)
+                "WHERE job_id = ? AND stage_key = ?",
+                (job_id, stage_key),
             ).fetchone()
         return None if row is None else _decode_receipt(tuple(row))
 
@@ -170,6 +171,21 @@ class DurableJobStore:
         _bounded(job_id, "job_id")
         with self._connect() as connection:
             return self._list_stage_receipts(connection, job_id)
+
+    def get_stage_effect(
+        self, job_id: str, stage_key: str
+    ) -> tuple[StageEffectReceipt, dict[str, Any]] | None:
+        """Return the immutable effect/evidence checkpoint for recovery."""
+        _bounded(job_id, "job_id")
+        _hash(stage_key, "stage_key")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM midnight_oil_stage_effects WHERE job_id = ? AND stage_key = ?",
+                (job_id, stage_key),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._read_effect(connection, job_id, stage_key)
 
     def reserve_stage(
         self,
@@ -289,7 +305,7 @@ class DurableJobStore:
     ) -> StageReceipt:
         """Atomically persist stage-owned evidence and merge the job projection."""
         canonical_evidence = _canonical_stage_evidence(stage_evidence)
-        evidence_sha, route_id, source_ids, event_id = _stage_evidence_binding(
+        evidence_sha, route_id, source_ids, event_id, actual_cents = _stage_evidence_binding(
             canonical_evidence, effect.provider_effect_key
         )
         if (
@@ -298,6 +314,7 @@ class DurableJobStore:
             or effect.route_receipt_id != route_id
             or effect.source_receipt_ids != source_ids
             or effect.provider_event_id != event_id
+            or effect.actual_cents != actual_cents
         ):
             raise ValueError("effect receipt conflicts with exact durable stage evidence")
         current, plan, item = self._runtime_authority(job_id, stage_key)
@@ -332,7 +349,8 @@ class DurableJobStore:
                             return durable
                         raise ValueError("returned stage replay conflicts with durable effect")
                     if durable.revision != expected_revision or durable.state not in {
-                        "reserved", "unknown"
+                        "reserved",
+                        "unknown",
                     }:
                         raise ValueError("stage changed before returned checkpoint")
                     if (
@@ -410,6 +428,10 @@ class DurableJobStore:
 
         def mutate(exposure: StageBudgetExposure) -> StageReceipt:
             _same_hold(current, exposure)
+            with self._connect() as connection:
+                effect, _ = self._read_effect(connection, job_id, stage_key)
+            if exposure.confirmed_cents != effect.actual_cents:
+                raise ValueError("settled budget actual cents conflict with stage effect")
             return self._transition(
                 job_id=job_id,
                 stage_key=stage_key,
@@ -481,9 +503,7 @@ class DurableJobStore:
                     plan.job_id,
                     item.stage_key,
                     expected_states=expected_budget_states,
-                    action=lambda exposure: mutation(
-                        _validate_exposure(exposure, item)
-                    ),
+                    action=lambda exposure: mutation(_validate_exposure(exposure, item)),
                 ),
                 False,
             )
@@ -591,7 +611,8 @@ class DurableJobStore:
     ) -> StageReceipt:
         row = connection.execute(
             "SELECT job_id, stage_key, receipt_json FROM midnight_oil_stage_receipts "
-            "WHERE job_id = ? AND stage_key = ?", (job_id, stage_key)
+            "WHERE job_id = ? AND stage_key = ?",
+            (job_id, stage_key),
         ).fetchone()
         if row is None:
             raise KeyError(stage_key)
@@ -617,14 +638,27 @@ class DurableJobStore:
             or not isinstance(evidence, dict)
         ):
             raise ValueError("stage effect SQL identity conflicts with durable JSON")
-        return effect, _canonical_stage_evidence(evidence)
+        canonical_evidence = _canonical_stage_evidence(evidence)
+        evidence_sha, route_id, source_ids, event_id, actual_cents = _stage_evidence_binding(
+            canonical_evidence, effect.provider_effect_key
+        )
+        if (
+            effect.output_sha256 != evidence_sha
+            or effect.route_receipt_id != route_id
+            or effect.source_receipt_ids != source_ids
+            or effect.provider_event_id != event_id
+            or effect.actual_cents != actual_cents
+        ):
+            raise ValueError("durable stage evidence conflicts with its effect receipt")
+        return effect, canonical_evidence
 
     def _list_stage_receipts(
         self, connection: sqlite3.Connection, job_id: str
     ) -> tuple[StageReceipt, ...]:
         rows = connection.execute(
             "SELECT job_id, stage_key, receipt_json FROM midnight_oil_stage_receipts "
-            "WHERE job_id = ?", (job_id,)
+            "WHERE job_id = ?",
+            (job_id,),
         ).fetchall()
         receipts = tuple(_decode_receipt(tuple(row)) for row in rows)
         return tuple(sorted(receipts, key=lambda receipt: receipt.ordinal))
@@ -656,9 +690,7 @@ class DurableJobStore:
             raise ValueError("durable stage roster conflicts with exact plan")
 
 
-def _validate_exposure(
-    exposure: StageBudgetExposure, item: StagePlanItem
-) -> StageBudgetExposure:
+def _validate_exposure(exposure: StageBudgetExposure, item: StagePlanItem) -> StageBudgetExposure:
     if (
         exposure.call_key != item.stage_key
         or exposure.role != item.router_role
@@ -694,7 +726,7 @@ def _canonical_stage_evidence(value: dict[str, Any]) -> dict[str, Any]:
 
 def _stage_evidence_binding(
     evidence: dict[str, Any], provider_effect_key: str
-) -> tuple[str, str, tuple[str, ...], str]:
+) -> tuple[str, str, tuple[str, ...], str, int]:
     if evidence.get("step_key") != provider_effect_key:
         raise ValueError("stage evidence key conflicts with provider effect key")
     encoded = _canonical(evidence).encode()
@@ -704,12 +736,19 @@ def _stage_evidence_binding(
         raise ValueError("stage evidence lacks route or source receipts")
     route_id = str(route.get("route_receipt_id") or "").strip()
     event_id = str(route.get("event_id") or "").strip()
+    actual_cents = route.get("actual_cents")
     source_ids = tuple(
         str(row.get("source_id") or "").strip() for row in sources if isinstance(row, dict)
     )
-    if not route_id or not event_id or any(not value for value in source_ids):
+    if (
+        not route_id
+        or not event_id
+        or type(actual_cents) is not int
+        or actual_cents < 0
+        or any(not value for value in source_ids)
+    ):
         raise ValueError("stage evidence receipt identifiers are incomplete")
-    return hashlib.sha256(encoded).hexdigest(), route_id, source_ids, event_id
+    return hashlib.sha256(encoded).hexdigest(), route_id, source_ids, event_id, actual_cents
 
 
 def _decode_job(encoded: str, *, expected_job_id: str) -> dict[str, Any]:
@@ -754,8 +793,10 @@ def _bounded(value: str, field: str) -> None:
 
 
 def _hash(value: str, field: str) -> None:
-    if type(value) is not str or len(value) != 64 or any(
-        c not in "0123456789abcdef" for c in value
+    if (
+        type(value) is not str
+        or len(value) != 64
+        or any(c not in "0123456789abcdef" for c in value)
     ):
         raise ValueError(f"{field} must be canonical sha256")
 
