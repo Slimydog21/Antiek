@@ -68,6 +68,11 @@ from .multimedia_reviewed_visual_routes import (
     multimedia_reviewed_visual_router,
     multimedia_reviewed_visual_runtime_from_environment,
 )
+from .multimedia_tts_gateway_routes import (
+    get_multimedia_tts_gateway_runtime,
+    multimedia_tts_gateway_router,
+    multimedia_tts_gateway_runtime_from_environment,
+)
 
 multimedia_router = APIRouter(prefix="/multimedia", tags=["multimedia"])
 multimedia_router.include_router(multimedia_reconciliation_router)
@@ -75,6 +80,7 @@ multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
+multimedia_router.include_router(multimedia_tts_gateway_router)
 _STORE = MultimediaAssetStore()
 
 
@@ -346,6 +352,11 @@ def register_multimedia_routes(app: FastAPI) -> None:
     if production_worker_runtime is not None:
         app.dependency_overrides[get_multimedia_production_worker_runtime] = (
             lambda: production_worker_runtime
+        )
+    tts_gateway_runtime = multimedia_tts_gateway_runtime_from_environment()
+    if tts_gateway_runtime is not None:
+        app.dependency_overrides[get_multimedia_tts_gateway_runtime] = (
+            lambda: tts_gateway_runtime
         )
 
 
