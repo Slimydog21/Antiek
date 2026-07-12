@@ -43,6 +43,11 @@ def _s() -> HostStore:
     return _store
 
 
+def get_marketplace_host_store() -> HostStore:
+    """Return the shared account-host store used by all hosted-document routes."""
+    return _s()
+
+
 def _c() -> Catalog:
     global _catalog
     if _catalog is None:
@@ -434,5 +439,6 @@ __all__ = [
     "marketplace_host_router",
     "register_marketplace_host_routes",
     "reset_marketplace_host_store",
+    "get_marketplace_host_store",
     "catalog_honesty_payload",
 ]

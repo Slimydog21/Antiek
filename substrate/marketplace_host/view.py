@@ -15,14 +15,24 @@ def _paragraphs_from_body(body: str) -> list[dict[str, Any]]:
         chunks = [body.strip() or "(empty)"]
     nodes: list[dict[str, Any]] = []
     for chunk in chunks:
-        # Cap very long single blocks for stable projection
-        text = chunk if len(chunk) <= 4000 else chunk[:3997] + "..."
-        nodes.append(
-            {
-                "type": "paragraph",
-                "content": [{"type": "text", "text": text}],
-            }
-        )
+        # Bound individual projection nodes without discarding canonical text.
+        # Split at whitespace where possible; a single enormous token falls
+        # back to the hard boundary and remains lossless across nodes.
+        remaining = chunk
+        while remaining:
+            split_at = min(len(remaining), 4000)
+            if split_at < len(remaining):
+                boundary = remaining.rfind(" ", 0, split_at + 1)
+                if boundary > 0:
+                    split_at = boundary
+            text = remaining[:split_at]
+            nodes.append(
+                {
+                    "type": "paragraph",
+                    "content": [{"type": "text", "text": text}],
+                }
+            )
+            remaining = remaining[split_at:].lstrip(" ")
     return nodes
 
 

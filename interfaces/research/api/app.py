@@ -1746,6 +1746,10 @@ def create_app(
     # Marketplace host-into-account — catalog → host → HTML library view.
     from .marketplace_host_routes import register_marketplace_host_routes
     register_marketplace_host_routes(app)
+    # Shared owner-bound ingest for Wrestle/private uploads; Marketplace wraps
+    # the same service only after its entitlement gate.
+    from .hosted_document_routes import register_hosted_document_routes
+    register_hosted_document_routes(app)
     # Read SPR-09 — library catalog (paginated/filtered/searched view over the
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
