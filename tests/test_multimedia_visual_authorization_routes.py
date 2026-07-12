@@ -37,6 +37,8 @@ def test_route_returns_safe_exact_authority_and_replays(tmp_path: Path) -> None:
         store=store,
         registry=VisualAuthorizationRegistry(db_path=str(tmp_path / "auth.duckdb"), signing_key=KEY),
         terms=VisualAuthorizationTerms("recovery-1", "b" * 64, 500_000, 600),
+        db_path=str(tmp_path / "auth.duckdb"),
+        signing_key=KEY,
     )
     body = _request(ready).__dict__
     route = f"/multimedia/assets/{ready.asset.asset_id}/visual-authorizations"

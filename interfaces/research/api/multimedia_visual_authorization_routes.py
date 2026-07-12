@@ -66,6 +66,8 @@ class MultimediaVisualAuthorizationRuntime:
     store: MultimediaAssetStore
     registry: VisualAuthorizationRegistry
     terms: VisualAuthorizationTerms
+    db_path: str
+    signing_key: bytes
 
 
 def get_multimedia_visual_authorization_runtime() -> MultimediaVisualAuthorizationRuntime:
@@ -115,6 +117,8 @@ def multimedia_visual_authorization_runtime_from_environment(
             maximum_ceiling_microdollars=maximum_ceiling,
             quote_ttl_seconds=quote_ttl,
         ),
+        db_path=fields["db_path"],
+        signing_key=signing_key,
     )
 
 

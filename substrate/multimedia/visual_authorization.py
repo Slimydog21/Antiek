@@ -68,6 +68,7 @@ class VisualAuthorizationResult:
     height: int
     seed: int
     request_body_digest: str
+    provider_request: Imagen3Request
     quote: KreaQuote
     authorization: MultimediaExecutionAuthorizationV2
 
@@ -202,7 +203,61 @@ class VisualAuthorizationRegistry:
                 raise
         return VisualAuthorizationResult(
             chapter.chapter_id, scene.scene_id, width, height, seed,
-            prepared.body_digest, quote, authorization,
+            prepared.body_digest, image_request, quote, authorization,
+        )
+
+    def reopen(
+        self,
+        *,
+        asset_id: str,
+        request_id: str,
+        expected_revision_id: str,
+        owner_id: str,
+        store: MultimediaAssetStore,
+        terms: VisualAuthorizationTerms,
+        now: datetime,
+    ) -> VisualAuthorizationResult:
+        if not _ID.fullmatch(request_id):
+            raise VisualAuthorizationError("visual authorization identifier is invalid")
+        owner_digest = hashlib.sha256(owner_id.encode()).hexdigest()
+        coordinator = FlockWriteCoordinator(self._db_path)
+        with coordinator.acquire_write_context("multimedia.visual_authorization.reopen") as ctx:
+            ctx.execute(_DDL)
+            row = ctx.execute(
+                "SELECT * FROM multimedia_visual_authorizations "
+                "WHERE owner_identity_digest=? AND request_id=?",
+                [owner_digest, request_id],
+            ).fetchone()
+        if row is None or len(row) != 9 or not isinstance(row[8], str) or not hmac.compare_digest(
+            row[8], _mac(list(row[:8]), self._key)
+        ):
+            raise VisualAuthorizationError("visual authorization is unavailable")
+        try:
+            authorization = MultimediaExecutionAuthorizationV2.from_dict(json.loads(row[7]))
+            issued = datetime.fromisoformat(authorization.issued_at.replace("Z", "+00:00"))
+            expires = datetime.fromisoformat(authorization.expires_at.replace("Z", "+00:00"))
+            ttl_seconds = int((expires - issued).total_seconds())
+        except Exception as exc:
+            raise VisualAuthorizationError("stored visual authorization integrity failed") from exc
+        if (
+            authorization.operator_id != owner_id or authorization.asset_id != asset_id
+            or authorization.revision_id != expected_revision_id
+        ):
+            raise VisualAuthorizationError("visual authorization authority conflicts")
+        return self.authorize(
+            asset_id,
+            VisualAuthorizationRequest(
+                request_id=request_id,
+                expected_revision_id=expected_revision_id,
+                chapter_id=str(row[3]),
+                approved_ceiling_microdollars=authorization.approved_ceiling_microdollars,
+                operator_acknowledged_spend=True,
+                ttl_seconds=ttl_seconds,
+            ),
+            owner_id=owner_id,
+            store=store,
+            terms=terms,
+            now=now,
         )
 
     def _replay(self, row, request_hash, prepared, terms, now):  # noqa: ANN001
@@ -240,7 +295,9 @@ class VisualAuthorizationRegistry:
             raise VisualAuthorizationError("stored visual authorization integrity failed") from exc
         return VisualAuthorizationResult(
             str(row[3]), str(row[4]), terms["width"], terms["height"], terms["seed"],
-            prepared.body_digest, quote, authorization,
+            prepared.body_digest,
+            Imagen3Request(**json.loads(prepared.body)),
+            quote, authorization,
         )
 
 

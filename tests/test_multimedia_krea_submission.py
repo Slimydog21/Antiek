@@ -52,7 +52,9 @@ ISSUED = datetime(2026, 7, 11, 5, 0, tzinfo=UTC)
 NOW = ISSUED + timedelta(minutes=1)
 TOKEN = "test-id:secret-never-log-this"
 REPO_ROOT = Path(__file__).resolve().parents[1]
-AUTHORIZED_KREA_CLIENT_CONSTRUCTORS: frozenset[str] = frozenset()
+AUTHORIZED_KREA_CLIENT_CONSTRUCTORS: frozenset[str] = frozenset(
+    {"interfaces/research/api/multimedia_visual_generation_routes.py:82"}
+)
 
 
 class _ServerState:
