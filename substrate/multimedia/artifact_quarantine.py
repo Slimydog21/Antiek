@@ -128,14 +128,20 @@ def quarantine_artifact(
         if declared_length < 1 or declared_length > max_bytes:
             raise ArtifactQuarantineError("artifact exceeds byte limit")
     payload = bytearray()
-    for chunk in response.body:
-        if time.monotonic() - started > timeout_seconds:
-            raise ArtifactQuarantineError("artifact download timed out")
-        if not isinstance(chunk, bytes):
-            raise ArtifactQuarantineError("artifact transport yielded invalid bytes")
-        payload.extend(chunk)
-        if len(payload) > max_bytes:
-            raise ArtifactQuarantineError("artifact exceeds byte limit")
+    iterator = iter(response.body)
+    try:
+        for chunk in iterator:
+            if time.monotonic() - started > timeout_seconds:
+                raise ArtifactQuarantineError("artifact download timed out")
+            if not isinstance(chunk, bytes):
+                raise ArtifactQuarantineError("artifact transport yielded invalid bytes")
+            payload.extend(chunk)
+            if len(payload) > max_bytes:
+                raise ArtifactQuarantineError("artifact exceeds byte limit")
+    finally:
+        close = getattr(iterator, "close", None)
+        if callable(close):
+            close()
     data = bytes(payload)
     _validate_structure(data, declared)
     digest = hashlib.sha256(data).hexdigest()
@@ -288,8 +294,11 @@ def _existing_receipt(
         raise ArtifactQuarantineError("artifact receipt is invalid")
     path = Path(str(row[6]))
     try:
-        metadata = path.stat()
-        if not stat.S_ISREG(metadata.st_mode) or stat.S_IMODE(metadata.st_mode) != 0o600:
+        metadata = path.lstat()
+        if (
+            path.is_symlink() or not stat.S_ISREG(metadata.st_mode)
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+        ):
             raise ArtifactQuarantineError("artifact receipt file is invalid")
         data = path.read_bytes()
     except OSError:
