@@ -35,8 +35,10 @@ from .knowledge_finalization import (
     MultimediaKnowledgeFinalizationResponse,
     MultimediaKnowledgeFinalizationStatus,
     MultimediaKnowledgeRecoveryRequest,
+    MultimediaTwinDocument,
     finalize_multimedia_knowledge,
     inspect_multimedia_knowledge_finalization,
+    read_multimedia_twin_document,
     recover_multimedia_knowledge_finalization,
 )
 from .knowledge_registration import (
@@ -205,9 +207,11 @@ __all__ = [
     "MultimediaKnowledgeFinalizationResponse",
     "MultimediaKnowledgeFinalizationStatus",
     "MultimediaKnowledgeRecoveryRequest",
+    "MultimediaTwinDocument",
     "finalize_multimedia_knowledge",
     "inspect_multimedia_knowledge_finalization",
     "recover_multimedia_knowledge_finalization",
+    "read_multimedia_twin_document",
     "MultimediaDistillationState",
     "authorize_multimedia_distillation_recovery",
     "get_multimedia_distillation_state",

@@ -20,8 +20,10 @@ from substrate.multimedia.knowledge_finalization import (
     MultimediaKnowledgeFinalizationResponse,
     MultimediaKnowledgeFinalizationStatus,
     MultimediaKnowledgeRecoveryRequest,
+    MultimediaTwinDocument,
     finalize_multimedia_knowledge,
     inspect_multimedia_knowledge_finalization,
+    read_multimedia_twin_document,
     recover_multimedia_knowledge_finalization,
 )
 from substrate.multimedia.read_model import (
@@ -176,6 +178,27 @@ async def finalize_multimedia_asset_knowledge(
         )
     except MultimediaKnowledgeFinalizationError as exc:
         status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@multimedia_router.get(
+    "/assets/{asset_id}/knowledge-twin",
+    response_model=MultimediaTwinDocument,
+)
+def get_multimedia_asset_knowledge_twin(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaTwinDocument:
+    try:
+        return read_multimedia_twin_document(
+            asset_id,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia twin is unavailable" else 409
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 

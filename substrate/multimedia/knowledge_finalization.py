@@ -2,12 +2,17 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from roles.note_taker import Distiller
+from runtime.db_lock import connect_read
+from services.html_projection.gate import ScriptViolation, assert_script_free
+from substrate.books.serve_guard import serve_full_text_guarded
 from substrate.graph.schema import init_database_at_path
 from substrate.multimedia.information_asset import (
     MultimediaInformationAssetError,
@@ -62,6 +67,18 @@ class MultimediaKnowledgeRecoveryRequest(BaseModel):
     expected_revision_id: str = Field(min_length=1, max_length=128)
     operator_acknowledged_model_use: bool = False
     operator_acknowledged_duplicate_model_risk: bool = False
+
+
+class MultimediaTwinDocument(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    asset_id: str
+    revision_id: str
+    source_document_id: str
+    twin_document_id: str
+    title: str
+    html: str = Field(max_length=8 * 1024 * 1024)
+    html_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 async def finalize_multimedia_knowledge(
@@ -134,17 +151,13 @@ def inspect_multimedia_knowledge_finalization(
             asset_id=record.asset.asset_id,
             revision_id=record.asset.revision_id,
             asset_status=str(record.asset.status),
-            distillation=MultimediaDistillationState(
-                state="not_started", recovery_eligible=False
-            ),
+            distillation=MultimediaDistillationState(state="not_started", recovery_eligible=False),
             knowledge_link=record.knowledge_link,
         )
     init_database_at_path(db_path)
     asset = project_multimedia_information_asset(record, owner_id=owner_id)
     try:
-        state = get_multimedia_distillation_state(
-            asset, db_path=db_path, owner_id=owner_id
-        )
+        state = get_multimedia_distillation_state(asset, db_path=db_path, owner_id=owner_id)
     except MultimediaKnowledgeRegistrationError as exc:
         raise MultimediaKnowledgeFinalizationError(str(exc)) from exc
     return MultimediaKnowledgeFinalizationStatus(
@@ -209,6 +222,119 @@ async def recover_multimedia_knowledge_finalization(
     )
 
 
+def read_multimedia_twin_document(
+    asset_id: str,
+    *,
+    owner_id: str,
+    store: MultimediaAssetStore,
+    db_path: str,
+) -> MultimediaTwinDocument:
+    try:
+        record = store.get(asset_id, owner_id=owner_id)
+    except KeyError as exc:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin is unavailable") from exc
+    link = record.knowledge_link
+    if link is None:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin is unavailable")
+    owner_digest = hashlib.sha256(owner_id.encode()).hexdigest()
+    identity_seed = f"{owner_digest}:{record.asset.asset_id}:{record.asset.revision_id}"
+    identity_suffix = hashlib.sha256(identity_seed.encode()).hexdigest()[:24]
+    if (
+        link.asset_id != record.asset.asset_id
+        or link.revision_id != record.asset.revision_id
+        or link.source_document_id != f"mm-info-{identity_suffix}"
+        or link.twin_document_id != f"mm-twin-{identity_suffix}"
+        or link.graph_node_id != f"mm-entity-{identity_suffix}"
+    ):
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts")
+
+    with connect_read(db_path) as connection:
+        row = connection.execute(
+            "SELECT twin.source_uri, twin.title, twin.source_tier, twin.document_type, "
+            "twin.investigation_id, twin.metadata, twin.content_class, "
+            "twin.owner_user_id, source.investigation_id, source.owner_user_id, "
+            "source.document_type, source.content_class, source.source_uri "
+            "FROM documents AS twin LEFT JOIN documents AS source "
+            "ON source.document_id=? WHERE twin.document_id=?",
+            [link.source_document_id, link.twin_document_id],
+        ).fetchone()
+        twin_served = serve_full_text_guarded(connection, link.twin_document_id, owner=True)
+        source_served = serve_full_text_guarded(connection, link.source_document_id, owner=True)
+    if row is None:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin is unavailable")
+    expected_uri = f"antiek-mm://{record.asset.asset_id}/{record.asset.revision_id}/twin.html"
+    expected_title = f"Twin notes: {record.asset.title}"
+    investigation_id = row[8]
+    if (
+        tuple(row[:5])
+        != (
+            expected_uri,
+            expected_title,
+            1,
+            "multimedia_twin",
+            investigation_id,
+        )
+        or not isinstance(investigation_id, str)
+        or not investigation_id
+        or tuple(row[6:])
+        != (
+            "personal_reading",
+            owner_id,
+            investigation_id,
+            owner_id,
+            "multimedia_html",
+            "personal_reading",
+            f"antiek-mm://{record.asset.asset_id}/{record.asset.revision_id}/information.html",
+        )
+    ):
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts")
+    raw_html = twin_served.full_text
+    if not isinstance(raw_html, str) or len(raw_html.encode()) > 8 * 1024 * 1024:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts")
+    source_html = source_served.full_text
+    if (
+        not isinstance(source_html, str)
+        or hashlib.sha256(source_html.encode()).hexdigest() != link.source_html_sha256
+    ):
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts")
+    digest = hashlib.sha256(raw_html.encode()).hexdigest()
+    if digest != link.twin_html_sha256:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts")
+    try:
+        metadata = json.loads(row[5])
+    except (TypeError, json.JSONDecodeError) as exc:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts") from exc
+    expected_metadata = {
+        "schema_version": "antiek.multimedia-twin.v1",
+        "owner_identity_digest": owner_digest,
+        "asset_id": record.asset.asset_id,
+        "revision_id": record.asset.revision_id,
+        "source_html_sha256": link.source_html_sha256,
+        "twin_html_sha256": link.twin_html_sha256,
+    }
+    if metadata != expected_metadata:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts")
+    try:
+        assert_script_free(raw_html)
+    except ScriptViolation as exc:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts") from exc
+    try:
+        current = store.get(asset_id, owner_id=owner_id)
+    except KeyError as exc:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin is unavailable") from exc
+    if current.asset.revision_id != record.asset.revision_id or current.knowledge_link != link:
+        raise MultimediaKnowledgeFinalizationError("multimedia twin integrity conflicts")
+    return MultimediaTwinDocument(
+        asset_id=record.asset.asset_id,
+        revision_id=record.asset.revision_id,
+        source_document_id=link.source_document_id,
+        twin_document_id=link.twin_document_id,
+        title=expected_title,
+        html=raw_html,
+        html_sha256=digest,
+    )
+
+
 def _link(result: MultimediaTwinResult) -> MultimediaKnowledgeLink:
     return MultimediaKnowledgeLink(
         asset_id=result.registration.asset_id,
@@ -230,7 +356,9 @@ __all__ = [
     "MultimediaKnowledgeFinalizationResponse",
     "MultimediaKnowledgeFinalizationStatus",
     "MultimediaKnowledgeRecoveryRequest",
+    "MultimediaTwinDocument",
     "finalize_multimedia_knowledge",
     "inspect_multimedia_knowledge_finalization",
     "recover_multimedia_knowledge_finalization",
+    "read_multimedia_twin_document",
 ]

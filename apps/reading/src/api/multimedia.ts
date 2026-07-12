@@ -80,6 +80,16 @@ export interface MultimediaKnowledgeFinalizationResponse {
   knowledge_link: MultimediaKnowledgeLink;
 }
 
+export interface MultimediaTwinDocument {
+  asset_id: string;
+  revision_id: string;
+  source_document_id: string;
+  twin_document_id: string;
+  title: string;
+  html: string;
+  html_sha256: string;
+}
+
 export interface MultimediaAssetList {
   assets: MultimediaAssetSummary[];
   count: number;
@@ -290,6 +300,19 @@ export async function getMultimediaKnowledgeFinalization(
   );
   if (!resp.ok) throw knowledgeError("GET /multimedia/assets/{id}/knowledge-finalization", resp.status);
   return (await resp.json()) as MultimediaKnowledgeFinalizationStatus;
+}
+
+export async function getMultimediaKnowledgeTwin(
+  assetId: string,
+): Promise<MultimediaTwinDocument> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/knowledge-twin`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_twin_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_twin_integrity_conflict");
+  if (resp.status === 503) throw new Error("multimedia_knowledge_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/knowledge-twin: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaTwinDocument;
 }
 
 export async function finalizeMultimediaKnowledge(

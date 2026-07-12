@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   finalizeMultimediaKnowledge,
   getMultimediaKnowledgeFinalization,
+  getMultimediaKnowledgeTwin,
   recoverMultimediaKnowledgeFinalization,
 } from "./multimedia";
 
@@ -25,6 +26,24 @@ describe("multimedia knowledge client", () => {
       "/multimedia/assets/asset%20%2F%201/knowledge-finalization",
       expect.objectContaining({ credentials: "include" }),
     );
+  });
+
+  it("reads the owner-scoped twin through an encoded asset URL", async () => {
+    vi.mocked(fetch).mockResolvedValue(response(200, { twin_document_id: "twin-1" }));
+    await getMultimediaKnowledgeTwin("asset / 1");
+    expect(fetch).toHaveBeenCalledWith(
+      "/multimedia/assets/asset%20%2F%201/knowledge-twin",
+      expect.objectContaining({ credentials: "include" }),
+    );
+  });
+
+  it.each([
+    [404, "multimedia_twin_unavailable"],
+    [409, "multimedia_twin_integrity_conflict"],
+    [503, "multimedia_knowledge_runtime_unavailable"],
+  ])("maps twin HTTP %s to safe code %s", async (httpStatus, code) => {
+    vi.mocked(fetch).mockResolvedValue(response(httpStatus));
+    await expect(getMultimediaKnowledgeTwin("asset-1")).rejects.toThrow(code);
   });
 
   it("binds initial finalization to the revision and model acknowledgement", async () => {

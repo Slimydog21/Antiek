@@ -10,6 +10,7 @@ import type {
 import {
   finalizeMultimediaKnowledge,
   getMultimediaKnowledgeFinalization,
+  getMultimediaKnowledgeTwin,
   recoverMultimediaKnowledgeFinalization,
 } from "../../api/multimedia";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
@@ -20,11 +21,13 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     ...actual,
     finalizeMultimediaKnowledge: vi.fn(),
     getMultimediaKnowledgeFinalization: vi.fn(),
+    getMultimediaKnowledgeTwin: vi.fn(),
     recoverMultimediaKnowledgeFinalization: vi.fn(),
   };
 });
 
 const getStatus = vi.mocked(getMultimediaKnowledgeFinalization);
+const getTwin = vi.mocked(getMultimediaKnowledgeTwin);
 const finalize = vi.mocked(finalizeMultimediaKnowledge);
 const recover = vi.mocked(recoverMultimediaKnowledgeFinalization);
 
@@ -157,6 +160,94 @@ describe("KnowledgePanel", () => {
     expect((await screen.findByTestId("multimedia-knowledge-evidence")).textContent).toContain("twin-1");
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(recover).not.toHaveBeenCalled();
+  });
+
+  it("opens a cross-bound sandboxed twin and closes it", async () => {
+    getStatus.mockResolvedValue(status("completed", false, LINK));
+    getTwin.mockResolvedValue({
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      source_document_id: "doc-1",
+      twin_document_id: "twin-1",
+      title: "Twin notes: Aircraft economics",
+      html: "<!doctype html><html><body><h1>Twin</h1></body></html>",
+      html_sha256: "b".repeat(64),
+    });
+    render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open twin" }));
+    const frame = await screen.findByTitle("Twin notes: Aircraft economics");
+    expect(frame.getAttribute("sandbox")).toBe("");
+    expect(frame.getAttribute("srcdoc")).toContain("<h1>Twin</h1>");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(screen.queryByTestId("multimedia-twin-viewer")).toBeNull();
+  });
+
+  it("rejects a twin response detached from the displayed link", async () => {
+    getStatus.mockResolvedValue(status("completed", false, LINK));
+    getTwin.mockResolvedValue({
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      source_document_id: "doc-other",
+      twin_document_id: "twin-1",
+      title: "Detached",
+      html: "<!doctype html><html><body>Detached</body></html>",
+      html_sha256: "b".repeat(64),
+    });
+    render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open twin" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/integrity check/i);
+    expect(screen.queryByTestId("multimedia-twin-viewer")).toBeNull();
+  });
+
+  it("does not reopen a stale twin after the asset identity changes", async () => {
+    getStatus
+      .mockResolvedValueOnce(status("completed", false, LINK))
+      .mockResolvedValueOnce({
+        ...status("not_started", false, null, "rev-2"),
+        asset_id: "asset-2",
+      });
+    let finish: ((document: Awaited<ReturnType<typeof getMultimediaKnowledgeTwin>>) => void) | undefined;
+    getTwin.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const { rerender } = render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open twin" }));
+
+    const next = {
+      ...asset("rev-2"),
+      asset: { ...asset("rev-2").asset, asset_id: "asset-2" },
+    };
+    rerender(<KnowledgePanel asset={next} onAssetUpdated={vi.fn()} />);
+    finish?.({
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      source_document_id: "doc-1",
+      twin_document_id: "twin-1",
+      title: "Stale twin",
+      html: "<!doctype html><html><body>Stale</body></html>",
+      html_sha256: "b".repeat(64),
+    });
+    await waitFor(() => expect(getStatus).toHaveBeenCalledTimes(2));
+    expect(screen.queryByTestId("multimedia-twin-viewer")).toBeNull();
+  });
+
+  it("does not apply stale finalization status after the asset changes", async () => {
+    let finishFirst: ((value: MultimediaKnowledgeFinalizationStatus) => void) | undefined;
+    getStatus
+      .mockReturnValueOnce(new Promise((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValueOnce({
+        ...status("not_started", false, null, "rev-2"),
+        asset_id: "asset-2",
+      });
+    const { rerender } = render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
+    const next = {
+      ...asset("rev-2"),
+      asset: { ...asset("rev-2").asset, asset_id: "asset-2" },
+    };
+    rerender(<KnowledgePanel asset={next} onAssetUpdated={vi.fn()} />);
+    await screen.findByRole("button", { name: "Create knowledge twin" });
+    finishFirst?.(status("completed", false, LINK));
+    await waitFor(() => expect(getStatus).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole("button", { name: "Open twin" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Create knowledge twin" })).toBeTruthy();
   });
 
   it("rejects a status response for another revision", async () => {

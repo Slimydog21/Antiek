@@ -1,13 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   finalizeMultimediaKnowledge,
   getMultimediaKnowledgeFinalization,
+  getMultimediaKnowledgeTwin,
   recoverMultimediaKnowledgeFinalization,
 } from "../../api/multimedia";
 import type {
   MultimediaAssetRecord,
   MultimediaKnowledgeFinalizationStatus,
+  MultimediaTwinDocument,
 } from "../../api/multimedia";
 import { LemonButton, LemonTag } from "../../components/lemon";
 
@@ -17,7 +19,7 @@ type Props = {
   onMutationBusyChange?: (busy: boolean) => void;
 };
 
-type Pending = "inspect" | "finalize" | "recover" | null;
+type Pending = "inspect" | "finalize" | "recover" | "open" | null;
 
 export function retainCurrentMultimediaSelection(
   current: MultimediaAssetRecord | null,
@@ -46,6 +48,8 @@ function errorMessage(error: unknown): string {
   if (code === "multimedia_knowledge_runtime_unavailable") return "Knowledge runtime is unavailable.";
   if (code === "multimedia_knowledge_unavailable") return "This asset is no longer available.";
   if (code === "multimedia_knowledge_conflict") return "The asset or recovery state changed. Refresh before trying again.";
+  if (code === "multimedia_twin_unavailable") return "The knowledge twin is no longer available.";
+  if (code === "multimedia_twin_integrity_conflict") return "The knowledge twin failed its integrity check.";
   return "Could not update the knowledge twin.";
 }
 
@@ -71,13 +75,26 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
   const [modelAcknowledged, setModelAcknowledged] = useState(false);
   const [duplicateRiskAcknowledged, setDuplicateRiskAcknowledged] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [viewer, setViewer] = useState<MultimediaTwinDocument | null>(null);
+  const readEpoch = useRef(0);
+  const currentIdentity = useRef("");
 
   const ready = asset.asset.status === "ready";
+  const identity = `${asset.asset.asset_id}:${asset.asset.revision_id}`;
+  currentIdentity.current = identity;
 
   async function inspect() {
+    const requestEpoch = ++readEpoch.current;
+    const requestIdentity = identity;
     setPending("inspect");
     try {
       const next = await getMultimediaKnowledgeFinalization(asset.asset.asset_id);
+      if (
+        requestEpoch !== readEpoch.current ||
+        requestIdentity !== currentIdentity.current
+      ) {
+        return;
+      }
       const linkIdentityMatches =
         next.knowledge_link === null ||
         (next.knowledge_link.asset_id === asset.asset.asset_id &&
@@ -93,17 +110,30 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       setStatus(next);
       setError(null);
     } catch (cause) {
+      if (
+        requestEpoch !== readEpoch.current ||
+        requestIdentity !== currentIdentity.current
+      ) {
+        return;
+      }
       setError(errorMessage(cause));
     } finally {
-      setPending(null);
+      if (
+        requestEpoch === readEpoch.current &&
+        requestIdentity === currentIdentity.current
+      ) {
+        setPending(null);
+      }
     }
   }
 
   useEffect(() => {
+    readEpoch.current += 1;
     setStatus(null);
     setModelAcknowledged(false);
     setDuplicateRiskAcknowledged(false);
     setError(null);
+    setViewer(null);
     if (ready) void inspect();
     // Asset identity and revision intentionally reset all spend acknowledgements.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -175,6 +205,49 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
     }
   }
 
+  async function openTwin() {
+    if (!link || state !== "completed") return;
+    const requestEpoch = ++readEpoch.current;
+    const requestIdentity = identity;
+    setPending("open");
+    try {
+      const document = await getMultimediaKnowledgeTwin(asset.asset.asset_id);
+      if (
+        requestEpoch !== readEpoch.current ||
+        requestIdentity !== currentIdentity.current
+      ) {
+        return;
+      }
+      if (
+        document.asset_id !== asset.asset.asset_id ||
+        document.revision_id !== asset.asset.revision_id ||
+        document.source_document_id !== link.source_document_id ||
+        document.twin_document_id !== link.twin_document_id ||
+        document.html_sha256 !== link.twin_html_sha256
+      ) {
+        throw new Error("multimedia_twin_integrity_conflict");
+      }
+      setViewer(document);
+      setError(null);
+    } catch (cause) {
+      if (
+        requestEpoch !== readEpoch.current ||
+        requestIdentity !== currentIdentity.current
+      ) {
+        return;
+      }
+      setViewer(null);
+      setError(errorMessage(cause));
+    } finally {
+      if (
+        requestEpoch === readEpoch.current &&
+        requestIdentity === currentIdentity.current
+      ) {
+        setPending(null);
+      }
+    }
+  }
+
   const state = status?.distillation.state ?? "not_started";
   const link = status?.knowledge_link ?? asset.knowledge_link;
   const recovery = Boolean(status?.distillation.recovery_eligible);
@@ -242,7 +315,8 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       )}
 
       {link && state === "completed" && (
-        <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]" data-testid="multimedia-knowledge-evidence">
+        <div className="mt-3">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]" data-testid="multimedia-knowledge-evidence">
           <dt className="text-shadow-2 dark:text-moonlight">Twin</dt>
           <dd className="truncate text-right font-mono text-ink dark:text-bright" title={link.twin_document_id}>{link.twin_document_id}</dd>
           <dt className="text-shadow-2 dark:text-moonlight">Insights</dt>
@@ -250,6 +324,25 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
           <dt className="text-shadow-2 dark:text-moonlight">Questions</dt>
           <dd className="text-right text-ink dark:text-bright">{link.question_node_ids.length}</dd>
         </dl>
+        <LemonButton type="button" size="sm" variant="secondary" className="mt-3" disabled={pending !== null} onClick={openTwin}>
+          {pending === "open" ? "Opening..." : "Open twin"}
+        </LemonButton>
+        </div>
+      )}
+
+      {viewer && (
+        <section className="mt-3 border-t border-rule pt-3 dark:border-charcoal-1" data-testid="multimedia-twin-viewer">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="truncate font-serif text-base text-ink dark:text-bright">{viewer.title}</h3>
+            <LemonButton type="button" size="sm" variant="tertiary" onClick={() => setViewer(null)}>Close</LemonButton>
+          </div>
+          <iframe
+            title={viewer.title}
+            sandbox=""
+            srcDoc={viewer.html}
+            className="mt-3 h-[420px] w-full border border-rule bg-white dark:border-charcoal-1"
+          />
+        </section>
       )}
 
       {ready && pending !== "inspect" && (
