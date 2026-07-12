@@ -62,7 +62,7 @@ class AuthorizedProductionRequest:
     channels: Literal[1, 2] = 1
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class AuthorizedProductionRuntime:
     store: MultimediaAssetStore
     reviewed_visual_registry: ReviewedVisualRegistry

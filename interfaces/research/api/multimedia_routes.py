@@ -50,7 +50,13 @@ from .multimedia_playback_routes import (
     multimedia_playback_router,
     multimedia_playback_runtime_from_environment,
 )
-from .multimedia_production_worker_routes import multimedia_production_worker_router
+from .multimedia_production_worker_routes import (
+    get_multimedia_production_worker_runtime,
+    multimedia_production_worker_router,
+)
+from .multimedia_production_worker_runtime import (
+    multimedia_production_worker_runtime_from_environment,
+)
 from .multimedia_reconciliation_routes import (
     authenticated_multimedia_operator,
     get_multimedia_reconciliation_runtime,
@@ -333,6 +339,13 @@ def register_multimedia_routes(app: FastAPI) -> None:
     if reviewed_visual_runtime is not None:
         app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = (
             lambda: reviewed_visual_runtime
+        )
+    production_worker_runtime = multimedia_production_worker_runtime_from_environment(
+        store=get_store()
+    )
+    if production_worker_runtime is not None:
+        app.dependency_overrides[get_multimedia_production_worker_runtime] = (
+            lambda: production_worker_runtime
         )
 
 
