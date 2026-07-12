@@ -1,0 +1,207 @@
+"""Route tests for marketplace → highlight float recursive twin MO."""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from interfaces.research.api.marketplace_highlight_float_recursive_twin_mo_compose_routes import (
+    register_marketplace_highlight_float_recursive_twin_mo_compose_routes,
+)
+
+
+def _client() -> TestClient:
+    app = FastAPI()
+    register_marketplace_highlight_float_recursive_twin_mo_compose_routes(app)
+    return TestClient(app)
+
+
+def test_compose_route():
+    c = _client()
+    r = c.post(
+        "/research/marketplace-highlight-float-recursive-twin-mo/compose",
+        json={
+            "market": {
+                "session_id": "sess-1",
+                "asset_id": "book-1",
+                "title": "Scaling Laws",
+                "account_id": "acct-1",
+                "free_copy_available": True,
+                "free_html_projection_sha": "sha-free",
+                "port_requested": True,
+                "purchase_ack": False,
+                "list_price_usd": 10,
+                "approved_spend_usd": 20,
+                "remaining_budget_usd": 50,
+                "view_requested": True,
+            },
+            "research": {
+                "highlight_surface": {
+                    "highlight": "scaling laws under noise",
+                    "gated": False,
+                    "would_exceed": False,
+                    "surface_action": "spawn_only",
+                    "source_families": ["arxiv"],
+                },
+                "mo_competition": {
+                    "mo": {
+                        "operator_id": "op-1",
+                        "work_minutes": 120,
+                        "goals": [
+                            {"goal_id": "g1", "title": "Survey arxiv"},
+                            {"goal_id": "g2", "title": "Draft notes"},
+                        ],
+                        "usd_per_hour": 15,
+                        "approved_ceiling_usd": 40,
+                        "unattended_ack": True,
+                        "spend_consent": True,
+                    },
+                    "research": {
+                        "decision": {
+                            "selected_model_id": "gpt-5.5",
+                            "models": [
+                                {
+                                    "model_id": "gpt-5.5",
+                                    "projected_cost_usd_high": 2,
+                                    "projected_cost_usd_low": 1,
+                                }
+                            ],
+                            "daily_cap_usd": 50,
+                            "spent_usd": 10,
+                        },
+                        "competition_view": {
+                            "session_id": "sess-1",
+                            "asset_id": "book-1",
+                            "html_projection_sha": "sha-free",
+                            "view_requested": True,
+                            "twin_bound": True,
+                            "claimed_format": "html",
+                            "competition": {
+                                "draft_id": "draft-1",
+                                "parent_asset_id": "book-1",
+                                "competitor_decisions": [
+                                    {
+                                        "competitor": "Perplexity",
+                                        "area": "citation_grounding",
+                                        "decision_summary": "Inline",
+                                        "antiek_status": "parity",
+                                    }
+                                ],
+                                "requested_families": ["arxiv"],
+                                "citations": [
+                                    {
+                                        "citation_id": "c1",
+                                        "family": "arxiv",
+                                        "title": "Scaling Laws under Noise",
+                                        "external_id": "arxiv:2301.00001",
+                                    }
+                                ],
+                                "quality_overall": 0.8,
+                                "would_exceed": False,
+                                "search_query": "scaling",
+                            },
+                        },
+                    },
+                },
+            },
+            "operator_ack": True,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["pack_ready"] is True
+    assert body["purchase_executed"] is False
+    assert body["hosted"] is False
+    assert body["pdf_view_authorized"] is False
+    assert body["live_execution_authorized"] is False
+    assert (
+        body["authority"]
+        == "marketplace_highlight_float_recursive_twin_mo_compose_advisory"
+    )
+
+
+def test_compose_route_ack_false():
+    c = _client()
+    r = c.post(
+        "/research/marketplace-highlight-float-recursive-twin-mo/compose",
+        json={
+            "market": {
+                "session_id": "sess-2",
+                "asset_id": "book-2",
+                "title": "Book",
+                "account_id": "acct-1",
+                "free_copy_available": True,
+                "free_html_projection_sha": "sha",
+                "port_requested": True,
+                "purchase_ack": False,
+                "list_price_usd": 10,
+                "approved_spend_usd": 20,
+                "remaining_budget_usd": 50,
+                "view_requested": True,
+            },
+            "research": {
+                "highlight_surface": {
+                    "highlight": "passage",
+                    "gated": False,
+                    "would_exceed": False,
+                    "surface_action": "spawn_only",
+                },
+                "mo_competition": {
+                    "mo": {
+                        "operator_id": "op-1",
+                        "work_minutes": 60,
+                        "goals": [{"goal_id": "g1", "title": "T"}],
+                        "usd_per_hour": 10,
+                        "approved_ceiling_usd": 20,
+                        "unattended_ack": True,
+                        "spend_consent": True,
+                    },
+                    "research": {
+                        "decision": {
+                            "selected_model_id": "gpt-5.5",
+                            "models": [{"model_id": "gpt-5.5"}],
+                            "daily_cap_usd": 50,
+                            "spent_usd": 10,
+                        },
+                        "competition_view": {
+                            "session_id": "sess-2",
+                            "asset_id": "book-2",
+                            "html_projection_sha": "sha",
+                            "view_requested": True,
+                            "twin_bound": True,
+                            "claimed_format": "html",
+                            "competition": {
+                                "draft_id": "d",
+                                "parent_asset_id": "book-2",
+                                "competitor_decisions": [
+                                    {
+                                        "competitor": "Perplexity",
+                                        "area": "citation_grounding",
+                                        "decision_summary": "Inline",
+                                        "antiek_status": "parity",
+                                    }
+                                ],
+                                "requested_families": ["arxiv"],
+                                "citations": [
+                                    {
+                                        "citation_id": "c1",
+                                        "family": "arxiv",
+                                        "title": "P",
+                                        "external_id": "arxiv:1",
+                                    }
+                                ],
+                                "quality_overall": 0.9,
+                                "would_exceed": False,
+                                "search_query": "paper scaling",
+                            },
+                        },
+                    },
+                },
+            },
+            "operator_ack": False,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["pack_ready"] is False
+    assert body["purchase_executed"] is False
