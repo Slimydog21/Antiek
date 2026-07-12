@@ -48,7 +48,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from substrate.dispatch.research_tier import resolve_research_tier
-from substrate.dispatch.router import dispatch
+from substrate.dispatch.router import DispatchResult, dispatch
 from substrate.graph.search import EmbeddingModel, search
 
 from .page_anchor import page_index_from_section_path
@@ -101,6 +101,8 @@ class BookAnswer:
     grounded: bool
     # Diagnostic: how many of the book's chunks were retrieved for this turn.
     context_chunk_count: int = 0
+    # None only on the deliberate no-context branch where no model was called.
+    dispatch_result: DispatchResult | None = None
 
 
 def _build_prompt(
@@ -243,4 +245,5 @@ def answer_book_question(
         citations=_citations_from_chunks(context_chunks),
         grounded=True,
         context_chunk_count=len(context_chunks),
+        dispatch_result=result,
     )

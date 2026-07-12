@@ -486,11 +486,6 @@ def seal_investigation(
             return pq  # already sealed
         return None
 
-    if os.path.exists(pq) and os.path.getmtime(pq) >= os.path.getmtime(jl):
-        if delete_jsonl:
-            os.remove(jl)
-        return pq
-
     try:
         import pyarrow as pa  # type: ignore[import-not-found]
         import pyarrow.parquet as pq_writer  # type: ignore[import-not-found]
@@ -502,17 +497,9 @@ def seal_investigation(
         )
         return None
 
-    rows: list[dict[str, Any]] = []
-    with open(jl, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rows.append(json.loads(line))
-            except json.JSONDecodeError as e:
-                print(f"events.seal: skipping malformed line: {e!r}", file=sys.stderr)
-                continue
+    # Reopened streams have an existing snapshot plus a live tail. Seal the
+    # merged trajectory, not merely the tail, or resealing would erase history.
+    rows = trajectory(investigation_id, events_dir=events_dir)
     if not rows:
         return None
 
@@ -541,7 +528,9 @@ def trajectory(
     events_dir: str | None = None,
 ) -> list[dict[str, Any]]:
     """Read all events for an investigation, ordered by emission time.
-    Reads sealed Parquet if present; falls back to live JSONL otherwise.
+
+    A sealed Parquet snapshot and a later live JSONL tail are merged by
+    immutable event id, so long-lived streams remain visible after reopening.
     """
     pq = _parquet_path(investigation_id, events_dir=events_dir)
     jl = _jsonl_path(investigation_id, events_dir=events_dir)
@@ -555,7 +544,7 @@ def trajectory(
         except ImportError:
             print("pyarrow not installed; reading sealed Parquet requires pyarrow.",
                   file=sys.stderr)
-    elif os.path.exists(jl):
+    if os.path.exists(jl):
         with open(jl, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()
@@ -574,8 +563,20 @@ def trajectory(
             with contextlib.suppress(TypeError, ValueError):
                 r["payload"] = json.loads(r["payload"])
 
-    rows.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
-    return rows
+    # A completed run normally never reopens after sealing. Long-lived product
+    # streams can, however, append after a snapshot exists. Keep both layers
+    # visible and collapse the overlap by immutable event id.
+    by_id: dict[str, dict[str, Any]] = {}
+    without_id: list[dict[str, Any]] = []
+    for row in rows:
+        event_id = row.get("event_id")
+        if isinstance(event_id, str) and event_id:
+            by_id[event_id] = row
+        else:
+            without_id.append(row)
+    merged = [*by_id.values(), *without_id]
+    merged.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
+    return merged
 
 
 def action_counts(
