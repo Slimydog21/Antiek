@@ -64,6 +64,7 @@ class OwnerJob:
     dispatched_at_ms: int | None
     completed_at_ms: int | None
     payload: dict[str, object]
+    consent_stage_plan_hash: str | None = None
 
 
 @dataclass(frozen=True)
@@ -91,6 +92,7 @@ class OwnerJobStore(Protocol):
         consent_config_hash: str,
         consent_issued_at_ms: int,
         consent_expires_at_ms: int,
+        consent_stage_plan_hash: str | None = None,
     ) -> CompareAndSetResult: ...
 
     def reset_undelivered_consent(
@@ -130,6 +132,7 @@ CREATE TABLE IF NOT EXISTS midnight_oil_jobs (
     consent_config_hash TEXT,
     consent_issued_at_ms BIGINT,
     consent_expires_at_ms BIGINT,
+    consent_stage_plan_hash TEXT,
     consent_claimed_at_ms BIGINT,
     operation_id TEXT,
     operation_state TEXT NOT NULL,
@@ -164,6 +167,7 @@ _COLUMNS: Final = (
     "consent_config_hash",
     "consent_issued_at_ms",
     "consent_expires_at_ms",
+    "consent_stage_plan_hash",
     "consent_claimed_at_ms",
     "operation_id",
     "operation_state",
@@ -205,6 +209,19 @@ def _optional_text(value: object, field: str) -> str | None:
     if value is None:
         return None
     return _text(value, field)
+
+
+def _optional_hash(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    checked = _text(value, field)
+    if len(checked) != 64:
+        raise ValueError(f"{field} must be SHA-256 hex")
+    try:
+        bytes.fromhex(checked)
+    except ValueError as exc:
+        raise ValueError(f"{field} must be SHA-256 hex") from exc
+    return checked
 
 
 def _optional_nonnegative_int(value: object, field: str) -> int | None:
@@ -337,7 +354,13 @@ def _validate_state_coherence(job: OwnerJob) -> None:
     )
     if job.operation_state is OperationState.NONE:
         if any(
-            value is not None for value in (*consent, job.operation_id, job.consent_claimed_at_ms)
+            value is not None
+            for value in (
+                *consent,
+                job.consent_stage_plan_hash,
+                job.operation_id,
+                job.consent_claimed_at_ms,
+            )
         ):
             raise ValueError("none state must not carry consent or operation authority")
     elif any(value is None for value in (*consent, job.operation_id)):
@@ -350,6 +373,11 @@ def _validate_state_coherence(job: OwnerJob) -> None:
         and job.consent_expires_at_ms <= job.consent_issued_at_ms
     ):
         raise ValueError("consent expiry must follow issuance")
+    swarm_authority = job.payload.get("swarm_live_plan_hash") is not None
+    if job.operation_state is not OperationState.NONE and swarm_authority != (
+        job.consent_stage_plan_hash is not None
+    ):
+        raise ValueError("stage plan hash must exist exactly for active swarm authority")
 
     queued_or_later = job.operation_state not in {
         OperationState.NONE,
@@ -412,6 +440,9 @@ def _validate(job: OwnerJob) -> OwnerJob:
         consent_expires_at_ms=_optional_nonnegative_int(
             job.consent_expires_at_ms, "consent_expires_at_ms"
         ),
+        consent_stage_plan_hash=_optional_hash(
+            job.consent_stage_plan_hash, "consent_stage_plan_hash"
+        ),
         consent_claimed_at_ms=_optional_nonnegative_int(
             job.consent_claimed_at_ms, "consent_claimed_at_ms"
         ),
@@ -459,6 +490,7 @@ def _row(job: OwnerJob) -> tuple[object, ...]:
         checked.consent_config_hash,
         checked.consent_issued_at_ms,
         checked.consent_expires_at_ms,
+        checked.consent_stage_plan_hash,
         checked.consent_claimed_at_ms,
         checked.operation_id,
         checked.operation_state.value,
@@ -472,10 +504,10 @@ def _row(job: OwnerJob) -> tuple[object, ...]:
 
 def _decode(row: tuple[Any, ...]) -> OwnerJob:
     try:
-        schema_version = int(row[15])
+        schema_version = int(row[16])
         if schema_version != SCHEMA_VERSION:
             raise InvalidStoredJob("unsupported job schema version")
-        payload = json.loads(str(row[14]))
+        payload = json.loads(str(row[15]))
         if not isinstance(payload, dict):
             raise InvalidStoredJob("stored payload is not an object")
         return _validate(
@@ -488,12 +520,13 @@ def _decode(row: tuple[Any, ...]) -> OwnerJob:
                 consent_config_hash=None if row[5] is None else str(row[5]),
                 consent_issued_at_ms=None if row[6] is None else int(row[6]),
                 consent_expires_at_ms=None if row[7] is None else int(row[7]),
-                consent_claimed_at_ms=None if row[8] is None else int(row[8]),
-                operation_id=None if row[9] is None else str(row[9]),
-                operation_state=_state(row[10]),
-                dispatch_started_at_ms=None if row[11] is None else int(row[11]),
-                dispatched_at_ms=None if row[12] is None else int(row[12]),
-                completed_at_ms=None if row[13] is None else int(row[13]),
+                consent_stage_plan_hash=None if row[8] is None else str(row[8]),
+                consent_claimed_at_ms=None if row[9] is None else int(row[9]),
+                operation_id=None if row[10] is None else str(row[10]),
+                operation_state=_state(row[11]),
+                dispatch_started_at_ms=None if row[12] is None else int(row[12]),
+                dispatched_at_ms=None if row[13] is None else int(row[13]),
+                completed_at_ms=None if row[14] is None else int(row[14]),
                 payload=payload,
             )
         )
@@ -521,6 +554,13 @@ class DurableOwnerJobStore:
             connection.execute(_WRITE_LOG_DDL)
             info = connection.execute("PRAGMA table_info('midnight_oil_jobs')").fetchall()
             names = {str(column[1]) for column in info}
+            if "consent_stage_plan_hash" not in names and set(_COLUMNS).difference(names) == {
+                "consent_stage_plan_hash"
+            }:
+                connection.execute(
+                    "ALTER TABLE midnight_oil_jobs ADD COLUMN consent_stage_plan_hash TEXT"
+                )
+                names.add("consent_stage_plan_hash")
             if set(_COLUMNS).issubset(names):
                 constraints = {
                     (str(row[0]), tuple(str(name) for name in row[1]))
@@ -689,6 +729,7 @@ class DurableOwnerJobStore:
         consent_config_hash: str,
         consent_issued_at_ms: int,
         consent_expires_at_ms: int,
+        consent_stage_plan_hash: str | None = None,
     ) -> CompareAndSetResult:
         owner = _text(owner_user_id, "owner_user_id")
         jid = _text(job_id, "job_id")
@@ -698,6 +739,9 @@ class DurableOwnerJobStore:
         config_hash = _text(consent_config_hash, "consent_config_hash")
         issued = _optional_nonnegative_int(consent_issued_at_ms, "consent_issued_at_ms")
         expiry = _positive_int(consent_expires_at_ms, "consent_expires_at_ms")
+        stage_plan_hash = _optional_hash(
+            consent_stage_plan_hash, "consent_stage_plan_hash"
+        )
         if ceiling is None or issued is None or expiry <= issued:
             raise ValueError("complete consent authority is required")
         if type(expected_version) is not int or expected_version < 0:
@@ -723,7 +767,7 @@ class DurableOwnerJobStore:
                 changed = connection.execute(
                     "UPDATE midnight_oil_jobs SET state_version = ?, approved_ceiling_cents = ?, "
                     "consent_receipt_id = ?, consent_config_hash = ?, consent_issued_at_ms = ?, "
-                    "consent_expires_at_ms = ?, "
+                    "consent_expires_at_ms = ?, consent_stage_plan_hash = ?, "
                     "operation_id = ?, operation_state = ? "
                     "WHERE owner_user_id = ? AND job_id = ? AND state_version = ? "
                     "AND operation_state = ? RETURNING state_version",
@@ -734,6 +778,7 @@ class DurableOwnerJobStore:
                         config_hash,
                         issued,
                         expiry,
+                        stage_plan_hash,
                         operation,
                         OperationState.CONSENT_ISSUED.value,
                         owner,
@@ -811,6 +856,7 @@ class DurableOwnerJobStore:
                     "approved_ceiling_cents = NULL, consent_receipt_id = NULL, "
                     "consent_config_hash = NULL, consent_issued_at_ms = NULL, "
                     "consent_expires_at_ms = NULL, consent_claimed_at_ms = NULL, "
+                    "consent_stage_plan_hash = NULL, "
                     "operation_id = NULL, operation_state = ?, "
                     "dispatch_started_at_ms = NULL, dispatched_at_ms = NULL, "
                     "completed_at_ms = NULL WHERE owner_user_id = ? AND job_id = ? "
@@ -988,6 +1034,7 @@ class TestOnlyInMemoryOwnerJobStore:
         consent_config_hash: str,
         consent_issued_at_ms: int,
         consent_expires_at_ms: int,
+        consent_stage_plan_hash: str | None = None,
     ) -> CompareAndSetResult:
         key = (_text(owner_user_id, "owner_user_id"), _text(job_id, "job_id"))
         if type(expected_version) is not int or expected_version < 0:
@@ -1010,6 +1057,7 @@ class TestOnlyInMemoryOwnerJobStore:
                     "consent_config_hash": consent_config_hash,
                     "consent_issued_at_ms": consent_issued_at_ms,
                     "consent_expires_at_ms": consent_expires_at_ms,
+                    "consent_stage_plan_hash": consent_stage_plan_hash,
                     "operation_id": operation_id,
                     "operation_state": OperationState.CONSENT_ISSUED,
                 }
@@ -1055,6 +1103,7 @@ class TestOnlyInMemoryOwnerJobStore:
                     "consent_config_hash": None,
                     "consent_issued_at_ms": None,
                     "consent_expires_at_ms": None,
+                    "consent_stage_plan_hash": None,
                     "consent_claimed_at_ms": None,
                     "operation_id": None,
                     "operation_state": OperationState.NONE,

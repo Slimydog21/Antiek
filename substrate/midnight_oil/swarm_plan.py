@@ -3,15 +3,27 @@
 from __future__ import annotations
 
 import hashlib
+import hmac
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from substrate.dispatch import DispatchConfig, TierConfig, get_provider
+from substrate.dispatch import (
+    DispatchConfig,
+    DispatchResult,
+    ProviderCallNotAttempted,
+    TierConfig,
+    get_provider,
+)
+from substrate.dispatch import (
+    dispatch as route_dispatch,
+)
 
 from .job import MidnightOilJob
+from .job_store import OwnerJob
 from .live import OPERATOR_CORPUS_POLICY, _dispatch_config_hash, _route_max_cents
 from .spend_consent import MAX_CEILING_CENTS
 from .stages import (
@@ -99,6 +111,93 @@ class SwarmLivePlan(_Closed):
 
     def role(self, name: SwarmRole) -> RoleDispatchPlan:
         return next(role for role in self.roles if role.role == name)
+
+
+@dataclass(frozen=True)
+class RouterSwarmDispatch:
+    plan: SwarmLivePlan
+    config: DispatchConfig
+
+    def __post_init__(self) -> None:
+        for authority in self.plan.roles:
+            tier_name = self.config.role_tiers.get(authority.role)
+            if tier_name is None or tier_name not in self.config.tiers:
+                raise ValueError(f"{authority.role} route is not configured")
+            if not hmac.compare_digest(
+                _dispatch_config_hash(self.config.tiers[tier_name]),
+                authority.dispatch_config_sha256,
+            ):
+                raise ValueError("router config conflicts with signed swarm plan")
+
+    def __call__(
+        self,
+        prompt: str,
+        role: str,
+        *,
+        investigation_id: str,
+        idempotency_key: str,
+    ) -> DispatchResult:
+        if role not in _ROLE_ORDER:
+            raise ProviderCallNotAttempted(
+                "stage role is outside signed swarm authority",
+                provider="<none>",
+                model="<none>",
+                latency_ms=0,
+                retryable=False,
+            )
+        authority = self.plan.role(role)
+        if len(prompt.encode("utf-8")) > authority.max_prompt_bytes:
+            raise ProviderCallNotAttempted(
+                "live prompt exceeds the signed input-byte cap",
+                provider="<none>",
+                model="<none>",
+                latency_ms=0,
+                retryable=False,
+            )
+        return route_dispatch(
+            prompt,
+            role,
+            investigation_id=investigation_id,
+            config=self.config,
+            idempotency_key=idempotency_key,
+            allowed_routes=frozenset(authority.allowed_routes),
+        )
+
+
+def swarm_plan_from_authority(authority: OwnerJob) -> SwarmLivePlan:
+    payload = authority.payload
+    plan_hash = payload.get("swarm_live_plan_hash")
+    plan_json = payload.get("swarm_live_plan_json")
+    if type(plan_hash) is not str or type(plan_json) is not str:
+        raise ValueError("owner authority lacks a complete swarm plan")
+    if payload.get("live_plan_hash") is not None or any(
+        payload.get(name) not in (None, [])
+        for name in (
+            "live_allowed_routes",
+            "live_projected_max_cents",
+            "live_source_policy",
+            "live_dispatch_config_hash",
+            "live_max_input_bytes",
+        )
+    ):
+        raise ValueError("owner authority mixes legacy and swarm plans")
+    plan = SwarmLivePlan.model_validate_json(plan_json)
+    if not hmac.compare_digest(plan.plan_hash, plan_hash):
+        raise ValueError("owner swarm plan hash conflicts with canonical plan")
+    goals = payload.get("goals")
+    fanout = payload.get("fanout_depth")
+    model_id = payload.get("model_id")
+    if not isinstance(goals, list) or plan.goals_count != len(goals):
+        raise ValueError("swarm plan conflicts with owner goals")
+    if type(fanout) is not int or plan.gather_per_goal != fanout:
+        raise ValueError("swarm plan conflicts with owner fanout")
+    if model_id is not None and (
+        type(model_id) is not str
+        or model_id
+        not in {route.split("/", 1)[1] for route in plan.role("synthesizer").allowed_routes}
+    ):
+        raise ValueError("swarm plan conflicts with owner model")
+    return plan
 
 
 def build_swarm_live_plan(
@@ -302,9 +401,11 @@ def _canonical(value: object) -> bytes:
 
 __all__ = [
     "RoleDispatchPlan",
+    "RouterSwarmDispatch",
     "SwarmLivePlan",
     "build_stage_plan",
     "build_swarm_live_plan",
     "role_dispatch_plan_hash",
     "swarm_live_plan_hash",
+    "swarm_plan_from_authority",
 ]

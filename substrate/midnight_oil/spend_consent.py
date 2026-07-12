@@ -58,10 +58,17 @@ class JobConsentConfig:
     fanout_depth: int
     asset_id: str | None
     live_execution_plan_hash: str | None = None
+    stage_plan_hash: str | None = None
 
     def canonical_hash(self) -> str:
-        payload = _canonical_json(asdict(self))
-        return hashlib.sha256(b"antiek.midnight-oil.job-config.v1\x00" + payload).hexdigest()
+        material = asdict(self)
+        if self.stage_plan_hash is None:
+            material.pop("stage_plan_hash")
+            domain = b"antiek.midnight-oil.job-config.v1\x00"
+        else:
+            domain = b"antiek.midnight-oil.job-config.v2\x00"
+        payload = _canonical_json(material)
+        return hashlib.sha256(domain + payload).hexdigest()
 
 
 @dataclass(frozen=True)
@@ -136,6 +143,16 @@ def _validate_config(config: JobConsentConfig) -> None:
             bytes.fromhex(config.live_execution_plan_hash)
         except ValueError as exc:
             raise ValueError("live execution plan hash must be SHA-256 hex") from exc
+    if config.stage_plan_hash is not None:
+        _validate_text(config.stage_plan_hash, maximum=64)
+        if len(config.stage_plan_hash) != 64:
+            raise ValueError("stage plan hash must be SHA-256 hex")
+        try:
+            bytes.fromhex(config.stage_plan_hash)
+        except ValueError as exc:
+            raise ValueError("stage plan hash must be SHA-256 hex") from exc
+        if config.live_execution_plan_hash is None:
+            raise ValueError("stage plan requires live execution authority")
     if type(config.duration_minutes) is not int or not 1 <= config.duration_minutes <= 10_080:
         raise ValueError("duration is outside consent bounds")
     if type(config.fanout_depth) is not int or not 1 <= config.fanout_depth <= 64:

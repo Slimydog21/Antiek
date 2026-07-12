@@ -45,8 +45,9 @@ def _item(
     *,
     predecessors: tuple[str, ...] = (),
     shard: int | None = None,
+    operation_id: str = OPERATION,
 ) -> StagePlanItem:
-    key = stage_key(operation_id=OPERATION, goal_index=0, kind=kind, shard_index=shard)
+    key = stage_key(operation_id=operation_id, goal_index=0, kind=kind, shard_index=shard)
     return StagePlanItem(
         ordinal=ordinal,
         kind=kind,
@@ -62,24 +63,64 @@ def _item(
     )
 
 
-def _plan(job_id: str) -> StagePlan:
-    planner = _item(0, "planner")
-    gather = _item(1, "gather", predecessors=(planner.stage_key,), shard=0)
-    verifier = _item(2, "verifier", predecessors=(gather.stage_key,))
-    synth = _item(3, "synthesizer", predecessors=(verifier.stage_key,))
+def _plan(job_id: str, operation_id: str = OPERATION) -> StagePlan:
+    planner = _item(0, "planner", operation_id=operation_id)
+    gather = _item(
+        1,
+        "gather",
+        predecessors=(planner.stage_key,),
+        shard=0,
+        operation_id=operation_id,
+    )
+    verifier = _item(
+        2, "verifier", predecessors=(gather.stage_key,), operation_id=operation_id
+    )
+    synth = _item(
+        3, "synthesizer", predecessors=(verifier.stage_key,), operation_id=operation_id
+    )
     stages = (planner, gather, verifier, synth)
     return StagePlan(
-        operation_id=OPERATION,
+        operation_id=operation_id,
         job_id=job_id,
         approved_ceiling_cents=CEILING,
         stages=stages,
         plan_hash=stage_plan_hash(
-            operation_id=OPERATION,
+            operation_id=operation_id,
             job_id=job_id,
             approved_ceiling_cents=CEILING,
             stages=stages,
         ),
     )
+
+
+def test_prepare_stage_plan_replaces_only_pristine_prior_operation(tmp_path: Path) -> None:
+    store = DurableJobStore(tmp_path / "jobs.sqlite3")
+    job = create_job(["Investigate"], 15, store=store, job_id="job-prepare")
+    first = _plan(job.job_id, "operation-first")
+    second = _plan(job.job_id, "operation-second")
+
+    assert store.prepare_stage_plan(first) == store.prepare_stage_plan(first)
+    prepared = store.prepare_stage_plan(second)
+    assert store.get_stage_plan(job.job_id) == second
+    assert all(row.state == "planned" and row.revision == 0 for row in prepared)
+
+
+def test_prepare_stage_plan_refuses_non_pristine_replacement(tmp_path: Path) -> None:
+    runtime = _runtime(tmp_path)
+    first = runtime.plan.stages[0]
+    runtime.store.register_stage_intent(
+        job_id=runtime.plan.job_id,
+        stage_key=first.stage_key,
+        input_evidence_sha256=INPUT_HASH,
+        operation_queue=runtime.queue,
+        worker_id=WORKER,
+        lease_generation=runtime.lease_generation,
+        now_ms=20,
+    )
+    with pytest.raises(ValueError, match="non-pristine"):
+        runtime.store.prepare_stage_plan(
+            _plan(runtime.plan.job_id, "operation-replacement")
+        )
 
 
 @dataclass

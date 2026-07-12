@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -87,6 +88,31 @@ def test_issue_claim_and_exact_replay_are_distinct(tmp_path: Path) -> None:
     token = issue(store)
     assert claim(store, token).claimed_now is True
     assert claim(store, token).claimed_now is False
+
+
+def test_stage_plan_uses_v2_config_hash_without_changing_legacy_v1() -> None:
+    legacy = config()
+    legacy_material = {
+        key: value
+        for key, value in legacy.__dict__.items()
+        if key != "stage_plan_hash"
+    }
+    encoded = json.dumps(
+        legacy_material, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    expected = hashlib.sha256(
+        b"antiek.midnight-oil.job-config.v1\x00" + encoded
+    ).hexdigest()
+    assert legacy.canonical_hash() == expected
+
+    first = replace(
+        legacy,
+        live_execution_plan_hash="a" * 64,
+        stage_plan_hash="b" * 64,
+    )
+    second = replace(first, stage_plan_hash="c" * 64)
+    assert first.canonical_hash() != legacy.canonical_hash()
+    assert second.canonical_hash() != first.canonical_hash()
 
 
 def test_reopen_preserves_claim_state(tmp_path: Path) -> None:

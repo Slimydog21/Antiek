@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import signal
@@ -18,6 +19,7 @@ from substrate.dispatch import DispatchConfig
 from substrate.graph.retrieval_substrate import RetrievalSubstrate, make_substrate
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding
 
+from .budget_ledger import BudgetLedger
 from .job import TerminalReason, get_job, put_job_state
 from .job_store import OperationState
 from .live import (
@@ -28,6 +30,8 @@ from .live import (
     resume_terminal_projection,
     run_authorized_live_iteration,
 )
+from .live_roles import CanonicalSourceReceipt, PlannerOutput, parse_role_output
+from .live_stage_engine import LiveSwarmStageEngine, RouterStageDispatch
 from .runtime import (
     MidnightOilRuntimeConfig,
     MidnightOilRuntimeConfigError,
@@ -35,6 +39,8 @@ from .runtime import (
     build_runtime_stores,
     install_attested_providers,
 )
+from .spend_consent import JobConsentConfig
+from .swarm_plan import RouterSwarmDispatch, SwarmLivePlan, swarm_plan_from_authority
 from .worker import WorkerLease, lease_authorized_operation
 
 WorkerResult = Literal[
@@ -52,6 +58,16 @@ WorkerResult = Literal[
     "budget_halted",
     "timed_out",
 ]
+
+
+class _SwarmStageFailed(LiveExecutionFailed):
+    def __init__(self, outcome: str) -> None:
+        super().__init__()
+        self.outcome = outcome
+
+    @property
+    def reconcile(self) -> bool:
+        return self.outcome == "unknown"
 
 
 class _ClosableRetrieval(RetrievalSubstrate, Protocol):
@@ -80,6 +96,199 @@ class MidnightOilWorkerRuntime:
     config: MidnightOilRuntimeConfig
     stores: MidnightOilRuntimeStores
     dispatch_config: DispatchConfig
+
+
+_SWARM_VALIDATOR_SHA256 = hashlib.sha256(
+    b"antiek.midnight-oil.live-swarm-validator.v1"
+).hexdigest()
+
+
+def _validated_swarm_runtime(
+    runtime: MidnightOilWorkerRuntime,
+    lease: WorkerLease,
+    authority: object,
+) -> tuple[SwarmLivePlan, RouterStageDispatch, BudgetLedger]:
+    from .job_store import OwnerJob
+
+    if not isinstance(authority, OwnerJob):
+        raise TypeError("swarm execution requires owner authority")
+    swarm = swarm_plan_from_authority(authority)
+    if (
+        authority.operation_id != lease.operation_id
+        or authority.approved_ceiling_cents is None
+        or authority.consent_stage_plan_hash is None
+        or authority.consent_config_hash is None
+    ):
+        raise ValueError("swarm execution lacks complete operation authority")
+    plan = runtime.stores.jobs.get_stage_plan(lease.job_id)
+    if (
+        plan.job_id != lease.job_id
+        or plan.operation_id != lease.operation_id
+        or plan.approved_ceiling_cents != authority.approved_ceiling_cents
+        or plan.plan_hash != authority.consent_stage_plan_hash
+    ):
+        raise ValueError("durable stage plan conflicts with owner consent authority")
+    job = get_job(lease.job_id, store=runtime.stores.jobs)
+    if job is None:
+        raise ValueError("swarm execution lacks job details")
+    signed = JobConsentConfig(
+        job_id=job.job_id,
+        goals=job.goals,
+        duration_minutes=job.duration_minutes,
+        model_id=job.model_id,
+        research_tier=job.research_tier,
+        fanout_depth=job.fanout_depth,
+        asset_id=job.asset_id,
+        live_execution_plan_hash=swarm.plan_hash,
+        stage_plan_hash=plan.plan_hash,
+    )
+    if signed.canonical_hash() != authority.consent_config_hash:
+        raise ValueError("stage plan conflicts with signed consent configuration")
+    router = RouterSwarmDispatch(plan=swarm, config=runtime.dispatch_config)
+    dispatch = RouterStageDispatch(
+        router=router,
+        role_plan_hashes={role.role: role.plan_hash for role in swarm.roles},
+    )
+    ledger = BudgetLedger(runtime.stores.jobs.budget_db_path())
+    ledger.ensure_schema()
+    role_budgets: dict[str, int] = {
+        role.role: sum(
+            stage.projected_max_cents
+            for stage in plan.stages
+            if stage.router_role == role.role
+        )
+        for role in swarm.roles
+    }
+    ledger.reserve(lease.job_id, plan.approved_ceiling_cents, role_budgets)
+    return swarm, dispatch, ledger
+
+
+def _gather_input(
+    runtime: MidnightOilWorkerRuntime,
+    lease: WorkerLease,
+    retrieval: RetrievalSubstrate,
+) -> tuple[dict[str, object], tuple[CanonicalSourceReceipt, ...]]:
+    plan = runtime.stores.jobs.get_stage_plan(lease.job_id)
+    queued = runtime.stores.operation_queue.get(lease.operation_id)
+    if queued is None or queued.next_step_index >= len(plan.stages):
+        raise ValueError("swarm cursor is outside durable stage plan")
+    item = plan.stages[queued.next_step_index]
+    if item.kind != "gather" or item.shard_index is None:
+        return {}, ()
+    planner = next(
+        row
+        for row in plan.stages
+        if row.goal_index == item.goal_index and row.kind == "planner"
+    )
+    checkpoint = runtime.stores.jobs.get_stage_effect(lease.job_id, planner.stage_key)
+    if checkpoint is None:
+        raise ValueError("gather stage lacks durable planner output")
+    output = parse_role_output(str(checkpoint[1]["output_text"]))
+    if not isinstance(output, PlannerOutput):
+        raise ValueError("gather predecessor is not a planner output")
+    question = output.questions[item.shard_index]
+    result = retrieval.query(question.question, top_k=12, policy_tag="private_research")
+    rows = result.get("results")
+    if not isinstance(rows, list):
+        raise ValueError("retrieval substrate returned invalid gather results")
+    excerpts: list[dict[str, str]] = []
+    receipts: list[CanonicalSourceReceipt] = []
+    for row in rows[:100]:
+        if not isinstance(row, dict):
+            raise ValueError("retrieval result is outside gather contract")
+        document_id = str(row.get("document_id") or "").strip()
+        chunk_id = str(row.get("chunk_id") or "").strip()
+        text = str(row.get("chunk_text") or "")
+        if not document_id or not chunk_id or len(text.encode()) > 100_000:
+            raise ValueError("retrieval result lacks bounded canonical provenance")
+        excerpt_sha = hashlib.sha256(text.encode()).hexdigest()
+        receipt_id = hashlib.sha256(
+            b"antiek.midnight-oil.source-receipt.v1\x00"
+            + f"{question.question_id}\x00{document_id}\x00{chunk_id}\x00{excerpt_sha}".encode()
+        ).hexdigest()
+        receipts.append(
+            CanonicalSourceReceipt(
+                source_receipt_id=receipt_id,
+                question_id=question.question_id,
+                document_id=document_id,
+                chunk_id=chunk_id,
+                excerpt_sha256=excerpt_sha,
+            )
+        )
+        excerpts.append({"source_receipt_id": receipt_id, "text": text})
+    return {"excerpts": excerpts}, tuple(receipts)
+
+
+def _run_swarm_operation(
+    runtime: MidnightOilWorkerRuntime,
+    lease: WorkerLease,
+    authority: object,
+    retrieval: RetrievalSubstrate,
+    *,
+    clock_ms: Callable[[], int],
+) -> tuple[str, bool]:
+    _, dispatch, ledger = _validated_swarm_runtime(runtime, lease, authority)
+    plan = runtime.stores.jobs.get_stage_plan(lease.job_id)
+    engine = LiveSwarmStageEngine(
+        job_id=lease.job_id,
+        operation_id=lease.operation_id,
+        worker_id=lease.worker_id,
+        lease_generation=lease.lease_generation,
+        store=runtime.stores.jobs,
+        ledger=ledger,
+        operation_queue=runtime.stores.operation_queue,
+        dispatch=dispatch,
+        now_ms=clock_ms,
+        validator_sha256=_SWARM_VALIDATOR_SHA256,
+    )
+    queued = runtime.stores.operation_queue.get(lease.operation_id)
+    if queued is None or queued.next_step_index >= len(plan.stages):
+        raise ValueError("swarm operation cursor is outside its stage plan")
+    item = plan.stages[queued.next_step_index]
+    payload, receipts = (
+        _gather_input(runtime, lease, retrieval) if item.kind == "gather" else ({}, ())
+    )
+    result = engine.run_current_stage(stage_payload=payload, source_receipts=receipts)
+    _renew(runtime, lease, clock_ms=clock_ms)
+    if result.outcome != "settled":
+        raise _SwarmStageFailed(result.outcome)
+    advanced = runtime.stores.operation_queue.get(lease.operation_id)
+    if advanced is None:
+        raise ValueError("swarm operation disappeared after stage settlement")
+    max_steps = advanced.options.get("max_steps")
+    if (
+        type(max_steps) is int
+        and advanced.next_step_index >= max_steps
+        and advanced.next_step_index < len(plan.stages)
+    ):
+        raise _SwarmStageFailed("max_steps")
+    if advanced.next_step_index < len(plan.stages):
+        return result.outcome, False
+    job = get_job(lease.job_id, store=runtime.stores.jobs)
+    if job is None:
+        raise ValueError("swarm completion lost job details")
+    balance = ledger.balance(lease.job_id)
+    put_job_state(
+        replace(job, status="complete", spent_usd=balance.spent_cents / 100),
+        store=runtime.stores.jobs,
+    )
+    current = runtime.stores.owner_jobs.get_job(
+        owner_user_id=lease.owner_user_id, job_id=lease.job_id
+    )
+    if current is None or current.operation_state is not OperationState.RUNNING:
+        raise ValueError("swarm completion lost running owner authority")
+    changed = runtime.stores.owner_jobs.compare_and_set(
+        owner_user_id=lease.owner_user_id,
+        job_id=lease.job_id,
+        expected_version=current.state_version,
+        expected_state=OperationState.RUNNING,
+        operation_id=lease.operation_id,
+        next_state=OperationState.COMPLETE,
+        completed_at_ms=clock_ms(),
+    )
+    if not changed.applied:
+        raise ValueError("swarm completion lost owner compare-and-set")
+    return result.outcome, True
 
 
 def build_worker_runtime(
@@ -387,8 +596,15 @@ def run_worker_once(
     if running_authority is None:
         raise RuntimeError("leased operation lost owner authority")
     try:
-        plan = live_plan_from_authority(running_authority)
-        dispatch = RouterIdempotentDispatch(plan=plan, config=runtime.dispatch_config)
+        is_swarm = running_authority.payload.get("swarm_live_plan_hash") is not None
+        if is_swarm:
+            # Verify every owner/consent/plan/router seam before constructing
+            # a retrieval substrate or allowing a provider transport.
+            _validated_swarm_runtime(runtime, lease, running_authority)
+            dispatch = None
+        else:
+            plan = live_plan_from_authority(running_authority)
+            dispatch = RouterIdempotentDispatch(plan=plan, config=runtime.dispatch_config)
         retrieval = cast(
             _ClosableRetrieval,
             make_substrate(
@@ -446,19 +662,36 @@ def run_worker_once(
             lease_generation=lease.lease_generation,
         )
 
+    swarm_run: tuple[str, bool] | None = None
     try:
         try:
-            run_authorized_live_iteration(
-                lease,
-                operation_queue=runtime.stores.operation_queue,
-                owner_jobs=runtime.stores.owner_jobs,
-                store=runtime.stores.jobs,
-                retrieval=retrieval,
-                dispatch=dispatch,
-                clock=_SystemClock(clock_ms),
-                lease_renewal_ms=runtime.config.worker_lease_ms,
+            if is_swarm:
+                swarm_run = _run_swarm_operation(
+                    runtime,
+                    lease,
+                    running_authority,
+                    retrieval,
+                    clock_ms=clock_ms,
+                )
+            else:
+                if dispatch is None:
+                    raise RuntimeError("legacy execution lacks router dispatch")
+                run_authorized_live_iteration(
+                    lease,
+                    operation_queue=runtime.stores.operation_queue,
+                    owner_jobs=runtime.stores.owner_jobs,
+                    store=runtime.stores.jobs,
+                    retrieval=retrieval,
+                    dispatch=dispatch,
+                    clock=_SystemClock(clock_ms),
+                    lease_renewal_ms=runtime.config.worker_lease_ms,
+                )
+        except LiveExecutionFailed as failure:
+            reconcile_failure = (
+                failure.reconcile
+                if isinstance(failure, _SwarmStageFailed)
+                else True
             )
-        except LiveExecutionFailed:
             authority_after_failure = runtime.stores.owner_jobs.get_job(
                 owner_user_id=lease.owner_user_id, job_id=lease.job_id
             )
@@ -502,7 +735,7 @@ def run_worker_once(
                     runtime,
                     lease,
                     clock_ms=clock_ms,
-                    reconcile=True,
+                    reconcile=reconcile_failure,
                     reason="live_execution_failed",
                 )
             )
@@ -620,6 +853,19 @@ def run_worker_once(
     finally:
         retrieval.close()
 
+    if is_swarm and swarm_run is not None and not swarm_run[1]:
+        return WorkerPhaseRecord(
+            result="lease_pending",
+            phase=(
+                "shutdown_after_swarm_stage"
+                if stop_requested()
+                else "swarm_stage_settled"
+            ),
+            worker_id=worker_id,
+            operation_id=lease.operation_id,
+            job_id=lease.job_id,
+            lease_generation=lease.lease_generation,
+        )
     if stop_requested():
         return WorkerPhaseRecord(
             result="deposit_pending",

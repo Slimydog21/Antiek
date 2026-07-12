@@ -11,7 +11,8 @@ import hashlib
 import secrets
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from contextlib import nullcontext
+from dataclasses import dataclass, replace
 from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,7 @@ from substrate.midnight_oil import (
     product_result_html,
 )
 from substrate.midnight_oil.budget_ledger import BudgetLedger, ReservationNotFound
+from substrate.midnight_oil.consent_stage_coordinator import ConsentStagePlanCoordinator
 from substrate.midnight_oil.durable_job import DurableJobStore
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
 from substrate.midnight_oil.job_store import (
@@ -54,7 +56,7 @@ from substrate.midnight_oil.spend_consent import (
     decode_and_verify,
 )
 from substrate.midnight_oil.status import LifecycleIntegrityError, project_lifecycle_status
-from substrate.midnight_oil.swarm_plan import SwarmLivePlan
+from substrate.midnight_oil.swarm_plan import SwarmLivePlan, build_stage_plan
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
 midnight_oil_preflight_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
@@ -94,6 +96,7 @@ class MidnightOilDependencies:
     operation_queue: OperationQueue | None = None
     engagement_store: EngagementStore | None = None
     live_plan_resolver: Callable[[MidnightOilJob], LiveExecutionPlan | SwarmLivePlan] | None = None
+    consent_stage_coordinator: ConsentStagePlanCoordinator | None = None
     clock_ms: Callable[[], int] = _system_clock_ms
     random_token: Callable[[int], str] = secrets.token_urlsafe
     test_mode: bool = False
@@ -510,29 +513,63 @@ def post_spend_consent(
             or operation_id == nonce
         ):
             raise ValueError("invalid entropy source")
-        token = deps.consents.issue(
-            operator_id=owner,
-            config=config,
-            operation_id=operation_id,
-            ceiling_cents=ceiling,
-            issued_at_ms=now,
-            expires_at_ms=now + CONSENT_TTL_MS,
-            nonce=nonce,
-            key_id=deps.active_key_id,
-            signing_key=deps.signing_key,
+        if swarm_plan is not None and deps.consent_stage_coordinator is None:
+            raise RuntimeError("swarm consent coordinator is unavailable")
+        lock = (
+            nullcontext()
+            if deps.consent_stage_coordinator is None
+            else deps.consent_stage_coordinator.acquire(job_id)
         )
-        receipt: ConsentReceipt = decode_and_verify(token, verification_keys=deps.verification_keys)
-        published = deps.owner_jobs.publish_consent(
-            owner_user_id=owner,
-            job_id=job_id,
-            expected_version=row.state_version,
-            operation_id=operation_id,
-            approved_ceiling_cents=ceiling,
-            consent_receipt_id=receipt.receipt_id,
-            consent_config_hash=receipt.config_hash,
-            consent_issued_at_ms=receipt.issued_at_ms,
-            consent_expires_at_ms=receipt.expires_at_ms,
-        )
+        with lock:
+            current = deps.owner_jobs.get_job(owner_user_id=owner, job_id=job_id)
+            if current is None or current.state_version != row.state_version:
+                raise ValueError("job changed before consent preparation")
+            stage_plan = (
+                None
+                if swarm_plan is None
+                else build_stage_plan(
+                    swarm_plan,
+                    operation_id=operation_id,
+                    job_id=job_id,
+                    approved_ceiling_cents=ceiling,
+                )
+            )
+            operation_config = replace(
+                config,
+                stage_plan_hash=None if stage_plan is None else stage_plan.plan_hash,
+            )
+            if stage_plan is not None:
+                if not isinstance(deps.jobs, DurableJobStore):
+                    raise RuntimeError("durable stage-plan store is unavailable")
+                deps.jobs.prepare_stage_plan(stage_plan)
+            token = deps.consents.issue(
+                operator_id=owner,
+                config=operation_config,
+                operation_id=operation_id,
+                ceiling_cents=ceiling,
+                issued_at_ms=now,
+                expires_at_ms=now + CONSENT_TTL_MS,
+                nonce=nonce,
+                key_id=deps.active_key_id,
+                signing_key=deps.signing_key,
+            )
+            receipt: ConsentReceipt = decode_and_verify(
+                token, verification_keys=deps.verification_keys
+            )
+            published = deps.owner_jobs.publish_consent(
+                owner_user_id=owner,
+                job_id=job_id,
+                expected_version=row.state_version,
+                operation_id=operation_id,
+                approved_ceiling_cents=ceiling,
+                consent_receipt_id=receipt.receipt_id,
+                consent_config_hash=receipt.config_hash,
+                consent_issued_at_ms=receipt.issued_at_ms,
+                consent_expires_at_ms=receipt.expires_at_ms,
+                consent_stage_plan_hash=(
+                    None if stage_plan is None else stage_plan.plan_hash
+                ),
+            )
     except Exception:
         raise HTTPException(
             status_code=503,
@@ -592,14 +629,27 @@ def delete_spend_consent(request: Request, job_id: str, response: Response) -> d
         )
 
     def reset_authority() -> Any:
-        return deps.owner_jobs.reset_undelivered_consent(
-            owner_user_id=authority.owner_user_id,
-            job_id=authority.job_id,
-            expected_version=authority.state_version,
-            expected_state=authority.operation_state,
-            operation_id=authority.operation_id or "",
-            consent_receipt_id=authority.consent_receipt_id or "",
+        if authority.consent_stage_plan_hash is not None and deps.consent_stage_coordinator is None:
+            raise RuntimeError("swarm consent coordinator is unavailable")
+        lock = (
+            nullcontext()
+            if deps.consent_stage_coordinator is None
+            else deps.consent_stage_coordinator.acquire(authority.job_id)
         )
+        with lock:
+            current = deps.owner_jobs.get_job(
+                owner_user_id=authority.owner_user_id, job_id=authority.job_id
+            )
+            if current is None or current.state_version != authority.state_version:
+                raise ValueError("consent authority changed before reset")
+            return deps.owner_jobs.reset_undelivered_consent(
+                owner_user_id=authority.owner_user_id,
+                job_id=authority.job_id,
+                expected_version=authority.state_version,
+                expected_state=authority.operation_state,
+                operation_id=authority.operation_id or "",
+                consent_receipt_id=authority.consent_receipt_id or "",
+            )
 
     try:
         reset = deps.operation_queue.run_if_undelivered(authority.operation_id, reset_authority)
@@ -667,7 +717,9 @@ def get_job_status_route(request: Request, job_id: str, response: Response) -> d
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     try:
-        config = _config(authority)
+        config = replace(
+            _config(authority), stage_plan_hash=authority.consent_stage_plan_hash
+        )
         if not _legacy_matches_authority(job, config):
             raise LifecycleIntegrityError("job detail conflicts with owner authority")
         budget_path = deps.jobs.budget_db_path()
@@ -794,7 +846,9 @@ def post_run(
         raise _run_error(503, "durable operation queue is unavailable")
     try:
         now = deps.clock_ms()
-        config = _config(authority)
+        config = replace(
+            _config(authority), stage_plan_hash=authority.consent_stage_plan_hash
+        )
         legacy = get_job(body.job_id, store=deps.jobs)
         if legacy is None:
             raise _run_error(404, "job not found")

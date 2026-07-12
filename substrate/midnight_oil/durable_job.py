@@ -177,6 +177,75 @@ class DurableJobStore:
                 connection.execute("ROLLBACK")
                 raise
 
+    def prepare_stage_plan(self, plan: StagePlan) -> tuple[StageReceipt, ...]:
+        """Install a plan, replacing only an entirely pristine prior operation.
+
+        The caller must hold the consent-stage coordinator while owner authority
+        is still NONE. Runtime replay uses ``initialize_stage_plan`` instead.
+        """
+        if not isinstance(plan, StagePlan):
+            raise TypeError("stage plan must be a validated StagePlan")
+        with self._connect() as connection:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                if connection.execute(
+                    "SELECT 1 FROM midnight_oil_job_details WHERE job_id = ?",
+                    (plan.job_id,),
+                ).fetchone() is None:
+                    raise KeyError(plan.job_id)
+                existing = connection.execute(
+                    "SELECT job_id, plan_json FROM midnight_oil_stage_plans WHERE job_id = ?",
+                    (plan.job_id,),
+                ).fetchone()
+                if existing is not None:
+                    durable = _decode_plan(str(existing[1]), expected_job_id=str(existing[0]))
+                    receipts = self._list_stage_receipts(connection, plan.job_id)
+                    self._assert_exact_roster(durable, receipts)
+                    if durable == plan:
+                        connection.execute("COMMIT")
+                        return receipts
+                    if any(row.state != "planned" or row.revision != 0 for row in receipts):
+                        raise ValueError("non-pristine stage plan cannot be replaced")
+                    effect_count = connection.execute(
+                        "SELECT COUNT(*) FROM midnight_oil_stage_effects WHERE job_id = ?",
+                        (plan.job_id,),
+                    ).fetchone()
+                    rejection_count = connection.execute(
+                        "SELECT COUNT(*) FROM midnight_oil_stage_rejections WHERE job_id = ?",
+                        (plan.job_id,),
+                    ).fetchone()
+                    if effect_count is None or rejection_count is None or (
+                        int(effect_count[0]) != 0 or int(rejection_count[0]) != 0
+                    ):
+                        raise ValueError("evidenced stage plan cannot be replaced")
+                    connection.execute(
+                        "DELETE FROM midnight_oil_stage_receipts WHERE job_id = ?",
+                        (plan.job_id,),
+                    )
+                    connection.execute(
+                        "DELETE FROM midnight_oil_stage_plans WHERE job_id = ?",
+                        (plan.job_id,),
+                    )
+                connection.execute(
+                    "INSERT INTO midnight_oil_stage_plans(job_id, plan_json) VALUES (?, ?)",
+                    (plan.job_id, plan.model_dump_json()),
+                )
+                receipts = tuple(self._planned_receipt(plan, item) for item in plan.stages)
+                connection.executemany(
+                    "INSERT INTO midnight_oil_stage_receipts"
+                    "(job_id, stage_key, receipt_json) VALUES (?, ?, ?)",
+                    [
+                        (plan.job_id, receipt.stage_key, receipt.model_dump_json())
+                        for receipt in receipts
+                    ],
+                )
+                connection.execute("COMMIT")
+                return receipts
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
+
     def get_stage(self, job_id: str, stage_key: str) -> StageReceipt | None:
         _bounded(job_id, "job_id")
         _hash(stage_key, "stage_key")

@@ -68,6 +68,45 @@ def test_restart_round_trip_preserves_authority_and_owner_scope(tmp_path: Path) 
     assert restarted.get_job(owner_user_id="owner-a", job_id="missing") is None
 
 
+def test_swarm_stage_hash_is_atomic_authority_and_reset_clears_it(tmp_path: Path) -> None:
+    store = DurableOwnerJobStore(tmp_path / "jobs.duckdb")
+    draft = replace(
+        _job(),
+        payload={
+            **_job().payload,
+            "swarm_live_plan_hash": "a" * 64,
+        },
+    )
+    store.put_job(draft)
+    published = store.publish_consent(
+        owner_user_id="owner-a",
+        job_id="job-1",
+        expected_version=0,
+        operation_id="operation-1",
+        approved_ceiling_cents=12_345,
+        consent_receipt_id="receipt-safe-metadata",
+        consent_config_hash="config-safe-metadata",
+        consent_issued_at_ms=100,
+        consent_expires_at_ms=10_000,
+        consent_stage_plan_hash="b" * 64,
+    )
+    assert published.applied
+    assert published.job is not None
+    assert published.job.consent_stage_plan_hash == "b" * 64
+
+    reset = store.reset_undelivered_consent(
+        owner_user_id="owner-a",
+        job_id="job-1",
+        expected_version=1,
+        expected_state=OperationState.CONSENT_ISSUED,
+        operation_id="operation-1",
+        consent_receipt_id="receipt-safe-metadata",
+    )
+    assert reset.applied
+    assert reset.job is not None
+    assert reset.job.consent_stage_plan_hash is None
+
+
 def test_duplicate_insert_cannot_blindly_replace_authority(tmp_path: Path) -> None:
     store = DurableOwnerJobStore(tmp_path / "jobs.duckdb")
     original = _job()

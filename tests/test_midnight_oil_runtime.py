@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from html.parser import HTMLParser
@@ -59,9 +59,7 @@ class _ReadinessJsonParser(HTMLParser):
         self.capture = False
         self.payload = ""
 
-    def handle_starttag(
-        self, tag: str, attrs: list[tuple[str, str | None]]
-    ) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         values = dict(attrs)
         self.capture = tag == "script" and values.get("id") == "midnight-oil-readiness"
 
@@ -81,7 +79,7 @@ def _providers() -> Iterator[None]:
     reset_provider_registry()
 
 
-def _runtime_files(tmp_path: Path) -> tuple[Path, dict[str, str], Path]:
+def _runtime_files(tmp_path: Path, *, swarm: bool = False) -> tuple[Path, dict[str, str], Path]:
     dispatch = tmp_path / "dispatch.yaml"
     dispatch.write_text(
         """
@@ -100,7 +98,8 @@ tier_defaults:
     temperature: 0.1
 role_tiers:
   synthesizer: synthesis
-""".strip(),
+""".strip()
+        + ("\n  planner: synthesis\n  gatherer: synthesis\n  verifier: synthesis" if swarm else ""),
         encoding="utf-8",
     )
     endpoint_hash = provider_endpoint_sha256(
@@ -119,9 +118,7 @@ role_tiers:
                 "chat_completions_path": "/v1/chat/completions",
                 "api_key_env": "VERIFIED_PROVIDER_KEY",
                 "endpoint_sha256": endpoint_hash,
-                "dispatch_config_sha256": hashlib.sha256(
-                    dispatch.read_bytes()
-                ).hexdigest(),
+                "dispatch_config_sha256": hashlib.sha256(dispatch.read_bytes()).hexdigest(),
                 "evidence_ref": "urn:test:verified-idempotency-contract",
                 "verified_at": "2026-07-12T12:00:00Z",
             }
@@ -140,9 +137,7 @@ role_tiers:
                 "embedding_model_name": "test-embedding",
                 "consent_active_key_id": "primary",
                 "consent_signing_key_env": "MO_PRIMARY_KEY",
-                "consent_verification_key_envs": {
-                    "primary": "MO_PRIMARY_KEY"
-                },
+                "consent_verification_key_envs": {"primary": "MO_PRIMARY_KEY"},
                 "provider_attestation_paths": [str(attestation)],
                 "worker_lease_ms": 60_000,
                 "worker_poll_ms": 1_000,
@@ -193,6 +188,234 @@ def test_worker_no_work_is_structured_and_non_spending(tmp_path: Path) -> None:
     assert "test-key-never-serialized" not in record.to_json()
 
 
+def test_production_api_to_worker_executes_signed_four_role_swarm(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path, swarm=True)
+    api = build_midnight_oil_api_runtime(path, environ=environment)
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def _auth(request: Request, call_next):  # type: ignore[no-untyped-def]
+        request.state.user_id = "swarm-owner"
+        return await call_next(request)
+
+    register_midnight_oil_routes(app, dependencies=api.dependencies)
+    client = TestClient(app)
+    created = client.post(
+        "/midnight-oil/create",
+        json={
+            "goals": ["Test the signed causal chain."],
+            "duration_minutes": 10,
+            "model_id": "verified-model",
+            "fanout_depth": 1,
+            "live": True,
+        },
+    )
+    assert created.status_code == 200, created.text
+    job_id = created.json()["job_id"]
+    consent = client.post(
+        f"/midnight-oil/jobs/{job_id}/spend-consent",
+        json={"ceiling_cents": 100_000},
+    )
+    assert consent.status_code == 200, consent.text
+    queued = client.post(
+        "/midnight-oil/run",
+        headers={"X-Midnight-Oil-Spend-Consent": consent.json()["token"]},
+        json={"job_id": job_id},
+    )
+    assert queued.status_code == 200, queued.text
+
+    ensure_initialized(str(api.config.graph_db_path))
+    with connect_write(str(api.config.graph_db_path), purpose="test/swarm-runtime-seed") as con:
+        insert_document(
+            con,
+            document_id="swarm-doc",
+            source_tier=1,
+            document_type="paper",
+            title="Swarm source",
+        )
+        insert_chunk(
+            con,
+            document_id="swarm-doc",
+            chunk_index=0,
+            text="The primary source supports the bounded proposition.",
+            embedding=[1.0, 0.0],
+            chunk_id="swarm-chunk",
+        )
+
+    claim = "The primary source supports the bounded proposition."
+    proposition_digest = hashlib.sha256(f"q-1\x00{claim}".encode()).hexdigest()
+    proposition_id = f"prop-{proposition_digest[:16]}"
+
+    class _SwarmProvider:
+        name = "verified-provider"
+        idempotency_guaranteed = True
+
+        def __init__(self) -> None:
+            self.roles: list[str] = []
+
+        def call_idempotent(
+            self,
+            *,
+            idempotency_key: str,
+            model: str,
+            prompt: str,
+            max_tokens: int,
+            temperature: float,
+        ) -> RawProviderResponse:
+            del idempotency_key, model, max_tokens, temperature
+            role = prompt.split("\n", 1)[0].removeprefix("ROLE=")
+            self.roles.append(role)
+            encoded = prompt.split("UNTRUSTED_JSON_BASE64=", 1)[1]
+            payload = json.loads(base64.b64decode(encoded))
+            if role == "planner":
+                output = {
+                    "role": "planner",
+                    "schema_version": 1,
+                    "research_frame": "Test the bounded proposition.",
+                    "questions": [
+                        {
+                            "question_id": "q-1",
+                            "question": "What does the primary source support?",
+                            "inclusion_criteria": ["Primary evidence"],
+                            "exclusion_criteria": [],
+                            "expected_evidence_types": ["Quoted source"],
+                            "falsifiers": ["Contradictory primary evidence"],
+                        }
+                    ],
+                }
+            elif role == "gatherer":
+                source = payload["source_receipts"][0]
+                output = {
+                    "role": "gatherer",
+                    "schema_version": 1,
+                    "question_id": "q-1",
+                    "evidence": [
+                        {
+                            "evidence_id": "ev-0123456789abcdef",
+                            "source_receipt_id": source["source_receipt_id"],
+                            "document_id": source["document_id"],
+                            "chunk_id": source["chunk_id"],
+                            "excerpt_sha256": source["excerpt_sha256"],
+                            "claim": claim,
+                            "relevance": "Direct evidence.",
+                            "limitations": ["Single source"],
+                        }
+                    ],
+                    "search_limitations": ["Operator corpus only"],
+                }
+            elif role == "verifier":
+                output = {
+                    "role": "verifier",
+                    "schema_version": 1,
+                    "findings": [
+                        {
+                            "finding_id": "vf-0123456789abcdef",
+                            "proposition_id": proposition_id,
+                            "question_id": "q-1",
+                            "claim": claim,
+                            "status": "supported",
+                            "evidence_ids": ["ev-0123456789abcdef"],
+                            "rationale": "The canonical excerpt supports it.",
+                            "missing_evidence": [],
+                        }
+                    ],
+                    "evidence_dispositions": [
+                        {
+                            "evidence_id": "ev-0123456789abcdef",
+                            "question_id": "q-1",
+                            "disposition": "considered_support",
+                            "rationale": "Accepted primary evidence.",
+                        }
+                    ],
+                }
+            else:
+                output = {
+                    "role": "synthesizer",
+                    "schema_version": 1,
+                    "claims": [
+                        {
+                            "claim_id": "cl-0123456789abcdef",
+                            "proposition_id": proposition_id,
+                            "text": claim,
+                            "finding_id": "vf-0123456789abcdef",
+                            "evidence_ids": ["ev-0123456789abcdef"],
+                            "confidence": "low",
+                        }
+                    ],
+                    "summary_claim_ids": ["cl-0123456789abcdef"],
+                    "addressed_contradictions": [],
+                    "addressed_gaps": [],
+                    "limitations": ["Single source"],
+                    "open_questions": [],
+                }
+            return RawProviderResponse(
+                text=json.dumps(output),
+                raw_usage={"prompt_tokens": 10, "completion_tokens": 5},
+                finish_reason="stop",
+                latency_ms=1,
+                request_id=f"swarm-{role}",
+            )
+
+        def call(self, **kwargs: object) -> RawProviderResponse:
+            raise AssertionError("swarm worker must use idempotent transport")
+
+        def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:
+            return NormalizedUsage(
+                input_tokens=int(raw_usage["prompt_tokens"]),
+                output_tokens=int(raw_usage["completion_tokens"]),
+            )
+
+    provider = _SwarmProvider()
+    worker = build_worker_runtime(path, environ=environment)
+    register_provider(provider)
+    base_ms = api.dependencies.clock_ms() + 1_000
+
+    def clock_at(value: int) -> Callable[[], int]:
+        return lambda: value
+
+    stop_checks = 0
+
+    def stop_after_first_stage() -> bool:
+        nonlocal stop_checks
+        stop_checks += 1
+        return stop_checks >= 3
+
+    first = run_worker_once(
+        worker,
+        worker_id="swarm-worker",
+        embedding_model=_Embedding(),
+        clock_ms=clock_at(base_ms),
+        stop_requested=stop_after_first_stage,
+    )
+    records = [
+        first,
+        *[
+            run_worker_once(
+                worker,
+                worker_id="swarm-worker",
+                embedding_model=_Embedding(),
+                clock_ms=clock_at(base_ms + index * 120_000),
+            )
+            for index in range(1, 4)
+        ],
+    ]
+    result = records[-1]
+    assert [record.result for record in records] == [
+        "lease_pending",
+        "lease_pending",
+        "lease_pending",
+        "complete",
+    ]
+    assert records[0].phase == "shutdown_after_swarm_stage"
+    assert result.result == "complete"
+    assert provider.roles == ["planner", "gatherer", "verifier", "synthesizer"]
+    authority = worker.stores.owner_jobs.get_job(owner_user_id="swarm-owner", job_id=job_id)
+    assert authority is not None
+    assert authority.consent_stage_plan_hash == worker.stores.jobs.get_stage_plan(job_id).plan_hash
+
+
 def test_readiness_receipt_proves_zero_spend_composition_without_secrets(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -203,9 +426,7 @@ def test_readiness_receipt_proves_zero_spend_composition_without_secrets(
         lambda self: (_ for _ in ()).throw(AssertionError("provider network attempted")),
     )
 
-    receipt = build_readiness_receipt(
-        path, environ=environment, checked_at_ms=1_234
-    )
+    receipt = build_readiness_receipt(path, environ=environment, checked_at_ms=1_234)
 
     assert receipt.state == "ready"
     assert receipt.checked_at_ms == 1_234
@@ -218,7 +439,7 @@ def test_readiness_receipt_proves_zero_spend_composition_without_secrets(
     assert "MO_PRIMARY_KEY" not in serialized
     assert "operator-token-never-serialized" not in serialized
     assert str(tmp_path) not in serialized
-    assert "<script type=\"application/json\"" in receipt.to_html()
+    assert '<script type="application/json"' in receipt.to_html()
     parser = _ReadinessJsonParser()
     parser.feed(receipt.to_html())
     assert json.loads(parser.payload) == json.loads(receipt.to_json())
@@ -413,9 +634,7 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     assert queued_status.json()["state"] == "queued"
 
     ensure_initialized(str(api.config.graph_db_path))
-    with connect_write(
-        str(api.config.graph_db_path), purpose="test/runtime-e2e-seed"
-    ) as con:
+    with connect_write(str(api.config.graph_db_path), purpose="test/runtime-e2e-seed") as con:
         insert_document(
             con,
             document_id="runtime-source",
@@ -582,6 +801,7 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert status.json()["cost_state"] == "unknown_outcome"
         return
     if mode == "post_action_crash":
+
         def crash_after_paid_checkpoint() -> None:
             raise RuntimeError("soft crash after paid action")
 
@@ -632,9 +852,7 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         import substrate.midnight_oil.worker_cli as worker_module
 
         attribute = (
-            "resume_terminal_deposit"
-            if mode == "deposit_crash"
-            else "resume_terminal_projection"
+            "resume_terminal_deposit" if mode == "deposit_crash" else "resume_terminal_projection"
         )
         original = getattr(worker_module, attribute)
 
@@ -710,9 +928,7 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         lifecycle["deposit_href"], headers={"X-Test-Owner": "foreign-operator"}
     )
     assert foreign_artifact.status_code == 404
-    stored_artifact = worker.stores.engagement_store.get_document(
-        lifecycle["deposit_document_id"]
-    )
+    stored_artifact = worker.stores.engagement_store.get_document(lifecycle["deposit_document_id"])
     assert stored_artifact is not None
     worker.stores.engagement_store.put_document(
         lifecycle["deposit_document_id"],
@@ -728,8 +944,8 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     )
     assert second.result == "no_work"
     assert len(paid.keys) == 1
-    with connect_read(str(api.config.graph_db_path)) as con:
-        assert con.execute(
+    with connect_read(str(api.config.graph_db_path)) as read_con:
+        assert read_con.execute(
             "SELECT count(*) FROM deliverables WHERE deliverable_id = ?",
             [result.graph_deliverable_id],
         ).fetchone() == (1,)

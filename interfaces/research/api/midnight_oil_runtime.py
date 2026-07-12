@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from substrate.dispatch import DispatchConfig
+from substrate.midnight_oil.consent_stage_coordinator import ConsentStagePlanCoordinator
 from substrate.midnight_oil.job import MidnightOilJob
 from substrate.midnight_oil.live import LiveExecutionPlan, build_router_live_plan
 from substrate.midnight_oil.runtime import (
@@ -25,7 +26,7 @@ from substrate.midnight_oil.runtime import (
     install_attested_providers,
     load_consent_keyring,
 )
-from substrate.midnight_oil.swarm_plan import SwarmLivePlan
+from substrate.midnight_oil.swarm_plan import SwarmLivePlan, build_swarm_live_plan
 
 from .midnight_oil_routes import MidnightOilDependencies
 
@@ -51,9 +52,9 @@ def build_midnight_oil_api_runtime(
     stores = build_runtime_stores(config)
 
     def resolve_live_plan(job: MidnightOilJob) -> LiveExecutionPlan | SwarmLivePlan:
-        # Four configured roles do not prove that the production worker can
-        # decode and execute swarm authority. Keep issuance legacy until the
-        # stage-engine worker composition is installed and verified end-to-end.
+        required_roles = {"planner", "gatherer", "verifier", "synthesizer"}
+        if required_roles.issubset(dispatch_config.role_tiers):
+            return build_swarm_live_plan(job, config=dispatch_config)
         return build_router_live_plan(job, config=dispatch_config)
 
     dependencies = MidnightOilDependencies(
@@ -66,6 +67,9 @@ def build_midnight_oil_api_runtime(
         signing_key=signing_key,
         verification_keys=verification_keys,
         live_plan_resolver=resolve_live_plan,
+        consent_stage_coordinator=ConsentStagePlanCoordinator(
+            config.state_dir / "consent-stage-locks"
+        ),
     )
     return MidnightOilApiRuntime(
         config=config,
