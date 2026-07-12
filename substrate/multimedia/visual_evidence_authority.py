@@ -101,8 +101,22 @@ def attest_generated_visual(
                 "INSERT INTO multimedia_generated_visual_attestations VALUES (?, ?, ?, ?, ?)",
                 list(row),
             )
-        elif tuple(existing) != row:
-            raise VisualEvidenceAuthorityError("generated visual attestation conflicts")
+        else:
+            existing_values = list(existing[:4])
+            if (
+                existing[0] != receipt_id or existing[1] != receipt_digest
+                or existing[2] != reviewer_id
+            ):
+                raise VisualEvidenceAuthorityError("generated visual attestation conflicts")
+            _verify_signature(
+                SigningKey(operator_signing_key).verify_key,
+                existing_values,
+                str(existing[4]),
+            )
+            return GeneratedVisualAttestation(
+                str(existing[0]), str(existing[1]), str(existing[2]),
+                str(existing[3]), str(existing[4]),
+            )
     return GeneratedVisualAttestation(receipt_id, receipt_digest, reviewer_id, timestamp, signature)
 
 

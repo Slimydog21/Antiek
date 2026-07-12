@@ -318,6 +318,18 @@ def _existing_receipt(
     )
 
 
+def reopen_quarantined_artifact(
+    *, db_path: str, candidate_id: str, signing_key: bytes
+) -> ArtifactQuarantineReceipt:
+    """Reopen one MAC- and byte-verified receipt without network access."""
+    receipt = _existing_receipt(
+        db_path=db_path, candidate_id=candidate_id, signing_key=signing_key
+    )
+    if receipt is None:
+        raise ArtifactQuarantineError("artifact receipt is unavailable")
+    return receipt
+
+
 def _approved_addresses(values: Sequence[str]) -> frozenset[str]:
     if not values or len(values) > 8:
         raise ArtifactQuarantineError("artifact DNS answer rejected")
@@ -496,4 +508,5 @@ __all__ = [
     "Transport",
     "TransportResponse",
     "quarantine_artifact",
+    "reopen_quarantined_artifact",
 ]
