@@ -335,6 +335,9 @@ _PAYLOAD_FIELDS: Final = frozenset(
         "floating_spawn_id",
         "context_binding_sha256",
         "context_parent_asset_id",
+        "publication_manifest_sha256",
+        "publication_manifest_json",
+        "publication_preflight_ready",
     }
 )
 

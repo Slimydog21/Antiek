@@ -172,6 +172,26 @@ export type CollectiveExecutionPreparation = {
   operation_state: string;
   recommended_ceiling_cents: number;
   context_binding_sha256: string;
+  source_scope: {
+    schema_version: 1;
+    manifest_sha256: string;
+    collective_preview_sha256: string;
+    rights_policy_id: string;
+    connector_capability_id: string;
+    entries: Array<{
+      ref_id: string;
+      kind: "arxiv" | "substack";
+      canonical_url: string;
+      external_id: string;
+      acquisition_mode: "arxiv_abstract" | "substack_bounded_excerpt";
+      rights_use: "metadata_abstract_research" | "operator_authorized_excerpt";
+      max_excerpt_bytes: number;
+    }>;
+    required_count: number;
+    acquirable_count: number;
+    readiness: "connector_attestation_required" | "ready" | "blocked";
+    exclusions: Array<{ ref_id: string; reason_code: string }>;
+  };
   receipt_id: string;
   goal_truncated: boolean;
   view_format: "html";

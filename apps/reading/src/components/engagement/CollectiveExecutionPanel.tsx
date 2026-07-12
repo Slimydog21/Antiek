@@ -203,6 +203,33 @@ export function CollectiveExecutionPanel(props: {
           <p>
             Server recommendation: ${(prepared.recommended_ceiling_cents / 100).toFixed(2)}
           </p>
+          <div
+            className="space-y-1 rounded border border-black/15 p-2 font-sans dark:border-white/15"
+            data-testid="collective-execution-source-scope"
+            data-source-manifest-sha256={prepared.source_scope.manifest_sha256}
+          >
+            <p className="font-semibold">
+              Reviewed publication scope ({prepared.source_scope.required_count})
+            </p>
+            {prepared.source_scope.entries.length ? (
+              <ul className="list-disc pl-4">
+                {prepared.source_scope.entries.map((entry) => (
+                  <li key={entry.ref_id}>
+                    <span className="uppercase">{entry.kind}</span> · {entry.external_id} ·{" "}
+                    {entry.acquisition_mode.replaceAll("_", " ")} · cap{" "}
+                    {entry.max_excerpt_bytes} bytes
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No external publications; this execution remains corpus-only.</p>
+            )}
+            <p className="opacity-75">
+              Rights policy: {prepared.source_scope.rights_policy_id}. Generic web and PDFs are
+              outside this signed scope. Connector and rights checks run before publication bytes
+              may reach a model.
+            </p>
+          </div>
           {shownState === "consent_required" ? (
             <div className="flex items-end gap-2">
               <label>
@@ -219,7 +246,14 @@ export function CollectiveExecutionPanel(props: {
               </label>
               <button
                 type="button"
-                disabled={busy != null || !Number.isSafeInteger(ceilingCents) || (ceilingCents ?? 0) < 1}
+                disabled={
+                  busy != null ||
+                  !Number.isSafeInteger(ceilingCents) ||
+                  (ceilingCents ?? 0) < 1 ||
+                  prepared.source_scope.acquirable_count !==
+                    prepared.source_scope.required_count ||
+                  prepared.source_scope.exclusions.length > 0
+                }
                 onClick={() => void consentAndQueue()}
               >
                 {busy === "consent" ? "Authorizing…" : "Approve ceiling and queue"}

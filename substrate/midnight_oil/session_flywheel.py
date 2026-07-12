@@ -44,35 +44,39 @@ def context_binding_sha256(
     model_id: str | None,
     research_tier: str,
     fanout_depth: int,
+    publication_manifest_sha256: str | None = None,
 ) -> str:
     """Commit consent to the complete immutable product/execution tuple."""
+    material: dict[str, object] = {
+        "collective_unit_id": collective_unit_id,
+        "collective_preview_sha256": collective_preview_sha256,
+        "floating_session_id": floating_session_id,
+        "floating_spawn_id": floating_spawn_id,
+        "parent_asset_id": parent_asset_id,
+        "duration_minutes": duration_minutes,
+        "model_id": model_id,
+        "research_tier": research_tier,
+        "fanout_depth": fanout_depth,
+        "live": True,
+        "owner_id": owner_id,
+        "execution_id": execution_id,
+    }
+    if publication_manifest_sha256 is not None:
+        if len(publication_manifest_sha256) != 64:
+            raise ValueError("publication manifest hash is invalid")
+        material["publication_manifest_sha256"] = publication_manifest_sha256
     return hashlib.sha256(
         b"antiek:midnight-oil-context-binding:v1\0"
-        + json.dumps(
-            {
-                "collective_unit_id": collective_unit_id,
-                "collective_preview_sha256": collective_preview_sha256,
-                "floating_session_id": floating_session_id,
-                "floating_spawn_id": floating_spawn_id,
-                "parent_asset_id": parent_asset_id,
-                "duration_minutes": duration_minutes,
-                "model_id": model_id,
-                "research_tier": research_tier,
-                "fanout_depth": fanout_depth,
-                "live": True,
-                "owner_id": owner_id,
-                "execution_id": execution_id,
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-            ensure_ascii=False,
-        ).encode()
+        + json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     ).hexdigest()
 
 
 def validate_context_binding(authority: OwnerJob, job: MidnightOilJob) -> None:
     """Recompute signed product context before spend and final effects."""
     payload = authority.payload
+    from .publication_sources import manifest_from_authority
+
+    publication_manifest = manifest_from_authority(payload)
     binding_hash = payload.get("context_binding_sha256")
     if binding_hash is None:
         return
@@ -103,6 +107,11 @@ def validate_context_binding(authority: OwnerJob, job: MidnightOilJob) -> None:
         model_id=job.model_id,
         research_tier=job.research_tier,
         fanout_depth=job.fanout_depth,
+        publication_manifest_sha256=(
+            publication_manifest.manifest_sha256
+            if publication_manifest is not None
+            else None
+        ),
     )
     if not hmac.compare_digest(binding_hash, expected):
         raise ValueError("context binding authority hash requires reconciliation")

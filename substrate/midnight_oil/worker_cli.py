@@ -30,8 +30,19 @@ from .live import (
     resume_terminal_projection,
     run_authorized_live_iteration,
 )
-from .live_roles import CanonicalSourceReceipt, PlannerOutput, parse_role_output
+from .live_roles import (
+    CanonicalSourceReceipt,
+    PlannerOutput,
+    parse_role_output,
+    publication_source_receipt_id,
+)
 from .live_stage_engine import LiveSwarmStageEngine, RouterStageDispatch
+from .publication_sources import (
+    AcquiredPublicationExcerpt,
+    PublicationAcquirer,
+    acquire_reviewed_publications_durably,
+    manifest_from_authority,
+)
 from .runtime import (
     MidnightOilRuntimeConfig,
     MidnightOilRuntimeConfigError,
@@ -97,6 +108,7 @@ class MidnightOilWorkerRuntime:
     config: MidnightOilRuntimeConfig
     stores: MidnightOilRuntimeStores
     dispatch_config: DispatchConfig
+    publication_acquirer: PublicationAcquirer | None = None
 
 
 _SWARM_VALIDATOR_SHA256 = hashlib.sha256(b"antiek.midnight-oil.live-swarm-validator.v1").hexdigest()
@@ -146,6 +158,11 @@ def _validated_swarm_runtime(
             if authority.payload.get("context_binding_sha256") is not None
             else None
         ),
+        publication_manifest_sha256=(
+            str(authority.payload["publication_manifest_sha256"])
+            if authority.payload.get("publication_manifest_sha256") is not None
+            else None
+        ),
     )
     if signed.canonical_hash() != authority.consent_config_hash:
         raise ValueError("stage plan conflicts with signed consent configuration")
@@ -170,6 +187,7 @@ def _gather_input(
     runtime: MidnightOilWorkerRuntime,
     lease: WorkerLease,
     retrieval: RetrievalSubstrate,
+    publication_excerpts: tuple[AcquiredPublicationExcerpt, ...] = (),
 ) -> tuple[dict[str, object], tuple[CanonicalSourceReceipt, ...]]:
     plan = runtime.stores.jobs.get_stage_plan(lease.job_id)
     queued = runtime.stores.operation_queue.get(lease.operation_id)
@@ -194,7 +212,7 @@ def _gather_input(
         raise ValueError("retrieval substrate returned invalid gather results")
     excerpts: list[dict[str, str]] = []
     receipts: list[CanonicalSourceReceipt] = []
-    for row in rows[:100]:
+    for row in rows[: max(0, 100 - len(publication_excerpts))]:
         if not isinstance(row, dict):
             raise ValueError("retrieval result is outside gather contract")
         document_id = str(row.get("document_id") or "").strip()
@@ -217,6 +235,64 @@ def _gather_input(
             )
         )
         excerpts.append({"source_receipt_id": receipt_id, "text": text})
+    authority = runtime.stores.owner_jobs.get_job(
+        owner_user_id=lease.owner_user_id, job_id=lease.job_id
+    )
+    if authority is None:
+        raise ValueError("publication gather lost owner authority")
+    manifest = manifest_from_authority(authority.payload)
+    allowed_refs = set() if manifest is None else {source.ref_id for source in manifest.sources}
+    execution_id = authority.payload.get("execution_id")
+    if publication_excerpts and (type(execution_id) is not str or not execution_id):
+        raise ValueError("publication gather lacks execution scope")
+    owner_scope_sha256 = hashlib.sha256(
+        b"antiek.midnight-oil.owner-scope.v1\x00" + lease.owner_user_id.encode()
+    ).hexdigest()
+    for publication in publication_excerpts:
+        if publication.ref_id not in allowed_refs or manifest is None:
+            raise ValueError("publication excerpt is outside owner authority")
+        receipt_id = publication_source_receipt_id(
+            owner_scope_sha256=owner_scope_sha256,
+            execution_id=str(execution_id),
+            job_id=lease.job_id,
+            stage_key=item.stage_key,
+            router_role="gatherer",
+            route_plan_sha256=item.route_plan_sha256,
+            question_id=question.question_id,
+            publication_manifest_sha256=manifest.manifest_sha256,
+            reviewed_ref_id=publication.ref_id,
+            excerpt_sha256=publication.excerpt_sha256,
+        )
+        receipts.append(
+            CanonicalSourceReceipt(
+                source_receipt_id=receipt_id,
+                question_id=question.question_id,
+                document_id=publication.ref_id,
+                chunk_id=f"{publication.connector}:{publication.external_id}"[:512],
+                excerpt_sha256=publication.excerpt_sha256,
+                source_type="publication",
+                publication_manifest_sha256=manifest.manifest_sha256,
+                reviewed_ref_id=publication.ref_id,
+                connector=publication.connector,
+                canonical_url=publication.canonical_url,
+                acquisition_mode=publication.acquisition_mode,
+                rights_use=publication.rights_use,
+                rights_tier=publication.rights_tier,
+                truncated=publication.truncated,
+                excerpt_bytes=publication.excerpt_bytes,
+                owner_scope_sha256=owner_scope_sha256,
+                execution_id=str(execution_id),
+                job_id=lease.job_id,
+                stage_key=item.stage_key,
+                router_role="gatherer",
+                route_plan_sha256=item.route_plan_sha256,
+                connector_version=publication.connector_version,
+                extraction_mode=publication.extraction_mode,
+                truncation_reason=publication.truncation_reason,
+                source_length=publication.source_length,
+            )
+        )
+        excerpts.append({"source_receipt_id": receipt_id, "text": publication.text})
     return {"excerpts": excerpts}, tuple(receipts)
 
 
@@ -229,6 +305,22 @@ def _run_swarm_operation(
     clock_ms: Callable[[], int],
 ) -> tuple[str, bool]:
     _, dispatch, ledger = _validated_swarm_runtime(runtime, lease, authority)
+    from .job_store import OwnerJob
+
+    if not isinstance(authority, OwnerJob):
+        raise TypeError("swarm execution requires owner authority")
+    manifest = manifest_from_authority(authority.payload)
+    publication_excerpts: tuple[AcquiredPublicationExcerpt, ...] = ()
+    if manifest is not None and manifest.sources:
+        if runtime.publication_acquirer is None:
+            raise ValueError("reviewed publication connector is not configured")
+        publication_excerpts = acquire_reviewed_publications_durably(
+            manifest,
+            owner_id=lease.owner_user_id,
+            job_id=lease.job_id,
+            store=runtime.stores.engagement_store,
+            acquire=runtime.publication_acquirer,
+        )
     plan = runtime.stores.jobs.get_stage_plan(lease.job_id)
     engine = LiveSwarmStageEngine(
         job_id=lease.job_id,
@@ -246,9 +338,25 @@ def _run_swarm_operation(
     if queued is None or queued.next_step_index >= len(plan.stages):
         raise ValueError("swarm operation cursor is outside its stage plan")
     item = plan.stages[queued.next_step_index]
-    payload, receipts = (
-        _gather_input(runtime, lease, retrieval) if item.kind == "gather" else ({}, ())
-    )
+    if item.kind == "gather":
+        payload, receipts = _gather_input(
+            runtime, lease, retrieval, publication_excerpts
+        )
+    elif item.kind == "planner":
+        payload = {
+            "publication_inventory": [
+                {
+                    "ref_id": row.ref_id,
+                    "kind": row.kind,
+                    "excerpt_sha256": row.excerpt_sha256,
+                    "excerpt_bytes": row.excerpt_bytes,
+                }
+                for row in publication_excerpts
+            ]
+        }
+        receipts = ()
+    else:
+        payload, receipts = {}, ()
     result = engine.run_current_stage(stage_payload=payload, source_receipts=receipts)
     _renew(runtime, lease, clock_ms=clock_ms)
     if result.outcome != "settled":

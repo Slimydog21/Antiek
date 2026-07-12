@@ -473,6 +473,11 @@ class LiveOperatorCorpusStep:
                 if authority.payload.get("context_binding_sha256") is not None
                 else None
             ),
+            publication_manifest_sha256=(
+                str(authority.payload["publication_manifest_sha256"])
+                if authority.payload.get("publication_manifest_sha256") is not None
+                else None
+            ),
         )
         if not hmac.compare_digest(signed_config.canonical_hash(), authority.consent_config_hash):
             raise ValueError("live step configuration conflicts with signed consent")

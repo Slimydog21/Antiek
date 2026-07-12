@@ -814,6 +814,25 @@ def _validate_source_receipts(
         "question_id",
         "chunk_id",
         "excerpt_sha256",
+        "source_type",
+        "publication_manifest_sha256",
+        "reviewed_ref_id",
+        "connector",
+        "acquisition_mode",
+        "rights_use",
+        "rights_tier",
+        "truncated",
+        "excerpt_bytes",
+        "owner_scope_sha256",
+        "execution_id",
+        "job_id",
+        "stage_key",
+        "router_role",
+        "route_plan_sha256",
+        "connector_version",
+        "extraction_mode",
+        "truncation_reason",
+        "source_length",
     }
     for receipt in receipts:
         source_id = receipt.get("source_id", "")
@@ -823,7 +842,7 @@ def _validate_source_receipts(
             or not receipt.get("document_id")
             or not receipt.get("chunk_id")
             or not receipt.get("question_id")
-            or receipt.get("hash_scope") != "retrieval_excerpt"
+            or receipt.get("hash_scope") not in {"retrieval_excerpt", "publication_excerpt"}
             or receipt.get("content_hash") != receipt.get("excerpt_sha256")
             or len(receipt.get("excerpt_sha256", "")) != 64
             or any(
@@ -843,21 +862,56 @@ def _validate_source_receipts(
 def _source_receipt_rows(
     receipts: tuple[CanonicalSourceReceipt, ...],
 ) -> tuple[dict[str, str], ...]:
-    rows = tuple(
-        {
+    rows: list[dict[str, str]] = []
+    for receipt in receipts:
+        row = {
             "source_id": receipt.source_receipt_id,
             "question_id": receipt.question_id,
             "document_id": receipt.document_id,
             "chunk_id": receipt.chunk_id,
             "content_hash": receipt.excerpt_sha256,
             "excerpt_sha256": receipt.excerpt_sha256,
-            "hash_scope": "retrieval_excerpt",
-            "source_url": (f"antiek://document/{receipt.document_id}#chunk={receipt.chunk_id}"),
+            "hash_scope": (
+                "publication_excerpt"
+                if receipt.source_type == "publication"
+                else "retrieval_excerpt"
+            ),
+            "source_url": (
+                str(receipt.canonical_url)
+                if receipt.source_type == "publication"
+                else f"antiek://document/{receipt.document_id}#chunk={receipt.chunk_id}"
+            ),
             "title": receipt.document_id,
         }
-        for receipt in receipts
-    )
-    return _validate_source_receipts(rows)
+        if receipt.source_type == "publication":
+            row.update(
+                {
+                    "source_type": "publication",
+                    "publication_manifest_sha256": str(
+                        receipt.publication_manifest_sha256
+                    ),
+                    "reviewed_ref_id": str(receipt.reviewed_ref_id),
+                    "connector": str(receipt.connector),
+                    "acquisition_mode": str(receipt.acquisition_mode),
+                    "rights_use": str(receipt.rights_use),
+                    "rights_tier": str(receipt.rights_tier),
+                    "truncated": str(receipt.truncated).lower(),
+                    "excerpt_bytes": str(receipt.excerpt_bytes),
+                    "owner_scope_sha256": str(receipt.owner_scope_sha256),
+                    "execution_id": str(receipt.execution_id),
+                    "job_id": str(receipt.job_id),
+                    "stage_key": str(receipt.stage_key),
+                    "router_role": str(receipt.router_role),
+                    "route_plan_sha256": str(receipt.route_plan_sha256),
+                    "connector_version": str(receipt.connector_version),
+                    "extraction_mode": str(receipt.extraction_mode),
+                    "truncation_reason": str(receipt.truncation_reason),
+                }
+            )
+            if receipt.source_length is not None:
+                row["source_length"] = str(receipt.source_length)
+        rows.append(row)
+    return _validate_source_receipts(tuple(rows))
 
 
 def _validate_gather_payload(

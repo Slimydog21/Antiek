@@ -31,6 +31,101 @@ class CanonicalSourceReceipt(_Closed):
     document_id: str = Field(min_length=1, max_length=512)
     chunk_id: str = Field(min_length=1, max_length=512)
     excerpt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_type: Literal["corpus", "publication"] = "corpus"
+    publication_manifest_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    reviewed_ref_id: str | None = Field(default=None, pattern=r"^sref_[0-9a-f]{16}$")
+    connector: str | None = Field(default=None, min_length=1, max_length=256)
+    canonical_url: str | None = Field(default=None, min_length=1, max_length=2_048)
+    acquisition_mode: str | None = Field(default=None, min_length=1, max_length=128)
+    rights_use: str | None = Field(default=None, min_length=1, max_length=128)
+    rights_tier: str | None = Field(default=None, min_length=1, max_length=64)
+    truncated: bool | None = None
+    excerpt_bytes: int | None = Field(default=None, ge=1, le=32_000)
+    owner_scope_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    execution_id: str | None = Field(default=None, min_length=1, max_length=512)
+    job_id: str | None = Field(default=None, min_length=1, max_length=512)
+    stage_key: str | None = Field(default=None, min_length=1, max_length=512)
+    router_role: Literal["gatherer"] | None = None
+    route_plan_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    connector_version: str | None = Field(default=None, min_length=1, max_length=128)
+    extraction_mode: str | None = Field(default=None, min_length=1, max_length=128)
+    truncation_reason: str | None = Field(default=None, min_length=1, max_length=128)
+    source_length: int | None = Field(default=None, ge=1, le=100_000_000)
+
+    @model_validator(mode="after")
+    def _publication_fields(self) -> CanonicalSourceReceipt:
+        external = (
+            self.publication_manifest_sha256,
+            self.reviewed_ref_id,
+            self.connector,
+            self.canonical_url,
+            self.acquisition_mode,
+            self.rights_use,
+            self.rights_tier,
+            self.truncated,
+            self.excerpt_bytes,
+            self.owner_scope_sha256,
+            self.execution_id,
+            self.job_id,
+            self.stage_key,
+            self.router_role,
+            self.route_plan_sha256,
+            self.connector_version,
+            self.extraction_mode,
+            self.truncation_reason,
+        )
+        if self.source_type == "corpus" and (
+            any(value is not None for value in external) or self.source_length is not None
+        ):
+            raise ValueError("corpus receipt cannot carry publication authority")
+        if self.source_type == "publication" and any(value is None for value in external):
+            raise ValueError("publication receipt authority is incomplete")
+        if self.source_type == "publication" and self.source_receipt_id != publication_source_receipt_id(
+            owner_scope_sha256=str(self.owner_scope_sha256),
+            execution_id=str(self.execution_id),
+            job_id=str(self.job_id),
+            stage_key=str(self.stage_key),
+            router_role="gatherer",
+            route_plan_sha256=str(self.route_plan_sha256),
+            question_id=self.question_id,
+            publication_manifest_sha256=str(self.publication_manifest_sha256),
+            reviewed_ref_id=str(self.reviewed_ref_id),
+            excerpt_sha256=self.excerpt_sha256,
+        ):
+            raise ValueError("publication receipt id conflicts with execution scope")
+        return self
+
+
+def publication_source_receipt_id(
+    *,
+    owner_scope_sha256: str,
+    execution_id: str,
+    job_id: str,
+    stage_key: str,
+    router_role: Literal["gatherer"],
+    route_plan_sha256: str,
+    question_id: str,
+    publication_manifest_sha256: str,
+    reviewed_ref_id: str,
+    excerpt_sha256: str,
+) -> str:
+    material = json.dumps(
+        {
+            "owner_scope_sha256": owner_scope_sha256,
+            "execution_id": execution_id,
+            "job_id": job_id,
+            "stage_key": stage_key,
+            "router_role": router_role,
+            "route_plan_sha256": route_plan_sha256,
+            "question_id": question_id,
+            "publication_manifest_sha256": publication_manifest_sha256,
+            "reviewed_ref_id": reviewed_ref_id,
+            "excerpt_sha256": excerpt_sha256,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    return hashlib.sha256(b"antiek.midnight-oil.publication-receipt.v2\x00" + material).hexdigest()
 
 
 class CanonicalPropositionReceipt(_Closed):
@@ -435,6 +530,7 @@ __all__ = [
     "canonical_role_output",
     "build_role_prompt",
     "parse_role_output",
+    "publication_source_receipt_id",
     "proposition_sha256",
     "role_output_sha256",
     "validate_research_chain",

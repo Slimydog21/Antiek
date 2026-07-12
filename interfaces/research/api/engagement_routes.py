@@ -2364,6 +2364,9 @@ def post_collective_execution_prepare(
     from interfaces.research.api.midnight_oil_routes import (
         _deps as midnight_oil_dependencies,
     )
+    from substrate.midnight_oil.publication_sources import (
+        build_reviewed_publication_manifest,
+    )
     from substrate.midnight_oil.session_flywheel import context_binding_sha256
 
     owner_id = _request_owner(request)
@@ -2383,10 +2386,20 @@ def post_collective_execution_prepare(
         )
     material = dict(unit.get("material") or {})
     source = dict(material.get("unit") or {})
+    try:
+        publication_manifest = build_reviewed_publication_manifest(
+            source.get("source_references") or []
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if session.parent_asset_id not in (source.get("asset_ids") or []):
         raise HTTPException(status_code=409, detail="session anchor requires reconciliation")
     if session.status not in {"reserved", "running"}:
         raise HTTPException(status_code=409, detail="session is not execution-ready")
+    # Production egress remains fail-closed until a versioned capability
+    # attestation is injected into both API and worker composition roots.
+    acquirable_count = 0
+    source_scope_ready = acquirable_count == len(publication_manifest.sources)
 
     prepare_material = {
         "collective_unit_id": unit_id,
@@ -2399,6 +2412,7 @@ def post_collective_execution_prepare(
         "research_tier": body.research_tier or session.research_tier,
         "fanout_depth": body.fanout_depth,
         "live": True,
+        "publication_manifest_sha256": publication_manifest.manifest_sha256,
     }
     try:
         receipt = claim_collective_action(
@@ -2429,6 +2443,7 @@ def post_collective_execution_prepare(
         model_id=body.model_id or session.model_id,
         research_tier=body.research_tier or session.research_tier,
         fanout_depth=body.fanout_depth,
+        publication_manifest_sha256=publication_manifest.manifest_sha256,
     )
     binding = {
         "execution_id": execution_id,
@@ -2438,6 +2453,9 @@ def post_collective_execution_prepare(
         "floating_spawn_id": session.spawn_id,
         "context_binding_sha256": binding_hash,
         "context_parent_asset_id": session.parent_asset_id,
+        "publication_manifest_sha256": publication_manifest.manifest_sha256,
+        "publication_manifest_json": publication_manifest.model_dump_json(),
+        "publication_preflight_ready": "true" if source_scope_ready else "false",
     }
     identity_digest = hashlib.sha256(
         f"antiek:collective-execution-job:v1\0{owner_id}\0{execution_id}".encode()
@@ -2476,6 +2494,7 @@ def post_collective_execution_prepare(
                 "session_id": session.session_id,
                 "spawn_id": session.spawn_id,
                 "context_binding_sha256": binding_hash,
+                "publication_manifest_sha256": publication_manifest.manifest_sha256,
             },
         )
         authority = deps.owner_jobs.get_job(owner_user_id=owner_id, job_id=job_id)
@@ -2509,6 +2528,25 @@ def post_collective_execution_prepare(
         "operation_state": authority.operation_state.value,
         "recommended_ceiling_cents": recommended,
         "context_binding_sha256": binding_hash,
+        "source_scope": {
+            "schema_version": publication_manifest.schema_version,
+            "manifest_sha256": publication_manifest.manifest_sha256,
+            "collective_preview_sha256": durable_preview,
+            "rights_policy_id": publication_manifest.rights_policy_id,
+            "connector_capability_id": publication_manifest.connector_capability_id,
+            "entries": [row.model_dump(mode="json") for row in publication_manifest.sources],
+            "required_count": len(publication_manifest.sources),
+            "acquirable_count": acquirable_count,
+            "readiness": "ready" if source_scope_ready else "blocked",
+            "exclusions": [
+                {
+                    "ref_id": str(ref.get("ref_id") or ""),
+                    "reason_code": "unsupported_source_kind",
+                }
+                for ref in source.get("source_references") or []
+                if isinstance(ref, dict) and ref.get("kind") not in {"arxiv", "substack"}
+            ],
+        },
         "receipt_id": settled.get("receipt_id"),
         "goal_truncated": len(prompt) + len(unit_id) + 48 > 4096,
         "view_format": "html",

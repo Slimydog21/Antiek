@@ -165,6 +165,9 @@ def test_confirmed_collective_prepares_one_context_signed_live_job(tmp_path: Pat
     assert body["state"] == "consent_required"
     assert type(body["recommended_ceiling_cents"]) is int
     assert len(body["context_binding_sha256"]) == 64
+    assert body["source_scope"]["entries"] == []
+    assert body["source_scope"]["readiness"] == "ready"
+    assert len(body["source_scope"]["manifest_sha256"]) == 64
     replay = client.post(
         f"/engagement/sessions/collective/{unit_id}/execution/prepare",
         headers=headers,
@@ -214,6 +217,9 @@ def test_confirmed_collective_prepares_one_context_signed_live_job(tmp_path: Pat
     assert authority is not None
     assert authority.payload["floating_session_id"] == launched.json()["session_id"]
     assert authority.payload["collective_unit_id"] == unit_id
+    assert authority.payload["publication_manifest_sha256"] == body["source_scope"][
+        "manifest_sha256"
+    ]
     status_href = (
         f"/engagement/sessions/collective/{unit_id}/execution/{body['execution_id']}"
     )

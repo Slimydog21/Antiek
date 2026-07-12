@@ -269,6 +269,9 @@ def _owner_payload(
         "floating_spawn_id": binding.get("floating_spawn_id"),
         "context_binding_sha256": binding.get("context_binding_sha256"),
         "context_parent_asset_id": binding.get("context_parent_asset_id"),
+        "publication_manifest_sha256": binding.get("publication_manifest_sha256"),
+        "publication_manifest_json": binding.get("publication_manifest_json"),
+        "publication_preflight_ready": binding.get("publication_preflight_ready"),
     }
 
 
@@ -298,6 +301,9 @@ def create_job_authority(
             "floating_spawn_id",
             "context_binding_sha256",
             "context_parent_asset_id",
+            "publication_manifest_sha256",
+            "publication_manifest_json",
+            "publication_preflight_ready",
         )
         stored_binding = {
             key: existing.payload[key]
@@ -450,6 +456,9 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
 
 def _config(row: OwnerJob) -> JobConsentConfig:
     payload = row.payload
+    from substrate.midnight_oil.publication_sources import manifest_from_authority
+
+    publication_manifest = manifest_from_authority(payload)
     goals = payload["goals"]
     duration = payload["duration_minutes"]
     fanout = payload["fanout_depth"]
@@ -531,6 +540,11 @@ def _config(row: OwnerJob) -> JobConsentConfig:
             if payload.get("context_binding_sha256") is not None
             else None
         ),
+        publication_manifest_sha256=(
+            publication_manifest.manifest_sha256
+            if publication_manifest is not None
+            else None
+        ),
     )
 
 
@@ -587,6 +601,14 @@ def post_spend_consent(
         raise HTTPException(status_code=404, detail="job not found")
     if not _legacy_matches_authority(legacy_job, config):
         raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
+    if (
+        config.publication_manifest_sha256 is not None
+        and row.payload.get("publication_preflight_ready") != "true"
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="reviewed publication connectors are not ready for consent",
+        )
     if body.use_recommended:
         if body.ceiling_cents is not None:
             raise HTTPException(status_code=400, detail="choose ceiling_cents or use_recommended")
