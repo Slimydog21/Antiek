@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { SpawnMergePanel } from "./SpawnMergePanel";
 
 const mergeSpawnOutputs = vi.fn<(...args: unknown[]) => unknown>();
+const commitReviewedMergeDraft = vi.fn<(...args: unknown[]) => unknown>();
 const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
 const openWindow = vi.fn(() => "win:merge:draft_1");
 
 vi.mock("../../api/engagement", () => ({
+  commitReviewedMergeDraft: (...args: unknown[]) => commitReviewedMergeDraft(...(args as Parameters<typeof commitReviewedMergeDraft>)),
   mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...(args as Parameters<typeof mergeSpawnOutputs>)),
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
 }));
@@ -77,6 +79,7 @@ describe("SpawnMergePanel residual ci", () => {
   beforeEach(() => {
     budgetProjection.wouldExceedBudget = false;
     mergeSpawnOutputs.mockReset();
+    commitReviewedMergeDraft.mockReset();
     seedTwinNotes.mockReset();
     seedTwinNotes.mockResolvedValue({
       asset_id: "draft_book-1_abc",
@@ -87,6 +90,431 @@ describe("SpawnMergePanel residual ci", () => {
       question_count: 1,
     });
     openWindow.mockClear();
+  });
+
+  it("commits the exact reviewed draft only after explicit operator approval", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "book-1",
+      document_id: "draft_book-1_reviewed",
+      draft_sha256: "a".repeat(64),
+      canonical_committed: false,
+      source_spawn_ids: ["spn_1"],
+      sections_merged: 2,
+      draft_leaves_parent: true,
+      parent_document_id: "book-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: ["Parent unchanged until canonical commit"],
+      html: "<p>Reviewed preview</p>",
+    });
+    commitReviewedMergeDraft.mockResolvedValue({
+      deliverable_id: "dlv-merge-book-1-spn_1",
+      draft_document_id: "draft_book-1_reviewed",
+      old_revision: null,
+      new_revision: "b".repeat(64),
+      section_id: "sec-reviewed",
+      node_ids: ["node-reviewed"],
+      paragraph_count: 1,
+      draft_sha256: "a".repeat(64),
+      view_format: "html",
+      html: "<article>Canonical reviewed research</article>",
+    });
+
+    render(
+      <SpawnMergePanel
+        spawnId="spn_1"
+        parentAssetId="book-1"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await waitFor(() => expect(screen.getByTestId("spawn-merge-canonical-review")).toBeTruthy());
+    expect(commitReviewedMergeDraft).not.toHaveBeenCalled();
+    expect(screen.getByTestId("spawn-merge-canonical-review").textContent).toContain(
+      "a".repeat(64),
+    );
+    expect(
+      (screen.getByTestId("spawn-merge-canonical-target") as HTMLInputElement).value,
+    ).toBe("dlv-merge-book-1-spn_1");
+    expect(
+      (screen.getByTestId("spawn-merge-expected-revision") as HTMLInputElement).value,
+    ).toBe("new");
+    expect(
+      (screen.getByTestId("spawn-merge-create-combined") as HTMLInputElement).checked,
+    ).toBe(true);
+
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
+    await waitFor(() => {
+      expect(commitReviewedMergeDraft).toHaveBeenCalledWith({
+        draft_document_id: "draft_book-1_reviewed",
+        reviewed_draft_sha256: "a".repeat(64),
+        target_deliverable_id: "dlv-merge-book-1-spn_1",
+        expected_revision: "new",
+        create_combined: true,
+      });
+    });
+    const success = await screen.findByTestId("spawn-merge-canonical-success");
+    expect(success.getAttribute("data-deliverable-id")).toBe(
+      "dlv-merge-book-1-spn_1",
+    );
+    expect(success.getAttribute("data-revision")).toBe("b".repeat(64));
+    fireEvent.click(screen.getByTestId("spawn-merge-open-canonical"));
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({
+        document_id: "dlv-merge-book-1-spn_1",
+        html: "<article>Canonical reviewed research</article>",
+      }),
+      expect.objectContaining({ id: "win:canonical-merge:dlv-merge-book-1-spn_1" }),
+    );
+    expect(
+      screen.getByTestId("spawn-merge-open-canonical-write").getAttribute("href") || "",
+    ).toMatch(/html_draft=dlv-merge-book-1-spn_1/);
+    fireEvent.change(screen.getByTestId("spawn-merge-canonical-target"), {
+      target: { value: "dlv-retry" },
+    });
+    expect(screen.queryByTestId("spawn-merge-canonical-success")).toBeNull();
+    commitReviewedMergeDraft.mockRejectedValueOnce(
+      new Error("engagement API 409: retry target is stale"),
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/409.*stale/i);
+    });
+    expect(screen.queryByTestId("spawn-merge-canonical-success")).toBeNull();
+  });
+
+  it("keeps update intent independent from a real expected revision", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "paper-update",
+      document_id: "draft-update",
+      draft_sha256: "d".repeat(64),
+      source_spawn_ids: ["spn_update"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "paper-update",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: [],
+      html: "<p>Update preview</p>",
+    });
+    commitReviewedMergeDraft.mockResolvedValue({
+      deliverable_id: "dlv-existing",
+      draft_document_id: "draft-update",
+      old_revision: "e".repeat(64),
+      new_revision: "f".repeat(64),
+      section_id: "sec-update",
+      node_ids: ["node-update"],
+      paragraph_count: 1,
+      draft_sha256: "d".repeat(64),
+      view_format: "html",
+      html: "<p>Updated canonical</p>",
+    });
+    render(
+      <SpawnMergePanel
+        spawnId="spn_update"
+        parentAssetId="paper-update"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await screen.findByTestId("spawn-merge-canonical-review");
+    fireEvent.change(screen.getByTestId("spawn-merge-canonical-target"), {
+      target: { value: "dlv-existing" },
+    });
+    fireEvent.change(screen.getByTestId("spawn-merge-expected-revision"), {
+      target: { value: "e".repeat(64) },
+    });
+    fireEvent.click(screen.getByTestId("spawn-merge-create-combined"));
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
+    await waitFor(() => {
+      expect(commitReviewedMergeDraft).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target_deliverable_id: "dlv-existing",
+          expected_revision: "e".repeat(64),
+          create_combined: false,
+        }),
+      );
+    });
+    expect(await screen.findByTestId("spawn-merge-canonical-success")).toBeTruthy();
+  });
+
+  it("rejects a canonical response that does not match the reviewed request", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "paper-mismatch",
+      document_id: "draft-mismatch",
+      draft_sha256: "1".repeat(64),
+      source_spawn_ids: ["spn_mismatch"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "paper-mismatch",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: [],
+      html: "<p>Reviewed mismatch fixture</p>",
+    });
+    commitReviewedMergeDraft.mockResolvedValue({
+      deliverable_id: "dlv-wrong",
+      draft_document_id: "draft-other",
+      old_revision: null,
+      new_revision: "2".repeat(64),
+      section_id: "sec-wrong",
+      node_ids: [],
+      paragraph_count: 0,
+      draft_sha256: "3".repeat(64),
+      view_format: "html",
+      html: "<p>Wrong response</p>",
+    });
+    render(
+      <SpawnMergePanel
+        spawnId="spn_mismatch"
+        parentAssetId="paper-mismatch"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await screen.findByTestId("spawn-merge-canonical-review");
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/conflicts with reviewed/i);
+    });
+    expect(screen.queryByTestId("spawn-merge-canonical-success")).toBeNull();
+  });
+
+  it("discards an in-flight commit when the bound spawn or parent changes", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "paper-race",
+      document_id: "draft-race",
+      draft_sha256: "4".repeat(64),
+      source_spawn_ids: ["spn_race"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "paper-race",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: [],
+      html: "<p>Race preview</p>",
+    });
+    let resolveCommit: ((value: unknown) => void) | undefined;
+    commitReviewedMergeDraft.mockImplementation(
+      () => new Promise((resolve) => { resolveCommit = resolve; }),
+    );
+    const { rerender } = render(
+      <SpawnMergePanel
+        spawnId="spn_race"
+        parentAssetId="paper-race"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await screen.findByTestId("spawn-merge-canonical-review");
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
+    await waitFor(() => expect(commitReviewedMergeDraft).toHaveBeenCalled());
+    rerender(
+      <SpawnMergePanel
+        spawnId="spn_new"
+        parentAssetId="paper-new"
+        autoOpenDraft={false}
+      />,
+    );
+    resolveCommit?.({
+      deliverable_id: "dlv-merge-paper-race-spn_race",
+      draft_document_id: "draft-race",
+      old_revision: null,
+      new_revision: "5".repeat(64),
+      section_id: "sec-race",
+      node_ids: ["node-race"],
+      paragraph_count: 1,
+      draft_sha256: "4".repeat(64),
+      view_format: "html",
+      html: "<p>Old canonical response</p>",
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("spawn-merge-canonical-success")).toBeNull();
+      expect(screen.queryByTestId("spawn-merge-canonical-review")).toBeNull();
+    });
+  });
+
+  it("discards an in-flight preview when its spawn binding changes", async () => {
+    let resolvePreview: ((value: unknown) => void) | undefined;
+    mergeSpawnOutputs.mockImplementation(
+      () => new Promise((resolve) => { resolvePreview = resolve; }),
+    );
+    const onMerged = vi.fn();
+    const { rerender } = render(
+      <SpawnMergePanel
+        spawnId="spn_preview_old"
+        parentAssetId="paper-preview-old"
+        onMerged={onMerged}
+        autoOpenDraft
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await waitFor(() => expect(mergeSpawnOutputs).toHaveBeenCalled());
+    rerender(
+      <SpawnMergePanel
+        spawnId="spn_preview_new"
+        parentAssetId="paper-preview-new"
+        onMerged={onMerged}
+        autoOpenDraft
+      />,
+    );
+    resolvePreview?.({
+      mode: "draft_combined",
+      parent_asset_id: "paper-preview-old",
+      document_id: "draft-preview-old",
+      draft_sha256: "6".repeat(64),
+      source_spawn_ids: ["spn_preview_old"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "paper-preview-old",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: [],
+      html: "<p>Stale preview</p>",
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("spawn-merge-result")).toBeNull();
+    });
+    expect(onMerged).not.toHaveBeenCalled();
+    expect(openWindow).not.toHaveBeenCalled();
+  });
+
+  it("rejects a create response that reports prior canonical state", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "paper-revision-mismatch",
+      document_id: "draft-revision-mismatch",
+      draft_sha256: "7".repeat(64),
+      source_spawn_ids: ["spn_revision_mismatch"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "paper-revision-mismatch",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: [],
+      html: "<p>Revision mismatch preview</p>",
+    });
+    commitReviewedMergeDraft.mockResolvedValue({
+      deliverable_id: "dlv-merge-paper-revision-mismatch-spn_revision_mismatch",
+      draft_document_id: "draft-revision-mismatch",
+      old_revision: "8".repeat(64),
+      new_revision: "9".repeat(64),
+      section_id: "sec-revision-mismatch",
+      node_ids: ["node-revision-mismatch"],
+      paragraph_count: 1,
+      draft_sha256: "7".repeat(64),
+      view_format: "html",
+      html: "<p>Unexpected update</p>",
+    });
+    render(
+      <SpawnMergePanel
+        spawnId="spn_revision_mismatch"
+        parentAssetId="paper-revision-mismatch"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await screen.findByTestId("spawn-merge-canonical-review");
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/revision intent/i);
+    });
+    expect(screen.queryByTestId("spawn-merge-canonical-success")).toBeNull();
+  });
+
+  it("single-flights rapid canonical commit activation", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "paper-single-flight",
+      document_id: "draft-single-flight",
+      draft_sha256: "a".repeat(64),
+      source_spawn_ids: ["spn_single_flight"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "paper-single-flight",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: [],
+      html: "<p>Single flight preview</p>",
+    });
+    let resolveCommit: ((value: unknown) => void) | undefined;
+    commitReviewedMergeDraft.mockImplementation(
+      () => new Promise((resolve) => { resolveCommit = resolve; }),
+    );
+    render(
+      <SpawnMergePanel
+        spawnId="spn_single_flight"
+        parentAssetId="paper-single-flight"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    const commit = await screen.findByTestId("spawn-merge-canonical-commit");
+    commit.click();
+    commit.click();
+    expect(commitReviewedMergeDraft).toHaveBeenCalledTimes(1);
+    resolveCommit?.({
+      deliverable_id: "dlv-merge-paper-single-flight-spn_single_flight",
+      draft_document_id: "draft-single-flight",
+      old_revision: null,
+      new_revision: "b".repeat(64),
+      section_id: "sec-single-flight",
+      node_ids: ["node-single-flight"],
+      paragraph_count: 1,
+      draft_sha256: "a".repeat(64),
+      view_format: "html",
+      html: "<p>Single canonical result</p>",
+    });
+    expect(await screen.findByTestId("spawn-merge-canonical-success")).toBeTruthy();
+  });
+
+  it("keeps the reviewed preview available when canonical revision conflicts", async () => {
+    mergeSpawnOutputs.mockResolvedValue({
+      mode: "draft_combined",
+      parent_asset_id: "paper-1",
+      document_id: "draft-conflict",
+      draft_sha256: "c".repeat(64),
+      source_spawn_ids: ["spn_conflict"],
+      sections_merged: 1,
+      draft_leaves_parent: true,
+      parent_document_id: "paper-1",
+      view_format: "html",
+      product_panel: "engagement_merge",
+      source: "engagement_spine.merge_spawn_outputs",
+      notes: [],
+      html: "<p>Still reviewable</p>",
+    });
+    commitReviewedMergeDraft.mockRejectedValue(
+      new Error("engagement API 409: canonical target revision is stale"),
+    );
+    render(
+      <SpawnMergePanel
+        spawnId="spn_conflict"
+        parentAssetId="paper-1"
+        autoOpenDraft={false}
+      />,
+    );
+    fireEvent.click(screen.getByTestId("spawn-merge-draft"));
+    await screen.findByTestId("spawn-merge-canonical-review");
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toMatch(/409.*stale/i);
+    });
+    expect(screen.getByTestId("spawn-merge-canonical-review")).toBeTruthy();
+    expect(screen.getByTestId("spawn-merge-html").innerHTML).toMatch(/Still reviewable/);
+    expect(screen.queryByTestId("spawn-merge-canonical-success")).toBeNull();
   });
 
   it("creates draft combined from single spawn", async () => {
@@ -199,6 +627,10 @@ describe("SpawnMergePanel residual ci", () => {
         /draft_combined|Twin notes seeded/,
       );
     });
+    expect(
+      (screen.getByTestId("spawn-merge-canonical-commit") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
     expect(
       screen.getByTestId("spawn-merge-panel").getAttribute("data-view-format"),
     ).toBe("html");

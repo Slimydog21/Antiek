@@ -196,6 +196,10 @@ export type MergeProductResponse = {
   source: string;
   notes: string[];
   html?: string | null;
+  /** Immutable review token for an exact draft_combined document model. */
+  draft_sha256?: string | null;
+  /** Legacy merge is preview authority until the explicit canonical commit. */
+  canonical_committed?: boolean;
   /** Residual (oi/oj): Antiek-bench usage from document merge path. */
   usage_event?: {
     task_class?: string;
@@ -228,6 +232,40 @@ export async function mergeSpawnOutputs(body: {
     }),
   });
   return readJson<MergeProductResponse>(res);
+}
+
+export type CanonicalMergeCommitResponse = {
+  deliverable_id: string;
+  draft_document_id: string;
+  old_revision: string | null;
+  new_revision: string;
+  section_id: string;
+  node_ids: string[];
+  paragraph_count: number;
+  draft_sha256: string;
+  view_format: "html" | string;
+  html: string;
+};
+
+export async function commitReviewedMergeDraft(body: {
+  draft_document_id: string;
+  reviewed_draft_sha256: string;
+  target_deliverable_id: string;
+  expected_revision?: string | null;
+  create_combined: boolean;
+}): Promise<CanonicalMergeCommitResponse> {
+  const res = await apiFetch(`${API_BASE}/engagement/merge/commit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      draft_document_id: body.draft_document_id,
+      reviewed_draft_sha256: body.reviewed_draft_sha256,
+      target_deliverable_id: body.target_deliverable_id,
+      expected_revision: body.expected_revision ?? null,
+      create_combined: body.create_combined,
+    }),
+  });
+  return readJson<CanonicalMergeCommitResponse>(res);
 }
 
 /** Residual (hq): offline-vs-live hydrate injector readiness (Settings). */

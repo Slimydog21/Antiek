@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachSourceRefs,
+  commitReviewedMergeDraft,
   fetchResearchContext,
   mergeSpawnOutputs,
   openEngagementSession,
@@ -134,6 +135,44 @@ describe("engagement API client", () => {
     const body = JSON.parse(init.body);
     expect(body.mode).toBe("draft_combined");
     expect(body.include_html).toBe(true);
+  });
+
+  it("commitReviewedMergeDraft sends the exact review token and revision", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        deliverable_id: "dlv-reviewed",
+        draft_document_id: "draft-reviewed",
+        old_revision: null,
+        new_revision: "b".repeat(64),
+        section_id: "sec-reviewed",
+        node_ids: ["node-reviewed"],
+        paragraph_count: 1,
+        draft_sha256: "a".repeat(64),
+        view_format: "html",
+        html: "<article>Canonical</article>",
+      }),
+    });
+    const committed = await commitReviewedMergeDraft({
+      draft_document_id: "draft-reviewed",
+      reviewed_draft_sha256: "a".repeat(64),
+      target_deliverable_id: "dlv-reviewed",
+      expected_revision: "new",
+      create_combined: true,
+    });
+    expect(committed.deliverable_id).toBe("dlv-reviewed");
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/engagement/merge/commit",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = mockFetch.mock.calls[0][1] as { body: string };
+    expect(JSON.parse(init.body)).toEqual({
+      draft_document_id: "draft-reviewed",
+      reviewed_draft_sha256: "a".repeat(64),
+      target_deliverable_id: "dlv-reviewed",
+      expected_revision: "new",
+      create_combined: true,
+    });
   });
 
   it("throws on non-ok", async () => {
