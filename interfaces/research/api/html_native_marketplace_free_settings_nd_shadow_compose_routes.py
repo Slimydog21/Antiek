@@ -76,4 +76,6 @@ def register_html_native_marketplace_free_settings_nd_shadow_compose_routes(
 __all__ = [
     "html_native_marketplace_free_settings_nd_shadow_compose_router",
     "register_html_native_marketplace_free_settings_nd_shadow_compose_routes",
+    "HtmlViewBody",
+    "MarketPackBody",
 ]
