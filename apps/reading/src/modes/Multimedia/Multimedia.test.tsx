@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-import Multimedia from "./index";
+import Multimedia, { formatRecordCost } from "./index";
 import {
   approveMultimediaDryRun,
   createMultimediaDraft,
@@ -11,6 +11,7 @@ import {
   steerMultimediaAsset,
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord } from "../../api/multimedia";
+import type { MultimediaPlanWire } from "../../api/multimedia";
 
 vi.mock("../../api/multimedia", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/multimedia")>();
@@ -35,6 +36,26 @@ const mockList = vi.mocked(listMultimediaAssets);
 const mockHarden = vi.mocked(runMultimediaHardening);
 const mockSteer = vi.mocked(steerMultimediaAsset);
 
+const serverPlan: MultimediaPlanWire = {
+  request: { topic: "Server plan", target_minutes: 30, mode: "video", route_policy: "balanced" },
+  suggestions: [{ arc_id: "mechanism", title: "Server coverage", teaches: "Learn only persisted content", evidence: [], tradeoff: "Server tradeoff" }],
+  chosen_arc_ids: ["mechanism"],
+  chapters: [
+    { chapter_id: "server-intro", title: "Server introduction", minutes: 10, purpose: "Frame the persisted lesson.", arc_id: "intro", source_chunk_ids: [], cuts: [] },
+    { chapter_id: "server-mechanism", title: "Server mechanism", minutes: 20, purpose: "Explain the persisted mechanism.", arc_id: "mechanism", source_chunk_ids: ["server-chunk"], cuts: [] },
+  ],
+  script_lines: [
+    { line_id: "server-intro-line-0", sequence: 0, text: "This opening came from the server.", kind: "transition", citations: [], unsourced_reason: null },
+    { line_id: "server-mechanism-line-0", sequence: 1, text: "The server-backed mechanism uses exact cited evidence.", kind: "factual", citations: [{ chunk_id: "server-chunk", document_id: "server-document", locator: "section 4", quote_sha256: null }], unsourced_reason: null },
+  ],
+  scenes: [
+    { scene_id: "server-scene", chapter_id: "server-mechanism", visual_intent: "Evidence diagram", information_purpose: "Show the cited mechanism", narration_line_ids: ["server-mechanism-line-0"], source_chunk_ids: ["server-chunk"] },
+  ],
+  omissions: ["Server-declared omission"],
+  unsourced_line_ids: [],
+  duration_tolerance_minutes: 0.25,
+};
+
 const draftRecord: MultimediaAssetRecord = {
   asset: {
     asset_id: "mm-1",
@@ -48,7 +69,7 @@ const draftRecord: MultimediaAssetRecord = {
       cost_rows: [{ cost_usd: 40.5 }],
     },
   },
-  plan: {},
+  plan: serverPlan,
   mode: "video",
   style: "Asianometry-style explainer with restrained Ken Burns motion",
   hardening_report: null,
@@ -132,6 +153,11 @@ async function reviewPlan() {
 }
 
 describe("Multimedia workstation", () => {
+  it("fails closed for malformed persisted cost rows", () => {
+    const record = structuredClone(draftRecord);
+    record.asset.manifest = { cost_rows: [{ cost_usd: "40.50" }] };
+    expect(formatRecordCost(record, "$22.28")).toBe("Unavailable");
+  });
   it("updates the estimated cost when the operator selects the cheapest route", async () => {
     render(<Multimedia />);
     await waitForApiReady();
@@ -157,6 +183,21 @@ describe("Multimedia workstation", () => {
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
   });
 
+  it("blocks approval while the persisted plan contains an unsourced factual line", async () => {
+    const record = structuredClone(draftRecord);
+    const plan = structuredClone(serverPlan);
+    plan.script_lines[0].kind = "factual";
+    plan.script_lines[0].unsourced_reason = "needs an opening source";
+    plan.unsourced_line_ids = [plan.script_lines[0].line_id];
+    record.plan = plan;
+    mockCreate.mockResolvedValueOnce(record);
+
+    await reviewPlan();
+
+    expect(screen.getByRole("button", { name: "Approve render" }).getAttribute("disabled")).not.toBeNull();
+    expect(screen.getByText(/needs an opening source/)).toBeTruthy();
+  });
+
   it("surfaces provider unavailable and lets the operator downgrade safely", async () => {
     await reviewPlan();
     fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
@@ -169,7 +210,7 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use cheapest fallback" }));
 
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
-    expect(screen.getByTestId("multimedia-estimated-cost").textContent).toBe("$22.28");
+    expect(screen.getByTestId("multimedia-estimated-cost").textContent).toBe("$40.50");
   });
 
   it("surfaces an over-budget state with the same downgrade path", async () => {
@@ -189,13 +230,23 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
     await screen.findByTestId("multimedia-player");
 
-    fireEvent.click(screen.getByRole("button", { name: /The engineering constraint stack/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Server mechanism/ }));
 
     const transcript = screen.getByTestId("multimedia-transcript");
-    expect(within(transcript).getByText(/engines, wing structure, and fatigue testing/)).toBeTruthy();
+    expect(within(transcript).getByText(/server-backed mechanism uses exact cited evidence/)).toBeTruthy();
     expect(screen.getByTestId("multimedia-source-detail").textContent).toContain(
-      "engine and fatigue-testing sequence",
+      "server-chunk",
     );
+  });
+
+  it("renders persisted plan truth instead of the aircraft fixture", async () => {
+    await reviewPlan();
+    expect(screen.getByText("Server introduction")).toBeTruthy();
+    expect(screen.getByText("Server-declared omission")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    await screen.findByTestId("multimedia-player");
+    expect(screen.getByText(/This opening came from the server/)).toBeTruthy();
+    expect(screen.queryByText("The engineering constraint stack")).toBeNull();
   });
 
   it("lists and reopens persisted multimedia assets", async () => {

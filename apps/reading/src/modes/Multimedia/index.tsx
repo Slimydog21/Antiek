@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
 import {
@@ -19,6 +19,7 @@ import type {
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
+import { projectMultimediaPlan } from "./planProjection";
 
 type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
@@ -31,8 +32,8 @@ type Chapter = {
   title: string;
   minutes: number;
   purpose: string;
-  visualLabel: "generated" | "sourced" | "diagram";
-  sourceId: string;
+  visualLabel: "planned" | "sourced" | "diagram";
+  sourceId: string | null;
   transcript: string;
 };
 
@@ -80,7 +81,7 @@ const CHAPTERS: Chapter[] = [
     title: "The market after the breakthrough",
     minutes: 6,
     purpose: "Connect the technical breakthrough back to ticket prices and global travel.",
-    visualLabel: "generated",
+    visualLabel: "planned",
     sourceId: "src-market-shift",
     transcript:
       "The close compares the route map before and after wide-body adoption, labeling generated visuals separately from sourced charts.",
@@ -133,13 +134,21 @@ function splitOperatorList(value: string): string[] {
     .filter(Boolean);
 }
 
-function formatRecordCost(record: MultimediaAssetRecord | null, tier: RouteTier, fallback: string): string {
+export function formatRecordCost(record: MultimediaAssetRecord | null, fallback: string): string {
   if (!record) return fallback;
-  if (record.asset.route_policy !== tier) return fallback;
   const costRows = (record.asset.manifest as { cost_rows?: Array<{ cost_usd?: number }> }).cost_rows ?? [];
-  if (!costRows.length) return fallback;
-  const total = costRows.reduce((sum, row) => sum + (typeof row.cost_usd === "number" ? row.cost_usd : 0), 0);
+  if (!costRows.length) return "Unavailable";
+  if (costRows.some((row) => !row || typeof row.cost_usd !== "number" || !Number.isFinite(row.cost_usd) || row.cost_usd < 0)) {
+    return "Unavailable";
+  }
+  const total = costRows.reduce((sum, row) => sum + row.cost_usd!, 0);
   return `$${total.toFixed(2)}`;
+}
+
+function plannedProviderCalls(record: MultimediaAssetRecord | null): string {
+  if (!record) return "Example only";
+  const calls = (record.asset.manifest as { provider_calls?: unknown[] }).provider_calls;
+  return Array.isArray(calls) ? String(calls.length) : "Unavailable";
 }
 
 function statusToRenderState(record: MultimediaAssetRecord | null): RenderState {
@@ -161,6 +170,7 @@ function distributeMinutes(total: number): number[] {
 }
 
 export default function Multimedia() {
+  const openRequestId = useRef(0);
   const [topic, setTopic] = useState("The aircraft program that made cheap long-haul travel possible");
   const [duration, setDuration] = useState(30);
   const [customDuration, setCustomDuration] = useState("30");
@@ -203,21 +213,43 @@ export default function Multimedia() {
     };
   }, []);
 
-  const planChapters = useMemo(() => {
+  const exampleChapters = useMemo(() => {
     const minutes = distributeMinutes(duration);
     return CHAPTERS.map((chapter, index) => ({ ...chapter, minutes: minutes[index] }));
   }, [duration]);
 
+  const planProjection = useMemo(
+    () => (selectedRecord ? projectMultimediaPlan(selectedRecord.plan) : null),
+    [selectedRecord],
+  );
+  const projectedPlan = planProjection?.ok ? planProjection.value : null;
+  const planProjectionError = planProjection && !planProjection.ok ? planProjection.error : null;
+  const planChapters = projectedPlan?.chapters ?? (selectedRecord ? [] : exampleChapters);
+  const planSuggestions = projectedPlan?.suggestions ?? (selectedRecord ? [] : SUGGESTIONS);
+  const planOmissions = projectedPlan?.omissions ?? (selectedRecord ? [] : OMISSIONS);
+  const planSources = projectedPlan?.sources ?? (selectedRecord ? [] : SOURCES);
+  const unsourcedClaims = projectedPlan?.unsourcedClaims ?? [];
+
   const activeChapter = planChapters.find((chapter) => chapter.id === activeChapterId) ?? planChapters[0];
-  const selectedSource = SOURCES.find((source) => source.id === selectedSourceId) ?? SOURCES[0];
-  const estimatedCost = formatRecordCost(selectedRecord, tier, estimateCost(duration, mode, tier));
+  const selectedSource = planSources.find((source) => source.id === selectedSourceId) ?? planSources[0];
+  const estimatedCost = formatRecordCost(selectedRecord, estimateCost(duration, mode, tier));
   // Approve posts only asset_id, so it runs against the STORED route_policy.
   // Gate it so the UI never prices one tier while approving another (grok #8).
   const routeTierMatchesRecord = !selectedRecord || selectedRecord.asset.route_policy === tier;
   const canApprove =
-    planReady && topic.trim().length > 0 && duration >= 15 && duration <= 45 && routeTierMatchesRecord;
+    planReady && topic.trim().length > 0 && duration >= 15 && duration <= 45 && routeTierMatchesRecord &&
+    planProjection?.ok === true && unsourcedClaims.length === 0;
   const canRunAssetCommand =
     Boolean(selectedRecord) && pendingCommand === null && !knowledgeMutationPending;
+
+  useEffect(() => {
+    if (!planChapters.some((chapter) => chapter.id === activeChapterId)) {
+      setActiveChapterId(planChapters[0]?.id ?? "");
+    }
+    if (!planSources.some((source) => source.id === selectedSourceId)) {
+      setSelectedSourceId(planSources[0]?.id ?? "");
+    }
+  }, [activeChapterId, planChapters, planSources, selectedSourceId]);
 
   function setPreset(next: number) {
     setDuration(next);
@@ -274,9 +306,11 @@ export default function Multimedia() {
 
   async function reopenAsset(assetId: string) {
     if (knowledgeMutationPending) return;
+    const requestId = ++openRequestId.current;
     setPendingCommand("open");
     try {
       const record = await getMultimediaAsset(assetId);
+      if (requestId !== openRequestId.current) return;
       setSelectedRecord(record);
       setTopic(record.asset.title);
       setDuration(record.asset.requested_duration_minutes);
@@ -289,9 +323,10 @@ export default function Multimedia() {
       setRenderState(statusToRenderState(record));
       setApiError(null);
     } catch {
+      if (requestId !== openRequestId.current) return;
       setApiError("Could not reopen that multimedia asset.");
     } finally {
-      setPendingCommand(null);
+      if (requestId === openRequestId.current) setPendingCommand(null);
     }
   }
 
@@ -538,7 +573,7 @@ export default function Multimedia() {
                     <button
                       key={`${asset.asset_id}-${asset.revision_id}`}
                       type="button"
-                      disabled={knowledgeMutationPending}
+                      disabled={knowledgeMutationPending || pendingCommand === "open"}
                       onClick={() => reopenAsset(asset.asset_id)}
                       className={
                         "rounded-md border px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50 " +
@@ -563,20 +598,28 @@ export default function Multimedia() {
               </div>
             ) : (
               <>
+                {planProjectionError ? (
+                  <div className="rounded-md border border-danger bg-danger/10 p-3 text-[13px] text-ink dark:text-bright" role="alert">
+                    Persisted plan cannot be reviewed: {planProjectionError}
+                  </div>
+                ) : (
+                <>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                  <InfoPanel title="Coverage suggestions" items={SUGGESTIONS} testId="multimedia-suggestions" />
-                  <InfoPanel title="Known omissions" items={OMISSIONS} testId="multimedia-omissions" />
+                  <InfoPanel title="Coverage suggestions" items={planSuggestions} testId="multimedia-suggestions" />
+                  <InfoPanel title="Known omissions" items={planOmissions} testId="multimedia-omissions" />
                   <div className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
                     <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Render budget</p>
                     <p className="mt-2 text-2xl font-semibold text-ink dark:text-bright">{estimatedCost}</p>
                     <p className="mt-1 text-[12px] leading-snug text-shadow-1 dark:text-moonlight">
-                      {sourceScope}. {TIER_COPY[tier].tradeoff}
+                      {selectedRecord
+                        ? `Persisted ${selectedRecord.asset.route_policy.replaceAll("_", " ")} route.`
+                        : `${sourceScope}. ${TIER_COPY[tier].tradeoff}`}
                     </p>
                   </div>
                 </div>
 
                 <p className="mb-1 font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                  Storyboard — sample preview{selectedRecord ? " (your plan is persisted server-side; narrative beats are not yet rendered)" : ""}
+                  {selectedRecord ? "Persisted storyboard" : "Offline example storyboard"}
                 </p>
                 <ol className="space-y-2" aria-label="Storyboard outline">
                   {planChapters.map((chapter) => (
@@ -593,7 +636,7 @@ export default function Multimedia() {
                         </div>
                         <div className="flex gap-2">
                           <LemonTag colour="muted">{chapter.minutes} min</LemonTag>
-                          <LemonTag colour={chapter.visualLabel === "generated" ? "danger" : "default"}>
+                          <LemonTag colour={chapter.visualLabel === "planned" ? "muted" : "default"}>
                             {chapter.visualLabel}
                           </LemonTag>
                         </div>
@@ -604,11 +647,15 @@ export default function Multimedia() {
 
                 <div className="rounded-md border border-sun bg-sun/10 p-3">
                   <p className="font-mono text-[12px] text-ink">Unsourced claim guard</p>
-                  <p className="mt-1 text-[13px] leading-relaxed text-shadow-2">
-                    The planner found one narration bridge that needs a source before final render:
-                    "wide-body adoption directly caused lower fares on every route." It can be revised,
-                    sourced, or omitted before approval.
-                  </p>
+                  {unsourcedClaims.length ? (
+                    <ul className="mt-1 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-shadow-2">
+                      {unsourcedClaims.map((claim) => <li key={claim}>{claim}</li>)}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-[13px] leading-relaxed text-shadow-2">
+                      {selectedRecord ? "No unsourced factual lines are recorded in this plan." : "Example only. Create a persisted plan to inspect grounding."}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2">
@@ -660,6 +707,8 @@ export default function Multimedia() {
                     }}
                     onMutationBusyChange={setKnowledgeMutationPending}
                   />
+                )}
+                </>
                 )}
               </>
             )}
@@ -748,9 +797,9 @@ export default function Multimedia() {
                       <p className="font-mono text-[12px] uppercase text-moonlight">
                         {playerView === "video" ? "Ken Burns preview" : "Audio waveform"}
                       </p>
-                      <p className="mt-2 font-serif text-xl">{activeChapter.title}</p>
+                      <p className="mt-2 font-serif text-xl">{activeChapter?.title ?? "No chapter available"}</p>
                       <p className="mt-1 text-[12px] text-moonlight">
-                        Visual label: {activeChapter.visualLabel}
+                        Visual label: {activeChapter?.visualLabel ?? "unavailable"}
                       </p>
                     </div>
                   </div>
@@ -762,7 +811,7 @@ export default function Multimedia() {
                         type="button"
                         onClick={() => {
                           setActiveChapterId(chapter.id);
-                          setSelectedSourceId(chapter.sourceId);
+                          setSelectedSourceId(chapter.sourceId ?? "");
                         }}
                         className={
                           "rounded-md border px-3 py-2 text-left " +
@@ -785,10 +834,10 @@ export default function Multimedia() {
                   >
                     <div className="flex flex-wrap items-center gap-2">
                       <LemonTag colour="sun">Current segment</LemonTag>
-                      <LemonTag>{activeChapter.visualLabel} visual</LemonTag>
+                      <LemonTag>{activeChapter?.visualLabel ?? "unavailable"} visual</LemonTag>
                     </div>
                     <p className="mt-3 text-[14px] leading-relaxed text-ink dark:text-bright">
-                      {activeChapter.transcript}
+                      {activeChapter?.transcript ?? "No persisted transcript is available."}
                     </p>
                   </article>
                 </div>
@@ -797,7 +846,7 @@ export default function Multimedia() {
                   <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
                     <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Source cards</p>
                     <div className="mt-2 space-y-2">
-                      {SOURCES.map((source) => (
+                      {planSources.map((source) => (
                         <button
                           key={source.id}
                           type="button"
@@ -815,7 +864,7 @@ export default function Multimedia() {
                       ))}
                     </div>
                     <p className="mt-3 text-[13px] leading-relaxed text-ink dark:text-bright" data-testid="multimedia-source-detail">
-                      {selectedSource.detail}
+                      {selectedSource?.detail ?? "No cited source is attached to this plan."}
                     </p>
                   </section>
 
@@ -826,20 +875,19 @@ export default function Multimedia() {
                       <dd className="text-right text-ink dark:text-bright">{TIER_COPY[tier].label}</dd>
                       <dt className="text-shadow-1 dark:text-moonlight">Estimate</dt>
                       <dd className="text-right text-ink dark:text-bright">{estimatedCost}</dd>
-                      <dt className="text-shadow-1 dark:text-moonlight">Krea calls</dt>
-                      <dd className="text-right text-ink dark:text-bright">{tier === "cheapest" ? "1" : tier === "balanced" ? "4" : "9"}</dd>
+                      <dt className="text-shadow-1 dark:text-moonlight">Provider calls</dt>
+                      <dd className="text-right text-ink dark:text-bright">{plannedProviderCalls(selectedRecord)}</dd>
                     </dl>
                   </section>
 
                   <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
                     <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Revision history</p>
                     <ol className="mt-2 space-y-1 text-[13px] text-shadow-1 dark:text-moonlight">
-                      <li>Plan v1 generated from topic and source scope.</li>
+                      <li>{selectedRecord ? `Persisted revision ${selectedRecord.asset.revision_id}.` : "Offline example; no revision persisted."}</li>
                       {selectedRecord?.asset.parent_revision_id && (
                         <li>Child revision from {selectedRecord.asset.parent_revision_id}.</li>
                       )}
-                      <li>Unsourced claim marked before render approval.</li>
-                      <li>Current steer queued: {steer}</li>
+                      <li>{unsourcedClaims.length} unsourced factual line{unsourcedClaims.length === 1 ? "" : "s"} recorded.</li>
                     </ol>
                   </section>
                 </div>

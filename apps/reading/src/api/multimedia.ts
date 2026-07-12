@@ -132,6 +132,60 @@ export interface MultimediaAssetRecord {
   knowledge_finalization_revision_id?: string | null;
 }
 
+export interface MultimediaSourceCitationWire {
+  chunk_id: string;
+  document_id: string;
+  locator: string | null;
+  quote_sha256: string | null;
+}
+
+export interface MultimediaScriptLineWire {
+  line_id: string;
+  sequence: number;
+  text: string;
+  kind: "factual" | "transition" | "narration" | "opinion" | "instruction";
+  citations: MultimediaSourceCitationWire[];
+  unsourced_reason: string | null;
+}
+
+export interface MultimediaPlanWire {
+  request: {
+    topic: string;
+    target_minutes: number;
+    mode: MultimediaMode;
+    route_policy: MultimediaRoutePolicy;
+  };
+  suggestions: Array<{
+    arc_id: string;
+    title: string;
+    teaches: string;
+    evidence: MultimediaSourceCitationWire[];
+    tradeoff: string;
+  }>;
+  chosen_arc_ids: string[];
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    minutes: number;
+    purpose: string;
+    arc_id: string;
+    source_chunk_ids: string[];
+    cuts: string[];
+  }>;
+  script_lines: MultimediaScriptLineWire[];
+  scenes: Array<{
+    scene_id: string;
+    chapter_id: string;
+    visual_intent: string;
+    information_purpose: string;
+    narration_line_ids: string[];
+    source_chunk_ids: string[];
+  }>;
+  omissions: string[];
+  unsourced_line_ids: string[];
+  duration_tolerance_minutes: number;
+}
+
 export interface MultimediaJobRecord {
   job_id: string;
   asset_id: string;
