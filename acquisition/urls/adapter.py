@@ -494,6 +494,8 @@ def ingest_url(
             ip_holder_id=None,
             main_html=raw_html,
             ingested_at=ingested_at,
+            canonical_content_hash=chash,
+            source_event_id=event_id,
         )
         write_reader_snapshot(snap_path, snap_html)
         reader_snapshot_path = str(snap_path)

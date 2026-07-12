@@ -269,6 +269,8 @@ def ingest_pdf(
             title=result.title,
             author=result.author,
             source_kind="book",
+            canonical_content_hash=chash,
+            source_event_id=event_id,
         )
         write_reader_snapshot(snap_path, snap_html)
         reader_snapshot_path = str(snap_path)
