@@ -77,6 +77,8 @@ def register_nd_shadow_recursive_twin_presentation_weekly_source_attach_write_tw
 
 
 __all__ = [
+    "NdShadowBody",
+    "TwinPresentationBody",
     "nd_shadow_recursive_twin_presentation_weekly_source_attach_write_twin_fullscreen_draft_compose_router",
     "register_nd_shadow_recursive_twin_presentation_weekly_source_attach_write_twin_fullscreen_draft_compose_routes",
 ]
