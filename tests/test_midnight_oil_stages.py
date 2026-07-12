@@ -11,12 +11,15 @@ from substrate.midnight_oil.stages import (
     StagePlan,
     StagePlanItem,
     StageReceipt,
+    StageRejectionReceipt,
     StageState,
     dispatch_fence_sha256,
     effect_receipt_id,
     provider_effect_key,
+    stage_failure_receipt_id,
     stage_key,
     stage_plan_hash,
+    stage_rejection_receipt_id,
 )
 
 OPERATION = "operation-1"
@@ -128,9 +131,29 @@ def _receipt(state: StageState = "planned") -> StageReceipt:
             "output_sha256": OUTPUT_HASH,
             "returned_at_ms": 12,
         }
+    if state == "not_dispatched":
+        fence = reserved["dispatch_fence_sha256"]
+        returned = {
+            "failure_reason": "route_refused",
+            "failure_receipt_id": stage_failure_receipt_id(
+                stage_key=item.stage_key,
+                budget_hold_id="hold-1",
+                dispatch_fence=str(fence),
+                reason="route_refused",
+            ),
+            "failed_at_ms": 12,
+        }
     if state == "unknown":
         returned = {"unknown_at_ms": 12}
+    if state in {"rejected", "rejected_settled"}:
+        returned = {
+            "rejection_receipt_id": "e" * 64,
+            "raw_response_sha256": "f" * 64,
+            "returned_at_ms": 12,
+        }
     if state == "settled":
+        returned["settled_at_ms"] = 13
+    if state == "rejected_settled":
         returned["settled_at_ms"] = 13
     return StageReceipt(
         operation_id=OPERATION,
@@ -143,9 +166,12 @@ def _receipt(state: StageState = "planned") -> StageReceipt:
         revision={
             "planned": 0,
             "reserved": 1,
+            "not_dispatched": 2,
             "unknown": 2,
             "returned": 2,
             "settled": 3,
+            "rejected": 2,
+            "rejected_settled": 3,
         }[state],
         **reserved,
         **returned,
@@ -287,6 +313,67 @@ def test_returned_and_settled_states_bind_effect_and_output_receipts() -> None:
         StageReceipt(**{**returned.model_dump(), "output_sha256": None})
     with pytest.raises(ValidationError, match="cannot predate"):
         StageReceipt(**{**returned.model_dump(), "returned_at_ms": 9})
+
+
+def test_not_dispatched_and_rejected_states_are_terminal_and_mutually_exclusive() -> None:
+    assert _receipt("not_dispatched").failure_reason == "route_refused"
+    assert _receipt("rejected").rejection_receipt_id == "e" * 64
+    assert _receipt("rejected_settled").settled_at_ms == 13
+    with pytest.raises(ValidationError, match="failure receipt conflicts"):
+        StageReceipt(
+            **{
+                **_receipt("not_dispatched").model_dump(),
+                "failure_receipt_id": "0" * 64,
+            }
+        )
+    for state in ("not_dispatched", "returned", "settled"):
+        with pytest.raises(ValidationError, match="terminal outcome|failure receipt"):
+            StageReceipt(
+                **{
+                    **_receipt(state).model_dump(),
+                    "rejection_receipt_id": "e" * 64,
+                    "raw_response_sha256": "f" * 64,
+                }
+            )
+    with pytest.raises(ValidationError, match="only its sanitized rejection"):
+        StageReceipt(
+            **{
+                **_receipt("rejected").model_dump(),
+                "effect_receipt_id": "d" * 64,
+            }
+        )
+
+
+def test_rejection_receipt_is_content_addressed_and_excludes_raw_response() -> None:
+    item = _stages(shards=1)[0]
+    receipt = StageRejectionReceipt(
+        receipt_id=stage_rejection_receipt_id(
+            stage_key=item.stage_key,
+            provider_effect_key_value=item.provider_effect_key,
+            kind="planner",
+            route_receipt_id="route-1",
+            provider_event_id="event-1",
+            raw_response_sha256="f" * 64,
+            actual_cents=7,
+            rejection_code="schema_invalid",
+            validator_sha256="1" * 64,
+            issue_digest_sha256="2" * 64,
+        ),
+        stage_key=item.stage_key,
+        provider_effect_key=item.provider_effect_key,
+        kind="planner",
+        route_receipt_id="route-1",
+        provider_event_id="event-1",
+        raw_response_sha256="f" * 64,
+        actual_cents=7,
+        rejection_code="schema_invalid",
+        validator_sha256="1" * 64,
+        issue_digest_sha256="2" * 64,
+        returned_at_ms=12,
+    )
+    assert receipt.actual_cents == 7
+    with pytest.raises(ValidationError):
+        StageRejectionReceipt(**{**receipt.model_dump(), "raw_response": "secret"})
 
 
 def test_typed_effect_receipt_is_content_addressed_and_closed() -> None:

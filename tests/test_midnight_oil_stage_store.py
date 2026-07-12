@@ -13,6 +13,7 @@ import pytest
 from substrate.midnight_oil.budget_ledger import (
     BudgetLedger,
     CallHold,
+    CallNotDispatched,
     ReservationNotFound,
 )
 from substrate.midnight_oil.durable_job import DurableJobStore
@@ -23,10 +24,12 @@ from substrate.midnight_oil.stages import (
     StageKind,
     StagePlan,
     StagePlanItem,
+    StageRejectionReceipt,
     effect_receipt_id,
     provider_effect_key,
     stage_key,
     stage_plan_hash,
+    stage_rejection_receipt_id,
 )
 
 OPERATION = "operation-stage-store"
@@ -202,6 +205,34 @@ def _effect(
     )
 
 
+def _rejection(item: StagePlanItem, *, actual_cents: int = 6) -> StageRejectionReceipt:
+    return StageRejectionReceipt(
+        receipt_id=stage_rejection_receipt_id(
+            stage_key=item.stage_key,
+            provider_effect_key_value=item.provider_effect_key,
+            kind=item.kind,
+            route_receipt_id=f"route-{item.kind}",
+            provider_event_id=f"event-{item.kind}",
+            raw_response_sha256="f" * 64,
+            actual_cents=actual_cents,
+            rejection_code="schema_invalid",
+            validator_sha256="1" * 64,
+            issue_digest_sha256="2" * 64,
+        ),
+        stage_key=item.stage_key,
+        provider_effect_key=item.provider_effect_key,
+        kind=item.kind,
+        route_receipt_id=f"route-{item.kind}",
+        provider_event_id=f"event-{item.kind}",
+        raw_response_sha256="f" * 64,
+        actual_cents=actual_cents,
+        rejection_code="schema_invalid",
+        validator_sha256="1" * 64,
+        issue_digest_sha256="2" * 64,
+        returned_at_ms=30,
+    )
+
+
 def test_plan_is_atomic_restart_safe_and_sql_json_identity_is_checked(
     tmp_path: Path,
 ) -> None:
@@ -372,6 +403,123 @@ def test_settle_requires_settled_exact_hold_and_live_lease(tmp_path: Path) -> No
     exposure = runtime.ledger.stage_exposure(runtime.plan.job_id, item.stage_key)
     assert exposure.state == "settled" and exposure.confirmed_cents == 6
     assert settled.state == "settled"
+
+
+def test_proven_no_dispatch_is_terminal_and_never_unlocks_successor(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    item = runtime.plan.stages[0]
+    reserved_receipt = None
+
+    def checkpoint(_hold: object) -> None:
+        nonlocal reserved_receipt
+        reserved_receipt = runtime.store.reserve_stage(
+            job_id=runtime.plan.job_id,
+            stage_key=item.stage_key,
+            expected_revision=0,
+            input_evidence_sha256=INPUT_HASH,
+            **runtime.kwargs(),  # type: ignore[arg-type]
+        )
+
+    def refused() -> tuple[str, int]:
+        raise CallNotDispatched("route refused before network")
+
+    with pytest.raises(CallNotDispatched):
+        runtime.ledger.guarded_call(
+            runtime.plan.job_id,
+            item.router_role,
+            item.projected_max_cents,
+            refused,
+            call_key=item.stage_key,
+            after_reserve=checkpoint,
+        )
+    assert reserved_receipt is not None
+    failed = runtime.store.mark_stage_not_dispatched(
+        job_id=runtime.plan.job_id,
+        stage_key=item.stage_key,
+        expected_revision=reserved_receipt.revision,
+        reason="route_refused",
+        **runtime.kwargs(now_ms=30),  # type: ignore[arg-type]
+    )
+    assert failed.state == "not_dispatched"
+    assert (
+        runtime.store.mark_stage_not_dispatched(
+            job_id=runtime.plan.job_id,
+            stage_key=item.stage_key,
+            expected_revision=reserved_receipt.revision,
+            reason="route_refused",
+            **runtime.kwargs(now_ms=999),  # type: ignore[arg-type]
+        )
+        == failed
+    )
+    successor = runtime.plan.stages[1]
+    runtime.ledger.reserve_call(
+        runtime.plan.job_id,
+        successor.router_role,
+        successor.projected_max_cents,
+        call_key=successor.stage_key,
+    )
+    assert runtime.queue.get(OPERATION).next_step_index == 0  # type: ignore[union-attr]
+    with pytest.raises(ValueError, match="queue cursor"):
+        runtime.store.reserve_stage(
+            job_id=runtime.plan.job_id,
+            stage_key=successor.stage_key,
+            expected_revision=0,
+            input_evidence_sha256=INPUT_HASH,
+            **runtime.kwargs(now_ms=31),  # type: ignore[arg-type]
+        )
+
+
+def test_known_paid_invalid_response_is_audited_settled_and_not_merged(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    item, hold, reserved = _reserve(runtime)
+    rejection = _rejection(item)
+    rejected = runtime.store.checkpoint_stage_rejected(
+        job_id=runtime.plan.job_id,
+        stage_key=item.stage_key,
+        expected_revision=reserved.revision,
+        rejection=rejection,
+        **runtime.kwargs(now_ms=31),  # type: ignore[arg-type]
+    )
+    assert rejected.state == "rejected"
+    assert runtime.store.get_stage_rejection(runtime.plan.job_id, item.stage_key) == rejection
+    assert runtime.store.get_job(runtime.plan.job_id)["step_evidence"] == []  # type: ignore[index]
+    runtime.ledger.settle(hold, rejection.actual_cents)
+    terminal = runtime.store.mark_stage_rejection_settled(
+        job_id=runtime.plan.job_id,
+        stage_key=item.stage_key,
+        expected_revision=rejected.revision,
+        **runtime.kwargs(now_ms=32),  # type: ignore[arg-type]
+    )
+    assert terminal.state == "rejected_settled"
+
+
+def test_rejection_receipt_tampering_fails_recovery_and_job_projection(
+    tmp_path: Path,
+) -> None:
+    runtime = _runtime(tmp_path)
+    item, _, reserved = _reserve(runtime)
+    rejection = _rejection(item)
+    runtime.store.checkpoint_stage_rejected(
+        job_id=runtime.plan.job_id,
+        stage_key=item.stage_key,
+        expected_revision=reserved.revision,
+        rejection=rejection,
+        **runtime.kwargs(now_ms=31),  # type: ignore[arg-type]
+    )
+    tampered = rejection.model_copy(update={"actual_cents": 5}).model_dump_json()
+    with sqlite3.connect(runtime.store.path) as connection:
+        connection.execute(
+            "UPDATE midnight_oil_stage_rejections SET rejection_json = ? WHERE job_id = ?",
+            (tampered, runtime.plan.job_id),
+        )
+    with pytest.raises(ValueError, match="receipt id conflicts"):
+        runtime.store.get_stage_rejection(runtime.plan.job_id, item.stage_key)
+    with pytest.raises(ValueError, match="receipt id conflicts"):
+        runtime.store.get_job(runtime.plan.job_id)
 
 
 def test_concurrent_return_checkpoints_have_one_winner_without_evidence_loss(

@@ -12,3 +12,11 @@ Append-only execution record. The active native goal predates this local ledger;
 
 ## Correction to Cycle 1 — 2026-07-12T03:53:00Z
 - VERIFIED: the full Midnight Oil suite on the final accepted read-path bytes completed with 348 passed, 0 failed, and 1 upstream deprecation warning.
+
+## Cycle 2 — 2026-07-12T04:05:10Z — Represent every paid-stage failure honestly
+- DID: added terminal `not_dispatched`, `rejected`, and `rejected_settled` states; canonical no-network failure identity; separate sanitized content-addressed rejection receipts; rejection persistence, recovery, settlement, and projection validation; terminal outcomes cannot unlock successors or coexist.
+- VERIFIED: 41 focused tests, 0 failed; 353 full Midnight Oil tests, 0 failed, 1 upstream deprecation warning; Ruff 0 findings; strict mypy 0 issues; independent state/recovery critic ACCEPT.
+- ENGINES: host=integration; architect=failure-state design and crash matrix; critic=terminal exclusivity, SQL integrity, cost, and replay refutation.
+- GAPS: SECURITY GAP unchanged — hardenx again reports one pre-existing credential-shaped fixture outside this diff and 11 advisories; repository remains uncertified and no waiver/clean gate is claimed.
+- BLOCKED: none.
+- NEXT: implement the serial `LiveSwarmStageEngine` over the now-complete honest state model, because provider invocation can finally map every dispatch outcome without inventing success or losing spend authority.

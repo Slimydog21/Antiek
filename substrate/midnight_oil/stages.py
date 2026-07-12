@@ -9,7 +9,28 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 StageKind = Literal["planner", "gather", "verifier", "synthesizer"]
-StageState = Literal["planned", "reserved", "unknown", "returned", "settled"]
+StageState = Literal[
+    "planned",
+    "reserved",
+    "not_dispatched",
+    "unknown",
+    "returned",
+    "settled",
+    "rejected",
+    "rejected_settled",
+]
+StageFailureReason = Literal[
+    "route_refused",
+    "config_drift",
+    "input_too_large",
+    "provider_unavailable_before_network",
+]
+StageRejectionCode = Literal[
+    "invalid_json",
+    "schema_invalid",
+    "semantic_invalid",
+    "policy_rejected",
+]
 StageOutputSchema = Literal[
     "midnight-oil.planner-output/v1",
     "midnight-oil.gather-output/v1",
@@ -22,6 +43,8 @@ _STAGE_DOMAIN = b"antiek.midnight-oil.stage.v2\x00"
 _EFFECT_DOMAIN = b"antiek.midnight-oil.stage-provider-effect.v1\x00"
 _FENCE_DOMAIN = b"antiek.midnight-oil.stage-dispatch-fence.v1\x00"
 _PLAN_DOMAIN = b"antiek.midnight-oil.stage-plan.v1\x00"
+_FAILURE_DOMAIN = b"antiek.midnight-oil.stage-not-dispatched.v1\x00"
+_REJECTION_DOMAIN = b"antiek.midnight-oil.stage-rejection.v1\x00"
 
 
 class _ClosedModel(BaseModel):
@@ -133,6 +156,44 @@ class StageEffectReceipt(_ClosedModel):
         return self
 
 
+class StageRejectionReceipt(_ClosedModel):
+    """Sanitized audit for a known-paid response rejected before downstream use."""
+
+    schema_version: Literal[1] = 1
+    receipt_id: str = Field(pattern=_HEX64)
+    stage_key: str = Field(pattern=_HEX64)
+    provider_effect_key: str = Field(pattern=_HEX64)
+    kind: StageKind
+    route_receipt_id: str = Field(min_length=1, max_length=512)
+    provider_event_id: str = Field(min_length=1, max_length=512)
+    raw_response_sha256: str = Field(pattern=_HEX64)
+    actual_cents: int = Field(ge=0)
+    rejection_code: StageRejectionCode
+    validator_sha256: str = Field(pattern=_HEX64)
+    issue_digest_sha256: str = Field(pattern=_HEX64)
+    returned_at_ms: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _canonical_rejection(self) -> StageRejectionReceipt:
+        if self.provider_effect_key != provider_effect_key(self.stage_key):
+            raise ValueError("rejection conflicts with stage provider identity")
+        expected = stage_rejection_receipt_id(
+            stage_key=self.stage_key,
+            provider_effect_key_value=self.provider_effect_key,
+            kind=self.kind,
+            route_receipt_id=self.route_receipt_id,
+            provider_event_id=self.provider_event_id,
+            raw_response_sha256=self.raw_response_sha256,
+            actual_cents=self.actual_cents,
+            rejection_code=self.rejection_code,
+            validator_sha256=self.validator_sha256,
+            issue_digest_sha256=self.issue_digest_sha256,
+        )
+        if self.receipt_id != expected:
+            raise ValueError("rejection receipt id conflicts with canonical content")
+        return self
+
+
 class StageReceipt(_ClosedModel):
     """CAS state for one stage; payload bytes and cents remain external authorities."""
 
@@ -151,8 +212,13 @@ class StageReceipt(_ClosedModel):
     lease_generation: int | None = Field(default=None, ge=1)
     effect_receipt_id: str | None = Field(default=None, pattern=_HEX64)
     output_sha256: str | None = Field(default=None, pattern=_HEX64)
+    failure_receipt_id: str | None = Field(default=None, pattern=_HEX64)
+    failure_reason: StageFailureReason | None = None
+    rejection_receipt_id: str | None = Field(default=None, pattern=_HEX64)
+    raw_response_sha256: str | None = Field(default=None, pattern=_HEX64)
     reserved_at_ms: int | None = Field(default=None, ge=0)
     unknown_at_ms: int | None = Field(default=None, ge=0)
+    failed_at_ms: int | None = Field(default=None, ge=0)
     returned_at_ms: int | None = Field(default=None, ge=0)
     settled_at_ms: int | None = Field(default=None, ge=0)
 
@@ -163,9 +229,12 @@ class StageReceipt(_ClosedModel):
         minimum_revision = {
             "planned": 0,
             "reserved": 1,
+            "not_dispatched": 2,
             "unknown": 2,
             "returned": 2,
             "settled": 3,
+            "rejected": 2,
+            "rejected_settled": 3,
         }[self.state]
         if self.revision < minimum_revision or (self.state == "planned" and self.revision != 0):
             raise ValueError("revision is below the monotonic state boundary")
@@ -176,11 +245,25 @@ class StageReceipt(_ClosedModel):
             self.lease_generation,
             self.reserved_at_ms,
         )
-        returned = (self.effect_receipt_id, self.output_sha256, self.returned_at_ms)
+        returned = (
+            self.effect_receipt_id,
+            self.output_sha256,
+            self.returned_at_ms,
+        )
         if self.state == "planned":
             if any(
                 value is not None
-                for value in (*reserved, *returned, self.unknown_at_ms, self.settled_at_ms)
+                for value in (
+                    *reserved,
+                    *returned,
+                    self.unknown_at_ms,
+                    self.failure_receipt_id,
+                    self.failure_reason,
+                    self.failed_at_ms,
+                    self.rejection_receipt_id,
+                    self.raw_response_sha256,
+                    self.settled_at_ms,
+                )
             ):
                 raise ValueError("planned stage cannot claim reserved or returned authority")
         elif any(value is None for value in reserved):
@@ -192,21 +275,106 @@ class StageReceipt(_ClosedModel):
             raise ValueError("dispatch fence conflicts with stage lease generation")
         elif self.state == "reserved":
             if any(
-                value is not None for value in (*returned, self.unknown_at_ms, self.settled_at_ms)
+                value is not None
+                for value in (
+                    *returned,
+                    self.unknown_at_ms,
+                    self.failure_receipt_id,
+                    self.failure_reason,
+                    self.failed_at_ms,
+                    self.rejection_receipt_id,
+                    self.raw_response_sha256,
+                    self.settled_at_ms,
+                )
             ):
                 raise ValueError("reserved stage cannot claim provider outcome")
+        elif self.state == "not_dispatched":
+            if (
+                self.failure_receipt_id is None
+                or self.failure_reason is None
+                or self.failed_at_ms is None
+                or self.reserved_at_ms is None
+                or self.failed_at_ms < self.reserved_at_ms
+                or any(
+                    value is not None
+                    for value in (
+                        *returned,
+                        self.rejection_receipt_id,
+                        self.raw_response_sha256,
+                        self.unknown_at_ms,
+                        self.settled_at_ms,
+                    )
+                )
+            ):
+                raise ValueError("not-dispatched stage requires a bounded failure receipt")
+            expected_failure = stage_failure_receipt_id(
+                stage_key=self.stage_key,
+                budget_hold_id=self.budget_hold_id or "",
+                dispatch_fence=self.dispatch_fence_sha256 or "",
+                reason=self.failure_reason,
+            )
+            if self.failure_receipt_id != expected_failure:
+                raise ValueError("not-dispatched failure receipt conflicts with stage authority")
         elif self.state == "unknown":
             if (
                 self.unknown_at_ms is None
                 or self.reserved_at_ms is None
                 or self.unknown_at_ms < self.reserved_at_ms
-                or any(value is not None for value in (*returned, self.settled_at_ms))
+                or any(
+                    value is not None
+                    for value in (
+                        *returned,
+                        self.failure_receipt_id,
+                        self.failure_reason,
+                        self.failed_at_ms,
+                        self.rejection_receipt_id,
+                        self.raw_response_sha256,
+                        self.settled_at_ms,
+                    )
+                )
             ):
                 raise ValueError("unknown stage requires only an unknown-outcome checkpoint")
+        elif self.state in {"rejected", "rejected_settled"}:
+            if (
+                self.rejection_receipt_id is None
+                or self.raw_response_sha256 is None
+                or self.returned_at_ms is None
+                or self.reserved_at_ms is None
+                or self.returned_at_ms < self.reserved_at_ms
+                or any(
+                    value is not None
+                    for value in (
+                        self.effect_receipt_id,
+                        self.output_sha256,
+                        self.unknown_at_ms,
+                        self.failure_receipt_id,
+                        self.failure_reason,
+                        self.failed_at_ms,
+                    )
+                )
+            ):
+                raise ValueError("rejected stage requires only its sanitized rejection receipt")
+            if self.state == "rejected" and self.settled_at_ms is not None:
+                raise ValueError("rejected stage cannot claim settlement")
+            if self.state == "rejected_settled" and (
+                self.settled_at_ms is None or self.settled_at_ms < self.returned_at_ms
+            ):
+                raise ValueError("rejected-settled stage requires ordered settlement")
         elif any(value is None for value in returned):
             raise ValueError("returned stage requires immutable effect and output receipts")
         elif self.unknown_at_ms is not None:
             raise ValueError("returned stage cannot also claim unknown outcome")
+        elif any(
+            value is not None
+            for value in (
+                self.failure_receipt_id,
+                self.failure_reason,
+                self.failed_at_ms,
+                self.rejection_receipt_id,
+                self.raw_response_sha256,
+            )
+        ):
+            raise ValueError("returned stage cannot also claim another terminal outcome")
         elif (
             self.returned_at_ms is None
             or self.reserved_at_ms is None
@@ -257,6 +425,72 @@ def dispatch_fence_sha256(*, stage: str, lease_generation: int) -> str:
     if type(lease_generation) is not int or lease_generation <= 0:
         raise ValueError("lease_generation must be a positive integer")
     return hashlib.sha256(_FENCE_DOMAIN + f"{stage}:{lease_generation}".encode()).hexdigest()
+
+
+def stage_failure_receipt_id(
+    *,
+    stage_key: str,
+    budget_hold_id: str,
+    dispatch_fence: str,
+    reason: StageFailureReason,
+) -> str:
+    """Bind a proven no-network failure to its exact reserved authority."""
+    _sha256(stage_key, "stage_key")
+    _bounded_text(budget_hold_id, "budget_hold_id")
+    _sha256(dispatch_fence, "dispatch_fence")
+    return hashlib.sha256(
+        _FAILURE_DOMAIN
+        + _canonical_json(
+            {
+                "stage_key": stage_key,
+                "budget_hold_id": budget_hold_id,
+                "dispatch_fence_sha256": dispatch_fence,
+                "reason": reason,
+            }
+        )
+    ).hexdigest()
+
+
+def stage_rejection_receipt_id(
+    *,
+    stage_key: str,
+    provider_effect_key_value: str,
+    kind: StageKind,
+    route_receipt_id: str,
+    provider_event_id: str,
+    raw_response_sha256: str,
+    actual_cents: int,
+    rejection_code: StageRejectionCode,
+    validator_sha256: str,
+    issue_digest_sha256: str,
+) -> str:
+    """Content identity for a paid response rejected by a named validator."""
+    _sha256(stage_key, "stage_key")
+    _sha256(provider_effect_key_value, "provider_effect_key")
+    _bounded_text(route_receipt_id, "route_receipt_id")
+    _bounded_text(provider_event_id, "provider_event_id")
+    _sha256(raw_response_sha256, "raw_response_sha256")
+    _sha256(validator_sha256, "validator_sha256")
+    _sha256(issue_digest_sha256, "issue_digest_sha256")
+    if type(actual_cents) is not int or actual_cents < 0:
+        raise ValueError("actual_cents must be a non-negative integer")
+    return hashlib.sha256(
+        _REJECTION_DOMAIN
+        + _canonical_json(
+            {
+                "stage_key": stage_key,
+                "provider_effect_key": provider_effect_key_value,
+                "kind": kind,
+                "route_receipt_id": route_receipt_id,
+                "provider_event_id": provider_event_id,
+                "raw_response_sha256": raw_response_sha256,
+                "actual_cents": actual_cents,
+                "rejection_code": rejection_code,
+                "validator_sha256": validator_sha256,
+                "issue_digest_sha256": issue_digest_sha256,
+            }
+        )
+    ).hexdigest()
 
 
 def stage_plan_hash(
@@ -404,6 +638,9 @@ def _sha256(value: str, field: str) -> None:
 
 __all__ = [
     "StageEffectReceipt",
+    "StageFailureReason",
+    "StageRejectionCode",
+    "StageRejectionReceipt",
     "StageKind",
     "StageOutputSchema",
     "StagePlan",
@@ -414,5 +651,7 @@ __all__ = [
     "effect_receipt_id",
     "provider_effect_key",
     "stage_key",
+    "stage_failure_receipt_id",
+    "stage_rejection_receipt_id",
     "stage_plan_hash",
 ]

@@ -14,10 +14,13 @@ from .job import _job_from_row, _job_to_row
 from .operation_queue import OperationQueue
 from .stages import (
     StageEffectReceipt,
+    StageFailureReason,
     StagePlan,
     StagePlanItem,
     StageReceipt,
+    StageRejectionReceipt,
     dispatch_fence_sha256,
+    stage_failure_receipt_id,
 )
 
 
@@ -50,6 +53,13 @@ class DurableJobStore:
                 "receipt_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, stage_key TEXT NOT NULL, "
                 "effect_json TEXT NOT NULL, evidence_json TEXT NOT NULL, "
                 "UNIQUE(job_id, stage_key), FOREIGN KEY(job_id, stage_key) REFERENCES "
+                "midnight_oil_stage_receipts(job_id, stage_key))"
+            )
+            connection.execute(
+                "CREATE TABLE IF NOT EXISTS midnight_oil_stage_rejections ("
+                "receipt_id TEXT PRIMARY KEY, job_id TEXT NOT NULL, stage_key TEXT NOT NULL, "
+                "rejection_json TEXT NOT NULL, UNIQUE(job_id, stage_key), "
+                "FOREIGN KEY(job_id, stage_key) REFERENCES "
                 "midnight_oil_stage_receipts(job_id, stage_key))"
             )
 
@@ -89,6 +99,17 @@ class DurableJobStore:
                 (job_id,),
             ).fetchall()
             effects = [self._read_effect(connection, job_id, str(row[0]))[1] for row in effect_rows]
+            rejection_rows = connection.execute(
+                "SELECT stage_key FROM midnight_oil_stage_rejections "
+                "WHERE job_id = ? ORDER BY rowid",
+                (job_id,),
+            ).fetchall()
+            effect_keys = {str(item[0]) for item in effect_rows}
+            rejection_keys = {str(item[0]) for item in rejection_rows}
+            if effect_keys & rejection_keys:
+                raise ValueError("stage cannot have both success and rejection receipts")
+            for rejection_row in rejection_rows:
+                self._read_rejection(connection, job_id, str(rejection_row[0]))
         by_key = {
             str(item.get("step_key")): item
             for item in job.get("step_evidence", ())
@@ -186,6 +207,18 @@ class DurableJobStore:
             if row is None:
                 return None
             return self._read_effect(connection, job_id, stage_key)
+
+    def get_stage_rejection(self, job_id: str, stage_key: str) -> StageRejectionReceipt | None:
+        _bounded(job_id, "job_id")
+        _hash(stage_key, "stage_key")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT 1 FROM midnight_oil_stage_rejections WHERE job_id = ? AND stage_key = ?",
+                (job_id, stage_key),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._read_rejection(connection, job_id, stage_key)
 
     def reserve_stage(
         self,
@@ -286,6 +319,65 @@ class DurableJobStore:
             lease_generation=lease_generation,
             now_ms=now_ms,
             expected_budget_states=frozenset({"unknown"}),
+            mutation=mutate,
+        )
+
+    def mark_stage_not_dispatched(
+        self,
+        *,
+        job_id: str,
+        stage_key: str,
+        expected_revision: int,
+        budget_ledger: BudgetLedger,
+        operation_queue: OperationQueue,
+        worker_id: str,
+        lease_generation: int,
+        now_ms: int,
+        reason: StageFailureReason,
+    ) -> StageReceipt:
+        """Checkpoint a provider call proven not dispatched after hold release."""
+        current, plan, item = self._runtime_authority(job_id, stage_key)
+        if current.state == "not_dispatched" and current.revision == expected_revision + 1:
+            if current.failure_reason != reason:
+                raise ValueError("not-dispatched replay conflicts with durable reason")
+            return current
+
+        def mutate(exposure: StageBudgetExposure) -> StageReceipt:
+            _same_hold(current, exposure)
+            if exposure.confirmed_cents or exposure.open_cents or exposure.unknown_cents:
+                raise ValueError("not-dispatched stage budget exposure is not empty")
+            failure_id = stage_failure_receipt_id(
+                stage_key=current.stage_key,
+                budget_hold_id=exposure.hold_id,
+                dispatch_fence=current.dispatch_fence_sha256 or "",
+                reason=reason,
+            )
+            return self._transition(
+                job_id=job_id,
+                stage_key=stage_key,
+                expected_revision=expected_revision,
+                expected_states=("reserved",),
+                mutate=lambda row: StageReceipt(
+                    **{
+                        **row.model_dump(),
+                        "state": "not_dispatched",
+                        "revision": row.revision + 1,
+                        "failure_receipt_id": failure_id,
+                        "failure_reason": reason,
+                        "failed_at_ms": now_ms,
+                    }
+                ),
+            )
+
+        return self._mutate_fenced(
+            plan=plan,
+            item=item,
+            budget_ledger=budget_ledger,
+            operation_queue=operation_queue,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            now_ms=now_ms,
+            expected_budget_states=frozenset({"released"}),
             mutation=mutate,
         )
 
@@ -407,6 +499,138 @@ class DurableJobStore:
             lease_generation=lease_generation,
             now_ms=now_ms,
             expected_budget_states=frozenset({"open", "unknown"}),
+            mutation=mutate,
+        )
+
+    def checkpoint_stage_rejected(
+        self,
+        *,
+        job_id: str,
+        stage_key: str,
+        expected_revision: int,
+        rejection: StageRejectionReceipt,
+        budget_ledger: BudgetLedger,
+        operation_queue: OperationQueue,
+        worker_id: str,
+        lease_generation: int,
+        now_ms: int,
+    ) -> StageReceipt:
+        """Persist a known-paid invalid response without merging user-facing evidence."""
+        current, plan, item = self._runtime_authority(job_id, stage_key)
+        if current.state in {"rejected", "rejected_settled"}:
+            with self._connect() as connection:
+                persisted = self._read_rejection(connection, job_id, stage_key)
+            if persisted.receipt_id == rejection.receipt_id:
+                return current
+            raise ValueError("rejected stage replay conflicts with durable rejection")
+
+        def mutate(exposure: StageBudgetExposure) -> StageReceipt:
+            _same_hold(current, exposure)
+            with self._connect() as connection:
+                connection.execute("PRAGMA foreign_keys = ON")
+                connection.execute("BEGIN IMMEDIATE")
+                try:
+                    durable = self._read_stage(connection, job_id, stage_key)
+                    if durable.revision != expected_revision or durable.state not in {
+                        "reserved",
+                        "unknown",
+                    }:
+                        raise ValueError("stage changed before rejection checkpoint")
+                    if (
+                        rejection.stage_key != stage_key
+                        or rejection.provider_effect_key != durable.provider_effect_key
+                        or rejection.kind != item.kind
+                    ):
+                        raise ValueError("rejection receipt conflicts with stage plan")
+                    next_receipt = StageReceipt(
+                        **{
+                            **durable.model_dump(),
+                            "state": "rejected",
+                            "revision": durable.revision + 1,
+                            "unknown_at_ms": None,
+                            "rejection_receipt_id": rejection.receipt_id,
+                            "raw_response_sha256": rejection.raw_response_sha256,
+                            "returned_at_ms": rejection.returned_at_ms,
+                        }
+                    )
+                    connection.execute(
+                        "INSERT INTO midnight_oil_stage_rejections"
+                        "(receipt_id, job_id, stage_key, rejection_json) VALUES (?, ?, ?, ?)",
+                        (
+                            rejection.receipt_id,
+                            job_id,
+                            stage_key,
+                            rejection.model_dump_json(),
+                        ),
+                    )
+                    self._write_stage(connection, durable, next_receipt)
+                    connection.execute("COMMIT")
+                    return next_receipt
+                except sqlite3.IntegrityError as exc:
+                    connection.execute("ROLLBACK")
+                    raise ValueError("stage rejection identity conflicts") from exc
+                except BaseException:
+                    connection.execute("ROLLBACK")
+                    raise
+
+        return self._mutate_fenced(
+            plan=plan,
+            item=item,
+            budget_ledger=budget_ledger,
+            operation_queue=operation_queue,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            now_ms=now_ms,
+            expected_budget_states=frozenset({"open", "unknown"}),
+            mutation=mutate,
+        )
+
+    def mark_stage_rejection_settled(
+        self,
+        *,
+        job_id: str,
+        stage_key: str,
+        expected_revision: int,
+        budget_ledger: BudgetLedger,
+        operation_queue: OperationQueue,
+        worker_id: str,
+        lease_generation: int,
+        now_ms: int,
+    ) -> StageReceipt:
+        current, plan, item = self._runtime_authority(job_id, stage_key)
+        if current.state == "rejected_settled" and current.revision == expected_revision + 1:
+            return current
+
+        def mutate(exposure: StageBudgetExposure) -> StageReceipt:
+            _same_hold(current, exposure)
+            with self._connect() as connection:
+                rejection = self._read_rejection(connection, job_id, stage_key)
+            if exposure.confirmed_cents != rejection.actual_cents:
+                raise ValueError("settled budget actual cents conflict with stage rejection")
+            return self._transition(
+                job_id=job_id,
+                stage_key=stage_key,
+                expected_revision=expected_revision,
+                expected_states=("rejected",),
+                mutate=lambda row: StageReceipt(
+                    **{
+                        **row.model_dump(),
+                        "state": "rejected_settled",
+                        "revision": row.revision + 1,
+                        "settled_at_ms": now_ms,
+                    }
+                ),
+            )
+
+        return self._mutate_fenced(
+            plan=plan,
+            item=item,
+            budget_ledger=budget_ledger,
+            operation_queue=operation_queue,
+            worker_id=worker_id,
+            lease_generation=lease_generation,
+            now_ms=now_ms,
+            expected_budget_states=frozenset({"settled"}),
             mutation=mutate,
         )
 
@@ -540,7 +764,8 @@ class DurableJobStore:
                 if require_predecessors:
                     item = _item(self._read_plan(connection, job_id), stage_key)
                     for predecessor in item.predecessor_stage_keys:
-                        if self._read_stage(connection, job_id, predecessor).state != "settled":
+                        predecessor_receipt = self._read_stage(connection, job_id, predecessor)
+                        if predecessor_receipt.state != "settled":
                             raise ValueError("stage predecessor is not settled")
                 updated = mutate(current)
                 if not isinstance(updated, StageReceipt):
@@ -651,6 +876,26 @@ class DurableJobStore:
         ):
             raise ValueError("durable stage evidence conflicts with its effect receipt")
         return effect, canonical_evidence
+
+    def _read_rejection(
+        self, connection: sqlite3.Connection, job_id: str, stage_key: str
+    ) -> StageRejectionReceipt:
+        row = connection.execute(
+            "SELECT receipt_id, job_id, stage_key, rejection_json "
+            "FROM midnight_oil_stage_rejections WHERE job_id = ? AND stage_key = ?",
+            (job_id, stage_key),
+        ).fetchone()
+        if row is None:
+            raise ValueError("rejected stage lacks durable rejection receipt")
+        receipt = StageRejectionReceipt.model_validate_json(str(row[3]))
+        if (
+            str(row[0]) != receipt.receipt_id
+            or str(row[1]) != job_id
+            or str(row[2]) != stage_key
+            or receipt.stage_key != stage_key
+        ):
+            raise ValueError("stage rejection SQL identity conflicts with durable JSON")
+        return receipt
 
     def _list_stage_receipts(
         self, connection: sqlite3.Connection, job_id: str
