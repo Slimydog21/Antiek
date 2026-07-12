@@ -38,6 +38,46 @@ export interface MultimediaAssetSummary {
   hardening_status: string | null;
   latest_job_status: MultimediaJobStatus | null;
   latest_job_kind: MultimediaJobKind | null;
+  knowledge_finalized?: boolean;
+  twin_document_id?: string | null;
+}
+
+export interface MultimediaKnowledgeLink {
+  schema_version: "antiek.multimedia-knowledge-link.v1";
+  asset_id: string;
+  revision_id: string;
+  source_document_id: string;
+  source_event_id: string;
+  graph_node_id: string;
+  twin_document_id: string;
+  source_html_sha256: string;
+  twin_html_sha256: string;
+  insight_node_ids: string[];
+  question_node_ids: string[];
+}
+
+export type MultimediaDistillationStateName =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "integrity_conflict";
+
+export interface MultimediaKnowledgeFinalizationStatus {
+  asset_id: string;
+  revision_id: string;
+  asset_status: string;
+  distillation: {
+    state: MultimediaDistillationStateName;
+    recovery_eligible: boolean;
+    recovery_stale_seconds: number;
+    claim_started_at: string | null;
+  };
+  knowledge_link: MultimediaKnowledgeLink | null;
+}
+
+export interface MultimediaKnowledgeFinalizationResponse {
+  asset: MultimediaAssetRecord;
+  knowledge_link: MultimediaKnowledgeLink;
 }
 
 export interface MultimediaAssetList {
@@ -78,6 +118,8 @@ export interface MultimediaAssetRecord {
   hardening_report: MultimediaHardeningReport | null;
   latest_steering_intent: unknown | null;
   jobs: MultimediaJobRecord[];
+  knowledge_link?: MultimediaKnowledgeLink | null;
+  knowledge_finalization_revision_id?: string | null;
 }
 
 export interface MultimediaJobRecord {
@@ -231,6 +273,62 @@ export async function runMultimediaHardening(assetId: string): Promise<Multimedi
   });
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/hardening: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+function knowledgeError(operation: string, status: number): Error {
+  if (status === 404) return new Error("multimedia_knowledge_unavailable");
+  if (status === 409) return new Error("multimedia_knowledge_conflict");
+  if (status === 503) return new Error("multimedia_knowledge_runtime_unavailable");
+  return new Error(`${operation}: HTTP ${status}`);
+}
+
+export async function getMultimediaKnowledgeFinalization(
+  assetId: string,
+): Promise<MultimediaKnowledgeFinalizationStatus> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/knowledge-finalization`,
+  );
+  if (!resp.ok) throw knowledgeError("GET /multimedia/assets/{id}/knowledge-finalization", resp.status);
+  return (await resp.json()) as MultimediaKnowledgeFinalizationStatus;
+}
+
+export async function finalizeMultimediaKnowledge(
+  assetId: string,
+  expectedRevisionId: string,
+): Promise<MultimediaKnowledgeFinalizationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/finalize-knowledge`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: expectedRevisionId,
+        operator_acknowledged_model_use: true,
+      }),
+    },
+  );
+  if (!resp.ok) throw knowledgeError("POST /multimedia/assets/{id}/finalize-knowledge", resp.status);
+  return (await resp.json()) as MultimediaKnowledgeFinalizationResponse;
+}
+
+export async function recoverMultimediaKnowledgeFinalization(
+  assetId: string,
+  expectedRevisionId: string,
+): Promise<MultimediaKnowledgeFinalizationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/recover-knowledge-finalization`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: expectedRevisionId,
+        operator_acknowledged_model_use: true,
+        operator_acknowledged_duplicate_model_risk: true,
+      }),
+    },
+  );
+  if (!resp.ok) throw knowledgeError("POST /multimedia/assets/{id}/recover-knowledge-finalization", resp.status);
+  return (await resp.json()) as MultimediaKnowledgeFinalizationResponse;
 }
 
 export async function prepareMultimediaLiveExecution(

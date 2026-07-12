@@ -18,6 +18,7 @@ import type {
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
+import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
 
 type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
@@ -178,6 +179,7 @@ export default function Multimedia() {
   const [assets, setAssets] = useState<MultimediaAssetSummary[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
+  const [knowledgeMutationPending, setKnowledgeMutationPending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -214,7 +216,8 @@ export default function Multimedia() {
   const routeTierMatchesRecord = !selectedRecord || selectedRecord.asset.route_policy === tier;
   const canApprove =
     planReady && topic.trim().length > 0 && duration >= 15 && duration <= 45 && routeTierMatchesRecord;
-  const canRunAssetCommand = Boolean(selectedRecord) && pendingCommand === null;
+  const canRunAssetCommand =
+    Boolean(selectedRecord) && pendingCommand === null && !knowledgeMutationPending;
 
   function setPreset(next: number) {
     setDuration(next);
@@ -235,6 +238,7 @@ export default function Multimedia() {
   }
 
   async function generatePlan() {
+    if (knowledgeMutationPending) return;
     const request: CreateMultimediaDraftRequest = {
       topic,
       target_minutes: duration,
@@ -269,6 +273,7 @@ export default function Multimedia() {
   }
 
   async function reopenAsset(assetId: string) {
+    if (knowledgeMutationPending) return;
     setPendingCommand("open");
     try {
       const record = await getMultimediaAsset(assetId);
@@ -488,7 +493,7 @@ export default function Multimedia() {
                   {estimatedCost}
                 </p>
               </div>
-              <LemonButton type="button" variant="primary" onClick={generatePlan} disabled={pendingCommand !== null}>
+              <LemonButton type="button" variant="primary" onClick={generatePlan} disabled={pendingCommand !== null || knowledgeMutationPending}>
                 {pendingCommand === "create" ? "Creating..." : "Review plan"}
               </LemonButton>
             </div>
@@ -533,9 +538,10 @@ export default function Multimedia() {
                     <button
                       key={`${asset.asset_id}-${asset.revision_id}`}
                       type="button"
+                      disabled={knowledgeMutationPending}
                       onClick={() => reopenAsset(asset.asset_id)}
                       className={
-                        "rounded-md border px-3 py-2 text-left " +
+                        "rounded-md border px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50 " +
                         (selectedRecord?.asset.asset_id === asset.asset_id
                           ? "border-sun bg-sun/20"
                           : "border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2")
@@ -609,7 +615,7 @@ export default function Multimedia() {
                   <LemonButton
                     type="button"
                     variant="primary"
-                    disabled={!canApprove || !selectedRecord || pendingCommand !== null}
+                    disabled={!canApprove || !selectedRecord || pendingCommand !== null || knowledgeMutationPending}
                     onClick={approvePlan}
                   >
                     {pendingCommand === "approve" ? "Approving..." : "Approve render"}
@@ -622,6 +628,7 @@ export default function Multimedia() {
                   <LemonButton
                     type="button"
                     variant="secondary"
+                    disabled={knowledgeMutationPending}
                     onClick={() => {
                       setPlanReady(false);
                       setApproved(false);
@@ -634,6 +641,26 @@ export default function Multimedia() {
                     Steer outline
                   </LemonButton>
                 </div>
+
+                {selectedRecord && (
+                  <KnowledgePanel
+                    key={`${selectedRecord.asset.asset_id}:${selectedRecord.asset.revision_id}`}
+                    asset={selectedRecord}
+                    onAssetUpdated={(updated) => {
+                      const expectedAssetId = selectedRecord.asset.asset_id;
+                      const expectedRevisionId = selectedRecord.asset.revision_id;
+                      setSelectedRecord((current) =>
+                        retainCurrentMultimediaSelection(
+                          current,
+                          expectedAssetId,
+                          expectedRevisionId,
+                          updated,
+                        ),
+                      );
+                    }}
+                    onMutationBusyChange={setKnowledgeMutationPending}
+                  />
+                )}
               </>
             )}
           </section>
