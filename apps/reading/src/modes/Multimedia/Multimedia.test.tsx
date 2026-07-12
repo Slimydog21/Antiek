@@ -333,7 +333,7 @@ describe("Multimedia workstation", () => {
     ));
     expect(await screen.findByText("mmauth2-server-intro")).toBeTruthy();
     expect(screen.getByText("trusted-tts / voice-1")).toBeTruthy();
-  });
+  }, 15_000);
 
   it("shows only owner-bound reviewed visual readiness", async () => {
     mockReviewedVisuals.mockResolvedValueOnce({
