@@ -382,7 +382,12 @@ def test_multi_operator_config_fails_closed_to_non_privileged(monkeypatch):
     )
 
     def _req(auth_method: str) -> object:
-        return SimpleNamespace(state=SimpleNamespace(auth_method=auth_method))
+        return SimpleNamespace(
+            state=SimpleNamespace(
+                auth_method=auth_method,
+                scopes=frozenset({"operator"}),
+            )
+        )
 
     # Single operator (<= 1 email): an authenticated owner gets the privilege.
     monkeypatch.setenv("ANTIEK_OPERATOR_EMAIL", "solo@example.com")

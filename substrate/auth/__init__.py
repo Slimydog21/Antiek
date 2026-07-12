@@ -10,6 +10,7 @@ Operator identity resolution itself lives in
 ``substrate/multi_user/auth.py`` — this module is the transport.
 """
 
+from substrate.auth.account_store import AuthAccount, SqliteAuthStore, auth_db_path
 from substrate.auth.email_provider import (
     AgentMailEmailProvider,
     EmailDeliveryFailure,
@@ -23,10 +24,12 @@ from substrate.auth.email_provider import (
 from substrate.auth.magic_link import (
     InvalidSessionCookie,
     InvalidToken,
+    MagicLinkClaims,
     SessionClaims,
     TokenExpired,
     mint_magic_link_token,
     mint_session_cookie,
+    verify_magic_link_claims,
     verify_magic_link_token,
     verify_session_cookie,
 )
@@ -38,14 +41,19 @@ __all__ = [
     "EmailRecord",
     "InvalidSessionCookie",
     "InvalidToken",
+    "MagicLinkClaims",
     "MockEmailProvider",
     "OutboundEmail",
     "ResendEmailProvider",
     "SessionClaims",
+    "AuthAccount",
+    "SqliteAuthStore",
+    "auth_db_path",
     "TokenExpired",
     "get_email_provider",
     "mint_magic_link_token",
     "mint_session_cookie",
     "verify_magic_link_token",
+    "verify_magic_link_claims",
     "verify_session_cookie",
 ]

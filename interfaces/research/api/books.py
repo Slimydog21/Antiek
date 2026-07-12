@@ -112,11 +112,16 @@ def _owner_read_policy_tag(request: Request) -> str:
     ``_OWNER_AUTH_METHODS``.
     """
     auth_method = getattr(getattr(request, "state", None), "auth_method", None)
+    scopes = frozenset(getattr(getattr(request, "state", None), "scopes", ()) or ())
     # SINGLE-OPERATOR ENFORCEMENT: the privilege is owner-scoped only when the
     # deployment has ≤ 1 operator. With 2+ operator emails the bypass would be
     # cross-tenant (this helper keys on auth_method, not user_id), so it FAILS
     # CLOSED to the non-privileged tag.
-    if auth_method in _OWNER_AUTH_METHODS and len(operator_allowlist_from_env()) <= 1:
+    if (
+        auth_method in _OWNER_AUTH_METHODS
+        and "operator" in scopes
+        and len(operator_allowlist_from_env()) <= 1
+    ):
         return _OWNER_READ_POLICY_TAG
     return _PUBLIC_READ_POLICY_TAG
 

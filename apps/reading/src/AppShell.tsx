@@ -14,6 +14,7 @@ import { PanelLayout } from "./workspace/PanelLayout";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
+import { useAuth } from "./lib/auth";
 
 /**
  * AppShell — the top-level chrome for the redesigned UI.
@@ -65,6 +66,7 @@ type Props = {
 };
 
 export function AppShell({ children }: Props) {
+  const { signOut, signOutError } = useAuth();
   // S8 — mount the keyboard shortcut handler once at the shell level.
   // Lives here (not lower) so ⌘K, ⌘B, ⌘/, ⌘[, ⌘], G+I etc. fire from
   // any route. The handler ignores key events when the active element
@@ -120,7 +122,7 @@ export function AppShell({ children }: Props) {
           width between the (zero-inset) left/right seam edges, symmetric.
           `relative` so it stacks above the absolute z-0 scene. */}
       <div className="relative h-full w-full flex flex-col">
-        <Topbar />
+          <Topbar onSignOut={signOut} signOutError={signOutError} />
         <div className="relative flex-1 min-h-0 min-w-0">
           {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
               main slot: per-workflow action bar + in-scene tabs sit

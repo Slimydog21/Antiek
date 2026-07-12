@@ -29,7 +29,8 @@ from __future__ import annotations
 import os
 import re
 import secrets
-from collections.abc import Sequence
+import time
+from collections.abc import Mapping, Sequence
 from typing import Any
 from urllib.parse import urlencode, urljoin
 
@@ -41,12 +42,15 @@ from substrate.auth import (
     EmailDeliveryFailure,
     InvalidToken,
     OutboundEmail,
+    SqliteAuthStore,
     TokenExpired,
     get_email_provider,
     mint_magic_link_token,
     mint_session_cookie,
-    verify_magic_link_token,
+    verify_magic_link_claims,
+    verify_session_cookie,
 )
+from substrate.auth.magic_link import MAGIC_LINK_TTL_SECONDS, SESSION_TTL_SECONDS
 
 from .operator_allowlist import operator_allowlist_from_env
 
@@ -91,18 +95,11 @@ class AuthMeResponse(BaseModel):
     user_id: str
     email: str | None
     auth_method: str
+    scopes: list[str] = Field(default_factory=list)
+    is_operator: bool = False
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-
-def _allowlist() -> frozenset[str]:
-    """Comma-separated list in ``ANTIEK_OPERATOR_EMAIL``.
-
-    Empty set means deny magic-link sends until the operator configures
-    the env var.
-    """
-    return operator_allowlist_from_env()
 
 
 def _api_base_url() -> str:
@@ -259,6 +256,8 @@ def register_auth_routes(
     app: FastAPI,
     *,
     extra_allowlist: Sequence[str] | None = None,
+    account_store: SqliteAuthStore | None = None,
+    auth_environ: Mapping[str, str] | None = None,
 ) -> None:
     """Mount the four auth routes onto ``app``.
 
@@ -267,21 +266,59 @@ def register_auth_routes(
     """
 
     extra = frozenset(e.strip().lower() for e in (extra_allowlist or ()) if e.strip())
+    environment = os.environ if auth_environ is None else auth_environ
+    multi_user_enabled = environment.get("ANTIEK_MULTI_USER_AUTH", "").strip() == "1"
+    if multi_user_enabled and account_store is None:
+        account_store = SqliteAuthStore()
 
     def _resolve_allowlist() -> frozenset[str]:
-        return _allowlist() | extra
+        return operator_allowlist_from_env(environ=environment) | extra
+
+    def _user_allowlist() -> frozenset[str]:
+        return frozenset(
+            part.strip().lower()
+            for part in environment.get("ANTIEK_USER_EMAIL", "").split(",")
+            if part.strip()
+        )
+
+    def _user_email_authorized(email: str) -> bool:
+        if email in _resolve_allowlist():
+            return True
+        if not multi_user_enabled or account_store is None:
+            return False
+        existing = account_store.get_by_email(email)
+        if existing is not None:
+            return existing.status == "active"
+        mode = environment.get("ANTIEK_AUTH_REGISTRATION_MODE", "operator_only").strip()
+        return mode == "open" or (mode == "allowlist" and email in _user_allowlist())
 
     @app.post(
         "/auth/request",
         response_model=AuthRequestResponse,
         tags=["auth"],
     )
-    async def auth_request(payload: AuthRequestPayload) -> AuthRequestResponse:
+    async def auth_request(
+        request: Request, payload: AuthRequestPayload
+    ) -> AuthRequestResponse:
         email = payload.email.strip().lower()
         next_path = payload.next if _is_safe_relative(payload.next) else "/"
-        allowlist = _resolve_allowlist()
-        if email in allowlist:
-            token = mint_magic_link_token(email)
+        rate_allowed = (
+            account_store.allow_magic_link_request(
+                email=email,
+                client_key=(request.client.host if request.client else "unknown"),
+            )
+            if multi_user_enabled and account_store is not None
+            else True
+        )
+        if rate_allowed and _user_email_authorized(email):
+            nonce = secrets.token_urlsafe(24)
+            if multi_user_enabled and account_store is not None:
+                account_store.register_magic_link(
+                    email=email,
+                    nonce=nonce,
+                    expires_at=int(time.time()) + MAGIC_LINK_TTL_SECONDS,
+                )
+            token = mint_magic_link_token(email, nonce=nonce)
             link = _build_magic_link(token, next_path)
             provider = get_email_provider()
             try:
@@ -307,20 +344,41 @@ def register_auth_routes(
     async def auth_callback(token: str, next: str = "/") -> Response:
         redirect_url = _resolve_redirect(next)
         try:
-            email = verify_magic_link_token(token)
+            link_claims = verify_magic_link_claims(token)
+            email = link_claims.email
         except TokenExpired:
             return _redirect_login_error(error_code="magic_link_expired", next_path=next)
         except InvalidToken:
             return _redirect_login_error(error_code="magic_link_invalid", next_path=next)
-        if email not in _resolve_allowlist():
+        if not _user_email_authorized(email):
             # Defensive: token was valid but the allowlist changed
             # between request and click. Reject without leaking which
             # case we're in.
             return _redirect_login_error(error_code="not_authorized", next_path=next)
-        cookie = mint_session_cookie(
-            user_id="__operator__",
-            email=email,
-        )
+        if multi_user_enabled and account_store is not None:
+            if not account_store.consume_magic_link(
+                email=email, nonce=link_claims.nonce
+            ):
+                return _redirect_login_error(
+                    error_code="magic_link_invalid", next_path=next
+                )
+            if email in _resolve_allowlist():
+                user_id = "__operator__"
+            else:
+                account = account_store.get_or_create_user(email)
+                if account.status != "active":
+                    return _redirect_login_error(
+                        error_code="not_authorized", next_path=next
+                    )
+                user_id = account.user_id
+            session_id = account_store.create_session(
+                user_id=user_id, email=email, ttl_seconds=SESSION_TTL_SECONDS
+            )
+            cookie = mint_session_cookie(
+                user_id=user_id, email=email, session_id=session_id
+            )
+        else:
+            cookie = mint_session_cookie(user_id="__operator__", email=email)
         response = RedirectResponse(url=redirect_url, status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -351,7 +409,19 @@ def register_auth_routes(
         # invariant — same assumption the magic-link path already makes.
         allow = sorted(_resolve_allowlist())
         email = allow[0] if allow else "__operator__"
-        cookie = mint_session_cookie(user_id="__operator__", email=email)
+        if multi_user_enabled and account_store is not None:
+            session_id = account_store.create_session(
+                user_id="__operator__",
+                email=email,
+                ttl_seconds=_DEV_LOGIN_SESSION_MAX_AGE,
+            )
+            cookie = mint_session_cookie(
+                user_id="__operator__",
+                email=email,
+                session_id=session_id,
+            )
+        else:
+            cookie = mint_session_cookie(user_id="__operator__", email=email)
         response = RedirectResponse(url=_resolve_redirect(next), status_code=302)
         response.set_cookie(
             key=SESSION_COOKIE_NAME,
@@ -362,7 +432,16 @@ def register_auth_routes(
         return response
 
     @app.post("/auth/logout", tags=["auth"])
-    async def auth_logout() -> Response:
+    async def auth_logout(request: Request) -> Response:
+        if multi_user_enabled and account_store is not None:
+            cookie_value = request.cookies.get(SESSION_COOKIE_NAME, "")
+            if cookie_value:
+                try:
+                    session_claims = verify_session_cookie(cookie_value)
+                    if session_claims.session_id:
+                        account_store.revoke_session(session_claims.session_id)
+                except Exception:
+                    pass
         response = Response(status_code=204)
         response.delete_cookie(
             key=SESSION_COOKIE_NAME,
@@ -379,4 +458,11 @@ def register_auth_routes(
         user_id = getattr(request.state, "user_id", None) or "__operator__"
         email = getattr(request.state, "user_email", None)
         method = getattr(request.state, "auth_method", "unauthenticated_local")
-        return AuthMeResponse(user_id=user_id, email=email, auth_method=method)
+        scopes = sorted(getattr(request.state, "scopes", frozenset()))
+        return AuthMeResponse(
+            user_id=user_id,
+            email=email,
+            auth_method=method,
+            scopes=scopes,
+            is_operator="operator" in scopes,
+        )

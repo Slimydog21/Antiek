@@ -35,6 +35,8 @@ export interface AuthIdentity {
   user_id: string;
   email: string | null;
   auth_method: string;
+  scopes: string[];
+  is_operator: boolean;
 }
 
 export type AuthState =
@@ -44,6 +46,7 @@ export type AuthState =
 
 export interface AuthContextValue {
   state: AuthState;
+  signOutError: string | null;
   /** Re-check /auth/me. Used after sign-in callback redirects back. */
   refresh: () => Promise<void>;
   /** POST /auth/logout, drop cookie, set state to unauthenticated. */
@@ -65,6 +68,7 @@ async function fetchIdentity(): Promise<AuthIdentity | null> {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ status: "loading" });
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -82,8 +86,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(async () => {
-    await apiFetch(authUrl("/auth/logout"), { method: "POST" });
-    setState({ status: "unauthenticated" });
+    setSignOutError(null);
+    try {
+      const response = await apiFetch(authUrl("/auth/logout"), { method: "POST" });
+      if (response.status !== 204) {
+        throw new Error(`auth/logout HTTP ${response.status}`);
+      }
+      setState({ status: "unauthenticated" });
+    } catch (error) {
+      setSignOutError("Sign out failed. Your session is still active; try again.");
+      throw error;
+    }
   }, []);
 
   useEffect(() => {
@@ -111,8 +124,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [state]);
 
   const value = useMemo<AuthContextValue>(
-    () => ({ state, refresh, signOut }),
-    [state, refresh, signOut],
+    () => ({ state, signOutError, refresh, signOut }),
+    [state, signOutError, refresh, signOut],
   );
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }

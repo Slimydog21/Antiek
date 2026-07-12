@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Close Antiek's production multi-user identity seam so real authenticated accounts—not test-injected claims—reach the owner-native session, graph promotion, recall, and thought-partner paths while operator privileges remain explicit and caller-spoofing fails closed.
+Close the next owner-native research-composition seam: let authenticated users select and combine multiple owned sessions/assets into explicit, previewable collective research context without global IDs, cross-owner disclosure, or implicit parent mutation.
 
 ## Derivation trail
 
@@ -18,3 +18,4 @@ Close Antiek's production multi-user identity seam so real authenticated account
 - Cycle 8 closed that capability seam and hardened browser identity on auth changes, complete-only merge authority, and mutation honesty. The remaining deliberate preview is now the narrowest blocker to the user's recursive knowledge graph: graph promotion itself lacks owner namespace and confirmed transaction semantics.
 - Cycle 9 delivered physically isolated owner graph writes, hash-pinned preview→confirm authority, owner-bound idempotency receipts, transactional graph/event outbox recovery, and explicit retry-safe browser confirmation. Archaeology then showed the read/search/context surfaces still call `default_db_path()` broadly, so durable personal intelligence is not yet consumed by the owner-native research loop.
 - Cycle 10 closed the declared thought-partner/context-picker read loop by fusing rights-gated canonical corpus results with only the request owner's physical insight/question graph, including provider-pinned semantic recall, honest readiness, and end-to-end confirmed-promotion→dispatch privacy proof. The proof also exposed the next boundary: the production app middleware still resolves successful login paths to static `operator_claims()`, so non-operator identities currently exist only behind injected/test middleware rather than a real account credential path.
+- Cycle 11 activated real multi-user credentials with opaque stable accounts, one-time magic links, revocable server sessions, server-derived scopes, deny-by-default legacy-route authorization, honest browser logout, and Alice/Bob credential-to-owner isolation. With identity now real, the narrowest product gap is exposing owner-resolved multi-session selection and collective composition in the workstation rather than leaving that capability behind low-level APIs and global-ID assumptions.

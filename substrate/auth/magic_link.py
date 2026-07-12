@@ -26,10 +26,12 @@ JWT issued elsewhere and vice versa.
 from __future__ import annotations
 
 import base64
+import binascii
 import hashlib
 import hmac
 import json
 import os
+import secrets
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -66,6 +68,14 @@ class SessionClaims:
     user_id: str
     email: str
     issued_at: int  # unix seconds
+    session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class MagicLinkClaims:
+    email: str
+    nonce: str
+    issued_at: int
 
 
 # ── Internals ────────────────────────────────────────────────────────
@@ -123,7 +133,7 @@ def _decode(
     try:
         payload_bytes = _b64url_decode(payload_b64)
         provided_sig = _b64url_decode(sig_b64)
-    except (ValueError, base64.binascii.Error) as exc:
+    except (ValueError, binascii.Error) as exc:
         raise invalid_exc(f"base64 decode failed: {exc}") from exc
     expected_sig = _sign(audience, payload_bytes)
     if not hmac.compare_digest(provided_sig, expected_sig):
@@ -151,7 +161,7 @@ def _decode(
 # ── Magic-link tokens ────────────────────────────────────────────────
 
 
-def mint_magic_link_token(email: str) -> str:
+def mint_magic_link_token(email: str, *, nonce: str | None = None) -> str:
     """Mint a magic-link token bound to ``email``.
 
     The token embeds the requested email; verification returns it so
@@ -161,7 +171,11 @@ def mint_magic_link_token(email: str) -> str:
     normalized = email.strip().lower()
     return _encode(
         _MAGIC_LINK_AUDIENCE,
-        {"email": normalized, "iat": int(time.time())},
+        {
+            "email": normalized,
+            "nonce": nonce or secrets.token_urlsafe(24),
+            "iat": int(time.time()),
+        },
     )
 
 
@@ -175,6 +189,14 @@ def verify_magic_link_token(
     Raises ``TokenExpired`` if older than ``max_age_seconds``,
     ``InvalidToken`` for any other failure.
     """
+    return verify_magic_link_claims(token, max_age_seconds=max_age_seconds).email
+
+
+def verify_magic_link_claims(
+    token: str,
+    *,
+    max_age_seconds: int = MAGIC_LINK_TTL_SECONDS,
+) -> MagicLinkClaims:
     payload = _decode(
         _MAGIC_LINK_AUDIENCE,
         token,
@@ -183,15 +205,25 @@ def verify_magic_link_token(
         invalid_exc=InvalidToken,
     )
     email = payload.get("email")
-    if not isinstance(email, str) or not email:
-        raise InvalidToken("magic-link payload missing email")
-    return email.strip().lower()
+    nonce = payload.get("nonce")
+    issued_at = payload.get("iat")
+    if (
+        not isinstance(email, str)
+        or not email
+        or not isinstance(nonce, str)
+        or len(nonce) < 16
+        or not isinstance(issued_at, int)
+    ):
+        raise InvalidToken("magic-link claims malformed")
+    return MagicLinkClaims(email.strip().lower(), nonce, issued_at)
 
 
 # ── Session cookies ──────────────────────────────────────────────────
 
 
-def mint_session_cookie(*, user_id: str, email: str) -> str:
+def mint_session_cookie(
+    *, user_id: str, email: str, session_id: str | None = None
+) -> str:
     """Mint a signed session-cookie value.
 
     Carries ``user_id`` + ``email`` so the middleware can reconstruct
@@ -204,6 +236,7 @@ def mint_session_cookie(*, user_id: str, email: str) -> str:
             "user_id": user_id,
             "email": email.strip().lower(),
             "iat": int(time.time()),
+            "session_id": session_id,
         },
     )
 
@@ -228,6 +261,14 @@ def verify_session_cookie(
     user_id = payload.get("user_id")
     email = payload.get("email")
     iat = payload.get("iat")
+    session_id = payload.get("session_id")
     if not isinstance(user_id, str) or not isinstance(email, str) or not isinstance(iat, int):
         raise InvalidSessionCookie("session claims malformed")
-    return SessionClaims(user_id=user_id, email=email, issued_at=iat)
+    if session_id is not None and not isinstance(session_id, str):
+        raise InvalidSessionCookie("session id malformed")
+    return SessionClaims(
+        user_id=user_id,
+        email=email,
+        issued_at=iat,
+        session_id=session_id,
+    )

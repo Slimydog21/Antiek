@@ -12,6 +12,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Protocol
 
+from substrate.auth.account_store import AuthAccount
+
 
 class AuthError(Exception):
     """Raised on token-decode or claim-validation failure."""
@@ -78,5 +80,28 @@ def operator_claims() -> UserClaims:
         user_id="__operator__",
         email=None,
         scopes=frozenset({"operator", "private_research", "shared_substrate_write"}),
+        issued_at=_now_iso(),
+    )
+
+
+def account_claims(account: AuthAccount) -> UserClaims:
+    """Derive current request scopes from server-owned account state."""
+    if account.status != "active":
+        raise AuthError("account is not active")
+    if account.role == "operator":
+        return UserClaims(
+            user_id="__operator__",
+            email=account.email,
+            scopes=frozenset(
+                {"operator", "private_research", "shared_substrate_write"}
+            ),
+            issued_at=_now_iso(),
+        )
+    if account.role != "user":
+        raise AuthError("account role is invalid")
+    return UserClaims(
+        user_id=account.user_id,
+        email=account.email,
+        scopes=frozenset({"basic", "private_research"}),
         issued_at=_now_iso(),
     )

@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 
 import { LemonDropdown, LemonMenuItem } from "../lemon/LemonDropdown";
@@ -67,9 +68,30 @@ function defaultBreadcrumbsFor(pathname: string): Crumb[] {
   return crumbs;
 }
 
-export function Topbar() {
+export function Topbar({
+  onSignOut,
+  signOutError,
+}: {
+  onSignOut?: () => void | Promise<void>;
+  signOutError?: string | null;
+}) {
   const { pathname } = useLocation();
   const crumbs = defaultBreadcrumbsFor(pathname);
+  const [signingOut, setSigningOut] = useState(false);
+
+  async function handleSignOut(close: () => void) {
+    if (!onSignOut || signingOut) return;
+    setSigningOut(true);
+    try {
+      await onSignOut();
+      close();
+    } catch {
+      // AuthProvider owns the stable, user-facing error. Keep the menu open so
+      // the user can retry and never imply that the server session is gone.
+    } finally {
+      setSigningOut(false);
+    }
+  }
 
   return (
     <header
@@ -121,7 +143,18 @@ export function Topbar() {
             <LemonMenuItem onClick={close}>Profile</LemonMenuItem>
             <LemonMenuItem onClick={close}>Settings</LemonMenuItem>
             <div className="my-1 border-t border-rule dark:border-charcoal-1" />
-            <LemonMenuItem onClick={close}>Sign out</LemonMenuItem>
+            <LemonMenuItem
+              onClick={() => {
+                void handleSignOut(close);
+              }}
+            >
+              {signingOut ? "Signing out…" : "Sign out"}
+            </LemonMenuItem>
+            {signOutError ? (
+              <p className="max-w-64 px-3 py-2 text-[11px] text-emperor" role="alert">
+                {signOutError}
+              </p>
+            ) : null}
           </>
         )}
       </LemonDropdown>

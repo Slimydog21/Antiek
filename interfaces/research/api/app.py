@@ -58,6 +58,7 @@ from fastapi import (
     WebSocketDisconnect,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 # Ensure package root on path for direct uvicorn invocation.
@@ -85,6 +86,41 @@ from substrate.schemas import (  # noqa: E402
 
 from .broadcast import EventBroadcaster  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
+
+# Multi-user authentication is being activated incrementally.  A normal user
+# may enter only owner-native surfaces which have been reviewed to consume the
+# canonical request.state identity.  Everything else remains operator-only by
+# default; adding a route here is an explicit authorization decision.
+_MULTI_USER_SAFE_EXACT: frozenset[tuple[str, str]] = frozenset(
+    {
+        ("GET", "/auth/me"),
+        ("POST", "/auth/logout"),
+        ("POST", "/thought-partner"),
+        ("POST", "/compose-context"),
+        ("GET", "/books"),
+        ("GET", "/books/curate"),
+    }
+)
+_MULTI_USER_SAFE_PREFIXES: tuple[tuple[str, str], ...] = (
+    ("GET", "/books/"),
+    ("GET", "/engagement/sessions/"),
+    ("PUT", "/engagement/sessions/"),
+    ("POST", "/engagement/sessions/"),
+)
+
+
+def is_multi_user_safe_route(method: str, path: str) -> bool:
+    """Return whether a non-operator account may enter this reviewed route."""
+
+    normalized_method = method.upper()
+    if (normalized_method, path) in _MULTI_USER_SAFE_EXACT:
+        return True
+    if normalized_method == "POST" and path == "/engagement/sessions/open":
+        return True
+    return any(
+        normalized_method == allowed_method and path.startswith(prefix)
+        for allowed_method, prefix in _MULTI_USER_SAFE_PREFIXES
+    )
 
 # ---------------------------------------------------------------------------
 # Request / response models
@@ -1431,6 +1467,7 @@ def create_app(
     midnight_oil_dependencies: Any = None,
     enable_midnight_oil: bool = False,
     operator_auth_environ: Mapping[str, str] | None = None,
+    auth_account_store: Any = None,
 ) -> FastAPI:
     """Create the FastAPI app. Pass ``broadcaster`` for tests that want to
     inspect subscriber state; production calls ``create_app()`` and gets
@@ -1553,6 +1590,9 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        # Logout must clear an expired/revoked/disabled browser cookie too;
+        # the route re-verifies and revokes a valid server session itself.
+        "/auth/logout",
         # Temporary agent / computer-use access (Codex + Hermes
         # computer-use): a logged-out browser must reach the dev-login
         # bootstrap to acquire its session, same as /auth/callback. The
@@ -1571,6 +1611,13 @@ def create_app(
     _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
     auth_environment = os.environ if operator_auth_environ is None else operator_auth_environ
+    multi_user_auth_enabled = (
+        auth_environment.get("ANTIEK_MULTI_USER_AUTH", "").strip() == "1"
+    )
+    if multi_user_auth_enabled and auth_account_store is None:
+        from substrate.auth import SqliteAuthStore
+
+        auth_account_store = SqliteAuthStore()
 
     @app.middleware("http")
     async def _operator_auth_middleware(
@@ -1584,7 +1631,12 @@ def create_app(
         expected_st_client_id = auth_environment.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
-        if not expected_token and not operator_emails and not expected_st_client_id:
+        if (
+            not expected_token
+            and not operator_emails
+            and not expected_st_client_id
+            and not multi_user_auth_enabled
+        ):
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
             # operator identity on request.state so endpoints have a
@@ -1625,6 +1677,15 @@ def create_app(
             req.state.auth_method = method
             req.state.user_email = email
 
+        def _attach_account(req: Request, account: Any, *, method: str) -> None:
+            from substrate.multi_user.auth import account_claims
+
+            claims = account_claims(account)
+            req.state.user_id = claims.user_id
+            req.state.scopes = frozenset(claims.scopes)
+            req.state.auth_method = method
+            req.state.user_email = claims.email
+
         # Path 1: Antiek-issued session cookie (magic-link login).
         # PostHog-style owned-auth path. Checked BEFORE Cloudflare
         # Access so a cookie-bearing request always takes our path.
@@ -1641,7 +1702,44 @@ def create_app(
                     cookie_claims = None
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
-                    if not operator_emails or cookie_email in operator_emails:
+                    if multi_user_auth_enabled and auth_account_store is not None:
+                        account = (
+                            auth_account_store.validate_session(
+                                session_id=cookie_claims.session_id,
+                                user_id=cookie_claims.user_id,
+                                email=cookie_email,
+                                operator=(
+                                    cookie_claims.user_id == "__operator__"
+                                    and (
+                                        cookie_email in operator_emails
+                                        or (
+                                            not operator_emails
+                                            and cookie_email == "__operator__"
+                                        )
+                                    )
+                                ),
+                            )
+                            if cookie_claims.session_id
+                            else None
+                        )
+                        if account is not None:
+                            _attach_account(
+                                request,
+                                account,
+                                method="antiek_session_cookie",
+                            )
+                            if (
+                                "operator" not in request.state.scopes
+                                and not is_multi_user_safe_route(
+                                    request.method, request.url.path
+                                )
+                            ):
+                                return JSONResponse(
+                                    status_code=403,
+                                    content={"detail": "operator scope required"},
+                                )
+                            return await call_next(request)
+                    elif not operator_emails or cookie_email in operator_emails:
                         _attach_operator(
                             request,
                             method="antiek_session_cookie",
@@ -1691,7 +1789,6 @@ def create_app(
                     _attach_operator(request, method="bearer_token")
                     return await call_next(request)
 
-        from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=401,
             content={
@@ -1712,7 +1809,11 @@ def create_app(
     # reachable; the routes themselves no-op when the operator email
     # allowlist is empty, so this is safe on local dev too.
     from .auth import register_auth_routes
-    register_auth_routes(app)
+    register_auth_routes(
+        app,
+        account_store=auth_account_store,
+        auth_environ=auth_environment,
+    )
 
     # Phase 3 substrate surfaces — Sprint 23-24 advertiser onboarding +
     # Sprint 30+ thread 1 federation. Substrate primitives live in
