@@ -35,6 +35,19 @@ class QueuedOperation:
     options: dict[str, object]
 
 
+@dataclass(frozen=True)
+class TerminalOperation:
+    operation_id: str
+    owner_user_id: str
+    job_id: str
+    terminal_state: str
+    lease_owner: str
+    lease_generation: int
+    next_step_index: int
+    completed_at_ms: int
+    options: dict[str, object]
+
+
 class OperationQueue(Protocol):
     def enqueue_once(
         self,
@@ -47,6 +60,8 @@ class OperationQueue(Protocol):
     ) -> tuple[QueuedOperation, bool]: ...
 
     def get(self, operation_id: str) -> QueuedOperation | None: ...
+
+    def get_terminal(self, operation_id: str) -> TerminalOperation | None: ...
 
     def next_claimable(self, *, now_ms: int) -> QueuedOperation | None: ...
 
@@ -172,6 +187,31 @@ def _decode(row: tuple[object, ...]) -> QueuedOperation:
         lease_expires_at_ms=lease_expires,
         next_step_index=next_step,
         lease_generation=generation,
+        options=options,
+    )
+
+
+def _decode_terminal(row: tuple[object, ...]) -> TerminalOperation:
+    raw = json.loads(str(row[8]))
+    options, _ = _options(raw)
+    terminal_state = str(row[3])
+    if terminal_state not in {
+        "complete",
+        "failed",
+        "budget_halted",
+        "timed_out",
+        "failed_reconcile",
+    }:
+        raise ValueError("stored terminal queue state is invalid")
+    return TerminalOperation(
+        operation_id=_text(row[0], "operation_id"),
+        owner_user_id=_text(row[1], "owner_user_id"),
+        job_id=_text(row[2], "job_id"),
+        terminal_state=terminal_state,
+        lease_owner=_text(row[4], "lease_owner"),
+        lease_generation=_time(row[5], "lease_generation"),
+        next_step_index=_time(row[6], "next_step_index"),
+        completed_at_ms=_time(row[7], "completed_at_ms"),
         options=options,
     )
 
@@ -329,6 +369,18 @@ class DurableOperationQueue:
         operation = _text(operation_id, "operation_id")
         with self._connect() as connection:
             return self._select(connection, operation)
+
+    def get_terminal(self, operation_id: str) -> TerminalOperation | None:
+        operation = _text(operation_id, "operation_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT operation_id, owner_user_id, job_id, terminal_state, "
+                "lease_owner, lease_generation, next_step_index, completed_at_ms, "
+                "options_json FROM midnight_oil_operation_terminal "
+                "WHERE operation_id = ?",
+                (operation,),
+            ).fetchone()
+        return None if row is None else _decode_terminal(tuple(row))
 
     def next_claimable(self, *, now_ms: int) -> QueuedOperation | None:
         """Return the oldest queued or expired operation; ``lease`` arbitrates."""

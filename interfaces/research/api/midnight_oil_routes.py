@@ -7,16 +7,20 @@ queried until ownership has been established.
 
 from __future__ import annotations
 
+import hashlib
 import secrets
 import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
+from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
 
+from substrate.engagement_spine.store import EngagementStore, FileEngagementStore
 from substrate.midnight_oil import (
     LiveExecutionPlan,
     MidnightOilExecutionReceipt,
@@ -31,6 +35,7 @@ from substrate.midnight_oil import (
     preflight_midnight_oil,
     product_result_html,
 )
+from substrate.midnight_oil.budget_ledger import BudgetLedger, ReservationNotFound
 from substrate.midnight_oil.durable_job import DurableJobStore
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
 from substrate.midnight_oil.job_store import (
@@ -48,6 +53,7 @@ from substrate.midnight_oil.spend_consent import (
     SpendConsentStore,
     decode_and_verify,
 )
+from substrate.midnight_oil.status import LifecycleIntegrityError, project_lifecycle_status
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
 midnight_oil_preflight_router = APIRouter(
@@ -87,6 +93,7 @@ class MidnightOilDependencies:
     signing_key: bytes
     verification_keys: Mapping[str, bytes]
     operation_queue: OperationQueue | None = None
+    engagement_store: EngagementStore | None = None
     live_plan_resolver: Callable[[Any], LiveExecutionPlan] | None = None
     clock_ms: Callable[[], int] = _system_clock_ms
     random_token: Callable[[int], str] = secrets.token_urlsafe
@@ -119,6 +126,7 @@ class MidnightOilDependencies:
                 or type(self.jobs) is not DurableJobStore
                 or type(self.consents) is not SpendConsentStore
                 or type(self.operation_queue) is not DurableOperationQueue
+                or type(self.engagement_store) is not FileEngagementStore
             ):
                 raise ValueError("production Midnight Oil requires durable stores and queue")
             if self.clock_ms is not _system_clock_ms:
@@ -517,6 +525,102 @@ def get_job_route(request: Request, job_id: str) -> dict[str, Any]:
         "runnable": False,
         "html": job_summary_html(job),
     }
+
+
+@midnight_oil_router.get("/jobs/{job_id}/status")
+def get_job_status_route(
+    request: Request, job_id: str, response: Response
+) -> dict[str, object]:
+    deps, authority = _owned(request, job_id)
+    if deps.operation_queue is None:
+        raise HTTPException(status_code=503, detail="durable operation queue is unavailable")
+    job = get_job(job_id, store=deps.jobs)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    try:
+        config = _config(authority)
+        if not _legacy_matches_authority(job, config):
+            raise LifecycleIntegrityError("job detail conflicts with owner authority")
+        budget_path = deps.jobs.budget_db_path()
+        if not Path(budget_path).is_file():
+            exposure = None
+        else:
+            try:
+                exposure = BudgetLedger(budget_path).exposure(job.job_id)
+            except ReservationNotFound:
+                exposure = None
+            except Exception as exc:
+                raise LifecycleIntegrityError(
+                    "budget exposure cannot be read"
+                ) from exc
+        status = project_lifecycle_status(
+            authority=authority,
+            job=job,
+            operation_queue=deps.operation_queue,
+            now_ms=deps.clock_ms(),
+            budget_exposure=exposure,
+        )
+    except (KeyError, TypeError, ValueError, LifecycleIntegrityError):
+        raise HTTPException(
+            status_code=409,
+            detail="job lifecycle requires reconciliation",
+            headers={"Cache-Control": "no-store"},
+        ) from None
+    response.headers["Cache-Control"] = "no-store"
+    return status.to_dict()
+
+
+@midnight_oil_router.get("/jobs/{job_id}/artifact", response_class=HTMLResponse)
+def get_job_artifact_route(request: Request, job_id: str) -> HTMLResponse:
+    deps, authority = _owned(request, job_id)
+    if deps.engagement_store is None:
+        raise HTTPException(status_code=503, detail="engagement store is unavailable")
+    job = get_job(job_id, store=deps.jobs)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    try:
+        config = _config(authority)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="stored job configuration is invalid") from exc
+    if not _legacy_matches_authority(job, config):
+        raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
+    if authority.operation_state not in {
+        OperationState.COMPLETE,
+        OperationState.FAILED,
+        OperationState.BUDGET_HALTED,
+        OperationState.TIMED_OUT,
+        OperationState.FAILED_RECONCILE,
+    }:
+        raise HTTPException(status_code=409, detail="HTML artifact is not terminal")
+    if job.deposit_state != "complete" or not job.deposit_document_id:
+        raise HTTPException(status_code=409, detail="HTML artifact is not deposited")
+    document = deps.engagement_store.get_document(job.deposit_document_id)
+    if document is None:
+        raise HTTPException(status_code=409, detail="HTML artifact requires reconciliation")
+    html_value = document.get("html")
+    if (
+        not isinstance(html_value, str)
+        or len(html_value.encode("utf-8")) > 10_000_000
+        or "<html" not in html_value.lower()
+        or document.get("document_id") != job.deposit_document_id
+        or document.get("job_id") != job.job_id
+        or document.get("view_format") != "html"
+        or job.deposit_html_sha256 is None
+        or hashlib.sha256(html_value.encode("utf-8")).hexdigest()
+        != job.deposit_html_sha256
+    ):
+        raise HTTPException(status_code=409, detail="HTML artifact requires reconciliation")
+    return HTMLResponse(
+        content=html_value,
+        headers={
+            "Cache-Control": "no-store",
+            "Content-Security-Policy": (
+                "default-src 'none'; style-src 'unsafe-inline'; "
+                "base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+            ),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @midnight_oil_router.post("/approve")

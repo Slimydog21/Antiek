@@ -26,6 +26,11 @@ JobStatus = Literal[
     "budget_halted",
     "failed",
 ]
+TerminalReason = Literal[
+    "configuration_blocked",
+    "live_execution_failed",
+    "ambiguous_iteration",
+]
 
 
 @dataclass(frozen=True)
@@ -81,8 +86,10 @@ class MidnightOilJob:
     step_evidence: tuple[MidnightOilStepEvidence, ...] = ()
     deposit_state: Literal["pending", "complete"] = "pending"
     deposit_document_id: str | None = None
+    deposit_html_sha256: str | None = None
     graph_projection_state: Literal["pending", "complete"] = "pending"
     graph_effect_receipt: MidnightOilGraphEffectReceipt | None = None
+    terminal_reason: TerminalReason | None = None
 
 
 @runtime_checkable
@@ -145,6 +152,7 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         ],
         "deposit_state": job.deposit_state,
         "deposit_document_id": job.deposit_document_id,
+        "deposit_html_sha256": job.deposit_html_sha256,
         "graph_projection_state": job.graph_projection_state,
         "graph_effect_receipt": (
             None
@@ -161,6 +169,7 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
                 "deep_links": list(job.graph_effect_receipt.deep_links),
             }
         ),
+        "terminal_reason": job.terminal_reason,
     }
 
 
@@ -235,6 +244,13 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         and bool(graph_receipt.owner_user_id)
         and bool(graph_receipt.deliverable_id)
     )
+    raw_terminal_reason = row.get("terminal_reason")
+    terminal_reason: TerminalReason | None = (
+        raw_terminal_reason
+        if raw_terminal_reason
+        in {"configuration_blocked", "live_execution_failed", "ambiguous_iteration"}
+        else None
+    )
     return MidnightOilJob(
         job_id=row["job_id"],
         goals=tuple(row.get("goals") or ()),
@@ -289,8 +305,16 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
             if row.get("deposit_document_id") is None
             else str(row["deposit_document_id"])
         ),
+        deposit_html_sha256=(
+            str(row["deposit_html_sha256"])
+            if isinstance(row.get("deposit_html_sha256"), str)
+            and re.fullmatch(r"[0-9a-f]{64}", str(row["deposit_html_sha256"]))
+            is not None
+            else None
+        ),
         graph_projection_state="complete" if graph_complete else "pending",
         graph_effect_receipt=graph_receipt if graph_complete else None,
+        terminal_reason=terminal_reason,
     )
 
 

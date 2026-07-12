@@ -82,6 +82,11 @@ def test_post_dispatch_hook_cannot_falsely_claim_not_dispatched(tmp_path: object
     assert balance.held_cents == 25
     assert balance.remaining_cents == 75
     assert balance.status == "reserved"
+    exposure = ledger.exposure("post-dispatch")
+    assert exposure.confirmed_spent_cents == 0
+    assert exposure.open_held_cents == 0
+    assert exposure.unknown_held_cents == 25
+    assert exposure.remaining_cents == 75
 
 
 # ---------------------------------------------------------------------------

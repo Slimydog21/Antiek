@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 
 from runtime.db_lock import connect_read, connect_write
+from substrate.engagement_spine import project_to_html
 from substrate.engagement_spine.store import InMemoryEngagementStore
 from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
@@ -31,6 +32,19 @@ from substrate.midnight_oil.job_store import (
 from substrate.midnight_oil.job_store import (
     TestOnlyInMemoryOwnerJobStore as MemoryOwnerJobStore,
 )
+
+_DOC_MODEL = {
+    "type": "doc",
+    "content": [
+        {
+            "type": "paragraph",
+            "content": [{"type": "text", "text": "exact artifact"}],
+        }
+    ],
+}
+_DOC_HTML_HASH = hashlib.sha256(
+    project_to_html(_DOC_MODEL, document_id="doc-html", creator="midnight_oil").encode()
+).hexdigest()
 
 
 def _terminal_job(
@@ -71,6 +85,7 @@ def _terminal_job(
             completed_step_keys=(evidence.step_key,),
             deposit_state="complete",
             deposit_document_id="doc-html",
+            deposit_html_sha256=_DOC_HTML_HASH,
         ),
         store=store,
     )
@@ -105,15 +120,7 @@ def _projection_dependencies(
         "doc-html",
         {
             "document_id": "doc-html",
-            "doc_model": {
-                "type": "doc",
-                "content": [
-                    {
-                        "type": "paragraph",
-                        "content": [{"type": "text", "text": "exact artifact"}],
-                    }
-                ],
-            },
+            "doc_model": _DOC_MODEL,
         },
     )
     return owner_jobs, engagement

@@ -26,6 +26,7 @@ from runtime.db_lock import FlockWriteCoordinator, connect_read
 
 __all__ = [
     "BudgetCeilingExceeded",
+    "BudgetExposure",
     "BudgetLedger",
     "CallHold",
     "CallNotDispatched",
@@ -140,6 +141,19 @@ class RemainingBalance:
     ceiling_cents: int
     spent_cents: int
     held_cents: int
+    remaining_cents: int
+    status: str
+
+
+@dataclass(frozen=True)
+class BudgetExposure:
+    """Read-only paid-call exposure split by confirmed/open/unknown state."""
+
+    run_id: str
+    ceiling_cents: int
+    confirmed_spent_cents: int
+    open_held_cents: int
+    unknown_held_cents: int
     remaining_cents: int
     status: str
 
@@ -904,6 +918,43 @@ class BudgetLedger:
             if row is None:
                 raise ReservationNotFound(run_id)
             return self._balance_row(row)
+        finally:
+            con.close()
+
+    def exposure(self, run_id: str) -> BudgetExposure:
+        """Return exact confirmed and unsettled call exposure without mutation."""
+
+        con = connect_read(self._db_path)
+        try:
+            row = con.execute(
+                "SELECT run_id, ceiling_cents, spent_cents, held_cents, "
+                "freed_cents, status FROM midnight_oil_reservations "
+                "WHERE run_id = ?",
+                [run_id],
+            ).fetchone()
+            if row is None:
+                raise ReservationNotFound(run_id)
+            balance = self._balance_row(row)
+            holds = con.execute(
+                "SELECT state, COALESCE(sum(projected_max_cents), 0) "
+                "FROM midnight_oil_call_holds WHERE run_id = ? "
+                "AND state IN ('open', 'unknown') GROUP BY state",
+                [run_id],
+            ).fetchall()
+            by_state = {str(state): int(cents) for state, cents in holds}
+            open_cents = by_state.get("open", 0)
+            unknown_cents = by_state.get("unknown", 0)
+            if open_cents + unknown_cents != balance.held_cents:
+                raise RuntimeError("held balance conflicts with call holds")
+            return BudgetExposure(
+                run_id=run_id,
+                ceiling_cents=balance.ceiling_cents,
+                confirmed_spent_cents=balance.spent_cents,
+                open_held_cents=open_cents,
+                unknown_held_cents=unknown_cents,
+                remaining_cents=balance.remaining_cents,
+                status=balance.status,
+            )
         finally:
             con.close()
 

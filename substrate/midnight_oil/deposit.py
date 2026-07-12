@@ -9,6 +9,7 @@ rows via ``ensure_spawn`` before ``complete_spawn`` / ``merge_spawn_outputs``.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -305,6 +306,17 @@ def deposit_job_results(
     html = project_to_html(doc_model, document_id=document_id, creator="midnight_oil")
     if "pdf" in html.lower() and "<html" not in html.lower():
         raise RuntimeError("deposit produced PDF-like surface; HTML required")
+    stored_document = engagement_store.get_document(document_id) or {}
+    engagement_store.put_document(
+        document_id,
+        {
+            **stored_document,
+            "document_id": document_id,
+            "job_id": job.job_id,
+            "view_format": "html",
+            "html": html,
+        },
+    )
 
     twins = list_twin_notes(asset_id, store=engagement_store)
     updated = replace(
@@ -314,6 +326,7 @@ def deposit_job_results(
         notes=(job.notes + " | deposited" if job.notes else "deposited"),
         deposit_state="complete",
         deposit_document_id=document_id,
+        deposit_html_sha256=hashlib.sha256(html.encode("utf-8")).hexdigest(),
     )
     put_job_state(updated, store=job_store)
 

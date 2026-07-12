@@ -565,6 +565,16 @@ def test_queue_discovers_claimable_and_archives_terminal_once(tmp_path: Path) ->
         completed_at_ms=21,
     )
     assert queue.get(leased.operation_id) is None
+    terminal = queue.get_terminal(leased.operation_id)
+    assert terminal is not None
+    assert terminal.operation_id == leased.operation_id
+    assert terminal.owner_user_id == "owner-runtime"
+    assert terminal.job_id == "job-runtime"
+    assert terminal.terminal_state == "complete"
+    assert terminal.lease_owner == "worker-runtime"
+    assert terminal.lease_generation == leased.lease_generation
+    assert terminal.completed_at_ms == 21
+    assert terminal.options == leased.options
     assert queue.next_claimable(now_ms=22) is None
     assert queue.acknowledge_terminal(
         operation_id=leased.operation_id,

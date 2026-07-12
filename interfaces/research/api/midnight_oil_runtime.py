@@ -52,6 +52,7 @@ def build_midnight_oil_api_runtime(
         jobs=stores.jobs,
         consents=stores.consents,
         operation_queue=stores.operation_queue,
+        engagement_store=stores.engagement_store,
         active_key_id=config.consent_active_key_id,
         signing_key=signing_key,
         verification_keys=verification_keys,

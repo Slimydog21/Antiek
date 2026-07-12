@@ -201,6 +201,8 @@ def project_terminal_job_to_graph(
         )
     html = _deposited_html(job, engagement_store)
     html_sha256 = _html_hash(html)
+    if job.deposit_html_sha256 != html_sha256:
+        raise ValueError("deposited HTML conflicts with its durable hash")
     existing_receipt = job.graph_effect_receipt
     if existing_receipt is not None and (
         existing_receipt.owner_user_id != owner_user_id

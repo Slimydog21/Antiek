@@ -18,6 +18,7 @@ from interfaces.research.api.midnight_oil_routes import (
     MidnightOilDependencies,
     register_midnight_oil_routes,
 )
+from substrate.engagement_spine.store import FileEngagementStore
 from substrate.midnight_oil.budget_ledger import (
     BudgetLedger,
     UnknownCallOutcome,
@@ -52,6 +53,7 @@ def _dependencies(root: Path, *, production: bool = False) -> MidnightOilDepende
         signing_key=key,
         verification_keys={"integration-key": key},
         operation_queue=DurableOperationQueue(root / "queue.sqlite3"),
+        engagement_store=FileEngagementStore(root / "engagement"),
     )
     if production:
         return MidnightOilDependencies(**common)  # type: ignore[arg-type]
@@ -215,6 +217,8 @@ def test_live_startup_dependency_matrix_fails_before_serving(tmp_path: Path) -> 
         {"operation_queue": None},
         {"operation_queue": object()},
         {"operation_queue": QueueSubclass(tmp_path / "queue-subclass.sqlite3")},
+        {"engagement_store": None},
+        {"engagement_store": object()},
         {"verification_keys": {}},
         {"signing_key": b"short"},
         {"active_key_id": " invalid "},

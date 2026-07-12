@@ -18,7 +18,7 @@ from substrate.dispatch import DispatchConfig
 from substrate.graph.retrieval_substrate import RetrievalSubstrate, make_substrate
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding
 
-from .job import get_job, put_job_state
+from .job import TerminalReason, get_job, put_job_state
 from .job_store import OperationState
 from .live import (
     LiveExecutionFailed,
@@ -134,6 +134,7 @@ def _mark_failed_before_network(
     *,
     clock_ms: Callable[[], int],
     reconcile: bool,
+    reason: TerminalReason,
 ) -> OperationState:
     authority = runtime.stores.owner_jobs.get_job(
         owner_user_id=lease.owner_user_id, job_id=lease.job_id
@@ -154,13 +155,31 @@ def _mark_failed_before_network(
         if not changed.applied:
             raise RuntimeError("failure disposition lost authority compare-and-set")
     job = get_job(lease.job_id, store=runtime.stores.jobs)
-    if job is not None and job.status not in {
-        "complete",
-        "timed_out",
-        "budget_halted",
-        "failed",
-    }:
-        put_job_state(replace(job, status="failed"), store=runtime.stores.jobs)
+    if job is not None:
+        terminal_status = job.status in {
+            "complete",
+            "timed_out",
+            "budget_halted",
+            "failed",
+        }
+        effective_reason = (
+            None
+            if authority.operation_state
+            in {
+                OperationState.COMPLETE,
+                OperationState.BUDGET_HALTED,
+                OperationState.TIMED_OUT,
+            }
+            else reason
+        )
+        put_job_state(
+            replace(
+                job,
+                status=job.status if terminal_status else "failed",
+                terminal_reason=effective_reason,
+            ),
+            store=runtime.stores.jobs,
+        )
     return target
 
 
@@ -369,7 +388,11 @@ def run_worker_once(
         )
     except Exception:
         target = _mark_failed_before_network(
-            runtime, lease, clock_ms=clock_ms, reconcile=False
+            runtime,
+            lease,
+            clock_ms=clock_ms,
+            reconcile=False,
+            reason="configuration_blocked",
         )
         try:
             deposit = resume_terminal_deposit(
@@ -439,6 +462,16 @@ def run_worker_once(
                     OperationState.FAILED_RECONCILE,
                 }
             ):
+                _mark_failed_before_network(
+                    runtime,
+                    lease,
+                    clock_ms=clock_ms,
+                    reconcile=(
+                        authority_after_failure.operation_state
+                        is OperationState.FAILED_RECONCILE
+                    ),
+                    reason="live_execution_failed",
+                )
                 retrieval.close()
                 return _recover_terminal(
                     runtime,
@@ -455,7 +488,11 @@ def run_worker_once(
                 and authority_after_failure.operation_state
                 in {OperationState.FAILED, OperationState.FAILED_RECONCILE}
                 else _mark_failed_before_network(
-                    runtime, lease, clock_ms=clock_ms, reconcile=True
+                    runtime,
+                    lease,
+                    clock_ms=clock_ms,
+                    reconcile=True,
+                    reason="live_execution_failed",
                 )
             )
             target = _mark_failed_before_network(
@@ -463,6 +500,7 @@ def run_worker_once(
                 lease,
                 clock_ms=clock_ms,
                 reconcile=target is OperationState.FAILED_RECONCILE,
+                reason="live_execution_failed",
             )
             try:
                 failed_deposit = resume_terminal_deposit(
@@ -512,6 +550,16 @@ def run_worker_once(
                     OperationState.FAILED_RECONCILE,
                 }
             ):
+                _mark_failed_before_network(
+                    runtime,
+                    lease,
+                    clock_ms=clock_ms,
+                    reconcile=(
+                        authority_after_exception.operation_state
+                        is OperationState.FAILED_RECONCILE
+                    ),
+                    reason="ambiguous_iteration",
+                )
                 retrieval.close()
                 return _recover_terminal(
                     runtime,
@@ -523,7 +571,11 @@ def run_worker_once(
                     clock_ms=clock_ms,
                 )
             target = _mark_failed_before_network(
-                runtime, lease, clock_ms=clock_ms, reconcile=True
+                runtime,
+                lease,
+                clock_ms=clock_ms,
+                reconcile=True,
+                reason="ambiguous_iteration",
             )
             try:
                 ambiguous_deposit = resume_terminal_deposit(

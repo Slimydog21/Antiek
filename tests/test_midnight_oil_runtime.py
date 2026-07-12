@@ -365,7 +365,7 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
 
     @app.middleware("http")
     async def _auth(request: Request, call_next):  # type: ignore[no-untyped-def]
-        request.state.user_id = "operator-runtime"
+        request.state.user_id = request.headers.get("X-Test-Owner", "operator-runtime")
         return await call_next(request)
 
     register_midnight_oil_routes(app, dependencies=api.dependencies)
@@ -381,6 +381,15 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     )
     assert created.status_code == 200, created.text
     job_id = created.json()["job_id"]
+    initial_status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+    assert initial_status.status_code == 200
+    assert initial_status.headers["cache-control"] == "no-store"
+    assert initial_status.json()["state"] == "consent_required"
+    foreign = client.get(
+        f"/midnight-oil/jobs/{job_id}/status",
+        headers={"X-Test-Owner": "foreign-operator"},
+    )
+    assert foreign.status_code == 404
     consent = client.post(
         f"/midnight-oil/jobs/{job_id}/spend-consent",
         json=(
@@ -390,12 +399,18 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         ),
     )
     assert consent.status_code == 200, consent.text
+    consent_status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+    assert consent_status.status_code == 200
+    assert consent_status.json()["state"] == "consent_issued"
     queued = client.post(
         "/midnight-oil/run",
         headers={"X-Midnight-Oil-Spend-Consent": consent.json()["token"]},
         json={"job_id": job_id},
     )
     assert queued.status_code == 200, queued.text
+    queued_status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+    assert queued_status.status_code == 200
+    assert queued_status.json()["state"] == "queued"
 
     ensure_initialized(str(api.config.graph_db_path))
     with connect_write(
@@ -494,6 +509,16 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert blocked.deposit_document_id
         assert paid.keys == []
         assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
+        status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+        assert status.status_code == 200, status.text
+        assert status.json()["state"] == "blocked_provider"
+        assert status.json()["terminal_outcome"] == "blocked_provider"
+        assert status.json()["cost_state"] == "not_reserved"
+        assert status.json()["confirmed_spent_cents"] == 0
+        assert status.json()["reserved_cents"] == 0
+        artifact = client.get(status.json()["deposit_href"])
+        assert artifact.status_code == 200
+        assert artifact.headers["content-type"].startswith("text/html")
         return
     if mode == "stop_before_claim":
         stopped = run_worker_once(
@@ -524,6 +549,9 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert stopped.result == "lease_pending"
         assert stopped.phase == "shutdown_before_provider"
         assert paid.keys == []
+        leased_status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+        assert leased_status.status_code == 200
+        assert leased_status.json()["state"] == "leased"
         recovered = run_worker_once(
             worker,
             worker_id="runtime-worker-after-stop",
@@ -544,6 +572,14 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert "secret provider timeout detail" not in reconciled.to_json()
         assert len(paid.keys) == 1
         assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
+        status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+        assert status.status_code == 200, status.text
+        assert status.json()["state"] == "reconcile_required"
+        assert status.json()["terminal_outcome"] == "failed_reconcile"
+        assert status.json()["confirmed_spent_cents"] == 0
+        assert status.json()["reserved_cents"] > 0
+        assert status.json()["unknown_outcome"] is True
+        assert status.json()["cost_state"] == "unknown_outcome"
         return
     if mode == "post_action_crash":
         def crash_after_paid_checkpoint() -> None:
@@ -579,6 +615,10 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert halted.graph_deliverable_id is None
         assert paid.keys == []
         assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
+        status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+        assert status.status_code == 200, status.text
+        assert status.json()["state"] == "budget_halted"
+        assert status.json()["terminal_outcome"] == "budget_halted"
         return
 
     def execute(worker_id: str):  # type: ignore[no-untyped-def]
@@ -607,6 +647,9 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert pending.result == (
             "deposit_pending" if mode == "deposit_crash" else "projection_pending"
         )
+        pending_status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+        assert pending_status.status_code == 200
+        assert pending_status.json()["state"] == pending.result
         assert len(paid.keys) == 1
         monkeypatch.setattr(worker_module, attribute, original)
         result = run_worker_once(
@@ -647,6 +690,36 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     assert result.deposit_document_id
     assert result.graph_deliverable_id
     assert len(paid.keys) == 1
+    status = client.get(f"/midnight-oil/jobs/{job_id}/status")
+    assert status.status_code == 200, status.text
+    lifecycle = status.json()
+    assert lifecycle["state"] == "complete"
+    assert lifecycle["terminal_outcome"] == "complete"
+    assert lifecycle["deposit_document_id"] == result.deposit_document_id
+    assert lifecycle["graph_deliverable_id"] == result.graph_deliverable_id
+    assert lifecycle["graph_deep_links"]
+    assert lifecycle["confirmed_spent_cents"] > 0
+    assert lifecycle["reserved_cents"] == 0
+    assert lifecycle["unknown_outcome"] is False
+    assert lifecycle["cost_state"] == "settled"
+    assert "token" not in json.dumps(lifecycle).lower()
+    artifact = client.get(lifecycle["deposit_href"])
+    assert artifact.status_code == 200
+    assert "<html" in artifact.text.lower()
+    foreign_artifact = client.get(
+        lifecycle["deposit_href"], headers={"X-Test-Owner": "foreign-operator"}
+    )
+    assert foreign_artifact.status_code == 404
+    stored_artifact = worker.stores.engagement_store.get_document(
+        lifecycle["deposit_document_id"]
+    )
+    assert stored_artifact is not None
+    worker.stores.engagement_store.put_document(
+        lifecycle["deposit_document_id"],
+        {**stored_artifact, "html": "<html><body>tampered</body></html>"},
+    )
+    tampered_artifact = client.get(lifecycle["deposit_href"])
+    assert tampered_artifact.status_code == 409
     assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
     second = run_worker_once(
         worker,
