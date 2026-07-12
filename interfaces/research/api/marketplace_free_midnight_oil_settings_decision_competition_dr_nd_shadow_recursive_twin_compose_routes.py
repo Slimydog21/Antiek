@@ -74,6 +74,8 @@ def register_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_s
 
 
 __all__ = [
+    "MarketBody",
+    "MoPackBody",
     "marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_router",
     "register_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_routes",
 ]
