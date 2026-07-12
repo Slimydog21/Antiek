@@ -87,4 +87,6 @@ def register_source_attach_antiek_bench_rewrite_model_decision_compose_routes(
 __all__ = [
     "source_attach_antiek_bench_rewrite_model_decision_compose_router",
     "register_source_attach_antiek_bench_rewrite_model_decision_compose_routes",
+    "SourcesBody",
+    "RewritePackBody",
 ]
