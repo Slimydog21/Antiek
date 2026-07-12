@@ -10,6 +10,7 @@ from substrate.merge_lifecycle.draft_promotion import (
     DraftRef,
     LifecycleEvent,
     OperatorConsent,
+    _redact_token,
     create_lifecycle,
     discard,
     mark_for_review,
@@ -218,8 +219,13 @@ def test_lifecycle_is_frozen_value():
     assert isinstance(lc.history, tuple)
 
 
-def test_promote_records_consent_token_in_detail():
+def test_promote_records_token_hash_not_raw_secret_in_audit():
+    # Security: the append-only audit log must NEVER store the raw consent token.
+    # It stores a hash (proves identity, redactable-safe).
     lc = create_lifecycle(_draft(), actor="op", at="t0")
     lc = promote(lc, consent=_consent(token="secret-tok"), content_hash="hash-abc", at="t1")
     promote_event = [e for e in lc.history if e.action == "promoted"][0]
-    assert "secret-tok" in promote_event.detail
+    assert "secret-tok" not in promote_event.detail  # raw secret never in audit
+    assert "token_hash=sha256:" in promote_event.detail  # hash IS recorded
+    # the hash is deterministic (same token -> same hash)
+    assert _redact_token("secret-tok") in promote_event.detail

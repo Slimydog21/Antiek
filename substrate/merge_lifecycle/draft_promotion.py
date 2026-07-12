@@ -53,12 +53,23 @@ arrives with ``promoted_at`` already resolved.
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass
 from typing import Literal
 
 
 class DraftPromotionError(ValueError):
     """A lifecycle action violates a state invariant."""
+
+
+def _redact_token(token: str) -> str:
+    """Hash a consent token for the audit log — proves identity, never leaks the raw secret.
+
+    The append-only history is permanent; storing a raw approval token there would
+    make a credential impossible to redact. The hash lets the audit trail prove
+    WHICH token authorized a promotion (identity) without persisting the secret.
+    """
+    return "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
 
 
 DraftState = Literal["draft", "under_review", "promoted", "discarded", "superseded"]
@@ -180,7 +191,7 @@ def promote(
         draft=lc.draft,
         state="promoted",
         history=lc.history
-        + (LifecycleEvent("promoted", consent.operator_id, at, reason, f"token={consent.consent_token}"),),
+        + (LifecycleEvent("promoted", consent.operator_id, at, reason, f"token_hash={_redact_token(consent.consent_token)}"),),
         promoted_by=consent,
         superseded_by=lc.superseded_by,
     )
