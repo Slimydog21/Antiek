@@ -45,6 +45,13 @@ from .task_registry import (
     TaskRegistryError,
     load_default_registry,
 )
+from .weekly import (
+    WeekEvidence,
+    WeightProposer,
+    close_week,
+    default_laplace_weights,
+    iso_week_id,
+)
 
 __all__ = [
     "BenchTask",
@@ -67,7 +74,12 @@ __all__ = [
     "TaskRegistryError",
     "UsageEvent",
     "ViewRecord",
+    "WeekEvidence",
+    "WeightProposer",
     "append_to_ledger",
+    "close_week",
+    "default_laplace_weights",
+    "iso_week_id",
     "load_default_registry",
     "run_and_score",
     "read_ledger",
