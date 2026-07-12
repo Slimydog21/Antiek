@@ -243,6 +243,7 @@ export type CanonicalMergeCommitResponse = {
   node_ids: string[];
   paragraph_count: number;
   draft_sha256: string;
+  twin_note_count: number;
   view_format: "html" | string;
   html: string;
 };
@@ -273,6 +274,7 @@ export type CanonicalMergeHtmlResponse = {
   section_id: string;
   revision: string;
   draft_sha256: string;
+  twin_note_count: number;
   view_format: "html" | string;
   html: string;
 };
@@ -564,13 +566,11 @@ export async function fetchTwinNotes(
   opts?: { includeHtml?: boolean; spawnId?: string | null },
 ): Promise<TwinNotesResponse> {
   const params = new URLSearchParams();
+  params.set("asset_id", assetId);
   if (opts?.includeHtml) params.set("include_html", "true");
   // Residual (le): optional spawn_id scopes research_tier on list payload.
   if (opts?.spawnId?.trim()) params.set("spawn_id", opts.spawnId.trim());
-  const q = params.toString() ? `?${params.toString()}` : "";
-  const res = await apiFetch(
-    `${API_BASE}/engagement/twins/${encodeURIComponent(assetId)}${q}`,
-  );
+  const res = await apiFetch(`${API_BASE}/engagement/twins?${params.toString()}`);
   return readJson<TwinNotesResponse>(res);
 }
 

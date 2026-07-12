@@ -28,12 +28,22 @@ class TwinNote:
     text: str
     source_spawn_id: str | None = None
     investigation_id: str | None = None
+    origin: str | None = None
+    source_revision_sha256: str | None = None
 
 
 def _note_id(asset_id: str, kind: TwinKind, text: str) -> str:
     canon = " ".join(text.strip().lower().split())
     digest = hashlib.sha256(f"{asset_id}:{kind}:{canon}".encode()).hexdigest()[:16]
     return f"twin_{digest}"
+
+
+def _generated_note_id(asset_id: str, kind: TwinKind, text: str, origin: str) -> str:
+    canon = " ".join(text.strip().lower().split())
+    digest = hashlib.sha256(
+        f"{origin}:{asset_id}:{kind}:{canon}".encode()
+    ).hexdigest()[:16]
+    return f"twin_generated_{digest}"
 
 
 def record_twin_insight(
@@ -182,6 +192,58 @@ def record_twin_product(
     return twins_product_payload(asset_id, store=store, include_html=include_html)
 
 
+def converge_reviewed_twins(
+    asset_id: str,
+    *,
+    store: EngagementStore,
+    title: str,
+    body_text: str,
+    review_sha256: str,
+) -> dict[str, Any]:
+    """Replace only system-generated canonical twins for one reviewed revision."""
+
+    aid = (asset_id or "").strip()
+    revision = (review_sha256 or "").strip()
+    if not aid or not revision:
+        raise ValueError("asset_id and review_sha256 are required")
+    resolved_title = (title or "").strip() or aid
+    preview = " ".join((body_text or "").split()).strip()
+    if len(preview) > 1000:
+        preview = preview[:997] + "…"
+    insight = f"Asset identity: {resolved_title}."
+    if preview:
+        insight += f" Opening: {preview}"
+    question = f"What claims in “{resolved_title}” should be wrestled or cited next?"
+    origin = "canonical_review_seed"
+    notes = [
+        TwinNote(
+            note_id=_generated_note_id(aid, "insight", insight, origin),
+            asset_id=aid,
+            kind="insight",
+            text=insight,
+            origin=origin,
+            source_revision_sha256=revision,
+        ),
+        TwinNote(
+            note_id=_generated_note_id(aid, "question", question, origin),
+            asset_id=aid,
+            kind="question",
+            text=question,
+            origin=origin,
+            source_revision_sha256=revision,
+        ),
+    ]
+    store.replace_twins_for_origin(
+        aid, origin, [_to_row(note) for note in notes]
+    )
+    payload = twins_product_payload(aid, store=store, include_html=False)
+    payload["canonical_review_sha256"] = revision
+    payload["seeded"] = True
+    payload["live_seed"] = False
+    payload["seed_source"] = "engagement_spine.twin.converge_reviewed_twins"
+    return payload
+
+
 # Residual (bz): optional live note_taker for twin seed — default OFF.
 # Env ANTIEK_TWIN_SEED_LIVE + process inject both required (no silent LLM).
 ANTIEK_TWIN_SEED_LIVE_ENV = "ANTIEK_TWIN_SEED_LIVE"
@@ -234,7 +296,8 @@ def seed_twins_for_asset(
     if not aid:
         raise ValueError("asset_id is required")
     existing = list_twin_notes(aid, store=store)
-    if existing:
+    existing_kinds = {note.kind for note in existing}
+    if {"insight", "question"}.issubset(existing_kinds):
         payload = twins_product_payload(aid, store=store, include_html=include_html)
         payload["seeded"] = False
         payload["seed_skipped"] = "twins_already_present"
@@ -255,8 +318,8 @@ def seed_twins_for_asset(
 
     t = (title or "").strip() or aid
     body_preview = (body_text or "").strip().replace("\n", " ")
-    if len(body_preview) > 160:
-        body_preview = body_preview[:157] + "…"
+    if len(body_preview) > 1000:
+        body_preview = body_preview[:997] + "…"
 
     used_live = False
     pairs: list[tuple[str, str]] = []
@@ -279,12 +342,19 @@ def seed_twins_for_asset(
             pairs = []
             used_live = False
 
-    if not pairs:
-        insight = f"Asset identity: {t}."
-        if body_preview:
-            insight += f" Opening: {body_preview}"
-        question = f"What claims in “{t}” should be wrestled or cited next?"
-        pairs = [("insight", insight), ("question", question)]
+    insight = f"Asset identity: {t}."
+    if body_preview:
+        insight += f" Opening: {body_preview}"
+    question = f"What claims in “{t}” should be wrestled or cited next?"
+    defaults = {"insight": insight, "question": question}
+    live_choices = {kind: text for kind, text in pairs if kind not in existing_kinds}
+    chosen = dict(live_choices)
+    for missing_kind in {"insight", "question"} - existing_kinds:
+        chosen.setdefault(missing_kind, defaults[missing_kind])
+    pairs = list(chosen.items())
+    used_live = bool(pairs) and all(
+        live_choices.get(kind) == text for kind, text in pairs
+    )
 
     for kind, text in pairs:
         if kind == "insight":
@@ -398,6 +468,8 @@ def _to_row(note: TwinNote) -> dict[str, Any]:
         "text": note.text,
         "source_spawn_id": note.source_spawn_id,
         "investigation_id": note.investigation_id,
+        "origin": note.origin,
+        "source_revision_sha256": note.source_revision_sha256,
     }
 
 
@@ -409,4 +481,6 @@ def _from_row(row: dict[str, Any]) -> TwinNote:
         text=row["text"],
         source_spawn_id=row.get("source_spawn_id"),
         investigation_id=row.get("investigation_id"),
+        origin=row.get("origin"),
+        source_revision_sha256=row.get("source_revision_sha256"),
     )

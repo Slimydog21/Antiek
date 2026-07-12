@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 
 import pytest
 
@@ -20,12 +21,14 @@ from substrate.engagement_spine import (  # noqa: E402
     HighlightSelection,
     InMemoryEngagementStore,
     complete_spawn,
+    converge_reviewed_twins,
     get_spawn,
     list_spawns_for_asset,
     list_twin_notes,
     merge_spawn_outputs,
     record_twin_insight,
     record_twin_question,
+    seed_twins_for_asset,
     spawn_from_highlight,
 )
 from substrate.engagement_spine.store import FileEngagementStore as _FileStore  # noqa: E402
@@ -142,6 +145,156 @@ def test_twin_insight_and_question_write_read(store):
     )
     assert ins2.note_id == ins.note_id
     assert len(list_twin_notes("doc-42", store=store)) == 2
+
+
+def test_file_twin_identity_is_collision_free_and_restart_safe(file_store, tmp_path):
+    record_twin_insight("project/a", "Slash identity.", store=file_store)
+    record_twin_question("project_a", "Underscore identity?", store=file_store)
+
+    restarted = _FileStore(tmp_path / "engagement")
+    assert [note.text for note in list_twin_notes("project/a", store=restarted)] == [
+        "Slash identity."
+    ]
+    assert [note.text for note in list_twin_notes("project_a", store=restarted)] == [
+        "Underscore identity?"
+    ]
+
+    record_twin_insight("project/a", "Slash identity.", store=restarted)
+    assert len(list_twin_notes("project/a", store=restarted)) == 1
+    assert len(list((tmp_path / "engagement" / "twins").glob("asset-*.json"))) == 2
+
+
+def test_file_twin_writes_serialize_across_store_instances(tmp_path, monkeypatch):
+    root = tmp_path / "engagement"
+    first = _FileStore(root)
+    second = _FileStore(root)
+    entered = threading.Event()
+    release = threading.Event()
+    original_load = first._load_twins_for_write
+
+    def paused_load(asset_id, path):
+        notes = original_load(asset_id, path)
+        entered.set()
+        assert release.wait(timeout=2)
+        return notes
+
+    monkeypatch.setattr(first, "_load_twins_for_write", paused_load)
+    writer_one = threading.Thread(
+        target=record_twin_insight,
+        args=("shared/asset", "First process note."),
+        kwargs={"store": first},
+    )
+    writer_two = threading.Thread(
+        target=record_twin_insight,
+        args=("shared/asset", "Second process note."),
+        kwargs={"store": second},
+    )
+    writer_one.start()
+    assert entered.wait(timeout=2)
+    writer_two.start()
+    assert writer_two.is_alive()
+    release.set()
+    writer_one.join(timeout=2)
+    writer_two.join(timeout=2)
+    assert not writer_one.is_alive() and not writer_two.is_alive()
+    assert {note.text for note in list_twin_notes("shared/asset", store=first)} == {
+        "First process note.",
+        "Second process note.",
+    }
+
+
+def test_file_twin_legacy_read_requires_exact_embedded_asset_id(tmp_path):
+    root = tmp_path / "engagement"
+    store = _FileStore(root)
+    legacy = root / "twins" / "project_a.json"
+    legacy.write_text(
+        '[{"asset_id":"project/a","kind":"insight","note_id":"legacy",'
+        '"text":"Legacy slash identity."}]',
+        encoding="utf-8",
+    )
+
+    assert [note.text for note in list_twin_notes("project/a", store=store)] == [
+        "Legacy slash identity."
+    ]
+    assert list_twin_notes("project_a", store=store) == []
+    long_identity = "opaque/" + "x" * 400
+    assert list_twin_notes(long_identity, store=store) == []
+    record_twin_question(long_identity, "Does the long identity persist?", store=store)
+    assert len(list_twin_notes(long_identity, store=store)) == 1
+
+
+def test_twin_seed_repairs_a_partial_notebook_without_duplicates(file_store):
+    record_twin_insight("canonical/partial", "Reviewed insight.", store=file_store)
+    repaired = seed_twins_for_asset(
+        "canonical/partial",
+        store=file_store,
+        title="Canonical partial",
+        body_text="Exact reviewed body.",
+        force_offline=True,
+    )
+    assert repaired["seeded"] is True
+    assert repaired["insight_count"] == 1
+    assert repaired["question_count"] == 1
+
+    replayed = seed_twins_for_asset(
+        "canonical/partial",
+        store=file_store,
+        title="Canonical partial",
+        body_text="Exact reviewed body.",
+        force_offline=True,
+    )
+    assert replayed["seeded"] is False
+    assert replayed["note_count"] == 2
+
+
+def test_partial_live_seed_reports_offline_when_missing_kind_uses_fallback(
+    file_store, monkeypatch
+):
+    monkeypatch.setenv("ANTIEK_TWIN_SEED_LIVE", "1")
+    record_twin_insight("canonical/live-partial", "Existing insight.", store=file_store)
+    repaired = seed_twins_for_asset(
+        "canonical/live-partial",
+        store=file_store,
+        title="Partial live",
+        body_text="Reviewed body.",
+        live_fn=lambda _title, _body: [("insight", "Unused live insight.")],
+    )
+    assert repaired["live_seed"] is False
+    assert repaired["seed_source"] == "engagement_spine.twin.seed_twins_for_asset"
+
+
+def test_canonical_twin_revision_replaces_only_generated_notes(file_store):
+    record_twin_question("canonical/revised", "Operator question?", store=file_store)
+    exact_generated_text = (
+        "Asset identity: Reviewed research. Opening: Revision two conclusion."
+    )
+    record_twin_insight("canonical/revised", exact_generated_text, store=file_store)
+    converge_reviewed_twins(
+        "canonical/revised",
+        store=file_store,
+        title="Reviewed research",
+        body_text="Revision one conclusion.",
+        review_sha256="1" * 64,
+    )
+    converge_reviewed_twins(
+        "canonical/revised",
+        store=file_store,
+        title="Reviewed research",
+        body_text="Revision two conclusion.",
+        review_sha256="2" * 64,
+    )
+    notes = list_twin_notes("canonical/revised", store=file_store)
+    assert any(note.text == "Operator question?" for note in notes)
+    exact_matches = [note for note in notes if note.text == exact_generated_text]
+    assert len(exact_matches) == 2
+    assert {note.origin for note in exact_matches} == {None, "canonical_review_seed"}
+    generated = [
+        note for note in notes if note.origin == "canonical_review_seed"
+    ]
+    assert len(generated) == 2
+    assert all(note.source_revision_sha256 == "2" * 64 for note in generated)
+    assert any("Revision two conclusion." in note.text for note in generated)
+    assert all("Revision one conclusion." not in note.text for note in generated)
 
 
 def test_merge_into_parent_and_draft(store):

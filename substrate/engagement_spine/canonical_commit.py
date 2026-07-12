@@ -54,6 +54,28 @@ def _draft_hash(doc_model: dict[str, Any]) -> str:
     ).hexdigest()
 
 
+def reviewed_document_text(doc_model: dict[str, Any], *, max_chars: int = 16000) -> str:
+    """Extract bounded reviewed text for deterministic twin convergence."""
+
+    parts: list[str] = []
+
+    def visit(value: object) -> None:
+        if isinstance(value, dict):
+            text = value.get("text")
+            if isinstance(text, str) and text.strip():
+                parts.append(text.strip())
+            content = value.get("content")
+            if isinstance(content, list):
+                for child in content:
+                    visit(child)
+        elif isinstance(value, list):
+            for child in value:
+                visit(child)
+
+    visit(doc_model.get("content"))
+    return " ".join(parts).strip()[:max_chars]
+
+
 def _require_provenance(provenance: object, *, parent_asset_id: str) -> dict[str, Any]:
     if not isinstance(provenance, dict):
         raise CanonicalMergeConflict("every committed paragraph requires provenance")
@@ -587,4 +609,5 @@ __all__ = [
     "commit_reviewed_draft",
     "load_reviewed_document_model",
     "load_latest_reviewed_document_model",
+    "reviewed_document_text",
 ]

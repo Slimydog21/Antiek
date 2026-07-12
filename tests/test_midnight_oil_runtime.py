@@ -225,7 +225,7 @@ def test_production_twin_promotion_rolls_back_entire_batch(tmp_path: Path) -> No
 
 
 def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     from substrate.engagement_spine import (
         HighlightSelection,
@@ -279,6 +279,19 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     }
     first = client.post("/engagement/merge/commit", json=body)
     assert first.status_code == 200, first.text
+    assert first.json()["twin_note_count"] == 2
+    committed_twins = client.get(
+        "/engagement/twins", params={"asset_id": "dlv-reviewed-draft"}
+    )
+    assert committed_twins.status_code == 200
+    assert committed_twins.json()["note_count"] == 2
+    assert any(
+        "Reviewed research output." in note["text"]
+        for note in committed_twins.json()["notes"]
+    )
+    assert {
+        note["source_revision_sha256"] for note in committed_twins.json()["notes"]
+    } == {draft["draft_sha256"]}
     from substrate.engagement_spine.project import project_to_html
 
     assert first.json()["html"] == project_to_html(
@@ -314,6 +327,7 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
         params={"deliverable_id": "dlv-reviewed-draft"},
     )
     assert reloaded.status_code == 200
+    assert reloaded.json()["twin_note_count"] == 2
     assert reloaded.json()["draft_sha256"] == draft["draft_sha256"]
     assert "Reviewed research output." in reloaded.json()["html"]
     restarted_client = TestClient(
@@ -325,6 +339,11 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     )
     assert cold_reloaded.status_code == 200
     assert cold_reloaded.json()["html"] == reloaded.json()["html"]
+    cold_twins = restarted_client.get(
+        "/engagement/twins", params={"asset_id": "dlv-reviewed-draft"}
+    )
+    assert cold_twins.status_code == 200
+    assert cold_twins.json()["notes"] == committed_twins.json()["notes"]
     slash_draft_id = f"{draft['document_id']}-slash-target"
     store.put_document(slash_draft_id, reviewed_document)
     slash_commit = client.post(
@@ -343,6 +362,67 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     assert slash_reloaded.status_code == 200
     assert slash_reloaded.json()["deliverable_id"] == "project/dlv-reviewed-draft"
     assert "Reviewed research output." in slash_reloaded.json()["html"]
+    slash_twins = restarted_client.get(
+        "/engagement/twins", params={"asset_id": "project/dlv-reviewed-draft"}
+    )
+    assert slash_twins.status_code == 200
+    assert slash_twins.json()["note_count"] == 2
+    scoped_search = restarted_client.post(
+        "/engagement/context-search",
+        json={
+            "asset_id": "project/dlv-reviewed-draft",
+            "query": "Reviewed research output",
+            "include_html": True,
+        },
+    )
+    assert scoped_search.status_code == 200
+    assert scoped_search.json()["hit_count"] == 1
+    assert {
+        hit["asset_id"] for hit in scoped_search.json()["hits"]
+    } == {"project/dlv-reviewed-draft"}
+    promoted = restarted_client.post(
+        "/engagement/twins/promote-context",
+        json={"asset_id": "project/dlv-reviewed-draft"},
+    )
+    assert promoted.status_code == 200, promoted.text
+    assert promoted.json()["promoted_count"] == 2
+    assert promoted.json()["content_addressed_alignment"] is True
+    promoted_replay = restarted_client.post(
+        "/engagement/twins/promote-context",
+        json={"asset_id": "project/dlv-reviewed-draft"},
+    )
+    assert promoted_replay.status_code == 200
+    assert promoted_replay.json()["graph_node_ids"] == promoted.json()[
+        "graph_node_ids"
+    ]
+    repair_draft_id = f"{draft['document_id']}-twin-repair"
+    store.put_document(repair_draft_id, reviewed_document)
+    original_replace_twins = store.replace_twins_for_origin
+
+    def fail_twin_write(
+        asset_id: str, origin: str, notes: list[dict[str, Any]]
+    ) -> None:
+        del asset_id, origin, notes
+        raise OSError("injected canonical twin persistence failure")
+
+    monkeypatch.setattr(store, "replace_twins_for_origin", fail_twin_write)
+    repair_body = {
+        **body,
+        "draft_document_id": repair_draft_id,
+        "target_deliverable_id": "dlv-twin-repair",
+    }
+    with pytest.raises(OSError, match="twin persistence failure"):
+        client.post("/engagement/merge/commit", json=repair_body)
+    canonical_after_twin_failure = client.get("/deliverables/dlv-twin-repair")
+    assert canonical_after_twin_failure.status_code == 200
+    failed_revision = client.get(
+        "/engagement/merge/revision/dlv-twin-repair"
+    ).json()["revision"]
+    monkeypatch.setattr(store, "replace_twins_for_origin", original_replace_twins)
+    repaired_commit = client.post("/engagement/merge/commit", json=repair_body)
+    assert repaired_commit.status_code == 200
+    assert repaired_commit.json()["new_revision"] == failed_revision
+    assert repaired_commit.json()["twin_note_count"] == 2
     assert (
         client.get(
             "/engagement/merge/canonical/html",

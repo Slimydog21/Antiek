@@ -565,6 +565,25 @@ def post_merge(body: MergeBody) -> dict[str, Any]:
     return payload
 
 
+def _converge_canonical_twins(
+    deliverable_id: str, reviewed_model: dict[str, Any], review_sha256: str
+) -> dict[str, Any]:
+    from substrate.engagement_spine import converge_reviewed_twins
+    from substrate.engagement_spine.canonical_commit import reviewed_document_text
+
+    title = str(reviewed_model.get("title") or deliverable_id)
+    twins = converge_reviewed_twins(
+        deliverable_id,
+        store=_eng(),
+        title=title.removeprefix("[Draft] ").strip() or deliverable_id,
+        body_text=reviewed_document_text(reviewed_model),
+        review_sha256=review_sha256,
+    )
+    if int(twins.get("note_count") or 0) < 1:
+        raise RuntimeError("canonical twin convergence produced no durable notes")
+    return twins
+
+
 @engagement_router.post("/merge/commit")
 def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any]:
     """Commit the exact reviewed draft into canonical graph/write authority."""
@@ -597,6 +616,9 @@ def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any
         raise HTTPException(status_code=404, detail="canonical target not found") from exc
     except CanonicalMergeConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    twins = _converge_canonical_twins(
+        committed.deliverable_id, doc_model, committed.draft_sha256
+    )
     return {
         "deliverable_id": committed.deliverable_id,
         "draft_document_id": committed.draft_document_id,
@@ -606,6 +628,7 @@ def post_canonical_merge_commit(body: CanonicalMergeCommitBody) -> dict[str, Any
         "node_ids": list(committed.node_ids),
         "paragraph_count": committed.paragraph_count,
         "draft_sha256": committed.draft_sha256,
+        "twin_note_count": twins["note_count"],
         "view_format": "html",
         "html": project_to_html(
             doc_model,
@@ -654,11 +677,13 @@ def get_canonical_merge_html(deliverable_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail="canonical research not found") from exc
     except CanonicalMergeConflict as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+    twins = _converge_canonical_twins(deliverable_id, model, draft_sha)
     return {
         "deliverable_id": deliverable_id,
         "section_id": section_id,
         "revision": revision,
         "draft_sha256": draft_sha,
+        "twin_note_count": twins["note_count"],
         "view_format": "html",
         "html": project_to_html(
             model,
@@ -962,13 +987,32 @@ def post_evidence_pack(body: EvidencePackBody) -> dict[str, Any]:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
+@engagement_router.get("/twins")
+def get_twins_by_identity(
+    asset_id: str,
+    include_html: bool = False,
+    spawn_id: str | None = None,
+) -> dict[str, Any]:
+    """List twin notes without placing an opaque asset identity in the path."""
+
+    try:
+        return twins_product_payload(
+            asset_id,
+            store=_eng(),
+            include_html=include_html,
+            spawn_id=spawn_id,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @engagement_router.get("/twins/{asset_id}")
 def get_twins(
     asset_id: str,
     include_html: bool = False,
     spawn_id: str | None = None,
 ) -> dict[str, Any]:
-    """List twin notes (insights/questions) for an information asset.
+    """Legacy list route for path-safe information asset identities.
 
     Residual (le): optional ``spawn_id`` query surfaces reserved research_tier.
     """

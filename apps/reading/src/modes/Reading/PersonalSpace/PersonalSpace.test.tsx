@@ -218,17 +218,19 @@ describe("M4 — meta-docs tab", () => {
   });
 
   it("includes canonical research and opens its stable HTML reader route", async () => {
+    const canonicalId = "project/canonical analysis مرحبا";
+    const canonicalRoute = `/read/canonical/${encodeURIComponent(canonicalId)}`;
     listMock.mockResolvedValue({
       assets: [
         ...space().assets,
         {
-          asset_id: "dlv-canonical",
+          asset_id: canonicalId,
           kind: "canonical_research",
           title: "Canonical collective analysis",
           prompt: null,
           document_ids: ["doc-1"],
           emitted_at: "2026-05-06T00:00:00Z",
-          open_route: "/read/canonical/dlv-canonical",
+          open_route: canonicalRoute,
         },
       ],
       count: 3,
@@ -243,9 +245,7 @@ describe("M4 — meta-docs tab", () => {
     expect(title).toBeTruthy();
     expect(screen.getByText("research")).toBeTruthy();
     fireEvent.click(title.closest("button")!);
-    expect(navigateMock).toHaveBeenCalledWith(
-      "/read/canonical/dlv-canonical",
-    );
+    expect(navigateMock).toHaveBeenCalledWith(canonicalRoute);
     expect(screen.queryByText("Meditations")).toBeNull();
   });
 });

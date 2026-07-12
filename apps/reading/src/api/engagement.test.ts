@@ -3,6 +3,7 @@ import {
   attachSourceRefs,
   commitReviewedMergeDraft,
   fetchResearchContext,
+  fetchTwinNotes,
   getCanonicalMergeHtml,
   mergeSpawnOutputs,
   openEngagementSession,
@@ -192,6 +193,28 @@ describe("engagement API client", () => {
     expect(result.revision).toBe("b".repeat(64));
     expect(mockFetch).toHaveBeenCalledWith(
       "/engagement/merge/canonical/html?deliverable_id=dlv%2Fcanonical",
+    );
+  });
+
+  it("fetchTwinNotes transports opaque asset identities losslessly", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        asset_id: "project/a %?#/مرحبا",
+        note_count: 0,
+        insight_count: 0,
+        question_count: 0,
+        notes: [],
+        view_format: "html",
+        product_panel: "twin_notes",
+        source: "engagement_spine.twin",
+      }),
+    });
+    const identity = "project/a %?#/مرحبا";
+    const result = await fetchTwinNotes(identity, { includeHtml: true });
+    expect(result.asset_id).toBe(identity);
+    expect(mockFetch).toHaveBeenCalledWith(
+      `/engagement/twins?${new URLSearchParams({ asset_id: identity, include_html: "true" })}`,
     );
   });
 

@@ -21,6 +21,7 @@ import json
 import os
 import shutil
 import tempfile
+from urllib.parse import quote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -149,12 +150,13 @@ def test_personal_space_discovers_canonical_research_deliverables(isolated):
             "draft_sha256": draft_sha,
         },
     )
+    canonical_id = "project/canonical analysis مرحبا"
     with connect_write(isolated, purpose="test:canonical_personal_space") as con:
         commit_reviewed_draft(
             con=con,
             engagement_store=store,
             draft_document_id="draft-canonical-reading",
-            target_deliverable_id="dlv-canonical-reading",
+            target_deliverable_id=canonical_id,
             expected_revision="new",
             reviewed_draft_sha256=draft_sha,
             create_combined=True,
@@ -164,16 +166,16 @@ def test_personal_space_discovers_canonical_research_deliverables(isolated):
     asset = next(
         item
         for item in response.json()["assets"]
-        if item["asset_id"] == "dlv-canonical-reading"
+        if item["asset_id"] == canonical_id
     )
     assert asset == {
-        "asset_id": "dlv-canonical-reading",
+        "asset_id": canonical_id,
         "kind": "canonical_research",
         "title": "Canonical collective analysis",
         "prompt": None,
         "document_ids": ["source-paper"],
         "emitted_at": asset["emitted_at"],
-        "open_route": "/read/canonical/dlv-canonical-reading",
+        "open_route": f"/read/canonical/{quote(canonical_id, safe='')}",
     }
 
 

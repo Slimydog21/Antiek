@@ -5,6 +5,8 @@ import {
   getCanonicalMergeHtml,
   type CanonicalMergeHtmlResponse,
 } from "../../../api/engagement";
+import { ResearchContextPanel } from "../../../components/engagement/ResearchContextPanel";
+import { TwinNotesPanel } from "../../../components/engagement/TwinNotesPanel";
 import { sanitizeHostedHtml } from "../../../lib/sanitizeHostedHtml";
 
 export default function CanonicalResearch() {
@@ -13,6 +15,7 @@ export default function CanonicalResearch() {
   const [asset, setAsset] = useState<CanonicalMergeHtmlResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [contextRefreshKey, setContextRefreshKey] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -24,6 +27,12 @@ export default function CanonicalResearch() {
         if (!active) return;
         if (response.view_format !== "html" || !response.html?.trim()) {
           throw new Error("canonical research did not return HTML");
+        }
+        if (
+          response.deliverable_id !== deliverableId ||
+          response.twin_note_count < 1
+        ) {
+          throw new Error("canonical research authority response is inconsistent");
         }
         setAsset(response);
       })
@@ -70,11 +79,37 @@ export default function CanonicalResearch() {
       {loading ? <p role="status">Loading canonical research…</p> : null}
       {error ? <p role="alert" className="text-emperor">{error}</p> : null}
       {asset ? (
-        <article
-          className="prose max-w-none dark:prose-invert"
-          data-testid="canonical-research-html"
-          dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(asset.html) }}
-        />
+        <>
+          <article
+            className="prose max-w-none dark:prose-invert"
+            data-testid="canonical-research-html"
+            dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(asset.html) }}
+          />
+          <section
+            className="rounded-md border border-rule bg-ice-0 px-3 py-2 dark:border-charcoal-1 dark:bg-charcoal-2"
+            data-testid="canonical-research-twins-mount"
+            data-asset-id={asset.deliverable_id}
+          >
+            <TwinNotesPanel
+              assetId={asset.deliverable_id}
+              autoLoad
+              autoPromoteAfterLoad
+              onPromoted={() => setContextRefreshKey((value) => value + 1)}
+            />
+          </section>
+          <section
+            className="rounded-md border border-rule bg-ice-0 px-3 py-2 dark:border-charcoal-1 dark:bg-charcoal-2"
+            data-testid="canonical-research-context-mount"
+            data-asset-id={asset.deliverable_id}
+            data-refresh-key={String(contextRefreshKey)}
+          >
+            <ResearchContextPanel
+              key={`canonical-context-${asset.deliverable_id}-${contextRefreshKey}`}
+              assetId={asset.deliverable_id}
+              autoLoad
+            />
+          </section>
+        </>
       ) : null}
     </main>
   );
