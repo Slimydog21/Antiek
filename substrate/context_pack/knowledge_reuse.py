@@ -78,6 +78,12 @@ try:
         assemble_context_pack,
         default_budget_for,
     )
+    from .recursive_notes import RecursiveNotesPack
+    from .recursive_notes_prompt import (
+        DEFAULT_RECURSIVE_CONTEXT_CEILING_TOKENS,
+        build_recursive_context_assembly_receipt,
+        build_recursive_notes_layer,
+    )
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
@@ -89,6 +95,12 @@ except ImportError:  # pragma: no cover — direct-script fallback
         TruncationStrategy,
         assemble_context_pack,
         default_budget_for,
+    )
+    from context_pack.recursive_notes import RecursiveNotesPack  # type: ignore
+    from context_pack.recursive_notes_prompt import (  # type: ignore[import-not-found,no-redef]
+        DEFAULT_RECURSIVE_CONTEXT_CEILING_TOKENS,
+        build_recursive_context_assembly_receipt,
+        build_recursive_notes_layer,
     )
     from graph.search import cosine_similarity_sql  # type: ignore[import-not-found,no-redef]
 
@@ -683,6 +695,8 @@ def assemble_context_pack_with_reuse(
     reuse_threshold: float | None = None,
     chunk_text_for: Any | None = None,
     owner: bool = False,
+    recursive_notes_pack: RecursiveNotesPack | None = None,
+    recursive_notes_token_ceiling: int = DEFAULT_RECURSIVE_CONTEXT_CEILING_TOKENS,
 ) -> PackWithReuse:
     """Assemble a context pack with prior knowledge units injected as a single
     reuse layer, then emit ONE ``knowledge.reused`` event recording the decision.
@@ -778,6 +792,19 @@ def assemble_context_pack_with_reuse(
             dropped_by_trust_gate=len(units) - len(candidate_units),
         )
 
+    recursive_selection = None
+    if recursive_notes_pack is not None:
+        recursive_selection = build_recursive_notes_layer(
+            recursive_notes_pack,
+            token_ceiling=min(
+                recursive_notes_token_ceiling,
+                target_tokens if target_tokens is not None else default_budget_for(role),
+            ),
+            counter=counter,
+        )
+        if recursive_selection.layer is not None:
+            layer_list.append(recursive_selection.layer)
+
     pack = assemble_context_pack(
         role=role,
         investigation_id=investigation_id,
@@ -786,6 +813,11 @@ def assemble_context_pack_with_reuse(
         truncation=truncation,
         counter=counter,
         parent_event_id=parent_event_id,
+        recursive_context=(
+            build_recursive_context_assembly_receipt(recursive_selection)
+            if recursive_selection is not None
+            else None
+        ),
     )
 
     if include_reuse and apply_trust_gate and gate_decisions:

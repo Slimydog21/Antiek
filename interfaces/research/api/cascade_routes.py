@@ -43,7 +43,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequen
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -72,7 +72,7 @@ from runtime.research_runner import (
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
-from runtime.research_runner.protocol import BrowseLoop
+from runtime.research_runner.protocol import BrowseLoop, ResearchPlan
 from substrate.graph import default_db_path, ensure_initialized
 
 if TYPE_CHECKING:
@@ -257,7 +257,9 @@ def _decompose(problem: str, max_depth: int) -> PlanReport:
     return build_plan(problem, decomposer=DispatchDecomposer(), max_depth=max_depth)
 
 
-def _research_loop_factory() -> BrowseLoop:
+def _research_loop_factory(
+    *, reasoning_projected_max_cost_usd: float = 0.25
+) -> BrowseLoop:
     """The browse loop each investigation runs.
 
     Default = the contract gather stub (an honest placeholder that does
@@ -272,7 +274,14 @@ def _research_loop_factory() -> BrowseLoop:
     """
     mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     if mode == "exa":
-        return cast(BrowseLoop, make_exa_gather_loop(top_k=3))
+        return cast(
+            BrowseLoop,
+            make_exa_gather_loop(
+                top_k=3,
+                enable_reasoning=True,
+                reasoning_projected_max_cost_usd=reasoning_projected_max_cost_usd,
+            ),
+        )
     return cast(BrowseLoop, make_contract_gather_stub(steps=2, cost_per_step=0.01))
 
 
@@ -313,6 +322,8 @@ class ApproveRequest(BaseModel):
 class LaunchRequest(BaseModel):
     per_research_budget_usd: float = Field(default=0.50, gt=0)
     aggregate_budget_usd: float | None = None
+    recursive_asset_ids: list[str] = Field(default_factory=list, max_length=64)
+    reasoning_projected_max_cost_usd: float = Field(default=0.25, ge=0.25, le=100)
 
 
 class SteerRequest(BaseModel):
@@ -497,7 +508,7 @@ async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
 
 
 @cascade_router.post("/plans/{root_id}/launch")
-async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
+async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str, Any]:
     """Launch an approved plan as N parallel researches. Refuses an
     unapproved plan (SPR-05 gate). Returns the session id + the researches.
 
@@ -527,10 +538,54 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
     # launch() and is closed the instant launch() returns, so the read-write
     # handle never overlaps a connect_read reader. Best-effort: None degrades to
     # today's no-reuse behaviour, so a launch never breaks. See _reuse_substrate.
+    research_loop = _research_loop_factory(
+        reasoning_projected_max_cost_usd=req.reasoning_projected_max_cost_usd
+    )
+    if req.recursive_asset_ids and not bool(
+        getattr(research_loop, "consumes_prompt_context", False)
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="recursive context requires the Exa reasoning research mode",
+        )
     reuse_substrate = _reuse_substrate()
-    runner = HostLocalRunner(_research_loop_factory(), budget=budget,
+    recursive_notes_provider = None
+    if req.recursive_asset_ids:
+        from interfaces.research.api.engagement_routes import get_engagement_store
+        from substrate.context_pack import build_canonical_recursive_pack
+
+        owner_user_id = str(getattr(request.state, "user_id", "") or "").strip()
+        if not owner_user_id:
+            raise HTTPException(
+                status_code=503,
+                detail="authenticated request identity is unavailable",
+            )
+        asset_ids = tuple(dict.fromkeys(req.recursive_asset_ids))
+        engagement_store = get_engagement_store(create_if_missing=True)
+
+        def recursive_notes_provider(
+            _investigation_id: str, plan: ResearchPlan
+        ) -> Any:
+            with _write("canonical_recursive_context") as con:
+                owner_rows = con.execute(
+                    "SELECT deliverable_id, owner_user_id FROM deliverables "
+                    "WHERE deliverable_id = ANY(?)",
+                    [list(asset_ids)],
+                ).fetchall()
+                owners = {str(row[0]): str(row[1]) for row in owner_rows}
+                return build_canonical_recursive_pack(
+                    store=engagement_store,
+                    con=con,
+                    owner_user_id=owner_user_id,
+                    asset_ids=asset_ids,
+                    asset_owner=owners.get,
+                    goal=plan.sub_question,
+                )
+
+    runner = HostLocalRunner(research_loop, budget=budget,
                              on_emit=funnel.submit, seal_on_complete=False,
-                             retrieval_substrate=reuse_substrate)
+                             retrieval_substrate=reuse_substrate,
+                             recursive_notes_provider=recursive_notes_provider)
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     try:
         await session.launch(root_id, leaves)

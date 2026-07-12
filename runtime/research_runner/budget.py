@@ -26,13 +26,13 @@ import threading
 from dataclasses import dataclass
 
 try:
-    from ...constants import TOTAL_ACQUISITION_BUDGET_USD
+    from ...constants import TOTAL_ACQUISITION_BUDGET_USD  # type: ignore[import-not-found]
     from .protocol import BudgetExceeded
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.protocol import BudgetExceeded  # type: ignore[no-redef]
-    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD  # type: ignore[no-redef]
+    from runtime.research_runner.protocol import BudgetExceeded
+    from substrate.constants import TOTAL_ACQUISITION_BUDGET_USD
 
 
 @dataclass
@@ -41,6 +41,13 @@ class _ResearchLedger:
     spent_usd: float = 0.0
     tokens: int = 0
     steps: int = 0
+
+
+@dataclass(frozen=True)
+class BudgetReservation:
+    reservation_id: str
+    investigation_id: str
+    projected_cost_usd: float
 
 
 class BudgetManager:
@@ -55,6 +62,8 @@ class BudgetManager:
         )
         self._ledgers: dict[str, _ResearchLedger] = {}
         self._aggregate_spent = 0.0
+        self._reservations: dict[str, BudgetReservation] = {}
+        self._next_reservation = 0
         self._lock = threading.Lock()
 
     # -- registration --------------------------------------------------
@@ -80,7 +89,10 @@ class BudgetManager:
         realized spend, not reservations, so a conservative cap never
         starves launches that would have spent less."""
         with self._lock:
-            return self._aggregate_spent < self.aggregate_cap_usd
+            reserved = sum(
+                item.projected_cost_usd for item in self._reservations.values()
+            )
+            return self._aggregate_spent + reserved < self.aggregate_cap_usd
 
     def launch_block_reason(self) -> str:
         with self._lock:
@@ -107,8 +119,18 @@ class BudgetManager:
             led.tokens += tokens
             led.steps += 1
             self._aggregate_spent += cost_usd
-            over_self = led.spent_usd > led.cap_usd
-            over_aggregate = self._aggregate_spent > self.aggregate_cap_usd
+            reserved_self = sum(
+                item.projected_cost_usd
+                for item in self._reservations.values()
+                if item.investigation_id == investigation_id
+            )
+            reserved_total = sum(
+                item.projected_cost_usd for item in self._reservations.values()
+            )
+            over_self = led.spent_usd + reserved_self > led.cap_usd
+            over_aggregate = (
+                self._aggregate_spent + reserved_total > self.aggregate_cap_usd
+            )
             spent, cap = led.spent_usd, led.cap_usd
             agg, agg_cap = self._aggregate_spent, self.aggregate_cap_usd
         if over_aggregate:
@@ -122,11 +144,92 @@ class BudgetManager:
                 scope="per_research",
             )
 
+    def reserve_call(
+        self, investigation_id: str, projected_cost_usd: float
+    ) -> BudgetReservation:
+        """Atomically reserve projected provider cost before network I/O."""
+
+        if projected_cost_usd <= 0:
+            raise ValueError("projected provider cost must be positive")
+        with self._lock:
+            ledger = self._ledgers.get(investigation_id)
+            if ledger is None:
+                raise ValueError("research budget is not registered")
+            reserved_self = sum(
+                item.projected_cost_usd
+                for item in self._reservations.values()
+                if item.investigation_id == investigation_id
+            )
+            reserved_total = sum(
+                item.projected_cost_usd for item in self._reservations.values()
+            )
+            if ledger.spent_usd + reserved_self + projected_cost_usd > ledger.cap_usd:
+                raise BudgetExceeded(
+                    "projected provider call exceeds the research budget",
+                    scope="per_research",
+                )
+            if (
+                self._aggregate_spent + reserved_total + projected_cost_usd
+                > self.aggregate_cap_usd
+            ):
+                raise BudgetExceeded(
+                    "projected provider call exceeds the aggregate budget",
+                    scope="aggregate",
+                )
+            self._next_reservation += 1
+            reservation = BudgetReservation(
+                reservation_id=f"budget-reservation-{self._next_reservation}",
+                investigation_id=investigation_id,
+                projected_cost_usd=projected_cost_usd,
+            )
+            self._reservations[reservation.reservation_id] = reservation
+            return reservation
+
+    def settle_call(
+        self,
+        reservation: BudgetReservation,
+        *,
+        actual_cost_usd: float,
+        tokens: int,
+    ) -> None:
+        """Replace one reservation with realized provider usage exactly once."""
+
+        if actual_cost_usd < 0 or tokens < 0:
+            raise ValueError("provider settlement values must be nonnegative")
+        with self._lock:
+            current = self._reservations.pop(reservation.reservation_id, None)
+            if current != reservation:
+                raise ValueError("budget reservation is missing or already settled")
+            ledger = self._ledgers[reservation.investigation_id]
+            ledger.spent_usd += actual_cost_usd
+            ledger.tokens += tokens
+            ledger.steps += 1
+            self._aggregate_spent += actual_cost_usd
+            over_self = ledger.spent_usd > ledger.cap_usd
+            over_aggregate = self._aggregate_spent > self.aggregate_cap_usd
+        if actual_cost_usd > reservation.projected_cost_usd:
+            raise BudgetExceeded(
+                "provider cost exceeded its pre-dispatch reservation",
+                scope="per_research",
+            )
+        if over_aggregate:
+            raise BudgetExceeded("aggregate cap exceeded during settlement", scope="aggregate")
+        if over_self:
+            raise BudgetExceeded("research cap exceeded during settlement", scope="per_research")
+
+    def release_call(self, reservation: BudgetReservation) -> None:
+        """Release a reservation when no paid provider result was returned."""
+
+        with self._lock:
+            current = self._reservations.pop(reservation.reservation_id, None)
+            if current != reservation:
+                raise ValueError("budget reservation is missing or already released")
+
     def note_step(self, investigation_id: str) -> bool:
         """Increment the step counter for a research and report whether it is
         still within ``max_steps`` budget. Used for the free-call ceiling."""
         with self._lock:
-            led = self._ledgers.setdefault(
+            self._ledgers.setdefault(
                 investigation_id, _ResearchLedger(cap_usd=float("inf"))
             )
             return True  # step accounting handled in charge(); kept for symmetry

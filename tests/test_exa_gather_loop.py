@@ -18,7 +18,7 @@ import hashlib
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 
 import httpx
 import pytest
@@ -39,6 +39,7 @@ from runtime.research_runner import (
 )
 from runtime.research_runner.promotion_funnel import _promotion_metadata
 from runtime.research_runner.protocol import StepEvent
+from substrate.dispatch.base import NormalizedUsage
 from substrate.graph.schema import init_database_at_path
 from substrate.legal_gate import LegalGate, PermissiveLegalGate
 
@@ -317,6 +318,103 @@ async def test_exa_gather_loop_emits_provenance_steps(isolated_env, monkeypatch)
 
     note_data = [e.data for e in events if e.kind == "note"]
     assert any(str(d.get("document_id", "")).startswith("doc-url-") for d in note_data)
+
+
+@pytest.mark.asyncio
+async def test_exa_reasoning_mode_consumes_context_at_dispatch_boundary(
+    isolated_env, monkeypatch
+):
+    cli = _mock_exa_client(
+        [{"results": [_exa_result("https://example.com/reasoned")]}]
+    )
+    _patch_ingest_url(
+        monkeypatch,
+        lambda url, **kwargs: FakeIngestResult(document_id="doc-url-reasoned"),
+    )
+    captured: dict[str, object] = {}
+
+    def fake_dispatch(**kwargs):
+        captured.update(kwargs)
+        return SimpleNamespace(
+            text=(
+                '{"insights":[{"text":"Grounded finding",'
+                '"source_document_ids":["doc-url-reasoned"]}],"questions":[]}'
+            ),
+            usage=NormalizedUsage(input_tokens=80, output_tokens=20),
+            cost_usd=0.01,
+            event_id="evt-reasoned",
+        )
+
+    loop_fn = make_exa_gather_loop(
+        top_k=1,
+        client=cli,
+        legal_gate=_bypass_gate(),
+        events_dir=isolated_env["events_dir"],
+        enable_reasoning=True,
+        reasoning_dispatch_fn=fake_dispatch,
+    )
+    runner = HostLocalRunner(
+        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+    )
+    plan = ResearchPlan(investigation_id="leaf-reasoned", sub_question="reason this")
+    handle = await runner.start(plan.investigation_id, plan)
+    events = [event async for event in runner.stream(handle)]
+
+    assert captured["context_pack_event_id"] is None
+    assert "EXPLICIT RESEARCH QUESTION:\nreason this" in str(captured["prompt"])
+    reasoned_notes = [
+        event for event in events
+        if event.kind == "note" and event.data.get("gather_mode") == "exa_reasoning"
+    ]
+    assert len(reasoned_notes) == 1
+    assert reasoned_notes[0].text == "Grounded finding"
+    assert reasoned_notes[0].data["document_id"] == "doc-url-reasoned"
+    reasoning_steps = [
+        event for event in events
+        if event.kind == "step" and event.data.get("gather_mode") == "exa_reasoning"
+    ]
+    assert reasoning_steps[0].tokens == 100
+    assert reasoning_steps[0].cost_usd == pytest.approx(0.01)
+
+
+@pytest.mark.asyncio
+async def test_exa_reasoning_fails_when_ingested_sources_have_no_snippets(
+    isolated_env, monkeypatch
+):
+    result = _exa_result("https://example.com/no-snippet")
+    result.pop("text")
+    cli = _mock_exa_client([{"results": [result]}])
+    _patch_ingest_url(
+        monkeypatch,
+        lambda url, **kwargs: FakeIngestResult(document_id="doc-url-no-snippet"),
+    )
+    calls = 0
+
+    def forbidden_dispatch(**kwargs):
+        nonlocal calls
+        calls += 1
+        raise AssertionError("reasoning dispatch requires evidence")
+
+    loop_fn = make_exa_gather_loop(
+        top_k=1,
+        client=cli,
+        legal_gate=_bypass_gate(),
+        events_dir=isolated_env["events_dir"],
+        enable_reasoning=True,
+        reasoning_dispatch_fn=forbidden_dispatch,
+    )
+    runner = HostLocalRunner(
+        loop_fn, events_dir=isolated_env["events_dir"], seal_on_complete=False
+    )
+    plan = ResearchPlan(
+        investigation_id="leaf-no-snippet", sub_question="reason this"
+    )
+    handle = await runner.start(plan.investigation_id, plan)
+    events = [event async for event in runner.stream(handle)]
+
+    assert calls == 0
+    error = next(event for event in events if event.kind == "error")
+    assert "requires substantive source snippets" in error.text
 
 
 # ── M4(d): legal-gate reject path — no fabricated doc-url-* ──────────

@@ -28,6 +28,12 @@ from .recursive_notes import (
     account_scope_digest,
     digest_text,
 )
+from .recursive_notes_prompt import (
+    RECURSIVE_CONTEXT_POLICY_VERSION,
+    RecursiveLayerSelection,
+    build_recursive_context_assembly_receipt,
+    build_recursive_notes_layer,
+)
 from .recursive_notes_resolvers import build_canonical_recursive_pack
 from .style_guide import (
     QUANTITATIVE_SKIP_THRESHOLD,
@@ -61,6 +67,10 @@ __all__ = [
     "account_scope_digest",
     "build_canonical_recursive_pack",
     "digest_text",
+    "RECURSIVE_CONTEXT_POLICY_VERSION",
+    "RecursiveLayerSelection",
+    "build_recursive_notes_layer",
+    "build_recursive_context_assembly_receipt",
     # style-guide wiring (Sprint 11)
     "STYLE_EXTRACTOR_FLAG",
     "QUANTITATIVE_SKIP_THRESHOLD",

@@ -56,7 +56,7 @@ try:
         SYNTHESIS_CONTEXT_BUDGET_TOKENS,
     )
     from ..event_log import emit_typed
-    from ..schemas import ContextLayer, ContextPackAssembledPayload
+    from ..schemas import ContextLayer, ContextPackAssembledPayload, RecursiveContextAssemblyReceipt
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(_here))  # substrate/
@@ -65,7 +65,11 @@ except ImportError:  # pragma: no cover — direct-script fallback
         SYNTHESIS_CONTEXT_BUDGET_TOKENS,
     )
     from event_log import emit_typed  # type: ignore[no-redef]
-    from schemas import ContextLayer, ContextPackAssembledPayload  # type: ignore[no-redef]
+    from schemas import (  # type: ignore[no-redef]
+        ContextLayer,
+        ContextPackAssembledPayload,
+        RecursiveContextAssemblyReceipt,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +78,7 @@ except ImportError:  # pragma: no cover — direct-script fallback
 
 
 LayerKind = Literal[
-    "session", "long_term_skill", "reuse", "graph_evidence", "style_guide",
+    "session", "long_term_skill", "reuse", "recursive_notes", "graph_evidence", "style_guide",
     "phase_metadata", "param_version_stamp",
 ]
 
@@ -88,6 +92,7 @@ DEFAULT_KIND_PRIORITY: dict[str, int] = {
     "phase_metadata":       95,  # small, always
     "session":              80,  # current task — almost always keep
     "reuse":                60,  # prior-investigation reuse (AFF SPR-06) — evidence-level
+    "recursive_notes":      55,  # yields to live evidence, reuse, and session
     "graph_evidence":       60,  # retrieved facts — important but truncatable
     "long_term_skill":      40,  # background — easiest to truncate
     "style_guide":          40,  # sector voice conditioning — same as skill
@@ -104,6 +109,7 @@ CANONICAL_RENDER_ORDER: tuple[str, ...] = (
     "style_guide",
     "long_term_skill",
     "reuse",
+    "recursive_notes",
     "graph_evidence",
     "session",
 )
@@ -162,6 +168,7 @@ class LayerSource:
     source: str
     content: str
     priority: int | None = None
+    atomic: bool = False
 
     @property
     def effective_priority(self) -> int:
@@ -199,6 +206,7 @@ class ContextPack:
     budget_overrun: bool
     truncation_strategy_applied: TruncationStrategy | None
     event_id: str | None
+    recursive_context: RecursiveContextAssemblyReceipt | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +331,8 @@ def _smart_truncate(
             kept.append((layer, full_text, full_tokens))
             used += full_tokens
         else:
+            if layer.atomic:
+                continue
             truncated_text, truncated_tokens = _truncate_layer(
                 layer, max_tokens=remaining, counter=counter,
             )
@@ -373,6 +383,8 @@ def _accumulate_until_budget(
             kept.append((layer, full_text, full_tokens))
             used += full_tokens
         else:
+            if layer.atomic:
+                continue
             truncated_text, truncated_tokens = _truncate_layer(
                 layer, max_tokens=remaining, counter=counter,
             )
@@ -396,6 +408,7 @@ def assemble_context_pack(
     truncation: TruncationStrategy = "smart",
     counter: TokenCounter | None = None,
     parent_event_id: str | None = None,
+    recursive_context: RecursiveContextAssemblyReceipt | None = None,
 ) -> ContextPack:
     """Assemble a context pack.
 
@@ -456,9 +469,21 @@ def assemble_context_pack(
     text = "".join(rt for _, rt, _ in kept_canonical)
 
     assembled = tuple(
-        AssembledLayer(kind=l.kind, source=l.source, tokens=t, rendered=r)
-        for l, r, t in kept_canonical
+        AssembledLayer(kind=layer.kind, source=layer.source, tokens=t, rendered=r)
+        for layer, r, t in kept_canonical
     )
+    recursive_survived = any(layer.kind == "recursive_notes" for layer in assembled)
+    if recursive_context is not None and not recursive_survived:
+        recursive_context = recursive_context.model_copy(
+            update={
+                "included_units": [],
+                "excluded_count": (
+                    recursive_context.excluded_count
+                    + len(recursive_context.included_units)
+                ),
+                "actual_tokens": 0,
+            }
+        )
 
     # Emit the typed event so the pack provenance is queryable.
     event_id = emit_typed(
@@ -473,6 +498,7 @@ def assemble_context_pack(
             ],
             budget_overrun=budget_overrun,
             truncation_strategy_applied=strategy_applied,
+            recursive_context=recursive_context,
         ),
         parent_event_id=parent_event_id,
         role=role,
@@ -487,4 +513,5 @@ def assemble_context_pack(
         budget_overrun=budget_overrun,
         truncation_strategy_applied=strategy_applied,
         event_id=event_id,
+        recursive_context=recursive_context,
     )

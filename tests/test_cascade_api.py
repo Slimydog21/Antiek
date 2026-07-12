@@ -148,6 +148,67 @@ def test_launch_watch_and_cost(client):
     assert cost["session_total_usd"] == pytest.approx(sum(cost["per_research"].values()))
 
 
+def test_launch_resolves_authenticated_recursive_assets_into_start_pack(client, monkeypatch):
+    from interfaces.research.api.engagement_routes import get_engagement_store
+    from substrate.engagement_spine import record_twin_insight
+    from substrate.event_log import trajectory
+    from substrate.graph.ops import insert_deliverable
+
+    asset_id = "recursive-launch-asset"
+    foreign_id = "recursive-foreign-asset"
+    with cr._write("test_recursive_launch") as con:
+        insert_deliverable(
+            con,
+            deliverable_id=asset_id,
+            title="Prior research",
+            deliverable_kind="research_memo",
+            owner_user_id="__operator__",
+        )
+        insert_deliverable(
+            con,
+            deliverable_id=foreign_id,
+            title="Foreign research",
+            deliverable_kind="research_memo",
+            owner_user_id="other-owner",
+        )
+    record_twin_insight(
+        asset_id,
+        "Prior adoption evidence changes the working thesis.",
+        store=get_engagement_store(),
+    )
+    record_twin_insight(
+        foreign_id,
+        "Foreign secret must not enter the prompt or receipt.",
+        store=get_engagement_store(),
+    )
+    root = _make_approved_plan(client, ("Assess adoption evidence",))
+    consuming_loop = cr.make_contract_gather_stub(steps=1, cost_per_step=0.0)
+    consuming_loop.consumes_prompt_context = True
+    monkeypatch.setattr(cr, "_research_loop_factory", lambda **_kwargs: consuming_loop)
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={"recursive_asset_ids": [asset_id, foreign_id]},
+    )
+    assert launched.status_code == 200, launched.text
+    body = launched.json()
+    _poll_until_terminal(client, body["session_id"])
+    leaf_id = body["researches"][0]["investigation_id"]
+    pack_event = next(
+        row for row in trajectory(leaf_id)
+        if row["action_type"] == "context_pack.assembled"
+    )
+    receipt = pack_event["payload"]["recursive_context"]
+    assert len(receipt["included_units"]) == 1
+    assert "Prior adoption evidence" not in json.dumps(receipt)
+    assert "Foreign secret" not in json.dumps(pack_event)
+
+
+def test_production_exa_factory_marks_real_reasoning_consumer(monkeypatch):
+    monkeypatch.setenv("ANTIEK_DRW_GATHER", "exa")
+    loop = cr._research_loop_factory()
+    assert getattr(loop, "consumes_prompt_context", False) is True
+
+
 # --------------------------------------------------------------------------
 # SPR-05 B1 — the cascade fan-out is VISIBLE in the monitor's data source.
 #

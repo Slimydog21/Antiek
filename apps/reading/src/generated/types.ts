@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 31;
+export const EVENT_SCHEMA_VERSION = 32;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -200,7 +200,7 @@ export type ProvenanceSourceKind = "user" | "ai" | "system";
  * ``ContextPackAssembledPayload.layers``.
  */
 export interface ContextLayer {
-  kind: "session" | "long_term_skill" | "reuse" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
+  kind: "session" | "long_term_skill" | "reuse" | "recursive_notes" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
   source: string;
   tokens: number;
 }
@@ -220,6 +220,26 @@ export interface Claim {
   confidence: "high" | "moderate" | "low" | "unknown";
   attribution_region_ids: string[];
   node_id?: string | null;
+}
+
+/**
+ * Text-free identity for one canonical recursive-note prompt unit.
+ */
+export interface RecursiveContextUnitReceipt {
+  unit_id: string;
+  text_digest: string;
+  authority: "engagement_twin" | "depth_graph";
+}
+
+/**
+ * Replayable recursive-note accounting without private prompt text.
+ */
+export interface RecursiveContextAssemblyReceipt {
+  included_units: RecursiveContextUnitReceipt[];
+  excluded_count: number;
+  proposed_tokens: number;
+  actual_tokens: number;
+  policy_version: string;
 }
 
 /**
@@ -635,6 +655,7 @@ export interface ContextPackAssembledPayload {
   layers: ContextLayer[];
   budget_overrun: boolean;
   truncation_strategy_applied?: "head" | "tail" | "smart" | null;
+  recursive_context?: RecursiveContextAssemblyReceipt | null;
 }
 
 /**

@@ -44,12 +44,15 @@ import contextlib
 import os
 import sys
 from collections.abc import AsyncIterator, Awaitable, Callable
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from substrate.context_pack import ContextPack, RecursiveNotesPack
 
 try:
     from ...event_log import log_event, seal_investigation  # type: ignore[import-not-found]
     from ...schemas.events import ActionType  # type: ignore[import-not-found]
-    from .budget import BudgetManager
+    from .budget import BudgetManager, BudgetReservation
     from .protocol import (
         BudgetExceeded,
         Command,
@@ -65,7 +68,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from runtime.research_runner.budget import BudgetManager
+    from runtime.research_runner.budget import BudgetManager, BudgetReservation
     from runtime.research_runner.protocol import (
         BudgetExceeded,
         Command,
@@ -96,7 +99,14 @@ class LoopContext:
     the top of each iteration; that is the single point at which pause /
     stop / redirect take effect (cooperative steering — no thread-kill)."""
 
-    def __init__(self, plan: ResearchPlan, budget: BudgetManager):
+    def __init__(
+        self,
+        plan: ResearchPlan,
+        budget: BudgetManager,
+        *,
+        prompt_prefix: str = "",
+        context_pack_event_id: str | None = None,
+    ):
         self.plan = plan
         self.investigation_id = plan.investigation_id
         self.sub_question = plan.sub_question
@@ -107,6 +117,8 @@ class LoopContext:
         self._stop = False
         self._pending_redirect: str | None = None
         self.paused = False
+        self.prompt_prefix = prompt_prefix
+        self.context_pack_event_id = context_pack_event_id
 
     # -- steering (mutated by the runner from steer()) -----------------
 
@@ -166,6 +178,25 @@ class LoopContext:
     def plan_event(self, text: str, **data: Any) -> StepEvent:
         return StepEvent(self.investigation_id, self._next_seq(), "plan", text=text, data=data)
 
+    def reserve_provider_call(self, projected_cost_usd: float) -> BudgetReservation:
+        return self._budget.reserve_call(self.investigation_id, projected_cost_usd)
+
+    def settle_provider_call(
+        self,
+        reservation: BudgetReservation,
+        *,
+        actual_cost_usd: float,
+        tokens: int,
+    ) -> None:
+        self._budget.settle_call(
+            reservation,
+            actual_cost_usd=actual_cost_usd,
+            tokens=tokens,
+        )
+
+    def release_provider_call(self, reservation: BudgetReservation) -> None:
+        self._budget.release_call(reservation)
+
 
 class _ResearchState:
     def __init__(self, plan: ResearchPlan):
@@ -177,6 +208,7 @@ class _ResearchState:
         self.error: str | None = None
         self.follow_ups: list[str] = []
         self.started = False
+        self.startup_context: ContextPack | None = None
 
 
 class HostLocalRunner:
@@ -193,6 +225,8 @@ class HostLocalRunner:
         on_emit: Callable[[StepEvent], Awaitable[None]] | None = None,
         retrieval_substrate: object | None = None,
         reuse_role: str = "user_agent",
+        recursive_notes_provider: Callable[[str, ResearchPlan], RecursiveNotesPack]
+        | None = None,
     ):
         self._loop_fn = loop_fn
         self._semaphore = asyncio.Semaphore(max_concurrency)
@@ -214,6 +248,7 @@ class HostLocalRunner:
         # extension of the existing ``start`` lifecycle stage.
         self._retrieval_substrate = retrieval_substrate
         self._reuse_role = reuse_role
+        self._recursive_notes_provider = recursive_notes_provider
         self._states: dict[str, _ResearchState] = {}
 
     # -- protocol: start -----------------------------------------------
@@ -252,12 +287,14 @@ class HostLocalRunner:
         # event land before the first StepEvent the loop emits). No-op unless a
         # RetrievalSubstrate was injected; non-fatal on any failure (a retrieval
         # hiccup must degrade to "no reuse", never a dead investigation).
-        self._maybe_reuse_prior_knowledge(investigation_id, plan)
+        st.startup_context = self._maybe_reuse_prior_knowledge(investigation_id, plan)
 
         st.task = asyncio.create_task(self._run(st))
         return Handle(investigation_id)
 
-    def _maybe_reuse_prior_knowledge(self, investigation_id: str, plan: ResearchPlan) -> None:
+    def _maybe_reuse_prior_knowledge(
+        self, investigation_id: str, plan: ResearchPlan
+    ) -> ContextPack | None:
         """AFF SPR-06 reuse hook (called exactly once from ``start``).
 
         Composes ``substrate.context_pack.knowledge_reuse`` — retrieve prior
@@ -273,30 +310,61 @@ class HostLocalRunner:
         privileged serve path (books/serve.py), so reusing an insight derived from
         it here widens nothing publicly (the public path stays byte-identical).
         The multi-operator audience signal arrives with the hosted runner (D19)."""
-        if self._retrieval_substrate is None:
-            return
+        if self._retrieval_substrate is None and self._recursive_notes_provider is None:
+            return None
         try:
+            from substrate.context_pack import LayerSource
             from substrate.context_pack.knowledge_reuse import (
                 assemble_context_pack_with_reuse,
                 retrieve_prior_units,
             )
         except ImportError:  # pragma: no cover — defensive
-            return
+            return None
+        units = []
+        if self._retrieval_substrate is not None:
+            try:
+                units = (
+                    retrieve_prior_units(
+                        self._retrieval_substrate,
+                        question_text=plan.sub_question,
+                    )
+                )
+            except Exception as exc:  # pragma: no cover — optional reuse boundary
+                print(
+                    f"prior knowledge reuse unavailable: {type(exc).__name__}",
+                    file=sys.stderr,
+                )
+        recursive_pack = (
+            self._recursive_notes_provider(investigation_id, plan)
+            if self._recursive_notes_provider is not None
+            else None
+        )
         try:
-            units = retrieve_prior_units(
-                self._retrieval_substrate,
-                question_text=plan.sub_question,
-            )
-            assemble_context_pack_with_reuse(
+            result = assemble_context_pack_with_reuse(
                 role=self._reuse_role,
                 investigation_id=investigation_id,
-                layers=[],
+                layers=[
+                    LayerSource(
+                        kind="session",
+                        source="research_plan.sub_question",
+                        content=plan.sub_question,
+                    )
+                ],
                 units=units,
                 events_dir=self._events_dir,
                 owner=True,
+                include_reuse=self._retrieval_substrate is not None,
+                recursive_notes_pack=recursive_pack,
             )
-        except Exception:  # pragma: no cover — reuse never breaks a research
-            return
+            return result.pack
+        except Exception as exc:  # pragma: no cover — optional context boundary
+            if self._recursive_notes_provider is not None:
+                raise
+            print(
+                f"research context assembly unavailable: {type(exc).__name__}",
+                file=sys.stderr,
+            )
+            return None
 
     # -- the per-research coroutine ------------------------------------
 
@@ -304,7 +372,14 @@ class HostLocalRunner:
         iid = st.plan.investigation_id
         async with self._semaphore:        # bounded concurrency
             st.started = True
-            ctx = LoopContext(st.plan, self.budget)
+            ctx = LoopContext(
+                st.plan,
+                self.budget,
+                prompt_prefix=st.startup_context.text if st.startup_context else "",
+                context_pack_event_id=(
+                    st.startup_context.event_id if st.startup_context else None
+                ),
+            )
             st.ctx = ctx
             st.state = RunState.RUNNING
             # Durable lifecycle marker on the per-investigation JSONL (the
@@ -322,7 +397,7 @@ class HostLocalRunner:
                     # Charge budget from the cost the step reports — this is
                     # the same number the step's DispatchCall events carry, so
                     # the ledger reconciles with dispatch by construction.
-                    if ev.cost_usd or ev.tokens:
+                    if (ev.cost_usd or ev.tokens) and not ev.data.get("budget_precharged"):
                         self.budget.charge(iid, ev.cost_usd, ev.tokens)
                     if ev.kind == "step" and self.budget.steps(iid) > st.plan.budget.max_steps:
                         raise BudgetExceeded(
@@ -573,6 +648,9 @@ def make_exa_gather_loop(
     daily_budget_usd: float | None = None,
     db_path: str | None = None,
     embedder: object | None = None,
+    enable_reasoning: bool = False,
+    reasoning_dispatch_fn: Callable[..., Any] | None = None,
+    reasoning_projected_max_cost_usd: float = 0.25,
 ) -> Callable[[LoopContext], AsyncIterator[StepEvent]]:
     """Real DRW gather, wired to the Exa Wedge-1 discovery layer.
 
@@ -609,6 +687,10 @@ def make_exa_gather_loop(
     from typing import cast
 
     from acquisition.search.exa import ExaClient, discover, promote_discovery
+    from runtime.research_runner.reasoning_loop import (
+        ReasoningEvidence,
+        run_research_reasoning,
+    )
     from substrate.legal_gate import LegalGate
 
     async def _loop(ctx: LoopContext) -> AsyncIterator[StepEvent]:
@@ -625,6 +707,7 @@ def make_exa_gather_loop(
         )
 
         ingested_any = False
+        reasoning_evidence: list[ReasoningEvidence] = []
         for p in proposals[:top_k]:
             await ctx.checkpoint()
             result = promote_discovery(
@@ -645,6 +728,15 @@ def make_exa_gather_loop(
             )
             if result.decision == "ingested":
                 ingested_any = True
+                if str(p.text_snippet_preview or "").strip():
+                    reasoning_evidence.append(
+                        ReasoningEvidence(
+                            document_id=str(result.document_id),
+                            title=str(p.title or p.url),
+                            url=str(p.url),
+                            snippet=str(p.text_snippet_preview),
+                        )
+                    )
                 # This note becomes a promoted insight node. The
                 # ``document_id`` rides ``StepEvent.data`` → the funnel
                 # threads it onto the node as ``source_document_id`` →
@@ -666,5 +758,43 @@ def make_exa_gather_loop(
                 f"'{sub_q}'",
                 gather_mode="exa",
             )
+        elif enable_reasoning and not reasoning_evidence:
+            raise ValueError(
+                "Exa reasoning requires substantive source snippets; none were returned"
+            )
+        elif enable_reasoning and reasoning_evidence:
+            reasoned = await run_research_reasoning(
+                ctx,
+                reasoning_evidence,
+                dispatch_fn=reasoning_dispatch_fn,
+                projected_max_cost_usd=reasoning_projected_max_cost_usd,
+            )
+            yield ctx.step(
+                "[reasoning] grounded synthesis completed",
+                cost_usd=reasoned.cost_usd,
+                tokens=reasoned.tokens,
+                gather_mode="exa_reasoning",
+                dispatch_event_id=reasoned.dispatch_event_id,
+                budget_precharged=True,
+            )
+            for insight in reasoned.output.insights:
+                yield ctx.note(
+                    insight.text,
+                    gather_mode="exa_reasoning",
+                    document_id=insight.source_document_ids[0],
+                    source_document_ids=insight.source_document_ids,
+                )
+            for question in reasoned.output.questions:
+                yield ctx.question(
+                    question.text,
+                    gather_mode="exa_reasoning",
+                    document_id=(
+                        question.source_document_ids[0]
+                        if question.source_document_ids
+                        else None
+                    ),
+                    source_document_ids=question.source_document_ids,
+                )
 
+    cast(Any, _loop).consumes_prompt_context = enable_reasoning
     return _loop

@@ -745,7 +745,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v31: Phase-8 operator reviews become immutable events linked to a prior
 #     skill.patch_gate_decided event. Calibration status can now compute
 #     operator-reviewed count and agreement without mutating old trajectory rows.
-EVENT_SCHEMA_VERSION: int = 31
+# v32: Context-pack events can carry a text-free canonical recursive-note
+#      assembly receipt and identify the distinct recursive_notes layer.
+#      2026-07-12.
+EVENT_SCHEMA_VERSION: int = 32
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -913,7 +916,7 @@ class ContextLayer(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal[
-        "session", "long_term_skill", "reuse", "graph_evidence", "style_guide",
+        "session", "long_term_skill", "reuse", "recursive_notes", "graph_evidence", "style_guide",
         "phase_metadata", "param_version_stamp",
     ]
     source: str
@@ -962,6 +965,28 @@ class Claim(BaseModel):
     node_id: str | None = None  # set when promoted to a graph node
 
 
+class RecursiveContextUnitReceipt(BaseModel):
+    """Text-free identity for one canonical recursive-note prompt unit."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    unit_id: str
+    text_digest: str = Field(min_length=64, max_length=64)
+    authority: Literal["engagement_twin", "depth_graph"]
+
+
+class RecursiveContextAssemblyReceipt(BaseModel):
+    """Replayable recursive-note accounting without private prompt text."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    included_units: list[RecursiveContextUnitReceipt] = Field(max_length=16_384)
+    excluded_count: int = Field(ge=0)
+    proposed_tokens: int = Field(ge=0)
+    actual_tokens: int = Field(ge=0)
+    policy_version: str
+
+
 class ContextPackAssembledPayload(_PayloadBase):
     """Emitted by ``substrate/context_pack/`` after each pack assembly.
 
@@ -978,6 +1003,7 @@ class ContextPackAssembledPayload(_PayloadBase):
     layers: list[ContextLayer]
     budget_overrun: bool
     truncation_strategy_applied: Literal["head", "tail", "smart"] | None = None
+    recursive_context: RecursiveContextAssemblyReceipt | None = None
 
 
 class KnowledgeReusedPayload(_PayloadBase):
@@ -4210,6 +4236,8 @@ __all__ = [
     # Dispatch + context pack
     "DispatchCallPayload",
     "ContextPackAssembledPayload",
+    "RecursiveContextAssemblyReceipt",
+    "RecursiveContextUnitReceipt",
     # AFF SPR-06 — flywheel reuse half
     "KnowledgeReusedPayload",
     # AFF SPR-08 — trust gate on reuse

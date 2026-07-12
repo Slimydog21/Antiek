@@ -108,6 +108,8 @@ GENERATED_HEADER = """\
 NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ContextLayer,
     schema_module.Claim,
+    schema_module.RecursiveContextUnitReceipt,
+    schema_module.RecursiveContextAssemblyReceipt,
     schema_module.ThesisOutcome,
     schema_module.FalsificationOutcome,
     schema_module.ExecutionRiskOutcome,
