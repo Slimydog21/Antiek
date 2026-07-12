@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import Multimedia, { formatRecordCost } from "./index";
 import {
   approveMultimediaDryRun,
+  authorizeMultimediaNarration,
   createMultimediaDraft,
   getMultimediaAsset,
   getMultimediaPlayback,
@@ -23,6 +24,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
   return {
     ...actual,
     approveMultimediaDryRun: vi.fn(),
+    authorizeMultimediaNarration: vi.fn(),
     createMultimediaDraft: vi.fn(),
     getMultimediaAsset: vi.fn(),
     getMultimediaPlayback: vi.fn(),
@@ -34,6 +36,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
 });
 
 const mockApprove = vi.mocked(approveMultimediaDryRun);
+const mockAuthorizeNarration = vi.mocked(authorizeMultimediaNarration);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
 const mockPlayback = vi.mocked(getMultimediaPlayback);
@@ -117,6 +120,34 @@ const hardenedRecord: MultimediaAssetRecord = {
 };
 
 beforeEach(() => {
+  mockAuthorizeNarration.mockResolvedValue({
+    chapter_id: "server-intro",
+    child_revision_id: "tts-child-1",
+    request_body_digest: "e".repeat(64),
+    authorization: {
+      version: 2,
+      authorization_id: "mmauth2-test",
+      request_id: "narration-rev-1-server-intro-1000000",
+      operator_id: "owner-1",
+      asset_id: "mm-1",
+      revision_id: "tts-child-1",
+      provider: "trusted-tts",
+      route_policy: "balanced",
+      model: "voice-1",
+      endpoint_capability: "text-to-speech",
+      catalog_version: "catalog-1",
+      catalog_digest: "a".repeat(64),
+      quote_id: "quote-1",
+      quote_expires_at: "2026-07-12T01:10:00Z",
+      recovery_authority_id: "recovery-1",
+      recovery_verification_key_digest: "b".repeat(64),
+      approved_ceiling_microdollars: 1_000_000,
+      request_body_digest: "e".repeat(64),
+      issued_at: "2026-07-12T01:00:00Z",
+      expires_at: "2026-07-12T01:15:00Z",
+      signature: "f".repeat(64),
+    },
+  });
   mockList.mockResolvedValue({
     assets: [
       {
@@ -220,6 +251,25 @@ describe("Multimedia workstation", () => {
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
     const video = await screen.findByLabelText(/Video playback for/);
     expect(video.getAttribute("src")).toBe("/multimedia/assets/mm-1/playback/rev-1/video");
+  });
+
+  it("requires explicit ceiling acknowledgement before issuing narration authority", async () => {
+    await reviewPlan();
+    const authorize = screen.getByRole("button", { name: "Authorize narration" });
+    expect(authorize.getAttribute("disabled")).not.toBeNull();
+    fireEvent.click(screen.getByLabelText("Approve this maximum"));
+    fireEvent.click(authorize);
+
+    await waitFor(() => expect(mockAuthorizeNarration).toHaveBeenCalledWith(
+      "mm-1",
+      expect.objectContaining({
+        chapter_id: "server-intro",
+        approved_ceiling_microdollars: 1_000_000,
+        operator_acknowledged_spend: true,
+      }),
+    ));
+    expect(await screen.findByText("mmauth2-test")).toBeTruthy();
+    expect(screen.getByText("trusted-tts / voice-1")).toBeTruthy();
   });
 
   it("does not present simulated media when verified playback is unavailable", async () => {

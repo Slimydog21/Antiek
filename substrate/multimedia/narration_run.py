@@ -584,6 +584,11 @@ def _child_revision(parent_revision: str, chapter_id: str, sequence: int) -> str
     return f"tts-{digest}"
 
 
+def narration_child_revision(parent_revision: str, chapter_id: str, sequence: int) -> str:
+    """Return the child revision shared by narration authorization and execution."""
+    return _child_revision(parent_revision, chapter_id, sequence)
+
+
 def _chapter_bindings(prepared: AuthorizedNarrationRun) -> str:
     return json.dumps(
         [
@@ -618,6 +623,7 @@ __all__ = [
     "PreparedNarrationRun",
     "authorize_narration_run",
     "get_narration_run",
+    "narration_child_revision",
     "prepare_narration_run",
     "produce_narration_run",
 ]

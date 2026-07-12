@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   approveMultimediaDryRun,
+  authorizeMultimediaNarration,
   createMultimediaDraft,
   failedGateIds,
   getAssetReconciliationLinks,
@@ -207,6 +208,53 @@ describe("multimedia API client", () => {
 
     mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...produced, production_link: { ...produced.production_link, revision_id: "rev-other" } }));
     await expect(registerMultimediaProduction("mm 1", "rev-1")).rejects.toThrow("identity_conflict");
+  });
+
+  it("cross-binds server-derived narration authority", async () => {
+    const response = {
+      chapter_id: "chapter-1",
+      child_revision_id: "tts-child",
+      request_body_digest: "e".repeat(64),
+      authorization: {
+        version: 2,
+        authorization_id: "mmauth2-test",
+        request_id: "request-1",
+        operator_id: "owner-1",
+        asset_id: "mm-1",
+        revision_id: "tts-child",
+        provider: "trusted-tts",
+        route_policy: "balanced",
+        model: "voice-1",
+        endpoint_capability: "text-to-speech",
+        catalog_version: "catalog-1",
+        catalog_digest: "a".repeat(64),
+        quote_id: "quote-1",
+        quote_expires_at: "2026-07-12T01:10:00Z",
+        recovery_authority_id: "recovery-1",
+        recovery_verification_key_digest: "b".repeat(64),
+        approved_ceiling_microdollars: 250_000,
+        request_body_digest: "e".repeat(64),
+        issued_at: "2026-07-12T01:00:00Z",
+        expires_at: "2026-07-12T01:15:00Z",
+        signature: "f".repeat(64),
+      },
+    };
+    const request = {
+      request_id: "request-1",
+      expected_revision_id: "rev-1",
+      chapter_id: "chapter-1",
+      approved_ceiling_microdollars: 250_000,
+      operator_acknowledged_spend: true as const,
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, response));
+    expect((await authorizeMultimediaNarration("mm-1", request)).authorization.authorization_id).toBe("mmauth2-test");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...response, child_revision_id: "other" }));
+    await expect(authorizeMultimediaNarration("mm-1", request)).rejects.toThrow("identity_conflict");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...response,
+      authorization: { ...response.authorization, endpoint_capability: "image-generation" },
+    }));
+    await expect(authorizeMultimediaNarration("mm-1", request)).rejects.toThrow("identity_conflict");
   });
 
   it("surfaces a typed not-found error for a 404 job list", async () => {

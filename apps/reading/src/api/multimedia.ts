@@ -218,6 +218,35 @@ export interface MultimediaPlayback {
   audio_url: string;
 }
 
+export interface MultimediaNarrationAuthorization {
+  chapter_id: string;
+  child_revision_id: string;
+  request_body_digest: string;
+  authorization: {
+    version: number;
+    authorization_id: string;
+    request_id: string;
+    operator_id: string;
+    asset_id: string;
+    revision_id: string;
+    provider: string;
+    route_policy: string;
+    model: string;
+    endpoint_capability: string;
+    catalog_version: string;
+    catalog_digest: string;
+    quote_id: string;
+    quote_expires_at: string;
+    recovery_authority_id: string;
+    recovery_verification_key_digest: string;
+    approved_ceiling_microdollars: number;
+    request_body_digest: string;
+    issued_at: string;
+    expires_at: string;
+    signature: string;
+  };
+}
+
 export interface MultimediaJobRecord {
   job_id: string;
   asset_id: string;
@@ -390,6 +419,44 @@ export async function registerMultimediaProduction(
     throw new Error("multimedia_production_identity_conflict");
   }
   return record;
+}
+
+export async function authorizeMultimediaNarration(
+  assetId: string,
+  request: {
+    request_id: string;
+    expected_revision_id: string;
+    chapter_id: string;
+    approved_ceiling_microdollars: number;
+    operator_acknowledged_spend: true;
+  },
+): Promise<MultimediaNarrationAuthorization> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/narration-authorizations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_narration_authorization_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_narration_authorization_conflict");
+  if (resp.status === 503) throw new Error("multimedia_narration_authorization_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/narration-authorizations: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaNarrationAuthorization;
+  if (
+    result.chapter_id !== request.chapter_id ||
+    result.authorization.asset_id !== assetId ||
+    result.authorization.revision_id !== result.child_revision_id ||
+    result.authorization.request_body_digest !== result.request_body_digest ||
+    result.authorization.request_id !== request.request_id ||
+    result.authorization.approved_ceiling_microdollars !== request.approved_ceiling_microdollars ||
+    result.authorization.version !== 2 ||
+    result.authorization.endpoint_capability !== "text-to-speech"
+  ) {
+    throw new Error("multimedia_narration_authorization_identity_conflict");
+  }
+  return result;
 }
 
 export async function listMultimediaJobs(assetId: string): Promise<MultimediaJobList> {

@@ -55,6 +55,13 @@ from .narration import (
     normalize_line,
     normalize_script,
 )
+from .narration_authorization import (
+    NarrationAuthorizationError,
+    NarrationAuthorizationRequest,
+    NarrationAuthorizationResult,
+    TrustedNarrationTerms,
+    authorize_multimedia_chapter_narration,
+)
 from .planner import (
     ChapterPlan,
     CoverageSuggestion,
@@ -242,4 +249,9 @@ __all__ = [
     "MultimediaProductionRegistrationError",
     "MultimediaProductionRegistrationRequest",
     "register_multimedia_production",
+    "NarrationAuthorizationError",
+    "NarrationAuthorizationRequest",
+    "NarrationAuthorizationResult",
+    "TrustedNarrationTerms",
+    "authorize_multimedia_chapter_narration",
 ]

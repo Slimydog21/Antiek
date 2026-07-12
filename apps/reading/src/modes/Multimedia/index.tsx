@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import {
   approveMultimediaDryRun,
+  authorizeMultimediaNarration,
   createMultimediaDraft,
   failedGateIds,
   getMultimediaAsset,
@@ -18,6 +19,7 @@ import type {
   MultimediaAssetRecord,
   MultimediaAssetSummary,
   MultimediaPlayback as MultimediaPlaybackRecord,
+  MultimediaNarrationAuthorization,
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
@@ -175,6 +177,8 @@ function distributeMinutes(total: number): number[] {
 export default function Multimedia() {
   const openRequestId = useRef(0);
   const productionRequestId = useRef(0);
+  const narrationAuthorizationRequestId = useRef(0);
+  const narrationIdempotency = useRef<{ key: string; requestId: string } | null>(null);
   const [topic, setTopic] = useState("The aircraft program that made cheap long-haul travel possible");
   const [duration, setDuration] = useState(30);
   const [customDuration, setCustomDuration] = useState("30");
@@ -198,11 +202,23 @@ export default function Multimedia() {
   const [playback, setPlayback] = useState<MultimediaPlaybackRecord | null>(null);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [productionRegistrationPending, setProductionRegistrationPending] = useState(false);
+  const [narrationCeilingUsd, setNarrationCeilingUsd] = useState("1.00");
+  const [narrationSpendAcknowledged, setNarrationSpendAcknowledged] = useState(false);
+  const [narrationAuthorization, setNarrationAuthorization] = useState<MultimediaNarrationAuthorization | null>(null);
+  const [narrationAuthorizationPending, setNarrationAuthorizationPending] = useState(false);
 
   useEffect(() => {
     productionRequestId.current += 1;
     setProductionRegistrationPending(false);
   }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id]);
+
+  useEffect(() => {
+    narrationAuthorizationRequestId.current += 1;
+    narrationIdempotency.current = null;
+    setNarrationAuthorization(null);
+    setNarrationSpendAcknowledged(false);
+    setNarrationAuthorizationPending(false);
+  }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id, activeChapterId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -412,6 +428,46 @@ export default function Multimedia() {
       }
     } finally {
       if (requestId === productionRequestId.current) setProductionRegistrationPending(false);
+    }
+  }
+
+  async function authorizeCurrentChapterNarration() {
+    if (!selectedRecord || !activeChapter || !narrationSpendAcknowledged || narrationAuthorizationPending) return;
+    const ceiling = Math.round(Number(narrationCeilingUsd) * 1_000_000);
+    if (!Number.isSafeInteger(ceiling) || ceiling <= 0) {
+      setApiError("Enter a positive narration ceiling.");
+      return;
+    }
+    const idempotencyKey = `${selectedRecord.asset.asset_id}\0${selectedRecord.asset.revision_id}\0${activeChapter.id}\0${ceiling}`;
+    if (narrationIdempotency.current?.key !== idempotencyKey) {
+      const nonce = typeof globalThis.crypto?.randomUUID === "function"
+        ? globalThis.crypto.randomUUID()
+        : `${Date.now().toString(36)}-${narrationAuthorizationRequestId.current.toString(36)}`;
+      narrationIdempotency.current = { key: idempotencyKey, requestId: `narration-${nonce}` };
+    }
+    const requestId = narrationIdempotency.current.requestId;
+    const completionId = ++narrationAuthorizationRequestId.current;
+    setNarrationAuthorizationPending(true);
+    try {
+      const authority = await authorizeMultimediaNarration(selectedRecord.asset.asset_id, {
+        request_id: requestId,
+        expected_revision_id: selectedRecord.asset.revision_id,
+        chapter_id: activeChapter.id,
+        approved_ceiling_microdollars: ceiling,
+        operator_acknowledged_spend: true,
+      });
+      if (completionId === narrationAuthorizationRequestId.current) {
+        setNarrationAuthorization(authority);
+        setApiError(null);
+      }
+    } catch {
+      if (completionId === narrationAuthorizationRequestId.current) {
+        setApiError("Could not authorize narration for this chapter and ceiling.");
+      }
+    } finally {
+      if (completionId === narrationAuthorizationRequestId.current) {
+        setNarrationAuthorizationPending(false);
+      }
     }
   }
 
@@ -720,6 +776,53 @@ export default function Multimedia() {
                     </p>
                   )}
                 </div>
+
+                {selectedRecord && activeChapter && (
+                  <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
+                    <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Narration authority</p>
+                    <div className="mt-2 flex flex-wrap items-end gap-3">
+                      <label className="text-[12px] text-shadow-1 dark:text-moonlight">
+                        Ceiling (USD)
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="0.01"
+                          value={narrationCeilingUsd}
+                          onChange={(event) => setNarrationCeilingUsd(event.target.value)}
+                          className="mt-1 block h-9 w-28 rounded-md border border-rule bg-ice-1 px-2 text-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright"
+                        />
+                      </label>
+                      <label className="flex items-center gap-2 pb-2 text-[12px] text-shadow-1 dark:text-moonlight">
+                        <input
+                          type="checkbox"
+                          checked={narrationSpendAcknowledged}
+                          onChange={(event) => setNarrationSpendAcknowledged(event.target.checked)}
+                        />
+                        Approve this maximum
+                      </label>
+                      <LemonButton
+                        type="button"
+                        variant="secondary"
+                        onClick={authorizeCurrentChapterNarration}
+                        disabled={!narrationSpendAcknowledged || narrationAuthorizationPending}
+                      >
+                        {narrationAuthorizationPending ? "Authorizing..." : "Authorize narration"}
+                      </LemonButton>
+                    </div>
+                    {narrationAuthorization && (
+                      <dl className="mt-3 grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[12px]">
+                        <dt className="text-shadow-1 dark:text-moonlight">Authority</dt>
+                        <dd className="truncate text-ink dark:text-bright">{narrationAuthorization.authorization.authorization_id}</dd>
+                        <dt className="text-shadow-1 dark:text-moonlight">Provider</dt>
+                        <dd className="text-ink dark:text-bright">{narrationAuthorization.authorization.provider} / {narrationAuthorization.authorization.model}</dd>
+                        <dt className="text-shadow-1 dark:text-moonlight">Body digest</dt>
+                        <dd className="truncate text-ink dark:text-bright">{narrationAuthorization.request_body_digest}</dd>
+                        <dt className="text-shadow-1 dark:text-moonlight">Expires</dt>
+                        <dd className="text-ink dark:text-bright">{narrationAuthorization.authorization.expires_at}</dd>
+                      </dl>
+                    )}
+                  </section>
+                )}
 
                 <div className="flex flex-wrap items-center gap-2">
                   <LemonButton

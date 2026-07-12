@@ -40,6 +40,11 @@ from substrate.multimedia.read_model import (
     SteeringRequest,
 )
 
+from .multimedia_narration_authorization_routes import (
+    get_multimedia_narration_authorization_runtime,
+    multimedia_narration_authorization_router,
+    multimedia_narration_authorization_runtime_from_environment,
+)
 from .multimedia_playback_routes import (
     get_multimedia_playback_runtime,
     multimedia_playback_router,
@@ -55,6 +60,7 @@ from .multimedia_reconciliation_routes import (
 multimedia_router = APIRouter(prefix="/multimedia", tags=["multimedia"])
 multimedia_router.include_router(multimedia_reconciliation_router)
 multimedia_router.include_router(multimedia_playback_router)
+multimedia_router.include_router(multimedia_narration_authorization_router)
 _STORE = MultimediaAssetStore()
 
 
@@ -306,6 +312,13 @@ def register_multimedia_routes(app: FastAPI) -> None:
             ),
         )
         app.dependency_overrides[get_multimedia_playback_runtime] = lambda: playback_runtime
+    narration_runtime = multimedia_narration_authorization_runtime_from_environment(
+        store=get_store()
+    )
+    if narration_runtime is not None:
+        app.dependency_overrides[get_multimedia_narration_authorization_runtime] = (
+            lambda: narration_runtime
+        )
 
 
 __all__ = [
