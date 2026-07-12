@@ -75,4 +75,6 @@ def register_nd_shadow_competition_dr_mo_unattended_rewrite_compose_routes(
 __all__ = [
     "nd_shadow_competition_dr_mo_unattended_rewrite_compose_router",
     "register_nd_shadow_competition_dr_mo_unattended_rewrite_compose_routes",
+    "NdShadowBody",
+    "CompetitionPackBody",
 ]
