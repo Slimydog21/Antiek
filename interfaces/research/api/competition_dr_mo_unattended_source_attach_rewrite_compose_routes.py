@@ -115,4 +115,6 @@ def register_competition_dr_mo_unattended_source_attach_rewrite_compose_routes(
 __all__ = [
     "competition_dr_mo_unattended_source_attach_rewrite_compose_router",
     "register_competition_dr_mo_unattended_source_attach_rewrite_compose_routes",
+    "CompetitionBody",
+    "MoPackBody",
 ]
