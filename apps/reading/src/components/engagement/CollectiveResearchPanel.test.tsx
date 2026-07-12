@@ -11,11 +11,13 @@ import {
 
 const fetchCollectiveResearch = vi.fn<(...args: unknown[]) => unknown>();
 const mergeSpawnOutputs = vi.fn<(...args: unknown[]) => unknown>();
+const commitReviewedMergeDraft = vi.fn<(...args: unknown[]) => unknown>();
 const seedTwinNotes = vi.fn<(...args: unknown[]) => unknown>();
 const openWindow = vi.fn<typeof import("../windows/openWindow").openWindow>(() => "win:analysis:draft_1");
 const launchFloatingDeepResearch = vi.fn<(...args: unknown[]) => unknown>();
 
 vi.mock("../../api/engagement", () => ({
+  commitReviewedMergeDraft: (...args: unknown[]) => commitReviewedMergeDraft(...(args as Parameters<typeof commitReviewedMergeDraft>)),
   fetchCollectiveResearch: (...args: unknown[]) => fetchCollectiveResearch(...(args as Parameters<typeof fetchCollectiveResearch>)),
   mergeSpawnOutputs: (...args: unknown[]) => mergeSpawnOutputs(...(args as Parameters<typeof mergeSpawnOutputs>)),
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
@@ -133,6 +135,7 @@ describe("CollectiveResearchPanel", () => {
     });
     fetchCollectiveResearch.mockReset();
     mergeSpawnOutputs.mockReset();
+    commitReviewedMergeDraft.mockReset();
     seedTwinNotes.mockReset();
     seedTwinNotes.mockResolvedValue({
       asset_id: "draft_analysis_1",
@@ -845,6 +848,7 @@ describe("CollectiveResearchPanel", () => {
       mode: "draft_combined",
       parent_asset_id: "book-1",
       document_id: "draft_analysis_1",
+      draft_sha256: "a".repeat(64),
       source_spawn_ids: ["spn_1", "spn_2"],
       sections_merged: 3,
       draft_leaves_parent: true,
@@ -854,6 +858,19 @@ describe("CollectiveResearchPanel", () => {
       source: "engagement_spine.merge_spawn_outputs",
       notes: ["Draft-combined document"],
       html: "<p>Written analysis draft HTML</p>",
+    });
+    commitReviewedMergeDraft.mockResolvedValue({
+      deliverable_id:
+        "dlv-merge-book-1-written-analysis-spn_1-spn_2",
+      draft_document_id: "draft_analysis_1",
+      old_revision: null,
+      new_revision: "b".repeat(64),
+      section_id: "sec-analysis",
+      node_ids: ["node-analysis"],
+      paragraph_count: 1,
+      draft_sha256: "a".repeat(64),
+      view_format: "html",
+      html: "<article>Canonical written analysis</article>",
     });
 
     render(
@@ -925,6 +942,40 @@ describe("CollectiveResearchPanel", () => {
     expect(write.getAttribute("data-analysis-write")).toBe("true");
     expect(write.textContent).toMatch(/Open Write \(written analysis\)/i);
     expect(write.getAttribute("title") || "").toMatch(/written analysis/i);
+    const review = screen.getByTestId("collective-canonical-review");
+    expect(review.textContent).toContain("a".repeat(64));
+    expect(commitReviewedMergeDraft).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("collective-canonical-commit"));
+    await waitFor(() => {
+      expect(commitReviewedMergeDraft).toHaveBeenCalledWith({
+        draft_document_id: "draft_analysis_1",
+        reviewed_draft_sha256: "a".repeat(64),
+        target_deliverable_id:
+          "dlv-merge-book-1-written-analysis-spn_1-spn_2",
+        expected_revision: "new",
+        create_combined: true,
+      });
+    });
+    expect(await screen.findByTestId("collective-canonical-success")).toBeTruthy();
+    openWindow.mockClear();
+    fireEvent.click(screen.getByTestId("collective-canonical-open-html"));
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({
+        document_id: "dlv-merge-book-1-written-analysis-spn_1-spn_2",
+        html: "<article>Canonical written analysis</article>",
+        source: "collective_written_analysis",
+      }),
+      expect.objectContaining({
+        id:
+          "win:collective-canonical:dlv-merge-book-1-written-analysis-spn_1-spn_2",
+      }),
+    );
+    expect(
+      screen.getByTestId("collective-canonical-open-write").getAttribute("href") || "",
+    ).toMatch(
+      /html_draft=dlv-merge-book-1-written-analysis-spn_1-spn_2/,
+    );
     // Session seed must also preserve analysis source (not collective_doc_merge).
     const twinKey = (write.getAttribute("href") || "").match(
       /twin_seed=(antiek\.twin_write_seed\.[^&]+)/,
@@ -935,6 +986,11 @@ describe("CollectiveResearchPanel", () => {
     const seed = JSON.parse(raw!) as { source?: string; title?: string };
     expect(seed.source).toBe("collective_written_analysis");
     expect(seed.title || "").toMatch(/Written analysis/i);
+    fireEvent.click(screen.getAllByRole("checkbox")[0]);
+    await waitFor(() => {
+      expect(screen.queryByTestId("collective-doc-merge-result")).toBeNull();
+      expect(screen.queryByTestId("collective-canonical-success")).toBeNull();
+    });
   });
 
   it("links dual-gate L1–L4 checklist for L6 collective prep (nl)", () => {

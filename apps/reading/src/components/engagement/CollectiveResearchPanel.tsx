@@ -110,6 +110,10 @@ import { researchPathChoicesReadiness } from "../../workspace/researchPathChoice
 import { collectiveContinueUnitReadiness } from "../../workspace/collectiveContinueUnitReadiness";
 import { openMergedResearchWindow } from "./SpawnMergePanel";
 import {
+  CanonicalMergeReviewPanel,
+  canonicalMergeTargetId,
+} from "./CanonicalMergeReviewPanel";
+import {
   buildMergedDocWriteHref,
   buildTwinWriteHref,
   plainTextFromHtml,
@@ -266,6 +270,18 @@ export function CollectiveResearchPanel({
   const [docMergeWriteSource, setDocMergeWriteSource] = useState<
     "collective_doc_merge" | "collective_written_analysis"
   >("collective_doc_merge");
+  useEffect(() => {
+    if (!docMerge) return;
+    const reviewedMembers = [...(docMerge.source_spawn_ids || [])].sort();
+    const currentMembers = [...selected].sort();
+    if (
+      reviewedMembers.length !== currentMembers.length ||
+      reviewedMembers.some((member, index) => member !== currentMembers[index])
+    ) {
+      setDocMerge(null);
+      setAutoOpenedWindowId(null);
+    }
+  }, [docMerge, selected]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [continueWindowId, setContinueWindowId] = useState<string | null>(null);
@@ -1751,6 +1767,26 @@ export function CollectiveResearchPanel({
               {n}
             </p>
           ))}
+          {docMerge.mode === "draft_combined" ? (
+            <CanonicalMergeReviewPanel
+              draft={docMerge}
+              defaultTargetId={canonicalMergeTargetId(
+                String(parentAssetId || docMerge.parent_asset_id || ""),
+                docMergeWriteSource === "collective_written_analysis"
+                  ? "written-analysis"
+                  : "collective",
+                ...(docMerge.source_spawn_ids || []).slice().sort(),
+              )}
+              titleStem={
+                docMergeWriteSource === "collective_written_analysis"
+                  ? "Canonical written analysis"
+                  : "Canonical collective research"
+              }
+              writeSource={docMergeWriteSource}
+              idPrefix="win:collective-canonical"
+              testIdPrefix="collective-canonical"
+            />
+          ) : null}
           {/* Residual (cg/em/ev): open draft analysis HTML via shared chokepoint. */}
           {docMerge.html && docMerge.view_format === "html" ? (
             <div className="flex flex-wrap gap-2">

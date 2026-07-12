@@ -29,10 +29,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  commitReviewedMergeDraft,
   mergeSpawnOutputs,
   seedTwinNotes,
-  type CanonicalMergeCommitResponse,
   type MergeMode,
   type MergeProductResponse,
 } from "../../api/engagement";
@@ -50,12 +48,10 @@ import {
   type ResearchLaunchBudgetProjection,
   type ResearchLaunchTier,
 } from "./ResearchLaunchBudgetPanel";
-
-function canonicalTargetId(parentAssetId: string, spawnId: string): string {
-  const safe = (value: string) =>
-    value.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "");
-  return `dlv-merge-${safe(parentAssetId) || "asset"}-${safe(spawnId) || "spawn"}`;
-}
+import {
+  CanonicalMergeReviewPanel,
+  canonicalMergeTargetId,
+} from "./CanonicalMergeReviewPanel";
 
 export type OpenMergedResearchWindowOpts = {
   /** Window + payload title stem (default: Merged research). */
@@ -143,26 +139,11 @@ export function SpawnMergePanel({
   const [autoOpenedWindowId, setAutoOpenedWindowId] = useState<string | null>(
     null,
   );
-  const [canonicalCommit, setCanonicalCommit] =
-    useState<CanonicalMergeCommitResponse | null>(null);
-  const [canonicalTarget, setCanonicalTarget] = useState(() =>
-    canonicalTargetId(String(parentAssetId || ""), String(spawnId || "")),
-  );
-  const [expectedRevision, setExpectedRevision] = useState("new");
-  const [createCombined, setCreateCombined] = useState(true);
-  const [commitBusy, setCommitBusy] = useState(false);
-  const commitInFlight = useRef(false);
   const previewEpoch = useRef(0);
   useEffect(() => {
     previewEpoch.current += 1;
     setResult(null);
-    setCanonicalCommit(null);
     setError(null);
-    setCanonicalTarget(
-      canonicalTargetId(String(parentAssetId || ""), String(spawnId || "")),
-    );
-    setExpectedRevision("new");
-    setCreateCombined(true);
   }, [parentAssetId, spawnId]);
   // Residual (anl): budget soft-gate before single-spawn merge (parity ank).
   const [budgetWarn, setBudgetWarn] = useState(false);
@@ -215,7 +196,6 @@ export function SpawnMergePanel({
       setBusy(true);
       setError(null);
       setAutoOpenedWindowId(null);
-      setCanonicalCommit(null);
       try {
         const out = await mergeSpawnOutputs({
           parent_asset_id: parent,
@@ -250,11 +230,6 @@ export function SpawnMergePanel({
         }
         const final = { ...out, notes };
         setResult(final);
-        if (mode === "draft_combined") {
-          setCanonicalTarget(canonicalTargetId(parent, sid));
-          setExpectedRevision("new");
-          setCreateCombined(true);
-        }
         onMerged?.(final);
 
         // Residual (el): draft_combined → auto-open hosted HTML flywheel.
@@ -290,76 +265,6 @@ export function SpawnMergePanel({
       forceOverBudget,
     ],
   );
-
-  const commitCanonical = useCallback(async () => {
-    setCanonicalCommit(null);
-    if (
-      result?.mode !== "draft_combined" ||
-      !result.draft_sha256?.trim() ||
-      !canonicalTarget.trim()
-    ) {
-      setError("Reviewed draft hash and canonical target are required");
-      return;
-    }
-    const normalizedRevision = expectedRevision.trim();
-    if (
-      (createCombined && normalizedRevision !== "new") ||
-      (!createCombined && (!normalizedRevision || normalizedRevision === "new"))
-    ) {
-      setError(
-        createCombined
-          ? 'New combined deliverables require expected revision "new"'
-          : "Existing deliverable updates require its current revision hash",
-      );
-      return;
-    }
-    if (commitInFlight.current) return;
-    commitInFlight.current = true;
-    const submitted = {
-      epoch: previewEpoch.current,
-      draftDocumentId: result.document_id,
-      draftSha256: result.draft_sha256,
-      targetDeliverableId: canonicalTarget.trim(),
-      expectedRevision: normalizedRevision,
-      createCombined,
-    };
-    setCommitBusy(true);
-    setError(null);
-    try {
-      const committed = await commitReviewedMergeDraft({
-        draft_document_id: submitted.draftDocumentId,
-        reviewed_draft_sha256: submitted.draftSha256,
-        target_deliverable_id: submitted.targetDeliverableId,
-        expected_revision: submitted.expectedRevision,
-        create_combined: submitted.createCombined,
-      });
-      if (previewEpoch.current !== submitted.epoch) return;
-      if (
-        committed.draft_document_id !== submitted.draftDocumentId ||
-        committed.draft_sha256 !== submitted.draftSha256 ||
-        committed.deliverable_id !== submitted.targetDeliverableId
-      ) {
-        throw new Error("canonical commit response conflicts with reviewed request");
-      }
-      if (
-        (submitted.createCombined && committed.old_revision !== null) ||
-        (!submitted.createCombined &&
-          committed.old_revision !== submitted.expectedRevision)
-      ) {
-        throw new Error("canonical commit response conflicts with revision intent");
-      }
-      if (committed.view_format !== "html" || !committed.html?.trim()) {
-        throw new Error("canonical commit must return HTML");
-      }
-      setCanonicalCommit(committed);
-    } catch (e) {
-      if (previewEpoch.current !== submitted.epoch) return;
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      commitInFlight.current = false;
-      setCommitBusy(false);
-    }
-  }, [canonicalTarget, createCombined, expectedRevision, result]);
 
   const parentBound = Boolean(String(parentAssetId || "").trim());
   const spawnBound = Boolean(String(spawnId || "").trim());
@@ -534,7 +439,7 @@ export function SpawnMergePanel({
           data-view-format="html"
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
           disabled={
-            busy || commitBusy ||
+            busy ||
             !pathChoices.draft_merge_ready ||
             (budgetWarn && !forceOverBudget)
           }
@@ -561,7 +466,7 @@ export function SpawnMergePanel({
           data-view-format="html"
           data-budget-soft-gate={String(budgetWarn && !forceOverBudget)}
           disabled={
-            busy || commitBusy ||
+            busy ||
             !pathChoices.into_parent_ready ||
             (budgetWarn && !forceOverBudget)
           }
@@ -673,126 +578,14 @@ export function SpawnMergePanel({
             </p>
           ))}
           {result.mode === "draft_combined" ? (
-            <section
-              className="space-y-2 rounded border border-ink/20 p-2 dark:border-bright/20"
-              data-testid="spawn-merge-canonical-review"
-              data-draft-document-id={result.document_id}
-              data-reviewed-draft-sha256={result.draft_sha256 || ""}
-              aria-label="Review and commit canonical research"
-            >
-              <h3 className="text-[12px] font-medium">Commit reviewed draft</h3>
-              <p className="text-[10px] font-mono opacity-80">
-                Draft <code>{result.document_id}</code> · review hash{" "}
-                <code className="break-all">
-                  {result.draft_sha256 || "missing"}
-                </code>
-              </p>
-              <label className="block text-[11px] font-mono">
-                Canonical deliverable ID
-                <input
-                  data-testid="spawn-merge-canonical-target"
-                  value={canonicalTarget}
-                  onChange={(event) => {
-                    setCanonicalTarget(event.target.value);
-                    setCanonicalCommit(null);
-                  }}
-                  disabled={commitBusy}
-                  className="mt-1 block w-full rounded border border-ink/30 bg-transparent px-2 py-1"
-                />
-              </label>
-              <label className="flex items-center gap-2 text-[11px] font-mono">
-                <input
-                  type="checkbox"
-                  data-testid="spawn-merge-create-combined"
-                  checked={createCombined}
-                  onChange={(event) => {
-                    setCreateCombined(event.target.checked);
-                    setCanonicalCommit(null);
-                  }}
-                  disabled={commitBusy}
-                />
-                Create a new combined deliverable
-              </label>
-              <label className="block text-[11px] font-mono">
-                Expected revision
-                <input
-                  data-testid="spawn-merge-expected-revision"
-                  value={expectedRevision}
-                  onChange={(event) => {
-                    setExpectedRevision(event.target.value);
-                    setCanonicalCommit(null);
-                  }}
-                  disabled={commitBusy}
-                  className="mt-1 block w-full rounded border border-ink/30 bg-transparent px-2 py-1"
-                />
-              </label>
-              <button
-                type="button"
-                data-testid="spawn-merge-canonical-commit"
-                disabled={
-                  commitBusy ||
-                  !result.draft_sha256?.trim() ||
-                  !canonicalTarget.trim() ||
-                  (createCombined
-                    ? expectedRevision.trim() !== "new"
-                    : !expectedRevision.trim() ||
-                      expectedRevision.trim() === "new")
-                }
-                onClick={() => void commitCanonical()}
-                className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono disabled:opacity-50"
-              >
-                {commitBusy ? "Committing…" : "Commit exact reviewed draft"}
-              </button>
-              {canonicalCommit ? (
-                <div
-                  data-testid="spawn-merge-canonical-success"
-                  data-deliverable-id={canonicalCommit.deliverable_id}
-                  data-revision={canonicalCommit.new_revision}
-                  role="status"
-                >
-                  <p className="text-[11px] font-mono text-aurora">
-                    Canonical <code>{canonicalCommit.deliverable_id}</code> · revision{" "}
-                    <code>{canonicalCommit.new_revision.slice(0, 12)}</code>
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      data-testid="spawn-merge-open-canonical"
-                      onClick={() =>
-                        openMergedResearchWindow(
-                          {
-                            document_id: canonicalCommit.deliverable_id,
-                            mode: "canonical_commit",
-                            html: canonicalCommit.html,
-                            view_format: canonicalCommit.view_format,
-                          },
-                          {
-                            titleStem: "Canonical research",
-                            source: "spawn_merge",
-                            idPrefix: "win:canonical-merge",
-                          },
-                        )
-                      }
-                      className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono"
-                    >
-                      Open canonical HTML
-                    </button>
-                    <a
-                      data-testid="spawn-merge-open-canonical-write"
-                      href={buildMergedDocWriteHref({
-                        documentId: canonicalCommit.deliverable_id,
-                        title: `Canonical research · ${canonicalCommit.deliverable_id}`,
-                        html: canonicalCommit.html,
-                        source: "spawn_merge",
-                      })}
-                      className="rounded border border-ink/30 px-2 py-1 text-[11px] font-mono underline"
-                    >
-                      Open canonical in Write
-                    </a>
-                  </div>
-                </div>
-              ) : null}
-            </section>
+            <CanonicalMergeReviewPanel
+              draft={result}
+              defaultTargetId={canonicalMergeTargetId(
+                String(parentAssetId || ""),
+                String(spawnId || ""),
+              )}
+              testIdPrefix="spawn-merge-canonical"
+            />
           ) : null}
           {(() => {
             // Residual (aup): pure open readiness for post-merge float|full CTAs.

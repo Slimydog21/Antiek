@@ -139,10 +139,10 @@ describe("SpawnMergePanel residual ci", () => {
       (screen.getByTestId("spawn-merge-canonical-target") as HTMLInputElement).value,
     ).toBe("dlv-merge-book-1-spn_1");
     expect(
-      (screen.getByTestId("spawn-merge-expected-revision") as HTMLInputElement).value,
+      (screen.getByTestId("spawn-merge-canonical-expected-revision") as HTMLInputElement).value,
     ).toBe("new");
     expect(
-      (screen.getByTestId("spawn-merge-create-combined") as HTMLInputElement).checked,
+      (screen.getByTestId("spawn-merge-canonical-create-combined") as HTMLInputElement).checked,
     ).toBe(true);
 
     fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
@@ -160,7 +160,7 @@ describe("SpawnMergePanel residual ci", () => {
       "dlv-merge-book-1-spn_1",
     );
     expect(success.getAttribute("data-revision")).toBe("b".repeat(64));
-    fireEvent.click(screen.getByTestId("spawn-merge-open-canonical"));
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-open-html"));
     expect(openWindow).toHaveBeenCalledWith(
       "hosted_html_document",
       expect.objectContaining({
@@ -170,7 +170,7 @@ describe("SpawnMergePanel residual ci", () => {
       expect.objectContaining({ id: "win:canonical-merge:dlv-merge-book-1-spn_1" }),
     );
     expect(
-      screen.getByTestId("spawn-merge-open-canonical-write").getAttribute("href") || "",
+      screen.getByTestId("spawn-merge-canonical-open-write").getAttribute("href") || "",
     ).toMatch(/html_draft=dlv-merge-book-1-spn_1/);
     fireEvent.change(screen.getByTestId("spawn-merge-canonical-target"), {
       target: { value: "dlv-retry" },
@@ -226,10 +226,10 @@ describe("SpawnMergePanel residual ci", () => {
     fireEvent.change(screen.getByTestId("spawn-merge-canonical-target"), {
       target: { value: "dlv-existing" },
     });
-    fireEvent.change(screen.getByTestId("spawn-merge-expected-revision"), {
+    fireEvent.change(screen.getByTestId("spawn-merge-canonical-expected-revision"), {
       target: { value: "e".repeat(64) },
     });
-    fireEvent.click(screen.getByTestId("spawn-merge-create-combined"));
+    fireEvent.click(screen.getByTestId("spawn-merge-canonical-create-combined"));
     fireEvent.click(screen.getByTestId("spawn-merge-canonical-commit"));
     await waitFor(() => {
       expect(commitReviewedMergeDraft).toHaveBeenCalledWith(
