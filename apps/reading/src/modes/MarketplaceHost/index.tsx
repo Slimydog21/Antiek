@@ -92,7 +92,7 @@
  * parity HostedHtml eu · TalkToBook ang · MetaReading anh).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
@@ -116,7 +116,7 @@ import {
   fetchHostedDocumentHtml,
   fetchMarketplaceCatalog,
   hostBookIntoAccount,
-  purchaseAndHost,
+  purchaseAndHostFile,
   type CatalogEntryRow,
   type HostResultResponse,
   type MarketplaceCatalogResponse,
@@ -159,13 +159,16 @@ export type MarketplaceHostProps = {
   ownerId?: string;
 };
 
-/** Offline demo body for purchased-book host (HTML bytes → base64). */
-function demoPurchasedContentB64(title: string): string {
-  const html = `<!DOCTYPE html><html><body data-view-format="html"><h1>${title}</h1><p>Offline receipt demonstration only. The purchased book bytes were not supplied, so this must remain non-viewable.</p></body></html>`;
-  // browser + vitest both have btoa
-  return typeof btoa === "function"
-    ? btoa(html)
-    : Buffer.from(html, "utf-8").toString("base64");
+const MAX_PURCHASE_UPLOAD_BYTES = 50 * 1024 * 1024;
+
+function purchaseSourceFormat(file: File): string {
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  if (extension && ["pdf", "epub", "html", "htm", "txt", "md"].includes(extension)) {
+    return extension;
+  }
+  if (file.type === "application/pdf") return "pdf";
+  if (file.type === "text/html") return "html";
+  return "text";
 }
 
 /** Residual (io): count catalog rows by knowledge source for audit metrics. */
@@ -220,6 +223,11 @@ export default function MarketplaceHost({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [receiptRef, setReceiptRef] = useState(MARKETPLACE_DEMO_RECEIPT_DEFAULT);
+  const [purchaseFiles, setPurchaseFiles] = useState<Record<string, File>>({});
+  const [purchaseFileVersions, setPurchaseFileVersions] = useState<
+    Record<string, number>
+  >({});
+  const purchaseInFlight = useRef(new Set<string>());
   /** Residual (dj/is): substring filter over catalog title/author/license/source. */
   const [filterQuery, setFilterQuery] = useState("");
   /**
@@ -1061,17 +1069,28 @@ export default function MarketplaceHost({
   }
 
   async function onPurchaseAndHost(entry: CatalogEntryRow) {
+    if (purchaseInFlight.current.has(entry.book_id)) return;
+    purchaseInFlight.current.add(entry.book_id);
     setBusy(true);
     setError(null);
     setTwinSeedStatus(null);
     setTwinSeedHonesty(null);
     try {
-      const result = await purchaseAndHost({
+      const file = purchaseFiles[entry.book_id];
+      if (!file) throw new Error("Select the purchased digital book file first");
+      if (receiptIsDemoDefault) {
+        throw new Error("Replace the demo receipt reference with the real order or receipt ID");
+      }
+      if (file.size > MAX_PURCHASE_UPLOAD_BYTES) {
+        throw new Error("Purchased book file exceeds the 50 MiB ingest limit");
+      }
+      const result = await purchaseAndHostFile({
         owner_id: ownerId,
         book_id: entry.book_id,
-        opaque_reference: receiptRef.trim() || "manual-order-token-demo",
-        content_b64: demoPurchasedContentB64(entry.title),
-        note: "Manual purchase receipt (residual bg UI)",
+        opaque_reference: receiptRef.trim(),
+        content: file,
+        source_format: purchaseSourceFormat(file),
+        note: "Manual purchase receipt with operator-selected digital book",
       });
       if (result.view_format !== "html") {
         throw new Error("hosted view_format must be html");
@@ -1082,6 +1101,7 @@ export default function MarketplaceHost({
         );
       }
       setHosted(result);
+      clearPurchaseFile(entry.book_id);
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
       setLibraryDocs(lib.documents || []);
@@ -1107,10 +1127,24 @@ export default function MarketplaceHost({
         });
       }
     } catch (e) {
+      clearPurchaseFile(entry.book_id);
       setError(e instanceof Error ? e.message : String(e));
     } finally {
+      purchaseInFlight.current.delete(entry.book_id);
       setBusy(false);
     }
+  }
+
+  function clearPurchaseFile(bookId: string) {
+    setPurchaseFiles((current) => {
+      const next = { ...current };
+      delete next[bookId];
+      return next;
+    });
+    setPurchaseFileVersions((current) => ({
+      ...current,
+      [bookId]: (current[bookId] || 0) + 1,
+    }));
   }
 
   return (
@@ -1659,6 +1693,34 @@ export default function MarketplaceHost({
                 data-l5-payment-rails="deferred"
                 data-live-payment="false"
               >
+                <label className="flex max-w-[20rem] flex-col items-end gap-1 text-[10px] font-mono">
+                  <span>Purchased file · PDF / EPUB / HTML / Markdown / text</span>
+                  <input
+                    key={`${e.book_id}:${purchaseFileVersions[e.book_id] || 0}`}
+                    type="file"
+                    data-testid={`purchase-file-${e.book_id}`}
+                    accept="application/pdf,.epub,text/html,text/plain,text/markdown,.md"
+                    disabled={busy}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      setPurchaseFiles((current) => {
+                        const next = { ...current };
+                        if (file) next[e.book_id] = file;
+                        else delete next[e.book_id];
+                        return next;
+                      });
+                    }}
+                  />
+                  <span
+                    data-testid={`purchase-file-status-${e.book_id}`}
+                    data-file-ready={String(Boolean(purchaseFiles[e.book_id]))}
+                    data-file-bytes={String(purchaseFiles[e.book_id]?.size || 0)}
+                  >
+                    {purchaseFiles[e.book_id]
+                      ? `${purchaseFiles[e.book_id].name} · ${purchaseFiles[e.book_id].size} bytes`
+                      : "Select the actual purchased book; Antiek never substitutes demo content."}
+                  </span>
+                </label>
                 <button
                   type="button"
                   data-testid={`purchase-host-${e.book_id}`}
@@ -1671,14 +1733,21 @@ export default function MarketplaceHost({
                   data-receipt-required="true"
                   data-receipt-ready={String(receiptReady)}
                   data-receipt-demo-default={String(receiptIsDemoDefault)}
-                  disabled={busy || !receiptReady}
+                  disabled={
+                    busy ||
+                    !receiptReady ||
+                    receiptIsDemoDefault ||
+                    !purchaseFiles[e.book_id]
+                  }
                   onClick={() => void onPurchaseAndHost(e)}
                   title={
-                    receiptReady
-                      ? receiptIsDemoDefault
-                        ? "Purchase + host with demo receipt token (replace for real orders · L5 live deferred · HTML account port)"
-                        : "Purchase + host with manual receipt token (L5 live rails deferred · HTML account port)"
-                      : "Enter receipt token to enable Purchase + host (L5 live checkout deferred)"
+                    !receiptReady
+                      ? "Enter receipt token to enable Purchase + host (L5 live checkout deferred)"
+                      : receiptIsDemoDefault
+                        ? "Replace the demo receipt token with the real order reference"
+                        : !purchaseFiles[e.book_id]
+                          ? "Select the purchased digital book file"
+                          : "Host the selected purchased file with the manual receipt token"
                   }
                 >
                   Purchase + host

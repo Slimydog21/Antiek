@@ -9,9 +9,10 @@ from __future__ import annotations
 import base64
 from typing import Any
 
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, File, Form, HTTPException, Request, UploadFile
 from pydantic import BaseModel, Field
 
+from acquisition.documents.extract import MAX_SOURCE_BYTES
 from services.hosted_documents import HostAuthorization, ingest_hosted_document
 from substrate.marketplace_host import (
     Catalog,
@@ -25,6 +26,7 @@ from substrate.marketplace_host.library import HostStore
 from substrate.marketplace_host.purchase import ManualPurchaseReceipt
 
 marketplace_host_router = APIRouter(prefix="/marketplace", tags=["marketplace-host"])
+MAX_BASE64_SOURCE_CHARS = ((MAX_SOURCE_BYTES + 2) // 3) * 4
 
 _store: HostStore | None = None
 _catalog: Catalog | None = None
@@ -59,7 +61,11 @@ class HostBody(BaseModel):
     owner_id: str
     book_id: str
     receipt_id: str | None = None
-    content_b64: str | None = None  # optional raw bytes for purchased/PDF ingest
+    content_b64: str | None = Field(
+        default=None,
+        max_length=MAX_BASE64_SOURCE_CHARS,
+        description="Optional bounded source bytes; public-domain catalog rows refuse overrides",
+    )
     # Residual (bv): offline recursive note-taker seed into engagement twins
     seed_twins: bool = True
 
@@ -69,10 +75,12 @@ class PurchaseHostBody(BaseModel):
     book_id: str
     opaque_reference: str
     content_b64: str = Field(
+        max_length=MAX_BASE64_SOURCE_CHARS,
         description="Base64 of book bytes (PDF ingest source allowed; view is HTML)"
     )
     note: str = ""
     seed_twins: bool = True
+    source_format: str | None = None
 
 
 def _request_owner(request: Request) -> str:
@@ -103,9 +111,12 @@ def _authorized_owner(request: Request, requested_owner: str) -> str:
 
 def _decode_content_b64(value: str) -> bytes:
     try:
-        return base64.b64decode(value, validate=True)
+        raw = base64.b64decode(value, validate=True)
     except Exception as exc:
         raise HTTPException(status_code=400, detail="content_b64 is not valid base64") from exc
+    if len(raw) > MAX_SOURCE_BYTES:
+        raise HTTPException(status_code=413, detail="book exceeds 50 MiB ingest limit")
+    return raw
 
 
 def _source_format(raw: bytes, declared: str) -> str:
@@ -125,6 +136,7 @@ def _canonical_marketplace_host(
     book_id: str,
     content: bytes | None,
     receipt_id: str | None,
+    source_format: str | None = None,
 ) -> dict[str, Any]:
     entry = _c().get(book_id)
     if entry is None:
@@ -154,7 +166,7 @@ def _canonical_marketplace_host(
     hosted = ingest_hosted_document(
         owner_id=owner_id,
         raw=raw,
-        source_format=_source_format(raw, entry.source_format),
+        source_format=_source_format(raw, source_format or entry.source_format),
         store=_s(),
         authorization=HostAuthorization(
             entry.license_class,
@@ -419,23 +431,45 @@ def post_host(body: HostBody, request: Request) -> dict[str, Any]:
 def post_purchase_and_host(body: PurchaseHostBody, request: Request) -> dict[str, Any]:
     owner_id = _authorized_owner(request, body.owner_id)
     content = _decode_content_b64(body.content_b64)
+    return _purchase_host_response(
+        owner_id=owner_id,
+        book_id=body.book_id,
+        opaque_reference=body.opaque_reference,
+        content=content,
+        source_format=body.source_format,
+        note=body.note,
+        seed_twins=body.seed_twins,
+    )
+
+
+def _purchase_host_response(
+    *,
+    owner_id: str,
+    book_id: str,
+    opaque_reference: str,
+    content: bytes,
+    source_format: str | None,
+    note: str,
+    seed_twins: bool,
+) -> dict[str, Any]:
     try:
-        entry = _c().get(body.book_id)
+        entry = _c().get(book_id)
         if entry is None:
-            raise KeyError(f"unknown book_id: {body.book_id}")
+            raise KeyError(f"unknown book_id: {book_id}")
         if entry.license_class != "purchased":
             raise ValueError("purchase-and-host requires a purchased catalog entry")
         receipt = ManualPurchaseReceipt(store=_s()).record_receipt(
-            book_id=body.book_id,
+            book_id=book_id,
             owner_id=owner_id,
-            opaque_reference=body.opaque_reference,
-            note=body.note,
+            opaque_reference=opaque_reference,
+            note=note,
         )
         out = _canonical_marketplace_host(
             owner_id=owner_id,
-            book_id=body.book_id,
+            book_id=book_id,
             content=content,
             receipt_id=receipt.receipt_id,
+            source_format=source_format,
         )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -447,7 +481,7 @@ def post_purchase_and_host(body: PurchaseHostBody, request: Request) -> dict[str
             document_id=str(out["document_id"]),
             title=str(out["title"]),
             body_preview=(out.get("body_preview") or "")[:200],
-            seed=body.seed_twins,
+            seed=seed_twins,
         )
         if out["state"] == "ready"
         else None
@@ -468,6 +502,39 @@ def post_purchase_and_host(body: PurchaseHostBody, request: Request) -> dict[str
     if usage is not None:
         out["usage_event"] = usage
     return out
+
+
+@marketplace_host_router.post("/purchase-and-host-file")
+async def post_purchase_and_host_file(
+    request: Request,
+    owner_id: str = Form(..., max_length=200),
+    book_id: str = Form(..., max_length=200),
+    opaque_reference: str = Form(..., max_length=500),
+    source_format: str = Form(..., max_length=16),
+    note: str = Form("", max_length=1_000),
+    seed_twins: bool = Form(True),
+    content: UploadFile = File(...),
+) -> dict[str, Any]:
+    owner_id = _authorized_owner(request, owner_id)
+    try:
+        raw = await content.read(MAX_SOURCE_BYTES + 1)
+    finally:
+        await content.close()
+    if len(raw) > MAX_SOURCE_BYTES:
+        raise HTTPException(status_code=413, detail="purchased book exceeds 50 MiB ingest limit")
+    if not raw:
+        raise HTTPException(status_code=400, detail="purchased book file is empty")
+    filename = (content.filename or "purchased-book").replace("\n", " ").replace("\r", " ")
+    bounded_note = f"{note} · file={filename} · bytes={len(raw)}"[:1_000]
+    return _purchase_host_response(
+        owner_id=owner_id,
+        book_id=book_id,
+        opaque_reference=opaque_reference,
+        content=raw,
+        source_format=source_format,
+        note=bounded_note,
+        seed_twins=seed_twins,
+    )
 
 
 @marketplace_host_router.get("/library/{owner_id}")

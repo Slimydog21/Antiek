@@ -62,6 +62,7 @@ dependencies = [
   # CI). The format package's only other external import is duckdb (already
   # core above) for the sidecar reader/writer graph-edge paths.
   "jsonschema>=4.0",
+  "python-multipart>=0.0.32",
 ]
 
 [project.optional-dependencies]

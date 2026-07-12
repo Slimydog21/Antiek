@@ -3,6 +3,7 @@ import {
   fetchMarketplaceCatalog,
   hostBookIntoAccount,
   purchaseAndHost,
+  purchaseAndHostFile,
 } from "./marketplaceHost";
 
 const mockFetch = vi.fn();
@@ -130,5 +131,42 @@ describe("marketplaceHost client", () => {
       content_b64: "JVBERi0=",
     });
     expect(out.receipt_id).toBe("rcpt_1");
+  });
+
+  it("purchaseAndHostFile transports the actual file as bounded multipart", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        document_id: "hdoc_file",
+        owner_id: "u",
+        book_id: "buy-modern",
+        content_hash: "hash",
+        title: "Modern",
+        license_class: "purchased",
+        already_hosted: false,
+        source_format: "epub",
+        library_document_ids: ["hdoc_file"],
+        view_format: "html",
+        html: "<p>book</p>",
+      }),
+    });
+    const file = new File(["actual purchased bytes"], "modern.epub", {
+      type: "application/epub+zip",
+    });
+    await purchaseAndHostFile({
+      owner_id: "u",
+      book_id: "buy-modern",
+      opaque_reference: "ORDER-2",
+      source_format: "epub",
+      content: file,
+    });
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toBe("/marketplace/purchase-and-host-file");
+    expect(init.method).toBe("POST");
+    expect(init.headers).toBeUndefined();
+    const form = init.body as FormData;
+    expect(form.get("opaque_reference")).toBe("ORDER-2");
+    expect(form.get("source_format")).toBe("epub");
+    expect((form.get("content") as File).name).toBe("modern.epub");
   });
 });

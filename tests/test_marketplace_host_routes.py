@@ -14,6 +14,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+from interfaces.research.api import marketplace_host_routes as routes  # noqa: E402
 from interfaces.research.api.marketplace_host_routes import (  # noqa: E402
     register_marketplace_host_routes,
     reset_marketplace_host_store,
@@ -96,6 +97,15 @@ def test_purchased_without_receipt_400(client):
     assert "receipt" in r.json()["detail"].lower()
 
 
+def test_all_base64_marketplace_models_have_the_same_encoded_length_ceiling():
+    host_schema = routes.HostBody.model_json_schema()["properties"]["content_b64"]
+    purchase_schema = routes.PurchaseHostBody.model_json_schema()["properties"][
+        "content_b64"
+    ]
+    assert host_schema["anyOf"][0]["maxLength"] == routes.MAX_BASE64_SOURCE_CHARS
+    assert purchase_schema["maxLength"] == routes.MAX_BASE64_SOURCE_CHARS
+
+
 def test_public_domain_catalog_refuses_caller_supplied_bytes(client):
     injected = base64.b64encode(
         " ".join(f"unrelated-private-word-{i}" for i in range(80)).encode()
@@ -144,6 +154,49 @@ def test_purchase_and_host(client):
     bought = next(d for d in docs if d.get("document_id") == body["document_id"])
     assert bought.get("license_class") == "purchased"
     assert bought.get("is_free") is False
+
+
+def test_purchase_file_multipart_preserves_declared_text_format(client, monkeypatch):
+    monkeypatch.setattr(
+        "interfaces.research.api.hosted_document_routes._emit_document_loaded",
+        lambda *args: "evt-purchased-file",
+    )
+    content = " ".join(f"licensed-markdown-word-{i}" for i in range(60)).encode()
+    response = client.post(
+        "/marketplace/purchase-and-host-file",
+        data={
+            "owner_id": "buyer",
+            "book_id": "buy-modern",
+            "opaque_reference": "ORDER-MULTIPART-1",
+            "source_format": "md",
+            "note": "Bought from publisher",
+        },
+        files={"content": ("modern.md", content, "text/markdown")},
+        headers={"x-test-user": "buyer"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["state"] == "ready"
+    assert body["source_format"] == "md"
+    assert body["document_loaded_event_id"] == "evt-purchased-file"
+    assert "licensed-markdown-word-59" in body["html"]
+
+
+def test_purchase_file_rejects_oversize_before_recording_receipt(client, monkeypatch):
+    monkeypatch.setattr(routes, "MAX_SOURCE_BYTES", 10)
+    response = client.post(
+        "/marketplace/purchase-and-host-file",
+        data={
+            "owner_id": "buyer",
+            "book_id": "buy-modern",
+            "opaque_reference": "ORDER-TOO-LARGE",
+            "source_format": "pdf",
+        },
+        files={"content": ("large.pdf", b"x" * 11, "application/pdf")},
+        headers={"x-test-user": "buyer"},
+    )
+    assert response.status_code == 413
+    assert routes.get_marketplace_host_store().list_membership("buyer") == []
 
 
 def test_owner_scope_is_server_bound_and_document_reads_are_isolated(client):

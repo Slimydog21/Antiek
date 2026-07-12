@@ -111,6 +111,7 @@ export async function purchaseAndHost(body: {
   opaque_reference: string;
   content_b64: string;
   note?: string;
+  source_format?: string;
 }): Promise<HostResultResponse> {
   const res = await apiFetch(`${API_BASE}/marketplace/purchase-and-host`, {
     method: "POST",
@@ -118,6 +119,29 @@ export async function purchaseAndHost(body: {
     body: JSON.stringify(body),
   });
   return readJson<HostResultResponse>(res);
+}
+
+export async function purchaseAndHostFile(body: {
+  owner_id: string;
+  book_id: string;
+  opaque_reference: string;
+  source_format: string;
+  content: File;
+  note?: string;
+}): Promise<HostResultResponse> {
+  const form = new FormData();
+  form.set("owner_id", body.owner_id);
+  form.set("book_id", body.book_id);
+  form.set("opaque_reference", body.opaque_reference);
+  form.set("source_format", body.source_format);
+  form.set("note", body.note || "");
+  form.set("seed_twins", "true");
+  form.set("content", body.content, body.content.name);
+  const response = await apiFetch(`${API_BASE}/marketplace/purchase-and-host-file`, {
+    method: "POST",
+    body: form,
+  });
+  return readJson<HostResultResponse>(response);
 }
 
 export async function fetchAccountLibrary(ownerId: string): Promise<{

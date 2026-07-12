@@ -9,7 +9,7 @@ const {
   fetchMarketplaceCatalog,
   hostBookIntoAccount,
   fetchAccountLibrary,
-  purchaseAndHost,
+  purchaseAndHostFile,
   fetchHostedDocumentHtml,
   openWindow,
   seedTwinNotes,
@@ -22,7 +22,7 @@ const {
   fetchMarketplaceCatalog: vi.fn<(...args: unknown[]) => unknown>(),
   hostBookIntoAccount: vi.fn<(...args: unknown[]) => unknown>(),
   fetchAccountLibrary: vi.fn<(...args: unknown[]) => unknown>(),
-  purchaseAndHost: vi.fn<(...args: unknown[]) => unknown>(),
+  purchaseAndHostFile: vi.fn<(...args: unknown[]) => unknown>(),
   fetchHostedDocumentHtml: vi.fn<(...args: unknown[]) => unknown>(),
   openWindow: vi.fn<typeof import("../../components/windows/openWindow").openWindow>(() => "win:hosted:hdoc_abc"),
   seedTwinNotes: vi.fn<(...args: unknown[]) => unknown>(),
@@ -46,7 +46,7 @@ vi.mock("../../api/marketplaceHost", () => ({
   fetchMarketplaceCatalog,
   hostBookIntoAccount,
   fetchAccountLibrary,
-  purchaseAndHost,
+  purchaseAndHostFile,
   fetchHostedDocumentHtml,
 }));
 
@@ -271,7 +271,7 @@ describe("MarketplaceHost mode", () => {
     fetchMarketplaceCatalog.mockReset();
     hostBookIntoAccount.mockReset();
     fetchAccountLibrary.mockReset();
-    purchaseAndHost.mockReset();
+    purchaseAndHostFile.mockReset();
     fetchHostedDocumentHtml.mockReset();
     openWindow.mockClear();
     collectDeepResearchSpawnIds.mockReset().mockReturnValue([]);
@@ -1100,7 +1100,7 @@ describe("MarketplaceHost mode", () => {
       count: 1,
       view_format: "html",
     });
-    purchaseAndHost.mockResolvedValue({
+    purchaseAndHostFile.mockResolvedValue({
       document_id: "hdoc_buy",
       owner_id: "operator",
       book_id: "buy-modern",
@@ -1155,6 +1155,12 @@ describe("MarketplaceHost mode", () => {
     expect(readiness.textContent).toMatch(/never invent charge/i);
     expect(purchaseBtn.getAttribute("data-receipt-ready")).toBe("true");
     expect(purchaseBtn.getAttribute("data-receipt-demo-default")).toBe("true");
+    expect((purchaseBtn as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen
+        .getByTestId("purchase-file-status-buy-modern")
+        .getAttribute("data-file-ready"),
+    ).toBe("false");
     // Residual (apg/aru/arw): free-host readiness chrome via pure helper + CTA gate (HTML path).
     const freeReady = screen.getByTestId("marketplace-free-host-readiness");
     expect(freeReady.getAttribute("data-html-first")).toBe("true");
@@ -1196,7 +1202,7 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("marketplace-receipt-readiness").textContent,
     ).toMatch(/Enter receipt token/i);
-    // Restore demo token for purchase path below.
+    // Demo token remains authority-insufficient even after selecting a file.
     fireEvent.change(screen.getByTestId("purchase-receipt-ref"), {
       target: { value: "manual-order-token-demo" },
     });
@@ -1220,20 +1226,57 @@ describe("MarketplaceHost mode", () => {
     expect(liveNote.getAttribute("data-checkout-cta")).toBe("deferred");
     expect(liveNote.textContent).toMatch(/manual receipt token/i);
     expect(liveNote.textContent).toMatch(/dual-gate/i);
+    const purchasedBody = `<html><body><p>${Array.from(
+      { length: 60 },
+      (_, index) => `licensed-book-word-${index}`,
+    ).join(" ")}</p></body></html>`;
+    fireEvent.change(screen.getByTestId("purchase-file-buy-modern"), {
+      target: {
+        files: [
+          new File([purchasedBody], "modern-systems.html", {
+            type: "text/html",
+          }),
+        ],
+      },
+    });
+    expect((screen.getByTestId("purchase-host-buy-modern") as HTMLButtonElement).disabled).toBe(
+      true,
+    );
+    fireEvent.change(screen.getByTestId("purchase-receipt-ref"), {
+      target: { value: "ORDER-REAL-2026-001" },
+    });
+    expect((screen.getByTestId("purchase-host-buy-modern") as HTMLButtonElement).disabled).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByTestId("purchase-host-buy-modern"));
     fireEvent.click(screen.getByTestId("purchase-host-buy-modern"));
     await waitFor(() => {
-      expect(purchaseAndHost).toHaveBeenCalled();
+      expect(purchaseAndHostFile).toHaveBeenCalled();
     });
-    const call = purchaseAndHost.mock.calls.at(-1)?.[0] as {
+    expect(purchaseAndHostFile).toHaveBeenCalledTimes(1);
+    const call = purchaseAndHostFile.mock.calls.at(-1)?.[0] as {
       owner_id: string;
       book_id: string;
       opaque_reference: string;
-      content_b64: string;
+      source_format: string;
+      content: File;
     };
     expect(call.owner_id).toBe("operator");
     expect(call.book_id).toBe("buy-modern");
-    expect(call.opaque_reference).toBeTruthy();
-    expect(call.content_b64).toBeTruthy();
+    expect(call.opaque_reference).toBe("ORDER-REAL-2026-001");
+    expect(call.source_format).toBe("html");
+    expect(call.content.name).toBe("modern-systems.html");
+    expect(await call.content.text()).toContain("licensed-book-word-59");
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("purchase-file-status-buy-modern")
+          .getAttribute("data-file-ready"),
+      ).toBe("false");
+    });
+    expect(
+      (screen.getByTestId("purchase-file-buy-modern") as HTMLInputElement).value,
+    ).toBe("");
     await waitFor(() => {
       expect(screen.getByTestId("host-result").textContent).toContain("hdoc_buy");
     });
