@@ -101,7 +101,7 @@ def test_compiles_verified_ordered_zero_cost_canonical_inputs() -> None:
     assert resolver.calls == [request.body_digest for request in requests] * 2
 
 
-@pytest.mark.parametrize("mutation", ["missing", "reordered", "foreign", "text"])
+@pytest.mark.parametrize("mutation", ["missing", "reordered", "foreign", "text", "shape"])
 def test_rejects_incomplete_reordered_or_drifted_requests(mutation: str) -> None:
     plan = _plan()
     requests = _requests(plan)
@@ -112,8 +112,10 @@ def test_rejects_incomplete_reordered_or_drifted_requests(mutation: str) -> None
         changed = tuple(reversed(requests))
     elif mutation == "foreign":
         changed = (requests[0], replace(requests[1], revision_id="revision-2"))
-    else:
+    elif mutation == "text":
         changed = (replace(requests[0], text="drift"), requests[1])
+    else:
+        changed = (requests[0], replace(requests[1], channels=2))
     with pytest.raises(LocalNarrationBridgeError):
         compile_local_narration_inputs(plan, changed, resolver=resolver)
 

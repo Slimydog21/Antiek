@@ -50,6 +50,12 @@ def compile_local_narration_inputs(
         raise ValueError("local narration requires a bounded cheapest chapter set")
     asset_id = requests[0].asset_id
     revision_id = requests[0].revision_id
+    if any(
+        request.sample_rate_hz != requests[0].sample_rate_hz
+        or request.channels != requests[0].channels
+        for request in requests
+    ):
+        raise LocalNarrationBridgeError("local narration chapters require one audio shape")
     spoken_chapters = tuple(
         chapter
         for chapter in plan.chapters
