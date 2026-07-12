@@ -1,0 +1,94 @@
+"""Route tests for model decision over twin search HTML-native marketplace free MO."""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from interfaces.research.api.model_decision_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_routes import (
+    register_model_decision_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_routes,
+)
+from tests.test_model_decision_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose import (
+    DECISION,
+    TWIN_SEARCH_PACK,
+)
+
+_PATH = (
+    "/research/model-decision-twin-search-html-native-marketplace-free-midnight-oil-settings-decision-competition-dr-nd-shadow-recursive-twin/compose"
+)
+
+
+def _client() -> TestClient:
+    app = FastAPI()
+    register_model_decision_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_routes(
+        app
+    )
+    return TestClient(app)
+
+
+def _payload(*, operator_ack: bool = True) -> dict:
+    return {
+        "decision": DECISION,
+        "twin_search_pack": TWIN_SEARCH_PACK,
+        "operator_ack": operator_ack,
+    }
+
+
+def test_compose_route():
+    c = _client()
+    r = c.post(_PATH, json=_payload(operator_ack=True))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["pack_ready"] is True
+    assert body["decision"]["decision_ready"] is True
+    assert body["twin_search_pack"]["pack_ready"] is True
+    assert body["live_router_authorized"] is False
+    assert body["secrets_stored"] is False
+    assert body["live_meter_read"] is False
+    assert body["remote_index_queried"] is False
+    assert body["twin_written"] is False
+    assert body["purchase_executed"] is False
+    assert body["hosted"] is False
+    assert body["pdf_primary"] is False
+    assert body["production_router_verdict"] == "REJECT"
+    assert (
+        body["authority"]
+        == "model_decision_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_advisory"
+    )
+
+
+def test_compose_route_ack_false():
+    c = _client()
+    r = c.post(_PATH, json=_payload(operator_ack=False))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["pack_ready"] is False
+    assert body["live_router_authorized"] is False
+    assert body["secrets_stored"] is False
+    assert body["production_router_verdict"] == "REJECT"
+
+
+def test_compose_route_would_exceed():
+    c = _client()
+    payload = _payload(operator_ack=True)
+    payload["decision"] = {
+        **DECISION,
+        "daily_cap_usd": 10,
+        "spent_usd": 9,
+        "projected_cost_usd_high": 5,
+    }
+    r = c.post(_PATH, json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["decision"]["would_exceed"] is True
+    assert body["pack_ready"] is False
+    assert body["live_router_authorized"] is False
+    assert body["production_router_verdict"] == "REJECT"
+
+
+def test_compose_route_missing_operator_ack_422():
+    c = _client()
+    payload = _payload()
+    del payload["operator_ack"]
+    r = c.post(_PATH, json=payload)
+    assert r.status_code == 422

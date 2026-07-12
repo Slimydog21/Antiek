@@ -76,6 +76,8 @@ def register_twin_search_html_native_marketplace_free_midnight_oil_settings_deci
 
 
 __all__ = [
+    "TwinRecordBody",
+    "HtmlPackBody",
     "twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_router",
     "register_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_routes",
 ]
