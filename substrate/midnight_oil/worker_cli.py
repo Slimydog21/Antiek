@@ -18,11 +18,13 @@ from substrate.dispatch import DispatchConfig
 from substrate.graph.retrieval_substrate import RetrievalSubstrate, make_substrate
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding
 
-from .job import get_job, put_job_state
+from .graph_projection import GraphProjectionConflict, GraphProjectionNotReady
+from .job import InvalidStoredJobDetails, get_job, put_job_state
 from .job_store import InvalidStoredJob, OperationState
 from .live import (
     LiveExecutionFailed,
     RouterIdempotentDispatch,
+    TerminalDepositInvalid,
     live_plan_from_authority,
     resume_terminal_deposit,
     resume_terminal_projection,
@@ -247,11 +249,6 @@ def _recover_terminal(
         )
     if authority is None or authority.operation_id != operation_id:
         raise ValueError("terminal recovery lacks matching owner authority")
-    deposit = resume_terminal_deposit(
-        job_id,
-        store=runtime.stores.jobs,
-        engagement_store=runtime.stores.engagement_store,
-    )
     recovery_lease = WorkerLease(
         operation_id=operation_id,
         owner_user_id=owner_user_id,
@@ -260,22 +257,53 @@ def _recover_terminal(
         step_index=leased.next_step_index,
         lease_generation=leased.lease_generation,
     )
-    _renew(runtime, recovery_lease, clock_ms=clock_ms)
-    job = get_job(job_id, store=runtime.stores.jobs)
-    if job is None:
-        raise RuntimeError("terminal recovery lost job details")
-    graph = (
-        resume_terminal_projection(
+    try:
+        deposit = resume_terminal_deposit(
             job_id,
-            owner_user_id=owner_user_id,
-            owner_jobs=runtime.stores.owner_jobs,
             store=runtime.stores.jobs,
             engagement_store=runtime.stores.engagement_store,
-            graph_db_path=runtime.config.graph_db_path,
         )
-        if job.step_evidence
-        else None
-    )
+        _renew(runtime, recovery_lease, clock_ms=clock_ms)
+        job = get_job(job_id, store=runtime.stores.jobs)
+        if job is None:
+            raise KeyError("terminal recovery lost job details")
+        graph = (
+            resume_terminal_projection(
+                job_id,
+                owner_user_id=owner_user_id,
+                owner_jobs=runtime.stores.owner_jobs,
+                store=runtime.stores.jobs,
+                engagement_store=runtime.stores.engagement_store,
+                graph_db_path=runtime.config.graph_db_path,
+            )
+            if job.step_evidence
+            else None
+        )
+    except (
+        GraphProjectionConflict,
+        GraphProjectionNotReady,
+        InvalidStoredJobDetails,
+        TerminalDepositInvalid,
+    ) as exc:
+        if not queue.acknowledge_terminal(
+            operation_id=operation_id,
+            worker_id=worker_id,
+            lease_generation=leased.lease_generation,
+            terminal_state="failed_reconcile",
+            completed_at_ms=clock_ms(),
+        ):
+            raise RuntimeError(
+                "terminal recovery quarantine lost its queue fence"
+            ) from exc
+        return WorkerPhaseRecord(
+            result="reconcile_required",
+            phase="terminal_recovery_quarantined",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+            lease_generation=leased.lease_generation,
+            error_code="terminal_recovery_invalid",
+        )
     _renew(runtime, recovery_lease, clock_ms=clock_ms)
     if not queue.acknowledge_terminal(
         operation_id=operation_id,

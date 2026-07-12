@@ -73,6 +73,10 @@ class LiveExecutionFailed(RuntimeError):
         super().__init__("live execution failed; inspect durable operation state")
 
 
+class TerminalDepositInvalid(ValueError):
+    """Durable detail state cannot satisfy terminal deposit preconditions."""
+
+
 @dataclass(frozen=True)
 class LiveExecutionPlan:
     """Server-issued route/cost envelope signed by the spend-consent hash."""
@@ -687,9 +691,9 @@ def resume_terminal_deposit(
 
     job = get_job(job_id, store=store)
     if job is None:
-        raise KeyError("live deposit job not found")
+        raise TerminalDepositInvalid("live deposit job not found")
     if job.status not in {"complete", "timed_out", "budget_halted", "failed"}:
-        raise ValueError("live deposit requires a terminal worker job")
+        raise TerminalDepositInvalid("live deposit requires a terminal worker job")
     return deposit_job_results(
         job_id,
         job_store=store,

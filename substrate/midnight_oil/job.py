@@ -92,6 +92,10 @@ class JobStore(Protocol):
     def budget_db_path(self) -> str: ...
 
 
+class InvalidStoredJobDetails(ValueError):
+    """A retrieved detail row cannot be decoded as a Midnight Oil job."""
+
+
 @dataclass
 class InMemoryJobStore:
     _jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -392,7 +396,12 @@ def approve_job(
 
 def get_job(job_id: str, *, store: JobStore) -> MidnightOilJob | None:
     row = store.get_job(job_id)
-    return _job_from_row(row) if row else None
+    if not row:
+        return None
+    try:
+        return _job_from_row(row)
+    except (KeyError, TypeError, ValueError) as exc:
+        raise InvalidStoredJobDetails("stored Midnight Oil job is invalid") from exc
 
 
 def put_job_state(job: MidnightOilJob, *, store: JobStore) -> MidnightOilJob:

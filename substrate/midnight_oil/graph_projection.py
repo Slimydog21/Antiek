@@ -40,6 +40,20 @@ class GraphProjectionNotReady(ValueError):
     """The terminal/deposit/evidence preconditions are not satisfied."""
 
 
+class GraphProjectionConflict(RuntimeError):
+    """Durable graph state contradicts the deterministic projection."""
+
+
+def _durable_metadata(value: object, *, label: str) -> dict[str, object]:
+    try:
+        decoded = json.loads(str(value))
+    except (TypeError, ValueError) as exc:
+        raise GraphProjectionConflict(f"{label} metadata is not valid JSON") from exc
+    if not isinstance(decoded, dict):
+        raise GraphProjectionConflict(f"{label} metadata is not an object")
+    return decoded
+
+
 @dataclass(frozen=True)
 class GraphProjectionResult:
     job: MidnightOilJob
@@ -206,7 +220,9 @@ def project_terminal_job_to_graph(
         existing_receipt.owner_user_id != owner_user_id
         or existing_receipt.html_sha256 != html_sha256
     ):
-        raise ValueError("graph projection request conflicts with durable receipt")
+        raise GraphProjectionConflict(
+            "graph projection request conflicts with durable receipt"
+        )
     if job.status not in _TERMINAL_STATUSES:
         raise GraphProjectionNotReady("graph projection requires a terminal job")
     if job.deposit_state != "complete" or not job.deposit_document_id:
@@ -413,8 +429,10 @@ def project_terminal_job_to_graph(
             or row[4] != "research_memo"
             or row[5] != "draft"
         ):
-            raise RuntimeError("graph deliverable conflicts with expected projection")
-        deliverable_metadata = json.loads(row[3])
+            raise GraphProjectionConflict(
+                "graph deliverable conflicts with expected projection"
+            )
+        deliverable_metadata = _durable_metadata(row[3], label="graph deliverable")
         if (
             deliverable_metadata.get("schema_version") != _SCHEMA_VERSION
             or deliverable_metadata.get("job_id") != job.job_id
@@ -423,7 +441,9 @@ def project_terminal_job_to_graph(
             or deliverable_metadata.get("deposit_document_id")
             != job.deposit_document_id
         ):
-            raise RuntimeError("graph deliverable hashes conflict with durable evidence")
+            raise GraphProjectionConflict(
+                "graph deliverable hashes conflict with durable evidence"
+            )
         for section_id, section_expected_value in section_expected.items():
             section = con.execute(
                 "SELECT section_index, title, prose_text, prose_provenance "
@@ -436,10 +456,12 @@ def project_terminal_job_to_graph(
                 or section[0] != section_expected_value[0]
                 or section[1] != section_expected_value[1]
                 or section[2] != section_expected_value[2]
-                or json.loads(str(section[3]))
+                or _durable_metadata(section[3], label="graph section")
                 != json.loads(section_expected_value[3])
             ):
-                raise RuntimeError("graph section conflicts with durable evidence")
+                raise GraphProjectionConflict(
+                    "graph section conflicts with durable evidence"
+                )
         for node_id, node_expected_value in node_expected.items():
             node = con.execute(
                 "SELECT canonical_label, node_type, graph_scope, metadata "
@@ -449,9 +471,10 @@ def project_terminal_job_to_graph(
             if (
                 node is None
                 or node[:3] != node_expected_value[:3]
-                or json.loads(str(node[3])) != json.loads(node_expected_value[3])
+                or _durable_metadata(node[3], label="graph node")
+                != json.loads(node_expected_value[3])
             ):
-                raise RuntimeError("graph node conflicts with durable evidence")
+                raise GraphProjectionConflict("graph node conflicts with durable evidence")
         for edge_id, edge_expected_value in edge_expected.items():
             edge = con.execute(
                 "SELECT source_node_id, target_node_id, relation, "
@@ -464,9 +487,10 @@ def project_terminal_job_to_graph(
             if (
                 edge is None
                 or edge[:9] != edge_expected_value[:9]
-                or json.loads(str(edge[9])) != json.loads(edge_expected_value[9])
+                or _durable_metadata(edge[9], label="graph edge")
+                != json.loads(edge_expected_value[9])
             ):
-                raise RuntimeError("graph edge conflicts with durable evidence")
+                raise GraphProjectionConflict("graph edge conflicts with durable evidence")
 
     # The graph commit and read proof precede this checkpoint.  A crash here
     # replays the deterministic inserts and then writes the same receipt.
@@ -485,7 +509,9 @@ def project_terminal_job_to_graph(
         ),
     )
     if existing_receipt is not None and existing_receipt != receipt:
-        raise RuntimeError("durable graph receipt conflicts with replayed projection")
+        raise GraphProjectionConflict(
+            "durable graph receipt conflicts with replayed projection"
+        )
     updated = replace(
         job,
         graph_projection_state="complete",
@@ -497,6 +523,7 @@ def project_terminal_job_to_graph(
 
 
 __all__ = [
+    "GraphProjectionConflict",
     "GraphProjectionNotReady",
     "GraphProjectionResult",
     "project_terminal_job_to_graph",

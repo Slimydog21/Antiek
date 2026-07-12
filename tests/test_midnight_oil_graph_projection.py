@@ -14,6 +14,7 @@ from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.midnight_oil.durable_job import DurableJobStore
 from substrate.midnight_oil.graph_projection import (
+    GraphProjectionConflict,
     GraphProjectionNotReady,
     project_terminal_job_to_graph,
 )
@@ -233,6 +234,39 @@ def test_projection_is_queryable_attributed_and_idempotent(tmp_path: Path) -> No
             engagement_store=engagement,
             graph_db_path=db,
             events_dir=str(tmp_path / "events"),
+        )
+
+
+def test_projection_classifies_malformed_durable_metadata_as_conflict(
+    tmp_path: Path,
+) -> None:
+    store = DurableJobStore(tmp_path / "jobs.sqlite3")
+    job_id = _terminal_job(store)
+    db = tmp_path / "graph.duckdb"
+    _seed_source(db)
+    owner_jobs, engagement = _projection_dependencies(job_id, owner="operator-1")
+    first = project_terminal_job_to_graph(
+        job_id,
+        owner_user_id="operator-1",
+        owner_jobs=owner_jobs,
+        store=store,
+        engagement_store=engagement,
+        graph_db_path=db,
+    )
+    with connect_write(str(db), purpose="test/corrupt-graph-metadata") as con:
+        con.execute(
+            "UPDATE deliverables SET metadata = ? WHERE deliverable_id = ?",
+            ["{not-json", first.receipt.deliverable_id],
+        )
+
+    with pytest.raises(GraphProjectionConflict, match="not valid JSON"):
+        project_terminal_job_to_graph(
+            job_id,
+            owner_user_id="operator-1",
+            owner_jobs=owner_jobs,
+            store=store,
+            engagement_store=engagement,
+            graph_db_path=db,
         )
 
 

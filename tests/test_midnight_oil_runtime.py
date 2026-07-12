@@ -34,6 +34,7 @@ from substrate.graph.ops import insert_chunk, insert_document
 from substrate.midnight_oil.job import (
     MidnightOilStepEvidence,
     create_job,
+    get_job,
     put_job_state,
 )
 from substrate.midnight_oil.job_store import OperationState, OwnerJob
@@ -1066,3 +1067,276 @@ def test_missing_details_poison_is_quarantined_instead_of_hot_looping(
     next_claimable = runtime.stores.operation_queue.next_claimable(now_ms=4)
     assert next_claimable is not None
     assert next_claimable.operation_id == "valid-operation-behind-poison"
+
+
+def test_missing_terminal_details_are_quarantined_and_survive_restart(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="terminal-owner",
+            job_id="missing-terminal-job",
+            state_version=5,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="terminal-poison-operation",
+            operation_state=OperationState.FAILED_RECONCILE,
+            dispatch_started_at_ms=3,
+            dispatched_at_ms=None,
+            completed_at_ms=4,
+            payload={},
+        )
+    )
+    for operation_id, owner_user_id, job_id, enqueued_at_ms in (
+        ("terminal-poison-operation", "terminal-owner", "missing-terminal-job", 1),
+        ("valid-behind-terminal-poison", "next-owner", "next-job", 2),
+    ):
+        runtime.stores.operation_queue.enqueue_once(
+            operation_id=operation_id,
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            enqueued_at_ms=enqueued_at_ms,
+            options={
+                "max_steps": None,
+                "auto_deposit": True,
+                "draft_combined": True,
+                "force_offline": False,
+            },
+        )
+
+    quarantined = run_worker_once(
+        runtime,
+        worker_id="terminal-quarantine-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 5,
+    )
+
+    assert quarantined.result == "reconcile_required"
+    assert quarantined.phase == "terminal_recovery_quarantined"
+    assert quarantined.error_code == "terminal_recovery_invalid"
+    assert quarantined.operation_id == "terminal-poison-operation"
+    assert "live deposit job not found" not in quarantined.to_json()
+    reopened = build_worker_runtime(path, environ=environment)
+    next_claimable = reopened.stores.operation_queue.next_claimable(now_ms=6)
+    assert next_claimable is not None
+    assert next_claimable.operation_id == "valid-behind-terminal-poison"
+
+
+def test_terminal_graph_conflict_is_quarantined_without_starving_queue(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import substrate.midnight_oil.worker_cli as worker_module
+
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    job = create_job(
+        ["Preserve paid evidence even when graph state conflicts."],
+        10,
+        store=runtime.stores.jobs,
+        job_id="graph-conflict-job",
+        asset_id="graph-conflict-asset",
+    )
+    put_job_state(
+        replace(
+            job,
+            status="failed",
+            step_evidence=(
+                MidnightOilStepEvidence(
+                    step_key="paid-step",
+                    spawn_id="paid-spawn",
+                    output_text="Paid evidence remains deposited.",
+                    insights=("Recovery must be fenced.",),
+                    questions=("How should conflict be reconciled?",),
+                ),
+            ),
+        ),
+        store=runtime.stores.jobs,
+    )
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="graph-owner",
+            job_id=job.job_id,
+            state_version=5,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="graph-conflict-operation",
+            operation_state=OperationState.FAILED_RECONCILE,
+            dispatch_started_at_ms=3,
+            dispatched_at_ms=None,
+            completed_at_ms=4,
+            payload={},
+        )
+    )
+    for operation_id, owner_user_id, job_id, enqueued_at_ms in (
+        ("graph-conflict-operation", "graph-owner", job.job_id, 1),
+        ("valid-behind-graph-conflict", "next-owner", "next-job", 2),
+    ):
+        runtime.stores.operation_queue.enqueue_once(
+            operation_id=operation_id,
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            enqueued_at_ms=enqueued_at_ms,
+            options={
+                "max_steps": None,
+                "auto_deposit": True,
+                "draft_combined": True,
+                "force_offline": False,
+            },
+        )
+
+    monkeypatch.setattr(
+        worker_module,
+        "resume_terminal_projection",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            worker_module.GraphProjectionConflict("secret conflicting graph payload")
+        ),
+    )
+    quarantined = run_worker_once(
+        runtime,
+        worker_id="graph-quarantine-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 5,
+    )
+
+    assert quarantined.result == "reconcile_required"
+    assert quarantined.phase == "terminal_recovery_quarantined"
+    assert "secret conflicting graph payload" not in quarantined.to_json()
+    deposited = get_job(job.job_id, store=runtime.stores.jobs)
+    assert deposited is not None
+    assert deposited.deposit_state == "complete"
+    next_claimable = runtime.stores.operation_queue.next_claimable(now_ms=6)
+    assert next_claimable is not None
+    assert next_claimable.operation_id == "valid-behind-graph-conflict"
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, ValueError])
+def test_untyped_terminal_recovery_failure_remains_retryable(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    error_type: type[Exception],
+) -> None:
+    import substrate.midnight_oil.worker_cli as worker_module
+
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    job = create_job(
+        ["Transient recovery failure must not erase retry authority."],
+        10,
+        store=runtime.stores.jobs,
+        job_id="transient-recovery-job",
+        asset_id="transient-recovery-asset",
+    )
+    put_job_state(replace(job, status="failed"), store=runtime.stores.jobs)
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="transient-owner",
+            job_id=job.job_id,
+            state_version=5,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="transient-recovery-operation",
+            operation_state=OperationState.FAILED,
+            dispatch_started_at_ms=3,
+            dispatched_at_ms=None,
+            completed_at_ms=4,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="transient-recovery-operation",
+        owner_user_id="transient-owner",
+        job_id=job.job_id,
+        enqueued_at_ms=1,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "resume_terminal_deposit",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            error_type("temporary storage outage")
+        ),
+    )
+
+    with pytest.raises(error_type, match="temporary storage outage"):
+        run_worker_once(
+            runtime,
+            worker_id="transient-worker",
+            embedding_model=_Embedding(),
+            clock_ms=lambda: 5,
+        )
+
+    assert runtime.stores.operation_queue.next_claimable(now_ms=60_006) is not None
+
+
+def test_terminal_recovery_quarantine_refuses_lost_queue_fence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="fence-owner",
+            job_id="missing-fence-job",
+            state_version=5,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="fence-poison-operation",
+            operation_state=OperationState.FAILED_RECONCILE,
+            dispatch_started_at_ms=3,
+            dispatched_at_ms=None,
+            completed_at_ms=4,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="fence-poison-operation",
+        owner_user_id="fence-owner",
+        job_id="missing-fence-job",
+        enqueued_at_ms=1,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    monkeypatch.setattr(
+        runtime.stores.operation_queue,
+        "acknowledge_terminal",
+        lambda **kwargs: False,
+    )
+
+    with pytest.raises(
+        RuntimeError, match="terminal recovery quarantine lost its queue fence"
+    ):
+        run_worker_once(
+            runtime,
+            worker_id="stale-fence-worker",
+            embedding_model=_Embedding(),
+            clock_ms=lambda: 5,
+        )
+
+    assert runtime.stores.operation_queue.next_claimable(now_ms=60_006) is not None
