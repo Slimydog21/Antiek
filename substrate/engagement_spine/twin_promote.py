@@ -198,6 +198,14 @@ def promote_twin_note(
         meta["source_spawn_id"] = note.source_spawn_id
     if extra_metadata:
         meta.update(extra_metadata)
+    meta.update(
+        {
+            "origin": "twin_note",
+            "twin_note_id": note.note_id,
+            "twin_asset_id": note.asset_id,
+            "twin_kind": note.kind,
+        }
+    )
 
     doc_id = source_document_id or note.asset_id
     canon = _canonical_text(note.text)

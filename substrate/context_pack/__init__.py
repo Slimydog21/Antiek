@@ -20,6 +20,15 @@ from .assembler import (
     assemble_context_pack,
     default_budget_for,
 )
+from .recursive_notes import (
+    AdvisoryPreview,
+    ContentUnit,
+    ExclusionReceipt,
+    RecursiveNotesPack,
+    account_scope_digest,
+    digest_text,
+)
+from .recursive_notes_resolvers import build_canonical_recursive_pack
 from .style_guide import (
     QUANTITATIVE_SKIP_THRESHOLD,
     STYLE_EXTRACTOR_FLAG,
@@ -45,6 +54,13 @@ __all__ = [
     "SYNTHESIS_BUDGET_ROLES",
     "TRUNCATION_MARKER",
     "default_budget_for",
+    "ContentUnit",
+    "AdvisoryPreview",
+    "ExclusionReceipt",
+    "RecursiveNotesPack",
+    "account_scope_digest",
+    "build_canonical_recursive_pack",
+    "digest_text",
     # style-guide wiring (Sprint 11)
     "STYLE_EXTRACTOR_FLAG",
     "QUANTITATIVE_SKIP_THRESHOLD",

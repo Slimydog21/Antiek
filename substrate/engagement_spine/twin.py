@@ -13,6 +13,7 @@ import hashlib
 import os
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 from .store import EngagementStore
@@ -30,6 +31,8 @@ class TwinNote:
     investigation_id: str | None = None
     origin: str | None = None
     source_revision_sha256: str | None = None
+    created_at: str | None = None
+    source_event_ids: tuple[str, ...] = ()
 
 
 def _note_id(asset_id: str, kind: TwinKind, text: str) -> str:
@@ -79,6 +82,7 @@ def record_twin_question(
         store=store,
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
+        created_at=datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
 
 
@@ -90,6 +94,7 @@ def _record(
     store: EngagementStore,
     source_spawn_id: str | None,
     investigation_id: str | None,
+    created_at: str | None = None,
 ) -> TwinNote:
     if not asset_id or not asset_id.strip():
         raise ValueError("asset_id is required")
@@ -103,6 +108,7 @@ def _record(
         text=cleaned,
         source_spawn_id=source_spawn_id,
         investigation_id=investigation_id,
+        created_at=created_at or datetime.now(UTC).isoformat().replace("+00:00", "Z"),
     )
     store.put_twin(_to_row(note))
     return note
@@ -215,6 +221,15 @@ def converge_reviewed_twins(
         insight += f" Opening: {preview}"
     question = f"What claims in “{resolved_title}” should be wrestled or cited next?"
     origin = "canonical_review_seed"
+    prior_created_at = next(
+        (
+            note.created_at
+            for note in list_twin_notes(aid, store=store)
+            if note.origin == origin and note.source_revision_sha256 == revision
+        ),
+        None,
+    )
+    created_at = prior_created_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
     notes = [
         TwinNote(
             note_id=_generated_note_id(aid, "insight", insight, origin),
@@ -223,6 +238,7 @@ def converge_reviewed_twins(
             text=insight,
             origin=origin,
             source_revision_sha256=revision,
+            created_at=created_at,
         ),
         TwinNote(
             note_id=_generated_note_id(aid, "question", question, origin),
@@ -231,6 +247,7 @@ def converge_reviewed_twins(
             text=question,
             origin=origin,
             source_revision_sha256=revision,
+            created_at=created_at,
         ),
     ]
     store.replace_twins_for_origin(
@@ -470,6 +487,8 @@ def _to_row(note: TwinNote) -> dict[str, Any]:
         "investigation_id": note.investigation_id,
         "origin": note.origin,
         "source_revision_sha256": note.source_revision_sha256,
+        "created_at": note.created_at,
+        "source_event_ids": list(note.source_event_ids),
     }
 
 
@@ -483,4 +502,6 @@ def _from_row(row: dict[str, Any]) -> TwinNote:
         investigation_id=row.get("investigation_id"),
         origin=row.get("origin"),
         source_revision_sha256=row.get("source_revision_sha256"),
+        created_at=row.get("created_at"),
+        source_event_ids=tuple(row.get("source_event_ids") or ()),
     )
