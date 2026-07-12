@@ -151,6 +151,21 @@ class MultimediaProductionLink(_ReadModelBase):
     chapter_ids: tuple[str, ...] = Field(min_length=1, max_length=64)
 
 
+class MultimediaAudioProductionLink(_ReadModelBase):
+    schema_version: Literal["antiek.multimedia-audio-production-link.v1"] = (
+        "antiek.multimedia-audio-production-link.v1"
+    )
+    owner_identity_digest: str = Field(pattern=_OWNER_DIGEST.pattern)
+    asset_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    revision_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
+    receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    audio_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    duration_seconds: float = Field(gt=0, le=45 * 60)
+    chapter_ids: tuple[str, ...] = Field(min_length=1, max_length=64)
+    retention_marker_count: int = Field(ge=1, le=10_000)
+    learned_claim_count: int = Field(ge=1, le=10_000)
+
+
 class MultimediaAssetSummary(_ReadModelBase):
     asset_id: str
     revision_id: str
@@ -179,6 +194,7 @@ class MultimediaAssetRecord(_ReadModelBase):
     knowledge_link: MultimediaKnowledgeLink | None = None
     knowledge_finalization_revision_id: str | None = None
     production_link: MultimediaProductionLink | None = None
+    audio_production_link: MultimediaAudioProductionLink | None = None
 
     def summary(self) -> MultimediaAssetSummary:
         latest_job = self.jobs[-1] if self.jobs else None
@@ -198,7 +214,9 @@ class MultimediaAssetRecord(_ReadModelBase):
             twin_document_id=(
                 self.knowledge_link.twin_document_id if self.knowledge_link else None
             ),
-            production_ready=self.production_link is not None,
+            production_ready=(
+                self.production_link is not None or self.audio_production_link is not None
+            ),
         )
 
 
@@ -367,6 +385,7 @@ class MultimediaAssetStore:
                         "hardening_report": None,
                         "knowledge_link": None,
                         "production_link": None,
+                        "audio_production_link": None,
                     }
                 ),
                 kind="steering",
@@ -648,6 +667,39 @@ class MultimediaAssetStore:
             self._save_unlocked(updated, owner_digest)
             return updated
 
+    def attach_audio_production_link(
+        self,
+        asset_id: str,
+        link: MultimediaAudioProductionLink,
+        *,
+        expected_revision_id: str,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=True):
+            record = self._load_unlocked(asset_id, owner_digest)
+            if record.asset.revision_id != expected_revision_id:
+                raise ValueError("multimedia audio production revision is not current")
+            if str(record.asset.status) != "ready":
+                raise ValueError("multimedia audio registration requires a ready asset")
+            if record.mode != "audio" or str(record.asset.kind) != "audio_experience":
+                raise ValueError("multimedia audio production requires an audio asset")
+            if (
+                link.owner_identity_digest != owner_digest
+                or link.asset_id != record.asset.asset_id
+                or link.revision_id != record.asset.revision_id
+            ):
+                raise ValueError("multimedia audio production link identity conflicts")
+            if record.audio_production_link is not None:
+                if record.audio_production_link != link:
+                    raise ValueError("multimedia audio production link conflicts")
+                return record
+            if record.production_link is not None:
+                raise ValueError("multimedia audio production conflicts with video authority")
+            updated = record.model_copy(update={"audio_production_link": link})
+            self._save_unlocked(updated, owner_digest)
+            return updated
+
     def _record_job_unlocked(
         self,
         record: MultimediaAssetRecord,
@@ -866,6 +918,16 @@ def _validate_production_link(record: MultimediaAssetRecord, owner_digest: str) 
         or link.revision_id != record.asset.revision_id
     ):
         raise ValueError("multimedia production link identity conflicts")
+    audio_link = record.audio_production_link
+    if audio_link is not None and (
+        audio_link.owner_identity_digest != owner_digest
+        or audio_link.asset_id != record.asset.asset_id
+        or audio_link.revision_id != record.asset.revision_id
+        or record.mode != "audio"
+        or str(record.asset.kind) != "audio_experience"
+        or link is not None
+    ):
+        raise ValueError("multimedia audio production link identity conflicts")
 
 
 def _bind_record_owner(

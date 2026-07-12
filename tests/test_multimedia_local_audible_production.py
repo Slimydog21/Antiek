@@ -23,6 +23,8 @@ from substrate.multimedia.local_audible_production import (
 from substrate.multimedia.local_audible_tts import prepare_local_audible_span_requests
 from substrate.multimedia.local_tts import LocalTTSArtifact
 from substrate.multimedia.planner import EvidenceChunk, MultimediaPlanRequest, build_multimedia_plan
+from substrate.multimedia.verified_audio_playback import VerifiedAudioPlaybackRuntime
+from substrate.multimedia.verified_playback import UnsatisfiableMediaRange, VerifiedPlaybackError
 
 KEY = b"local-audible-production-test-integrity-key"
 RECEIPT_KEY = b"local-audible-receipt-test-signing-key"
@@ -217,4 +219,57 @@ def test_receipt_rejects_wrong_owner_authority_and_keys(tmp_path: Path) -> None:
             signing_key=RECEIPT_KEY,
             production_integrity_key=KEY,
             now=NOW,
+        )
+
+
+def test_verified_audio_metadata_and_ranges_are_owner_bound(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    output = tmp_path / "published"
+    output.mkdir(mode=0o700)
+    production = produce_local_audible_track(
+        inputs, output_dir=str(output), integrity_key=KEY
+    )
+    owner_digest = hashlib.sha256(b"owner-1").hexdigest()
+    issue_audible_experience_receipt(
+        owner_digest=owner_digest,
+        production=production,
+        audible_run=inputs.audible_run,
+        signing_key=RECEIPT_KEY,
+        production_integrity_key=KEY,
+        now=NOW,
+    )
+    receipt_path = Path(production.manifest.output_path).with_name("receipt.json")
+    runtime = VerifiedAudioPlaybackRuntime(
+        receipt_path_resolver=lambda _asset, _revision: receipt_path,
+        receipt_key=RECEIPT_KEY,
+        production_integrity_key=KEY,
+    )
+    metadata = runtime.metadata(
+        asset_id="asset-1", revision_id="revision-1", owner_digest=owner_digest
+    )
+    assert metadata.audio_sha256 == production.manifest.output_sha256
+    assert metadata.chapter_ids == tuple(
+        row.chapter_id for row in inputs.audible_run.manifest.chapters
+    )
+    assert metadata.retention_marker_count and metadata.learned_claim_count
+    result = runtime.read(
+        asset_id="asset-1",
+        revision_id="revision-1",
+        owner_digest=owner_digest,
+        range_header="bytes=0-11",
+    )
+    assert result.payload is not None and result.payload[:4] == b"RIFF"
+    assert result.start == 0 and result.end == 11 and result.media_type == "audio/wav"
+    with pytest.raises(UnsatisfiableMediaRange):
+        runtime.read(
+            asset_id="asset-1",
+            revision_id="revision-1",
+            owner_digest=owner_digest,
+            range_header=f"bytes={metadata.audio_size_bytes}-",
+        )
+    with pytest.raises(VerifiedPlaybackError, match="identity"):
+        runtime.metadata(
+            asset_id="asset-1",
+            revision_id="revision-1",
+            owner_digest="0" * 64,
         )
