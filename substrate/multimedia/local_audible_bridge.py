@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, Protocol
 
 from .audible_run import (
     AudibleRunArtifact,
@@ -49,6 +49,8 @@ class LocalAudibleInputs:
     run_plan: MultimediaPlan
     spans: tuple[LocalAudibleSpanInput, ...]
     audible_run: AudibleRunArtifact
+    sample_rate_hz: int
+    channels: Literal[1, 2]
     cost_usd: float = 0.0
 
 
@@ -188,6 +190,8 @@ def compile_local_audible_inputs(
         run_plan=run_plan,
         spans=tuple(input_rows),
         audible_run=artifact,
+        sample_rate_hz=first.sample_rate_hz,
+        channels=first.channels,
     )
 
 
