@@ -18,6 +18,7 @@ from collections.abc import Mapping
 from contextlib import closing
 from dataclasses import replace
 from decimal import ROUND_FLOOR, Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any, Final, cast
 
 from .job import (
@@ -319,8 +320,8 @@ def _job_to_sql_row(owner_user_id: str, job: MidnightOilJob) -> dict[str, Any]:
 
 
 class SqliteDurableJobStore:
-    def __init__(self, db_path: str) -> None:
-        self.db_path = _validate_identifier(db_path, field_name="db_path")
+    def __init__(self, db_path: str | Path) -> None:
+        self.db_path = _validate_identifier(str(db_path), field_name="db_path")
 
     def ensure_schema(self) -> None:
         directory = os.path.dirname(self.db_path)

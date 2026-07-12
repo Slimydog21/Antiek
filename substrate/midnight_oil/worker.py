@@ -217,15 +217,35 @@ def _run_leased_worker_iteration_fenced(
     if key in existing.completed_step_keys:
         job = existing
     else:
-        job = run_worker_iteration(
-            lease.job_id,
-            store=store,
-            step_fn=dispatch,
-            project_fn=project_fn,
-            clock=clock,
-            on_spawn=on_spawn,
-            step_identity=key,
-        )
+        try:
+            job = run_worker_iteration(
+                lease.job_id,
+                store=store,
+                step_fn=dispatch,
+                project_fn=project_fn,
+                clock=clock,
+                on_spawn=on_spawn,
+                step_identity=key,
+            )
+        except Exception as provider_error:
+            durable_job = owner_jobs.get_job_for_owner(lease.job_id, lease.owner_user_id)
+            authority = None if durable_job is None else durable_job.authority
+            if authority is not None and authority.operation_state == "dispatch_started":
+                changed = owner_jobs.compare_and_set_authority(
+                    lease.job_id,
+                    lease.owner_user_id,
+                    expected_version=authority.state_version,
+                    expected_state="dispatch_started",
+                    expected_operation_id=lease.operation_id,
+                    operation_id=lease.operation_id,
+                    next_state="failed_closed",
+                    dispatch_completed_at_ms=clock.now_ms(),
+                )
+                if changed is None:
+                    raise RuntimeError(
+                        "exception-path authority requires reconciliation"
+                    ) from provider_error
+            raise
     terminal_states: dict[str, OperationState] = {
         "complete": "dispatch_finished",
         "failed": "failed_closed",
