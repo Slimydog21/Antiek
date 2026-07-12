@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
-import Multimedia, { formatRecordCost } from "./index";
+import Multimedia, { formatRecordCost, shouldUseLocalAudiblePlayback } from "./index";
 import {
   approveMultimediaDryRun,
   authorizeMultimediaNarration,
@@ -252,6 +252,34 @@ async function reviewPlan() {
 }
 
 describe("Multimedia workstation", () => {
+  it("preserves legacy playback until a local audible link is registered", () => {
+    const audio = {
+      ...approvedRecord,
+      mode: "audio" as const,
+      asset: {
+        ...approvedRecord.asset,
+        kind: "audio_experience" as const,
+        route_policy: "cheapest" as const,
+      },
+    };
+    expect(shouldUseLocalAudiblePlayback(audio)).toBe(false);
+    expect(shouldUseLocalAudiblePlayback({
+      ...audio,
+      audio_production_link: {
+        schema_version: "antiek.multimedia-audio-production-link.v1",
+        owner_identity_digest: "d".repeat(64),
+        asset_id: audio.asset.asset_id,
+        revision_id: audio.asset.revision_id,
+        receipt_sha256: "a".repeat(64),
+        audio_sha256: "b".repeat(64),
+        duration_seconds: 30,
+        chapter_ids: ["chapter-1"],
+        retention_marker_count: 2,
+        learned_claim_count: 1,
+      },
+    })).toBe(true);
+  });
+
   it("fails closed for malformed persisted cost rows", () => {
     const record = structuredClone(draftRecord);
     record.asset.manifest = { cost_rows: [{ cost_usd: "40.50" }] };

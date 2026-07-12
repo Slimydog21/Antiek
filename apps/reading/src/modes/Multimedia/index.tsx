@@ -270,7 +270,7 @@ export default function Multimedia() {
     }
     const { asset_id: assetId, revision_id: revisionId } = selectedRecord.asset;
     setPlaybackLoading(true);
-    const request = selectedRecord.mode === "audio" && selectedRecord.asset.route_policy === "cheapest"
+    const request = shouldUseLocalAudiblePlayback(selectedRecord)
       ? getMultimediaLocalAudiblePlayback(assetId, revisionId)
       : getMultimediaPlayback(assetId, revisionId);
     if (selectedRecord.mode === "audio") setPlayerView("audio");
@@ -1350,5 +1350,14 @@ function segmentClass(active: boolean): string {
     (active
       ? "border-sun bg-sun text-ink"
       : "border-rule bg-ice-0 text-ink hover:border-sun dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright")
+  );
+}
+
+export function shouldUseLocalAudiblePlayback(record: MultimediaAssetRecord): boolean {
+  return (
+    record.mode === "audio" &&
+    record.asset.route_policy === "cheapest" &&
+    record.audio_production_link !== null &&
+    record.audio_production_link !== undefined
   );
 }
