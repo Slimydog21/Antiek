@@ -36,7 +36,7 @@ class AudibleExperienceReceipt(BaseModel):
     revision_id: str
     production: LocalAudibleProductionArtifact
     audible_run: AudibleRunArtifact
-    cost_usd: Literal[0.0] = 0.0
+    cost_usd: Literal[0] = 0
     issued_at: str
     receipt_mac: str = Field(pattern="^[0-9a-f]{64}$")
 

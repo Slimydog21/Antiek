@@ -21,6 +21,7 @@ from substrate.multimedia.local_source_card import LocalSourceCardRegistry
 from substrate.multimedia.local_tts import LocalTTSAdapter, LocalTTSConfig
 from substrate.multimedia.local_workstation import LocalWorkstationRuntime
 from substrate.multimedia.read_model import MultimediaAssetStore
+from substrate.multimedia.visual_selection import ReviewedVisualSelection, VerifiedVisualEvidence
 
 _PREFIX = "ANTIEK_MULTIMEDIA_LOCAL_"
 
@@ -103,7 +104,9 @@ def multimedia_local_runtime_from_environment(
     )
     verify_key = bytes(SigningKey(operator_key).verify_key)
 
-    def no_external_visual(_selection, _digest):  # noqa: ANN001, ANN202
+    def no_external_visual(
+        _selection: ReviewedVisualSelection, _digest: str
+    ) -> VerifiedVisualEvidence:
         raise DiagramEvidenceAuthorityError("external visual evidence is disabled")
 
     evidence = DiagramEvidenceAuthority(

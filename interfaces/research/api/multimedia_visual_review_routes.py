@@ -10,6 +10,8 @@ from datetime import UTC, datetime
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from substrate.multimedia.artifact_quarantine import Resolver, Transport
+from substrate.multimedia.read_model import MultimediaAssetStore
 from substrate.multimedia.visual_candidate_review import (
     VisualCandidateReviewError,
     attest_visual_candidate,
@@ -48,7 +50,11 @@ def get_multimedia_visual_review_runtime() -> MultimediaVisualReviewRuntime:
 
 
 def multimedia_visual_review_runtime_from_environment(
-    *, store, environ: dict[str, str] | None = None, resolver=None, transport=None  # noqa: ANN001
+    *,
+    store: MultimediaAssetStore,
+    environ: dict[str, str] | None = None,
+    resolver: Resolver | None = None,
+    transport: Transport | None = None,
 ) -> MultimediaVisualReviewRuntime | None:
     values = os.environ if environ is None else environ
     key_value = values.get("ANTIEK_MULTIMEDIA_VISUAL_REVIEW_OPERATOR_SIGNING_KEY_HEX", "").strip()

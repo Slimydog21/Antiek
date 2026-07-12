@@ -10,6 +10,8 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from http.client import HTTPMessage
+from typing import IO
 
 from .chapter_tts_production import (
     ChapterTTSSynthesisResult,
@@ -162,7 +164,15 @@ class TTSSynthesisGateway:
 
 
 class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):  # noqa: ANN001
+    def redirect_request(
+        self,
+        req: urllib.request.Request,
+        fp: IO[bytes],
+        code: int,
+        msg: str,
+        headers: HTTPMessage,
+        newurl: str,
+    ) -> urllib.request.Request | None:
         return None
 
 

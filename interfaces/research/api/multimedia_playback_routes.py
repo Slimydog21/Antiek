@@ -16,6 +16,7 @@ from substrate.multimedia.production_registration import (
 )
 from substrate.multimedia.read_model import MultimediaAssetRecord, MultimediaProductionLink
 from substrate.multimedia.verified_playback import (
+    PlaybackMediaMetadata,
     UnsatisfiableMediaRange,
     VerifiedPlaybackError,
     VerifiedPlaybackRuntime,
@@ -217,7 +218,9 @@ def _registered_link(
     return link
 
 
-def _assert_metadata_link(metadata, link: MultimediaProductionLink) -> None:
+def _assert_metadata_link(
+    metadata: PlaybackMediaMetadata, link: MultimediaProductionLink
+) -> None:
     if (
         metadata.receipt_sha256 != link.receipt_sha256
         or metadata.video_sha256 != link.video_sha256

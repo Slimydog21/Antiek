@@ -8,7 +8,7 @@ import stat
 from dataclasses import dataclass
 from datetime import datetime
 
-from .artifact_quarantine import reopen_quarantined_artifact
+from .artifact_quarantine import ArtifactQuarantineReceipt, reopen_quarantined_artifact
 from .provider_execution import ProviderExecutionIntegrityError, get_provider_execution
 from .read_model import MultimediaAssetStore
 from .visual_evidence_authority import (
@@ -95,9 +95,15 @@ def attest_visual_candidate(
 
 
 def _authorized_receipt(
-    *, asset_id, candidate_id, expected_revision_id, owner_id, store, db_path,
-    quarantine_signing_key,
-):  # noqa: ANN001
+    *,
+    asset_id: str,
+    candidate_id: str,
+    expected_revision_id: str,
+    owner_id: str,
+    store: MultimediaAssetStore,
+    db_path: str,
+    quarantine_signing_key: bytes,
+) -> ArtifactQuarantineReceipt:
     try:
         record = store.get(asset_id, owner_id=owner_id)
         receipt = reopen_quarantined_artifact(

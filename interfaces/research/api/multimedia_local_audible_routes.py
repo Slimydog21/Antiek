@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
-from typing import BinaryIO, Literal
+from collections.abc import Callable, Iterator
+from typing import BinaryIO, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
 from fastapi.responses import StreamingResponse
@@ -14,6 +14,7 @@ from substrate.multimedia.local_audible_workstation import (
     LocalAudiblePreparedSet,
     LocalAudibleWorkstationError,
 )
+from substrate.multimedia.read_model import MultimediaAudioProductionLink
 from substrate.multimedia.verified_playback import (
     UnsatisfiableMediaRange,
     VerifiedPlaybackError,
@@ -23,6 +24,7 @@ from .multimedia_local_audible_runtime import MultimediaLocalAudibleRuntime
 from .multimedia_reconciliation_routes import authenticated_multimedia_operator
 
 _LOG = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class _Body(BaseModel):
@@ -43,7 +45,7 @@ class LocalAudibleCapabilityResponse(BaseModel):
     available: bool
     reason: Literal["ready", "unavailable"]
     route_policy: Literal["cheapest"] = "cheapest"
-    cost_usd: Literal[0.0] = 0.0
+    cost_usd: Literal[0] = 0
 
 
 class LocalAudibleLearnedClaimResponse(BaseModel):
@@ -262,7 +264,12 @@ def stream_local_audible_playback(
     )
 
 
-def _registered(runtime, asset_id, revision_id, operator_id):  # noqa: ANN001, ANN202
+def _registered(
+    runtime: MultimediaLocalAudibleRuntime,
+    asset_id: str,
+    revision_id: str,
+    operator_id: str,
+) -> tuple[str, MultimediaAudioProductionLink]:
     try:
         record = runtime.store.get(asset_id, owner_id=operator_id)
     except (KeyError, ValueError) as exc:
@@ -279,7 +286,7 @@ def _registered(runtime, asset_id, revision_id, operator_id):  # noqa: ANN001, A
     return str(record.asset.owner_user_id), link
 
 
-def _command(operation):  # noqa: ANN001, ANN202
+def _command(operation: Callable[[], T]) -> T:  # noqa: UP047 - Python 3.11 support
     try:
         return operation()
     except LocalAudibleWorkstationError as exc:

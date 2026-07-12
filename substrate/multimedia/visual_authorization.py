@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import json
 import re
+from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass
 from datetime import datetime, timedelta
 
@@ -14,6 +15,7 @@ from integrations.krea.catalog import (
     CATALOG_VERSION,
     Imagen3Request,
     KreaQuote,
+    PreparedKreaRequest,
     issue_quote,
     prepare_request,
     verify_quote,
@@ -343,16 +345,37 @@ class VisualAuthorizationRegistry:
             raise VisualAuthorizationError("visual authorization authority conflicts")
         return binding
 
-    def _replay(self, row, request_hash, prepared, terms, now):  # noqa: ANN001
+    def _replay(
+        self,
+        row: Sequence[object],
+        request_hash: str,
+        prepared: PreparedKreaRequest,
+        terms: Mapping[str, object],
+        now: datetime,
+    ) -> VisualAuthorizationResult:
         if len(row) != 9 or not isinstance(row[8], str) or not hmac.compare_digest(
             row[8], _mac(list(row[:8]), self._key)
         ):
             raise VisualAuthorizationError("stored visual authorization integrity failed")
         if row[2] != request_hash or row[5] != prepared.body_digest:
             raise VisualAuthorizationError("visual authorization request id already has different terms")
+        quote_json, authorization_json = row[6], row[7]
+        route_policy = terms.get("route_policy")
+        ceiling = terms.get("approved_ceiling_microdollars")
+        width, height, seed = terms.get("width"), terms.get("height"), terms.get("seed")
+        if (
+            not isinstance(quote_json, str)
+            or not isinstance(authorization_json, str)
+            or not isinstance(route_policy, str)
+            or not isinstance(ceiling, int)
+            or not isinstance(width, int)
+            or not isinstance(height, int)
+            or not isinstance(seed, int)
+        ):
+            raise VisualAuthorizationError("stored visual authorization terms are invalid")
         try:
-            quote = KreaQuote(**json.loads(row[6]))
-            authorization = MultimediaExecutionAuthorizationV2.from_dict(json.loads(row[7]))
+            quote = KreaQuote(**json.loads(quote_json))
+            authorization = MultimediaExecutionAuthorizationV2.from_dict(json.loads(authorization_json))
             issued = datetime.fromisoformat(authorization.issued_at.replace("Z", "+00:00"))
             verify_quote(
                 quote, signing_key=self._key, prepared=prepared,
@@ -365,19 +388,19 @@ class VisualAuthorizationRegistry:
                 authorization, signing_key=self._key,
                 operator_id=authorization.operator_id, asset_id=authorization.asset_id,
                 revision_id=authorization.revision_id, provider="krea",
-                route_policy=terms["route_policy"], model=prepared.model,
+                route_policy=route_policy, model=prepared.model,
                 endpoint_capability=prepared.endpoint_capability,
                 catalog_version=CATALOG_VERSION, catalog_digest=CATALOG_DIGEST,
                 quote_id=quote.quote_id,
                 recovery_authority_id=authorization.recovery_authority_id,
                 recovery_verification_key_digest=authorization.recovery_verification_key_digest,
-                approved_ceiling_microdollars=terms["approved_ceiling_microdollars"],
+                approved_ceiling_microdollars=ceiling,
                 request_body_digest=prepared.body_digest, now=issued,
             )
         except Exception as exc:
             raise VisualAuthorizationError("stored visual authorization integrity failed") from exc
         return VisualAuthorizationResult(
-            str(row[3]), str(row[4]), terms["width"], terms["height"], terms["seed"],
+            str(row[3]), str(row[4]), width, height, seed,
             prepared.body_digest,
             Imagen3Request(**json.loads(prepared.body)),
             quote, authorization,
@@ -392,7 +415,7 @@ def _json(value: object) -> str:
     return _canonical(value).decode("ascii")
 
 
-def _mac(values: list[object], key: bytes) -> str:
+def _mac(values: Sequence[object], key: bytes) -> str:
     return hmac.new(key, _canonical(values), hashlib.sha256).hexdigest()
 
 

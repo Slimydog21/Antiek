@@ -1010,21 +1010,29 @@ def register_book_routes(app: FastAPI) -> None:
             if answer_row is None:
                 continue
             answer_payload = _payload_dict(answer_row)
+            citations = cast(list[object], answer_payload.get("citations", []))
+            provider_value = answer_payload.get("provider")
+            model_value = answer_payload.get("model")
+            input_tokens_value = answer_payload.get("input_tokens")
+            output_tokens_value = answer_payload.get("output_tokens")
+            cost_value = answer_payload.get("cost_usd")
+            verdict_value = cast(Literal["good", "bad"], str(judgment_payload["verdict"]))
+            note_value = judgment_payload.get("note")
             judged.append(JudgedBookAnswerResponse(
                 answer_id=answer_id_value,
                 judgment_id=str(judgment["event_id"]),
                 document_id=document_id,
                 question=str(answer_payload["question"]),
                 answer=str(answer_payload["answer"]),
-                citations=[CitationResponse.model_validate(c) for c in answer_payload.get("citations", [])],
+                citations=[CitationResponse.model_validate(c) for c in citations],
                 grounded=bool(answer_payload["grounded"]),
-                provider=answer_payload.get("provider") if isinstance(answer_payload.get("provider"), str) else None,
-                model=answer_payload.get("model") if isinstance(answer_payload.get("model"), str) else None,
-                input_tokens=answer_payload.get("input_tokens") if isinstance(answer_payload.get("input_tokens"), int) else None,
-                output_tokens=answer_payload.get("output_tokens") if isinstance(answer_payload.get("output_tokens"), int) else None,
-                cost_usd=float(answer_payload["cost_usd"]) if answer_payload.get("cost_usd") is not None else None,
-                verdict=str(judgment_payload["verdict"]),
-                note=judgment_payload.get("note") if isinstance(judgment_payload.get("note"), str) else None,
+                provider=provider_value if isinstance(provider_value, str) else None,
+                model=model_value if isinstance(model_value, str) else None,
+                input_tokens=input_tokens_value if isinstance(input_tokens_value, int) else None,
+                output_tokens=output_tokens_value if isinstance(output_tokens_value, int) else None,
+                cost_usd=float(cost_value) if isinstance(cost_value, (int, float)) else None,
+                verdict=verdict_value,
+                note=note_value if isinstance(note_value, str) else None,
                 answered_at=str(answer_row["emitted_at"]),
                 judged_at=str(judgment["emitted_at"]),
             ))

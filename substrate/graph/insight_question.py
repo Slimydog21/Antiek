@@ -49,9 +49,11 @@ from __future__ import annotations
 import json
 import os
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from contextlib import suppress
-from typing import Any
+from typing import Any, TypeVar
+
+T = TypeVar("T")
 
 try:
     from ...constants import (
@@ -230,7 +232,11 @@ def _node_type_of_source(relation: str) -> str:
     return spec.source_type
 
 
-def _with_connection(con: LockedConnection | None, purpose: str, fn):
+def _with_connection(  # noqa: UP047 - Python 3.11 support
+    con: LockedConnection | None,
+    purpose: str,
+    fn: Callable[[LockedConnection], T],
+) -> T:
     """Run ``fn(con)`` either on the caller's connection (caller owns the
     transaction) or on a fresh write-locked connection wrapped in an
     atomic BEGIN/COMMIT."""

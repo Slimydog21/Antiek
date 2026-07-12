@@ -25,6 +25,8 @@ from runtime.db_lock import FlockWriteCoordinator, connect_read
 from .diagram_evidence_authority import DiagramAttestation, attest_diagram
 from .visual_selection import ReviewedVisualSelection
 
+DatabaseRow = tuple[object, ...]
+
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _MAX_CHUNKS = 16
 _MAX_TEXT_BYTES = 1024 * 1024
@@ -46,6 +48,12 @@ CREATE TABLE IF NOT EXISTS multimedia_local_source_cards (
 
 class LocalSourceCardError(RuntimeError):
     """A source card cannot be derived or reopened from canonical evidence."""
+
+
+def _integer(value: object) -> int:
+    if not isinstance(value, (str, int, float)):
+        raise LocalSourceCardError("stored local source-card dimensions are invalid")
+    return int(value)
 
 
 @dataclass(frozen=True)
@@ -252,7 +260,7 @@ class LocalSourceCardRegistry:
         ):
             raise LocalSourceCardError("local source-card font identity changed")
 
-    def _load(self, card_id: str):  # noqa: ANN202
+    def _load(self, card_id: str) -> DatabaseRow | None:
         try:
             with connect_read(self._db_path) as connection:
                 return connection.execute(
@@ -262,7 +270,14 @@ class LocalSourceCardRegistry:
         except Exception:
             return None
 
-    def _reopen(self, row, request, owner_digest, snapshot_digest, input_digest):  # noqa: ANN001, ANN202
+    def _reopen(
+        self,
+        row: DatabaseRow,
+        request: LocalSourceCardRequest,
+        owner_digest: str,
+        snapshot_digest: str,
+        input_digest: str,
+    ) -> LocalSourceCardArtifact:
         if (
             row is None or len(row) != 16 or not isinstance(row[15], str)
             or not hmac.compare_digest(row[15], _mac(list(row[:15]), self._key))
@@ -283,7 +298,8 @@ class LocalSourceCardRegistry:
             source_chunk_ids=request.source_chunk_ids, output_path=str(row[12]),
             output_sha256=str(row[13]), input_digest=str(row[6]),
             snapshot_digest=str(row[7]), renderer_version=str(row[8]),
-            font_digest=str(row[9]), width_px=int(row[10]), height_px=int(row[11]),
+            font_digest=str(row[9]), width_px=_integer(row[10]),
+            height_px=_integer(row[11]),
             created_at=str(row[14]),
         )
 
@@ -330,7 +346,14 @@ def _snapshot(
     return result
 
 
-def _render_png(request, *, snapshot, font_path, width, height) -> bytes:  # noqa: ANN001
+def _render_png(
+    request: LocalSourceCardRequest,
+    *,
+    snapshot: list[dict[str, str | None]],
+    font_path: str,
+    width: int,
+    height: int,
+) -> bytes:
     image = Image.new("RGB", (width, height), "#f7f9fb")
     draw = ImageDraw.Draw(image)
     display = ImageFont.truetype(font_path, 46)

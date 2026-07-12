@@ -21,6 +21,8 @@ from runtime.db_lock import FlockWriteCoordinator, connect_read
 from .chapter_tts_production import PreparedChapterTTSRequest
 from .local_audible_tts import PreparedAudibleSpanTTSRequest
 
+DatabaseRow = tuple[object, ...]
+
 LocalSpeechRequest = PreparedChapterTTSRequest | PreparedAudibleSpanTTSRequest
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -46,6 +48,18 @@ class LocalTTSError(RuntimeError):
 
 class LocalTTSOutcomeUnknown(LocalTTSError):
     """A local process may have produced bytes and requires explicit recovery."""
+
+
+def _number(value: object) -> float:
+    if not isinstance(value, (str, int, float)):
+        raise LocalTTSError("stored local TTS numeric evidence is invalid")
+    return float(value)
+
+
+def _integer(value: object) -> int:
+    if not isinstance(value, (str, int, float)):
+        raise LocalTTSError("stored local TTS numeric evidence is invalid")
+    return int(value)
 
 
 @dataclass(frozen=True)
@@ -345,7 +359,7 @@ class LocalTTSAdapter:
             raise LocalTTSError("local TTS output format conflicts")
         return digest, duration
 
-    def _load(self, request_id: str):  # noqa: ANN202
+    def _load(self, request_id: str) -> DatabaseRow | None:
         try:
             with connect_read(self._db_path) as connection:
                 return connection.execute(
@@ -355,7 +369,7 @@ class LocalTTSAdapter:
         except Exception:
             return None
 
-    def _verify_row(self, row, request: LocalSpeechRequest) -> None:  # noqa: ANN001
+    def _verify_row(self, row: DatabaseRow, request: LocalSpeechRequest) -> None:
         if (
             row is None
             or len(row) != 14
@@ -371,23 +385,26 @@ class LocalTTSAdapter:
         ):
             raise LocalTTSError("stored local TTS integrity failed")
 
-    def _reopen(self, row, request: LocalSpeechRequest) -> LocalTTSArtifact:  # noqa: ANN001
+    def _reopen(
+        self, row: DatabaseRow, request: LocalSpeechRequest
+    ) -> LocalTTSArtifact:
         self._verify_executables()
         self._verify_row(row, request)
-        if row[3] != "succeeded" or not row[6] or float(row[7]) <= 0:
+        if row[3] != "succeeded" or not row[6] or _number(row[7]) <= 0:
             raise LocalTTSError("local TTS artifact is incomplete")
         if not hmac.compare_digest(_private_file_digest(Path(str(row[5]))), str(row[6])):
             raise LocalTTSError("local TTS output digest conflicts")
         actual_digest, actual_duration = self._verify_wav(Path(str(row[5])))
         if (
             not hmac.compare_digest(actual_digest, str(row[6]))
-            or actual_duration != round(float(row[7]), 3)
+            or actual_duration != round(_number(row[7]), 3)
         ):
             raise LocalTTSError("local TTS output evidence conflicts")
         return LocalTTSArtifact(
             request_id=str(row[0]), request_body_digest=str(row[1]),
             config_digest=str(row[2]), output_path=str(row[5]), output_sha256=str(row[6]),
-            duration_seconds=float(row[7]), sample_rate_hz=int(row[8]), channels=int(row[9]),
+            duration_seconds=_number(row[7]), sample_rate_hz=_integer(row[8]),
+            channels=_integer(row[9]),
             synthesizer_digest=str(row[10]), probe_digest=str(row[11]), created_at=str(row[12]),
         )
 

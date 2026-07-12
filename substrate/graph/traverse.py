@@ -69,7 +69,7 @@ def _nodes_visible(con: Any, node_ids: tuple[str, ...], owner_user_id: str | Non
         f"SELECT count(*) FROM nodes n WHERE node_id IN ({placeholders}) AND {owner_sql}",
         [*node_ids, *owner_params],
     ).fetchone()[0]
-    return count == len(set(node_ids))
+    return bool(count == len(set(node_ids)))
 
 
 def resolve_node(

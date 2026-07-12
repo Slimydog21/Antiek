@@ -61,7 +61,7 @@ class LocalAudibleProductionManifest(_Model):
     codec: Literal["pcm_s16le"] = "pcm_s16le"
     sample_rate_hz: int = Field(ge=8_000, le=48_000)
     channels: Literal[1, 2]
-    cost_usd: Literal[0.0] = 0.0
+    cost_usd: Literal[0] = 0
     sources: tuple[AudibleAudioSource, ...] = Field(min_length=1, max_length=_MAX_SPANS)
 
     @model_validator(mode="after")

@@ -51,6 +51,8 @@ from .read_model import MultimediaAssetStore
 from .verified_playback import VerifiedPlaybackRuntime
 from .visual_selection import EvidenceVerifier
 
+DatabaseRow = tuple[object, ...]
+
 _MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024
 
@@ -331,9 +333,9 @@ class LocalProductionCoordinator:
         )
 
     def _reopen_row(
-        self, row, request: LocalNarrationRunRequest, inputs: LocalNarrationInputs,
+        self, row: DatabaseRow, request: LocalNarrationRunRequest, inputs: LocalNarrationInputs,
         owner_digest: str,
-    ) -> LocalNarrationRunArtifact:  # noqa: ANN001
+    ) -> LocalNarrationRunArtifact:
         self._verify_row(row, request, inputs, owner_digest)
         if row[6] == "producing":
             raise LocalProductionOutcomeUnknown("local narration production outcome is unknown")
@@ -350,7 +352,10 @@ class LocalProductionCoordinator:
             config_digest=self._config_digest, narration=narration,
         )
 
-    def _verify_row(self, row, request, inputs, owner_digest) -> None:  # noqa: ANN001
+    def _verify_row(
+        self, row: DatabaseRow, request: LocalNarrationRunRequest,
+        inputs: LocalNarrationInputs, owner_digest: str,
+    ) -> None:
         if (
             row is None or len(row) != 12
             or not isinstance(row[11], str)
@@ -382,7 +387,7 @@ class LocalProductionCoordinator:
     def _manifest_path(self, asset_id: str, revision_id: str) -> Path:
         return self._root / f"{asset_id}-{revision_id}-narration" / "narration.json"
 
-    def _load(self, run_id: str):  # noqa: ANN202
+    def _load(self, run_id: str) -> DatabaseRow | None:
         if not Path(self._db_path).exists():
             return None
         try:
@@ -584,7 +589,7 @@ class LocalVideoProductionCoordinator:
         )
 
     def _resume_existing(
-        self, row, request: LocalVideoRunRequest,  # noqa: ANN001
+        self, row: DatabaseRow, request: LocalVideoRunRequest,
         narration_run: LocalNarrationRunArtifact, inputs: LocalNarrationInputs,
         video: LocalVideoInputs, owner_digest: str, now: datetime,
         *, recovering: bool = False,
@@ -669,7 +674,7 @@ class LocalVideoProductionCoordinator:
             ).fetchone()
             self._verify_row_base(current, list(prior_values))
             if current[7] == "render_succeeded":
-                return current
+                return tuple(current)
             if current[7] != "rendering":
                 raise LocalProductionCoordinatorError("local video render state conflicts")
             connection.execute(
@@ -681,7 +686,7 @@ class LocalVideoProductionCoordinator:
         return tuple([*completed, _mac(completed, self._narration._key)])
 
     def _issue(
-        self, row, request: LocalVideoRunRequest, narration_run: LocalNarrationRunArtifact,  # noqa: ANN001
+        self, row: DatabaseRow, request: LocalVideoRunRequest, narration_run: LocalNarrationRunArtifact,
         inputs: LocalNarrationInputs, video: LocalVideoInputs, owner_digest: str,
         now: datetime, *, recovering: bool = False,
     ) -> LocalVideoRunArtifact:
@@ -721,7 +726,9 @@ class LocalVideoProductionCoordinator:
         final = self._transition(current, completed, "multimedia.local_video.complete")
         return self._reopen_receipt(final, narration_run, video, owner_digest)
 
-    def _transition(self, current, updated: list[object], operation: str):  # noqa: ANN001, ANN202
+    def _transition(
+        self, current: DatabaseRow, updated: list[object], operation: str
+    ) -> DatabaseRow:
         coordinator = FlockWriteCoordinator(self._narration._db_path)
         with coordinator.acquire_write_context(operation) as connection:
             stored = connection.execute(
@@ -729,7 +736,7 @@ class LocalVideoProductionCoordinator:
             ).fetchone()
             self._verify_row_base(stored, list(current[:14]))
             if stored[7] == updated[7] and list(stored[:14]) == updated:
-                return stored
+                return tuple(stored)
             connection.execute(
                 "UPDATE multimedia_local_video_runs SET status=?, receipt_sha256=?, "
                 "updated_at=?, row_mac=? WHERE run_id=?",
@@ -739,7 +746,7 @@ class LocalVideoProductionCoordinator:
         return tuple([*updated, _mac(updated, self._narration._key)])
 
     def _reopen_receipt(
-        self, row, narration_run: LocalNarrationRunArtifact,  # noqa: ANN001
+        self, row: DatabaseRow, narration_run: LocalNarrationRunArtifact,
         video: LocalVideoInputs, owner_digest: str,
     ) -> LocalVideoRunArtifact:
         path = Path(str(row[10]))
@@ -770,7 +777,11 @@ class LocalVideoProductionCoordinator:
             verify_evidence=self._verify_evidence,
         )
 
-    def _verify_row(self, row, request, narration_run, video, owner_digest) -> None:  # noqa: ANN001
+    def _verify_row(
+        self, row: DatabaseRow, request: LocalVideoRunRequest,
+        narration_run: LocalNarrationRunArtifact, video: LocalVideoInputs,
+        owner_digest: str,
+    ) -> None:
         expected = [
             _video_run_id(narration_run.run_id, owner_digest, video.input_digest, self._config_digest),
             narration_run.run_id, owner_digest, request.narration.asset_id,
@@ -780,14 +791,14 @@ class LocalVideoProductionCoordinator:
             raise LocalProductionCoordinatorError("stored local video integrity failed")
         self._verify_row_mac(row)
 
-    def _verify_row_base(self, row, expected: list[object]) -> None:  # noqa: ANN001
+    def _verify_row_base(self, row: DatabaseRow, expected: list[object]) -> None:
         if (
             row is None or len(row) != 15 or list(row[:14]) != expected
         ):
             raise LocalProductionCoordinatorError("stored local video integrity failed")
         self._verify_row_mac(row)
 
-    def _verify_row_mac(self, row) -> None:  # noqa: ANN001
+    def _verify_row_mac(self, row: DatabaseRow) -> None:
         if (
             not isinstance(row[14], str)
             or not hmac.compare_digest(
@@ -801,7 +812,7 @@ class LocalVideoProductionCoordinator:
             f"{request.narration.asset_id}-{request.narration.expected_revision_id}"
         ) / "render.json"
 
-    def _load(self, run_id: str):  # noqa: ANN202
+    def _load(self, run_id: str) -> DatabaseRow | None:
         if not Path(self._narration._db_path).exists():
             return None
         try:

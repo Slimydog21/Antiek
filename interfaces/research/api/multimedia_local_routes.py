@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from typing import Literal
+from collections.abc import Callable
+from typing import Literal, TypeVar
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,6 +18,7 @@ from substrate.multimedia.local_workstation import (
 from .multimedia_reconciliation_routes import authenticated_multimedia_operator
 
 _LOG = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class _Body(BaseModel):
@@ -169,7 +171,7 @@ def recover_local_multimedia(
     )
 
 
-def _command(operation):  # noqa: ANN001, ANN202
+def _command(operation: Callable[[], T]) -> T:  # noqa: UP047 - Python 3.11 support
     try:
         return operation()
     except LocalWorkstationError as exc:

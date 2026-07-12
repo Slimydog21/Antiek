@@ -18,7 +18,7 @@ from .planner import MultimediaPlan
 from .tts import TTSProvider
 
 
-class _RunModel(BaseModel):  # type: ignore[misc]
+class _RunModel(BaseModel):
     model_config = ConfigDict(
         frozen=True,
         extra="forbid",
@@ -39,7 +39,7 @@ class RunTranscriptSpan(_RunModel):
     marker_kind: Literal["content", "signpost", "remember", "recap"]
     grounding_status: Literal["sourced", "unsourced", "not_required"]
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def has_positive_window(self) -> RunTranscriptSpan:
         if self.end_offset_seconds <= self.start_offset_seconds:
             raise ValueError("run transcript spans require a positive timing window")
@@ -58,7 +58,7 @@ class RunChapter(_RunModel):
     end_offset_seconds: float = Field(gt=0)
     source_chunk_ids: tuple[str, ...] = ()
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def has_positive_window(self) -> RunChapter:
         if self.end_offset_seconds <= self.start_offset_seconds:
             raise ValueError("run chapters require a positive timing window")
@@ -93,7 +93,7 @@ class AudibleRunManifest(_RunModel):
     learned_claims: tuple[LearnedClaimCard, ...] = Field(min_length=1)
     unsourced_line_ids: tuple[str, ...] = ()
 
-    @model_validator(mode="after")  # type: ignore[untyped-decorator]
+    @model_validator(mode="after")
     def timeline_is_complete_and_unique(self) -> AudibleRunManifest:
         _unique((chapter.chapter_id for chapter in self.chapters), "chapter ids")
         _unique((span.paragraph_id for span in self.transcript_spans), "paragraph ids")
@@ -245,10 +245,7 @@ class AudibleRunArtifact(_RunModel):
 
     @classmethod
     def seal(cls, manifest: AudibleRunManifest) -> AudibleRunArtifact:
-        validated = cast(
-            AudibleRunManifest,
-            AudibleRunManifest.model_validate(dict(manifest.__dict__)),
-        )
+        validated = AudibleRunManifest.model_validate(dict(manifest.__dict__))
         return cls(manifest=validated, manifest_sha256=_manifest_digest(validated))
 
     def to_json(self) -> str:
@@ -256,7 +253,7 @@ class AudibleRunArtifact(_RunModel):
 
     @classmethod
     def reopen(cls, payload: str | bytes) -> AudibleRunArtifact:
-        artifact = cast(AudibleRunArtifact, cls.model_validate_json(payload))
+        artifact = cls.model_validate_json(payload)
         if not hmac.compare_digest(artifact.manifest_sha256, _manifest_digest(artifact.manifest)):
             raise ValueError("audible run manifest digest does not match its payload")
         return artifact
@@ -362,7 +359,7 @@ def _compile_manifest(plan: MultimediaPlan, experience: AudioExperience) -> Audi
             line_id=span.line_id,
             chapter_id=span.chapter_id,
             spoken_text=span.spoken_text,
-            line_kind=span.line_kind,
+            line_kind=cast(ScriptLineKind, span.line_kind),
             start_offset_seconds=span.start_offset_seconds,
             end_offset_seconds=span.end_offset_seconds,
             source_chunk_ids=span.source_chunk_ids,

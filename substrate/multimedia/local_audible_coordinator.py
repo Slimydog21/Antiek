@@ -54,6 +54,7 @@ AudibleRunStatus = Literal[
     "registering",
     "registered",
 ]
+DatabaseRow = tuple[object, ...]
 
 
 class LocalAudibleCoordinatorError(RuntimeError):
@@ -247,7 +248,7 @@ class LocalAudibleCoordinator:
 
     def _receipt_and_register(
         self,
-        row,
+        row: DatabaseRow,
         request: LocalAudibleRunRequest,
         inputs: LocalAudibleInputs,
         owner_digest: str,
@@ -284,7 +285,7 @@ class LocalAudibleCoordinator:
 
     def _register(
         self,
-        row,
+        row: DatabaseRow,
         request: LocalAudibleRunRequest,
         inputs: LocalAudibleInputs,
         owner_digest: str,
@@ -323,7 +324,13 @@ class LocalAudibleCoordinator:
             run_id=str(row[0]), input_digest=inputs.input_digest, receipt=receipt
         )
 
-    def _result(self, row, request, inputs, owner_digest):  # noqa: ANN001, ANN202
+    def _result(
+        self,
+        row: DatabaseRow,
+        request: LocalAudibleRunRequest,
+        inputs: LocalAudibleInputs,
+        owner_digest: str,
+    ) -> LocalAudibleRunResult:
         self._verify_row(row, request, inputs, owner_digest)
         receipt = self._reopen_receipt(Path(str(row[9])), request, inputs)
         record = self._store.get(request.asset_id, owner_id=request.owner_id)
@@ -458,7 +465,7 @@ class LocalAudibleCoordinator:
         now: datetime,
         production_sha256: str | None = None,
         receipt_sha256: str | None = None,
-    ):
+    ) -> DatabaseRow:
         coordinator = FlockWriteCoordinator(self._db_path)
         with coordinator.acquire_write_context("multimedia.local_audible.advance") as connection:
             row = connection.execute(
@@ -486,7 +493,7 @@ class LocalAudibleCoordinator:
             )
             return tuple([*values, mac])
 
-    def _load(self, run_id: str):  # noqa: ANN202
+    def _load(self, run_id: str) -> DatabaseRow | None:
         if not Path(self._db_path).exists():
             return None
         try:
@@ -499,9 +506,11 @@ class LocalAudibleCoordinator:
         except Exception as exc:
             raise LocalAudibleCoordinatorError("local audible database is unavailable") from exc
 
-    def _rows_for_identity(self, asset_id: str, revision_id: str):  # noqa: ANN202
+    def _rows_for_identity(
+        self, asset_id: str, revision_id: str
+    ) -> list[DatabaseRow]:
         if not Path(self._db_path).exists():
-            return ()
+            return []
         try:
             with connect_read(self._db_path) as connection:
                 return connection.execute(
@@ -512,7 +521,13 @@ class LocalAudibleCoordinator:
         except Exception as exc:
             raise LocalAudibleCoordinatorError("local audible database is unavailable") from exc
 
-    def _verify_row(self, row, request, inputs, owner_digest) -> None:  # noqa: ANN001
+    def _verify_row(
+        self,
+        row: DatabaseRow,
+        request: LocalAudibleRunRequest,
+        inputs: LocalAudibleInputs,
+        owner_digest: str,
+    ) -> None:
         if (
             row is None
             or len(row) != 14

@@ -111,7 +111,9 @@ def materialize_visual_candidates(
     return tuple(receipts)
 
 
-def _candidate_rows(db_path: str, execution_id: str, key: bytes) -> tuple[tuple, ...]:
+def _candidate_rows(
+    db_path: str, execution_id: str, key: bytes
+) -> tuple[tuple[object, ...], ...]:
     try:
         with connect_read(db_path) as connection:
             rows = connection.execute(

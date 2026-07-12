@@ -26,7 +26,9 @@ from .local_audible_tts import (
     prepare_local_audible_span_requests,
 )
 from .local_tts import LocalTTSArtifact, LocalTTSError, LocalTTSOutcomeUnknown
-from .read_model import MultimediaAssetStore
+from .read_model import MultimediaAssetRecord, MultimediaAssetStore
+
+DatabaseRow = tuple[object, ...]
 
 _DDL = """
 CREATE TABLE IF NOT EXISTS multimedia_local_audible_sets (
@@ -91,7 +93,7 @@ class LocalAudiblePreparedSet(_ReadModel):
     revision_id: str
     status: AudiblePreparedStatus
     recoverable: bool
-    cost_usd: Literal[0.0] = 0.0
+    cost_usd: Literal[0] = 0
     playback_ready: bool
     total_duration_seconds: float = Field(ge=0)
     chapters: tuple[LocalAudiblePreparedChapter, ...] = Field(min_length=1, max_length=64)
@@ -251,7 +253,14 @@ class LocalAudibleWorkstationRuntime:
         )
         return self._inspect(row, record, requests)
 
-    def _authority(self, asset_id: str, revision_id: str, owner_id: str):  # noqa: ANN202
+    def _authority(
+        self, asset_id: str, revision_id: str, owner_id: str
+    ) -> tuple[
+        MultimediaAssetRecord,
+        tuple[PreparedAudibleSpanTTSRequest, ...],
+        str,
+        str,
+    ]:
         try:
             record = self.store.get(asset_id, owner_id=owner_id)
         except (KeyError, ValueError) as exc:
@@ -280,7 +289,12 @@ class LocalAudibleWorkstationRuntime:
         ).hexdigest()
         return record, requests, str(asset.owner_user_id), plan_digest
 
-    def _inspect(self, row, record, requests):  # noqa: ANN001, ANN202
+    def _inspect(
+        self,
+        row: DatabaseRow,
+        record: MultimediaAssetRecord,
+        requests: tuple[PreparedAudibleSpanTTSRequest, ...],
+    ) -> LocalAudiblePreparedSet:
         request_ids = _ids(str(row[6]))
         ready: dict[str, tuple[LocalTTSArtifact, PreparedAudibleSpanTTSRequest]] = {}
         for index, request in enumerate(requests):
@@ -351,7 +365,12 @@ class LocalAudibleWorkstationRuntime:
             chapters=tuple(chapters),
         )
 
-    def _run_request(self, row, requests, owner_id):  # noqa: ANN001, ANN202
+    def _run_request(
+        self,
+        row: DatabaseRow,
+        requests: tuple[PreparedAudibleSpanTTSRequest, ...],
+        owner_id: str,
+    ) -> LocalAudibleRunRequest:
         return LocalAudibleRunRequest(
             owner_id=owner_id,
             asset_id=str(row[2]),
@@ -359,7 +378,14 @@ class LocalAudibleWorkstationRuntime:
             span_requests=tuple(requests),
         )
 
-    def _required(self, set_id, owner_digest, asset_id, revision_id, plan_digest):  # noqa: ANN001, ANN202
+    def _required(
+        self,
+        set_id: str,
+        owner_digest: str,
+        asset_id: str,
+        revision_id: str,
+        plan_digest: str,
+    ) -> DatabaseRow:
         if set_id != _set_id(owner_digest, asset_id, revision_id, plan_digest):
             raise LocalAudibleWorkstationError("local audible prepared set is unavailable")
         row = self._load(set_id)
@@ -368,7 +394,7 @@ class LocalAudibleWorkstationRuntime:
         self._verify_row(row, owner_digest, asset_id, revision_id, plan_digest)
         return row
 
-    def _load(self, set_id: str):  # noqa: ANN202
+    def _load(self, set_id: str) -> DatabaseRow | None:
         if not Path(self.db_path).exists():
             return None
         try:
@@ -407,7 +433,7 @@ class LocalAudibleWorkstationRuntime:
         status: AudiblePreparedStatus,
         now: datetime,
         request_ids: tuple[str, ...] | None = None,
-    ):
+    ) -> DatabaseRow:
         coordinator = FlockWriteCoordinator(self.db_path)
         with coordinator.acquire_write_context(
             "multimedia.local_audible_workstation.update"
@@ -438,7 +464,14 @@ class LocalAudibleWorkstationRuntime:
             )
             return tuple([*values, mac])
 
-    def _verify_row(self, row, owner_digest, asset_id, revision_id, plan_digest) -> None:  # noqa: ANN001
+    def _verify_row(
+        self,
+        row: DatabaseRow,
+        owner_digest: str,
+        asset_id: str,
+        revision_id: str,
+        plan_digest: str,
+    ) -> None:
         if (
             row is None
             or len(row) != 10

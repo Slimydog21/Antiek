@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 
 from .audible_run import (
     AudibleRunArtifact,
@@ -125,7 +125,9 @@ def compile_local_audible_inputs(
                     end_offset_seconds=end,
                     source_chunk_ids=request.source_chunk_ids,
                     marker_kind=request.marker_kind,
-                    grounding_status=grounding,
+                    grounding_status=cast(
+                        Literal["sourced", "unsourced", "not_required"], grounding
+                    ),
                 )
             )
             input_rows.append(
@@ -167,9 +169,9 @@ def compile_local_audible_inputs(
         chapters=tuple(chapter_rows),
         transcript_spans=tuple(transcript_rows),
     )
-    artifact = AudibleRunArtifact.seal(manifest)
+    audible_run = AudibleRunArtifact.seal(manifest)
     authority = {
-        "audible_run_sha256": artifact.manifest_sha256,
+        "audible_run_sha256": audible_run.manifest_sha256,
         "requests": [json.loads(request.body_json) for request in requests],
         "schema_version": "antiek.local-audible-inputs.v1",
         "spans": [row.__dict__ for row in input_rows],
@@ -189,7 +191,7 @@ def compile_local_audible_inputs(
         input_digest=digest,
         run_plan=run_plan,
         spans=tuple(input_rows),
-        audible_run=artifact,
+        audible_run=audible_run,
         sample_rate_hz=first.sample_rate_hz,
         channels=first.channels,
     )

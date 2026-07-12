@@ -8,7 +8,7 @@ import json
 import os
 import re
 import stat
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -84,7 +84,7 @@ def synthesize_gateway_request(
         envelope, idempotency_key=idempotency_key, runtime=runtime
     )
     client_request_id = _client_request_id(digest)
-    values = [
+    values: list[object] = [
         idempotency_key, account, digest, body_json, runtime.provider, runtime.model,
         "sending", client_request_id, None, None, None, None,
     ]
@@ -139,7 +139,12 @@ def synthesize_gateway_request(
         raise TTSGatewayOutcomeUnknown("TTS gateway provider outcome is unknown") from exc
 
 
-def _validate_request(envelope, *, idempotency_key, runtime):  # noqa: ANN001
+def _validate_request(
+    envelope: Mapping[str, object],
+    *,
+    idempotency_key: str,
+    runtime: TTSGatewayServerRuntime,
+) -> tuple[str, str, str, Mapping[str, object]]:
     required = {
         "account_identity_digest", "endpoint_capability", "model", "provider",
         "request_body", "request_body_digest", "schema_version",
@@ -151,7 +156,7 @@ def _validate_request(envelope, *, idempotency_key, runtime):  # noqa: ANN001
     body = envelope["request_body"]
     if (
         envelope["schema_version"] != "antiek.tts-gateway-request.v1"
-        or account != runtime.account_identity_digest
+        or not isinstance(account, str) or account != runtime.account_identity_digest
         or not isinstance(digest, str) or not _DIGEST.fullmatch(digest)
         or idempotency_key != f"antiek-tts-{digest}"
         or envelope["provider"] != runtime.provider
@@ -178,15 +183,32 @@ def _validate_request(envelope, *, idempotency_key, runtime):  # noqa: ANN001
     return account, digest, body_json, body
 
 
-def _replay(row, authority, runtime):  # noqa: ANN001
-    if len(row) != 13 or not hmac.compare_digest(row[12], _row_mac(list(row[:12]), runtime.integrity_key)):
+def _replay(
+    row: tuple[object, ...],
+    authority: Sequence[object],
+    runtime: TTSGatewayServerRuntime,
+) -> TTSGatewayCompleted:
+    if (
+        len(row) != 13
+        or not isinstance(row[12], str)
+        or not hmac.compare_digest(row[12], _row_mac(row[:12], runtime.integrity_key))
+    ):
         raise TTSGatewayConflict("TTS gateway durable state integrity failed")
     if list(row[:6]) != authority:
         raise TTSGatewayConflict("TTS gateway idempotency replay conflicts")
     if row[6] != "completed":
         raise TTSGatewayOutcomeUnknown("TTS gateway submission outcome is unknown")
     audio = _read_audio(row[10], row[11], runtime.output_dir)
-    return TTSGatewayCompleted(audio, row[9], row[8], row[4], row[5], row[2])
+    completed_fields = row[9], row[8], row[4], row[5], row[2]
+    if not all(isinstance(value, str) for value in completed_fields):
+        raise TTSGatewayConflict("TTS gateway completed state is invalid")
+    mime_type, provider_request_id, provider, model, digest = completed_fields
+    assert isinstance(mime_type, str)
+    assert isinstance(provider_request_id, str)
+    assert isinstance(provider, str)
+    assert isinstance(model, str)
+    assert isinstance(digest, str)
+    return TTSGatewayCompleted(audio, mime_type, provider_request_id, provider, model, digest)
 
 
 def _validate_provider_result(result: object) -> None:
@@ -258,7 +280,7 @@ def _client_request_id(digest: str) -> str:
     return f"antiek-{digest[:8]}-{digest[8:12]}-{digest[12:16]}-{digest[16:20]}-{digest[20:32]}"
 
 
-def _row_mac(values: list[object], key: bytes) -> str:
+def _row_mac(values: Sequence[object], key: bytes) -> str:
     payload = json.dumps(values, separators=(",", ":"), ensure_ascii=True).encode("ascii")
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
 

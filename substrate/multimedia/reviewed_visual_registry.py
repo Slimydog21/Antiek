@@ -8,7 +8,7 @@ import json
 import os
 import re
 import stat
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from typing import Protocol
@@ -408,7 +408,7 @@ def _canonical_json(value: object) -> str:
     )
 
 
-def _mac(values: dict[str, object], key: bytes) -> str:
+def _mac(values: Mapping[str, object], key: bytes) -> str:
     return hmac.new(key, _canonical_json(values).encode("ascii"), hashlib.sha256).hexdigest()
 
 

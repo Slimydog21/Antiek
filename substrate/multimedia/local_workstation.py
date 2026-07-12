@@ -34,7 +34,7 @@ from .local_source_card import (
 )
 from .local_tts import LocalTTSArtifact, LocalTTSError, LocalTTSOutcomeUnknown
 from .local_video_bridge import LocalSourceCardInput
-from .read_model import MultimediaAssetStore
+from .read_model import MultimediaAssetRecord, MultimediaAssetStore
 from .visual_selection import EvidenceVerifier
 
 _DDL = """
@@ -49,6 +49,7 @@ PreparedStatus = Literal[
     "preparing", "preparation_unknown", "review_required",
     "ready_to_produce", "production_unknown", "registered",
 ]
+DatabaseRow = tuple[object, ...]
 
 
 class LocalWorkstationError(RuntimeError):
@@ -77,7 +78,7 @@ class LocalWorkstationCards(Protocol):
     def attest(
         self, card_id: str, request: LocalSourceCardRequest, *, owner_id: str,
         reviewer_id: str, operator_signing_key: bytes, attested_at: datetime,
-    ): ...  # noqa: ANN201
+    ) -> object: ...
 
 
 class LocalWorkstationVideo(Protocol):
@@ -297,7 +298,15 @@ class LocalWorkstationRuntime:
         card = self.cards.reopen(card_id, card_requests[index], owner_id=owner_id)
         return _read_private_png(card.output_path, card.output_sha256)
 
-    def _authority(self, asset_id: str, revision_id: str, owner_id: str):  # noqa: ANN202
+    def _authority(
+        self, asset_id: str, revision_id: str, owner_id: str
+    ) -> tuple[
+        MultimediaAssetRecord,
+        tuple[PreparedChapterTTSRequest, ...],
+        tuple[LocalSourceCardRequest, ...],
+        str,
+        str,
+    ]:
         try:
             record = self.store.get(asset_id, owner_id=owner_id)
         except (KeyError, ValueError) as exc:
@@ -340,7 +349,14 @@ class LocalWorkstationRuntime:
         ).hexdigest()
         return record, requests, card_requests, str(asset.owner_user_id), plan_digest
 
-    def _inspect(self, row, record, requests, card_requests, owner_id):  # noqa: ANN001, ANN202
+    def _inspect(
+        self,
+        row: DatabaseRow,
+        record: MultimediaAssetRecord,
+        requests: tuple[PreparedChapterTTSRequest, ...],
+        card_requests: tuple[LocalSourceCardRequest, ...],
+        owner_id: str,
+    ) -> LocalPreparedSet:
         request_ids, card_ids = _ids(str(row[6])), _ids(str(row[7]))
         chapters: list[LocalPreparedChapter] = []
         for index, (request, card_request) in enumerate(
@@ -389,7 +405,11 @@ class LocalWorkstationRuntime:
             chapters=tuple(chapters),
         )
 
-    def _video_request(self, row, requests, card_requests, owner_id):  # noqa: ANN001, ANN202
+    def _video_request(
+        self, row: DatabaseRow,
+        requests: tuple[PreparedChapterTTSRequest, ...],
+        card_requests: tuple[LocalSourceCardRequest, ...], owner_id: str,
+    ) -> LocalVideoRunRequest:
         card_ids = _ids(str(row[7]))
         if len(card_ids) != len(card_requests):
             raise LocalWorkstationError("local prepared set is incomplete")
@@ -404,7 +424,10 @@ class LocalWorkstationRuntime:
             ),
         )
 
-    def _required(self, set_id, owner_digest, asset_id, revision_id, plan_digest):  # noqa: ANN001, ANN202
+    def _required(
+        self, set_id: str, owner_digest: str, asset_id: str,
+        revision_id: str, plan_digest: str,
+    ) -> DatabaseRow:
         expected = _set_id(owner_digest, asset_id, revision_id, plan_digest)
         if set_id != expected:
             raise LocalWorkstationError("local prepared set is unavailable")
@@ -414,7 +437,7 @@ class LocalWorkstationRuntime:
         self._verify_row(row, owner_digest, asset_id, revision_id, plan_digest)
         return row
 
-    def _load(self, set_id: str):  # noqa: ANN202
+    def _load(self, set_id: str) -> DatabaseRow | None:
         if not Path(self.db_path).exists():
             return None
         try:
@@ -447,7 +470,7 @@ class LocalWorkstationRuntime:
         request_ids: tuple[str, ...] | None = None,
         card_ids: tuple[str, ...] | None = None,
         now: datetime,
-    ):
+    ) -> DatabaseRow:
         coordinator = FlockWriteCoordinator(self.db_path)
         with coordinator.acquire_write_context("multimedia.local_workstation.update") as connection:
             row = connection.execute(
@@ -472,7 +495,10 @@ class LocalWorkstationRuntime:
             )
         return tuple([*values, _mac(values, self.signing_key)])
 
-    def _verify_row(self, row, owner_digest, asset_id, revision_id, plan_digest) -> None:  # noqa: ANN001
+    def _verify_row(
+        self, row: DatabaseRow, owner_digest: str, asset_id: str,
+        revision_id: str, plan_digest: str,
+    ) -> None:
         if (
             row is None or len(row) != 11
             or list(row[1:5]) != [owner_digest, asset_id, revision_id, plan_digest]
@@ -514,7 +540,7 @@ def _timestamp(value: datetime) -> str:
     return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
 
 
-def _clock(factory) -> datetime:  # noqa: ANN001
+def _clock(factory: Callable[[], datetime]) -> datetime:
     value = factory()
     if not isinstance(value, datetime):
         raise ValueError("local workstation clock is invalid")
