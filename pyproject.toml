@@ -35,6 +35,10 @@ dependencies = [
   # imports being made explicit.
   "requests>=2.31",
   "reportlab>=4.0",
+  # Cheapest local documentary source cards render deterministic PNGs through
+  # Pillow's structured bitmap API. ReportLab currently brings Pillow
+  # transitively, but local_source_card imports it directly, so it is explicit.
+  "pillow>=11.0",
   # SPR-08 BYOK credential store: runtime/byok/store.py uses
   # libsodium SecretBox (XSalsa20-Poly1305) to encrypt the operator's own X
   # API key at rest. Declared CORE (not optional) because runtime/byok/
