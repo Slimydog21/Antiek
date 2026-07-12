@@ -178,6 +178,15 @@ class LocalTTSAdapter:
             raise LocalTTSError("local TTS synthesis failed") from exc
         return artifact
 
+    def reopen(self, request: PreparedChapterTTSRequest) -> LocalTTSArtifact:
+        """Verify an existing successful artifact without invoking synthesis."""
+        request = _request(request)
+        self._verify_executables()
+        row = self._load(_request_id(request, self._config_digest))
+        if row is None:
+            raise LocalTTSError("local TTS artifact is unavailable")
+        return self._reopen(row, request)
+
     def recover(
         self, request: PreparedChapterTTSRequest
     ) -> LocalTTSArtifact:

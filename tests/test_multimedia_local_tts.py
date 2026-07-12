@@ -101,7 +101,8 @@ def test_real_say_produces_private_playable_wav_and_exactly_replays(
 
     monkeypatch.setattr("substrate.multimedia.local_tts.subprocess.run", no_second_synthesis)
     replay = adapter.synthesize(_request(), now=NOW)
-    assert replay == first
+    reopened = adapter.reopen(_request())
+    assert replay == first and reopened == first
     path = Path(first.output_path)
     assert path.read_bytes()[:4] == b"RIFF" and path.read_bytes()[8:12] == b"WAVE"
     assert first.duration_seconds > 0 and first.sample_rate_hz == 24_000
