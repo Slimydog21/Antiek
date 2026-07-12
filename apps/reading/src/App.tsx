@@ -21,6 +21,7 @@ import LibraryView from "./components/library/LibraryView";
 import Login from "./modes/Login";
 import Loop3 from "./modes/Loop3";
 import Map from "./modes/Map";
+import KnowledgeGraph from "./modes/KnowledgeGraph";
 import Multimedia from "./modes/Multimedia";
 import Notebook from "./modes/Notebook";
 import AutoNotebook from "./modes/Notebook/AutoNotebook";
@@ -169,6 +170,7 @@ function AuthenticatedRoutes() {
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />
         <Route path="/map" element={<Map />} />
+        <Route path="/knowledge-graph" element={<KnowledgeGraph />} />
         <Route path="/multimedia" element={<Multimedia />} />
         <Route path="/backtest/:synthesisId" element={<Backtest />} />
         <Route path="/privacy" element={<PrivacyDashboard />} />

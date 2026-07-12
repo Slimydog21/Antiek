@@ -27,6 +27,7 @@ const GROUPS: { title: string; routes: RouteEntry[] }[] = [
       { path: "/investigations", title: "Investigations index", description: "List + create investigations" },
       { path: "/documents", title: "Documents", description: "Substrate-attached sources by tier" },
       { path: "/notebooks", title: "Notebooks", description: "Wedge 2 literate-analysis surface" },
+      { path: "/knowledge-graph", title: "Knowledge graph", description: "Trace ideas through relationships to exact source evidence" },
       { path: "/sources", title: "Sources", description: "Acquisition adapters" },
       { path: "/interviews", title: "Interviews", description: "Loop 4 informant projects + invites" },
       { path: "/skill-rules", title: "Skill rules", description: "Cross-user discovered rules" },

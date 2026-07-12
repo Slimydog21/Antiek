@@ -14,7 +14,6 @@ The polyglot seam (architecture_notes §11). The Python substrate exposes:
 
 What this DOES NOT include (Sprint 1 scope):
 
-- Graph queries — deferred until ``substrate/graph/`` migrates.
 - Archived synthesis endpoints — deferred until ``middleware/archive/``
   migrates.
 - Authentication / authorization — single-operator workstation for now;
@@ -6495,6 +6494,9 @@ def create_app(
     # operator workstation, matching write_routes).
     from interfaces.research.api.supersession_routes import supersession_router
     app.include_router(supersession_router)
+
+    from interfaces.research.api.graph_routes import graph_router
+    app.include_router(graph_router)
 
     return app
 
