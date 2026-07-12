@@ -134,6 +134,7 @@ class WorkerLease:
     worker_id: str
     step_index: int
     lease_generation: int
+    max_steps: int | None = None
 
     def idempotency_key(self, step_index: int) -> str:
         return provider_idempotency_key(self.operation_id, step_index)
@@ -211,6 +212,7 @@ def lease_authorized_operation(
         in {
             OperationState.COMPLETE,
             OperationState.FAILED,
+            OperationState.STEP_CAPPED,
             OperationState.BUDGET_HALTED,
             OperationState.TIMED_OUT,
         }
@@ -245,6 +247,11 @@ def lease_authorized_operation(
         worker_id,
         leased.next_step_index,
         leased.lease_generation,
+        (
+            leased.options["max_steps"]
+            if isinstance(leased.options.get("max_steps"), int)
+            else None
+        ),
     )
 
 
@@ -339,6 +346,7 @@ def _run_leased_worker_iteration_fenced(
             elif authority.operation_state not in {
                 OperationState.COMPLETE,
                 OperationState.FAILED,
+                OperationState.STEP_CAPPED,
                 OperationState.BUDGET_HALTED,
                 OperationState.TIMED_OUT,
                 OperationState.FAILED_RECONCILE,

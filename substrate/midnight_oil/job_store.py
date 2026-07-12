@@ -36,6 +36,7 @@ class OperationState(StrEnum):
     FAILED = "failed"
     BUDGET_HALTED = "budget_halted"
     TIMED_OUT = "timed_out"
+    STEP_CAPPED = "step_capped"
     FAILED_RECONCILE = "failed_reconcile"
 
 
@@ -177,6 +178,7 @@ _TRANSITIONS: Final[dict[OperationState, frozenset[OperationState]]] = {
             OperationState.FAILED,
             OperationState.BUDGET_HALTED,
             OperationState.TIMED_OUT,
+            OperationState.STEP_CAPPED,
             OperationState.FAILED_RECONCILE,
         }
     ),
@@ -184,6 +186,7 @@ _TRANSITIONS: Final[dict[OperationState, frozenset[OperationState]]] = {
     OperationState.FAILED: frozenset(),
     OperationState.BUDGET_HALTED: frozenset(),
     OperationState.TIMED_OUT: frozenset(),
+    OperationState.STEP_CAPPED: frozenset(),
     OperationState.FAILED_RECONCILE: frozenset(),
 }
 

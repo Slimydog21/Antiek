@@ -132,7 +132,13 @@ def _authority_is_terminal(job: MidnightOilJob, state: OperationState) -> bool:
         "complete": frozenset({OperationState.COMPLETE}),
         "timed_out": frozenset({OperationState.TIMED_OUT}),
         "budget_halted": frozenset({OperationState.BUDGET_HALTED}),
-        "failed": frozenset({OperationState.FAILED, OperationState.FAILED_RECONCILE}),
+        "failed": frozenset(
+            {
+                OperationState.FAILED,
+                OperationState.STEP_CAPPED,
+                OperationState.FAILED_RECONCILE,
+            }
+        ),
     }
     return state in allowed.get(job.status, frozenset())
 

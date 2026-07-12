@@ -20,7 +20,7 @@ from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding
 
 from .graph_projection import GraphProjectionConflict, GraphProjectionNotReady
 from .job import InvalidStoredJobDetails, get_job, put_job_state
-from .job_store import InvalidStoredJob, OperationState
+from .job_store import CompareAndSetResult, InvalidStoredJob, OperationState
 from .live import (
     LiveExecutionFailed,
     RouterIdempotentDispatch,
@@ -109,6 +109,7 @@ def _terminal_state(state: OperationState) -> str:
     mapping = {
         OperationState.COMPLETE: "complete",
         OperationState.FAILED: "failed",
+        OperationState.STEP_CAPPED: "failed",
         OperationState.BUDGET_HALTED: "budget_halted",
         OperationState.TIMED_OUT: "timed_out",
         OperationState.FAILED_RECONCILE: "failed_reconcile",
@@ -189,6 +190,127 @@ def _archive_current_lease(
         raise RuntimeError("terminal disposition lost its queue fence")
 
 
+def _converge_step_cap_detail(
+    runtime: MidnightOilWorkerRuntime, lease: WorkerLease
+) -> None:
+    if lease.max_steps is None or lease.step_index < lease.max_steps:
+        return
+    job = get_job(lease.job_id, store=runtime.stores.jobs)
+    if job is None:
+        raise TerminalDepositInvalid("step-capped operation lost job details")
+    notes = job.notes.split(" | ") if job.notes else []
+    if "max_steps" not in notes:
+        notes.append("max_steps")
+    if job.status != "failed" or job.notes != " | ".join(notes):
+        put_job_state(
+            replace(job, status="failed", notes=" | ".join(notes)),
+            store=runtime.stores.jobs,
+        )
+
+
+def _recover_leased_terminal(
+    runtime: MidnightOilWorkerRuntime,
+    *,
+    lease: WorkerLease,
+    authority_state: OperationState,
+    clock_ms: Callable[[], int],
+) -> WorkerPhaseRecord:
+    queue = runtime.stores.operation_queue
+    try:
+        _renew(runtime, lease, clock_ms=clock_ms)
+        if authority_state is OperationState.STEP_CAPPED:
+            _converge_step_cap_detail(runtime, lease)
+            _renew(runtime, lease, clock_ms=clock_ms)
+        deposit = resume_terminal_deposit(
+            lease.job_id,
+            store=runtime.stores.jobs,
+            engagement_store=runtime.stores.engagement_store,
+        )
+        _renew(runtime, lease, clock_ms=clock_ms)
+        job = get_job(lease.job_id, store=runtime.stores.jobs)
+        if job is None:
+            raise TerminalDepositInvalid("terminal recovery lost job details")
+        _renew(runtime, lease, clock_ms=clock_ms)
+        graph = (
+            resume_terminal_projection(
+                lease.job_id,
+                owner_user_id=lease.owner_user_id,
+                owner_jobs=runtime.stores.owner_jobs,
+                store=runtime.stores.jobs,
+                engagement_store=runtime.stores.engagement_store,
+                graph_db_path=runtime.config.graph_db_path,
+            )
+            if job.step_evidence
+            else None
+        )
+    except (
+        GraphProjectionConflict,
+        GraphProjectionNotReady,
+        InvalidStoredJobDetails,
+        TerminalDepositInvalid,
+    ) as exc:
+        if not queue.acknowledge_terminal(
+            operation_id=lease.operation_id,
+            worker_id=lease.worker_id,
+            lease_generation=lease.lease_generation,
+            terminal_state="failed_reconcile",
+            completed_at_ms=clock_ms(),
+        ):
+            raise RuntimeError(
+                "terminal recovery quarantine lost its queue fence"
+            ) from exc
+        return WorkerPhaseRecord(
+            result="reconcile_required",
+            phase="terminal_recovery_quarantined",
+            worker_id=lease.worker_id,
+            operation_id=lease.operation_id,
+            job_id=lease.job_id,
+            lease_generation=lease.lease_generation,
+            error_code="terminal_recovery_invalid",
+        )
+    _renew(runtime, lease, clock_ms=clock_ms)
+    if not queue.acknowledge_terminal(
+        operation_id=lease.operation_id,
+        worker_id=lease.worker_id,
+        lease_generation=lease.lease_generation,
+        terminal_state=_terminal_state(authority_state),
+        completed_at_ms=clock_ms(),
+    ):
+        raise RuntimeError("terminal recovery lost its queue fence")
+    result_by_state: dict[OperationState, WorkerResult] = {
+        OperationState.COMPLETE: "recovered",
+        OperationState.FAILED: "failed",
+        OperationState.STEP_CAPPED: "failed",
+        OperationState.BUDGET_HALTED: "budget_halted",
+        OperationState.TIMED_OUT: "timed_out",
+        OperationState.FAILED_RECONCILE: "reconcile_required",
+    }
+    return WorkerPhaseRecord(
+        result=result_by_state[authority_state],
+        phase=(
+            "step_cap_archived"
+            if authority_state is OperationState.STEP_CAPPED
+            and lease.max_steps is not None
+            and lease.step_index >= lease.max_steps
+            else "terminal_archived"
+        ),
+        worker_id=lease.worker_id,
+        operation_id=lease.operation_id,
+        job_id=lease.job_id,
+        lease_generation=lease.lease_generation,
+        deposit_document_id=deposit.document_id,
+        graph_deliverable_id=(None if graph is None else graph.receipt.deliverable_id),
+        graph_html_sha256=(None if graph is None else graph.receipt.html_sha256),
+        error_code=(
+            "max_steps_reached"
+            if authority_state is OperationState.STEP_CAPPED
+            and lease.max_steps is not None
+            and lease.step_index >= lease.max_steps
+            else None
+        ),
+    )
+
+
 def _recover_terminal(
     runtime: MidnightOilWorkerRuntime,
     *,
@@ -256,80 +378,17 @@ def _recover_terminal(
         worker_id=worker_id,
         step_index=leased.next_step_index,
         lease_generation=leased.lease_generation,
-    )
-    try:
-        deposit = resume_terminal_deposit(
-            job_id,
-            store=runtime.stores.jobs,
-            engagement_store=runtime.stores.engagement_store,
-        )
-        _renew(runtime, recovery_lease, clock_ms=clock_ms)
-        job = get_job(job_id, store=runtime.stores.jobs)
-        if job is None:
-            raise KeyError("terminal recovery lost job details")
-        graph = (
-            resume_terminal_projection(
-                job_id,
-                owner_user_id=owner_user_id,
-                owner_jobs=runtime.stores.owner_jobs,
-                store=runtime.stores.jobs,
-                engagement_store=runtime.stores.engagement_store,
-                graph_db_path=runtime.config.graph_db_path,
-            )
-            if job.step_evidence
+        max_steps=(
+            leased.options["max_steps"]
+            if isinstance(leased.options.get("max_steps"), int)
             else None
-        )
-    except (
-        GraphProjectionConflict,
-        GraphProjectionNotReady,
-        InvalidStoredJobDetails,
-        TerminalDepositInvalid,
-    ) as exc:
-        if not queue.acknowledge_terminal(
-            operation_id=operation_id,
-            worker_id=worker_id,
-            lease_generation=leased.lease_generation,
-            terminal_state="failed_reconcile",
-            completed_at_ms=clock_ms(),
-        ):
-            raise RuntimeError(
-                "terminal recovery quarantine lost its queue fence"
-            ) from exc
-        return WorkerPhaseRecord(
-            result="reconcile_required",
-            phase="terminal_recovery_quarantined",
-            worker_id=worker_id,
-            operation_id=operation_id,
-            job_id=job_id,
-            lease_generation=leased.lease_generation,
-            error_code="terminal_recovery_invalid",
-        )
-    _renew(runtime, recovery_lease, clock_ms=clock_ms)
-    if not queue.acknowledge_terminal(
-        operation_id=operation_id,
-        worker_id=worker_id,
-        lease_generation=leased.lease_generation,
-        terminal_state=_terminal_state(authority.operation_state),
-        completed_at_ms=clock_ms(),
-    ):
-        raise RuntimeError("terminal recovery lost its queue fence")
-    result_by_state: dict[OperationState, WorkerResult] = {
-        OperationState.COMPLETE: "recovered",
-        OperationState.FAILED: "failed",
-        OperationState.BUDGET_HALTED: "budget_halted",
-        OperationState.TIMED_OUT: "timed_out",
-        OperationState.FAILED_RECONCILE: "reconcile_required",
-    }
-    return WorkerPhaseRecord(
-        result=result_by_state[authority.operation_state],
-        phase="terminal_archived",
-        worker_id=worker_id,
-        operation_id=operation_id,
-        job_id=job_id,
-        lease_generation=leased.lease_generation,
-        deposit_document_id=deposit.document_id,
-        graph_deliverable_id=(None if graph is None else graph.receipt.deliverable_id),
-        graph_html_sha256=(None if graph is None else graph.receipt.html_sha256),
+        ),
+    )
+    return _recover_leased_terminal(
+        runtime,
+        lease=recovery_lease,
+        authority_state=authority.operation_state,
+        clock_ms=clock_ms,
     )
 
 
@@ -421,6 +480,7 @@ def _quarantine_lease_validation(
         not in {
             OperationState.COMPLETE,
             OperationState.FAILED,
+            OperationState.STEP_CAPPED,
             OperationState.BUDGET_HALTED,
             OperationState.TIMED_OUT,
             OperationState.FAILED_RECONCILE,
@@ -525,6 +585,7 @@ def run_worker_once(
     if authority.operation_state in {
         OperationState.COMPLETE,
         OperationState.FAILED,
+        OperationState.STEP_CAPPED,
         OperationState.BUDGET_HALTED,
         OperationState.TIMED_OUT,
         OperationState.FAILED_RECONCILE,
@@ -575,6 +636,7 @@ def run_worker_once(
         if refreshed is not None and refreshed.operation_state in {
             OperationState.COMPLETE,
             OperationState.FAILED,
+            OperationState.STEP_CAPPED,
             OperationState.BUDGET_HALTED,
             OperationState.TIMED_OUT,
             OperationState.FAILED_RECONCILE,
@@ -604,6 +666,72 @@ def run_worker_once(
             job_id=queued.job_id,
             worker_id=worker_id,
             now_ms=now_ms,
+        )
+    if lease.max_steps is not None and lease.step_index >= lease.max_steps:
+        cap_authority = runtime.stores.owner_jobs.get_job(
+            owner_user_id=lease.owner_user_id, job_id=lease.job_id
+        )
+        if (
+            cap_authority is None
+            or cap_authority.operation_id != lease.operation_id
+            or cap_authority.operation_state is not OperationState.RUNNING
+        ):
+            raise RuntimeError("step cap lacks matching running authority")
+        cap_now_ms = clock_ms()
+
+        def apply_cap_authority() -> tuple[CompareAndSetResult, bool]:
+            return (
+                runtime.stores.owner_jobs.compare_and_set(
+                    owner_user_id=lease.owner_user_id,
+                    job_id=lease.job_id,
+                    expected_version=cap_authority.state_version,
+                    expected_state=OperationState.RUNNING,
+                    operation_id=lease.operation_id,
+                    next_state=OperationState.STEP_CAPPED,
+                    completed_at_ms=cap_now_ms,
+                ),
+                False,
+            )
+
+        changed = runtime.stores.operation_queue.run_fenced(
+            operation_id=lease.operation_id,
+            worker_id=lease.worker_id,
+            lease_generation=lease.lease_generation,
+            now_ms=cap_now_ms,
+            expected_step_index=lease.step_index,
+            action=apply_cap_authority,
+            renew_expires_at_ms=lambda: clock_ms()
+            + runtime.config.worker_lease_ms,
+        )
+        if not changed.applied:
+            winner = changed.job or runtime.stores.owner_jobs.get_job(
+                owner_user_id=lease.owner_user_id, job_id=lease.job_id
+            )
+            if (
+                winner is None
+                or winner.operation_id != lease.operation_id
+                or winner.operation_state
+                not in {
+                    OperationState.COMPLETE,
+                    OperationState.FAILED,
+                    OperationState.STEP_CAPPED,
+                    OperationState.BUDGET_HALTED,
+                    OperationState.TIMED_OUT,
+                    OperationState.FAILED_RECONCILE,
+                }
+            ):
+                raise RuntimeError("step cap lost authority compare-and-set")
+            return _recover_leased_terminal(
+                runtime,
+                lease=lease,
+                authority_state=winner.operation_state,
+                clock_ms=clock_ms,
+            )
+        return _recover_leased_terminal(
+            runtime,
+            lease=lease,
+            authority_state=OperationState.STEP_CAPPED,
+            clock_ms=clock_ms,
         )
     running_authority = runtime.stores.owner_jobs.get_job(
         owner_user_id=lease.owner_user_id, job_id=lease.job_id
@@ -688,6 +816,7 @@ def run_worker_once(
                 in {
                     OperationState.COMPLETE,
                     OperationState.FAILED,
+                    OperationState.STEP_CAPPED,
                     OperationState.BUDGET_HALTED,
                     OperationState.TIMED_OUT,
                     OperationState.FAILED_RECONCILE,
@@ -761,6 +890,7 @@ def run_worker_once(
                 in {
                     OperationState.COMPLETE,
                     OperationState.FAILED,
+                    OperationState.STEP_CAPPED,
                     OperationState.BUDGET_HALTED,
                     OperationState.TIMED_OUT,
                     OperationState.FAILED_RECONCILE,
@@ -857,6 +987,7 @@ def run_worker_once(
             OperationState.BUDGET_HALTED: "budget_halted",
             OperationState.TIMED_OUT: "timed_out",
             OperationState.FAILED: "failed",
+            OperationState.STEP_CAPPED: "failed",
             OperationState.FAILED_RECONCILE: "reconcile_required",
         }
         return WorkerPhaseRecord(

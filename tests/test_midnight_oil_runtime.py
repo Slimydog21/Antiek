@@ -239,6 +239,10 @@ def test_missing_secret_reports_configuration_without_naming_secret(tmp_path: Pa
         "stop_before_provider",
         "budget_halt",
         "post_action_crash",
+        "max_steps",
+        "max_steps_takeover",
+        "max_steps_detail_crash",
+        "max_steps_stale_fence",
     ],
 )
 def test_api_to_worker_executes_deposits_projects_and_archives_once(
@@ -258,7 +262,17 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     created = client.post(
         "/midnight-oil/create",
         json={
-            "goals": ["Synthesize the seeded evidence."],
+            "goals": (
+                ["Synthesize the seeded evidence.", "Challenge the synthesis."]
+                if mode
+                in {
+                    "max_steps",
+                    "max_steps_takeover",
+                    "max_steps_detail_crash",
+                    "max_steps_stale_fence",
+                }
+                else ["Synthesize the seeded evidence."]
+            ),
             "duration_minutes": 10,
             "model_id": "verified-model",
             "live": True,
@@ -278,7 +292,20 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     queued = client.post(
         "/midnight-oil/run",
         headers={"X-Midnight-Oil-Spend-Consent": consent.json()["token"]},
-        json={"job_id": job_id},
+        json={
+            "job_id": job_id,
+            **(
+                {"max_steps": 1}
+                if mode
+                in {
+                    "max_steps",
+                    "max_steps_takeover",
+                    "max_steps_detail_crash",
+                    "max_steps_stale_fence",
+                }
+                else {}
+            ),
+        },
     )
     assert queued.status_code == 200, queued.text
 
@@ -484,6 +511,103 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
         assert paid.keys == []
         assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
         return
+    if mode in {
+        "max_steps",
+        "max_steps_takeover",
+        "max_steps_detail_crash",
+        "max_steps_stale_fence",
+    }:
+        first = run_worker_once(
+            worker,
+            worker_id="runtime-worker-step-one",
+            embedding_model=_Embedding(),
+            stop_requested=(
+                (lambda: bool(paid.keys))
+                if mode == "max_steps_takeover"
+                else (lambda: False)
+            ),
+        )
+        assert first.result == "deposit_pending"
+        assert len(paid.keys) == 1
+        restarted = build_worker_runtime(path, environ=environment)
+        register_provider(paid)
+        if mode == "max_steps_stale_fence":
+            monkeypatch.setattr(
+                restarted.stores.operation_queue,
+                "run_fenced",
+                lambda **kwargs: (_ for _ in ()).throw(
+                    RuntimeError("worker lease is stale")
+                ),
+            )
+            with pytest.raises(RuntimeError, match="worker lease is stale"):
+                run_worker_once(
+                    restarted,
+                    worker_id="runtime-worker-stale-cap",
+                    embedding_model=_Embedding(),
+                    clock_ms=lambda: 10**18,
+                )
+            authority = restarted.stores.owner_jobs.get_job(
+                owner_user_id="operator-runtime", job_id=job_id
+            )
+            assert authority is not None
+            assert authority.operation_state is OperationState.RUNNING
+            detail = get_job(job_id, store=restarted.stores.jobs)
+            assert detail is not None
+            assert detail.status == "running"
+            assert "max_steps" not in detail.notes.split(" | ")
+            assert len(paid.keys) == 1
+            return
+        if mode == "max_steps_detail_crash":
+            import substrate.midnight_oil.worker_cli as worker_module
+
+            original = worker_module._converge_step_cap_detail
+
+            def crash_before_detail(*args: Any, **kwargs: Any) -> None:
+                del args, kwargs
+                raise RuntimeError("crash before step-cap detail convergence")
+
+            monkeypatch.setattr(
+                worker_module, "_converge_step_cap_detail", crash_before_detail
+            )
+            with pytest.raises(RuntimeError, match="before step-cap detail"):
+                run_worker_once(
+                    restarted,
+                    worker_id="runtime-worker-cap-crash",
+                    embedding_model=_Embedding(),
+                    clock_ms=lambda: 10**18,
+                )
+            monkeypatch.setattr(worker_module, "_converge_step_cap_detail", original)
+        capped = run_worker_once(
+            restarted,
+            worker_id="runtime-worker-step-cap",
+            embedding_model=_Embedding(),
+            clock_ms=lambda: 10**18 + 100_000,
+        )
+        assert capped.result == "failed"
+        assert capped.phase == "step_cap_archived"
+        assert capped.error_code == "max_steps_reached"
+        assert capped.deposit_document_id
+        assert capped.graph_deliverable_id
+        assert len(paid.keys) == 1
+        authority = restarted.stores.owner_jobs.get_job(
+            owner_user_id="operator-runtime", job_id=job_id
+        )
+        assert authority is not None
+        assert authority.operation_state is OperationState.STEP_CAPPED
+        detail = get_job(job_id, store=restarted.stores.jobs)
+        assert detail is not None
+        assert detail.status == "failed"
+        assert detail.notes.split(" | ").count("max_steps") == 1
+        assert len(detail.step_evidence) == 1
+        assert restarted.stores.operation_queue.next_claimable(now_ms=10**18) is None
+        with sqlite3.connect(restarted.stores.operation_queue.path) as connection:
+            terminal = connection.execute(
+                "SELECT terminal_state FROM midnight_oil_operation_terminal "
+                "WHERE operation_id = ?",
+                (queued.json()["operation_id"],),
+            ).fetchone()
+        assert terminal == ("failed",)
+        return
 
     def execute(worker_id: str):  # type: ignore[no-untyped-def]
         return run_worker_once(
@@ -629,6 +753,85 @@ def test_terminal_failure_without_paid_evidence_deposits_and_archives(
     assert result.deposit_document_id
     assert result.graph_deliverable_id is None
     assert runtime.stores.operation_queue.next_claimable(now_ms=5) is None
+
+
+def test_terminal_failure_at_cap_boundary_is_not_relabelled_as_step_cap(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    job = create_job(
+        ["An unrelated failure must retain its provenance."],
+        10,
+        store=runtime.stores.jobs,
+        job_id="unrelated-failed-job",
+        asset_id="unrelated-failed-asset",
+    )
+    put_job_state(
+        replace(job, status="failed", notes="provider_failure"),
+        store=runtime.stores.jobs,
+    )
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="operator-runtime",
+            job_id=job.job_id,
+            state_version=4,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="unrelated-failed-operation",
+            operation_state=OperationState.FAILED,
+            dispatch_started_at_ms=3,
+            dispatched_at_ms=None,
+            completed_at_ms=4,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="unrelated-failed-operation",
+        owner_user_id="operator-runtime",
+        job_id=job.job_id,
+        enqueued_at_ms=1,
+        options={
+            "max_steps": 1,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    leased, won = runtime.stores.operation_queue.lease(
+        operation_id="unrelated-failed-operation",
+        worker_id="expired-worker",
+        leased_at_ms=2,
+        lease_expires_at_ms=3,
+    )
+    assert won
+    runtime.stores.operation_queue.run_fenced(
+        operation_id=leased.operation_id,
+        worker_id="expired-worker",
+        lease_generation=leased.lease_generation,
+        now_ms=2,
+        expected_step_index=0,
+        action=lambda: (None, True),
+    )
+
+    recovered = run_worker_once(
+        runtime,
+        worker_id="recovery-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 4,
+    )
+
+    assert recovered.result == "failed"
+    assert recovered.phase == "terminal_archived"
+    assert recovered.error_code is None
+    restored = get_job(job.job_id, store=runtime.stores.jobs)
+    assert restored is not None
+    assert restored.notes.startswith("provider_failure")
+    assert "max_steps" not in restored.notes.split(" | ")
 
 
 def test_validation_quarantine_race_recovers_concurrently_terminal_work(
