@@ -91,6 +91,9 @@ def register_recursive_twin_presentation_weekly_source_attach_write_twin_fullscr
 
 
 __all__ = [
+    "TwinBody",
+    "PresentationBody",
+    "WeeklyPackBody",
     "recursive_twin_presentation_weekly_source_attach_write_twin_fullscreen_draft_compose_router",
     "register_recursive_twin_presentation_weekly_source_attach_write_twin_fullscreen_draft_compose_routes",
 ]
