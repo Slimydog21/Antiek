@@ -6,7 +6,7 @@ from __future__ import annotations
 import json
 import multiprocessing
 import os
-import secrets
+import re
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
@@ -19,6 +19,7 @@ CANDIDATES_ENV = "ANTIEK_BENCH_SMOKE_MODELS_JSON"
 CAP_ENV = "ANTIEK_BENCH_SMOKE_CAP_USD"
 TIMEOUT_ENV = "ANTIEK_BENCH_SMOKE_TIMEOUT_S"
 JOURNAL_ENV = "ANTIEK_BENCH_SMOKE_JOURNAL"
+PROOF_ID_ENV = "ANTIEK_BENCH_SMOKE_PROOF_ID"
 MAX_CAP = Decimal("0.10")
 MAX_TIMEOUT_S = 30.0
 SMOKE_PROMPT = "Return exactly: Antiek live smoke acknowledged."
@@ -55,9 +56,7 @@ class SmokeResult:
 
 
 class SmokeCaller(Protocol):
-    def __call__(
-        self, candidate: SmokeCandidate, settings: SmokeSettings
-    ) -> SmokeResult: ...
+    def __call__(self, candidate: SmokeCandidate, settings: SmokeSettings) -> SmokeResult: ...
 
 
 ProviderFactory = Callable[[], SmokeCaller]
@@ -109,16 +108,16 @@ def _settings(environ: Mapping[str, str]) -> SmokeSettings:
         candidates.append(candidate)
     if len({(row.provider_id, row.model_id) for row in candidates}) != 2:
         raise ValueError("smoke candidates must be distinct")
-    journal = Path(
-        environ.get(JOURNAL_ENV, "~/.antiek/bench-live-smoke/calls.jsonl")
-    ).expanduser()
+    journal = Path(environ.get(JOURNAL_ENV, "~/.antiek/bench-live-smoke/calls.jsonl")).expanduser()
     settings = SmokeSettings(
         candidates=(candidates[0], candidates[1]),
         cap_usd=cap,
         timeout_s=timeout,
         journal_path=journal,
-        run_id=secrets.token_hex(8),
+        run_id=(environ.get(PROOF_ID_ENV) or "").strip(),
     )
+    if re.fullmatch(r"[A-Za-z0-9._-]{1,64}", settings.run_id) is None:
+        raise ValueError(f"{PROOF_ID_ENV} must be an explicit bounded proof identity")
     if sum((_reservation(row, settings) for row in settings.candidates), Decimal("0")) > cap:
         raise ValueError("two-call worst-case reservation exceeds approved cap")
     return settings
@@ -160,9 +159,7 @@ def default_provider_factory() -> SmokeCaller:
             "synthesizer",
             investigation_id="antiek-bench-live-smoke",
             max_tokens=settings.max_output_tokens,
-            config=DispatchConfig(
-                role_tiers={"synthesizer": tier.name}, tiers={tier.name: tier}
-            ),
+            config=DispatchConfig(role_tiers={"synthesizer": tier.name}, tiers={tier.name: tier}),
         )
         return SmokeResult(
             provider_id=result.provider,
@@ -205,9 +202,15 @@ def run_smoke(settings: SmokeSettings, caller: SmokeCaller) -> SmokeSummary:
             return value
 
     journal = Journal(settings.journal_path)
-    runner = LiveCallRunner(journal, HardBudget(settings.cap_usd, journal), ProcessTimeout())
+    wedge_id = f"manual-live-smoke-v1-{settings.run_id}"
+    runner = LiveCallRunner(
+        journal,
+        HardBudget(settings.cap_usd, journal, wedge_id=wedge_id),
+        ProcessTimeout(),
+    )
     rows = []
     for candidate in settings.candidates:
+
         def invoke(current: SmokeCandidate = candidate) -> ProviderResult:
             result = caller(current, settings)
             return ProviderResult(
@@ -223,7 +226,7 @@ def run_smoke(settings: SmokeSettings, caller: SmokeCaller) -> SmokeSummary:
 
         rows.append(
             runner.execute(
-                wedge_id=f"manual-live-smoke-v1-{settings.run_id}",
+                wedge_id=wedge_id,
                 week_id="smoke-W01",
                 suite_version="smoke-v1",
                 requested_provider=candidate.provider_id,
@@ -240,9 +243,7 @@ def run_smoke(settings: SmokeSettings, caller: SmokeCaller) -> SmokeSummary:
         "models": [row.requested_model for row in rows],
         "statuses": [row.status for row in rows],
         "receipt_ids": [row.route_receipt_id for row in rows],
-        "aggregate_actual_spend_usd": str(
-            sum((row.cost_usd for row in rows), Decimal("0"))
-        ),
+        "aggregate_actual_spend_usd": str(sum((row.cost_usd for row in rows), Decimal("0"))),
         "cap_usd": str(settings.cap_usd),
     }
 

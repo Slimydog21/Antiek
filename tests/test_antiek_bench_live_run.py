@@ -6,6 +6,7 @@ from decimal import Decimal
 import pytest
 
 from substrate.antiek_bench.live import (
+    HardBudget,
     Journal,
     LiveCallRecord,
     LiveWedgeConfig,
@@ -88,7 +89,9 @@ def test_two_model_wedge_is_fallback_free_receipted_and_replayable(tmp_path) -> 
     }
     assert all(run.mean_score == 1 for run in first)
     assert len(journal.replay()) == 16
-    assert all(row.route_receipt_id.startswith("evt-") for row in journal.replay().values())
+    assert all(
+        row.route_receipt_id.startswith("receipt_sha256:") for row in journal.replay().values()
+    )
     assert all(row.status == "ok" for row in journal.replay().values())
     assert all(run.get("mock_run") is False for run in store.list_runs())
     assert all(run["measurement"]["completed_count"] == 8 for run in store.list_runs())
@@ -188,7 +191,7 @@ def test_timeouts_are_zero_scored_and_separately_measured(tmp_path) -> None:
     assert all(run["measurement"]["failure_count"] == 0 for run in store.list_runs())
 
 
-def test_cap_exhaustion_fails_before_dispatch(tmp_path) -> None:
+def test_cap_exhaustion_is_explicit_zero_charge_evidence(tmp_path) -> None:
     base = wedge()
     too_small = LiveWedgeConfig(
         week_id=base.week_id,
@@ -204,17 +207,22 @@ def test_cap_exhaustion_fails_before_dispatch(tmp_path) -> None:
         called = True
         raise AssertionError("must not dispatch")
 
-    with pytest.raises(ValueError, match="budget exceeded"):
-        run_live_wedge(
-            config=too_small,
-            suite=suite(),
-            store=InMemoryBenchStore(),
-            journal=Journal(tmp_path / "live.jsonl"),
-            timeout_runner=DirectTimeout(),
-            dispatch_fn=dispatch,
-            live_enabled=True,
-        )
+    store = InMemoryBenchStore()
+    journal = Journal(tmp_path / "live.jsonl")
+    runs = run_live_wedge(
+        config=too_small,
+        suite=suite(),
+        store=store,
+        journal=journal,
+        timeout_runner=DirectTimeout(),
+        dispatch_fn=dispatch,
+        live_enabled=True,
+    )
     assert called is False
+    assert all(run.mean_score == 0 for run in runs)
+    assert all(row.status == "skipped_budget" for row in journal.replay().values())
+    assert HardBudget(too_small.cap_usd, journal).total_charged == 0
+    assert all(run["measurement"]["budget_skipped_count"] == 8 for run in store.list_runs())
 
 
 def test_maximum_cost_covers_cache_creation_premium() -> None:

@@ -252,19 +252,21 @@ def test_exact_manifest_accepts_raw_ab_and_ba_and_keeps_layers_separate(tmp_path
         task.judged and "cross_item_winner_disagreement" not in task.judged.suppression_reasons
         for task in verdict.task_verdicts
     )
-    assert verdict.schema_version == 2
+    assert verdict.schema_version == 3
     assert verdict.auto_promotion is False
     assert verdict.operator_acknowledgment_required is True
     payload = verdict.to_dict()
     assert "composite" not in json.dumps(payload).lower()
 
 
-def test_legacy_payload_shape_and_schema_remain_v1(tmp_path: Path) -> None:
+def test_proxy_payload_uses_v3_approval_contract_without_judged_fields(
+    tmp_path: Path,
+) -> None:
     verdict = _build(tmp_path)
     payload = verdict.to_dict()
-    assert payload["schema_version"] == 1
+    assert payload["schema_version"] == 3
     assert "judged_manifest_digest" not in payload
-    assert "operator_acknowledgment_required" not in payload
+    assert payload["operator_acknowledgment_required"] is True
     assert all("judged" not in task for task in payload["task_verdicts"])
 
 

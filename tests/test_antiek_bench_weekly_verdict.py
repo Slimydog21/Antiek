@@ -96,6 +96,11 @@ def journals(
         def model_select(self, **kwargs):  # type: ignore[no-untyped-def]
             return NDShadowResponse("model-a", "session", 5)
 
+    class DirectShadowTimeout:
+        def run(self, fn, timeout_s):  # type: ignore[no-untyped-def]
+            del timeout_s
+            return fn()
+
     shadows = NDShadowJournal(tmp_path / "shadow.jsonl")
     collect_nd_shadow(
         config=NDShadowConfig(
@@ -108,6 +113,7 @@ def journals(
         client=ShadowClient(),
         journal=shadows,
         environ={"ANTIEK_NOTDIAMOND": "1"},
+        timeout_runner=DirectShadowTimeout(),
     )
     return calls, shadows
 
@@ -154,7 +160,45 @@ def test_incomplete_class_suppresses_winner(tmp_path: Path) -> None:
     book = next(row for row in verdict.task_verdicts if row.task_class == "book_qa")
     assert book.bench_winner is None
     assert book.winner_suppressed_reason == "incomplete_or_budget_truncated_class"
-    assert next(row for row in book.models if row.model_id == "model-b").keyword_proxy_quality is None
+    assert (
+        next(row for row in book.models if row.model_id == "model-b").keyword_proxy_quality is None
+    )
+
+
+def test_zero_call_candidate_still_produces_honest_truncated_verdict(
+    tmp_path: Path,
+) -> None:
+    calls = Journal(tmp_path / "calls.jsonl")
+    definition = suite()
+    for item in definition.items:
+        add_call(
+            calls,
+            model="model-a",
+            task=item.task_class,
+            item=item.item_id,
+            prompt=item.prompt,
+            score="1",
+            latency=10,
+        )
+    verdict = build_weekly_verdict(
+        week_id="2026-W28",
+        wedge_id="wedge",
+        suite=definition,
+        call_journal=calls,
+        shadow_journal=NDShadowJournal(tmp_path / "shadows.jsonl"),
+        operator_driver="model-a",
+        budget_cap_usd=Decimal("1"),
+        candidate_model_ids=("model-a", "model-b"),
+    )
+    assert all(row.bench_winner is None for row in verdict.task_verdicts)
+    assert all(
+        row.winner_suppressed_reason == "incomplete_or_budget_truncated_class"
+        for row in verdict.task_verdicts
+    )
+    assert all(
+        next(model for model in row.models if model.model_id == "model-b").sample_size == 0
+        for row in verdict.task_verdicts
+    )
 
 
 def test_partial_outage_is_visible_and_cannot_win(tmp_path: Path) -> None:
@@ -169,12 +213,12 @@ def test_partial_outage_is_visible_and_cannot_win(tmp_path: Path) -> None:
         budget_cap_usd=Decimal("1"),
     )
     distill = next(row for row in verdict.task_verdicts if row.task_class == "distill")
-    assert distill.bench_winner is None
-    assert distill.winner_suppressed_reason == "incomplete_or_budget_truncated_class"
+    assert distill.bench_winner == "model-a"
+    assert distill.winner_suppressed_reason is None
     model_b = next(row for row in distill.models if row.model_id == "model-b")
     assert model_b.failure_count == 1
     assert model_b.availability == 0.5
-    assert model_b.keyword_proxy_quality is None
+    assert model_b.keyword_proxy_quality == 0.25
 
 
 def test_over_cap_evidence_suppresses_every_winner(tmp_path: Path) -> None:
@@ -191,8 +235,7 @@ def test_over_cap_evidence_suppresses_every_winner(tmp_path: Path) -> None:
     assert verdict.budget_over_cap is True
     assert all(row.bench_winner is None for row in verdict.task_verdicts)
     assert all(
-        row.winner_suppressed_reason == "budget_cap_exceeded"
-        for row in verdict.task_verdicts
+        row.winner_suppressed_reason == "budget_cap_exceeded" for row in verdict.task_verdicts
     )
 
 
@@ -211,9 +254,7 @@ def test_shadow_variant_must_match_exact_suite_item(tmp_path: Path) -> None:
         tradeoff="quality",
     )
     assert shadows.claim(NDShadowRecord(**base, status="pending"))
-    assert shadows.settle(
-        NDShadowRecord(**base, status="ok", recommendation="model-b")
-    )
+    assert shadows.settle(NDShadowRecord(**base, status="ok", recommendation="model-b"))
     verdict = build_weekly_verdict(
         week_id="2026-W28",
         wedge_id="wedge",
@@ -223,9 +264,7 @@ def test_shadow_variant_must_match_exact_suite_item(tmp_path: Path) -> None:
         operator_driver="model-a",
         budget_cap_usd=Decimal("1"),
     )
-    synthesize = next(
-        row for row in verdict.task_verdicts if row.task_class == "synthesize"
-    )
+    synthesize = next(row for row in verdict.task_verdicts if row.task_class == "synthesize")
     assert synthesize.nd_sample_size == 2
     assert synthesize.nd_modal_suggestion == "model-a"
 
@@ -272,9 +311,10 @@ def test_html_is_self_contained_redacted_and_does_not_mutate_suite(tmp_path: Pat
     assert "private distill" not in rendered
     assert "application/pdf" not in rendered.lower()
     assert "auto_promotion=false" in rendered
-    assert "operator_acknowledgment_required=false" in rendered
+    assert "operator_acknowledgment_required=true" in rendered
     parser = PayloadParser()
     parser.feed(rendered)
     payload = json.loads(parser.payload)
     assert payload["auto_promotion"] is False
+    assert payload["operator_acknowledgment_required"] is True
     assert payload["input_digest"].startswith("sha256:")

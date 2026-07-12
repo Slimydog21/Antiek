@@ -14,6 +14,14 @@ from .journal import Journal, LiveCallRecord
 T = TypeVar("T")
 
 
+def opaque_route_receipt_id(receipt_id: str) -> str:
+    """Keep dispatch linkage without persisting a boundary-provided identifier."""
+    cleaned = receipt_id.strip()
+    if not cleaned:
+        return ""
+    return "receipt_sha256:" + hashlib.sha256(cleaned.encode()).hexdigest()
+
+
 class TimeoutRunner(Protocol):
     def run(self, fn: Callable[[], T], timeout_s: float) -> T: ...
 
@@ -89,7 +97,11 @@ class LiveCallRunner:
             reserved_usd=maximum,
             prompt_hash=prompt_hash,
         )
-        if not self._journal.reserve_within_cap(reservation, self._budget.cap_usd):
+        if not self._journal.reserve_within_cap(
+            reservation,
+            self._budget.cap_usd,
+            scope_wedge_id=self._budget.wedge_id,
+        ):
             previous = self._journal.lookup(reservation.call_id)
             if previous is not None:
                 return previous
@@ -117,13 +129,11 @@ class LiveCallRunner:
                 cost_usd=result.cost_usd,
                 latency_ms=result.latency_ms,
                 response_hash=hashlib.sha256(result.response_text.encode()).hexdigest(),
-                route_receipt_id=result.route_receipt_id,
+                route_receipt_id=opaque_route_receipt_id(result.route_receipt_id),
                 keyword_score=result.keyword_score,
                 hit_keywords=result.hit_keywords,
                 failure_text=(
-                    "provider measurement contract breached"
-                    if contract_breached
-                    else ""
+                    "provider measurement contract breached" if contract_breached else ""
                 ),
             )
         except TimeoutError:

@@ -5,15 +5,17 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import multiprocessing
 import os
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TypeVar, cast
 
 ANTIEK_NOTDIAMOND_ENV = "ANTIEK_NOTDIAMOND"
 ShadowStatus = Literal["pending", "ok", "failed", "timeout"]
+T = TypeVar("T")
 
 
 class NDShadowJournalCorruptionError(RuntimeError):
@@ -38,6 +40,47 @@ class NDShadowClient(Protocol):
     ) -> NDShadowResponse: ...
 
 
+class ShadowTimeoutRunner(Protocol):
+    def run(self, fn: Callable[[], T], timeout_s: float) -> T: ...
+
+
+def _invoke_shadow_child(fn: Callable[[], object], result: object) -> None:
+    try:
+        result.put((True, fn()))  # type: ignore[attr-defined]
+    except BaseException as exc:
+        result.put((False, type(exc).__name__))  # type: ignore[attr-defined]
+
+
+class ProcessShadowTimeout:
+    """Terminate advisory work before returning a timeout settlement."""
+
+    def run(self, fn: Callable[[], T], timeout_s: float) -> T:
+        if "fork" not in multiprocessing.get_all_start_methods():
+            raise RuntimeError("NotDiamond shadow requires killable process isolation")
+        context = multiprocessing.get_context("fork")
+        result = context.Queue(maxsize=1)
+        worker = context.Process(target=_invoke_shadow_child, args=(fn, result))
+        worker.start()
+        worker.join(timeout_s)
+        if worker.is_alive():
+            worker.terminate()
+            worker.join(2)
+            if worker.is_alive():
+                worker.kill()
+                worker.join()
+            raise TimeoutError("NotDiamond shadow timed out")
+        if worker.exitcode != 0:
+            raise RuntimeError("NotDiamond shadow process failed")
+        ok, value = result.get(timeout=1)
+        if not ok:
+            if value == "KeyboardInterrupt":
+                raise KeyboardInterrupt
+            if value == "TimeoutError":
+                raise TimeoutError
+            raise RuntimeError("NotDiamond shadow client failed")
+        return cast(T, value)
+
+
 @dataclass(frozen=True)
 class NDShadowConfig:
     enabled: bool
@@ -46,6 +89,7 @@ class NDShadowConfig:
     candidates: tuple[str, str]
     tradeoff: str = "quality"
     pending_ttl_ms: int = 300_000
+    timeout_s: float = 10.0
 
     def __post_init__(self) -> None:
         if len(self.candidates) != 2 or len(set(self.candidates)) != 2:
@@ -58,6 +102,8 @@ class NDShadowConfig:
             raise ValueError("tradeoff is required")
         if self.pending_ttl_ms <= 0:
             raise ValueError("pending_ttl_ms must be positive")
+        if not 0 < self.timeout_s <= 60:
+            raise ValueError("timeout_s must be between zero and 60 seconds")
 
 
 @dataclass(frozen=True)
@@ -192,9 +238,7 @@ class NDShadowJournal:
             chunks.append(chunk)
 
     @classmethod
-    def _repair_and_fold_locked(
-        cls, fd: int
-    ) -> dict[str, NDShadowRecord]:
+    def _repair_and_fold_locked(cls, fd: int) -> dict[str, NDShadowRecord]:
         raw = cls._read_fd(fd)
         events = cls._decode(raw)
         if raw and not raw.endswith(b"\n"):
@@ -274,9 +318,7 @@ def _truthy(environ: Mapping[str, str]) -> bool:
     return raw not in {"", "0", "false", "off", "no", "disabled"}
 
 
-def _shadow_id(
-    config: NDShadowConfig, item_id: str, task_class: str, prompt_hash: str
-) -> str:
+def _shadow_id(config: NDShadowConfig, item_id: str, task_class: str, prompt_hash: str) -> str:
     material = json.dumps(
         [
             config.week_id,
@@ -304,6 +346,7 @@ def collect_nd_shadow(
     journal: NDShadowJournal,
     environ: Mapping[str, str] | None = None,
     now_ms: int | None = None,
+    timeout_runner: ShadowTimeoutRunner | None = None,
 ) -> tuple[NDShadowRecord, ...]:
     """Collect inert recommendations; failures never affect benchmark execution."""
     env = os.environ if environ is None else environ
@@ -311,6 +354,7 @@ def collect_nd_shadow(
         return ()
     records: list[NDShadowRecord] = []
     current_ms = int(time.time() * 1000) if now_ms is None else now_ms
+    timeout = timeout_runner or ProcessShadowTimeout()
     for item_id, task_class, prompt in items:
         prompt_hash = "sha256:" + hashlib.sha256(prompt.encode()).hexdigest()
         item_id_hash = "sha256:" + hashlib.sha256(item_id.encode()).hexdigest()
@@ -342,13 +386,17 @@ def collect_nd_shadow(
                     existing = journal.lookup(pending.shadow_id) or abandoned
                 records.append(existing)
             continue
-        try:
-            response = client.model_select(
-                messages=({"role": "user", "content": prompt},),
+
+        def select(current_prompt: str = prompt) -> NDShadowResponse:
+            return client.model_select(
+                messages=({"role": "user", "content": current_prompt},),
                 llm_providers=config.candidates,
                 hash_content=True,
                 tradeoff=config.tradeoff,
             )
+
+        try:
+            response = timeout.run(select, config.timeout_s)
             recommendation = response.recommendation.strip()
             status: ShadowStatus = "ok"
             failure_code = ""
@@ -365,13 +413,9 @@ def collect_nd_shadow(
                 failure_code=failure_code,
             )
         except TimeoutError:
-            record = NDShadowRecord(
-                **base, status="timeout", failure_code="notdiamond_timeout"
-            )
+            record = NDShadowRecord(**base, status="timeout", failure_code="notdiamond_timeout")
         except Exception:
-            record = NDShadowRecord(
-                **base, status="failed", failure_code="notdiamond_failure"
-            )
+            record = NDShadowRecord(**base, status="failed", failure_code="notdiamond_failure")
         if journal.settle(record):
             records.append(record)
         else:

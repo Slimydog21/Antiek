@@ -17,7 +17,9 @@ from substrate.antiek_bench.live.nd_shadow import (
     NDShadowJournalCorruptionError,
     NDShadowRecord,
     NDShadowResponse,
-    collect_nd_shadow,
+)
+from substrate.antiek_bench.live.nd_shadow import (
+    collect_nd_shadow as _collect_nd_shadow,
 )
 from substrate.antiek_bench.store import InMemoryBenchStore
 from substrate.model_registration import (
@@ -37,6 +39,17 @@ class FakeClient:
     def model_select(self, **kwargs):  # type: ignore[no-untyped-def]
         self.calls.append(kwargs)
         return NDShadowResponse(self.recommendation, "session-1", 19)
+
+
+class DirectShadowTimeout:
+    def run(self, fn, timeout_s):  # type: ignore[no-untyped-def]
+        del timeout_s
+        return fn()
+
+
+def collect_nd_shadow(**kwargs):  # type: ignore[no-untyped-def]
+    kwargs.setdefault("timeout_runner", DirectShadowTimeout())
+    return _collect_nd_shadow(**kwargs)
 
 
 def config(enabled: bool = True) -> NDShadowConfig:
@@ -60,13 +73,16 @@ def test_double_gate_makes_zero_calls_and_writes(tmp_path: Path) -> None:
     for enabled, environ in ((False, {"ANTIEK_NOTDIAMOND": "1"}), (True, {})):
         client = FakeClient()
         journal = NDShadowJournal(tmp_path / f"{enabled}.jsonl")
-        assert collect_nd_shadow(
-            config=config(enabled),
-            items=(("item", "distill", "private prompt"),),
-            client=client,
-            journal=journal,
-            environ=environ,
-        ) == ()
+        assert (
+            collect_nd_shadow(
+                config=config(enabled),
+                items=(("item", "distill", "private prompt"),),
+                client=client,
+                journal=journal,
+                environ=environ,
+            )
+            == ()
+        )
         assert client.calls == []
         assert journal.list_records() == []
 
@@ -133,6 +149,33 @@ def test_failure_timeout_and_invalid_choice_are_nonfatal_and_bounded(tmp_path: P
     )[0]
     assert invalid.status == "failed"
     assert invalid.recommendation == ""
+
+
+def test_blocking_shadow_client_is_actually_time_bounded(tmp_path: Path) -> None:
+    class BlockingClient:
+        def model_select(self, **kwargs):  # type: ignore[no-untyped-def]
+            del kwargs
+            time.sleep(0.2)
+            return NDShadowResponse("model-a", "late", 200)
+
+    bounded = NDShadowConfig(
+        enabled=True,
+        week_id="2026-W28",
+        suite_version="suite-live-v1",
+        candidates=("model-a", "model-b"),
+        timeout_s=0.01,
+    )
+    started = time.monotonic()
+    record = _collect_nd_shadow(
+        config=bounded,
+        items=(("item", "distill", "prompt"),),
+        client=BlockingClient(),
+        journal=NDShadowJournal(tmp_path / "blocking.jsonl"),
+        environ={"ANTIEK_NOTDIAMOND": "1"},
+    )[0]
+    assert time.monotonic() - started < 0.1
+    assert record.status == "timeout"
+    assert record.failure_code == "notdiamond_timeout"
 
 
 def test_untrusted_session_identifier_is_hashed(tmp_path: Path) -> None:

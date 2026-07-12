@@ -94,9 +94,7 @@ class LiveCallRecord:
         data = asdict(self)
         data["reserved_usd"] = str(self.reserved_usd)
         data["cost_usd"] = str(self.cost_usd)
-        data["keyword_score"] = (
-            str(self.keyword_score) if self.keyword_score is not None else None
-        )
+        data["keyword_score"] = str(self.keyword_score) if self.keyword_score is not None else None
         data["call_id"] = self.call_id
         return data
 
@@ -107,9 +105,7 @@ class LiveCallRecord:
         values["reserved_usd"] = Decimal(str(values["reserved_usd"]))
         values["cost_usd"] = Decimal(str(values.get("cost_usd", "0")))
         raw_score = values.get("keyword_score")
-        values["keyword_score"] = (
-            Decimal(str(raw_score)) if raw_score is not None else None
-        )
+        values["keyword_score"] = Decimal(str(raw_score)) if raw_score is not None else None
         values["hit_keywords"] = tuple(values.get("hit_keywords") or ())
         record = cls(**values)
         if stored_id != record.call_id:
@@ -142,6 +138,22 @@ def _validate_record(record: LiveCallRecord) -> None:
         raise ValueError("keyword_score must be between zero and one")
     if record.status == "reserved" and record.cost_usd:
         raise ValueError("a reservation cannot have realized cost")
+    if record.status == "skipped_budget" and (
+        record.cost_usd
+        or record.actual_provider
+        or record.actual_model
+        or record.prompt_tokens
+        or record.completion_tokens
+    ):
+        raise ValueError("a budget-skipped call cannot contain provider effects")
+
+
+def charged_cost(record: LiveCallRecord) -> Decimal:
+    if record.status == "skipped_budget":
+        return Decimal("0")
+    if record.status == "ok":
+        return record.cost_usd
+    return max(record.reserved_usd, record.cost_usd)
 
 
 class Journal:
@@ -156,13 +168,26 @@ class Journal:
         return self._path
 
     @staticmethod
+    def _write_all(fd: int, payload: bytes) -> None:
+        view = memoryview(payload)
+        written = 0
+        while written < len(view):
+            count = os.write(fd, view[written:])
+            if count <= 0:
+                raise OSError("benchmark journal write made no progress")
+            written += count
+
+    @staticmethod
     def _fold(events: list[LiveCallRecord]) -> dict[str, LiveCallRecord]:
         records: dict[str, LiveCallRecord] = {}
         phases: dict[str, set[str]] = {}
         for event in events:
             phase = "terminal" if event.is_terminal else "reserved"
             seen = phases.setdefault(event.call_id, set())
-            if phase in seen or (phase == "terminal" and "reserved" not in seen):
+            standalone_skip = event.status == "skipped_budget" and not seen
+            if phase in seen or (
+                phase == "terminal" and "reserved" not in seen and not standalone_skip
+            ):
                 raise JournalCorruptionError(f"invalid event sequence for {event.call_id}")
             seen.add(phase)
             records[event.call_id] = event
@@ -215,22 +240,30 @@ class Journal:
                 valid_end = raw.rfind(b"\n") + 1
                 os.ftruncate(fd, valid_end)
             current = self._fold(events).get(record.call_id)
-            if current is None and record.status != "reserved":
+            if current is None and record.status not in {"reserved", "skipped_budget"}:
                 raise ValueError("terminal event requires a durable reservation")
             if current is not None and (current.is_terminal or record.status == "reserved"):
                 raise ValueError(f"duplicate event for call_id: {record.call_id}")
             line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":"))
-            os.write(fd, (line + "\n").encode())
+            self._write_all(fd, (line + "\n").encode())
             os.fsync(fd)
         finally:
             fcntl.flock(fd, fcntl.LOCK_UN)
             os.close(fd)
 
-    def reserve_within_cap(self, record: LiveCallRecord, cap_usd: Decimal) -> bool:
+    def reserve_within_cap(
+        self,
+        record: LiveCallRecord,
+        cap_usd: Decimal,
+        *,
+        scope_wedge_id: str | None = None,
+    ) -> bool:
         """Atomically admit and persist a reservation under a hard cap."""
         _validate_record(record)
         if record.status != "reserved":
             raise ValueError("reserve_within_cap requires a reservation")
+        if scope_wedge_id is not None and scope_wedge_id != record.wedge_id:
+            raise ValueError("budget scope does not match reservation wedge")
         fd = os.open(str(self._path), os.O_RDWR | os.O_APPEND | os.O_CREAT, 0o600)
         try:
             fcntl.flock(fd, fcntl.LOCK_EX)
@@ -244,17 +277,26 @@ class Journal:
                 return False
             charged = sum(
                 (
-                    event.cost_usd
-                    if event.status == "ok"
-                    else max(event.reserved_usd, event.cost_usd)
+                    charged_cost(event)
                     for event in current.values()
+                    if scope_wedge_id is None or event.wedge_id == scope_wedge_id
                 ),
                 Decimal("0"),
             )
             if charged + record.reserved_usd > cap_usd:
+                skipped = LiveCallRecord(
+                    **{
+                        **record.__dict__,
+                        "status": "skipped_budget",
+                        "failure_text": "approved budget unavailable",
+                    }
+                )
+                line = json.dumps(skipped.to_dict(), sort_keys=True, separators=(",", ":"))
+                self._write_all(fd, (line + "\n").encode())
+                os.fsync(fd)
                 return False
             line = json.dumps(record.to_dict(), sort_keys=True, separators=(",", ":"))
-            os.write(fd, (line + "\n").encode())
+            self._write_all(fd, (line + "\n").encode())
             os.fsync(fd)
             return True
         finally:

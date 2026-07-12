@@ -22,12 +22,13 @@ from ..judged.rubric import rubric_for
 from ..judged.runner import JUDGE_POLICY_VERSION
 from ..judged.verdict import VerdictPolicy, build_qualitative_verdict
 from ..suite import SuiteDefinition, TaskClass
-from .journal import Journal, LiveCallRecord
+from .journal import Journal, LiveCallRecord, charged_cost
 from .nd_shadow import NDShadowJournal
 from .wedge_config import REQUIRED_TASK_CLASSES, validate_live_suite
 
 JUDGED_JOIN_MANIFEST_SCHEMA_VERSION = 1
-JUDGED_WEEKLY_SCHEMA_VERSION = 2
+WEEKLY_VERDICT_SCHEMA_VERSION = 3
+JUDGED_WEEKLY_SCHEMA_VERSION = WEEKLY_VERDICT_SCHEMA_VERSION
 NOT_MEASURED = "NOT MEASURED"
 _SHA256_REFERENCE = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
@@ -218,13 +219,12 @@ class WeeklyVerdict:
     operator_acknowledgment_required: bool = True
     auto_promotion: bool = False
     view_format: str = "html"
-    schema_version: int = 1
+    schema_version: int = WEEKLY_VERDICT_SCHEMA_VERSION
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
-        if self.schema_version == 1:
+        if self.judged_manifest_digest is None:
             payload.pop("judged_manifest_digest")
-            payload.pop("operator_acknowledgment_required")
             for task in payload["task_verdicts"]:
                 task.pop("judged")
         return payload
@@ -247,12 +247,20 @@ def _metrics(
     complete = (
         len(rows) == expected
         and actual_items == expected_items
-        and all(row.status == "ok" and row.keyword_score is not None for row in rows)
+        and all(
+            row.status in {"ok", "failed", "timeout"}
+            and (row.status != "ok" or row.keyword_score is not None)
+            for row in rows
+        )
     )
     quality = None
     if complete:
         quality = round(
-            sum(float(row.keyword_score or Decimal("0")) for row in rows) / expected,
+            sum(
+                float(row.keyword_score or Decimal("0")) if row.status == "ok" else 0.0
+                for row in rows
+            )
+            / expected,
             6,
         )
     latencies = [row.latency_ms for row in successes]
@@ -282,6 +290,7 @@ def build_weekly_verdict(
     shadow_journal: NDShadowJournal,
     operator_driver: str | None,
     budget_cap_usd: Decimal,
+    candidate_model_ids: tuple[str, str] | None = None,
     judged_manifest: JudgedJoinManifest | None = None,
     judged_records: Iterable[EvidenceRecord] = (),
     judged_anchors: AnchorSet | None = None,
@@ -298,8 +307,12 @@ def build_weekly_verdict(
         and row.suite_version == suite.suite_version
         and row.wedge_id == wedge_id
     ]
-    model_ids = tuple(sorted({row.requested_model for row in records}))
-    if len(model_ids) != 2:
+    model_ids = (
+        tuple(sorted(candidate_model_ids))
+        if candidate_model_ids is not None
+        else tuple(sorted({row.requested_model for row in records}))
+    )
+    if len(model_ids) != 2 or len(set(model_ids)) != 2:
         raise ValueError("weekly verdict requires exactly two measured models")
     expected_shadows = {
         (
@@ -318,13 +331,7 @@ def build_weekly_verdict(
         and set(row.candidates) == set(model_ids)
         and (row.item_id_hash, row.task_class, row.prompt_hash) in expected_shadows
     ]
-    charged = sum(
-        (
-            row.cost_usd if row.status == "ok" else max(row.reserved_usd, row.cost_usd)
-            for row in records
-        ),
-        Decimal("0"),
-    )
+    charged = sum((charged_cost(row) for row in records), Decimal("0"))
     spent = sum((row.cost_usd for row in records), Decimal("0"))
     budget_over_cap = charged > budget_cap_usd
     evidence_rows = tuple(judged_records)
@@ -418,8 +425,8 @@ def build_weekly_verdict(
         budget_over_cap=budget_over_cap,
         input_digest="sha256:" + hashlib.sha256(canonical_inputs.encode()).hexdigest(),
         judged_manifest_digest=manifest_digest,
-        operator_acknowledgment_required=judged_manifest is not None,
-        schema_version=JUDGED_WEEKLY_SCHEMA_VERSION if judged_manifest is not None else 1,
+        operator_acknowledgment_required=True,
+        schema_version=WEEKLY_VERDICT_SCHEMA_VERSION,
     )
 
 

@@ -90,7 +90,7 @@ def run_live_wedge(
     wedge_id = _wedge_id(config, suite)
     call_runner = LiveCallRunner(
         journal,
-        HardBudget(config.cap_usd, journal),
+        HardBudget(config.cap_usd, journal, wedge_id=wedge_id),
         timeout_runner,
     )
     runs: list[BenchRunResult] = []
@@ -180,6 +180,7 @@ def run_live_wedge(
         completed = [row for row in measured if row.status == "ok"]
         failures = [row for row in measured if row.status == "failed"]
         timeouts = [row for row in measured if row.status == "timeout"]
+        budget_skips = [row for row in measured if row.status == "skipped_budget"]
         payload.update(
             {
                 "live": True,
@@ -190,10 +191,26 @@ def run_live_wedge(
                     "completed_count": len(completed),
                     "failure_count": len(failures),
                     "timeout_count": len(timeouts),
+                    "budget_skipped_count": len(budget_skips),
                     "failure_rate": round(len(failures) / len(measured), 6),
                     "timeout_rate": round(len(timeouts) / len(measured), 6),
                     "actual_cost_usd": str(sum((row.cost_usd for row in measured), Decimal("0"))),
-                    "reserved_usd": str(sum((row.reserved_usd for row in measured), Decimal("0"))),
+                    "reserved_usd": str(
+                        sum(
+                            (
+                                row.reserved_usd
+                                for row in measured
+                                if row.status != "skipped_budget"
+                            ),
+                            Decimal("0"),
+                        )
+                    ),
+                    "budget_skipped_estimate_usd": str(
+                        sum(
+                            (row.reserved_usd for row in budget_skips),
+                            Decimal("0"),
+                        )
+                    ),
                     "mean_latency_ms": (
                         round(sum(row.latency_ms for row in completed) / len(completed), 3)
                         if completed

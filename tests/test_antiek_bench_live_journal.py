@@ -184,19 +184,20 @@ def test_budget_rejects_before_provider_and_negative_estimate(tmp_path: Path) ->
     budget = HardBudget("0.10", journal)
     with pytest.raises(ValueError, match="non-negative"):
         budget.can_start("-0.01")
-    with pytest.raises(ValueError, match="budget exceeded"):
-        LiveCallRunner(journal, budget, DirectTimeout()).execute(
-            wedge_id="w",
-            week_id="week",
-            suite_version="suite",
-            requested_provider="p",
-            requested_model="m",
-            task_class="t",
-            item_id="i",
-            prompt_hash="h",
-            provider_fn=lambda: pytest.fail("must not call"),
-            maximum_cost="0.11",
-        )
+    result = LiveCallRunner(journal, budget, DirectTimeout()).execute(
+        wedge_id="w",
+        week_id="week",
+        suite_version="suite",
+        requested_provider="p",
+        requested_model="m",
+        task_class="t",
+        item_id="i",
+        prompt_hash="h",
+        provider_fn=lambda: pytest.fail("must not call"),
+        maximum_cost="0.11",
+    )
+    assert result.status == "skipped_budget"
+    assert budget.total_charged == 0
 
 
 def test_concurrent_admission_cannot_exceed_cap(tmp_path: Path) -> None:
@@ -214,6 +215,38 @@ def test_concurrent_admission_cannot_exceed_cap(tmp_path: Path) -> None:
         assert worker.exitcode == 0
     assert sorted(queue.get(timeout=1) for _ in workers) == [False, True]
     assert HardBudget("1", Journal(path)).total_charged == Decimal("0.75")
+
+
+def test_budget_cap_is_scoped_to_one_explicit_wedge(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "scoped.jsonl")
+    first = reservation(wedge_id="proof-a", reserved_usd=Decimal("0.75"))
+    second = reservation(wedge_id="proof-b", item_id="item-2", reserved_usd=Decimal("0.75"))
+    assert journal.reserve_within_cap(first, Decimal("1"), scope_wedge_id="proof-a")
+    assert journal.reserve_within_cap(second, Decimal("1"), scope_wedge_id="proof-b")
+    assert HardBudget("1", journal, wedge_id="proof-a").total_charged == Decimal("0.75")
+    assert HardBudget("1", journal, wedge_id="proof-b").total_charged == Decimal("0.75")
+
+
+def test_unscoped_budget_remains_global_across_wedges(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "global.jsonl")
+    assert journal.reserve_within_cap(
+        reservation(wedge_id="proof-a", reserved_usd=Decimal("0.75")), Decimal("1")
+    )
+    assert not journal.reserve_within_cap(
+        reservation(wedge_id="proof-b", item_id="item-2", reserved_usd=Decimal("0.75")),
+        Decimal("1"),
+    )
+
+
+def test_scoped_budget_rejects_cross_wedge_admission(tmp_path: Path) -> None:
+    journal = Journal(tmp_path / "mismatch.jsonl")
+    with pytest.raises(ValueError, match="scope does not match"):
+        journal.reserve_within_cap(
+            reservation(wedge_id="proof-b"),
+            Decimal("1"),
+            scope_wedge_id="proof-a",
+        )
+    assert journal.replay() == {}
 
 
 def test_failure_text_and_response_are_never_persisted(tmp_path: Path) -> None:
@@ -314,7 +347,8 @@ def test_attribution_and_route_receipt_are_persisted(tmp_path: Path) -> None:
         maximum_cost="0.1",
     )
     assert result.status == "ok"
-    assert result.route_receipt_id == "evt_dispatch_123"
+    assert result.route_receipt_id.startswith("receipt_sha256:")
+    assert "evt_dispatch_123" not in journal.path.read_text()
     assert journal.lookup(result.call_id) == result
 
 
@@ -339,3 +373,29 @@ def test_cross_model_fallback_contamination_fails_with_actual_bill(tmp_path: Pat
     assert result.actual_model == "model-b"
     assert result.cost_usd == Decimal("0.04")
     assert result.failure_text == "provider measurement contract breached"
+
+
+def test_journal_completes_short_writes_for_reservation_and_settlement(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = Journal(tmp_path / "short-write.jsonl")
+    original_write = __import__("os").write
+
+    def short_write(fd: int, payload: bytes | memoryview) -> int:
+        return original_write(fd, bytes(payload[: max(1, len(payload) // 3)]))
+
+    monkeypatch.setattr("substrate.antiek_bench.live.journal.os.write", short_write)
+    reserved = reservation()
+    journal.append(reserved)
+    terminal = LiveCallRecord(**{**reserved.__dict__, "status": "timeout"})
+    journal.append(terminal)
+    assert journal.lookup(reserved.call_id) == terminal
+
+
+def test_zero_progress_reservation_write_never_admits_dispatch(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    journal = Journal(tmp_path / "zero-write.jsonl")
+    monkeypatch.setattr("substrate.antiek_bench.live.journal.os.write", lambda *_: 0)
+    with pytest.raises(OSError, match="no progress"):
+        journal.reserve_within_cap(reservation(), Decimal("1"))
