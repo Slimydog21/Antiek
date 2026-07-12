@@ -4,10 +4,16 @@ import hashlib
 import os
 import subprocess
 import wave
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
+from substrate.multimedia.audible_experience_receipt import (
+    AudibleExperienceReceipt,
+    AudibleExperienceReceiptError,
+    issue_audible_experience_receipt,
+)
 from substrate.multimedia.local_audible_bridge import compile_local_audible_inputs
 from substrate.multimedia.local_audible_production import (
     LocalAudibleProductionArtifact,
@@ -19,6 +25,8 @@ from substrate.multimedia.local_tts import LocalTTSArtifact
 from substrate.multimedia.planner import EvidenceChunk, MultimediaPlanRequest, build_multimedia_plan
 
 KEY = b"local-audible-production-test-integrity-key"
+RECEIPT_KEY = b"local-audible-receipt-test-signing-key"
+NOW = datetime(2026, 7, 13, tzinfo=UTC)
 
 
 def _plan():
@@ -133,3 +141,80 @@ def test_output_and_manifest_tamper_fail_reopen(tmp_path: Path) -> None:
     Path(artifact.manifest.output_path).write_bytes(b"RIFF" + b"tampered" * 8)
     with pytest.raises(LocalAudibleProductionError, match="evidence"):
         LocalAudibleProductionArtifact.reopen(manifest_path.read_bytes(), KEY)
+
+
+def test_audio_only_receipt_cross_binds_and_issues_idempotently(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    output = tmp_path / "published"
+    output.mkdir(mode=0o700)
+    production = produce_local_audible_track(
+        inputs, output_dir=str(output), integrity_key=KEY
+    )
+    owner_digest = hashlib.sha256(b"owner-1").hexdigest()
+    first = issue_audible_experience_receipt(
+        owner_digest=owner_digest,
+        production=production,
+        audible_run=inputs.audible_run,
+        signing_key=RECEIPT_KEY,
+        production_integrity_key=KEY,
+        now=NOW,
+    )
+    replay = issue_audible_experience_receipt(
+        owner_digest=owner_digest,
+        production=production,
+        audible_run=inputs.audible_run,
+        signing_key=RECEIPT_KEY,
+        production_integrity_key=KEY,
+        now=NOW + timedelta(hours=1),
+    )
+    assert replay == first and first.cost_usd == 0
+    assert "visual" not in first.to_json() and "video" not in first.to_json()
+    receipt_path = Path(production.manifest.output_path).with_name("receipt.json")
+    assert receipt_path.stat().st_mode & 0o777 == 0o600
+    assert (
+        AudibleExperienceReceipt.reopen_from_file(
+            receipt_path,
+            signing_key=RECEIPT_KEY,
+            production_integrity_key=KEY,
+        )
+        == first
+    )
+
+
+def test_receipt_rejects_wrong_owner_authority_and_keys(tmp_path: Path) -> None:
+    inputs = _inputs(tmp_path)
+    output = tmp_path / "published"
+    output.mkdir(mode=0o700)
+    production = produce_local_audible_track(
+        inputs, output_dir=str(output), integrity_key=KEY
+    )
+    owner_digest = hashlib.sha256(b"owner-1").hexdigest()
+    receipt = issue_audible_experience_receipt(
+        owner_digest=owner_digest,
+        production=production,
+        audible_run=inputs.audible_run,
+        signing_key=RECEIPT_KEY,
+        production_integrity_key=KEY,
+        now=NOW,
+    )
+    with pytest.raises(AudibleExperienceReceiptError, match="MAC"):
+        AudibleExperienceReceipt.reopen(
+            receipt.to_json(),
+            signing_key=b"wrong-receipt-signing-key-material-123",
+            production_integrity_key=KEY,
+        )
+    with pytest.raises(LocalAudibleProductionError, match="MAC"):
+        AudibleExperienceReceipt.reopen(
+            receipt.to_json(),
+            signing_key=RECEIPT_KEY,
+            production_integrity_key=b"wrong-production-key-material-12345",
+        )
+    with pytest.raises(AudibleExperienceReceiptError, match="conflicts"):
+        issue_audible_experience_receipt(
+            owner_digest=hashlib.sha256(b"owner-2").hexdigest(),
+            production=production,
+            audible_run=inputs.audible_run,
+            signing_key=RECEIPT_KEY,
+            production_integrity_key=KEY,
+            now=NOW,
+        )
