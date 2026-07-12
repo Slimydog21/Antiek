@@ -5,6 +5,8 @@ import warnings
 import zipfile
 from types import SimpleNamespace
 
+import pytest
+
 from acquisition.documents.extract import EXTRACTOR_VERSION, extract_document_bytes
 
 
@@ -246,4 +248,12 @@ def test_unsupported_format_is_non_viewable_without_invented_body():
     result = extract_document_bytes(b"binary data", source_format="mobi")
     assert result.viewable is False
     assert result.non_viewable_reason == "unsupported_format"
+    assert result.text == ""
+
+
+@pytest.mark.parametrize("raw", [b"%PDF " + b"word " * 80, _epub()])
+def test_binary_document_magic_cannot_be_laundered_through_text_format(raw):
+    result = extract_document_bytes(raw, source_format="text")
+    assert result.viewable is False
+    assert result.non_viewable_reason == "source_format_mismatch"
     assert result.text == ""

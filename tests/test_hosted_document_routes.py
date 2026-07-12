@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -132,3 +133,20 @@ def test_event_emitter_recovers_prior_receipt_before_append(monkeypatch):
         "inv", "hdoc-one", extracted, 100, None
     )
     assert event_id == "evt-before-crash"
+
+
+def test_event_emitter_refuses_generated_id_when_append_is_not_observable(monkeypatch):
+    monkeypatch.setattr(routes, "trajectory", lambda investigation_id: [])
+    monkeypatch.setattr(routes, "emit_typed", lambda *args, **kwargs: "evt-ghost")
+    extracted = type(
+        "Extracted",
+        (),
+        {
+            "canonical_content_hash": "sha256:canonical",
+            "source_format": "text",
+            "title": None,
+            "page_count": None,
+        },
+    )()
+    with pytest.raises(RuntimeError, match="not durably observable"):
+        routes._emit_document_loaded("inv", "hdoc-one", extracted, 100, None)

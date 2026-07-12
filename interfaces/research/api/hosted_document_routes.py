@@ -78,6 +78,8 @@ def _emit_document_loaded(
     )
     if event_id is None:
         raise RuntimeError("event log is disabled; hosted document was not persisted")
+    if not any(row.get("event_id") == event_id for row in trajectory(investigation_id)):
+        raise RuntimeError("document.loaded append was not durably observable")
     return event_id
 
 
@@ -148,10 +150,15 @@ def get_hosted_document_html(document_id: str, request: Request) -> dict[str, An
         "document_id": document_id,
         "owner_id": owner_id,
         "state": "ready",
+        "source_byte_hash": doc.get("source_byte_hash"),
+        "canonical_content_hash": doc.get("canonical_content_hash"),
+        "source_format": doc.get("source_format"),
         "view_format": "html",
         "html": project_hosted_book_html(document_id, store=store),
         "title": doc.get("title") or document_id,
         "document_loaded_event_id": doc.get("document_loaded_event_id"),
+        "already_hosted": True,
+        "non_viewable_reason": None,
     }
 
 

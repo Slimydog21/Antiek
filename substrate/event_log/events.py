@@ -181,6 +181,8 @@ def _append_jsonl(path: str, row: dict[str, Any]) -> None:
         line = line.replace("\n", "\\n")
     with open(path, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+        f.flush()
+        os.fsync(f.fileno())
 
 
 def log_event(
@@ -486,11 +488,6 @@ def seal_investigation(
             return pq  # already sealed
         return None
 
-    if os.path.exists(pq) and os.path.getmtime(pq) >= os.path.getmtime(jl):
-        if delete_jsonl:
-            os.remove(jl)
-        return pq
-
     try:
         import pyarrow as pa  # type: ignore[import-not-found]
         import pyarrow.parquet as pq_writer  # type: ignore[import-not-found]
@@ -503,6 +500,9 @@ def seal_investigation(
         return None
 
     rows: list[dict[str, Any]] = []
+    if os.path.exists(pq):
+        # A post-seal live tail must extend, never replace, the sealed prefix.
+        rows.extend(pq_writer.read_table(pq).to_pylist())
     with open(jl, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -515,6 +515,17 @@ def seal_investigation(
                 continue
     if not rows:
         return None
+
+    deduplicated: list[dict[str, Any]] = []
+    seen_event_ids: set[str] = set()
+    for row in rows:
+        event_id = str(row.get("event_id") or "")
+        if event_id and event_id in seen_event_ids:
+            continue
+        if event_id:
+            seen_event_ids.add(event_id)
+        deduplicated.append(row)
+    rows = deduplicated
 
     for r in rows:
         if isinstance(r.get("payload"), (dict, list)):
@@ -555,7 +566,10 @@ def trajectory(
         except ImportError:
             print("pyarrow not installed; reading sealed Parquet requires pyarrow.",
                   file=sys.stderr)
-    elif os.path.exists(jl):
+    # A sealed investigation may receive a later append (for example a book
+    # reopened in Wrestle). Merge its new live tail with the sealed prefix;
+    # treating Parquet and JSONL as mutually exclusive hides durable events.
+    if os.path.exists(jl):
         with open(jl, encoding="utf-8") as f:
             for line in f:
                 line = line.strip()

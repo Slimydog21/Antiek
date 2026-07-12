@@ -242,6 +242,22 @@ def extract_document_bytes(
             failure_reason="source_too_large",
             minimum_viewable_words=minimum_viewable_words,
         )
+    if raw.startswith(b"%PDF") and fmt != "pdf":
+        return _finalize(
+            source_format=fmt or "unknown",
+            raw=raw,
+            text="",
+            failure_reason="source_format_mismatch",
+            minimum_viewable_words=minimum_viewable_words,
+        )
+    if raw.startswith(b"PK\x03\x04") and fmt != "epub":
+        return _finalize(
+            source_format=fmt or "unknown",
+            raw=raw,
+            text="",
+            failure_reason="source_format_mismatch",
+            minimum_viewable_words=minimum_viewable_words,
+        )
     try:
         if fmt == "pdf":
             from acquisition.books.reader import read_pdf
