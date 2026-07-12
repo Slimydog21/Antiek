@@ -84,6 +84,8 @@ def register_model_decision_twin_search_html_native_marketplace_free_midnight_oi
 
 
 __all__ = [
+    "DecisionBody",
+    "TwinSearchPackBody",
     "model_decision_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_router",
     "register_model_decision_twin_search_html_native_marketplace_free_midnight_oil_settings_decision_competition_dr_nd_shadow_recursive_twin_compose_routes",
 ]
