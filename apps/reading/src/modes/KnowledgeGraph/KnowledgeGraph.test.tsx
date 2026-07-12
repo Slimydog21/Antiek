@@ -70,9 +70,33 @@ describe("KnowledgeGraph", () => {
     expect(rail.textContent).toMatch(/Evidence supports graph reuse/);
     expect(rail.textContent).toMatch(/Public paper/);
     expect(rail.textContent).toMatch(/Servable in portable output/);
+    expect(screen.getByTestId("graph-open-originating-research").getAttribute("href")).toBe("/inv/inv-1");
 
     fireEvent.click(screen.getByTestId("graph-node-mechanism-1"));
     expect(screen.getByText("Recursive memory", { selector: "h2" })).toBeTruthy();
+  });
+
+  it("encodes a recorded origin and never invents one when provenance is missing", async () => {
+    exploreGraph.mockResolvedValue({
+      ...response,
+      edges: [{ ...response.edges[0], investigation_id: "inv/one two" }],
+    });
+    const view = render(<KnowledgeGraph />);
+    await screen.findByTestId("graph-edge-edge-1");
+    expect(screen.getByTestId("graph-open-originating-research").getAttribute("href")).toBe(
+      "/inv/inv%2Fone%20two",
+    );
+
+    view.unmount();
+    exploreGraph.mockResolvedValue({
+      ...response,
+      edges: [{ ...response.edges[0], investigation_id: null }],
+    });
+    render(<KnowledgeGraph />);
+    await screen.findByTestId("graph-edge-edge-1");
+    expect(screen.queryByTestId("graph-open-originating-research")).toBeNull();
+    expect(screen.getByText("No originating research recorded")).toBeTruthy();
+    expect(screen.getByText(/will not invent a continuation target/i)).toBeTruthy();
   });
 
   it("submits explicit filters and renders an honest empty state", async () => {

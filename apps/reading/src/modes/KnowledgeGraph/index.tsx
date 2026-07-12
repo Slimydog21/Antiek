@@ -187,10 +187,14 @@ function EvidenceRail({ edge }: { edge: GraphEdge }) {
   const evidence = edge.evidence;
   return <div className="relative mt-5 space-y-5 pl-7 before:absolute before:bottom-2 before:left-[7px] before:top-2 before:w-px before:bg-sun before:content-['']" data-testid="graph-evidence-rail">
     <EvidenceStop label="Relationship" value={`${edge.relation} · ${Math.round(edge.confidence * 100)}% confidence`} />
+    <EvidenceStop label="Origin" value={edge.investigation_id ? "Recorded research" : "No originating research recorded"} detail={edge.investigation_id ? "Reopen the research that produced this relationship, then use its existing challenge and chase tools to continue." : "This relationship has no investigation provenance. Antiek will not invent a continuation target."} />
     <EvidenceStop label="Chunk" value={evidence.chunk_id || "No chunk recorded"} detail={evidence.chunk_text || "This edge has no stored passage. Treat it as ungrounded until evidence is attached."} />
     <EvidenceStop label="Document" value={evidence.source_title || evidence.source_document_id || "No source document recorded"} detail={[evidence.source_author, evidence.section_path].filter(Boolean).join(" · ")} />
     <EvidenceStop label="Rights" value={`tier ${evidence.source_tier} · ${evidence.content_class || "unknown"}`} detail={evidence.servable ? "Servable in portable output." : "Private or rights-restricted. Keep full text inside the workstation."} tone={evidence.servable ? "safe" : "warn"} />
-    {evidence.source_document_id ? <a href={`/documents?document_id=${encodeURIComponent(evidence.source_document_id)}`} className="inline-block font-mono text-[11px] underline underline-offset-4 hover:text-aurora">Open source record</a> : null}
+    <div className="flex flex-wrap gap-x-4 gap-y-2">
+      {edge.investigation_id ? <a data-testid="graph-open-originating-research" href={`/inv/${encodeURIComponent(edge.investigation_id)}`} className="inline-block font-mono text-[11px] underline decoration-sun decoration-2 underline-offset-4 hover:text-aurora">Open originating research</a> : null}
+      {evidence.source_document_id ? <a href={`/documents?document_id=${encodeURIComponent(evidence.source_document_id)}`} className="inline-block font-mono text-[11px] underline underline-offset-4 hover:text-aurora">Open source record</a> : null}
+    </div>
   </div>;
 }
 
