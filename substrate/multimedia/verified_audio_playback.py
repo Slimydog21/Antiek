@@ -20,6 +20,14 @@ from .verified_playback import (
 
 
 @dataclass(frozen=True)
+class AudioLearnedClaimMetadata:
+    chapter_id: str
+    claim_text: str
+    source_count: int
+    follow_up_prompt: str
+
+
+@dataclass(frozen=True)
 class AudioPlaybackMetadata:
     asset_id: str
     revision_id: str
@@ -31,6 +39,7 @@ class AudioPlaybackMetadata:
     retention_marker_count: int
     learned_claim_count: int
     source_count: int
+    learned_claims: tuple[AudioLearnedClaimMetadata, ...]
 
 
 @dataclass(frozen=True)
@@ -73,6 +82,15 @@ class VerifiedAudioPlaybackRuntime:
                     for span in run.transcript_spans
                     for source_id in span.source_chunk_ids
                 }
+            ),
+            learned_claims=tuple(
+                AudioLearnedClaimMetadata(
+                    chapter_id=claim.chapter_id,
+                    claim_text=claim.claim_text,
+                    source_count=len(claim.source_chunk_ids),
+                    follow_up_prompt=claim.follow_up_prompt,
+                )
+                for claim in run.learned_claims
             ),
         )
 
@@ -138,6 +156,7 @@ class VerifiedAudioPlaybackRuntime:
 
 __all__ = [
     "AudioPlaybackMetadata",
+    "AudioLearnedClaimMetadata",
     "UnsatisfiableMediaRange",
     "VerifiedAudioPlaybackRuntime",
     "VerifiedPlaybackError",

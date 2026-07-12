@@ -14,7 +14,10 @@ from substrate.multimedia.read_model import (
     MultimediaAssetStore,
     SteeringRequest,
 )
-from substrate.multimedia.verified_audio_playback import AudioPlaybackMetadata
+from substrate.multimedia.verified_audio_playback import (
+    AudioLearnedClaimMetadata,
+    AudioPlaybackMetadata,
+)
 
 
 class _Playback:
@@ -30,6 +33,14 @@ class _Playback:
             retention_marker_count=2,
             learned_claim_count=1,
             source_count=1,
+            learned_claims=(
+                AudioLearnedClaimMetadata(
+                    chapter_id="chapter-1",
+                    claim_text="Verified claim",
+                    source_count=1,
+                    follow_up_prompt="Review the source.",
+                ),
+            ),
         )
 
 

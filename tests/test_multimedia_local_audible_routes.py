@@ -22,7 +22,10 @@ from substrate.multimedia.local_audible_workstation import (
     LocalAudiblePreparedSet,
 )
 from substrate.multimedia.read_model import MultimediaAudioProductionLink
-from substrate.multimedia.verified_audio_playback import AudioPlaybackMetadata
+from substrate.multimedia.verified_audio_playback import (
+    AudioLearnedClaimMetadata,
+    AudioPlaybackMetadata,
+)
 from substrate.multimedia.verified_playback import MediaByteRange
 
 SET_ID = "mmlocalaudibleset_" + "a" * 64
@@ -88,6 +91,14 @@ class _Playback:
             retention_marker_count=2,
             learned_claim_count=1,
             source_count=1,
+            learned_claims=(
+                AudioLearnedClaimMetadata(
+                    chapter_id="chapter-1",
+                    claim_text="Verified claim",
+                    source_count=1,
+                    follow_up_prompt="Review the source.",
+                ),
+            ),
         )
 
     def read(self, *, asset_id, revision_id, owner_digest, range_header):  # noqa: ANN001, ANN201
@@ -178,7 +189,14 @@ def test_registered_metadata_and_audio_range_are_private_and_link_verified() -> 
     )
     assert metadata.status_code == 200
     assert metadata.json()["audio_url"].endswith("/revision-1/audio")
+    assert metadata.json()["learned_claims"] == [{
+        "chapter_id": "chapter-1",
+        "claim_text": "Verified claim",
+        "source_count": 1,
+        "follow_up_prompt": "Review the source.",
+    }]
     assert "output_path" not in metadata.text and "manifest_mac" not in metadata.text
+    assert "source_chunk" not in metadata.text
     audio = client.get(
         "/multimedia/assets/asset-1/local-audible/playback/revision-1/audio",
         headers={"Range": "bytes=0-10"},

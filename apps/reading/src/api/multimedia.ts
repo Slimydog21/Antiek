@@ -132,6 +132,7 @@ export interface MultimediaAssetRecord {
   knowledge_link?: MultimediaKnowledgeLink | null;
   knowledge_finalization_revision_id?: string | null;
   production_link?: MultimediaProductionLink | null;
+  audio_production_link?: MultimediaAudioProductionLink | null;
 }
 
 export interface MultimediaProductionLink {
@@ -146,6 +147,19 @@ export interface MultimediaProductionLink {
   width_px: number;
   height_px: number;
   chapter_ids: string[];
+}
+
+export interface MultimediaAudioProductionLink {
+  schema_version: "antiek.multimedia-audio-production-link.v1";
+  owner_identity_digest: string;
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  audio_sha256: string;
+  duration_seconds: number;
+  chapter_ids: string[];
+  retention_marker_count: number;
+  learned_claim_count: number;
 }
 
 export interface MultimediaSourceCitationWire {
@@ -250,6 +264,55 @@ export interface MultimediaLocalPreparedSet {
     attested: boolean;
     source_count: number;
   }>;
+}
+
+export type MultimediaLocalAudibleStatus =
+  | "preparing"
+  | "preparation_unknown"
+  | "ready_to_produce"
+  | "production_unknown"
+  | "registered";
+
+export interface MultimediaLocalAudiblePreparedSet {
+  set_id: string;
+  asset_id: string;
+  revision_id: string;
+  status: MultimediaLocalAudibleStatus;
+  recoverable: boolean;
+  cost_usd: 0;
+  playback_ready: boolean;
+  total_duration_seconds: number;
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    span_count: number;
+    ready_span_count: number;
+    duration_seconds: number;
+    source_count: number;
+    remember_ready: boolean;
+    recap_ready: boolean;
+    learned_claim_count: number;
+  }>;
+}
+
+export interface MultimediaLocalAudiblePlayback {
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  audio_sha256: string;
+  audio_size_bytes: number;
+  duration_seconds: number;
+  chapter_ids: string[];
+  retention_marker_count: number;
+  learned_claim_count: number;
+  source_count: number;
+  learned_claims: Array<{
+    chapter_id: string;
+    claim_text: string;
+    source_count: number;
+    follow_up_prompt: string;
+  }>;
+  audio_url: string;
 }
 
 export interface MultimediaNarrationAuthorization {
@@ -643,6 +706,160 @@ async function localResponse(
     (["ready_to_produce", "registered"].includes(result.status) && !allAttested)
   ) {
     throw new Error("multimedia_local_identity_conflict");
+  }
+  return result;
+}
+
+export async function getMultimediaLocalAudibleCapability(): Promise<MultimediaLocalCapability> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/local-audible/capability`);
+  if (!resp.ok) throw new Error(`GET /multimedia/local-audible/capability: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalCapability;
+  if (
+    typeof result.available !== "boolean" ||
+    result.reason !== (result.available ? "ready" : "unavailable") ||
+    result.route_policy !== "cheapest" ||
+    result.cost_usd !== 0
+  ) {
+    throw new Error("multimedia_local_audible_capability_conflict");
+  }
+  return result;
+}
+
+export async function prepareMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  return localAudibleCommand(assetId, revisionId, "/prepare");
+}
+
+export async function inspectMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local-audible/${encodeURIComponent(revisionId)}/${encodeURIComponent(setId)}`,
+  );
+  return localAudibleResponse(resp, assetId, revisionId, setId, "GET local audible set");
+}
+
+export async function produceMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  return localAudibleCommand(assetId, revisionId, "/produce", setId);
+}
+
+export async function recoverMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  return localAudibleCommand(assetId, revisionId, "/recover", setId);
+}
+
+export async function getMultimediaLocalAudiblePlayback(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaLocalAudiblePlayback> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local-audible/playback?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_local_audible_playback_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_local_audible_playback_conflict");
+  if (resp.status === 503) throw new Error("multimedia_local_audible_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET local audible playback: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalAudiblePlayback;
+  const expectedPath = `/multimedia/assets/${encodeURIComponent(assetId)}/local-audible/playback/${encodeURIComponent(revisionId)}/audio`;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.audio_url !== expectedPath ||
+    !Number.isFinite(result.duration_seconds) || result.duration_seconds <= 0 ||
+    !Number.isSafeInteger(result.audio_size_bytes) || result.audio_size_bytes <= 0 ||
+    !Array.isArray(result.chapter_ids) || result.chapter_ids.length < 1 ||
+    new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
+    !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
+    !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
+    !Array.isArray(result.learned_claims) ||
+    result.learned_claims.length !== result.learned_claim_count ||
+    result.learned_claims.some((claim) =>
+      !result.chapter_ids.includes(claim.chapter_id) || !claim.claim_text ||
+      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 ||
+      !claim.follow_up_prompt
+    )
+  ) {
+    throw new Error("multimedia_local_audible_playback_identity_conflict");
+  }
+  return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
+}
+
+async function localAudibleCommand(
+  assetId: string,
+  revisionId: string,
+  suffix: string,
+  setId?: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local-audible${suffix}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        ...(setId === undefined ? {} : { set_id: setId }),
+      }),
+    },
+  );
+  return localAudibleResponse(resp, assetId, revisionId, setId, `POST local audible${suffix}`);
+}
+
+async function localAudibleResponse(
+  resp: Response,
+  assetId: string,
+  revisionId: string,
+  setId: string | undefined,
+  operation: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  if (resp.status === 404) throw new Error("multimedia_local_audible_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_local_audible_conflict");
+  if (resp.status === 503) throw new Error("multimedia_local_audible_runtime_unavailable");
+  if (!resp.ok) throw new Error(`${operation}: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalAudiblePreparedSet;
+  const statuses: MultimediaLocalAudibleStatus[] = [
+    "preparing", "preparation_unknown", "ready_to_produce", "production_unknown", "registered",
+  ];
+  const recoverable = ["preparing", "preparation_unknown", "production_unknown"].includes(result.status);
+  const chapterIds = result.chapters?.map((chapter) => chapter.chapter_id) ?? [];
+  const allReady = result.chapters?.length > 0 && result.chapters.every(
+    (chapter) => chapter.ready_span_count === chapter.span_count && chapter.remember_ready && chapter.recap_ready,
+  );
+  if (
+    result.asset_id !== assetId || result.revision_id !== revisionId ||
+    (setId !== undefined && result.set_id !== setId) ||
+    !/^mmlocalaudibleset_[0-9a-f]{64}$/.test(result.set_id) ||
+    !statuses.includes(result.status) || result.cost_usd !== 0 ||
+    result.recoverable !== recoverable ||
+    result.playback_ready !== (result.status === "registered") ||
+    !Number.isFinite(result.total_duration_seconds) || result.total_duration_seconds < 0 ||
+    !Array.isArray(result.chapters) || result.chapters.length < 1 ||
+    new Set(chapterIds).size !== chapterIds.length ||
+    result.chapters.some((chapter) =>
+      !chapter.chapter_id || !chapter.title ||
+      !Number.isSafeInteger(chapter.span_count) || chapter.span_count < 1 ||
+      !Number.isSafeInteger(chapter.ready_span_count) || chapter.ready_span_count < 0 ||
+      chapter.ready_span_count > chapter.span_count ||
+      !Number.isFinite(chapter.duration_seconds) || chapter.duration_seconds < 0 ||
+      !Number.isSafeInteger(chapter.source_count) || chapter.source_count < 0 ||
+      typeof chapter.remember_ready !== "boolean" || typeof chapter.recap_ready !== "boolean" ||
+      !Number.isSafeInteger(chapter.learned_claim_count) || chapter.learned_claim_count < 0
+    ) ||
+    (["ready_to_produce", "registered"].includes(result.status) && !allReady)
+  ) {
+    throw new Error("multimedia_local_audible_identity_conflict");
   }
   return result;
 }

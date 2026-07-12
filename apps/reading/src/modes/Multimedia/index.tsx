@@ -7,6 +7,7 @@ import {
   createMultimediaDraft,
   failedGateIds,
   getMultimediaAsset,
+  getMultimediaLocalAudiblePlayback,
   getMultimediaPlayback,
   getMultimediaReviewedVisualSet,
   listMultimediaAssets,
@@ -20,6 +21,7 @@ import type {
   CreateMultimediaDraftRequest,
   MultimediaAssetRecord,
   MultimediaAssetSummary,
+  MultimediaLocalAudiblePlayback,
   MultimediaPlayback as MultimediaPlaybackRecord,
   MultimediaNarrationAuthorization,
   MultimediaReviewedVisualSet,
@@ -28,6 +30,7 @@ import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../componen
 import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
 import { LocalProductionPanel } from "./LocalProductionPanel";
+import { LocalAudiblePanel } from "./LocalAudiblePanel";
 import { VisualReviewPanel } from "./VisualReviewPanel";
 import { projectMultimediaPlan } from "./planProjection";
 
@@ -36,6 +39,7 @@ type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
 type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | null;
+type VerifiedPlaybackRecord = MultimediaPlaybackRecord | MultimediaLocalAudiblePlayback;
 
 type Chapter = {
   id: string;
@@ -204,7 +208,7 @@ export default function Multimedia() {
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
   const [knowledgeMutationPending, setKnowledgeMutationPending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
-  const [playback, setPlayback] = useState<MultimediaPlaybackRecord | null>(null);
+  const [playback, setPlayback] = useState<VerifiedPlaybackRecord | null>(null);
   const [playbackLoading, setPlaybackLoading] = useState(false);
   const [productionRegistrationPending, setProductionRegistrationPending] = useState(false);
   const [narrationCeilingUsd, setNarrationCeilingUsd] = useState("1.00");
@@ -266,7 +270,11 @@ export default function Multimedia() {
     }
     const { asset_id: assetId, revision_id: revisionId } = selectedRecord.asset;
     setPlaybackLoading(true);
-    getMultimediaPlayback(assetId, revisionId)
+    const request = selectedRecord.mode === "audio" && selectedRecord.asset.route_policy === "cheapest"
+      ? getMultimediaLocalAudiblePlayback(assetId, revisionId)
+      : getMultimediaPlayback(assetId, revisionId);
+    if (selectedRecord.mode === "audio") setPlayerView("audio");
+    request
       .then((result) => {
         if (!cancelled) setPlayback(result);
       })
@@ -917,6 +925,13 @@ export default function Multimedia() {
                   />
                 )}
 
+                {selectedRecord && selectedRecord.mode === "audio" && selectedRecord.asset.route_policy === "cheapest" && (
+                  <LocalAudiblePanel
+                    record={selectedRecord}
+                    onRegistered={() => reopenAsset(selectedRecord.asset.asset_id)}
+                  />
+                )}
+
                 {selectedRecord && selectedRecord.mode !== "audio" && selectedRecord.asset.route_policy !== "cheapest" && (
                   <>
                     {reviewedVisualStatus === "loading" ? (
@@ -1072,20 +1087,22 @@ export default function Multimedia() {
                     {playback ? "Verified media" : "Playback unavailable"}
                   </h2>
                 </div>
-                <div role="radiogroup" aria-label="Playback type" className="flex gap-2">
-                  {(["video", "audio"] as PlayerView[]).map((view) => (
-                    <button
-                      key={view}
-                      type="button"
-                      role="radio"
-                      aria-checked={playerView === view}
-                      onClick={() => setPlayerView(view)}
-                      className={segmentClass(playerView === view)}
-                    >
-                      {view}
-                    </button>
-                  ))}
-                </div>
+                {selectedRecord?.mode !== "audio" && (
+                  <div role="radiogroup" aria-label="Playback type" className="flex gap-2">
+                    {(["video", "audio"] as PlayerView[]).map((view) => (
+                      <button
+                        key={view}
+                        type="button"
+                        role="radio"
+                        aria-checked={playerView === view}
+                        onClick={() => setPlayerView(view)}
+                        className={segmentClass(playerView === view)}
+                      >
+                        {view}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -1093,7 +1110,7 @@ export default function Multimedia() {
                   <div className="flex aspect-video items-center justify-center overflow-hidden rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1">
                     {playbackLoading ? (
                       <p className="font-mono text-[12px] uppercase text-moonlight" role="status">Verifying media...</p>
-                    ) : playback && playerView === "video" ? (
+                    ) : playback && playerView === "video" && "video_url" in playback ? (
                       <video
                         key={`${playback.revision_id}-video`}
                         controls
@@ -1119,7 +1136,7 @@ export default function Multimedia() {
                         <p className="mt-2 text-[13px] text-moonlight">
                           This revision has plan and transcript data, but no verified video or narration is available to play.
                         </p>
-                        {selectedRecord && !selectedRecord.production_link && (
+                        {selectedRecord && selectedRecord.mode !== "audio" && !selectedRecord.production_link && (
                           <LemonButton
                             type="button"
                             variant="secondary"

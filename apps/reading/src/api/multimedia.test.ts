@@ -21,6 +21,8 @@ import {
   getChapterTtsReconciliation,
   getMultimediaAsset,
   getMultimediaLocalCapability,
+  getMultimediaLocalAudibleCapability,
+  getMultimediaLocalAudiblePlayback,
   getMultimediaPlayback,
   getNarrationRunReconciliation,
   materializeMultimediaVisualCandidates,
@@ -28,10 +30,13 @@ import {
   listMultimediaJobs,
   prepareMultimediaLiveExecution,
   prepareMultimediaLocal,
+  prepareMultimediaLocalAudible,
   inspectMultimediaLocal,
   attestMultimediaLocalCard,
   produceMultimediaLocal,
   recoverMultimediaLocal,
+  recoverMultimediaLocalAudible,
+  produceMultimediaLocalAudible,
   pollMultimediaVisualGeneration,
   previewMultimediaVisualCandidate,
   manualGateIds,
@@ -202,6 +207,73 @@ describe("multimedia API client", () => {
     }));
     await expect(prepareMultimediaLocal("mm-1", "rev-1")).rejects.toThrow(
       "local_identity_conflict",
+    );
+  });
+
+  it("cross-binds the local audible lifecycle and canonical playback URL", async () => {
+    const setId = `mmlocalaudibleset_${"a".repeat(64)}`;
+    const prepared = {
+      set_id: setId, asset_id: "mm-1", revision_id: "rev-1",
+      status: "ready_to_produce", recoverable: false, cost_usd: 0,
+      playback_ready: false, total_duration_seconds: 90,
+      chapters: [{
+        chapter_id: "chapter-1", title: "Flow", span_count: 4, ready_span_count: 4,
+        duration_seconds: 90, source_count: 1, remember_ready: true, recap_ready: true,
+        learned_claim_count: 1,
+      }],
+    } as const;
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      available: true, reason: "ready", route_policy: "cheapest", cost_usd: 0,
+    }));
+    await expect(getMultimediaLocalAudibleCapability()).resolves.toMatchObject({ available: true });
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, prepared));
+    await expect(prepareMultimediaLocalAudible("mm-1", "rev-1")).resolves.toEqual(prepared);
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...prepared, status: "production_unknown", recoverable: true,
+    }));
+    await produceMultimediaLocalAudible("mm-1", "rev-1", setId);
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...prepared, status: "registered", playback_ready: true,
+    }));
+    await recoverMultimediaLocalAudible("mm-1", "rev-1", setId);
+
+    const playback = {
+      asset_id: "mm-1", revision_id: "rev-1", receipt_sha256: "a".repeat(64),
+      audio_sha256: "b".repeat(64), audio_size_bytes: 100, duration_seconds: 90,
+      chapter_ids: ["chapter-1"], retention_marker_count: 2, learned_claim_count: 1,
+      source_count: 1,
+      learned_claims: [{
+        chapter_id: "chapter-1", claim_text: "Verified claim", source_count: 1,
+        follow_up_prompt: "Review the source.",
+      }],
+      audio_url: "/multimedia/assets/mm-1/local-audible/playback/rev-1/audio",
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, playback));
+    expect((await getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).audio_url).toBe(
+      playback.audio_url,
+    );
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...playback, audio_url: "/tmp/forged.wav",
+    }));
+    await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
+      "playback_identity_conflict",
+    );
+  });
+
+  it("rejects dishonest local audible readiness", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      set_id: `mmlocalaudibleset_${"a".repeat(64)}`,
+      asset_id: "mm-1", revision_id: "rev-1", status: "ready_to_produce",
+      recoverable: false, cost_usd: 0, playback_ready: false,
+      total_duration_seconds: 1,
+      chapters: [{
+        chapter_id: "chapter-1", title: "Flow", span_count: 4, ready_span_count: 3,
+        duration_seconds: 1, source_count: 1, remember_ready: true, recap_ready: false,
+        learned_claim_count: 1,
+      }],
+    }));
+    await expect(prepareMultimediaLocalAudible("mm-1", "rev-1")).rejects.toThrow(
+      "audible_identity_conflict",
     );
   });
 
