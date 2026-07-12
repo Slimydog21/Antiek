@@ -652,6 +652,7 @@ def consume_authorized_live_operation(
                     lease.job_id,
                     store=store,
                     engagement_store=engagement_store,
+                    owner_user_id=lease.owner_user_id,
                 )
         raise
     try:
@@ -659,6 +660,7 @@ def consume_authorized_live_operation(
             lease.job_id,
             store=store,
             engagement_store=engagement_store,
+            owner_user_id=lease.owner_user_id,
         )
     except Exception:
         raise LiveExecutionFailed() from None
@@ -682,6 +684,7 @@ def resume_terminal_deposit(
     *,
     store: JobStore,
     engagement_store: EngagementStore,
+    owner_user_id: str,
 ) -> DepositResult:
     """Retry the deposit-only phase from durable evidence without dispatch."""
 
@@ -695,6 +698,7 @@ def resume_terminal_deposit(
         job_store=store,
         engagement_store=engagement_store,
         job_snapshot=job,
+        owner_id=owner_user_id,
     )
 
 

@@ -286,6 +286,62 @@ def test_deposit_html_and_twins_idempotent(tmp_path):
     assert d2.html
 
 
+def test_deposit_is_owner_native_and_rejects_foreign_worker_spawn(tmp_path):
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "owned-deposit")
+    job = create_job(["Owner-bound synthesis"], 10, store=job_store)
+    from dataclasses import replace
+
+    from substrate.engagement_spine import ensure_spawn
+    from substrate.midnight_oil.job import get_job, put_job_state
+
+    current = get_job(job.job_id, store=job_store)
+    assert current is not None
+    put_job_state(replace(current, status="complete"), store=job_store)
+    result = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+        owner_id="alice",
+        step_outputs=[
+            WorkerStepResult(
+                spent_usd=0.01,
+                spawn_id="spn_owned_deposit",
+                output_text="Alice synthesis",
+                insights=("Alice-only insight",),
+            )
+        ],
+    )
+    assert eng.get_owned_spawn("spn_owned_deposit", "alice") is not None
+    assert eng.get_owned_spawn("spn_owned_deposit", "bob") is None
+    assert eng.get_owned_document(result.asset_id, "alice") is not None
+    assert eng.get_owned_document(result.asset_id, "bob") is None
+    assert list_twin_notes(result.asset_id, store=eng, owner_id="alice")
+    assert list_twin_notes(result.asset_id, store=eng, owner_id="bob") == []
+
+    ensure_spawn(
+        "spn_foreign_collision",
+        store=eng,
+        parent_asset_id=result.asset_id,
+        goal="Bob's reserved work",
+        owner_id="bob",
+    )
+    with pytest.raises(ValueError, match="does not belong to deposit owner"):
+        deposit_job_results(
+            job.job_id,
+            job_store=job_store,
+            engagement_store=eng,
+            owner_id="alice",
+            step_outputs=[
+                WorkerStepResult(
+                    spent_usd=0.01,
+                    spawn_id="spn_foreign_collision",
+                    output_text="must not overwrite Bob",
+                )
+            ],
+        )
+
+
 def test_end_to_end_create_approve_run_deposit(tmp_path):
     job_store = InMemoryJobStore()
     eng = FileEngagementStore(tmp_path / "e")

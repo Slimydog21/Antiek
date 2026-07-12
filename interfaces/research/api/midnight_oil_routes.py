@@ -1006,6 +1006,7 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
             draft_combined=body.draft_combined,
             bench_usage_store=get_bench_usage_store(create_if_missing=True),
             record_progress=body.record_progress,
+            owner_id=authority.owner_user_id,
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="job not found") from exc
@@ -1018,6 +1019,7 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
                 deposit.spawn_ids[0],
                 store=_eng(),
                 include_html=body.include_progress_html,
+                owner_id=authority.owner_user_id,
             )
         except (KeyError, ValueError):
             progress = None

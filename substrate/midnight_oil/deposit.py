@@ -27,7 +27,7 @@ from substrate.engagement_spine import (
     spawn_from_highlight,
 )
 from substrate.engagement_spine.spawn import HighlightSelection, ResearchSpawn
-from substrate.engagement_spine.store import EngagementStore
+from substrate.engagement_spine.store import EngagementStore, owned_document_id
 
 from .job import JobStore, MidnightOilJob, _job_from_row, put_job_state
 from .worker import WorkerStepResult
@@ -65,6 +65,7 @@ def _materialize_and_complete(
     questions: tuple[str, ...] | list[str],
     region_id: str | None,
     step_index: int,
+    owner_id: str,
 ) -> ResearchSpawn:
     """Ensure a spawn row exists (caller id or fresh), complete it, write twins."""
     ins = list(insights) if insights else [f"Progress on: {goal_text}"]
@@ -80,6 +81,7 @@ def _materialize_and_complete(
             selection_text=goal_text,
             model_id=job.model_id,
             region_id=region_id or f"moil-{job.job_id}-step-{step_index}",
+            owner_id=owner_id,
         )
     else:
         sel = HighlightSelection(
@@ -93,7 +95,10 @@ def _materialize_and_complete(
             store=engagement_store,
             model_id=job.model_id,
             force_new=False,
+            owner_id=owner_id,
         )
+    if spawn.owner_id != owner_id:
+        raise ValueError(f"spawn {spawn.spawn_id} does not belong to deposit owner")
 
     complete_spawn(
         spawn.spawn_id,
@@ -110,6 +115,7 @@ def _materialize_and_complete(
             store=engagement_store,
             source_spawn_id=spawn.spawn_id,
             investigation_id=spawn.investigation_id,
+            owner_id=owner_id,
         )
     for question in qs:
         record_twin_question(
@@ -118,6 +124,7 @@ def _materialize_and_complete(
             store=engagement_store,
             source_spawn_id=spawn.spawn_id,
             investigation_id=spawn.investigation_id,
+            owner_id=owner_id,
         )
     completed = get_spawn(spawn.spawn_id, store=engagement_store)
     if completed is None:
@@ -136,6 +143,7 @@ def deposit_job_results(
     parent_title: str | None = None,
     bench_usage_store: Any | None = None,
     record_progress: bool = True,
+    owner_id: str = "__operator__",
 ) -> DepositResult:
     """Write twins + project HTML for a finished (or halted) job.
 
@@ -156,6 +164,9 @@ def deposit_job_results(
         if job_snapshot.job_id != job_id:
             raise ValueError("job snapshot does not match requested job")
         job = job_snapshot
+    owner = (owner_id or "").strip()
+    if not owner:
+        raise ValueError("owner_id is required")
     if not step_outputs and job.step_evidence:
         recovered: list[WorkerStepResult] = []
         for evidence in job.step_evidence:
@@ -218,6 +229,7 @@ def deposit_job_results(
             questions=step.questions,
             region_id=f"moil-{job.job_id}-step-{i}",
             step_index=i,
+            owner_id=owner,
         )
         _track(spawn.spawn_id)
 
@@ -227,6 +239,8 @@ def deposit_job_results(
         if sid in seen:
             # Still ensure complete if only reserved
             existing = engagement_store.get_spawn(sid)
+            if existing is not None and str(existing.get("owner_id") or "__operator__") != owner:
+                raise ValueError(f"spawn {sid} does not belong to deposit owner")
             if existing is not None and existing.get("status") != "complete":
                 goal_text = _goal_for_index(job, i)
                 complete_spawn(
@@ -251,6 +265,7 @@ def deposit_job_results(
             questions=(f"What remains open for: {goal_text}?",),
             region_id=f"moil-{job.job_id}-jobspawn-{i}",
             step_index=i,
+            owner_id=owner,
         )
         _track(spawn.spawn_id)
 
@@ -268,14 +283,18 @@ def deposit_job_results(
                 questions=(f"Open: {goal}?",),
                 region_id=f"moil-{job.job_id}-goal-{i}",
                 step_index=i,
+                owner_id=owner,
             )
             _track(spawn.spawn_id)
 
     mode: MergeMode = "draft_combined" if draft_combined else "into_parent"
     title = parent_title or f"Midnight Oil: {job.goals[0][:80] if job.goals else job.job_id}"
+    parent_document_id = owned_document_id(owner, asset_id)
     engagement_store.put_document(
-        asset_id,
+        parent_document_id,
         {
+            "document_id": parent_document_id,
+            "owner_id": owner,
             "title": title,
             "body_text": "\n".join(f"- {g}" for g in job.goals),
             "status": job.status,
@@ -288,6 +307,7 @@ def deposit_job_results(
             store=engagement_store,
             mode=mode,
             parent_title=title,
+            owner_id=owner,
         )
         doc_model = merge.doc_model
         document_id = merge.document_id
@@ -318,7 +338,7 @@ def deposit_job_results(
         },
     )
 
-    twins = list_twin_notes(asset_id, store=engagement_store)
+    twins = list_twin_notes(asset_id, store=engagement_store, owner_id=owner)
     updated = replace(
         job,
         asset_id=asset_id,
@@ -366,12 +386,13 @@ def deposit_job_results(
             )
 
             first = spawn_ids[0]
-            seed_default_pipeline(first, store=engagement_store)
+            seed_default_pipeline(first, store=engagement_store, owner_id=owner)
             _record_progress(
                 first,
                 "complete",
                 f"Midnight Oil deposit {job.job_id}",
                 store=engagement_store,
+                owner_id=owner,
             )
             progress_seeded = True
         except Exception:

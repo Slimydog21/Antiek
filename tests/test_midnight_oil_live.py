@@ -551,6 +551,7 @@ def test_deposit_crash_retries_from_evidence_without_provider_replay(
         "job-owned",
         store=deps.jobs,
         engagement_store=FileEngagementStore(root),
+        owner_user_id="alice",
     )
     completed = _job_from_row(deps.jobs.get_job("job-owned") or {})
     assert completed.deposit_state == "complete"

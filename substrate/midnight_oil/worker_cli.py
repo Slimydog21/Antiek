@@ -454,6 +454,7 @@ def _recover_terminal(
         job_id,
         store=runtime.stores.jobs,
         engagement_store=runtime.stores.engagement_store,
+        owner_user_id=owner_user_id,
     )
     recovery_lease = WorkerLease(
         operation_id=operation_id,
@@ -626,6 +627,7 @@ def run_worker_once(
                 lease.job_id,
                 store=runtime.stores.jobs,
                 engagement_store=runtime.stores.engagement_store,
+                owner_user_id=lease.owner_user_id,
             )
         except Exception:
             return WorkerPhaseRecord(
@@ -751,6 +753,7 @@ def run_worker_once(
                     lease.job_id,
                     store=runtime.stores.jobs,
                     engagement_store=runtime.stores.engagement_store,
+                    owner_user_id=lease.owner_user_id,
                 )
             except Exception:
                 return WorkerPhaseRecord(
@@ -826,6 +829,7 @@ def run_worker_once(
                     lease.job_id,
                     store=runtime.stores.jobs,
                     engagement_store=runtime.stores.engagement_store,
+                    owner_user_id=lease.owner_user_id,
                 )
             except Exception:
                 return WorkerPhaseRecord(
@@ -881,6 +885,7 @@ def run_worker_once(
             lease.job_id,
             store=runtime.stores.jobs,
             engagement_store=runtime.stores.engagement_store,
+            owner_user_id=lease.owner_user_id,
         )
     except Exception:
         return WorkerPhaseRecord(
