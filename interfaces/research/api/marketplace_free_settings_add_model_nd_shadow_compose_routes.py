@@ -76,4 +76,6 @@ def register_marketplace_free_settings_add_model_nd_shadow_compose_routes(
 __all__ = [
     "marketplace_free_settings_add_model_nd_shadow_compose_router",
     "register_marketplace_free_settings_add_model_nd_shadow_compose_routes",
+    "MarketBody",
+    "SettingsPackBody",
 ]
