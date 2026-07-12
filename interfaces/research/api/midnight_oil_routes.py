@@ -678,6 +678,7 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
     terminal = {
         OperationState.COMPLETE,
         OperationState.FAILED,
+        OperationState.STEP_CAPPED,
         OperationState.BUDGET_HALTED,
         OperationState.TIMED_OUT,
         OperationState.FAILED_RECONCILE,

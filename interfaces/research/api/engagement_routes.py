@@ -29,6 +29,9 @@ Surfaces:
 from __future__ import annotations
 
 import os
+from collections.abc import Iterator
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any, Literal
 
@@ -70,6 +73,45 @@ engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
 _engagement_store: EngagementStore | None = None
 _session_store: SessionStore | None = None
 _bench_usage_store: Any = None
+_request_engagement_store: ContextVar[EngagementStore | None] = ContextVar(
+    "request_engagement_store", default=None
+)
+_request_session_store: ContextVar[SessionStore | None] = ContextVar(
+    "request_session_store", default=None
+)
+_request_promote_insight: ContextVar[Any] = ContextVar(
+    "request_promote_insight", default=None
+)
+_request_promote_question: ContextVar[Any] = ContextVar(
+    "request_promote_question", default=None
+)
+_request_graph_path: ContextVar[Path | None] = ContextVar(
+    "request_engagement_graph_path", default=None
+)
+_request_graph_connection: ContextVar[Any] = ContextVar(
+    "request_engagement_graph_connection", default=None
+)
+
+
+@contextmanager
+def _graph_promotion_batch() -> Iterator[None]:
+    path = _request_graph_path.get()
+    if path is None:
+        yield
+        return
+    from runtime.db_lock import connect_write
+
+    with connect_write(str(path), purpose="engagement/promote-batch") as con:
+        con.execute("BEGIN")
+        token = _request_graph_connection.set(con)
+        try:
+            yield
+            con.execute("COMMIT")
+        except Exception:
+            con.execute("ROLLBACK")
+            raise
+        finally:
+            _request_graph_connection.reset(token)
 
 
 def get_bench_usage_store(*, create_if_missing: bool = True) -> Any:
@@ -125,7 +167,83 @@ def reset_engagement_stores(*, root: Path | None = None) -> None:
         _session_store = InMemorySessionStore()
 
 
+def bind_engagement_stores(
+    app: FastAPI,
+    *,
+    engagement_store: EngagementStore,
+    session_store: SessionStore,
+    graph_db_path: Path,
+) -> None:
+    """Bind request-scoped stores owned by a production composition root."""
+
+    from runtime.db_lock import connect_write
+    from substrate.graph import ensure_initialized
+    from substrate.graph.insight_question import promote_insight, promote_question
+
+    graph_path = Path(graph_db_path)
+    ensure_initialized(str(graph_path))
+
+    def bound_insight(**kwargs: Any) -> str:
+        kwargs.pop("con", None)
+        active = _request_graph_connection.get()
+        if active is not None:
+            return promote_insight(con=active, **kwargs)
+        with connect_write(str(graph_path), purpose="engagement/promote-insight") as con:
+            con.execute("BEGIN")
+            try:
+                result = promote_insight(con=con, **kwargs)
+                con.execute("COMMIT")
+                return result
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
+
+    def bound_question(**kwargs: Any) -> str:
+        kwargs.pop("con", None)
+        active = _request_graph_connection.get()
+        if active is not None:
+            return promote_question(con=active, **kwargs)
+        with connect_write(str(graph_path), purpose="engagement/promote-question") as con:
+            con.execute("BEGIN")
+            try:
+                result = promote_question(con=con, **kwargs)
+                con.execute("COMMIT")
+                return result
+            except Exception:
+                con.execute("ROLLBACK")
+                raise
+
+    app.state.engagement_store = engagement_store
+    app.state.engagement_session_store = session_store
+    app.state.engagement_graph_db_path = graph_path
+    app.state.engagement_promote_insight = bound_insight
+    app.state.engagement_promote_question = bound_question
+
+    @app.middleware("http")
+    async def engagement_composition(request: Any, call_next: Any) -> Any:
+        eng_token = _request_engagement_store.set(engagement_store)
+        session_token = _request_session_store.set(session_store)
+        insight_token = _request_promote_insight.set(
+            app.state.engagement_promote_insight
+        )
+        question_token = _request_promote_question.set(
+            app.state.engagement_promote_question
+        )
+        graph_token = _request_graph_path.set(graph_path)
+        try:
+            return await call_next(request)
+        finally:
+            _request_graph_path.reset(graph_token)
+            _request_promote_question.reset(question_token)
+            _request_promote_insight.reset(insight_token)
+            _request_session_store.reset(session_token)
+            _request_engagement_store.reset(eng_token)
+
+
 def _eng() -> EngagementStore:
+    request_store = _request_engagement_store.get()
+    if request_store is not None:
+        return request_store
     global _engagement_store
     if _engagement_store is None:
         reset_engagement_stores()
@@ -144,6 +262,9 @@ def get_engagement_store(*, create_if_missing: bool = True) -> EngagementStore:
 
 
 def _sess() -> SessionStore:
+    request_store = _request_session_store.get()
+    if request_store is not None:
+        return request_store
     global _session_store
     if _session_store is None:
         reset_engagement_stores()
@@ -818,17 +939,20 @@ def post_twins_promote_context(body: TwinPromoteContextBody) -> dict[str, Any]:
     offline hooks; the product route must never report a simulated promotion.
     """
     try:
-        return twin_promote_context_payload(
-            body.asset_id,
-            store=_eng(),
-            query=body.query,
-            investigation_id=body.investigation_id,
-            promote_insight_fn=twin_promote_insight_fn,
-            promote_question_fn=twin_promote_question_fn,
-            include_html=body.include_html,
-            kinds=body.kinds,
-            note_ids=body.note_ids,
-        )
+        with _graph_promotion_batch():
+            return twin_promote_context_payload(
+                body.asset_id,
+                store=_eng(),
+                query=body.query,
+                investigation_id=body.investigation_id,
+                promote_insight_fn=_request_promote_insight.get()
+                or twin_promote_insight_fn,
+                promote_question_fn=_request_promote_question.get()
+                or twin_promote_question_fn,
+                include_html=body.include_html,
+                kinds=body.kinds,
+                note_ids=body.note_ids,
+            )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -959,20 +1083,31 @@ def post_session_open(body: SessionOpenBody) -> dict[str, Any]:
 
 @engagement_router.post("/sessions/complete-flywheel")
 def post_session_complete_flywheel(body: SessionFlywheelBody) -> dict[str, Any]:
+    live_insight = _request_promote_insight.get()
+    live_question = _request_promote_question.get()
     try:
-        result = complete_session_with_context_flywheel(
-            body.session_id,
-            session_store=_sess(),
-            engagement_store=_eng(),
-            output_text=body.output_text,
-            insights=body.insights,
-            questions=body.questions,
-            query=body.query,
-            record_twins=body.record_twins,
-            include_twin_promote=body.include_twin_promote,
-            promote_insight_fn=_offline_promote_insight if body.include_twin_promote else None,
-            promote_question_fn=_offline_promote_question if body.include_twin_promote else None,
-        )
+        with _graph_promotion_batch():
+            result = complete_session_with_context_flywheel(
+                body.session_id,
+                session_store=_sess(),
+                engagement_store=_eng(),
+                output_text=body.output_text,
+                insights=body.insights,
+                questions=body.questions,
+                query=body.query,
+                record_twins=body.record_twins,
+                include_twin_promote=body.include_twin_promote,
+                promote_insight_fn=(
+                    live_insight or _offline_promote_insight
+                    if body.include_twin_promote
+                    else None
+                ),
+                promote_question_fn=(
+                    live_question or _offline_promote_question
+                    if body.include_twin_promote
+                    else None
+                ),
+            )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
@@ -1045,6 +1180,7 @@ def register_engagement_routes(app: FastAPI) -> None:
 __all__ = [
     "engagement_router",
     "register_engagement_routes",
+    "bind_engagement_stores",
     "reset_engagement_stores",
     "hydrate_live_status_payload",
     "twin_seed_live_status_payload",

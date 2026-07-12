@@ -157,6 +157,71 @@ def test_production_app_does_not_overwrite_attested_provider(tmp_path: Path) -> 
     assert app.state.midnight_oil_runtime.config.state_dir == tmp_path / "state"
     provider = get_provider("verified-provider")
     assert provider.idempotency_guaranteed is True  # type: ignore[attr-defined]
+    assert (
+        app.state.engagement_store
+        is app.state.midnight_oil_runtime.stores.engagement_store
+    )
+
+
+def test_production_app_rejects_conflicting_engagement_root(tmp_path: Path) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    environment["ANTIEK_ENGAGEMENT_DIR"] = str(tmp_path / "different-engagement")
+
+    with pytest.raises(RuntimeError, match="conflicts with the Midnight Oil"):
+        create_midnight_oil_production_app(path, environ=environment)
+
+
+def test_production_apps_keep_engagement_authority_isolated(tmp_path: Path) -> None:
+    roots = (tmp_path / "runtime-a", tmp_path / "runtime-b")
+    for root in roots:
+        root.mkdir()
+    path_a, environment_a, _ = _runtime_files(roots[0])
+    path_b, environment_b, _ = _runtime_files(roots[1])
+    app_a = create_midnight_oil_production_app(path_a, environ=environment_a)
+    app_b = create_midnight_oil_production_app(path_b, environ=environment_b)
+    client_a = TestClient(app_a)
+    client_b = TestClient(app_b)
+
+    for client, text in ((client_a, "runtime A insight"), (client_b, "runtime B insight")):
+        recorded = client.post(
+            "/engagement/twins",
+            json={"asset_id": "shared-asset", "kind": "insight", "text": text},
+        )
+        assert recorded.status_code == 200, recorded.text
+
+    notes_a = client_a.get("/engagement/twins/shared-asset").json()["notes"]
+    notes_b = client_b.get("/engagement/twins/shared-asset").json()["notes"]
+    assert {note["text"] for note in notes_a} == {"runtime A insight"}
+    assert {note["text"] for note in notes_b} == {"runtime B insight"}
+
+
+def test_production_twin_promotion_rolls_back_entire_batch(tmp_path: Path) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    app = create_midnight_oil_production_app(path, environ=environment)
+    client = TestClient(app, raise_server_exceptions=False)
+    for kind, text in (
+        ("insight", "The first graph write must roll back."),
+        ("question", "Will the second promotion fail?"),
+    ):
+        recorded = client.post(
+            "/engagement/twins",
+            json={"asset_id": "atomic-batch", "kind": kind, "text": text},
+        )
+        assert recorded.status_code == 200
+    with connect_read(str(app.state.engagement_graph_db_path)) as con:
+        before = con.execute("SELECT count(*) FROM nodes").fetchone()[0]
+
+    def reject_question(**kwargs: Any) -> str:
+        del kwargs
+        raise RuntimeError("injected second-note promotion failure")
+
+    app.state.engagement_promote_question = reject_question
+    failed = client.post(
+        "/engagement/twins/promote-context", json={"asset_id": "atomic-batch"}
+    )
+    assert failed.status_code == 500
+    with connect_read(str(app.state.engagement_graph_db_path)) as con:
+        assert con.execute("SELECT count(*) FROM nodes").fetchone()[0] == before
 
 
 def test_worker_no_work_is_structured_and_non_spending(tmp_path: Path) -> None:
@@ -243,6 +308,7 @@ def test_missing_secret_reports_configuration_without_naming_secret(tmp_path: Pa
         "max_steps_takeover",
         "max_steps_detail_crash",
         "max_steps_stale_fence",
+        "engagement_store_convergence",
     ],
 )
 def test_api_to_worker_executes_deposits_projects_and_archives_once(
@@ -250,14 +316,19 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
 ) -> None:
     path, environment, _ = _runtime_files(tmp_path)
     api = build_midnight_oil_api_runtime(path, environ=environment)
-    app = FastAPI()
+    app = (
+        create_midnight_oil_production_app(path, environ=environment)
+        if mode == "engagement_store_convergence"
+        else FastAPI()
+    )
 
     @app.middleware("http")
     async def _auth(request: Request, call_next):  # type: ignore[no-untyped-def]
         request.state.user_id = "operator-runtime"
         return await call_next(request)
 
-    register_midnight_oil_routes(app, dependencies=api.dependencies)
+    if mode != "engagement_store_convergence":
+        register_midnight_oil_routes(app, dependencies=api.dependencies)
     client = TestClient(app)
     created = client.post(
         "/midnight-oil/create",
@@ -676,6 +747,91 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     assert result.graph_deliverable_id
     assert len(paid.keys) == 1
     assert worker.stores.operation_queue.next_claimable(now_ms=10**18) is None
+    if mode == "engagement_store_convergence":
+        detail = get_job(job_id, store=worker.stores.jobs)
+        assert detail is not None
+        assert detail.asset_id
+        twins = client.get(f"/engagement/twins/{detail.asset_id}")
+        assert twins.status_code == 200, twins.text
+        twin_body = twins.json()
+        assert twin_body["insight_count"] == 1
+        assert twin_body["question_count"] == 1
+        texts = {note["text"] for note in twin_body["notes"]}
+        assert "Runtime synthesis with durable evidence." in texts
+        assert "Which claims remain unsupported by operator-corpus evidence?" in texts
+        searched = client.post(
+            "/engagement/context-search",
+            json={
+                "query": "evidence",
+                "asset_id": detail.asset_id,
+                "include_html": True,
+            },
+        )
+        assert searched.status_code == 200, searched.text
+        assert searched.json()["hit_count"] >= 1
+        promoted = client.post(
+            "/engagement/twins/promote-context",
+            json={"asset_id": detail.asset_id, "kinds": ["question"]},
+        )
+        assert promoted.status_code == 200, promoted.text
+        assert promoted.json()["promoted_count"] == 1
+        promoted_node_id = promoted.json()["promoted"][0]["graph_node_id"]
+        with connect_read(str(api.config.graph_db_path)) as con:
+            assert con.execute(
+                "SELECT count(*) FROM nodes WHERE node_id = ?", [promoted_node_id]
+            ).fetchone() == (1,)
+        question = next(
+            note["text"] for note in twin_body["notes"] if note["kind"] == "question"
+        )
+        opened = client.post(
+            "/engagement/sessions/open",
+            json={
+                "asset_id": detail.asset_id,
+                "selection_text": question,
+                "goal_hint": f"Twin chase on {detail.asset_id}",
+                "view_mode": "floating",
+                "research_tier": "deep",
+            },
+        )
+        assert opened.status_code == 200, opened.text
+        assert opened.json()["parent_asset_id"] == detail.asset_id
+        session_id = opened.json()["session_id"]
+        replayed = client.post(
+            "/midnight-oil/deposit",
+            json={"job_id": job_id, "record_progress": False},
+        )
+        assert replayed.status_code == 200, replayed.text
+        assert replayed.json()["document_id"] == result.deposit_document_id
+        assert replayed.json()["twin_count"] == twin_body["note_count"]
+        replayed_twins = client.get(f"/engagement/twins/{detail.asset_id}")
+        assert replayed_twins.json()["note_count"] == twin_body["note_count"]
+        restarted_app = create_midnight_oil_production_app(path, environ=environment)
+        restarted_client = TestClient(restarted_app)
+        restarted_twins = restarted_client.get(f"/engagement/twins/{detail.asset_id}")
+        assert restarted_twins.status_code == 200
+        assert restarted_twins.json()["note_count"] == twin_body["note_count"]
+        with connect_read(str(api.config.graph_db_path)) as con:
+            graph_nodes_before_followup = con.execute(
+                "SELECT count(*) FROM nodes"
+            ).fetchone()[0]
+        completed_session = restarted_client.post(
+            "/engagement/sessions/complete-flywheel",
+            json={
+                "session_id": session_id,
+                "output_text": "Follow-up complete.",
+                "insights": ["Follow-up insight persisted."],
+                "questions": ["Which recursive branch follows?"],
+                "record_twins": True,
+                "include_twin_promote": True,
+            },
+        )
+        assert completed_session.status_code == 200, completed_session.text
+        assert completed_session.json()["status"] == "complete"
+        with connect_read(str(api.config.graph_db_path)) as con:
+            assert (
+                con.execute("SELECT count(*) FROM nodes").fetchone()[0]
+                > graph_nodes_before_followup
+            )
     second = run_worker_once(
         worker,
         worker_id="runtime-worker",

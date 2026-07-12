@@ -16,6 +16,7 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from substrate.dispatch import DispatchConfig
+from substrate.floating_session.store import FileSessionStore
 from substrate.midnight_oil.live import build_router_live_plan
 from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfig,
@@ -76,11 +77,31 @@ def create_midnight_oil_production_app(
 
     from .app import create_app
 
-    runtime = build_midnight_oil_api_runtime(config_path, environ=environ)
+    environment = os.environ if environ is None else environ
+    preview = MidnightOilRuntimeConfig.from_file(config_path)
+    legacy_root = str(environment.get("ANTIEK_ENGAGEMENT_DIR", "")).strip()
+    if legacy_root:
+        legacy_path = Path(legacy_root).expanduser().resolve()
+        runtime_path = preview.engagement_dir.expanduser().resolve()
+        if legacy_path != runtime_path:
+            raise RuntimeError(
+                "ANTIEK_ENGAGEMENT_DIR conflicts with the Midnight Oil engagement_dir"
+            )
+    runtime = build_midnight_oil_api_runtime(config_path, environ=environment)
+    from .engagement_routes import bind_engagement_stores
+
     app = create_app(
         register_providers=False,
         enable_midnight_oil=True,
         midnight_oil_dependencies=runtime.dependencies,
+    )
+    bind_engagement_stores(
+        app,
+        engagement_store=runtime.stores.engagement_store,
+        session_store=FileSessionStore(
+            runtime.config.state_dir / "engagement-sessions"
+        ),
+        graph_db_path=runtime.config.graph_db_path,
     )
     app.state.midnight_oil_runtime = runtime
     return app
