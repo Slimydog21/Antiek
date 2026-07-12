@@ -47,6 +47,7 @@ const cite = (over: Partial<BookCitation> = {}): BookCitation => ({
 function answer(over: Partial<AskBookResponse> = {}): AskBookResponse {
   return {
     answer_id: "evt-answer-1",
+    capture_status: "captured",
     answer: "Page seven discusses entanglement.",
     citations: [cite()],
     grounded: true,
@@ -172,5 +173,15 @@ describe("TalkToBook (M2)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Mark answer good" }));
     await screen.findByText("Marked good");
     expect(judgeBookAnswerMock).toHaveBeenCalledWith("doc-x", "evt-answer-1", "good");
+  });
+
+  it("delivers an uncaptured answer without offering a broken rating action", async () => {
+    askBookMock.mockResolvedValue(answer({
+      answer_id: null,
+      capture_status: "unavailable",
+    }));
+    await openAndAsk();
+    expect(screen.queryByRole("button", { name: "Mark answer good" })).toBeNull();
+    expect(screen.getByText(/rating is unavailable because its evidence record could not be saved/)).toBeTruthy();
   });
 });

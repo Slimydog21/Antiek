@@ -32,6 +32,7 @@ export interface TalkMessage {
   answer: string | null;
   /** Durable event id returned by the server. Missing only on legacy sessions. */
   answer_id?: string;
+  capture_unavailable?: boolean;
   judgment?: "good" | "bad";
   /** Page-level citations for the answer (empty until the reply lands). */
   citations: BookCitation[];
@@ -94,7 +95,8 @@ export interface UseTalkThread {
     answer: string,
     citations: BookCitation[],
     grounded: boolean,
-    answerId: string,
+    answerId: string | null,
+    captureStatus: "captured" | "unavailable",
   ) => void;
   setJudgment: (messageId: string, verdict: "good" | "bad") => void;
   /** Mark a turn failed (drops the pending message so the thread isn't stuck). */
@@ -154,9 +156,23 @@ export function useTalkThread(documentId: string): UseTalkThread {
   );
 
   const completeTurn = useCallback(
-    (messageId: string, answer: string, citations: BookCitation[], grounded: boolean, answerId: string) => {
+    (
+      messageId: string,
+      answer: string,
+      citations: BookCitation[],
+      grounded: boolean,
+      answerId: string | null,
+      captureStatus: "captured" | "unavailable",
+    ) => {
       mutateActive((msgs) =>
-        msgs.map((m) => (m.id === messageId ? { ...m, answer, citations, grounded, answer_id: answerId } : m)),
+        msgs.map((m) => (m.id === messageId ? {
+          ...m,
+          answer,
+          citations,
+          grounded,
+          answer_id: answerId ?? undefined,
+          capture_unavailable: captureStatus === "unavailable",
+        } : m)),
       );
     },
     [mutateActive],

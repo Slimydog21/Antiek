@@ -66,7 +66,14 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     setPending(true);
     try {
       const res = await askBook(documentId, q, { history });
-      thread.completeTurn(messageId, res.answer, res.citations, res.grounded, res.answer_id);
+      thread.completeTurn(
+        messageId,
+        res.answer,
+        res.citations,
+        res.grounded,
+        res.answer_id,
+        res.capture_status,
+      );
     } catch (e: unknown) {
       thread.failTurn(messageId);
       setError(e instanceof Error ? e.message : String(e));
@@ -285,6 +292,11 @@ function TalkMessageView({
                 <span className="text-[11px] text-emperor" role="alert">Couldn’t save judgment.</span>
               )}
             </div>
+          )}
+          {message.capture_unavailable && (
+            <p className="mt-2 text-[11px] text-sun-deep dark:text-sun" role="status">
+              Answer delivered, but rating is unavailable because its evidence record could not be saved.
+            </p>
           )}
 
           {!message.grounded && (

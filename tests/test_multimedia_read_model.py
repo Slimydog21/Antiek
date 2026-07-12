@@ -15,7 +15,6 @@ from fastapi.testclient import TestClient
 from interfaces.research.api import multimedia_routes
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
-    LiveProviderExecutionRequest,
     MultimediaAssetStore,
     MultimediaJobRecord,
     SteeringRequest,
@@ -193,6 +192,12 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
 
     missing_jobs = client.get("/multimedia/assets/mm-missing/jobs")
     assert missing_jobs.status_code == 404
+    assert client.post(
+        f"/multimedia/assets/{asset_id}/prepare-live-execution", json={}
+    ).status_code == 404
+    assert client.post(
+        f"/multimedia/assets/{asset_id}/execution-authorizations", json={}
+    ).status_code == 404
 
     other = TestClient(app, headers={"x-test-auth": "yes", "x-test-user": "owner-b"})
     assert other.get("/multimedia/assets").json() == {"assets": [], "count": 0}
@@ -202,14 +207,6 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
         other.post(f"/multimedia/assets/{asset_id}/approve-dry-run"),
         other.post(f"/multimedia/assets/{asset_id}/steer", json={"prompt": "steal"}),
         other.post(f"/multimedia/assets/{asset_id}/hardening"),
-        other.post(
-            f"/multimedia/assets/{asset_id}/prepare-live-execution",
-            json={
-                "max_budget_usd": 10,
-                "route_policy": "cheapest",
-                "operator_acknowledged_spend": True,
-            },
-        ),
     )
     assert [response.status_code for response in denied] == [404] * len(denied)
 
@@ -240,149 +237,6 @@ def test_hybrid_approve_does_not_double_count_audio_cost_rows(tmp_path):
     assert len(approved.asset.manifest.provider_calls) == len(
         {call.call_id for call in approved.asset.manifest.provider_calls}
     )
-
-
-def test_live_provider_budget_gates_without_paid_calls(tmp_path, monkeypatch):
-    """SPR-12: the live-execution gate produces queued/failed provider jobs with
-    NO network calls. Every failure path records a clear non-secret error code."""
-    monkeypatch.delenv("KREA_API_KEY", raising=False)
-    store = MultimediaAssetStore(tmp_path)
-    draft = store.create_draft(
-        CreateMultimediaDraftRequest(
-            topic="jet engine reliability",
-            target_minutes=20,
-            mode="video",
-            route_policy="balanced",
-            sources=("Engine reliability improved long-range routing.",),
-        )
-    )
-    asset_id = draft.asset.asset_id
-
-    not_ready = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=100,
-            route_policy="balanced",
-            operator_acknowledged_spend=True,
-        ),
-    )
-    assert not_ready.jobs[-1].error_code == "asset_not_ready"
-
-    store.approve_dry_run(asset_id)  # a reviewed dry-run is the precondition
-
-    mismatched_route = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=100,
-            route_policy="highest_quality",
-            operator_acknowledged_spend=True,
-        ),
-    )
-    assert mismatched_route.jobs[-1].error_code == "route_policy_mismatch"
-
-    # 1. No acknowledgement -> fails before budget/readiness are even considered.
-    no_ack = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(max_budget_usd=100, route_policy="balanced"),
-    )
-    assert no_ack.jobs[-1].status == "failed"
-    assert no_ack.jobs[-1].error_code == "spend_not_acknowledged"
-    assert no_ack.jobs[-1].retryable is False
-
-    # 2. Acked but budget below the duration-based floor (ledger is all-zero for
-    #    FakeTTSProvider, so the floor is 20min * $1.0 = $20). Retryable: the
-    #    operator can raise the budget and retry.
-    too_low = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=5,
-            route_policy="balanced",
-            operator_acknowledged_spend=True,
-        ),
-    )
-    assert too_low.jobs[-1].status == "failed"
-    assert too_low.jobs[-1].error_code == "budget_below_estimate"
-    assert too_low.jobs[-1].retryable is True
-
-    # 3. Acked + budget ok but Krea not configured -> provider_unconfigured.
-    unconfigured = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=25,
-            route_policy="balanced",
-            operator_acknowledged_spend=True,
-        ),
-    )
-    assert unconfigured.jobs[-1].status == "failed"
-    assert unconfigured.jobs[-1].error_code == "provider_unconfigured"
-    assert unconfigured.jobs[-1].retryable is False
-
-    # 4. Revision mismatch -> failed, retryable False.
-    mismatch = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=25,
-            route_policy="balanced",
-            operator_acknowledged_spend=True,
-            dry_run_revision_id="rev-stale",
-        ),
-    )
-    assert mismatch.jobs[-1].status == "failed"
-    assert mismatch.jobs[-1].error_code == "revision_mismatch"
-    assert mismatch.jobs[-1].retryable is False
-
-    # 4b. Unknown / misspelled provider family is treated as unconfigured
-    #     (fail-closed: the gate never queues for a provider whose readiness
-    #     was never checked).
-    unknown = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=25,
-            route_policy="balanced",
-            operator_acknowledged_spend=True,
-            provider_families=("openai",),
-        ),
-    )
-    assert unknown.jobs[-1].status == "failed"
-    assert unknown.jobs[-1].error_code == "provider_unconfigured"
-
-    # 5. All gates pass (ack + budget + config presence) -> QUEUED. Presence
-    #    of a dummy key is the readiness signal; the value is never read/logged.
-    monkeypatch.setenv("KREA_API_KEY", "presence-only-not-a-real-secret")
-    queued = store.prepare_live_execution(
-        asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=25,
-            route_policy="balanced",
-            operator_acknowledged_spend=True,
-        ),
-    )
-    assert queued.jobs[-1].status == "queued"
-    assert queued.jobs[-1].kind == "provider_execution"
-    assert queued.jobs[-1].retryable is True
-    # No secret value ever appears in any job message.
-    for job in queued.jobs:
-        assert "presence-only-not-a-real-secret" not in job.message
-
-    cheapest = store.create_draft(
-        CreateMultimediaDraftRequest(
-            topic="dry-run-only route",
-            target_minutes=15,
-            mode="audio",
-            route_policy="cheapest",
-            sources=("A source.",),
-        )
-    )
-    store.approve_dry_run(cheapest.asset.asset_id)
-    denied_cheapest = store.prepare_live_execution(
-        cheapest.asset.asset_id,
-        LiveProviderExecutionRequest(
-            max_budget_usd=100,
-            route_policy="cheapest",
-            operator_acknowledged_spend=True,
-        ),
-    )
-    assert denied_cheapest.jobs[-1].error_code == "route_policy_not_live"
 
 
 def test_account_store_serializes_jobs_across_processes(tmp_path) -> None:

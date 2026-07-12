@@ -437,7 +437,8 @@ class CitationResponse(BaseModel):
 
 
 class AskBookResponse(BaseModel):
-    answer_id: str
+    answer_id: str | None
+    capture_status: Literal["captured", "unavailable"]
     answer: str
     citations: list[CitationResponse]
     # False when the book had no extractable text to ground on (scanned-image
@@ -920,35 +921,40 @@ def register_book_routes(app: FastAPI) -> None:
         owner_id = _reader_owner_id(request)
         dispatch_result = result.dispatch_result
         usage = dispatch_result.usage if dispatch_result is not None else None
-        answer_id = emit_typed(
-            f"read-{document_id}",
-            ReadBookAnsweredPayload(
-                owner_id=owner_id,
-                question=req.question,
-                answer=result.answer,
-                citations=[BookAnswerCitation(**citation.model_dump()) for citation in citations],
-                grounded=result.grounded,
-                context_chunk_count=result.context_chunk_count,
-                research_tier=req.research_tier,
-                provider=dispatch_result.provider if dispatch_result else None,
-                model=dispatch_result.model if dispatch_result else None,
-                input_tokens=usage.input_tokens if usage else None,
-                output_tokens=usage.output_tokens if usage else None,
-                cached_input_tokens=usage.cached_input_tokens if usage else None,
-                cache_creation_input_tokens=(usage.cache_creation_input_tokens if usage else None),
-                cost_usd=dispatch_result.cost_usd if dispatch_result else None,
-                latency_ms=dispatch_result.latency_ms if dispatch_result else None,
-                dispatch_event_id=dispatch_result.event_id if dispatch_result else None,
-            ),
-            role="read/talk_to_book",
-            policy_id="read/books/answer-capture-v1",
-            document_id=document_id,
-        )
-        if answer_id is None or _captured_answer(document_id, answer_id, owner_id) is None:
-            raise HTTPException(status_code=503, detail="answer_capture_unavailable")
+        answer_id: str | None = None
+        try:
+            emitted_id = emit_typed(
+                f"read-{document_id}",
+                ReadBookAnsweredPayload(
+                    owner_id=owner_id,
+                    question=req.question,
+                    answer=result.answer,
+                    citations=[BookAnswerCitation(**citation.model_dump()) for citation in citations],
+                    grounded=result.grounded,
+                    context_chunk_count=result.context_chunk_count,
+                    research_tier=req.research_tier,
+                    provider=dispatch_result.provider if dispatch_result else None,
+                    model=dispatch_result.model if dispatch_result else None,
+                    input_tokens=usage.input_tokens if usage else None,
+                    output_tokens=usage.output_tokens if usage else None,
+                    cached_input_tokens=usage.cached_input_tokens if usage else None,
+                    cache_creation_input_tokens=(usage.cache_creation_input_tokens if usage else None),
+                    cost_usd=dispatch_result.cost_usd if dispatch_result else None,
+                    latency_ms=dispatch_result.latency_ms if dispatch_result else None,
+                    dispatch_event_id=dispatch_result.event_id if dispatch_result else None,
+                ),
+                role="read/talk_to_book",
+                policy_id="read/books/answer-capture-v1",
+                document_id=document_id,
+            )
+            if emitted_id is not None and _captured_answer(document_id, emitted_id, owner_id):
+                answer_id = emitted_id
+        except Exception:
+            logger.exception("talk-to-book answer capture failed after dispatch")
 
         return AskBookResponse(
             answer_id=answer_id,
+            capture_status="captured" if answer_id is not None else "unavailable",
             answer=result.answer,
             citations=citations,
             grounded=result.grounded,

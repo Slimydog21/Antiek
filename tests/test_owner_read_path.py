@@ -269,19 +269,45 @@ def test_answer_capture_judgment_and_eval_export(
     assert record["question"] == "what does the passage establish?"
 
 
-def test_disabled_event_log_refuses_uncaptured_answer(
+def test_disabled_event_log_returns_answer_without_inviting_paid_retry(
     db, owner_client, stub_embeddings, monkeypatch,
 ):
     _gated_book(db, "doc-disabled", content_class="personal_reading", title="Disabled")
-    register_fake()
+    provider = register_fake()
     monkeypatch.setenv("ANTIEK_EVENTS_DISABLED", "1")
     response = owner_client.post(
         "/books/doc-disabled/ask",
         json={"question": "what is here?"},
         headers=_OWNER_HEADERS,
     )
-    assert response.status_code == 503
-    assert response.json()["detail"] == "answer_capture_unavailable"
+    assert response.status_code == 200
+    assert response.json()["answer_id"] is None
+    assert response.json()["capture_status"] == "unavailable"
+    assert response.json()["answer"]
+    assert len(provider.prompts) == 1
+
+
+def test_capture_exception_returns_paid_answer_once(
+    db, owner_client, stub_embeddings, monkeypatch,
+):
+    import substrate.event_log
+
+    _gated_book(db, "doc-capture-error", content_class="personal_reading", title="Capture")
+    provider = register_fake()
+
+    def fail_capture(*_args, **_kwargs):
+        raise OSError("simulated event-store failure")
+
+    monkeypatch.setattr(substrate.event_log, "emit_typed", fail_capture)
+    response = owner_client.post(
+        "/books/doc-capture-error/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["answer_id"] is None
+    assert response.json()["capture_status"] == "unavailable"
+    assert len(provider.prompts) == 1
 
 
 def test_concurrent_judgment_requests_append_once(

@@ -32,7 +32,6 @@ from substrate.multimedia.production_registration import (
 )
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
-    LiveProviderExecutionRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
@@ -323,18 +322,6 @@ async def recover_multimedia_asset_knowledge_finalization(
     except MultimediaKnowledgeFinalizationError as exc:
         status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
-
-
-@multimedia_router.post("/assets/{asset_id}/prepare-live-execution", response_model=MultimediaAssetRecord)
-def prepare_multimedia_live_execution(
-    asset_id: str,
-    request: LiveProviderExecutionRequest,
-    operator_id: str = Depends(authenticated_multimedia_operator),
-) -> MultimediaAssetRecord:
-    try:
-        return get_store().prepare_live_execution(asset_id, request, owner_id=operator_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
 def register_multimedia_routes(app: FastAPI) -> None:

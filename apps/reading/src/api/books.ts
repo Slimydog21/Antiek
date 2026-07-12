@@ -260,7 +260,8 @@ export interface TalkTurn {
 }
 
 export interface AskBookResponse {
-  answer_id: string;
+  answer_id: string | null;
+  capture_status: "captured" | "unavailable";
   answer: string;
   citations: BookCitation[];
   /** False when the book had no extractable text to ground on (scanned-image

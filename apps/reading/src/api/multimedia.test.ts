@@ -28,7 +28,6 @@ import {
   materializeMultimediaVisualCandidates,
   listMultimediaAssets,
   listMultimediaJobs,
-  prepareMultimediaLiveExecution,
   prepareMultimediaLocal,
   prepareMultimediaLocalAudible,
   inspectMultimediaLocal,
@@ -591,37 +590,6 @@ describe("multimedia API client", () => {
     if (!record.hardening_report) throw new Error("missing hardening_report");
     expect(manualGateIds(record.hardening_report)).toEqual(["rights_and_publication"]);
     expect(failedGateIds(record.hardening_report)).toEqual(["budget"]);
-  });
-
-  it("posts the live-execution preparation request to the gated endpoint", async () => {
-    mockFetch().mockResolvedValueOnce(jsonResponse(200, record));
-    await prepareMultimediaLiveExecution("mm-1", {
-      max_budget_usd: 25,
-      route_policy: "balanced",
-      operator_acknowledged_spend: true,
-    });
-    expect(mockFetch()).toHaveBeenLastCalledWith(
-      "/multimedia/assets/mm-1/prepare-live-execution",
-      expect.objectContaining({
-        method: "POST",
-        body: JSON.stringify({
-          max_budget_usd: 25,
-          route_policy: "balanced",
-          operator_acknowledged_spend: true,
-        }),
-      }),
-    );
-  });
-
-  it("surfaces a typed not-found error for a 404 live-execution prep", async () => {
-    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "missing" }));
-    await expect(
-      prepareMultimediaLiveExecution("mm-missing", {
-        max_budget_usd: 25,
-        route_policy: "balanced",
-        operator_acknowledged_spend: true,
-      }),
-    ).rejects.toThrow("multimedia_asset_not_found");
   });
 
   it("uses encoded mounted reconciliation endpoints", async () => {

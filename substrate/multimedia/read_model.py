@@ -82,22 +82,6 @@ class SteeringRequest(_ReadModelBase):
     corrected_voice_transcript: str | None = None
 
 
-class LiveProviderExecutionRequest(_ReadModelBase):
-    """Operator request to transition a dry-run asset toward live spend.
-
-    The gate checks budget, acknowledgement, and provider readiness BEFORE
-    any queued state is recorded, and makes NO provider/network calls. A
-    missing provider key records ``provider_unconfigured`` without echoing
-    the secret value.
-    """
-
-    max_budget_usd: float = Field(gt=0, le=500)
-    route_policy: RoutePolicy
-    operator_acknowledged_spend: bool = False
-    provider_families: tuple[str, ...] = Field(default=("krea",), min_length=1)
-    dry_run_revision_id: str | None = None
-
-
 class MultimediaJobRecord(_ReadModelBase):
     """Durable progress record for one multimedia operation.
 
@@ -416,129 +400,6 @@ class MultimediaAssetStore:
             )
             self._save_unlocked(updated, owner_digest)
             return updated
-
-    def prepare_live_execution(
-        self,
-        asset_id: str,
-        request: LiveProviderExecutionRequest,
-        *,
-        owner_id: str = _DEFAULT_OWNER_ID,
-    ) -> MultimediaAssetRecord:
-        """Gate a dry-run asset toward live provider execution.
-
-        Returns a ``provider_execution`` job row: ``queued`` only when budget
-        + acknowledgement + provider readiness all pass, else ``failed`` with
-        a clear non-secret error code. Makes NO provider/network calls —
-        readiness is config-presence only. The gate ordering is deliberate:
-        acknowledgement is checked before budget/readiness so an unack'd
-        request never reaches a provider-ready state.
-        """
-        owner_digest = _owner_digest(owner_id)
-        with self._locked(exclusive=True):
-            record = self._load_unlocked(asset_id, owner_digest)
-            return self._prepare_live_execution_unlocked(
-                record, request, owner_digest=owner_digest
-            )
-
-    def _prepare_live_execution_unlocked(
-        self,
-        record: MultimediaAssetRecord,
-        request: LiveProviderExecutionRequest,
-        *,
-        owner_digest: str,
-    ) -> MultimediaAssetRecord:
-        if request.dry_run_revision_id and request.dry_run_revision_id != record.asset.revision_id:
-            return self._record_job_unlocked(
-                record,
-                owner_digest=owner_digest,
-                kind="provider_execution",
-                status="failed",
-                progress_percent=0,
-                message="Requested dry-run revision does not match the current asset revision.",
-                error_code="revision_mismatch",
-                retryable=False,
-            )
-        if str(record.asset.status) != "ready":
-            return self._record_job_unlocked(
-                record,
-                owner_digest=owner_digest,
-                kind="provider_execution",
-                status="failed",
-                progress_percent=0,
-                message="Live provider execution requires an approved ready asset.",
-                error_code="asset_not_ready",
-                retryable=False,
-            )
-        if request.route_policy != record.asset.route_policy:
-            return self._record_job_unlocked(
-                record,
-                owner_digest=owner_digest,
-                kind="provider_execution",
-                status="failed",
-                progress_percent=0,
-                message="Requested route policy does not match the approved asset revision.",
-                error_code="route_policy_mismatch",
-                retryable=False,
-            )
-        if request.route_policy == "cheapest":
-            return self._record_job_unlocked(
-                record,
-                owner_digest=owner_digest,
-                kind="provider_execution",
-                status="failed",
-                progress_percent=0,
-                message="The cheapest route is dry-run only and cannot authorize paid execution.",
-                error_code="route_policy_not_live",
-                retryable=False,
-            )
-        if not request.operator_acknowledged_spend:
-            return self._record_job_unlocked(
-                record,
-                owner_digest=owner_digest,
-                kind="provider_execution",
-                status="failed",
-                progress_percent=0,
-                message="Live provider execution requires explicit operator spend acknowledgement.",
-                error_code="spend_not_acknowledged",
-                retryable=False,
-            )
-        estimated = _estimated_live_budget_floor(record)
-        if request.max_budget_usd < estimated:
-            return self._record_job_unlocked(
-                record,
-                owner_digest=owner_digest,
-                kind="provider_execution",
-                status="failed",
-                progress_percent=0,
-                message=f"Live provider budget ${request.max_budget_usd:.2f} is below estimated floor ${estimated:.2f}.",
-                error_code="budget_below_estimate",
-                retryable=True,
-            )
-        missing = _missing_provider_families(request.provider_families)
-        if missing:
-            return self._record_job_unlocked(
-                record,
-                owner_digest=owner_digest,
-                kind="provider_execution",
-                status="failed",
-                progress_percent=0,
-                message=f"Provider families not configured: {', '.join(missing)}.",
-                error_code="provider_unconfigured",
-                retryable=False,
-            )
-        families = ", ".join(request.provider_families or ("none",))
-        return self._record_job_unlocked(
-            record,
-            owner_digest=owner_digest,
-            kind="provider_execution",
-            status="queued",
-            progress_percent=0,
-            message=(
-                f"Live execution queued for {families} with route {request.route_policy} "
-                f"and max budget ${request.max_budget_usd:.2f}."
-            ),
-            retryable=True,
-        )
 
     def record_job(
         self,
@@ -1043,45 +904,8 @@ def _title(topic: str) -> str:
     return trimmed[:80] + ("..." if len(trimmed) > 80 else "")
 
 
-def _estimated_live_budget_floor(record: MultimediaAssetRecord) -> float:
-    """Conservative floor for live spend.
-
-    The floor is the MAX of the persisted ledger total and a duration/mode
-    estimate. Taking the max means a dust-positive ledger (a fraction of a
-    cent) can never satisfy an arbitrarily tiny budget — the exact SPR-08
-    low-cost-mask failure mode. A real priced ledger that exceeds the
-    estimate still wins.
-    """
-    ledger_total = round(sum(row.cost_usd for row in record.asset.manifest.cost_rows), 4)
-    mode_floor = 0.2 if record.mode == "audio" else 1.0
-    duration_estimate = round(max(0.01, record.asset.requested_duration_minutes * mode_floor), 2)
-    return max(ledger_total, duration_estimate)
-
-
-_KNOWN_PROVIDER_FAMILIES = frozenset({"krea"})
-
-
-def _missing_provider_families(provider_families: tuple[str, ...]) -> tuple[str, ...]:
-    """Return provider families that are unconfigured.
-
-    Fail-closed: an UNKNOWN family name (typo, not-yet-supported) is treated
-    as unconfigured so the gate never queues live execution for a provider
-    whose readiness was never checked. Checks env PRESENCE only — never
-    reads or logs the secret value.
-    """
-    missing: list[str] = []
-    for family in provider_families:
-        normalized = family.strip().lower()
-        if normalized not in _KNOWN_PROVIDER_FAMILIES:
-            missing.append(family)
-        elif normalized == "krea" and not os.environ.get("KREA_API_KEY"):
-            missing.append("krea")
-    return tuple(missing)
-
-
 __all__ = [
     "CreateMultimediaDraftRequest",
-    "LiveProviderExecutionRequest",
     "MultimediaAssetList",
     "MultimediaAssetRecord",
     "MultimediaAssetStore",
