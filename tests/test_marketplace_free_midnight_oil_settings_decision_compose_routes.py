@@ -1,0 +1,85 @@
+"""Route tests for marketplace free over MO settings decision pack."""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from interfaces.research.api.marketplace_free_midnight_oil_settings_decision_compose_routes import (
+    register_marketplace_free_midnight_oil_settings_decision_compose_routes,
+)
+from tests.test_marketplace_free_midnight_oil_settings_decision_compose import (
+    MARKET,
+    MO_PACK,
+)
+
+_PATH = "/research/marketplace-free-midnight-oil-settings-decision/compose"
+
+
+def _client() -> TestClient:
+    app = FastAPI()
+    register_marketplace_free_midnight_oil_settings_decision_compose_routes(app)
+    return TestClient(app)
+
+
+def _payload(*, operator_ack: bool = True) -> dict:
+    return {
+        "market": MARKET,
+        "mo_pack": MO_PACK,
+        "operator_ack": operator_ack,
+    }
+
+
+def test_compose_route():
+    c = _client()
+    r = c.post(_PATH, json=_payload(operator_ack=True))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["pack_ready"] is True
+    assert body["account_aligned"] is True
+    assert body["market"]["port_ready"] is True
+    assert body["mo_pack"]["pack_ready"] is True
+    assert body["purchase_executed"] is False
+    assert body["hosted"] is False
+    assert body["pdf_view_authorized"] is False
+    assert body["live_execution_authorized"] is False
+    assert body["charge_executed"] is False
+    assert body["twin_written"] is False
+    assert body["production_router_verdict"] == "REJECT"
+    assert (
+        body["authority"]
+        == "marketplace_free_midnight_oil_settings_decision_compose_advisory"
+    )
+
+
+def test_compose_route_ack_false():
+    c = _client()
+    r = c.post(_PATH, json=_payload(operator_ack=False))
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["pack_ready"] is False
+    assert body["purchase_executed"] is False
+    assert body["hosted"] is False
+    assert body["production_router_verdict"] == "REJECT"
+
+
+def test_compose_route_account_mismatch():
+    c = _client()
+    payload = _payload(operator_ack=True)
+    payload["market"] = {**MARKET, "account_id": "acct-other"}
+    r = c.post(_PATH, json=payload)
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["account_aligned"] is False
+    assert body["pack_ready"] is False
+    assert body["purchase_executed"] is False
+    assert body["hosted"] is False
+    assert body["production_router_verdict"] == "REJECT"
+
+
+def test_compose_route_missing_operator_ack_422():
+    c = _client()
+    payload = _payload()
+    del payload["operator_ack"]
+    r = c.post(_PATH, json=payload)
+    assert r.status_code == 422
