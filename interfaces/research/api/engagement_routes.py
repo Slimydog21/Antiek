@@ -24,6 +24,7 @@ Surfaces:
   POST /engagement/context-search
   POST /engagement/sessions/open
   POST /engagement/sessions/complete-flywheel
+  GET  /engagement/sessions/owned
   GET  /engagement/sessions/asset/{parent_asset_id}
   GET  /engagement/sessions/{session_id}
   PUT  /engagement/sessions/{session_id}/view
@@ -39,7 +40,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from substrate.engagement_spine import (
@@ -80,6 +81,7 @@ from substrate.floating_session import (
     complete_session_with_context_flywheel,
     get_session,
     list_sessions_for_asset,
+    list_sessions_for_owner,
     merge_sessions,
     open_from_highlight_with_references,
     project_session_html,
@@ -1307,6 +1309,55 @@ def get_sessions_for_asset(
         "owner_id": owner_id,
         "sessions": [_session_payload(session, include_html=include_html) for session in verified],
         "count": len(verified),
+        "view_format": "html",
+    }
+
+
+@engagement_router.get("/sessions/owned")
+def get_owned_sessions(
+    request: Request,
+    limit: int = Query(default=50, ge=1, le=100),
+    cursor: str | None = Query(default=None, max_length=22),
+    include_html: bool = False,
+) -> dict[str, Any]:
+    """Discover durable sessions for the authenticated opaque owner."""
+
+    owner_id = _request_owner(request)
+    if cursor is not None and (
+        len(cursor) != 22
+        or not cursor.startswith("fsess_")
+        or any(char not in "0123456789abcdef" for char in cursor[6:])
+    ):
+        raise HTTPException(status_code=400, detail="invalid session cursor")
+    try:
+        sessions = list_sessions_for_owner(
+            owner_id,
+            session_store=_sess(),
+            after_session_id=cursor,
+            limit=limit + 1,
+        )
+    except ValueError as exc:
+        if str(exc) == "session cursor is not available":
+            raise HTTPException(
+                status_code=400, detail="session cursor is not available"
+            ) from exc
+        raise HTTPException(
+            status_code=409, detail="owner session index requires reconciliation"
+        ) from exc
+    except OSError as exc:
+        raise HTTPException(
+            status_code=409, detail="owner session index requires reconciliation"
+        ) from exc
+    verified = [_verified_session(row.session_id, owner_id) for row in sessions]
+    has_more = len(verified) > limit
+    page = verified[:limit]
+    return {
+        "owner_id": owner_id,
+        "sessions": [
+            _session_payload(session, include_html=include_html) for session in page
+        ],
+        "count": len(page),
+        "next_cursor": page[-1].session_id if has_more and page else None,
         "view_format": "html",
     }
 

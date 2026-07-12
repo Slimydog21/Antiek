@@ -55,8 +55,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   fetchSessionsCollective,
+  listOwnedEngagementSessions,
   mergeEngagementSessions,
   type CollectiveResponse,
+  type SessionLifecycleResponse,
   type SessionMergeResponse,
 } from "../../api/engagement";
 import { fetchDepthTiers } from "../../api/settings";
@@ -123,6 +125,14 @@ function Row({ label, value }: { label: string; value: string }) {
       </dd>
     </div>
   );
+}
+
+function newBrowserMergeKey(): string {
+  return `browser-merge-${
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2)
+  }`;
 }
 
 export default function DeepResearchSessionHost(props: DeepResearchSessionHostProps) {
@@ -227,33 +237,176 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       }),
     [props.spawn_id, props.available_spawn_ids, windows, recentSpawnIds],
   );
-  const availableSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (rawSessionId) ids.add(rawSessionId);
-    const ownerId = props.owner_id?.trim() || "";
-    for (const window of Object.values(windows)) {
-      if (window.kind !== "deep_research_session") continue;
-      if (String(window.payload.owner_id || "").trim() !== ownerId) continue;
-      const parentId = String(window.payload.parent_asset_id || "").trim();
-      const sessionId = String(window.payload.session_id || "").trim();
-      if (parentId === props.parent_asset_id?.trim() && sessionId) ids.add(sessionId);
+  const [ownedSessions, setOwnedSessions] = useState<SessionLifecycleResponse[]>(() =>
+    rawSessionId
+      ? [
+          {
+            session_id: rawSessionId,
+            spawn_id: props.spawn_id?.trim() || "",
+            investigation_id: props.investigation_id?.trim() || "",
+            parent_asset_id: props.parent_asset_id?.trim() || "",
+            selection_text: props.selection_text?.trim() || "",
+            status,
+            view_mode: "floating",
+            model_id: props.model_id ?? null,
+            goal: props.goal?.trim() || "",
+            research_tier: props.research_tier ?? null,
+            view_format: "html",
+            owner_id: props.owner_id?.trim() || "",
+            source_references: [],
+          },
+        ]
+      : [],
+  );
+  const [sessionDiscoveryState, setSessionDiscoveryState] = useState<
+    "idle" | "loading" | "ready" | "error"
+  >("idle");
+  const [sessionDiscoveryError, setSessionDiscoveryError] = useState<string | null>(null);
+  const [sessionDiscoveryErrorPhase, setSessionDiscoveryErrorPhase] = useState<
+    "initial" | "more" | null
+  >(null);
+  const [sessionDiscoveryTick, setSessionDiscoveryTick] = useState(0);
+  const [nextOwnedSessionCursor, setNextOwnedSessionCursor] = useState<string | null>(null);
+  const [sessionDiscoveryMoreBusy, setSessionDiscoveryMoreBusy] = useState(false);
+  const [selectedSessionIds, setSelectedSessionIds] = useState<Set<string>>(
+    () => new Set(rawSessionId ? [rawSessionId] : []),
+  );
+  const selectionRevision = useRef(0);
+  const [crossAssetApproved, setCrossAssetApproved] = useState(false);
+
+  useEffect(() => {
+    if (!rawSessionId) return;
+    let cancelled = false;
+    setSessionDiscoveryState("loading");
+    setSessionDiscoveryError(null);
+    setSessionDiscoveryErrorPhase(null);
+    void (async () => {
+      try {
+        const page = await listOwnedEngagementSessions({ limit: 100 });
+        if (cancelled) return;
+        setOwnedSessions((current) => {
+          if (page.sessions.some((session) => session.session_id === rawSessionId)) {
+            return page.sessions;
+          }
+          const currentSession = current.find(
+            (session) => session.session_id === rawSessionId,
+          );
+          return currentSession ? [currentSession, ...page.sessions] : page.sessions;
+        });
+        setNextOwnedSessionCursor(page.next_cursor);
+        const availableIds = new Set(page.sessions.map((session) => session.session_id));
+        availableIds.add(rawSessionId);
+        setSelectedSessionIds((current) => {
+          const retained = new Set([...current].filter((id) => availableIds.has(id)));
+          if (availableIds.has(rawSessionId)) retained.add(rawSessionId);
+          return retained;
+        });
+        setSessionDiscoveryState("ready");
+      } catch (error) {
+        if (cancelled) return;
+        setSessionDiscoveryState("error");
+        setSessionDiscoveryErrorPhase("initial");
+        setSessionDiscoveryError(
+          error instanceof Error ? error.message : "Session discovery failed",
+        );
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [rawSessionId, sessionDiscoveryTick]);
+
+  const loadMoreOwnedSessions = useCallback(async () => {
+    if (!nextOwnedSessionCursor || sessionDiscoveryMoreBusy) return;
+    const requestCursor = nextOwnedSessionCursor;
+    setSessionDiscoveryMoreBusy(true);
+    setSessionDiscoveryError(null);
+    setSessionDiscoveryErrorPhase(null);
+    try {
+      const page = await listOwnedEngagementSessions({
+        cursor: requestCursor,
+        limit: 100,
+      });
+      if (page.next_cursor === requestCursor) {
+        throw new Error("Session discovery cursor repeated");
+      }
+      setOwnedSessions((current) => {
+        const byId = new Map(current.map((session) => [session.session_id, session]));
+        for (const session of page.sessions) byId.set(session.session_id, session);
+        return [...byId.values()];
+      });
+      setNextOwnedSessionCursor(page.next_cursor);
+    } catch (error) {
+      setSessionDiscoveryErrorPhase("more");
+      setSessionDiscoveryError(
+        error instanceof Error ? error.message : "Session discovery failed",
+      );
+    } finally {
+      setSessionDiscoveryMoreBusy(false);
     }
-    return [...ids];
-  }, [props.owner_id, props.parent_asset_id, rawSessionId, windows]);
-  const completedSessionIds = useMemo(() => {
-    const ids = new Set<string>();
-    if (rawSessionId && status === "complete") ids.add(rawSessionId);
+  }, [nextOwnedSessionCursor, sessionDiscoveryMoreBusy]);
+
+  const liveSessionStatuses = useMemo(() => {
+    const statuses = new Map<string, string>();
     const ownerId = props.owner_id?.trim() || "";
     for (const window of Object.values(windows)) {
       if (window.kind !== "deep_research_session") continue;
       if (String(window.payload.owner_id || "").trim() !== ownerId) continue;
-      if (String(window.payload.parent_asset_id || "").trim() !== props.parent_asset_id?.trim()) continue;
-      if (String(window.payload.status || "").trim() !== "complete") continue;
       const candidate = String(window.payload.session_id || "").trim();
-      if (candidate) ids.add(candidate);
+      const candidateStatus = String(window.payload.status || "").trim();
+      if (candidate && candidateStatus) statuses.set(candidate, candidateStatus);
     }
-    return [...ids];
-  }, [props.owner_id, props.parent_asset_id, rawSessionId, status, windows]);
+    return statuses;
+  }, [props.owner_id, windows]);
+
+  const reconciledOwnedSessions = useMemo(
+    () =>
+      ownedSessions
+        .map((session) => ({
+          ...session,
+          status:
+            session.session_id === rawSessionId
+              ? status
+              : liveSessionStatuses.get(session.session_id) || session.status,
+        })),
+    [liveSessionStatuses, ownedSessions, rawSessionId, status],
+  );
+  const selectedSessions = useMemo(
+    () =>
+      reconciledOwnedSessions.filter((session) =>
+        selectedSessionIds.has(session.session_id),
+      ),
+    [reconciledOwnedSessions, selectedSessionIds],
+  );
+  const selectedSessionIdList = useMemo(
+    () => selectedSessions.map((session) => session.session_id),
+    [selectedSessions],
+  );
+  const selectedAssets = useMemo(
+    () => new Set(selectedSessions.map((session) => session.parent_asset_id)),
+    [selectedSessions],
+  );
+  const selectionCrossesAssets = selectedAssets.size > 1;
+  const selectedMergeSessionIds = useMemo(
+    () =>
+      selectedSessions
+        .filter(
+          (session) =>
+            session.status === "complete" &&
+            session.parent_asset_id === props.parent_asset_id?.trim(),
+        )
+        .map((session) => session.session_id),
+    [props.parent_asset_id, selectedSessions],
+  );
+  const mergeAuthoritySignature = selectedMergeSessionIds.join("\0");
+  const mergeAuthoritySignatureRef = useRef(mergeAuthoritySignature);
+  mergeAuthoritySignatureRef.current = mergeAuthoritySignature;
+  const collectiveAuthoritySignature = JSON.stringify({
+    session_ids: selectedSessionIdList,
+    allow_cross_asset: selectionCrossesAssets && crossAssetApproved,
+  });
+  const collectiveAuthoritySignatureRef = useRef(collectiveAuthoritySignature);
+  collectiveAuthoritySignatureRef.current = collectiveAuthoritySignature;
   const [sessionMerge, setSessionMerge] = useState<SessionMergeResponse | null>(null);
   const [sessionCollective, setSessionCollective] = useState<
     (CollectiveResponse & { html?: string }) | null
@@ -261,46 +414,65 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const [sessionMergeError, setSessionMergeError] = useState<string | null>(null);
   const [sessionMergeBusy, setSessionMergeBusy] = useState(false);
   const [previewedSessionIds, setPreviewedSessionIds] = useState<string[]>([]);
-  const mergeKey = useRef(
-    `browser-merge-${
-      typeof crypto !== "undefined" && crypto.randomUUID
-        ? crypto.randomUUID()
-        : Math.random().toString(36).slice(2)
-    }`,
-  );
+  const mergeKey = useRef(newBrowserMergeKey());
+  const toggleSessionSelection = useCallback((sessionId: string) => {
+    selectionRevision.current += 1;
+    setSelectedSessionIds((current) => {
+      const next = new Set(current);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
+      return next;
+    });
+    setSessionCollective(null);
+    setSessionMerge(null);
+    setPreviewedSessionIds([]);
+    setCrossAssetApproved(false);
+  }, []);
   const previewSessionMerge = useCallback(async () => {
     const parentAssetId = props.parent_asset_id?.trim();
-    if (!parentAssetId || completedSessionIds.length === 0) return;
+    if (!parentAssetId || selectedMergeSessionIds.length === 0) return;
     setSessionMergeBusy(true);
     setSessionMergeError(null);
+    const requestRevision = selectionRevision.current;
+    const requestAuthority = mergeAuthoritySignature;
     try {
-      setSessionMerge(
-        await mergeEngagementSessions({
+      const preview = await mergeEngagementSessions({
           parent_asset_id: parentAssetId,
-          session_ids: completedSessionIds,
+          session_ids: selectedMergeSessionIds,
           mode: "draft_combined",
           include_html: true,
-        }),
-      );
-      setPreviewedSessionIds(completedSessionIds);
+        });
+      if (
+        requestRevision !== selectionRevision.current ||
+        requestAuthority !== mergeAuthoritySignatureRef.current
+      ) return;
+      mergeKey.current = newBrowserMergeKey();
+      setSessionMerge(preview);
+      setPreviewedSessionIds(selectedMergeSessionIds);
     } catch (error) {
       setSessionMergeError(error instanceof Error ? error.message : "Draft merge failed");
     } finally {
       setSessionMergeBusy(false);
     }
-  }, [completedSessionIds, props.parent_asset_id]);
+  }, [mergeAuthoritySignature, props.parent_asset_id, selectedMergeSessionIds]);
   const buildSessionCollective = useCallback(async () => {
     setSessionMergeBusy(true);
     setSessionMergeError(null);
+    const requestRevision = selectionRevision.current;
+    const requestAuthority = collectiveAuthoritySignature;
     try {
-      setSessionCollective(
-        await fetchSessionsCollective({
-          session_ids: availableSessionIds,
+      const collective = await fetchSessionsCollective({
+          session_ids: selectedSessionIdList,
           include_twin_preview: true,
+          allow_cross_asset: selectionCrossesAssets && crossAssetApproved,
           include_prompt_block: true,
           include_html: true,
-        }),
-      );
+        });
+      if (
+        requestRevision !== selectionRevision.current ||
+        requestAuthority !== collectiveAuthoritySignatureRef.current
+      ) return;
+      setSessionCollective(collective);
     } catch (error) {
       setSessionMergeError(
         error instanceof Error ? error.message : "Collective context failed",
@@ -308,7 +480,12 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     } finally {
       setSessionMergeBusy(false);
     }
-  }, [availableSessionIds]);
+  }, [
+    collectiveAuthoritySignature,
+    crossAssetApproved,
+    selectedSessionIdList,
+    selectionCrossesAssets,
+  ]);
   const confirmSessionMerge = useCallback(async () => {
     const parentAssetId = props.parent_asset_id?.trim();
     if (!parentAssetId || !sessionMerge?.parent_revision_sha256) return;
@@ -766,14 +943,105 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         <section
           className="mt-2 space-y-3 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="durable-session-merge-panel"
-          data-session-count={String(availableSessionIds.length)}
+          data-session-count={String(ownedSessions.length)}
+          data-selected-session-count={String(selectedSessionIds.size)}
+          data-discovery-state={sessionDiscoveryState}
           data-merge-state={sessionMerge?.merge_receipt_state ?? sessionMerge?.mode ?? "idle"}
         >
+          <div className="space-y-2" data-testid="owned-session-selector">
+            <div className="flex items-center justify-between gap-3">
+              <h3 className="text-xs font-semibold">Collect research sessions</h3>
+              <span className="text-[10px] font-mono opacity-70">
+                {sessionDiscoveryState === "loading"
+                  ? "Discovering…"
+                  : `${ownedSessions.length} owned · ${selectedSessionIds.size} selected`}
+              </span>
+            </div>
+            {sessionDiscoveryError ? (
+              <div className="flex items-center gap-2">
+                <p role="alert">{sessionDiscoveryError}</p>
+                <button
+                  type="button"
+                  className="rounded border border-ink/30 px-2 py-1 text-[10px]"
+                  onClick={() => {
+                    if (sessionDiscoveryErrorPhase === "more") {
+                      void loadMoreOwnedSessions();
+                    } else {
+                      setSessionDiscoveryTick((tick) => tick + 1);
+                    }
+                  }}
+                >
+                  Retry discovery
+                </button>
+              </div>
+            ) : null}
+            {sessionDiscoveryState === "ready" && ownedSessions.length === 0 ? (
+              <p className="text-xs opacity-75">No durable research sessions found.</p>
+            ) : null}
+            <ul className="max-h-48 space-y-1 overflow-y-auto" aria-label="Owned research sessions">
+              {reconciledOwnedSessions.map((session) => {
+                const sessionAsset = session.parent_asset_id?.trim() || "unknown asset";
+                const mergeable =
+                  session.status === "complete" &&
+                  sessionAsset === props.parent_asset_id?.trim();
+                return (
+                  <li key={session.session_id}>
+                    <label className="flex cursor-pointer items-start gap-2 rounded border border-ink/15 p-2 text-xs">
+                      <input
+                        type="checkbox"
+                        checked={selectedSessionIds.has(session.session_id)}
+                        disabled={sessionDiscoveryState === "loading"}
+                        onChange={() => toggleSessionSelection(session.session_id)}
+                        aria-label={`Select ${session.goal || session.selection_text || session.session_id}`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">
+                          {session.goal || session.selection_text || "Untitled research session"}
+                        </span>
+                        <span className="block font-mono text-[10px] opacity-70">
+                          {sessionAsset} · {session.status} · {mergeable ? "mergeable" : "context only"}
+                        </span>
+                      </span>
+                    </label>
+                  </li>
+                );
+              })}
+            </ul>
+            {nextOwnedSessionCursor ? (
+              <button
+                type="button"
+                className="rounded border border-ink/30 px-2 py-1 text-[10px]"
+                disabled={sessionDiscoveryMoreBusy}
+                onClick={() => void loadMoreOwnedSessions()}
+              >
+                {sessionDiscoveryMoreBusy ? "Loading…" : "Load more sessions"}
+              </button>
+            ) : null}
+            {selectionCrossesAssets ? (
+              <label className="flex items-center gap-2 rounded border border-sun/60 bg-sun/10 p-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={crossAssetApproved}
+                  onChange={(event) => {
+                    selectionRevision.current += 1;
+                    setCrossAssetApproved(event.currentTarget.checked);
+                    setSessionCollective(null);
+                  }}
+                />
+                Include selected sessions from {selectedAssets.size} assets in this preview
+              </label>
+            ) : null}
+          </div>
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
-              disabled={sessionMergeBusy || availableSessionIds.length < 2}
+              disabled={
+                sessionMergeBusy ||
+                sessionDiscoveryState !== "ready" ||
+                selectedSessionIdList.length < 2 ||
+                (selectionCrossesAssets && !crossAssetApproved)
+              }
               onClick={() => void buildSessionCollective()}
               data-testid="build-session-collective"
             >
@@ -782,11 +1050,11 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             <button
               type="button"
               className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
-              disabled={sessionMergeBusy || completedSessionIds.length === 0}
+              disabled={sessionMergeBusy || selectedMergeSessionIds.length === 0}
               onClick={() => void previewSessionMerge()}
               data-testid="preview-session-merge"
             >
-              Preview {completedSessionIds.length > 1 ? "collective " : ""}draft
+              Preview {selectedMergeSessionIds.length > 1 ? "collective " : ""}draft
             </button>
             <button
               type="button"
@@ -804,8 +1072,8 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             </button>
           </div>
           <p className="text-[10px] font-mono opacity-75" data-testid="session-merge-readiness">
-            {completedSessionIds.length} of {availableSessionIds.length} sessions complete and mergeable.
-            Collective context is a non-mutating preview; incomplete sessions may contribute context but cannot merge.
+            {selectedMergeSessionIds.length} of {selectedSessionIdList.length} selected sessions are complete on this parent and mergeable.
+            Collective context is a non-mutating preview; incomplete or cross-parent sessions are context only.
           </p>
           {sessionMergeError ? <p role="alert">{sessionMergeError}</p> : null}
           {sessionMerge?.merge_receipt_id ? (

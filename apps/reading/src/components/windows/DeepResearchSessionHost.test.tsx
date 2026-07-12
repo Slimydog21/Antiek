@@ -37,6 +37,7 @@ const updateEngagementSessionView = vi.hoisted(() =>
 );
 const mergeEngagementSessions = vi.hoisted(() => vi.fn());
 const fetchSessionsCollective = vi.hoisted(() => vi.fn());
+const listOwnedEngagementSessions = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/engagement", () => ({
   updateEngagementSessionView: (body: {
@@ -46,6 +47,7 @@ vi.mock("../../api/engagement", () => ({
   listEngagementSessions: vi.fn(),
   mergeEngagementSessions,
   fetchSessionsCollective,
+  listOwnedEngagementSessions,
 }));
 
 vi.mock("../../api/settings", () => ({
@@ -225,6 +227,14 @@ describe("DeepResearchSessionHost", () => {
   beforeEach(() => {
     mergeEngagementSessions.mockReset();
     fetchSessionsCollective.mockReset();
+    listOwnedEngagementSessions.mockReset().mockResolvedValue({
+      owner_id: "alice",
+      sessions: [{ ...FIXTURE, source_references: [] }],
+      count: 1,
+      next_cursor: null,
+      status_filter: null,
+      view_format: "html",
+    });
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -448,7 +458,7 @@ describe("DeepResearchSessionHost", () => {
     fireEvent.click(screen.getByTestId("session-flywheel-notify"));
     expect(preview.disabled).toBe(false);
     expect(screen.getByTestId("session-merge-readiness").textContent).toMatch(
-      /1 of 1 sessions complete/i,
+      /1 of 1 selected sessions are complete/i,
     );
   });
 
@@ -702,6 +712,56 @@ describe("DeepResearchSessionHost", () => {
     );
   });
 
+  it("rotates receipt authority for a new preview and retains it for retry", async () => {
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, status: "complete", source_references: [] },
+        {
+          ...FIXTURE,
+          session_id: "fsess_second_receipt",
+          spawn_id: "spn_second_receipt",
+          goal: "Second receipt selection",
+          status: "complete",
+          source_references: [],
+        },
+      ],
+      count: 2,
+      next_cursor: null,
+      view_format: "html",
+    });
+    const draft = (revision: string) => ({
+      mode: "draft_combined",
+      parent_revision_sha256: revision,
+      html: "<article>draft</article>",
+    });
+    mergeEngagementSessions
+      .mockResolvedValueOnce(draft("a".repeat(64)))
+      .mockResolvedValueOnce({ mode: "into_parent", merge_receipt_state: "applied" })
+      .mockResolvedValueOnce(draft("b".repeat(64)))
+      .mockRejectedValueOnce(new Error("ambiguous network failure"))
+      .mockResolvedValueOnce({ mode: "into_parent", merge_receipt_state: "applied" });
+    render(<DeepResearchSessionHost {...FIXTURE} status="complete" />);
+    await screen.findByText(/2 owned · 1 selected/i);
+
+    fireEvent.click(screen.getByTestId("preview-session-merge"));
+    await screen.findByTestId("session-merge-draft-preview");
+    fireEvent.click(screen.getByTestId("confirm-session-merge"));
+    await waitFor(() => expect(mergeEngagementSessions).toHaveBeenCalledTimes(2));
+    const firstKey = mergeEngagementSessions.mock.calls[1][0].idempotency_key;
+
+    fireEvent.click(screen.getByLabelText("Select Second receipt selection"));
+    fireEvent.click(screen.getByTestId("preview-session-merge"));
+    await waitFor(() => expect(mergeEngagementSessions).toHaveBeenCalledTimes(3));
+    fireEvent.click(screen.getByTestId("confirm-session-merge"));
+    await screen.findByRole("alert");
+    const secondKey = mergeEngagementSessions.mock.calls[3][0].idempotency_key;
+    expect(secondKey).not.toBe(firstKey);
+    fireEvent.click(screen.getByTestId("confirm-session-merge"));
+    await waitFor(() => expect(mergeEngagementSessions).toHaveBeenCalledTimes(5));
+    expect(mergeEngagementSessions.mock.calls[4][0].idempotency_key).toBe(secondKey);
+  });
+
   it("excludes incomplete sibling sessions from merge authority", async () => {
     useWindows.getState().reset();
     openWindow(
@@ -723,10 +783,30 @@ describe("DeepResearchSessionHost", () => {
       parent_revision_sha256: "a".repeat(64),
       html: "<article>complete only</article>",
     });
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, status: "complete", source_references: [] },
+        {
+          ...FIXTURE,
+          session_id: "fsess_incomplete",
+          spawn_id: "spn_incomplete",
+          selection_text: "unfinished",
+          goal: "Unfinished sibling",
+          status: "reserved",
+          source_references: [],
+        },
+      ],
+      count: 2,
+      next_cursor: null,
+      status_filter: null,
+      view_format: "html",
+    });
     render(<DeepResearchSessionHost {...FIXTURE} status="complete" />);
-
+    await screen.findByText(/2 owned · 1 selected/i);
+    fireEvent.click(screen.getByLabelText("Select Unfinished sibling"));
     expect(screen.getByTestId("session-merge-readiness").textContent).toMatch(
-      /1 of 2 sessions complete/i,
+      /1 of 2 selected sessions are complete/i,
     );
     fireEvent.click(screen.getByTestId("preview-session-merge"));
     await waitFor(() => expect(mergeEngagementSessions).toHaveBeenCalledOnce());
@@ -800,6 +880,24 @@ describe("DeepResearchSessionHost", () => {
       session_ids: ["fsess_launch_1", "fsess_other"],
       html: "<!doctype html><title>Owner collective</title>",
     });
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, source_references: [] },
+        {
+          ...FIXTURE,
+          session_id: "fsess_other",
+          spawn_id: "spn_other_2",
+          goal: "Other session",
+          selection_text: "other",
+          source_references: [],
+        },
+      ],
+      count: 2,
+      next_cursor: null,
+      status_filter: null,
+      view_format: "html",
+    });
     openWindow(
       DEEP_RESEARCH_WINDOW_KIND as keyof typeof WINDOW_PAGES,
       {
@@ -820,16 +918,285 @@ describe("DeepResearchSessionHost", () => {
         available_spawn_ids={["spn_extra_3"]}
       />,
     );
+    await screen.findByText(/2 owned · 1 selected/i);
+    expect(
+      (screen.getByTestId("build-session-collective") as HTMLButtonElement).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByLabelText("Select Other session"));
     fireEvent.click(screen.getByTestId("build-session-collective"));
     await waitFor(() => expect(fetchSessionsCollective).toHaveBeenCalledOnce());
     expect(fetchSessionsCollective).toHaveBeenCalledWith({
       session_ids: ["fsess_launch_1", "fsess_other"],
       include_twin_preview: true,
+      allow_cross_asset: false,
       include_prompt_block: true,
       include_html: true,
     });
     expect(await screen.findByTestId("session-collective-preview")).toBeTruthy();
     expect(screen.queryByTestId("deep-research-collective-mount")).toBeNull();
+  });
+
+  it("requires explicit cross-asset consent and sends only checked sessions", async () => {
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, source_references: [] },
+        {
+          ...FIXTURE,
+          session_id: "fsess_cross_asset",
+          parent_asset_id: "other-asset",
+          goal: "Compare another paper",
+          source_references: [],
+        },
+        {
+          ...FIXTURE,
+          session_id: "fsess_unselected",
+          parent_asset_id: "third-asset",
+          goal: "Leave this out",
+          source_references: [],
+        },
+      ],
+      count: 3,
+      next_cursor: null,
+      status_filter: null,
+      view_format: "html",
+    });
+    fetchSessionsCollective.mockResolvedValueOnce({ html: "<article>Exact preview</article>" });
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    await screen.findByText(/3 owned · 1 selected/i);
+    fireEvent.click(screen.getByLabelText("Select Compare another paper"));
+    const build = screen.getByTestId("build-session-collective") as HTMLButtonElement;
+    expect(build.disabled).toBe(true);
+    fireEvent.click(screen.getByLabelText(/Include selected sessions from 2 assets/i));
+    expect(build.disabled).toBe(false);
+    fireEvent.click(build);
+    await waitFor(() => expect(fetchSessionsCollective).toHaveBeenCalledOnce());
+    expect(fetchSessionsCollective).toHaveBeenCalledWith({
+      session_ids: ["fsess_launch_1", "fsess_cross_asset"],
+      include_twin_preview: true,
+      allow_cross_asset: true,
+      include_prompt_block: true,
+      include_html: true,
+    });
+  });
+
+  it("loads owner discovery incrementally instead of walking every page on mount", async () => {
+    listOwnedEngagementSessions
+      .mockResolvedValueOnce({
+        owner_id: "alice",
+        sessions: [{ ...FIXTURE, source_references: [] }],
+        count: 1,
+        next_cursor: "fsess_launch_1",
+        view_format: "html",
+      })
+      .mockResolvedValueOnce({
+        owner_id: "alice",
+        sessions: [
+          {
+            ...FIXTURE,
+            session_id: "fsess_page_two",
+            goal: "Page two session",
+            source_references: [],
+          },
+        ],
+        count: 1,
+        next_cursor: null,
+        view_format: "html",
+      });
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    const loadMore = await screen.findByText("Load more sessions");
+    expect(listOwnedEngagementSessions).toHaveBeenCalledTimes(1);
+    fireEvent.click(loadMore);
+    await screen.findByText("Page two session");
+    expect(listOwnedEngagementSessions).toHaveBeenNthCalledWith(2, {
+      cursor: "fsess_launch_1",
+      limit: 100,
+    });
+    expect(screen.queryByText("Load more sessions")).toBeNull();
+  });
+
+  it("retries a failed later page without dropping loaded selected sessions", async () => {
+    const pageTwo = {
+      ...FIXTURE,
+      session_id: "fsess_page_two_selected",
+      goal: "Keep selected page two",
+      source_references: [],
+    };
+    listOwnedEngagementSessions
+      .mockResolvedValueOnce({
+        sessions: [{ ...FIXTURE, source_references: [] }],
+        next_cursor: "fsess_page_one_cursor",
+      })
+      .mockResolvedValueOnce({
+        sessions: [pageTwo],
+        next_cursor: "fsess_page_two_cursor",
+      })
+      .mockRejectedValueOnce(new Error("later page offline"))
+      .mockResolvedValueOnce({ sessions: [], next_cursor: null });
+    render(<DeepResearchSessionHost {...FIXTURE} />);
+    fireEvent.click(await screen.findByText("Load more sessions"));
+    const selected = await screen.findByLabelText("Select Keep selected page two");
+    fireEvent.click(selected);
+    fireEvent.click(screen.getByText("Load more sessions"));
+    const retry = await screen.findByText("Retry discovery");
+    expect((selected as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(retry);
+    await waitFor(() => expect(listOwnedEngagementSessions).toHaveBeenCalledTimes(4));
+    expect(screen.getByLabelText("Select Keep selected page two")).toBeTruthy();
+    expect(
+      (screen.getByLabelText("Select Keep selected page two") as HTMLInputElement).checked,
+    ).toBe(true);
+  });
+
+  it("invalidates draft and confirmation authority when selection changes", async () => {
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, status: "complete", source_references: [] },
+        {
+          ...FIXTURE,
+          session_id: "fsess_same_parent",
+          spawn_id: "spn_same_parent",
+          goal: "Second completed session",
+          status: "complete",
+          source_references: [],
+        },
+      ],
+      count: 2,
+      next_cursor: null,
+      status_filter: null,
+      view_format: "html",
+    });
+    mergeEngagementSessions.mockResolvedValueOnce({
+      mode: "draft_combined",
+      parent_revision_sha256: "a".repeat(64),
+      html: "<article>Reviewed pair</article>",
+    });
+    render(<DeepResearchSessionHost {...FIXTURE} status="complete" />);
+    await screen.findByText(/2 owned · 1 selected/i);
+    fireEvent.click(screen.getByLabelText("Select Second completed session"));
+    fireEvent.click(screen.getByTestId("preview-session-merge"));
+    await screen.findByTestId("session-merge-draft-preview");
+    expect((screen.getByTestId("confirm-session-merge") as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getByLabelText("Select Second completed session"));
+    expect(screen.queryByTestId("session-merge-draft-preview")).toBeNull();
+    expect((screen.getByTestId("confirm-session-merge") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("discards late collective and draft responses after selection drift", async () => {
+    let resolveCollective!: (value: { html: string }) => void;
+    let resolveDraft!: (value: {
+      mode: string;
+      parent_revision_sha256: string;
+      html: string;
+    }) => void;
+    fetchSessionsCollective.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCollective = resolve;
+      }),
+    );
+    mergeEngagementSessions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDraft = resolve;
+      }),
+    );
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, status: "complete", source_references: [] },
+        {
+          ...FIXTURE,
+          session_id: "fsess_late",
+          spawn_id: "spn_late",
+          goal: "Late response sibling",
+          status: "complete",
+          source_references: [],
+        },
+      ],
+      count: 2,
+      next_cursor: null,
+      view_format: "html",
+    });
+    render(<DeepResearchSessionHost {...FIXTURE} status="complete" />);
+    await screen.findByText(/2 owned · 1 selected/i);
+    const sibling = screen.getByLabelText("Select Late response sibling");
+    fireEvent.click(sibling);
+    fireEvent.click(screen.getByTestId("build-session-collective"));
+    fireEvent.click(screen.getByTestId("preview-session-merge"));
+    fireEvent.click(sibling);
+    resolveCollective({ html: "<article>stale collective</article>" });
+    resolveDraft({
+      mode: "draft_combined",
+      parent_revision_sha256: "a".repeat(64),
+      html: "<article>stale draft</article>",
+    });
+    await waitFor(() => expect(screen.getByText("2 owned · 1 selected")).toBeTruthy());
+    expect(screen.queryByTestId("session-collective-preview")).toBeNull();
+    expect(screen.queryByTestId("session-merge-draft-preview")).toBeNull();
+    expect((screen.getByTestId("confirm-session-merge") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("reconciles a selected sibling completing in another owned window", async () => {
+    let resolveDraft!: (value: {
+      mode: string;
+      parent_revision_sha256: string;
+      html: string;
+    }) => void;
+    mergeEngagementSessions.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveDraft = resolve;
+      }),
+    );
+    listOwnedEngagementSessions.mockResolvedValueOnce({
+      owner_id: "alice",
+      sessions: [
+        { ...FIXTURE, status: "complete", source_references: [] },
+        {
+          ...FIXTURE,
+          session_id: "fsess_live_sibling",
+          spawn_id: "spn_live_sibling",
+          goal: "Live sibling",
+          status: "reserved",
+          source_references: [],
+        },
+      ],
+      count: 2,
+      next_cursor: null,
+      view_format: "html",
+    });
+    openWindow(
+      DEEP_RESEARCH_WINDOW_KIND as keyof typeof WINDOW_PAGES,
+      {
+        ...FIXTURE,
+        session_id: "fsess_live_sibling",
+        spawn_id: "spn_live_sibling",
+        status: "reserved",
+      },
+      { id: "wdr_live_sibling", mode: "floating" },
+    );
+    render(<DeepResearchSessionHost {...FIXTURE} status="complete" />);
+    await screen.findByText(/2 owned · 1 selected/i);
+    fireEvent.click(screen.getByLabelText("Select Live sibling"));
+    expect(screen.getByTestId("session-merge-readiness").textContent).toMatch(
+      /1 of 2 selected sessions are complete/i,
+    );
+    fireEvent.click(screen.getByTestId("preview-session-merge"));
+    useWindows.getState().patchPayload("wdr_live_sibling", { status: "complete" });
+    await waitFor(() =>
+      expect(screen.getByTestId("session-merge-readiness").textContent).toMatch(
+        /2 of 2 selected sessions are complete/i,
+      ),
+    );
+    expect(screen.getAllByText(/complete · mergeable/i).length).toBe(2);
+    resolveDraft({
+      mode: "draft_combined",
+      parent_revision_sha256: "a".repeat(64),
+      html: "<article>stale one-session draft</article>",
+    });
+    await waitFor(() => expect(mergeEngagementSessions).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId("session-merge-draft-preview")).toBeNull();
+    expect((screen.getByTestId("confirm-session-merge") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("does not grant recent global spawn ids authority in a session collective", () => {

@@ -216,6 +216,26 @@ def list_sessions_for_asset(
     ]
 
 
+def list_sessions_for_owner(
+    owner_id: str,
+    *,
+    session_store: SessionStore,
+    after_session_id: str | None,
+    limit: int,
+) -> list[FloatingSession]:
+    """List durable descriptors from the store's opaque owner index."""
+
+    if not owner_id:
+        raise ValueError("owner_id is required")
+    return [
+        _from_row(row)
+        for row in session_store.list_owner_sessions(
+            owner_id, after_session_id=after_session_id, limit=limit
+        )
+        if row.get("owner_id") == owner_id
+    ]
+
+
 def complete_session_research(
     session_id: str,
     *,

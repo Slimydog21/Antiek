@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Close the next owner-native research-composition seam: let authenticated users select and combine multiple owned sessions/assets into explicit, previewable collective research context without global IDs, cross-owner disclosure, or implicit parent mutation.
+Turn an authenticated user's reviewed multi-session collective preview into a durable owner-native research unit that can launch a cohesive follow-on deep-research session or written analysis without losing source-session provenance, crossing owners, or mutating source assets implicitly.
 
 ## Derivation trail
 
@@ -19,3 +19,4 @@ Close the next owner-native research-composition seam: let authenticated users s
 - Cycle 9 delivered physically isolated owner graph writes, hash-pinned preview→confirm authority, owner-bound idempotency receipts, transactional graph/event outbox recovery, and explicit retry-safe browser confirmation. Archaeology then showed the read/search/context surfaces still call `default_db_path()` broadly, so durable personal intelligence is not yet consumed by the owner-native research loop.
 - Cycle 10 closed the declared thought-partner/context-picker read loop by fusing rights-gated canonical corpus results with only the request owner's physical insight/question graph, including provider-pinned semantic recall, honest readiness, and end-to-end confirmed-promotion→dispatch privacy proof. The proof also exposed the next boundary: the production app middleware still resolves successful login paths to static `operator_claims()`, so non-operator identities currently exist only behind injected/test middleware rather than a real account credential path.
 - Cycle 11 activated real multi-user credentials with opaque stable accounts, one-time magic links, revocable server sessions, server-derived scopes, deny-by-default legacy-route authorization, honest browser logout, and Alice/Bob credential-to-owner isolation. With identity now real, the narrowest product gap is exposing owner-resolved multi-session selection and collective composition in the workstation rather than leaving that capability behind low-level APIs and global-ID assumptions.
+- Cycle 12 delivered owner-wide durable session discovery, startup index reconciliation, store-level cursor paging, explicit checkbox selection, cross-asset consent, live status reconciliation, exact late-response authority, and per-preview merge receipts. Users can now review a collective context safely; the next narrow seam is making that reviewed unit itself durable and actionable as a new cohesive research or writing branch.

@@ -4,6 +4,7 @@ import {
   confirmSessionTwins,
   fetchResearchContext,
   listEngagementSessions,
+  listOwnedEngagementSessions,
   mergeEngagementSessions,
   mergeSpawnOutputs,
   openEngagementSession,
@@ -200,6 +201,22 @@ describe("engagement API client", () => {
     expect(body.idempotency_key).toBe("browser-confirm-001");
     expect(body.expected_parent_sha256).toBe("a".repeat(64));
     expect(body.confirm_parent_write).toBe(true);
+  });
+
+  it("requests bounded owner-wide discovery without sending owner identity", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({ sessions: [], count: 0, next_cursor: null }),
+    });
+    await listOwnedEngagementSessions({
+      cursor: "fsess_0123456789abcdef",
+      limit: 25,
+    });
+    const url = String(mockFetch.mock.calls[0][0]);
+    expect(url).toContain("/engagement/sessions/owned?");
+    expect(url).toContain("cursor=fsess_0123456789abcdef");
+    expect(url).toContain("limit=25");
+    expect(url).not.toContain("owner_id=");
   });
 
   it("sends pinned preview authority for confirmed twin promotion", async () => {

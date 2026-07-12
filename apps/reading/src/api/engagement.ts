@@ -758,6 +758,14 @@ export type SessionListResponse = {
   view_format: "html";
 };
 
+export type OwnedSessionListResponse = {
+  owner_id: string;
+  sessions: SessionLifecycleResponse[];
+  count: number;
+  next_cursor: string | null;
+  view_format: "html";
+};
+
 export async function fetchEngagementSession(
   sessionId: string,
   includeHtml = true,
@@ -778,6 +786,19 @@ export async function listEngagementSessions(
     `${API_BASE}/engagement/sessions/asset/${encodeURIComponent(parentAssetId)}${params}`,
   );
   return readJson<SessionListResponse>(res);
+}
+
+export async function listOwnedEngagementSessions(options: {
+  cursor?: string | null;
+  limit?: number;
+  includeHtml?: boolean;
+} = {}): Promise<OwnedSessionListResponse> {
+  const params = new URLSearchParams();
+  params.set("limit", String(options.limit ?? 100));
+  params.set("include_html", String(options.includeHtml ?? false));
+  if (options.cursor) params.set("cursor", options.cursor);
+  const res = await apiFetch(`${API_BASE}/engagement/sessions/owned?${params}`);
+  return readJson<OwnedSessionListResponse>(res);
 }
 
 export async function updateEngagementSessionView(body: {

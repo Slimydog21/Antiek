@@ -1,7 +1,7 @@
 {
-  "cycle": 11,
+  "cycle": 13,
   "phase": "INVESTIGATE",
-  "subgoal": "Close the production multi-user identity seam into owner-native research paths",
+  "subgoal": "Persist reviewed collective units and launch owner-native follow-on research or writing",
   "lanes": [],
   "engineHealth": {
     "grok": "ok",
@@ -14,5 +14,8 @@
     "conclave": "ok"
   },
   "consecutiveNoDelta": 0,
-  "updatedAt": "2026-07-12T11:07:01Z"
+  "hardenx_verdicts": [
+    {"cycle": 12, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
+  ],
+  "updatedAt": "2026-07-12T17:44:00Z"
 }

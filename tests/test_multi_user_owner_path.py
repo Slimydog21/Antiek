@@ -253,7 +253,7 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
     bob_id, _bob_cookie = login(bob, "bob@example.com", 1)
     assert alice_id != bob_id
 
-    def promote_and_prompt(client: TestClient, owner: str) -> str:
+    def promote_and_prompt(client: TestClient, owner: str) -> tuple[str, str]:
         marker = f"{owner.upper()} PRIVATE PHOTONIC MEMORY"
         opened = client.post(
             "/engagement/sessions/open",
@@ -288,10 +288,10 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
             "/thought-partner", json={"prompt": "private photonic memory"}
         )
         assert response.status_code == 200, response.text
-        return provider.calls[-1]["prompt"]
+        return provider.calls[-1]["prompt"], session_id
 
-    alice_prompt = promote_and_prompt(alice, "alice")
-    bob_prompt = promote_and_prompt(bob, "bob")
+    alice_prompt, alice_session_id = promote_and_prompt(alice, "alice")
+    bob_prompt, bob_session_id = promote_and_prompt(bob, "bob")
     assert "PUBLIC SHARED PHOTONIC EVIDENCE" in alice_prompt
     assert "PUBLIC SHARED PHOTONIC EVIDENCE" in bob_prompt
     assert "OPERATOR PRIVATE PHOTONIC EVIDENCE" not in alice_prompt
@@ -300,6 +300,47 @@ def test_real_user_credentials_reach_only_their_owner_research_path(
     assert "BOB PRIVATE PHOTONIC MEMORY" not in alice_prompt
     assert "BOB PRIVATE PHOTONIC MEMORY" in bob_prompt
     assert "ALICE PRIVATE PHOTONIC MEMORY" not in bob_prompt
+
+    alice_other = alice.post(
+        "/engagement/sessions/open",
+        json={
+            "asset_id": "alice-other-asset",
+            "selection_text": "compare a second owned paper",
+            "force_new": True,
+        },
+    )
+    assert alice_other.status_code == 200, alice_other.text
+    alice_other_id = alice_other.json()["session_id"]
+    alice_discovery = alice.get("/engagement/sessions/owned")
+    assert alice_discovery.status_code == 200
+    alice_discovered_ids = {
+        row["session_id"] for row in alice_discovery.json()["sessions"]
+    }
+    assert {alice_session_id, alice_other_id} <= alice_discovered_ids
+    assert bob_session_id not in alice_discovered_ids
+    bob_discovered_ids = {
+        row["session_id"]
+        for row in bob.get("/engagement/sessions/owned").json()["sessions"]
+    }
+    assert bob_session_id in bob_discovered_ids
+    assert alice_session_id not in bob_discovered_ids
+    cross_asset_preview = alice.post(
+        "/engagement/sessions/collective",
+        json={
+            "session_ids": [alice_session_id, alice_other_id],
+            "allow_cross_asset": True,
+            "include_html": True,
+        },
+    )
+    assert cross_asset_preview.status_code == 200, cross_asset_preview.text
+    foreign_collective = alice.post(
+        "/engagement/sessions/collective",
+        json={
+            "session_ids": [alice_session_id, bob_session_id],
+            "allow_cross_asset": True,
+        },
+    )
+    assert foreign_collective.status_code == 404
     assert "alice@example.com" not in owner_graph_db_path(alice_id)
     assert "bob@example.com" not in owner_graph_db_path(bob_id)
     owner_db = connect_write(

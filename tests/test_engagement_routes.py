@@ -588,6 +588,67 @@ def test_session_routes_isolate_authenticated_owners():
     assert legacy_bypass.status_code == 403
 
 
+def test_owner_session_discovery_is_cross_asset_bounded_and_private():
+    reset_engagement_stores()
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_test_owner(request: Request, call_next):
+        request.state.user_id = request.headers.get("x-test-owner", "")
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    client = TestClient(app)
+
+    def open_for(owner: str, asset: str, passage: str) -> dict:
+        response = client.post(
+            "/engagement/sessions/open",
+            headers={"x-test-owner": owner},
+            json={"asset_id": asset, "selection_text": passage, "force_new": True},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    alice = [
+        open_for("alice", "asset-a", "alice first"),
+        open_for("alice", "asset-b", "alice second"),
+    ]
+    bob = open_for("bob", "asset-a", "bob private")
+
+    first_page = client.get(
+        "/engagement/sessions/owned?limit=1",
+        headers={"x-test-owner": "alice"},
+    )
+    assert first_page.status_code == 200, first_page.text
+    first_body = first_page.json()
+    assert first_body["count"] == 1
+    assert first_body["next_cursor"] == first_body["sessions"][0]["session_id"]
+    second_page = client.get(
+        "/engagement/sessions/owned",
+        headers={"x-test-owner": "alice"},
+        params={"cursor": first_body["next_cursor"]},
+    )
+    discovered_ids = {
+        first_body["sessions"][0]["session_id"],
+        *[row["session_id"] for row in second_page.json()["sessions"]],
+    }
+    assert discovered_ids == {row["session_id"] for row in alice}
+    assert bob["session_id"] not in discovered_ids
+    assert {row["parent_asset_id"] for row in second_page.json()["sessions"]} <= {
+        "asset-a",
+        "asset-b",
+    }
+
+    bob_list = client.get(
+        "/engagement/sessions/owned", headers={"x-test-owner": "bob"}
+    ).json()
+    assert [row["session_id"] for row in bob_list["sessions"]] == [bob["session_id"]]
+    assert client.get(
+        "/engagement/sessions/owned?cursor=fsess_0000000000000000",
+        headers={"x-test-owner": "alice"},
+    ).status_code == 400
+
+
 def test_session_routes_require_explicit_identity(monkeypatch):
     monkeypatch.delenv("ANTIEK_ALLOW_UNAUTHENTICATED_LOCAL", raising=False)
     reset_engagement_stores()
