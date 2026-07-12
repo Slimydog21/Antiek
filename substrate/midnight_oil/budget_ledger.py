@@ -16,6 +16,7 @@ Negative or zero amounts raise ``ValueError`` (fail closed).
 from __future__ import annotations
 
 import contextlib
+import re
 import uuid
 from collections.abc import Callable, Generator, Mapping
 from dataclasses import dataclass
@@ -29,14 +30,25 @@ __all__ = [
     "BudgetExposure",
     "BudgetLedger",
     "CallHold",
+    "CallKeyReplay",
     "CallNotDispatched",
     "RemainingBalance",
     "ReservationNotFound",
+    "StageBudgetExposure",
     "UnknownCallOutcome",
     "UnknownOutcomePersistenceError",
 ]
 
 T = TypeVar("T")
+_CALL_KEY_RE = re.compile(r"[0-9a-f]{64}")
+
+
+def _call_key(value: str | None) -> str | None:
+    if value is None:
+        return None
+    if type(value) is not str or _CALL_KEY_RE.fullmatch(value) is None:
+        raise ValueError("call_key must be a canonical lowercase SHA-256 hex digest")
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +92,20 @@ class CallNotDispatched(Exception):
     lost response, or parse failure after the provider accepted the
     request is **not** proof of zero spend.
     """
+
+
+class CallKeyReplay(RuntimeError):
+    """A deterministic stage call key already has durable exposure.
+
+    Exact replay never allocates another hold and never dispatches again. The
+    caller must recover from ``exposure`` (or reconcile an open/unknown hold).
+    """
+
+    def __init__(self, exposure: StageBudgetExposure) -> None:
+        self.exposure = exposure
+        super().__init__(
+            f"Call key {exposure.call_key} already has durable state {exposure.state}"
+        )
 
 
 class UnknownCallOutcome(RuntimeError):
@@ -159,6 +185,21 @@ class BudgetExposure:
 
 
 @dataclass(frozen=True)
+class StageBudgetExposure:
+    """Exact cent exposure for one deterministic stage call."""
+
+    run_id: str
+    call_key: str
+    hold_id: str
+    role: str
+    projected_cents: int
+    confirmed_cents: int
+    open_cents: int
+    unknown_cents: int
+    state: str
+
+
+@dataclass(frozen=True)
 class CallHold:
     """A projected-cost hold placed by ``reserve_call``, consumed by ``settle``."""
 
@@ -167,6 +208,7 @@ class CallHold:
     role: str
     projected_max_cents: int
     freed_drawn_cents: int = 0
+    call_key: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +241,8 @@ CREATE TABLE IF NOT EXISTS midnight_oil_call_holds (
     role                 TEXT NOT NULL,
     projected_max_cents  BIGINT NOT NULL,
     freed_drawn_cents    BIGINT NOT NULL DEFAULT 0,
+    call_key             TEXT,
+    actual_cents         BIGINT,
     state                TEXT NOT NULL,
     created_at           TIMESTAMP NOT NULL,
     updated_at           TIMESTAMP NOT NULL
@@ -275,6 +319,18 @@ class BudgetLedger:
             ctx.execute(
                 "UPDATE midnight_oil_call_holds SET freed_drawn_cents = 0 "
                 "WHERE freed_drawn_cents IS NULL"
+            )
+            ctx.execute(
+                "ALTER TABLE midnight_oil_call_holds "
+                "ADD COLUMN IF NOT EXISTS call_key TEXT"
+            )
+            ctx.execute(
+                "ALTER TABLE midnight_oil_call_holds "
+                "ADD COLUMN IF NOT EXISTS actual_cents BIGINT"
+            )
+            ctx.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS midnight_oil_call_key_unique "
+                "ON midnight_oil_call_holds(run_id, call_key)"
             )
 
     # --- transactional wrapper -------------------------------------------
@@ -474,6 +530,8 @@ class BudgetLedger:
         run_id: str,
         role: str,
         projected_max_cents: int,
+        *,
+        call_key: str | None = None,
     ) -> CallHold:
         """Atomically hold *projected_max_cents* for an outbound call.
 
@@ -491,12 +549,42 @@ class BudgetLedger:
                 "upstream, never to free)"
             )
 
+        checked_call_key = _call_key(call_key)
         hold_id = uuid.uuid4().hex
 
         with self._coordinator.acquire_write_context(  # noqa: SIM117
             "midnight_oil.budget_ledger",
         ) as ctx:
             with self._txn(ctx):
+                if checked_call_key is not None:
+                    existing = ctx.execute(
+                        "SELECT hold_id, role, projected_max_cents, state, "
+                        "actual_cents FROM midnight_oil_call_holds "
+                        "WHERE run_id = ? AND call_key = ?",
+                        [run_id, checked_call_key],
+                    ).fetchone()
+                    if existing is not None:
+                        existing_hold, existing_role, existing_projected, state, actual = (
+                            existing
+                        )
+                        if (
+                            str(existing_role) != role
+                            or int(existing_projected) != projected_max_cents
+                        ):
+                            raise ValueError(
+                                "call_key replay conflicts with its durable role or projection"
+                            )
+                        raise CallKeyReplay(
+                            self._stage_exposure_row(
+                                run_id=run_id,
+                                call_key=checked_call_key,
+                                hold_id=str(existing_hold),
+                                role=str(existing_role),
+                                projected_cents=int(existing_projected),
+                                state=str(state),
+                                actual_cents=(None if actual is None else int(actual)),
+                            )
+                        )
                 freed_drawn = self._check_role_budget(
                     ctx,
                     run_id,
@@ -532,10 +620,17 @@ class BudgetLedger:
                 ctx.execute(
                     "INSERT INTO midnight_oil_call_holds "
                     "(hold_id, run_id, role, projected_max_cents, "
-                    "freed_drawn_cents, state, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, 'open', CURRENT_TIMESTAMP, "
+                    "freed_drawn_cents, call_key, actual_cents, state, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, NULL, 'open', CURRENT_TIMESTAMP, "
                     "CURRENT_TIMESTAMP)",
-                    [hold_id, run_id, role, projected_max_cents, freed_drawn],
+                    [
+                        hold_id,
+                        run_id,
+                        role,
+                        projected_max_cents,
+                        freed_drawn,
+                        checked_call_key,
+                    ],
                 )
 
                 bal = self._load_balance(ctx, run_id)
@@ -554,6 +649,7 @@ class BudgetLedger:
             role=role,
             projected_max_cents=projected_max_cents,
             freed_drawn_cents=freed_drawn,
+            call_key=checked_call_key,
         )
 
     # --- settle -----------------------------------------------------------
@@ -586,23 +682,24 @@ class BudgetLedger:
                 # Load the persisted hold row — do NOT trust caller amounts.
                 hold_row = ctx.execute(
                     "SELECT run_id, role, projected_max_cents, "
-                    "freed_drawn_cents, state "
+                    "freed_drawn_cents, state, call_key "
                     "FROM midnight_oil_call_holds WHERE hold_id = ?",
                     [hold.hold_id],
                 ).fetchone()
                 if hold_row is None:
                     raise ReservationNotFound(hold.hold_id)
 
-                _run_id, _role, _projected, _freed_drawn, _state = hold_row
+                _run_id, _role, _projected, _freed_drawn, _state, _call = hold_row
                 if _state != "open":
                     raise RuntimeError(f"Hold {hold.hold_id} already settled or released")
 
                 # Transition hold state: open → settled.
                 hit = ctx.execute(
                     "UPDATE midnight_oil_call_holds SET "
-                    "state = 'settled', updated_at = CURRENT_TIMESTAMP "
+                    "state = 'settled', actual_cents = ?, "
+                    "updated_at = CURRENT_TIMESTAMP "
                     "WHERE hold_id = ? AND state = 'open' RETURNING 1",
-                    [hold.hold_id],
+                    [actual_cents, hold.hold_id],
                 ).fetchone()
                 if hit is None:
                     raise RuntimeError(f"Hold {hold.hold_id} already settled or released")
@@ -815,14 +912,14 @@ class BudgetLedger:
             with self._txn(ctx):
                 hold_row = ctx.execute(
                     "SELECT run_id, role, projected_max_cents, "
-                    "freed_drawn_cents, state "
+                    "freed_drawn_cents, state, call_key "
                     "FROM midnight_oil_call_holds WHERE hold_id = ?",
                     [hold_id],
                 ).fetchone()
                 if hold_row is None:
                     raise ReservationNotFound(hold_id)
 
-                _run_id, _role, _projected, _freed_drawn, _state = hold_row
+                _run_id, _role, _projected, _freed_drawn, _state, _call = hold_row
                 if _state == "open":
                     raise RuntimeError(f"Hold {hold_id} is still open — use settle()")
                 if _state != "unknown":
@@ -831,9 +928,10 @@ class BudgetLedger:
                 # Transition: unknown → settled.
                 hit = ctx.execute(
                     "UPDATE midnight_oil_call_holds SET "
-                    "state = 'settled', updated_at = CURRENT_TIMESTAMP "
+                    "state = 'settled', actual_cents = ?, "
+                    "updated_at = CURRENT_TIMESTAMP "
                     "WHERE hold_id = ? AND state = 'unknown' RETURNING 1",
-                    [hold_id],
+                    [actual_cents, hold_id],
                 ).fetchone()
                 if hit is None:
                     raise RuntimeError(f"Hold {hold_id} already resolved")
@@ -958,6 +1056,67 @@ class BudgetLedger:
         finally:
             con.close()
 
+    @staticmethod
+    def _stage_exposure_row(
+        *,
+        run_id: str,
+        call_key: str,
+        hold_id: str,
+        role: str,
+        projected_cents: int,
+        state: str,
+        actual_cents: int | None,
+    ) -> StageBudgetExposure:
+        if state not in {"open", "unknown", "settled", "released"}:
+            raise RuntimeError("stage hold has an unknown durable state")
+        if projected_cents <= 0 or (actual_cents is not None and actual_cents < 0):
+            raise RuntimeError("stage hold contains invalid cent exposure")
+        if state == "settled":
+            if actual_cents is None:
+                raise RuntimeError("settled stage hold lacks confirmed actual cents")
+            confirmed = actual_cents
+        else:
+            if actual_cents is not None:
+                raise RuntimeError("unsettled stage hold carries confirmed actual cents")
+            confirmed = 0
+        return StageBudgetExposure(
+            run_id=run_id,
+            call_key=call_key,
+            hold_id=hold_id,
+            role=role,
+            projected_cents=projected_cents,
+            confirmed_cents=confirmed,
+            open_cents=projected_cents if state == "open" else 0,
+            unknown_cents=projected_cents if state == "unknown" else 0,
+            state=state,
+        )
+
+    def stage_exposure(self, run_id: str, call_key: str) -> StageBudgetExposure:
+        """Return authoritative exposure for one deterministic stage key."""
+        checked = _call_key(call_key)
+        assert checked is not None
+        con = connect_read(self._db_path)
+        try:
+            row = con.execute(
+                "SELECT hold_id, role, projected_max_cents, state, actual_cents "
+                "FROM midnight_oil_call_holds WHERE run_id = ? AND call_key = ?",
+                [run_id, checked],
+            ).fetchone()
+            if row is None:
+                raise ReservationNotFound(checked)
+            hold_id, role, projected, state, actual = row
+            return self._stage_exposure_row(
+                run_id=run_id,
+                call_key=checked,
+                hold_id=str(hold_id),
+                role=str(role),
+                projected_cents=int(projected),
+                state=str(state),
+                actual_cents=None if actual is None else int(actual),
+            )
+        finally:
+            con.close()
+
     # --- guarded_call -----------------------------------------------------
 
     def guarded_call(
@@ -967,6 +1126,7 @@ class BudgetLedger:
         projected_max_cents: int,
         call: Callable[[], tuple[T, int]],
         *,
+        call_key: str | None = None,
         before_settle: Callable[[T, int], None] | None = None,
     ) -> tuple[T, RemainingBalance]:
         """Execute *call* with budget guard.
@@ -986,7 +1146,12 @@ class BudgetLedger:
           original provider exception and the bookkeeping exception, with
           the exact ``CallHold``.  The hold remains open (fail closed).
         """
-        hold = self.reserve_call(run_id, role, projected_max_cents)
+        hold = self.reserve_call(
+            run_id,
+            role,
+            projected_max_cents,
+            call_key=call_key,
+        )
 
         def raise_unknown(error: Exception) -> NoReturn:
             try:
@@ -1037,14 +1202,14 @@ class BudgetLedger:
             with self._txn(ctx):
                 hold_row = ctx.execute(
                     "SELECT run_id, role, projected_max_cents, "
-                    "freed_drawn_cents, state "
+                    "freed_drawn_cents, state, call_key "
                     "FROM midnight_oil_call_holds WHERE hold_id = ?",
                     [hold.hold_id],
                 ).fetchone()
                 if hold_row is None:
                     raise ReservationNotFound(hold.hold_id)
 
-                _run_id, _role, _projected, _freed_drawn, _state = hold_row
+                _run_id, _role, _projected, _freed_drawn, _state, _call = hold_row
                 if _state != "open":
                     raise RuntimeError(f"Hold {hold.hold_id} already {_state}")
 
@@ -1073,6 +1238,7 @@ class BudgetLedger:
                     role=_role,
                     projected_max_cents=_projected,
                     freed_drawn_cents=_freed_drawn,
+                    call_key=None if _call is None else str(_call),
                 )
 
     def _reconcile_freed(
