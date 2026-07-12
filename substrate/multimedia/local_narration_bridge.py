@@ -36,6 +36,7 @@ class LocalNarrationInputs:
     generated_files: tuple[GeneratedFile, ...]
     chapter_paths: dict[str, str]
     request_ids: tuple[str, ...]
+    chapter_texts: tuple[str, ...]
     cost_usd: float = 0.0
 
 
@@ -160,6 +161,7 @@ def compile_local_narration_inputs(
         generated_files=tuple(files),
         chapter_paths=paths,
         request_ids=tuple(artifact.request_id for artifact in artifacts),
+        chapter_texts=tuple(request.text for request in requests),
     )
 
 
