@@ -21,6 +21,25 @@ const receipt = {
   non_viewable_reason: null,
   view_format: "html" as const,
   html: "<!doctype html><html><body>Paper</body></html>",
+  source_event_id: "evt-1",
+  author: "Researcher",
+  page_count: 4,
+  word_count: 800,
+  projection_state: "ready" as const,
+  projection_hash: "sha256:projection",
+  projection_version: "hosted-html-projection-v1",
+  extraction_receipt: {
+    extractor_version: "hosted-document-extractor-v1",
+    source_byte_hash: "sha256:source",
+    extracted_content_hash: "sha256:extracted",
+    canonical_content_hash: "sha256:canonical",
+    source_format: "pdf",
+    word_count: 800,
+    minimum_viewable_words: 50,
+    truncated: false,
+    viewable: true,
+    non_viewable_reason: null,
+  },
 };
 
 describe("hosted document API", () => {
@@ -35,15 +54,24 @@ describe("hosted document API", () => {
       source_format: "pdf",
       investigation_id: "inv",
       title: "Paper.pdf",
+      intent: "user_owned",
     });
     expect(result.document_id).toBe("hdoc_1");
+    expect(result.projection_state).toBe("ready");
+    expect(result.extraction_receipt.canonical_content_hash).toBe(
+      result.canonical_content_hash,
+    );
     expect(apiFetch).toHaveBeenCalledWith(
       "http://api.test/hosted-documents/ingest",
       expect.objectContaining({ method: "POST" }),
     );
     const request = vi.mocked(apiFetch).mock.calls[0][1] as RequestInit;
     expect(JSON.parse(String(request.body))).toEqual(
-      expect.objectContaining({ investigation_id: "inv", source_format: "pdf" }),
+      expect.objectContaining({
+        investigation_id: "inv",
+        source_format: "pdf",
+        intent: "user_owned",
+      }),
     );
   });
 

@@ -13,6 +13,26 @@ export type HostedDocumentReceipt = {
   non_viewable_reason: string | null;
   view_format: "html";
   html: string | null;
+  intent?: "user_owned";
+  source_event_id: string | null;
+  author: string | null;
+  page_count: number | null;
+  word_count: number;
+  projection_state: "pending" | "ready" | "non_viewable";
+  projection_hash: string | null;
+  projection_version: string | null;
+  extraction_receipt: {
+    extractor_version: string;
+    source_byte_hash: string;
+    extracted_content_hash: string;
+    canonical_content_hash: string;
+    source_format: string;
+    word_count: number;
+    minimum_viewable_words: number;
+    truncated: boolean;
+    viewable: boolean;
+    non_viewable_reason: string | null;
+  };
 };
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -29,6 +49,7 @@ export async function ingestHostedDocument(body: {
   investigation_id: string;
   title?: string | null;
   source_uri?: string | null;
+  intent?: "user_owned";
 }): Promise<HostedDocumentReceipt> {
   return readJson<HostedDocumentReceipt>(
     await apiFetch(`${API_BASE}/hosted-documents/ingest`, {

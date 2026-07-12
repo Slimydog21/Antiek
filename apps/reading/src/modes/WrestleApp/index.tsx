@@ -75,6 +75,7 @@ export default function WrestleApp() {
           source_format: sourceFormat(file),
           investigation_id: investigationId,
           title: file.name,
+          intent: "user_owned",
         });
         if (receipt.state !== "ready" || !receipt.html?.trim()) {
           throw new Error(
