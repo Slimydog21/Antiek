@@ -1,4 +1,4 @@
-"""Registerable HTTP surface (write-twin residual mpk over fullscreen mpk tip) for write twin collective over fullscreen draft-before-merge."""
+"""Registerable HTTP surface for write twin collective over fullscreen draft-before-merge."""
 
 from __future__ import annotations
 

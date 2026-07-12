@@ -1,4 +1,4 @@
-"""Pure tests (write-twin residual mpk) for write twin collective over fullscreen draft-before-merge pack."""
+"""Pure tests for write twin collective over fullscreen draft-before-merge pack."""
 
 from __future__ import annotations
 
