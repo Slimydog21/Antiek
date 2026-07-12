@@ -56,6 +56,15 @@ from .live import (
     resume_terminal_projection,
     run_authorized_live_iteration,
 )
+from .live_stage_engine import (
+    LiveSwarmStageEngine,
+    RouterStageDispatch,
+    StageDispatch,
+    StageDispatchClaimLost,
+    StageProviderResponse,
+    StageRunResult,
+    stage_input_sha256,
+)
 from .operation_queue import provider_idempotency_key
 from .product_path import (
     ANTIEK_MIDNIGHT_OIL_LIVE_STEP_ENV,
@@ -140,7 +149,9 @@ __all__ = [
     "LiveExecutionFailed",
     "LiveExecutionOutcome",
     "LivePolicyUnsupported",
+    "LiveSwarmStageEngine",
     "RouterIdempotentDispatch",
+    "RouterStageDispatch",
     "MidnightOilExecutionReceipt",
     "MidnightOilExecutionRequest",
     "MidnightOilRoleOutput",
@@ -164,6 +175,10 @@ __all__ = [
     "RollbackReceipt",
     "SeamOrderingViolation",
     "SourceReceipt",
+    "StageDispatch",
+    "StageDispatchClaimLost",
+    "StageProviderResponse",
+    "StageRunResult",
     "StepFn",
     "WorkerStepResult",
     "WorkerLease",
@@ -187,6 +202,7 @@ __all__ = [
     "live_step_status_payload",
     "lease_authorized_operation",
     "run_leased_worker_iteration",
+    "stage_input_sha256",
     "product_result_html",
     "provider_idempotency_key",
     "preflight_midnight_oil",

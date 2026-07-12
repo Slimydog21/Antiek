@@ -115,7 +115,9 @@ def _receipt(state: StageState = "planned") -> StageReceipt:
     item = _stages(shards=1)[0]
     reserved: dict[str, Any] = {}
     returned: dict[str, Any] = {}
-    if state != "planned":
+    if state == "intent":
+        reserved = {"input_evidence_sha256": INPUT_HASH}
+    elif state != "planned":
         reserved = {
             "input_evidence_sha256": INPUT_HASH,
             "budget_hold_id": "hold-1",
@@ -123,6 +125,7 @@ def _receipt(state: StageState = "planned") -> StageReceipt:
                 stage=item.stage_key, lease_generation=3
             ),
             "lease_generation": 3,
+            "dispatch_owner_id": "dispatch-owner-1",
             "reserved_at_ms": 10,
         }
     if state in {"returned", "settled"}:
@@ -165,6 +168,7 @@ def _receipt(state: StageState = "planned") -> StageReceipt:
         state=state,
         revision={
             "planned": 0,
+            "intent": 1,
             "reserved": 1,
             "not_dispatched": 2,
             "unknown": 2,

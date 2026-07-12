@@ -193,6 +193,11 @@ class DurableJobStore:
         with self._connect() as connection:
             return self._list_stage_receipts(connection, job_id)
 
+    def get_stage_plan(self, job_id: str) -> StagePlan:
+        _bounded(job_id, "job_id")
+        with self._connect() as connection:
+            return self._read_plan(connection, job_id)
+
     def get_stage_effect(
         self, job_id: str, stage_key: str
     ) -> tuple[StageEffectReceipt, dict[str, Any]] | None:
@@ -220,6 +225,70 @@ class DurableJobStore:
                 return None
             return self._read_rejection(connection, job_id, stage_key)
 
+    def register_stage_intent(
+        self,
+        *,
+        job_id: str,
+        stage_key: str,
+        input_evidence_sha256: str,
+        operation_queue: OperationQueue,
+        worker_id: str,
+        lease_generation: int,
+        now_ms: int,
+    ) -> StageReceipt:
+        """Fence immutable dispatch input before any keyed budget hold exists."""
+        current, plan, item = self._runtime_authority(job_id, stage_key)
+        if current.state == "intent":
+            if current.input_evidence_sha256 != input_evidence_sha256:
+                raise ValueError("stage intent replay conflicts with durable input")
+            return current
+
+        def queue_action() -> tuple[StageReceipt, bool]:
+            queued = operation_queue.get(plan.operation_id)
+            if (
+                queued is None
+                or queued.job_id != plan.job_id
+                or queued.next_step_index != item.ordinal
+            ):
+                raise ValueError("stage intent conflicts with queue cursor")
+            return (
+                self._transition(
+                    job_id=job_id,
+                    stage_key=stage_key,
+                    expected_revision=current.revision,
+                    expected_states=("planned",),
+                    mutate=lambda row: StageReceipt(
+                        **{
+                            **row.model_dump(),
+                            "state": "intent",
+                            "revision": row.revision + 1,
+                            "input_evidence_sha256": input_evidence_sha256,
+                        }
+                    ),
+                    require_predecessors=True,
+                ),
+                False,
+            )
+
+        try:
+            return operation_queue.run_fenced(
+                operation_id=plan.operation_id,
+                worker_id=worker_id,
+                lease_generation=lease_generation,
+                now_ms=now_ms,
+                expected_step_index=item.ordinal,
+                action=queue_action,
+            )
+        except ValueError:
+            durable = self.get_stage(job_id, stage_key)
+            if (
+                durable is not None
+                and durable.state == "intent"
+                and durable.input_evidence_sha256 == input_evidence_sha256
+            ):
+                return durable
+            raise
+
     def reserve_stage(
         self,
         *,
@@ -232,7 +301,9 @@ class DurableJobStore:
         worker_id: str,
         lease_generation: int,
         now_ms: int,
+        dispatch_owner_id: str | None = None,
     ) -> StageReceipt:
+        owner_id = dispatch_owner_id or f"{worker_id}:{lease_generation}"
         current, plan, item = self._runtime_authority(job_id, stage_key)
         if (
             current.state == "reserved"
@@ -247,7 +318,7 @@ class DurableJobStore:
                 job_id=job_id,
                 stage_key=stage_key,
                 expected_revision=expected_revision,
-                expected_states=("planned",),
+                expected_states=("planned", "intent"),
                 mutate=lambda row: StageReceipt(
                     **{
                         **row.model_dump(),
@@ -256,6 +327,7 @@ class DurableJobStore:
                         "input_evidence_sha256": input_evidence_sha256,
                         "budget_hold_id": exposure.hold_id,
                         "lease_generation": lease_generation,
+                        "dispatch_owner_id": owner_id,
                         "dispatch_fence_sha256": dispatch_fence_sha256(
                             stage=row.stage_key, lease_generation=lease_generation
                         ),

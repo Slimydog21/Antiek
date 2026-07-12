@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 StageKind = Literal["planner", "gather", "verifier", "synthesizer"]
 StageState = Literal[
     "planned",
+    "intent",
     "reserved",
     "not_dispatched",
     "unknown",
@@ -20,6 +21,7 @@ StageState = Literal[
     "rejected_settled",
 ]
 StageFailureReason = Literal[
+    "proven_not_dispatched",
     "route_refused",
     "config_drift",
     "input_too_large",
@@ -210,6 +212,7 @@ class StageReceipt(_ClosedModel):
     budget_hold_id: str | None = Field(default=None, max_length=256)
     dispatch_fence_sha256: str | None = Field(default=None, pattern=_HEX64)
     lease_generation: int | None = Field(default=None, ge=1)
+    dispatch_owner_id: str | None = Field(default=None, min_length=1, max_length=256)
     effect_receipt_id: str | None = Field(default=None, pattern=_HEX64)
     output_sha256: str | None = Field(default=None, pattern=_HEX64)
     failure_receipt_id: str | None = Field(default=None, pattern=_HEX64)
@@ -228,6 +231,7 @@ class StageReceipt(_ClosedModel):
             raise ValueError("provider_effect_key conflicts with stage identity")
         minimum_revision = {
             "planned": 0,
+            "intent": 1,
             "reserved": 1,
             "not_dispatched": 2,
             "unknown": 2,
@@ -243,6 +247,7 @@ class StageReceipt(_ClosedModel):
             self.budget_hold_id,
             self.dispatch_fence_sha256,
             self.lease_generation,
+            self.dispatch_owner_id,
             self.reserved_at_ms,
         )
         returned = (
@@ -266,6 +271,26 @@ class StageReceipt(_ClosedModel):
                 )
             ):
                 raise ValueError("planned stage cannot claim reserved or returned authority")
+        elif self.state == "intent":
+            if self.input_evidence_sha256 is None or any(
+                value is not None
+                for value in (
+                    self.budget_hold_id,
+                    self.dispatch_fence_sha256,
+                    self.lease_generation,
+                    self.dispatch_owner_id,
+                    self.reserved_at_ms,
+                    *returned,
+                    self.failure_receipt_id,
+                    self.failure_reason,
+                    self.failed_at_ms,
+                    self.rejection_receipt_id,
+                    self.raw_response_sha256,
+                    self.unknown_at_ms,
+                    self.settled_at_ms,
+                )
+            ):
+                raise ValueError("intent stage requires only its canonical input hash")
         elif any(value is None for value in reserved):
             raise ValueError("dispatched stage requires input, hold, and dispatch fence")
         elif self.dispatch_fence_sha256 != dispatch_fence_sha256(

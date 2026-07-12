@@ -51,6 +51,17 @@ def _call_key(value: str | None) -> str | None:
     return value
 
 
+def _hold_from_exposure(exposure: StageBudgetExposure) -> CallHold:
+    return CallHold(
+        hold_id=exposure.hold_id,
+        run_id=exposure.run_id,
+        role=exposure.role,
+        projected_max_cents=exposure.projected_cents,
+        freed_drawn_cents=0,
+        call_key=exposure.call_key,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Exceptions
 # ---------------------------------------------------------------------------
@@ -1157,6 +1168,22 @@ class BudgetLedger:
                 state=str(state),
                 actual_cents=None if actual is None else int(actual),
             )
+
+    def release_stage_call(self, run_id: str, call_key: str) -> StageBudgetExposure:
+        """Release an open keyed hold after proof that no network dispatch occurred."""
+        exposure = self.stage_exposure(run_id, call_key)
+        if exposure.state == "released":
+            return exposure
+        if exposure.state != "open":
+            raise ValueError("only an open stage call may be released")
+        try:
+            self._release_hold(_hold_from_exposure(exposure))
+        except RuntimeError:
+            durable = self.stage_exposure(run_id, call_key)
+            if durable.state != "released":
+                raise
+            return durable
+        return self.stage_exposure(run_id, call_key)
 
     def run_stage_fenced(
         self,

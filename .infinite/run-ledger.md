@@ -20,3 +20,11 @@ Append-only execution record. The active native goal predates this local ledger;
 - GAPS: SECURITY GAP unchanged — hardenx again reports one pre-existing credential-shaped fixture outside this diff and 11 advisories; repository remains uncertified and no waiver/clean gate is claimed.
 - BLOCKED: none.
 - NEXT: implement the serial `LiveSwarmStageEngine` over the now-complete honest state model, because provider invocation can finally map every dispatch outcome without inventing success or losing spend authority.
+
+## Cycle 3 — 2026-07-12T04:39:12Z — Execute the causal paid role chain exactly once
+- DID: added `LiveSwarmStageEngine`, durable pre-spend input intent, unique local dispatch ownership, existing-router integer-cent bridge, route-plan drift preflight, serial crash recovery, internal trusted/untrusted prompt construction, mandatory role-specific causal validation, canonical excerpt hashing, and a real planner→gatherer→verifier→synthesizer integration fixture.
+- VERIFIED: 77 causal/role/recovery focused tests, 0 failed; 373 full Midnight Oil tests, 0 failed, 1 upstream deprecation warning; Ruff 0 findings; strict mypy 0 issues; independent recovery and evidence/security critics ACCEPT.
+- ENGINES: host=integration; glm-cc ultracode=attempted systems review but HTTP 429; recovery critic=dispatch/input/crash refutation; evidence critic=prompt/provenance/causal-chain refutation.
+- GAPS: ENGINE GAP — glm-cc ultracode remained rate-limited despite a green version probe. SECURITY GAP unchanged — hardenx reports one pre-existing credential-shaped fixture outside this diff and 11 advisories; repository remains uncertified and no waiver/clean gate is claimed.
+- BLOCKED: none.
+- NEXT: bind a signed per-role route/cost plan into consent/readiness and compose `LiveSwarmStageEngine` into the canonical worker CLI, because the engine is real but production activation still reaches the legacy single-synthesizer step.
