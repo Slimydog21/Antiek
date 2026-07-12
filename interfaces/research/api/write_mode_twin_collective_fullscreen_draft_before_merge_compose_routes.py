@@ -90,6 +90,8 @@ def register_write_mode_twin_collective_fullscreen_draft_before_merge_compose_ro
 
 
 __all__ = [
+    "WriteBody",
+    "FullscreenPackBody",
     "write_mode_twin_collective_fullscreen_draft_before_merge_compose_router",
     "register_write_mode_twin_collective_fullscreen_draft_before_merge_compose_routes",
 ]
