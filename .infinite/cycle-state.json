@@ -1,7 +1,7 @@
 {
-  "cycle": 4,
+  "cycle": 5,
   "phase": "ARCHITECT",
-  "subgoal": "Sign per-role route/cost authority and compose the stage engine into the production worker",
+  "subgoal": "Persist operation-bound stage authority and compose the stage engine into the production worker",
   "lanes": [],
   "engineHealth": {
     "grok": "ok",
@@ -14,5 +14,5 @@
     "conclave": "ok"
   },
   "consecutiveNoDelta": 0,
-  "updatedAt": "2026-07-12T04:39:12Z"
+  "updatedAt": "2026-07-12T05:10:00Z"
 }

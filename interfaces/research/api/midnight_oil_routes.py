@@ -54,6 +54,7 @@ from substrate.midnight_oil.spend_consent import (
     decode_and_verify,
 )
 from substrate.midnight_oil.status import LifecycleIntegrityError, project_lifecycle_status
+from substrate.midnight_oil.swarm_plan import SwarmLivePlan
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
 midnight_oil_preflight_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
@@ -92,7 +93,7 @@ class MidnightOilDependencies:
     verification_keys: Mapping[str, bytes]
     operation_queue: OperationQueue | None = None
     engagement_store: EngagementStore | None = None
-    live_plan_resolver: Callable[[Any], LiveExecutionPlan] | None = None
+    live_plan_resolver: Callable[[MidnightOilJob], LiveExecutionPlan | SwarmLivePlan] | None = None
     clock_ms: Callable[[], int] = _system_clock_ms
     random_token: Callable[[int], str] = secrets.token_urlsafe
     test_mode: bool = False
@@ -217,7 +218,14 @@ class RunBody(BaseModel):
     force_offline: StrictBool = False
 
 
-def _owner_payload(job: Any, *, live_plan: LiveExecutionPlan | None = None) -> dict[str, object]:
+def _owner_payload(
+    job: Any,
+    *,
+    live_plan: LiveExecutionPlan | None = None,
+    swarm_plan: SwarmLivePlan | None = None,
+) -> dict[str, object]:
+    if live_plan is not None and swarm_plan is not None:
+        raise ValueError("legacy and swarm live authority cannot coexist")
     recommended_cents = int(
         (Decimal(str(job.recommended_price_ceiling_usd)) * 100).to_integral_value(
             rounding=ROUND_FLOOR
@@ -241,6 +249,8 @@ def _owner_payload(job: Any, *, live_plan: LiveExecutionPlan | None = None) -> d
             None if live_plan is None else live_plan.dispatch_config_hash
         ),
         "live_max_input_bytes": (None if live_plan is None else live_plan.max_input_bytes),
+        "swarm_live_plan_json": (None if swarm_plan is None else swarm_plan.model_dump_json()),
+        "swarm_live_plan_hash": None if swarm_plan is None else swarm_plan.plan_hash,
     }
 
 
@@ -274,7 +284,7 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
             if deps.live_plan_resolver is None:
                 raise RuntimeError("live execution plan resolver is unavailable")
             live_plan = deps.live_plan_resolver(result.job)
-            if not isinstance(live_plan, LiveExecutionPlan):
+            if not isinstance(live_plan, (LiveExecutionPlan, SwarmLivePlan)):
                 raise RuntimeError("live execution plan resolver returned invalid data")
         else:
             live_plan = None
@@ -294,7 +304,11 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
                 dispatch_started_at_ms=None,
                 dispatched_at_ms=None,
                 completed_at_ms=None,
-                payload=_owner_payload(result.job, live_plan=live_plan),
+                payload=_owner_payload(
+                    result.job,
+                    live_plan=(live_plan if isinstance(live_plan, LiveExecutionPlan) else None),
+                    swarm_plan=(live_plan if isinstance(live_plan, SwarmLivePlan) else None),
+                ),
             )
         )
         legacy_row = staging.get_job(result.job.job_id)
@@ -354,6 +368,28 @@ def _config(row: OwnerJob) -> JobConsentConfig:
     if type(asset_id) is not str or not asset_id or len(asset_id) > 256:
         raise ValueError("stored asset is invalid")
     live_plan_hash = payload.get("live_plan_hash")
+    swarm_plan = _swarm_plan_from_payload(payload)
+    if live_plan_hash is not None and swarm_plan is not None:
+        raise ValueError("stored live authority mixes legacy and swarm formats")
+    if swarm_plan is not None:
+        legacy_values = (
+            payload.get("live_allowed_routes"),
+            payload.get("live_projected_max_cents"),
+            payload.get("live_source_policy"),
+            payload.get("live_dispatch_config_hash"),
+            payload.get("live_max_input_bytes"),
+        )
+        if any(value not in (None, []) for value in legacy_values):
+            raise ValueError("stored live authority mixes legacy and swarm formats")
+        if swarm_plan.goals_count != len(goals):
+            raise ValueError("swarm authority conflicts with job goals")
+        if swarm_plan.gather_per_goal != fanout:
+            raise ValueError("swarm authority conflicts with job fanout")
+        if model_id is not None and model_id not in {
+            route.split("/", 1)[1]
+            for route in swarm_plan.role("synthesizer").allowed_routes
+        }:
+            raise ValueError("swarm authority conflicts with selected model")
     if live_plan_hash is None:
         live_plan = None
     else:
@@ -375,8 +411,29 @@ def _config(row: OwnerJob) -> JobConsentConfig:
         research_tier=tier,
         fanout_depth=fanout,
         asset_id=asset_id,
-        live_execution_plan_hash=(None if live_plan is None else live_plan.plan_hash),
+        live_execution_plan_hash=(
+            swarm_plan.plan_hash
+            if swarm_plan is not None
+            else None
+            if live_plan is None
+            else live_plan.plan_hash
+        ),
     )
+
+
+def _swarm_plan_from_payload(payload: Mapping[str, object]) -> SwarmLivePlan | None:
+    plan_hash = payload.get("swarm_live_plan_hash")
+    plan_json = payload.get("swarm_live_plan_json")
+    if (plan_hash is None) != (plan_json is None):
+        raise ValueError("stored swarm authority is incomplete")
+    if plan_hash is None:
+        return None
+    if type(plan_hash) is not str or type(plan_json) is not str:
+        raise ValueError("stored swarm authority has invalid types")
+    plan = SwarmLivePlan.model_validate_json(plan_json)
+    if plan.plan_hash != plan_hash:
+        raise ValueError("stored swarm authority hash conflicts with its plan")
+    return plan
 
 
 def _recommended_cents(row: OwnerJob) -> int:
@@ -429,6 +486,15 @@ def post_spend_consent(
         raise HTTPException(status_code=400, detail="ceiling is below the recommendation")
     if not 1 <= ceiling <= MAX_CEILING_CENTS:
         raise HTTPException(status_code=400, detail="ceiling_cents is outside authority bounds")
+    try:
+        swarm_plan = _swarm_plan_from_payload(row.payload)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail="stored swarm authority is invalid") from exc
+    if swarm_plan is not None and ceiling < swarm_plan.projected_total_cents:
+        raise HTTPException(
+            status_code=400,
+            detail="ceiling cannot cover the signed live swarm topology",
+        )
 
     try:
         now = deps.clock_ms()
@@ -507,8 +573,7 @@ def delete_spend_consent(request: Request, job_id: str, response: Response) -> d
             headers={"Cache-Control": "no-store"},
         )
     if (
-        authority.operation_state
-        not in {OperationState.CONSENT_ISSUED, OperationState.QUEUED}
+        authority.operation_state not in {OperationState.CONSENT_ISSUED, OperationState.QUEUED}
         or authority.operation_id is None
         or authority.consent_receipt_id is None
         or (
@@ -814,9 +879,7 @@ def post_run(
         expected_receipt_id = current.consent_receipt_id
 
         def require_current_queue_authority() -> None:
-            latest_for_delivery = deps.owner_jobs.get_job(
-                owner_user_id=owner, job_id=body.job_id
-            )
+            latest_for_delivery = deps.owner_jobs.get_job(owner_user_id=owner, job_id=body.job_id)
             if (
                 latest_for_delivery is None
                 or latest_for_delivery.state_version != expected_version

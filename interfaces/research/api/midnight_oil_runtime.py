@@ -16,7 +16,8 @@ from pathlib import Path
 from fastapi import FastAPI
 
 from substrate.dispatch import DispatchConfig
-from substrate.midnight_oil.live import build_router_live_plan
+from substrate.midnight_oil.job import MidnightOilJob
+from substrate.midnight_oil.live import LiveExecutionPlan, build_router_live_plan
 from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfig,
     MidnightOilRuntimeStores,
@@ -24,6 +25,7 @@ from substrate.midnight_oil.runtime import (
     install_attested_providers,
     load_consent_keyring,
 )
+from substrate.midnight_oil.swarm_plan import SwarmLivePlan
 
 from .midnight_oil_routes import MidnightOilDependencies
 
@@ -47,6 +49,13 @@ def build_midnight_oil_api_runtime(
     install_attested_providers(config, environment)
     dispatch_config = DispatchConfig.from_yaml(config.dispatch_config_path)
     stores = build_runtime_stores(config)
+
+    def resolve_live_plan(job: MidnightOilJob) -> LiveExecutionPlan | SwarmLivePlan:
+        # Four configured roles do not prove that the production worker can
+        # decode and execute swarm authority. Keep issuance legacy until the
+        # stage-engine worker composition is installed and verified end-to-end.
+        return build_router_live_plan(job, config=dispatch_config)
+
     dependencies = MidnightOilDependencies(
         owner_jobs=stores.owner_jobs,
         jobs=stores.jobs,
@@ -56,9 +65,7 @@ def build_midnight_oil_api_runtime(
         active_key_id=config.consent_active_key_id,
         signing_key=signing_key,
         verification_keys=verification_keys,
-        live_plan_resolver=lambda job: build_router_live_plan(
-            job, config=dispatch_config
-        ),
+        live_plan_resolver=resolve_live_plan,
     )
     return MidnightOilApiRuntime(
         config=config,

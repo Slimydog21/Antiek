@@ -28,3 +28,11 @@ Append-only execution record. The active native goal predates this local ledger;
 - GAPS: ENGINE GAP — glm-cc ultracode remained rate-limited despite a green version probe. SECURITY GAP unchanged — hardenx reports one pre-existing credential-shaped fixture outside this diff and 11 advisories; repository remains uncertified and no waiver/clean gate is claimed.
 - BLOCKED: none.
 - NEXT: bind a signed per-role route/cost plan into consent/readiness and compose `LiveSwarmStageEngine` into the canonical worker CLI, because the engine is real but production activation still reaches the legacy single-synthesizer step.
+
+## Cycle 4 — 2026-07-12T05:10:00Z — Sign closed four-role route and topology authority
+- DID: added canonical per-role route/config/cost authority, a four-role `SwarmLivePlan`, deterministic causal `StagePlan` derivation, distinct signed token-pricing and UTF-8 byte caps, closed owner-payload serialization, legacy/swarm exclusivity, owner goal/fanout/model cross-binding, and consent-ceiling enforcement. Production issuance deliberately remains legacy-only until the worker can consume swarm authority end-to-end.
+- VERIFIED: 60 final focused tests, 0 failed; broader Midnight Oil suite completed without a reported failure; Ruff 0 findings; strict mypy including new tests 0 issues; diff check clean; independent authority and compatibility critics ACCEPT.
+- ENGINES: host=implementation; architect=authority/consent/worker migration trace; authority critic=job binding and strict-type refutation; seams critic=production half-activation refutation.
+- GAPS: WORKER GAP — durable StagePlan initialization and canonical worker composition are not yet installed, so swarm issuance remains intentionally disabled in production. SECURITY GAP unchanged — hardenx reports the same pre-existing credential-shaped test fixture plus 11 advisories; repository remains uncertified and no waiver/clean gate is claimed.
+- BLOCKED: none.
+- NEXT: persist operation-bound StagePlan authority atomically with consent, then add a legacy/swarm worker branch that verifies the owner/consent/plan hash chain and executes exactly one durable causal stage per lease.
