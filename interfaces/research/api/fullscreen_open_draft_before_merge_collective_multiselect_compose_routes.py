@@ -80,6 +80,8 @@ def register_fullscreen_open_draft_before_merge_collective_multiselect_compose_r
 
 
 __all__ = [
+    "DraftPackBody",
+    "FullscreenBody",
     "fullscreen_open_draft_before_merge_collective_multiselect_compose_router",
     "register_fullscreen_open_draft_before_merge_collective_multiselect_compose_routes",
 ]
