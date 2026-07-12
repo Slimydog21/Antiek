@@ -332,6 +332,27 @@ def test_hostile_controls_fail_independently_and_unknown_spend_reconciles(
     assert provider_canary not in caught_text
     assert provider_canary not in formatted_trace
     assert deps.operation_queue.get(operation_id).next_step_index == 0  # type: ignore[union-attr]
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id=job_id)
+    assert authority is not None
+    assert authority.operation_state is OperationState.FAILED_RECONCILE
+    assert BudgetLedger(deps.jobs.budget_db_path()).balance(job_id).held_cents == 1
+
+    # Reopen every durable boundary before recovery. Owner authority, rather
+    # than the execution snapshot or an unexpired in-process lease, must make a
+    # second provider dispatch ineligible.
+    deps = _dependencies(tmp_path)
+    with pytest.raises(ValueError, match="not dispatchable"):
+        lease_authorized_operation(
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id=job_id,
+            owner_jobs=deps.owner_jobs,
+            operation_queue=deps.operation_queue,  # type: ignore[arg-type]
+            jobs=deps.jobs,
+            worker_id="restart-worker",
+            now_ms=1_060_002,
+            lease_expires_at_ms=1_120_002,
+        )
     recovered = run_leased_worker_iteration(
         lease,
         operation_queue=deps.operation_queue,  # type: ignore[arg-type]

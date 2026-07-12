@@ -220,6 +220,19 @@ def lease_authorized_operation(
 IdempotentStepFn = Callable[[MidnightOilJob, str], WorkerStepResult]
 
 
+def _failed_authority_state(store: JobStore, job_id: str) -> OperationState:
+    """Distinguish a proven no-hold failure from an unknown paid outcome."""
+    try:
+        held_cents = BudgetLedger(store.budget_db_path()).balance(job_id).held_cents
+    except Exception:
+        return OperationState.FAILED_RECONCILE
+    return (
+        OperationState.FAILED_RECONCILE
+        if held_cents > 0
+        else OperationState.FAILED
+    )
+
+
 def _run_leased_worker_iteration_fenced(
     lease: WorkerLease,
     *,
@@ -259,15 +272,50 @@ def _run_leased_worker_iteration_fenced(
     if key in existing.completed_step_keys:
         job = existing
     else:
-        job = run_worker_iteration(
-            lease.job_id,
-            store=store,
-            step_fn=dispatch,
-            project_fn=project_fn,
-            clock=clock,
-            on_spawn=on_spawn,
-            step_identity=key,
-        )
+        try:
+            job = run_worker_iteration(
+                lease.job_id,
+                store=store,
+                step_fn=dispatch,
+                project_fn=project_fn,
+                clock=clock,
+                on_spawn=on_spawn,
+                step_identity=key,
+            )
+        except Exception as provider_error:
+            authority = owner_jobs.get_job(
+                owner_user_id=lease.owner_user_id, job_id=lease.job_id
+            )
+            if authority is None or authority.operation_id != lease.operation_id:
+                raise RuntimeError(
+                    "exception-path authority requires reconciliation"
+                ) from provider_error
+            if authority.operation_state is OperationState.RUNNING:
+                next_state = _failed_authority_state(store, lease.job_id)
+                changed = owner_jobs.compare_and_set(
+                    owner_user_id=lease.owner_user_id,
+                    job_id=lease.job_id,
+                    expected_version=authority.state_version,
+                    expected_state=OperationState.RUNNING,
+                    operation_id=lease.operation_id,
+                    next_state=next_state,
+                    completed_at_ms=clock.now_ms(),
+                )
+                if not changed.applied:
+                    raise RuntimeError(
+                        "exception-path authority requires reconciliation"
+                    ) from provider_error
+            elif authority.operation_state not in {
+                OperationState.COMPLETE,
+                OperationState.FAILED,
+                OperationState.BUDGET_HALTED,
+                OperationState.TIMED_OUT,
+                OperationState.FAILED_RECONCILE,
+            }:
+                raise RuntimeError(
+                    "exception-path authority requires reconciliation"
+                ) from provider_error
+            raise
     terminal_states = {
         "complete": OperationState.COMPLETE,
         "failed": OperationState.FAILED,
@@ -276,11 +324,7 @@ def _run_leased_worker_iteration_fenced(
     }
     terminal = terminal_states.get(job.status)
     if terminal is OperationState.FAILED:
-        try:
-            if BudgetLedger(store.budget_db_path()).balance(job.job_id).held_cents > 0:
-                terminal = OperationState.FAILED_RECONCILE
-        except Exception:
-            terminal = OperationState.FAILED_RECONCILE
+        terminal = _failed_authority_state(store, job.job_id)
     if terminal is not None:
         authority = owner_jobs.get_job(
             owner_user_id=lease.owner_user_id, job_id=lease.job_id

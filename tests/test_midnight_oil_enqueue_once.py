@@ -8,7 +8,8 @@ from pathlib import Path
 
 import pytest
 
-from substrate.midnight_oil.job_store import OperationState
+from substrate.midnight_oil.budget_ledger import UnknownCallOutcome
+from substrate.midnight_oil.job_store import CompareAndSetResult, OperationState
 from substrate.midnight_oil.operation_queue import (
     DurableOperationQueue,
     provider_idempotency_key,
@@ -45,6 +46,23 @@ def _run(client, token: str):  # type: ignore[no-untyped-def]
         headers={"x-test-user": "alice", HEADER: token},
         json={"job_id": "job-owned"},
     )
+
+
+def _leased_authorized(tmp_path: Path):  # type: ignore[no-untyped-def]
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    lease = lease_authorized_operation(
+        operation_queue=queue,
+        owner_jobs=deps.owner_jobs,
+        jobs=deps.jobs,
+        operation_id=operation_id,
+        owner_user_id="alice",
+        job_id="job-owned",
+        worker_id="worker-a",
+        now_ms=1_000_001,
+        lease_expires_at_ms=1_060_001,
+    )
+    return deps, queue, operation_id, lease
 
 
 def test_fifty_concurrent_requests_create_one_durable_queue_row(tmp_path: Path) -> None:
@@ -399,6 +417,94 @@ def test_provider_returned_but_unsettled_step_requires_reconciliation(tmp_path: 
     authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
     assert authority is not None
     assert authority.operation_state is OperationState.FAILED_RECONCILE
+
+
+def test_provider_exception_and_lost_authority_cas_require_reconciliation(
+    tmp_path: Path,
+) -> None:
+    deps, queue, _, lease = _leased_authorized(tmp_path)
+    current = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert current is not None and current.operation_state is OperationState.RUNNING
+    original = deps.owner_jobs.compare_and_set
+    deps.owner_jobs.compare_and_set = lambda **kwargs: CompareAndSetResult(  # type: ignore[method-assign]
+        applied=False, job=current
+    )
+    try:
+        with pytest.raises(
+            RuntimeError, match="exception-path authority requires reconciliation"
+        ) as caught:
+            run_leased_worker_iteration(
+                lease,
+                operation_queue=queue,
+                owner_jobs=deps.owner_jobs,
+                store=deps.jobs,
+                step_fn=lambda job, key: (_ for _ in ()).throw(
+                    TimeoutError("provider-internal-canary")
+                ),
+                project_fn=lambda job: 0.01,
+                clock=FakeClock(1_000_002),
+            )
+    finally:
+        deps.owner_jobs.compare_and_set = original  # type: ignore[method-assign]
+    assert isinstance(caught.value.__cause__, UnknownCallOutcome)
+    assert "provider-internal-canary" not in str(caught.value)
+
+
+def test_provider_exception_does_not_overwrite_concurrently_terminal_authority(
+    tmp_path: Path,
+) -> None:
+    deps, queue, operation_id, lease = _leased_authorized(tmp_path)
+
+    def finish_then_fail(job, key):  # type: ignore[no-untyped-def]
+        del job, key
+        current = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+        assert current is not None
+        changed = deps.owner_jobs.compare_and_set(
+            owner_user_id="alice",
+            job_id="job-owned",
+            expected_version=current.state_version,
+            expected_state=OperationState.RUNNING,
+            operation_id=operation_id,
+            next_state=OperationState.COMPLETE,
+            completed_at_ms=1_000_002,
+        )
+        assert changed.applied
+        raise TimeoutError("late provider observer")
+
+    with pytest.raises(UnknownCallOutcome):
+        run_leased_worker_iteration(
+            lease,
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            step_fn=finish_then_fail,
+            project_fn=lambda job: 0.01,
+            clock=FakeClock(1_000_002),
+        )
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None and authority.operation_state is OperationState.COMPLETE
+
+
+def test_pre_dispatch_validation_failure_does_not_invent_unknown_spend(
+    tmp_path: Path,
+) -> None:
+    deps, queue, _, lease = _leased_authorized(tmp_path)
+    provider_calls: list[str] = []
+    with pytest.raises(ValueError, match="project_fn result must be positive"):
+        run_leased_worker_iteration(
+            lease,
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            step_fn=lambda job, key: (
+                provider_calls.append(key) or WorkerStepResult(spent_usd=0.01, done=True)
+            ),
+            project_fn=lambda job: 0.0,
+            clock=FakeClock(1_000_002),
+        )
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None and authority.operation_state is OperationState.FAILED
+    assert provider_calls == []
 
 
 def test_durable_coordinator_serializes_expired_takeover_after_paid_writes(
