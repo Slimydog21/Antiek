@@ -161,7 +161,7 @@ export type MarketplaceHostProps = {
 
 /** Offline demo body for purchased-book host (HTML bytes → base64). */
 function demoPurchasedContentB64(title: string): string {
-  const html = `<!DOCTYPE html><html><body data-view-format="html"><h1>${title}</h1><p>Hosted after manual purchase receipt (no live payment rails).</p></body></html>`;
+  const html = `<!DOCTYPE html><html><body data-view-format="html"><h1>${title}</h1><p>Offline receipt demonstration only. The purchased book bytes were not supplied, so this must remain non-viewable.</p></body></html>`;
   // browser + vitest both have btoa
   return typeof btoa === "function"
     ? btoa(html)
@@ -1019,6 +1019,11 @@ export default function MarketplaceHost({
       if (result.view_format !== "html") {
         throw new Error("hosted view_format must be html");
       }
+      if (result.state === "non_viewable" || !result.html.trim()) {
+        throw new Error(
+          `Book could not produce a canonical HTML view: ${result.non_viewable_reason || "empty extraction"}`,
+        );
+      }
       setHosted(result);
       const lib = await fetchAccountLibrary(ownerId);
       setLibraryHtml(lib.html);
@@ -1070,6 +1075,11 @@ export default function MarketplaceHost({
       });
       if (result.view_format !== "html") {
         throw new Error("hosted view_format must be html");
+      }
+      if (result.state === "non_viewable" || !result.html.trim()) {
+        throw new Error(
+          `Purchased source was retained as a non-viewable receipt: ${result.non_viewable_reason || "empty extraction"}`,
+        );
       }
       setHosted(result);
       const lib = await fetchAccountLibrary(ownerId);

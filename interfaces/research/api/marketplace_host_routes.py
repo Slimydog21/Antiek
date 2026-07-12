@@ -12,17 +12,17 @@ from typing import Any
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
 
+from services.hosted_documents import HostAuthorization, ingest_hosted_document
 from substrate.marketplace_host import (
     Catalog,
     InMemoryHostStore,
     default_demo_catalog,
-    host_book_into_account,
     list_account_library_html,
     project_catalog_html,
     project_hosted_book_html,
-    record_purchase_and_host,
 )
 from substrate.marketplace_host.library import HostStore
+from substrate.marketplace_host.purchase import ManualPurchaseReceipt
 
 marketplace_host_router = APIRouter(prefix="/marketplace", tags=["marketplace-host"])
 
@@ -99,6 +99,111 @@ def _authorized_owner(request: Request, requested_owner: str) -> str:
             detail="account scope does not match authenticated identity",
         )
     return owner_id
+
+
+def _decode_content_b64(value: str) -> bytes:
+    try:
+        return base64.b64decode(value, validate=True)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="content_b64 is not valid base64") from exc
+
+
+def _source_format(raw: bytes, declared: str) -> str:
+    stripped = raw.lstrip()
+    if raw.startswith(b"%PDF"):
+        return "pdf"
+    if raw.startswith(b"PK\x03\x04"):
+        return "epub"
+    if stripped[:64].lower().startswith((b"<!doctype html", b"<html", b"<body")):
+        return "html"
+    return declared or "text"
+
+
+def _canonical_marketplace_host(
+    *,
+    owner_id: str,
+    book_id: str,
+    content: bytes | None,
+    receipt_id: str | None,
+) -> dict[str, Any]:
+    entry = _c().get(book_id)
+    if entry is None:
+        raise KeyError(f"unknown book_id: {book_id}")
+    if entry.license_class == "unknown":
+        raise ValueError("license_class=unknown is deny-by-default")
+    if entry.license_class == "public_domain" and content is not None:
+        raise ValueError("caller-supplied bytes cannot inherit a catalog public-domain license")
+    raw = content if content is not None else entry.body_text.encode()
+    if not raw:
+        raise ValueError("content is empty")
+    entitlement_id = None
+    if entry.license_class == "purchased":
+        if not receipt_id:
+            raise ValueError("purchased license requires receipt_id")
+        receipt = _s().get_receipt(receipt_id)
+        if receipt is None:
+            raise ValueError(f"unknown receipt_id: {receipt_id}")
+        if receipt.get("owner_id") != owner_id or receipt.get("book_id") != book_id:
+            raise ValueError("receipt does not authorize this owner and book")
+        entitlement_id = receipt_id
+
+    # Local import avoids a module cycle: the general route imports this
+    # module only to share the account host store.
+    from .hosted_document_routes import _emit_document_loaded
+
+    hosted = ingest_hosted_document(
+        owner_id=owner_id,
+        raw=raw,
+        source_format=_source_format(raw, entry.source_format),
+        store=_s(),
+        authorization=HostAuthorization(
+            entry.license_class,
+            entitlement_id=entitlement_id,
+        ),
+        emit_document_loaded=_emit_document_loaded,
+        investigation_id=f"marketplace:{book_id}",
+        title=entry.title,
+        source_uri=f"marketplace://{book_id}",
+        # Curated public-domain catalog excerpts are intentionally short but
+        # fully identified/licensed. Untrusted uploads and purchases retain
+        # the shared 50-word quality floor.
+        minimum_viewable_words=1 if entry.license_class == "public_domain" else 50,
+    )
+    if hosted.state != "ready":
+        return {
+            "document_id": hosted.document_id,
+            "owner_id": owner_id,
+            "book_id": book_id,
+            "content_hash": hosted.canonical_content_hash,
+            "title": hosted.title,
+            "license_class": entry.license_class,
+            "already_hosted": hosted.already_hosted,
+            "source_format": hosted.source_format,
+            "library_document_ids": _s().list_membership(owner_id),
+            "view_format": "html",
+            "state": hosted.state,
+            "html": "",
+            "body_preview": "",
+            "non_viewable_reason": hosted.non_viewable_reason,
+            "document_loaded_event_id": None,
+        }
+    return {
+        "document_id": hosted.document_id,
+        "owner_id": owner_id,
+        "book_id": book_id,
+        "content_hash": hosted.canonical_content_hash,
+        "title": hosted.title,
+        "license_class": entry.license_class,
+        "already_hosted": hosted.already_hosted,
+        "source_format": hosted.source_format,
+        "library_document_ids": _s().list_membership(owner_id),
+        "view_format": "html",
+        "state": hosted.state,
+        "html": project_hosted_book_html(hosted.document_id, store=_s()),
+        "body_preview": hosted.body_text[:280],
+        "non_viewable_reason": None,
+        "document_loaded_event_id": hosted.document_loaded_event_id,
+    }
 
 
 def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
@@ -270,18 +375,11 @@ def _maybe_record_marketplace_host_usage(
 @marketplace_host_router.post("/host")
 def post_host(body: HostBody, request: Request) -> dict[str, Any]:
     owner_id = _authorized_owner(request, body.owner_id)
-    content = None
-    if body.content_b64:
-        try:
-            content = base64.b64decode(body.content_b64)
-        except Exception as e:
-            raise HTTPException(status_code=400, detail=f"invalid content_b64: {e}") from e
+    content = _decode_content_b64(body.content_b64) if body.content_b64 else None
     try:
-        result = host_book_into_account(
+        out = _canonical_marketplace_host(
             owner_id=owner_id,
-            store=_s(),
             book_id=body.book_id,
-            catalog=_c(),
             content=content,
             receipt_id=body.receipt_id,
         )
@@ -289,21 +387,28 @@ def post_host(body: HostBody, request: Request) -> dict[str, Any]:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    out = result.to_dict()
-    twins = _maybe_seed_twins(
-        document_id=result.host.document_id,
-        title=result.host.title,
-        body_preview=(out.get("body_preview") or "")[:200],
-        seed=body.seed_twins,
+    twins = (
+        _maybe_seed_twins(
+            document_id=str(out["document_id"]),
+            title=str(out["title"]),
+            body_preview=(out.get("body_preview") or "")[:200],
+            seed=body.seed_twins,
+        )
+        if out["state"] == "ready"
+        else None
     )
     if twins is not None:
         out["twins"] = twins
     # Residual (ma): Antiek-bench book_qa usage for recursive suite rewrite feed.
-    usage = _maybe_record_marketplace_host_usage(
-        book_id=result.host.book_id,
-        title=result.host.title,
-        license_class=result.host.license_class,
-        already_hosted=result.host.already_hosted,
+    usage = (
+        _maybe_record_marketplace_host_usage(
+            book_id=str(out["book_id"]),
+            title=str(out["title"]),
+            license_class=str(out["license_class"]),
+            already_hosted=bool(out["already_hosted"]),
+        )
+        if out["state"] == "ready"
+        else None
     )
     if usage is not None:
         out["usage_event"] = usage
@@ -313,40 +418,52 @@ def post_host(body: HostBody, request: Request) -> dict[str, Any]:
 @marketplace_host_router.post("/purchase-and-host")
 def post_purchase_and_host(body: PurchaseHostBody, request: Request) -> dict[str, Any]:
     owner_id = _authorized_owner(request, body.owner_id)
+    content = _decode_content_b64(body.content_b64)
     try:
-        content = base64.b64decode(body.content_b64)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"invalid content_b64: {e}") from e
-    try:
-        receipt, result = record_purchase_and_host(
-            owner_id=owner_id,
-            store=_s(),
+        entry = _c().get(body.book_id)
+        if entry is None:
+            raise KeyError(f"unknown book_id: {body.book_id}")
+        if entry.license_class != "purchased":
+            raise ValueError("purchase-and-host requires a purchased catalog entry")
+        receipt = ManualPurchaseReceipt(store=_s()).record_receipt(
             book_id=body.book_id,
-            catalog=_c(),
+            owner_id=owner_id,
             opaque_reference=body.opaque_reference,
-            content=content,
             note=body.note,
+        )
+        out = _canonical_marketplace_host(
+            owner_id=owner_id,
+            book_id=body.book_id,
+            content=content,
+            receipt_id=receipt.receipt_id,
         )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
-    out = result.to_dict()
     out["receipt_id"] = receipt.receipt_id
-    twins = _maybe_seed_twins(
-        document_id=result.host.document_id,
-        title=result.host.title,
-        body_preview=(out.get("body_preview") or "")[:200],
-        seed=body.seed_twins,
+    twins = (
+        _maybe_seed_twins(
+            document_id=str(out["document_id"]),
+            title=str(out["title"]),
+            body_preview=(out.get("body_preview") or "")[:200],
+            seed=body.seed_twins,
+        )
+        if out["state"] == "ready"
+        else None
     )
     if twins is not None:
         out["twins"] = twins
     # Residual (ma): Antiek-bench book_qa usage (purchase host path).
-    usage = _maybe_record_marketplace_host_usage(
-        book_id=result.host.book_id,
-        title=result.host.title,
-        license_class=result.host.license_class,
-        already_hosted=result.host.already_hosted,
+    usage = (
+        _maybe_record_marketplace_host_usage(
+            book_id=str(out["book_id"]),
+            title=str(out["title"]),
+            license_class=str(out["license_class"]),
+            already_hosted=bool(out["already_hosted"]),
+        )
+        if out["state"] == "ready"
+        else None
     )
     if usage is not None:
         out["usage_event"] = usage

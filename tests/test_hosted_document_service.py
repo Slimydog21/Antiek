@@ -109,3 +109,113 @@ def test_purchased_content_requires_entitlement_proof():
 def test_entitlement_proof_cannot_be_attached_to_private_upload():
     with pytest.raises(ValueError, match="only valid for purchased"):
         HostAuthorization("private_upload", entitlement_id="receipt").validate()
+
+
+def test_explicit_curated_excerpt_policy_is_recorded_and_viewable():
+    store = InMemoryHostStore()
+    result = ingest_hosted_document(
+        owner_id="owner",
+        raw=b"A short, rights-cleared public-domain catalog excerpt.",
+        source_format="text",
+        store=store,
+        authorization=HostAuthorization("public_domain"),
+        emit_document_loaded=lambda *args: "evt-excerpt",
+        investigation_id="catalog",
+        minimum_viewable_words=1,
+    )
+    assert result.state == "ready"
+    stored = store.get_document(result.document_id)
+    assert stored is not None
+    assert stored["minimum_viewable_words"] == 1
+
+
+@pytest.mark.parametrize(
+    ("authorization", "source_uri", "message"),
+    [
+        (HostAuthorization("public_domain"), "private://original", "different license"),
+        (HostAuthorization("private_upload"), "other://source", "different source"),
+    ],
+)
+def test_identical_bytes_cannot_relabel_existing_authority(authorization, source_uri, message):
+    store = InMemoryHostStore()
+    ingest_hosted_document(
+        owner_id="owner",
+        raw=_body(),
+        source_format="text",
+        store=store,
+        authorization=HostAuthorization("private_upload"),
+        emit_document_loaded=lambda *args: "evt-original",
+        investigation_id="inv",
+        source_uri="private://original",
+    )
+    with pytest.raises(ValueError, match=message):
+        ingest_hosted_document(
+            owner_id="owner",
+            raw=_body(),
+            source_format="text",
+            store=store,
+            authorization=authorization,
+            emit_document_loaded=lambda *args: "evt-forbidden",
+            investigation_id="inv",
+            source_uri=source_uri,
+        )
+
+
+def test_store_failure_prevents_event_emission():
+    class FailingStore(InMemoryHostStore):
+        def put_document(self, document_id, doc):
+            raise OSError("disk unavailable")
+
+    emitted: list[str] = []
+    with pytest.raises(OSError, match="disk unavailable"):
+        ingest_hosted_document(
+            owner_id="owner",
+            raw=_body(),
+            source_format="text",
+            store=FailingStore(),
+            authorization=HostAuthorization("private_upload"),
+            emit_document_loaded=lambda *args: emitted.append("event") or "evt",
+            investigation_id="inv",
+        )
+    assert emitted == []
+
+
+def test_pending_retry_uses_idempotent_emitter_after_ready_write_failure():
+    class FailReadyWriteOnceStore(InMemoryHostStore):
+        failed = False
+
+        def put_document(self, document_id, doc):
+            if doc.get("state") == "ready" and not self.failed:
+                self.failed = True
+                raise OSError("ready write interrupted")
+            super().put_document(document_id, doc)
+
+    store = FailReadyWriteOnceStore()
+    receipts: dict[tuple[str, str, str], str] = {}
+    physical_appends: list[str] = []
+
+    def idempotent_emit(investigation_id, document_id, extracted, size_bytes, source_uri):
+        key = (investigation_id, document_id, extracted.canonical_content_hash)
+        if key not in receipts:
+            receipts[key] = "evt-once"
+            physical_appends.append("evt-once")
+        return receipts[key]
+
+    kwargs = dict(
+        owner_id="owner",
+        raw=_body(),
+        source_format="text",
+        store=store,
+        authorization=HostAuthorization("private_upload"),
+        emit_document_loaded=idempotent_emit,
+        investigation_id="inv",
+    )
+    with pytest.raises(OSError, match="ready write interrupted"):
+        ingest_hosted_document(**kwargs)
+    pending_id = next(iter(store._docs))
+    assert store.get_document(pending_id)["state"] == "pending"
+
+    recovered = ingest_hosted_document(**kwargs)
+    assert recovered.state == "ready"
+    assert recovered.document_loaded_event_id == "evt-once"
+    assert physical_appends == ["evt-once"]

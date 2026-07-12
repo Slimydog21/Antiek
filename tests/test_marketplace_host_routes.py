@@ -96,6 +96,22 @@ def test_purchased_without_receipt_400(client):
     assert "receipt" in r.json()["detail"].lower()
 
 
+def test_public_domain_catalog_refuses_caller_supplied_bytes(client):
+    injected = base64.b64encode(
+        " ".join(f"unrelated-private-word-{i}" for i in range(80)).encode()
+    ).decode()
+    response = client.post(
+        "/marketplace/host",
+        json={
+            "owner_id": "user-api",
+            "book_id": "pd-pride",
+            "content_b64": injected,
+        },
+    )
+    assert response.status_code == 400
+    assert "cannot inherit" in response.json()["detail"]
+
+
 def test_purchase_and_host(client):
     raw = base64.b64encode(b"%PDF-1.4 stub purchase").decode("ascii")
     headers = {"x-test-user": "user-buy"}
@@ -114,6 +130,12 @@ def test_purchase_and_host(client):
     assert body["receipt_id"].startswith("rcpt_")
     assert body["license_class"] == "purchased"
     assert body["view_format"] == "html"
+    assert body["state"] == "non_viewable"
+    assert body["html"] == ""
+    assert body["non_viewable_reason"] == "extraction_failed"
+    assert body["document_loaded_event_id"] is None
+    assert body.get("twins") is None
+    assert body.get("usage_event") is None
     # Residual (abw): purchased library row is never free inventory.
     lib = client.get("/marketplace/library/user-buy", headers=headers)
     assert lib.status_code == 200
@@ -139,9 +161,7 @@ def test_owner_scope_is_server_bound_and_document_reads_are_isolated(client):
     document_id = hosted.json()["document_id"]
 
     assert client.get("/marketplace/library/victim").status_code == 403
-    victim_library = client.get(
-        "/marketplace/library/victim", headers={"x-test-user": "victim"}
-    )
+    victim_library = client.get("/marketplace/library/victim", headers={"x-test-user": "victim"})
     assert victim_library.status_code == 200
     assert victim_library.json()["count"] == 0
     assert (

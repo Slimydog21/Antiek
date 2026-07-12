@@ -66,7 +66,10 @@ def test_host_records_book_qa_usage_event(client) -> None:
 
 
 def test_purchase_host_records_book_qa_usage(client) -> None:
-    content = base64.b64encode(b"<html><body>Modern</body></html>").decode("ascii")
+    words = " ".join(f"licensed-system-analysis-{i}" for i in range(60))
+    content = base64.b64encode(
+        f"<html><body><p>{words}</p></body></html>".encode()
+    ).decode("ascii")
     r = client.post(
         "/marketplace/purchase-and-host",
         json={

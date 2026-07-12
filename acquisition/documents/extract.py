@@ -190,11 +190,12 @@ def _finalize(
     page_word_counts: tuple[int, ...] = (),
     toc: tuple[ExtractedTocEntry, ...] = (),
     failure_reason: str | None = None,
+    minimum_viewable_words: int = MIN_VIEWABLE_WORDS,
 ) -> ExtractedDocument:
     truncated = len(text) > MAX_TEXT_CHARS
     bounded = text[:MAX_TEXT_CHARS]
     word_count = len(bounded.split())
-    reason = failure_reason or ("low_word_count" if word_count < MIN_VIEWABLE_WORDS else None)
+    reason = failure_reason or ("low_word_count" if word_count < minimum_viewable_words else None)
     admitted_text = bounded if reason is None else ""
     return ExtractedDocument(
         source_format=source_format,
@@ -215,16 +216,31 @@ def _finalize(
     )
 
 
-def extract_document_bytes(raw: bytes, *, source_format: str) -> ExtractedDocument:
+def extract_document_bytes(
+    raw: bytes,
+    *,
+    source_format: str,
+    minimum_viewable_words: int = MIN_VIEWABLE_WORDS,
+) -> ExtractedDocument:
     """Extract one bounded source; failures become explicit non-viewable receipts."""
+    if minimum_viewable_words < 1:
+        raise ValueError("minimum_viewable_words must be at least 1")
     fmt = source_format.strip().lower().lstrip(".")
     if not raw:
         return _finalize(
-            source_format=fmt or "unknown", raw=raw, text="", failure_reason="empty_source"
+            source_format=fmt or "unknown",
+            raw=raw,
+            text="",
+            failure_reason="empty_source",
+            minimum_viewable_words=minimum_viewable_words,
         )
     if len(raw) > MAX_SOURCE_BYTES:
         return _finalize(
-            source_format=fmt or "unknown", raw=raw, text="", failure_reason="source_too_large"
+            source_format=fmt or "unknown",
+            raw=raw,
+            text="",
+            failure_reason="source_too_large",
+            minimum_viewable_words=minimum_viewable_words,
         )
     try:
         if fmt == "pdf":
@@ -250,23 +266,48 @@ def extract_document_bytes(raw: bytes, *, source_format: str) -> ExtractedDocume
                     int(page.word_count) for page in getattr(result, "pages", ())
                 ),
                 toc=toc,
+                minimum_viewable_words=minimum_viewable_words,
             )
         if fmt == "epub":
             text, title, author = _extract_epub(raw)
-            return _finalize(source_format=fmt, raw=raw, text=text, title=title, author=author)
+            return _finalize(
+                source_format=fmt,
+                raw=raw,
+                text=text,
+                title=title,
+                author=author,
+                minimum_viewable_words=minimum_viewable_words,
+            )
         if fmt in {"html", "htm", "xhtml"}:
             parser = _XhtmlText()
             parser.feed(raw.decode("utf-8", errors="replace"))
             parser.close()
-            return _finalize(source_format="html", raw=raw, text=parser.text())
+            return _finalize(
+                source_format="html",
+                raw=raw,
+                text=parser.text(),
+                minimum_viewable_words=minimum_viewable_words,
+            )
         if fmt in {"text", "txt", "md", "markdown"}:
-            return _finalize(source_format=fmt, raw=raw, text=raw.decode("utf-8", errors="replace"))
+            return _finalize(
+                source_format=fmt,
+                raw=raw,
+                text=raw.decode("utf-8", errors="replace"),
+                minimum_viewable_words=minimum_viewable_words,
+            )
         return _finalize(
             source_format=fmt or "unknown",
             raw=raw,
             text="",
             failure_reason="unsupported_format",
+            minimum_viewable_words=minimum_viewable_words,
         )
     except Exception as exc:
         reason = str(exc) if str(exc).startswith("epub_") else "extraction_failed"
-        return _finalize(source_format=fmt, raw=raw, text="", failure_reason=reason)
+        return _finalize(
+            source_format=fmt,
+            raw=raw,
+            text="",
+            failure_reason=reason,
+            minimum_viewable_words=minimum_viewable_words,
+        )

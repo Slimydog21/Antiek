@@ -39,6 +39,9 @@ export type HostResultResponse = {
   library_document_ids: string[];
   view_format: "html";
   html: string;
+  state?: "ready" | "non_viewable";
+  non_viewable_reason?: string | null;
+  document_loaded_event_id?: string | null;
   body_preview?: string;
   receipt_id?: string;
   /** Residual (ma): book_qa usage feed for recursive suite rewrite. */
