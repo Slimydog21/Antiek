@@ -17,8 +17,10 @@ auditable. When a removal demand arrives for a book, :func:`take_down`:
    (the "cached served full text" the spec requires gone).
 4. Flips ``book_assets.taken_down = TRUE`` with a timestamp + reason.
 5. Emits a ``book.taken_down`` audit event.
+6. Removes any readable HTML projection before publishing a static
+   non-viewable takedown receipt.
 
-All five happen under one write lock so a takedown is atomic — there is
+All six happen under one write lock so a takedown is atomic. There is
 no window where the flag is set but the text is still servable.
 
 Reinstatement (:func:`reinstate`) restores the saved content_class and
@@ -29,9 +31,11 @@ asymmetry is the point.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from runtime.db_lock import LockedConnection
+from services.html_projection.reader_store import invalidate_reader_projection
 from substrate.constants import SYSTEM_INVESTIGATION_ID, TAKEDOWN_CONTENT_CLASS
 from substrate.event_log import emit_typed
 from substrate.graph.ops import update_document_gate_columns
@@ -70,9 +74,7 @@ def take_down(con: LockedConnection, document_id: str, *, reason: str) -> bool:
         [document_id],
     ).fetchone()
     if row is None:
-        raise BookNotRegistered(
-            f"{document_id} is not a registered book (no book_assets row)."
-        )
+        raise BookNotRegistered(f"{document_id} is not a registered book (no book_assets row).")
     content_class, raw_text, already_down = row
     if bool(already_down):
         return False
@@ -105,7 +107,7 @@ def take_down(con: LockedConnection, document_id: str, *, reason: str) -> bool:
     )
 
     # 5: audit. The document_id rides the envelope.
-    emit_typed(
+    takedown_event_id = emit_typed(
         SYSTEM_INVESTIGATION_ID,
         BookTakenDownPayload(
             reason=reason,
@@ -116,6 +118,7 @@ def take_down(con: LockedConnection, document_id: str, *, reason: str) -> bool:
         role="read/books",
         policy_id="read/books/takedown",
     )
+    assert takedown_event_id is not None
     # The servability transition is also a servability-changed event so a
     # single query over book.servability_changed reconstructs the full
     # serving-eligibility history.
@@ -129,6 +132,28 @@ def take_down(con: LockedConnection, document_id: str, *, reason: str) -> bool:
         document_id=document_id,
         role="read/books",
         policy_id="read/books/takedown",
+    )
+    _, projection_hash = invalidate_reader_projection(
+        document_id,
+        reason=f"takedown:{reason}",
+        source_event_id=takedown_event_id,
+    )
+    metadata_row = con.execute(
+        "SELECT metadata FROM documents WHERE document_id = ?", [document_id]
+    ).fetchone()
+    metadata = json.loads(metadata_row[0]) if metadata_row and metadata_row[0] else {}
+    metadata.update(
+        {
+            "reader_projection_state": "ready",
+            "reader_projection_hash": projection_hash,
+            "reader_projection_viewability": "non-viewable",
+            "reader_projection_reason": "taken_down",
+            "reader_projection_event_id": takedown_event_id,
+        }
+    )
+    con.execute(
+        "UPDATE documents SET metadata = ? WHERE document_id = ?",
+        [json.dumps(metadata), document_id],
     )
     return True
 
@@ -148,15 +173,16 @@ def reinstate(con: LockedConnection, document_id: str) -> bool:
         [document_id],
     ).fetchone()
     if row is None:
-        raise BookNotRegistered(
-            f"{document_id} is not a registered book (no book_assets row)."
-        )
+        raise BookNotRegistered(f"{document_id} is not a registered book (no book_assets row).")
     taken_down, pre_class = row
     if not bool(taken_down):
         return False
 
     update_document_gate_columns(
-        con, document_id, content_class=pre_class, set_content_class=True,
+        con,
+        document_id,
+        content_class=pre_class,
+        set_content_class=True,
     )
     con.execute(
         """

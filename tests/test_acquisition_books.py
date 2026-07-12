@@ -58,6 +58,7 @@ if _REPO not in sys.path:
 from acquisition.books import (  # noqa: E402
     book_doc_id,
     ingest_pdf,
+    ingest_servable_book,
     read_pdf,
 )
 from acquisition.books.reader import (  # noqa: E402
@@ -106,12 +107,16 @@ def stub_reader_factory(monkeypatch):
     """Returns a function ``install(pages=..., meta=...)`` that
     monkeypatches the PdfReader symbol inside the reader module so
     the next read_pdf call uses the stub."""
+
     def install(pages: list[str], meta: dict = None):
         def factory(source):
             return _StubReader(source, page_texts=pages, meta=meta or {})
+
         monkeypatch.setattr(
-            "acquisition.books.reader.PdfReader", factory,
+            "acquisition.books.reader.PdfReader",
+            factory,
         )
+
     return install
 
 
@@ -330,8 +335,7 @@ class _StubEmbedder:
 
 _LONG_PAGE = (
     "Long enough body to clear the MIN_INGEST_WORD_COUNT gate. "
-    "Repeated text repeated text repeated text repeated text. "
-    * 20
+    "Repeated text repeated text repeated text repeated text. " * 20
 )
 
 
@@ -391,6 +395,10 @@ def test_ingest_low_word_count_skips_writes(temp_substrate, stub_reader_factory)
     assert res.skipped_reason == "low_word_count"
     assert res.chunks_written == 0
     assert res.document_loaded_event_id is not None
+    assert res.reader_snapshot_path is not None
+    receipt = Path(res.reader_snapshot_path).read_text(encoding="utf-8")
+    assert "<strong>viewability</strong> non-viewable" in receipt
+    assert "<strong>reason</strong> low_word_count" in receipt
 
 
 def test_ingest_idempotent_on_rows(temp_substrate, stub_reader_factory):
@@ -423,6 +431,53 @@ def test_ingest_idempotent_on_rows(temp_substrate, stub_reader_factory):
     assert doc_count == 1
 
 
+def test_path_reingest_rejects_changed_content_without_mixing_versions(
+    temp_substrate, stub_reader_factory
+):
+    import json
+
+    import duckdb
+
+    source = Path(temp_substrate["tmpdir"]) / "stable-path.pdf"
+    source.write_bytes(b"first source bytes")
+    stub_reader_factory(pages=[_LONG_PAGE], meta={"/Title": "Original"})
+    first = ingest_pdf(
+        str(source),
+        investigation_id="inv-book-original",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+    )
+    changed_page = _LONG_PAGE.replace("Long enough body", "Changed source body")
+    source.write_bytes(b"changed source bytes")
+    stub_reader_factory(pages=[changed_page], meta={"/Title": "Changed"})
+    ignored = ingest_pdf(
+        str(source),
+        investigation_id="inv-book-changed",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+    )
+    con = duckdb.connect(temp_substrate["db_path"], read_only=True)
+    try:
+        raw_text, metadata = con.execute(
+            "SELECT raw_text, metadata FROM documents WHERE document_id = ?",
+            [first.document_id],
+        ).fetchone()
+        chunk_ids = [
+            row[0]
+            for row in con.execute(
+                "SELECT chunk_id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+                [first.document_id],
+            ).fetchall()
+        ]
+    finally:
+        con.close()
+    assert ignored.skipped_reason == "changed_content_requires_replace"
+    assert "Long enough body" in raw_text
+    assert "Changed source body" not in raw_text
+    assert chunk_ids == first.chunk_ids
+    assert json.loads(metadata)["source_event_id"] == first.document_loaded_event_id
+
+
 def test_ingest_nodes_carry_source_book(temp_substrate, stub_reader_factory):
     import json
 
@@ -448,11 +503,11 @@ def test_ingest_nodes_carry_source_book(temp_substrate, stub_reader_factory):
     assert all(m.get("document_id") == res.document_id for m in metas)
 
 
-def test_ingest_reader_snapshot_when_flag_set(
+def test_ingest_always_writes_rights_unresolved_receipt(
     temp_substrate, stub_reader_factory, monkeypatch
 ):
     snap_dir = os.path.join(temp_substrate["tmpdir"], "reader-snaps")
-    monkeypatch.setenv("ANTIEK_READER_SNAPSHOT", "1")
+    monkeypatch.delenv("ANTIEK_READER_SNAPSHOT", raising=False)
     monkeypatch.setenv("ANTIEK_READER_SNAPSHOTS_DIR", snap_dir)
     stub_reader_factory(
         pages=[_LONG_PAGE],
@@ -471,3 +526,61 @@ def test_ingest_reader_snapshot_when_flag_set(
     assert res.document_id in text
     assert "Snap Title" in text
     assert "book" in text
+    assert "<strong>viewability</strong> non-viewable" in text
+    assert "<strong>reason</strong> rights_unresolved" in text
+
+
+@pytest.mark.parametrize(
+    ("content_class", "expected_status", "expected_viewability"),
+    [
+        ("public_domain", "public_domain", "viewable"),
+        (None, "gated_metadata_only", "non-viewable"),
+    ],
+)
+def test_servable_book_projection_uses_resolved_rights_authority(
+    temp_substrate,
+    stub_reader_factory,
+    monkeypatch,
+    content_class,
+    expected_status,
+    expected_viewability,
+):
+    monkeypatch.setenv(
+        "ANTIEK_READER_SNAPSHOTS_DIR",
+        os.path.join(temp_substrate["tmpdir"], "reader-snaps"),
+    )
+    stub_reader_factory(
+        pages=[_LONG_PAGE],
+        meta={"/Title": "Rights Book", "/Author": "Rights Author"},
+    )
+    result = ingest_servable_book(
+        f"rights-{expected_status}".encode(),
+        investigation_id="inv-rights",
+        content_class=content_class,
+        ip_holder_id="iph-rights-owner",
+        provenance="offline fixture",
+        license_basis="fixture basis" if content_class else None,
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+    )
+    assert result.ingest.reader_snapshot_path is not None
+    projection = Path(result.ingest.reader_snapshot_path).read_text(encoding="utf-8")
+    assert f"<strong>servability</strong> {expected_status}" in projection
+    assert f"<strong>viewability</strong> {expected_viewability}" in projection
+    assert "<strong>ip_holder_id</strong> iph-rights-owner" in projection
+    assert "<strong>owner_scope</strong> __operator__" in projection
+    import json
+
+    import duckdb
+
+    con = duckdb.connect(temp_substrate["db_path"], read_only=True)
+    try:
+        (metadata,) = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [result.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    metadata = json.loads(metadata)
+    assert metadata["reader_projection_state"] == "ready"
+    assert metadata["reader_projection_hash"].startswith("sha256:")

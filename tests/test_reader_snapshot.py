@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import pytest
+
 from acquisition.snapshot.reader_html import (
     build_reader_snapshot,
     markdown_to_safe_html,
     sanitize_html_fragment,
+    write_reader_snapshot,
 )
 
 
@@ -147,3 +150,29 @@ def test_build_snapshot_book_metadata():
     assert "kind</strong> book" in html
     assert "Test Book" in html
     assert "Author" in html
+
+
+def test_non_viewable_snapshot_requires_explicit_reason():
+    with pytest.raises(ValueError, match="explicit reason"):
+        build_reader_snapshot(
+            source_url="https://example.com/blocked",
+            document_id="doc-blocked",
+            ip_holder_id=None,
+            main_html="secret body",
+            ingested_at="2026-07-12T00:00:00Z",
+            viewable=False,
+        )
+
+
+def test_atomic_snapshot_failure_preserves_prior_projection(tmp_path, monkeypatch):
+    path = tmp_path / "doc.html"
+    write_reader_snapshot(path, "prior complete projection")
+
+    def fail_replace(source, destination):
+        raise OSError("simulated publish failure")
+
+    monkeypatch.setattr("services.html_projection.reader_store.os.replace", fail_replace)
+    with pytest.raises(OSError, match="publish failure"):
+        write_reader_snapshot(path, "partial replacement")
+    assert path.read_text(encoding="utf-8") == "prior complete projection"
+    assert not any(item.name.startswith(".doc.html.") for item in tmp_path.iterdir())

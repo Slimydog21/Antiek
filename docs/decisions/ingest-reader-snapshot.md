@@ -2,10 +2,23 @@
 
 **Status:** Implemented (`acquisition/snapshot/reader_html.py`)
 
-Optional sanitized HTML beside substrate chunks. Strips `<script>` and `<style>`. Not a second ingest path — derivative of fetched HTML.
+Canonical allowlisted HTML beside substrate chunks. It is a derived reading
+projection, not a second ingest authority.
 
-**Wiring (exec-2):** Set `ANTIEK_READER_SNAPSHOT=1` (and optionally `ANTIEK_READER_SNAPSHOTS_DIR`) on successful graph write; `IngestUrlResult.reader_snapshot_path` returns the file path.
+**SPR-AHT-08 override:** URL and PDF ingestion always returns a projection path.
+Successful owner-readable URL ingests are viewable. Low-text extraction and
+rights-unresolved books produce explicit non-viewable receipts. The retired
+`ANTIEK_READER_SNAPSHOT` switch is ignored; `ANTIEK_READER_SNAPSHOTS_DIR` still
+relocates the derived store.
 
-**SPR-AHT-07 (books):** Same flag on successful `ingest_pdf` graph write; markdown body rendered via `markdown_to_safe_html`; `IngestBookResult.reader_snapshot_path`. EPUB-native ingest deferred — PD epub paths still land as PDF at ingest.
+**Books:** `ingest_pdf` remains fail-closed until `ingest_servable_book` resolves
+content class, rights holder, owner scope, and servability. The resolved
+projection is viewable only when the authoritative servability permits owner or
+full-text reading.
 
-**Reconsider if:** operator wants automatic snapshot without env flag (default-on policy).
+**Replacement:** changed URL content is rejected on the default ignore path.
+Explicit replacement archives chunks with downstream references as a historical
+document revision, marks projection publication pending in document metadata,
+atomically replaces the file, then acknowledges the exact projection hash as
+ready. Alias resolution always regenerates from current substrate and rights
+authority, repairing missing, stale, or pending files without a network fetch.

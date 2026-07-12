@@ -95,9 +95,11 @@ def _mock_client(handler) -> httpx.Client:
 def test_fetch_returns_html():
     def handler(req: httpx.Request) -> httpx.Response:
         return httpx.Response(
-            200, content=_HTML_ARTICLE,
+            200,
+            content=_HTML_ARTICLE,
             headers={"content-type": "text/html; charset=utf-8"},
         )
+
     page = fetch("https://example.com/post", client=_mock_client(handler))
     assert page.status_code == 200
     assert page.charset == "utf-8"
@@ -106,7 +108,9 @@ def test_fetch_returns_html():
 
 
 def test_fetch_4xx_raises():
-    def handler(req): return httpx.Response(404, content=b"missing")
+    def handler(req):
+        return httpx.Response(404, content=b"missing")
+
     with pytest.raises(httpx.HTTPStatusError):
         fetch("https://example.com/missing", client=_mock_client(handler))
 
@@ -179,7 +183,7 @@ def test_url_doc_id_format():
     did = url_doc_id("https://example.com/x")
     assert did.startswith("doc-url-")
     assert len(did) == len("doc-url-") + 16  # sha-prefix
-    assert all(c in "0123456789abcdef" for c in did[len("doc-url-"):])
+    assert all(c in "0123456789abcdef" for c in did[len("doc-url-") :])
 
 
 # ---------------------------------------------------------------------------
@@ -208,6 +212,7 @@ class _StubEmbedder:
 
 def _good_fetched():
     from acquisition.urls.client import FetchedHtml
+
     return FetchedHtml(
         requested_url="https://example.com/post",
         final_url="https://example.com/post",
@@ -280,9 +285,9 @@ def test_ingest_low_word_count_skips_graph_writes(temp_substrate):
     assert res.skipped_reason == "low_word_count"
 
 
-def test_ingest_reader_snapshot_when_flag_set(temp_substrate, monkeypatch):
+def test_ingest_always_writes_viewable_reader_snapshot(temp_substrate, monkeypatch):
     snap_dir = os.path.join(temp_substrate["tmpdir"], "reader-snaps")
-    monkeypatch.setenv("ANTIEK_READER_SNAPSHOT", "1")
+    monkeypatch.delenv("ANTIEK_READER_SNAPSHOT", raising=False)
     monkeypatch.setenv("ANTIEK_READER_SNAPSHOTS_DIR", snap_dir)
     res = ingest_url(
         "https://example.com/post",
@@ -299,6 +304,305 @@ def test_ingest_reader_snapshot_when_flag_set(temp_substrate, monkeypatch):
     assert "<script>" not in text.lower() or "alert" not in text
     assert res.chunks_written >= 1
     assert res.document_loaded_event_id is not None
+    assert "<strong>viewability</strong> viewable" in text
+    assert "<strong>content_class</strong> personal_reading" in text
+    assert "<strong>servability</strong> personal_readable" in text
+
+
+def test_low_word_count_writes_non_viewable_receipt(temp_substrate, monkeypatch):
+    from acquisition.urls.client import FetchedHtml
+
+    monkeypatch.setenv(
+        "ANTIEK_READER_SNAPSHOTS_DIR",
+        os.path.join(temp_substrate["tmpdir"], "reader-snaps"),
+    )
+    stub = FetchedHtml(
+        requested_url="https://example.com/paywall",
+        final_url="https://example.com/paywall",
+        status_code=200,
+        content_type="text/html; charset=utf-8",
+        charset="utf-8",
+        body=_HTML_EMPTY_STUB,
+    )
+    res = ingest_url(
+        stub.final_url,
+        investigation_id="inv-receipt",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=stub,
+    )
+    assert res.skipped_reason == "low_word_count"
+    assert res.reader_snapshot_path is not None
+    receipt = Path(res.reader_snapshot_path).read_text(encoding="utf-8")
+    assert "<strong>viewability</strong> non-viewable" in receipt
+    assert "<strong>reason</strong> low_word_count" in receipt
+    assert res.document_loaded_event_id in receipt
+
+
+def test_replace_converges_document_metadata_chunks_event_and_html(temp_substrate, monkeypatch):
+    import json
+
+    import duckdb
+
+    from acquisition.urls.client import FetchedHtml
+
+    monkeypatch.setenv(
+        "ANTIEK_READER_SNAPSHOTS_DIR",
+        os.path.join(temp_substrate["tmpdir"], "reader-snaps"),
+    )
+    original = _good_fetched()
+    first = ingest_url(
+        original.final_url,
+        investigation_id="inv-before",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=original,
+    )
+    from runtime.db_lock import connect_write
+
+    with connect_write(temp_substrate["db_path"], purpose="test/referenced-chunk") as con:
+        con.execute(
+            """INSERT INTO edges (
+                   edge_id, source_node_id, target_node_id, relation, chunk_id,
+                   source_document_id, source_tier, extraction_confidence,
+                   graph_scope, investigation_id
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                "edge-before-replace",
+                first.node_ids[0],
+                first.node_ids[0],
+                "supports",
+                first.chunk_ids[0],
+                first.document_id,
+                4,
+                1.0,
+                "cross_domain",
+                "inv-before",
+            ],
+        )
+        con.execute(
+            """INSERT INTO chunk_tier_overrides (
+                   chunk_id, original_tier, override_tier, reason, set_by
+               ) VALUES (?, 4, 2, 'fixture', 'test')""",
+            [first.chunk_ids[0]],
+        )
+    replacement_body = _HTML_ARTICLE.replace(
+        b"first substantive paragraph", b"replacement definitive paragraph"
+    )
+    changed = FetchedHtml(
+        requested_url=original.requested_url,
+        final_url=original.final_url,
+        status_code=200,
+        content_type=original.content_type,
+        charset=original.charset,
+        body=replacement_body,
+    )
+    second = ingest_url(
+        changed.final_url,
+        investigation_id="inv-after",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=changed,
+        on_conflict="replace",
+    )
+
+    con = duckdb.connect(temp_substrate["db_path"])
+    try:
+        raw_text, metadata, investigation_id = con.execute(
+            "SELECT raw_text, metadata, investigation_id FROM documents WHERE document_id = ?",
+            [second.document_id],
+        ).fetchone()
+        chunk_text = "\n".join(
+            row[0]
+            for row in con.execute(
+                "SELECT text FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+                [second.document_id],
+            ).fetchall()
+        )
+        archived_chunk_id, archived_document_id, archived_text = con.execute(
+            """SELECT e.chunk_id, c.document_id, c.text
+               FROM edges e JOIN chunks c ON c.chunk_id = e.chunk_id
+               WHERE e.edge_id = 'edge-before-replace'"""
+        ).fetchone()
+        (override_chunk_id,) = con.execute(
+            "SELECT chunk_id FROM chunk_tier_overrides WHERE reason = 'fixture'"
+        ).fetchone()
+    finally:
+        con.close()
+    metadata = json.loads(metadata)
+    snapshot = Path(second.reader_snapshot_path or "").read_text(encoding="utf-8")
+    assert first.document_id == second.document_id
+    assert "replacement definitive" in raw_text
+    assert "replacement definitive" in chunk_text
+    assert "replacement definitive" in snapshot
+    assert metadata["source_event_id"] == second.document_loaded_event_id
+    assert metadata["canonical_content_hash"] in snapshot
+    assert archived_chunk_id == override_chunk_id
+    assert archived_document_id.startswith(f"{second.document_id}::rev::")
+    assert "replacement definitive" not in archived_text
+    # Investigation identity remains the original document owner; the latest
+    # acquisition event is linked through authoritative metadata.
+    assert investigation_id == "inv-before"
+
+
+def test_alias_short_circuit_repairs_missing_legacy_projection(temp_substrate, monkeypatch):
+    monkeypatch.setenv(
+        "ANTIEK_READER_SNAPSHOTS_DIR",
+        os.path.join(temp_substrate["tmpdir"], "reader-snaps"),
+    )
+    first = ingest_url(
+        "https://example.com/post",
+        investigation_id="inv-alias",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=_good_fetched(),
+    )
+    assert first.reader_snapshot_path is not None
+    Path(first.reader_snapshot_path).unlink()
+
+    resolved = ingest_url(
+        "https://example.com/post",
+        investigation_id="inv-alias-later",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+    )
+    assert resolved.skipped_reason == "alias_resolved_to_existing_document"
+    assert resolved.reader_snapshot_path == first.reader_snapshot_path
+    repaired = Path(resolved.reader_snapshot_path or "").read_text(encoding="utf-8")
+    assert "<strong>viewability</strong> viewable" in repaired
+    assert "Article Heading" in repaired
+
+
+def test_ignore_rejects_changed_body_without_mixing_canonical_state(temp_substrate, monkeypatch):
+    import json
+
+    import duckdb
+
+    from acquisition.urls.client import FetchedHtml
+
+    monkeypatch.setenv(
+        "ANTIEK_READER_SNAPSHOTS_DIR",
+        os.path.join(temp_substrate["tmpdir"], "reader-snaps"),
+    )
+    original = _good_fetched()
+    first = ingest_url(
+        original.final_url,
+        investigation_id="inv-admitted",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=original,
+    )
+    changed = FetchedHtml(
+        requested_url=original.requested_url,
+        final_url=original.final_url,
+        status_code=200,
+        content_type=original.content_type,
+        charset=original.charset,
+        body=_HTML_ARTICLE.replace(b"first substantive", b"unadmitted replacement"),
+    )
+    ignored = ingest_url(
+        changed.final_url,
+        investigation_id="inv-not-admitted",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=changed,
+    )
+    con = duckdb.connect(temp_substrate["db_path"], read_only=True)
+    try:
+        raw_text, metadata = con.execute(
+            "SELECT raw_text, metadata FROM documents WHERE document_id = ?",
+            [first.document_id],
+        ).fetchone()
+        canonical_chunks = con.execute(
+            "SELECT chunk_id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+            [first.document_id],
+        ).fetchall()
+    finally:
+        con.close()
+    projection = Path(ignored.reader_snapshot_path or "").read_text(encoding="utf-8")
+    assert ignored.skipped_reason == "changed_content_requires_replace"
+    assert "unadmitted replacement" not in raw_text
+    assert "unadmitted replacement" not in projection
+    assert [row[0] for row in canonical_chunks] == first.chunk_ids
+    assert json.loads(metadata)["source_event_id"] == first.document_loaded_event_id
+
+
+def test_failed_projection_publish_is_durably_pending_and_alias_repairs_it(
+    temp_substrate, monkeypatch
+):
+    import json
+
+    import duckdb
+
+    from acquisition.snapshot import reader_html
+    from acquisition.urls.client import FetchedHtml
+
+    monkeypatch.setenv(
+        "ANTIEK_READER_SNAPSHOTS_DIR",
+        os.path.join(temp_substrate["tmpdir"], "reader-snaps"),
+    )
+    original = _good_fetched()
+    first = ingest_url(
+        original.final_url,
+        investigation_id="inv-before-failure",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+        fetched=original,
+    )
+    old_projection = Path(first.reader_snapshot_path or "").read_text(encoding="utf-8")
+    changed = FetchedHtml(
+        requested_url=original.requested_url,
+        final_url=original.final_url,
+        status_code=200,
+        content_type=original.content_type,
+        charset=original.charset,
+        body=_HTML_ARTICLE.replace(b"first substantive", b"repairable replacement"),
+    )
+    real_write = reader_html.write_reader_snapshot
+
+    def fail_write(path, html_doc):
+        raise OSError("projection store unavailable")
+
+    monkeypatch.setattr(reader_html, "write_reader_snapshot", fail_write)
+    with pytest.raises(OSError, match="projection store unavailable"):
+        ingest_url(
+            changed.final_url,
+            investigation_id="inv-pending",
+            db_path=temp_substrate["db_path"],
+            embedder=_StubEmbedder(),
+            fetched=changed,
+            on_conflict="replace",
+        )
+    con = duckdb.connect(temp_substrate["db_path"], read_only=True)
+    try:
+        raw_text, metadata = con.execute(
+            "SELECT raw_text, metadata FROM documents WHERE document_id = ?",
+            [first.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert "repairable replacement" in raw_text
+    assert json.loads(metadata)["reader_projection_state"] == "pending"
+    assert Path(first.reader_snapshot_path or "").read_text(encoding="utf-8") == old_projection
+
+    monkeypatch.setattr(reader_html, "write_reader_snapshot", real_write)
+    repaired = ingest_url(
+        original.requested_url,
+        investigation_id="inv-repair",
+        db_path=temp_substrate["db_path"],
+        embedder=_StubEmbedder(),
+    )
+    projection = Path(repaired.reader_snapshot_path or "").read_text(encoding="utf-8")
+    con = duckdb.connect(temp_substrate["db_path"], read_only=True)
+    try:
+        (metadata,) = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?",
+            [first.document_id],
+        ).fetchone()
+    finally:
+        con.close()
+    assert "repairable replacement" in projection
+    assert json.loads(metadata)["reader_projection_state"] == "ready"
 
 
 def test_ingest_idempotent_on_rows(temp_substrate):

@@ -15,12 +15,18 @@ out of the picture (``test_data_layer_enforcement_bypasses_ui``).
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
+from pathlib import Path
 
 import pytest
 
 from runtime.db_lock import connect_read, connect_write
+from services.html_projection.reader_store import (
+    atomic_write_reader_snapshot,
+    reader_snapshot_path_for,
+)
 from substrate.books import ingest as bingest
 from substrate.books import serve, takedown
 from substrate.books.model import TocItem, get_book_asset, upsert_book_asset
@@ -50,8 +56,10 @@ class StubEmbedding:
     def encode(self, text: str) -> list[float]:
         h = sum(ord(c) * (i + 1) for i, c in enumerate(text)) or 1
         return [
-            float(h % 7) / 7.0, float((h >> 3) % 11) / 11.0,
-            float((h >> 5) % 13) / 13.0, float((h >> 7) % 17) / 17.0,
+            float(h % 7) / 7.0,
+            float((h >> 3) % 11) / 11.0,
+            float((h >> 5) % 13) / 13.0,
+            float((h >> 7) % 17) / 17.0,
         ]
 
 
@@ -84,13 +92,21 @@ def _insert_book(
     content_class — the realistic pre-registration state."""
     con = connect_write(db_path, purpose="insert")
     insert_document(
-        con, document_id=document_id, source_tier=2, document_type="book",
-        title=title, author=author, raw_text=raw_text,
+        con,
+        document_id=document_id,
+        source_tier=2,
+        document_type="book",
+        title=title,
+        author=author,
+        raw_text=raw_text,
     )
     if with_chunk:
         insert_chunk(
-            con, document_id=document_id, chunk_index=0,
-            text="chunk body text about quantum", token_count=5,
+            con,
+            document_id=document_id,
+            chunk_index=0,
+            text="chunk body text about quantum",
+            token_count=5,
             embedding=StubEmbedding().encode("chunk body text about quantum"),
         )
     con.close()
@@ -134,9 +150,14 @@ def test_projection_allowlist_matches_constant():
     equal SERVABLE_CONTENT_CLASSES (the SQL allowlist). The import-time
     assert guards it; this is the regression test that keeps it visible."""
     projected = {
-        cc for cc in (
-            "public_domain", "user_owned", "user_public_contribution",
-            "opt_in_licensed", "source_declared_open", "restricted_pending_opt_in",
+        cc
+        for cc in (
+            "public_domain",
+            "user_owned",
+            "user_public_contribution",
+            "opt_in_licensed",
+            "source_declared_open",
+            "restricted_pending_opt_in",
         )
         if is_servable_full_text(servability_of(cc))
     }
@@ -165,9 +186,11 @@ def test_book_model_stores_toc_and_reloads(db):
     con = connect_write(db, purpose="register")
     try:
         bingest.register_book(
-            con, document_id="doc-book-toc",
+            con,
+            document_id="doc-book-toc",
             toc=[TocItem("Chapter 1", 0, 0), TocItem("1.1 Intro", 2, 1)],
-            page_count=42, provenance="test",
+            page_count=42,
+            provenance="test",
         )
     finally:
         con.close()
@@ -229,7 +252,8 @@ def test_data_layer_enforcement_bypasses_ui(db):
     con = connect_write(db, purpose="register")
     try:
         bingest.register_book(
-            con, document_id="doc-restricted",
+            con,
+            document_id="doc-restricted",
             content_class="restricted_pending_opt_in",
             provenance="aggregated, unknown rights",
         )
@@ -264,7 +288,9 @@ def test_servable_book_serves_full_text(db):
     con = connect_write(db, purpose="register")
     try:
         bingest.register_book(
-            con, document_id="doc-public", content_class="public_domain",
+            con,
+            document_id="doc-public",
+            content_class="public_domain",
             license_basis="published 1850, out of copyright",
         )
     finally:
@@ -304,6 +330,11 @@ def test_takedown_purges_cached_full_text_and_blocks_serve(db):
         bingest.register_book(con, document_id="doc-td", content_class="public_domain")
     finally:
         con.close()
+    snapshot_path = reader_snapshot_path_for("doc-td")
+    atomic_write_reader_snapshot(
+        snapshot_path,
+        "<!doctype html><article>LEAKABLE SERVABLE BODY</article>",
+    )
     # Confirm it served first.
     con = connect_read(db)
     try:
@@ -321,7 +352,7 @@ def test_takedown_purges_cached_full_text_and_blocks_serve(db):
     try:
         r = serve.serve_full_text(con, "doc-td")
         raw = con.execute(
-            "SELECT content_class, raw_text FROM documents WHERE document_id=?",
+            "SELECT content_class, raw_text, metadata FROM documents WHERE document_id=?",
             ["doc-td"],
         ).fetchone()
     finally:
@@ -333,6 +364,13 @@ def test_takedown_purges_cached_full_text_and_blocks_serve(db):
     # Cached full text purged + retrieval restricted via the existing gate.
     assert raw[0] == TAKEDOWN_CONTENT_CLASS
     assert raw[1] is None, "raw_text (the cached served full text) was not purged"
+    receipt = Path(snapshot_path).read_text(encoding="utf-8")
+    assert "LEAKABLE SERVABLE BODY" not in receipt
+    assert "<strong>viewability</strong> non-viewable" in receipt
+    assert "<strong>servability</strong> taken_down" in receipt
+    metadata = json.loads(raw[2])
+    assert metadata["reader_projection_state"] == "ready"
+    assert metadata["reader_projection_reason"] == "taken_down"
 
 
 def test_takedown_excludes_book_from_chunk_search_gate(db):
@@ -414,9 +452,9 @@ def test_takedown_emits_audit_events(db):
         con.close()
     events = trajectory(SYSTEM_INVESTIGATION_ID)
     td_events = [
-        e for e in events
-        if e.get("action_type") == "book.taken_down"
-        and e.get("document_id") == "doc-td4"
+        e
+        for e in events
+        if e.get("action_type") == "book.taken_down" and e.get("document_id") == "doc-td4"
     ]
     assert len(td_events) == 1
     payload = td_events[0]["payload"]
@@ -424,8 +462,7 @@ def test_takedown_emits_audit_events(db):
     assert payload["purged_full_text"] is True
     assert payload["previous_content_class"] == "public_domain"
     assert any(
-        e.get("action_type") == "book.servability_changed"
-        and e.get("document_id") == "doc-td4"
+        e.get("action_type") == "book.servability_changed" and e.get("document_id") == "doc-td4"
         for e in events
     )
 
@@ -483,7 +520,9 @@ def test_aggregated_unknown_rights_defaults_gated(db):
     con = connect_write(db, purpose="register")
     try:
         asset = bingest.register_book(
-            con, document_id="doc-agg", provenance="scraped from a public website",
+            con,
+            document_id="doc-agg",
+            provenance="scraped from a public website",
         )
     finally:
         con.close()
@@ -501,7 +540,9 @@ def test_ingest_sets_ip_holder_from_rights_holder_name(db):
     con = connect_write(db, purpose="register")
     try:
         asset = bingest.register_book(
-            con, document_id="doc-ip", content_class="opt_in_licensed",
+            con,
+            document_id="doc-ip",
+            content_class="opt_in_licensed",
             rights_holder_name="MIT Press",
         )
         holder = ip_holders.get(con, asset.ip_holder_id)
@@ -523,15 +564,20 @@ def test_ingest_ip_holder_is_idempotent_on_name(db):
     con = connect_write(db, purpose="register")
     try:
         a = bingest.register_book(
-            con, document_id="doc-ip-a", content_class="opt_in_licensed",
+            con,
+            document_id="doc-ip-a",
+            content_class="opt_in_licensed",
             rights_holder_name="Cambridge University Press",
         )
         b = bingest.register_book(
-            con, document_id="doc-ip-b", content_class="opt_in_licensed",
+            con,
+            document_id="doc-ip-b",
+            content_class="opt_in_licensed",
             rights_holder_name="Cambridge University Press",
         )
-        holders = [h for h in ip_holders.list_all(con)
-                   if h.display_name == "Cambridge University Press"]
+        holders = [
+            h for h in ip_holders.list_all(con) if h.display_name == "Cambridge University Press"
+        ]
     finally:
         con.close()
     assert a.ip_holder_id == b.ip_holder_id
@@ -603,8 +649,11 @@ def test_api_book_detail_carries_toc_never_full_text(db, client):
     con = connect_write(db, purpose="register")
     try:
         bingest.register_book(
-            con, document_id="doc-detail", content_class="public_domain",
-            toc=[TocItem("Ch 1", 0, 0)], page_count=12,
+            con,
+            document_id="doc-detail",
+            content_class="public_domain",
+            toc=[TocItem("Ch 1", 0, 0)],
+            page_count=12,
         )
     finally:
         con.close()
@@ -657,9 +706,13 @@ def _insert_arxiv_t1(db_path, document_id, *, arxiv_id, license_uri):
     con = connect_write(db_path, purpose="insert-arxiv")
     try:
         insert_document(
-            con, document_id=document_id, source_tier=3,
-            document_type="academic_paper", title="An arXiv Paper",
-            author="A. Author", raw_text="OPEN ARXIV BODY. " * 60,
+            con,
+            document_id=document_id,
+            source_tier=3,
+            document_type="academic_paper",
+            title="An arXiv Paper",
+            author="A. Author",
+            raw_text="OPEN ARXIV BODY. " * 60,
             content_class=SOURCE_DECLARED_OPEN_CONTENT_CLASS,
             metadata={
                 "source": "arxiv_oai_pmh",
@@ -685,7 +738,8 @@ def test_api_full_text_response_carries_rights_context_for_t1_arxiv(db, client):
     the wrong value. The four assertions are individually load-bearing — no one
     of them can be removed without losing coverage of one mapping."""
     _insert_arxiv_t1(
-        db, "doc-api-arxiv-t1",
+        db,
+        "doc-api-arxiv-t1",
         arxiv_id="2405.00005",
         license_uri="http://creativecommons.org/licenses/by/4.0/",
     )
@@ -716,7 +770,8 @@ def test_public_domain_text_with_copyrighted_translation_is_gated_when_uncertain
     con = connect_write(db, purpose="register")
     try:
         asset = bingest.register_book(
-            con, document_id="doc-translation",
+            con,
+            document_id="doc-translation",
             provenance="public-domain work, but this edition is a 1996 translation",
             license_basis="underlying work PD; THIS translation may be in copyright — gated",
         )
@@ -764,11 +819,14 @@ def test_partial_opt_in_book_each_resolves_independently(db):
     con = connect_write(db, purpose="register")
     try:
         a = bingest.register_book(
-            con, document_id="doc-pub-in", content_class="opt_in_licensed",
+            con,
+            document_id="doc-pub-in",
+            content_class="opt_in_licensed",
             rights_holder_name="Princeton University Press",
         )
         b = bingest.register_book(
-            con, document_id="doc-pub-pending",
+            con,
+            document_id="doc-pub-pending",
             rights_holder_name="Princeton University Press",  # gated default
         )
     finally:

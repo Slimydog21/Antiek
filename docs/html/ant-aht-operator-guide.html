@@ -42,7 +42,7 @@ remain canonical; HTML is how you read, share, merge, and hand off work across c
 
 <div class="flow">
 graph (insights/questions) → distill → ResearchArtifactBody → render HTML → ~/.antiek/research-artifacts/<br>
-ingest URL → chunks + optional reader snapshot (ANTIEK_READER_SNAPSHOT)<br>
+ingest URL → chunks + mandatory canonical HTML projection or non-viewable receipt<br>
 merge investigations → compose-*.html index (hash conflicts surfaced)<br>
 Write (partial) → GET /research/{id}/artifact/blocks → ArtifactOutlineShelf in DistillView
 </div>
@@ -74,7 +74,7 @@ python -m substrate.research_artifact --import-notes ~/.antiek/research-artifact
 <table class="asset-table" style="width:100%; font-size:14px;">
 <tr><td><code>ANTIEK_RESEARCH_ARTIFACTS_DIR</code></td><td>Export directory</td></tr>
 <tr><td><code>ANTIEK_EXPORT_RESEARCH_ARTIFACT</code></td><td>Auto-export after investigation.completed</td></tr>
-<tr><td><code>ANTIEK_READER_SNAPSHOT</code></td><td>Sanitized HTML on URL ingest</td></tr>
+<tr><td>Canonical reader HTML</td><td>Always generated; changed content requires explicit replacement</td></tr>
 <tr><td><code>ANTIEK_READER_SNAPSHOTS_DIR</code></td><td>Reader snapshot store</td></tr>
 </table>
 

@@ -9,6 +9,16 @@ from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import urlsplit
 
+from services.html_projection.reader_store import (
+    atomic_write_reader_snapshot,
+)
+from services.html_projection.reader_store import (
+    reader_snapshot_path_for as store_reader_snapshot_path_for,
+)
+from services.html_projection.reader_store import (
+    reader_snapshots_dir as store_reader_snapshots_dir,
+)
+
 # Bump whenever allowed elements/attributes or URL normalization semantics change.
 SANITIZER_VERSION = "reader-html-allowlist-v1"
 _ALLOWED_ELEMENTS = frozenset(
@@ -198,8 +208,21 @@ def build_reader_snapshot(
     source_kind: str = "url",
     canonical_content_hash: str | None = None,
     source_event_id: str | None = None,
+    content_class: str | None = None,
+    servability: str | None = None,
+    owner_scope: str | None = None,
+    viewable: bool = True,
+    non_viewable_reason: str | None = None,
 ) -> str:
-    body = sanitize_html_fragment(main_html)
+    if not viewable and not non_viewable_reason:
+        raise ValueError("non-viewable snapshots require an explicit reason")
+    body = (
+        sanitize_html_fragment(main_html)
+        if viewable
+        else "<h1>Document unavailable for reading</h1>"
+        "<p>The acquisition receipt is preserved, but no canonical readable "
+        "content was admitted.</p>"
+    )
     projection_source_hash = "sha256:" + hashlib.sha256(main_html.encode()).hexdigest()
     snapshot_body_hash = "sha256:" + hashlib.sha256(body.encode()).hexdigest()
     # The slice preserves exactly 200,000 characters; only a larger input is truncated.
@@ -211,6 +234,13 @@ def build_reader_snapshot(
     author_line = ""
     if author:
         author_line = f"<p><strong>Author</strong> {html.escape(author)}</p>"
+    viewability_line = (
+        "<p><strong>viewability</strong> viewable</p>"
+        if viewable
+        else "<p><strong>viewability</strong> non-viewable"
+        f" · <strong>reason</strong> {html.escape(non_viewable_reason or '')}</p>"
+    )
+    article = f"<article>{body}</article>"
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><title>Reader snapshot</title>
 <style>body{{font-family:system-ui,sans-serif;max-width:720px;margin:24px auto;padding:0 16px}}
@@ -225,27 +255,22 @@ def build_reader_snapshot(
  · <strong>snapshot_body_hash</strong> {snapshot_body_hash}
  · <strong>source_event_id</strong> {html.escape(source_event_id or "unknown")}
  · <strong>sanitizer</strong> {SANITIZER_VERSION}
- · <strong>truncated</strong> {str(truncated).lower()}</p></div>
-<article>{body}</article>
+ · <strong>truncated</strong> {str(truncated).lower()}</p>
+<p><strong>content_class</strong> {html.escape(content_class or "unknown")}
+ · <strong>servability</strong> {html.escape(servability or "unknown")}
+ · <strong>owner_scope</strong> {html.escape(owner_scope or "unknown")}</p>
+{viewability_line}</div>
+{article}
 </body></html>"""
 
 
 def write_reader_snapshot(path: Path, html_doc: str) -> int:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(html_doc, encoding="utf-8")
-    return len(html_doc.encode("utf-8"))
+    return atomic_write_reader_snapshot(path, html_doc)
 
 
 def reader_snapshots_dir() -> Path:
-    """Operator store for sanitized ingest HTML (not git; parallel to chunks)."""
-    import os
-
-    raw = os.environ.get("ANTIEK_READER_SNAPSHOTS_DIR", "").strip()
-    if raw:
-        return Path(raw).expanduser()
-    return Path.home() / ".antiek" / "reader-snapshots"
+    return store_reader_snapshots_dir()
 
 
 def reader_snapshot_path_for(document_id: str) -> Path:
-    safe = document_id.replace("/", "_")
-    return reader_snapshots_dir() / f"{safe}.html"
+    return store_reader_snapshot_path_for(document_id)

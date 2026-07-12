@@ -20,15 +20,16 @@ it walks the trajectory.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import sys
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
 
 # Repo root on path for direct invocation.
-_PKG_ROOT = os.path.dirname(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-)
+_PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
@@ -41,6 +42,7 @@ from processing.embedding.embed import (  # noqa: E402
     EmbeddingProvider,
     default_embedding_provider,
 )
+from substrate.books.servability import servability_of  # noqa: E402
 from substrate.constants import PERSONAL_READING_CONTENT_CLASS  # noqa: E402
 from substrate.event_log import emit_typed  # noqa: E402
 from substrate.graph import (  # noqa: E402
@@ -93,7 +95,9 @@ def url_doc_id(url: str) -> str:
 
 
 def lookup_url_alias(
-    requested_url: str, *, db_path: str | None = None,
+    requested_url: str,
+    *,
+    db_path: str | None = None,
 ) -> str | None:
     """Consult the `url_alias` table for a prior ingestion of this
     URL. Returns the canonical `document_id` if found, None
@@ -133,6 +137,211 @@ def lookup_url_alias(
     return str(rows[0][0])
 
 
+def _resolve_alias_projection(
+    document_id: str, *, requested_url: str, db_path: str | None
+) -> str | None:
+    """Return the canonical projection, repairing legacy pre-HTML rows once."""
+    import duckdb
+
+    from acquisition.snapshot.reader_html import (
+        build_reader_snapshot,
+        markdown_to_safe_html,
+        reader_snapshot_path_for,
+        write_reader_snapshot,
+    )
+
+    path = reader_snapshot_path_for(document_id)
+    resolved = db_path or default_db_path()
+    try:
+        con = duckdb.connect(resolved, read_only=True)
+        row = con.execute(
+            """SELECT source_uri, title, author, raw_text, metadata,
+                      content_class, ip_holder_id, owner_user_id
+               FROM documents WHERE document_id = ?""",
+            [document_id],
+        ).fetchone()
+    except Exception:
+        return None
+    finally:
+        if "con" in locals():
+            con.close()
+    if row is None:
+        return None
+    source_uri, title, author, raw_text, raw_metadata, content_class, ip_holder, owner = row
+    metadata = json.loads(raw_metadata) if raw_metadata else {}
+    text = str(raw_text or "")
+    status = servability_of(content_class).value
+    viewable = status == "personal_readable"
+    rendered = build_reader_snapshot(
+        source_url=str(source_uri or requested_url),
+        document_id=document_id,
+        ip_holder_id=str(ip_holder) if ip_holder else None,
+        main_html=markdown_to_safe_html(text),
+        ingested_at=datetime.now(UTC).isoformat(),
+        title=str(title) if title else None,
+        author=str(author) if author else None,
+        canonical_content_hash=str(
+            metadata.get("canonical_content_hash") or "sha256:" + content_hash(text)
+        ),
+        source_event_id=str(metadata.get("source_event_id") or "legacy:alias-projection-repair"),
+        content_class=str(content_class) if content_class else None,
+        servability=status,
+        owner_scope=str(owner),
+        viewable=viewable,
+        non_viewable_reason=None if viewable else f"servability:{status}",
+    )
+    write_reader_snapshot(path, rendered)
+    _mark_url_projection_ready(
+        db_path=resolved,
+        document_id=document_id,
+        snapshot_path=str(path),
+    )
+    return str(path)
+
+
+def _mark_url_projection_ready(*, db_path: str, document_id: str, snapshot_path: str) -> None:
+    """Acknowledge a successfully published derived projection durably."""
+    from runtime.db_lock import connect_write
+
+    projection_hash = "sha256:" + hashlib.sha256(Path(snapshot_path).read_bytes()).hexdigest()
+    with connect_write(db_path, purpose="acquisition/urls/projection-ready") as con:
+        row = con.execute(
+            "SELECT metadata FROM documents WHERE document_id = ?", [document_id]
+        ).fetchone()
+        if row is None:
+            return
+        metadata = json.loads(row[0]) if row[0] else {}
+        metadata["reader_projection_state"] = "ready"
+        metadata["reader_projection_hash"] = projection_hash
+        con.execute(
+            "UPDATE documents SET metadata = ? WHERE document_id = ?",
+            [json.dumps(metadata), document_id],
+        )
+
+
+def _existing_url_document(
+    document_id: str, *, db_path: str
+) -> tuple[str, str | None, str | None, list[str]] | None:
+    """Read current canonical hash/title/author/chunks for ignore admission."""
+    import duckdb
+
+    con = duckdb.connect(db_path, read_only=True)
+    try:
+        row = con.execute(
+            "SELECT raw_text, metadata, title, author FROM documents WHERE document_id = ?",
+            [document_id],
+        ).fetchone()
+        if row is None:
+            return None
+        raw_text, raw_metadata, title, author = row
+        metadata = json.loads(raw_metadata) if raw_metadata else {}
+        canonical_hash = str(
+            metadata.get("canonical_content_hash") or "sha256:" + content_hash(str(raw_text or ""))
+        )
+        chunk_ids = [
+            str(item[0])
+            for item in con.execute(
+                "SELECT chunk_id FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+                [document_id],
+            ).fetchall()
+        ]
+        return (
+            canonical_hash,
+            str(title) if title else None,
+            str(author) if author else None,
+            chunk_ids,
+        )
+    finally:
+        con.close()
+
+
+def _archive_url_chunks_for_replace(con: Any, document_id: str) -> None:
+    """Preserve an addressable historical revision before refreshing chunks.
+
+    Downstream edges and tier overrides keep pointing at immutable cloned chunks;
+    the canonical document can then own only its current chunk set.
+    """
+    row = con.execute(
+        "SELECT metadata FROM documents WHERE document_id = ?", [document_id]
+    ).fetchone()
+    metadata = json.loads(row[0]) if row and row[0] else {}
+    old_hash = str(metadata.get("canonical_content_hash") or "unknown")
+    revision_id = f"{document_id}::rev::{old_hash.removeprefix('sha256:')[:16]}"
+    chunks = con.execute(
+        """SELECT chunk_id, chunk_index, section_path, text, embedding, token_count
+           FROM chunks WHERE document_id = ? ORDER BY chunk_index""",
+        [document_id],
+    ).fetchall()
+    referenced = {
+        str(item[0])
+        for item in con.execute(
+            """SELECT chunk_id FROM edges
+               WHERE chunk_id IN (SELECT chunk_id FROM chunks WHERE document_id = ?)
+               UNION
+               SELECT chunk_id FROM chunk_tier_overrides
+               WHERE chunk_id IN (SELECT chunk_id FROM chunks WHERE document_id = ?)""",
+            [document_id, document_id],
+        ).fetchall()
+    }
+    if not referenced:
+        con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+        return
+
+    revision_metadata = dict(metadata)
+    revision_metadata.update(
+        {
+            "revision_of": document_id,
+            "revision_content_hash": old_hash,
+            "archived_at": datetime.now(UTC).isoformat(),
+            "reader_projection_state": "historical",
+        }
+    )
+    con.execute(
+        """INSERT INTO documents (
+               document_id, source_uri, title, author, published_at, acquired_at,
+               source_tier, document_type, investigation_id, raw_text, metadata,
+               owner_user_id, content_class, ip_holder_id
+           )
+           SELECT ?, source_uri, title, author, published_at, acquired_at,
+                  source_tier, 'web_article_revision', investigation_id, raw_text, ?,
+                  owner_user_id, content_class, ip_holder_id
+           FROM documents WHERE document_id = ?
+           ON CONFLICT (document_id) DO NOTHING""",
+        [revision_id, json.dumps(revision_metadata), document_id],
+    )
+    clone_ids: dict[str, str] = {}
+    for old_id, index, section, chunk_text, embedding, token_count in chunks:
+        clone_id = f"{revision_id}::chunk::{int(index)}"
+        clone_ids[str(old_id)] = clone_id
+        con.execute(
+            """INSERT INTO chunks (
+                   chunk_id, document_id, chunk_index, section_path,
+                   text, embedding, token_count
+               ) VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT (chunk_id) DO NOTHING""",
+            [
+                clone_id,
+                revision_id,
+                int(index),
+                section,
+                chunk_text,
+                embedding,
+                int(token_count),
+            ],
+        )
+    for old_id in referenced:
+        clone_id = clone_ids[old_id]
+        con.execute(
+            "UPDATE edges SET chunk_id = ?, source_document_id = ? WHERE chunk_id = ?",
+            [clone_id, revision_id, old_id],
+        )
+        con.execute(
+            "UPDATE chunk_tier_overrides SET chunk_id = ? WHERE chunk_id = ?",
+            [clone_id, old_id],
+        )
+    con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+
+
 # ---------------------------------------------------------------------------
 # Result shape
 # ---------------------------------------------------------------------------
@@ -154,6 +363,44 @@ class IngestUrlResult:
     title: str | None = None
     author: str | None = None
     reader_snapshot_path: str | None = None
+
+
+def _write_url_projection(
+    *,
+    page: FetchedHtml,
+    document_id: str,
+    canonical_content_hash: str,
+    source_event_id: str,
+    viewable: bool,
+    non_viewable_reason: str | None = None,
+) -> str:
+    """Materialize the canonical owner-scoped HTML projection or receipt."""
+    from acquisition.snapshot.reader_html import (
+        build_reader_snapshot,
+        reader_snapshot_path_for,
+        write_reader_snapshot,
+    )
+
+    raw_html: str | bytes = page.body
+    if isinstance(raw_html, bytes):
+        raw_html = raw_html.decode(page.charset or "utf-8", errors="replace")
+    path = reader_snapshot_path_for(document_id)
+    rendered = build_reader_snapshot(
+        source_url=page.final_url,
+        document_id=document_id,
+        ip_holder_id=None,
+        main_html=raw_html,
+        ingested_at=datetime.now(UTC).isoformat(),
+        canonical_content_hash=canonical_content_hash,
+        source_event_id=source_event_id,
+        content_class=PERSONAL_READING_CONTENT_CLASS,
+        servability=servability_of(PERSONAL_READING_CONTENT_CLASS).value,
+        owner_scope="__operator__",
+        viewable=viewable,
+        non_viewable_reason=non_viewable_reason,
+    )
+    write_reader_snapshot(path, rendered)
+    return str(path)
 
 
 # ---------------------------------------------------------------------------
@@ -235,16 +482,12 @@ def ingest_url(
     crawler that batches requests) — when set, no HTTP is performed
     and ``http_client`` is ignored.
 
-    ``on_conflict`` (default ``"ignore"``): on the default path a re-ingest of
-    an unchanged ``document_id`` is a graph no-op (``insert_document`` early-
-    returns; the PG driver also short-circuits before calling here when the
-    content hash is unchanged). A caller that has already detected a *changed*
-    body (its hash differs from the stored ``documents.content_hash``) passes
-    ``"replace"``: the adapter deletes the prior ``documents`` row + its chunks
-    first, then re-inserts the edited body under the SAME ``document_id`` — never
-    forking a second doc and never silently keeping the stale body while
-    reporting a re-ingest. (``insert_document`` itself only knows
-    ``"error"``/``"ignore"``; ``"replace"`` is the adapter's delete-then-insert.)
+    ``on_conflict`` defaults to ``"ignore"``. An unchanged re-ingest emits its
+    acquisition event but does not rewrite canonical state. A changed body is
+    rejected with ``changed_content_requires_replace`` so versions cannot mix.
+    Explicit ``"replace"`` updates the canonical row in place and archives any
+    chunks carrying downstream references under a hash-addressed historical
+    document before admitting the new chunk set.
 
     ``fallback_to_browserbase`` opts in to Wedge 2 escalation when
     the httpx primary fetch returns low_word_count. Per spec §7.4
@@ -266,6 +509,9 @@ def ingest_url(
                 skipped_reason="alias_resolved_to_existing_document",
                 title=None,
                 author=None,
+                reader_snapshot_path=_resolve_alias_projection(
+                    canonical, requested_url=url, db_path=db_path
+                ),
             )
 
     page: FetchedHtml = fetched or fetch(url, client=http_client)  # type: ignore[arg-type]
@@ -290,6 +536,7 @@ def ingest_url(
         role="acquisition",
         policy_id="acquisition/urls",
     )
+    assert event_id is not None
 
     # Word-count gate. Emit the event so the operator can see the
     # fetch happened, but skip graph writes for plausibly-misextracted
@@ -309,58 +556,114 @@ def ingest_url(
                 md_doc = html_to_markdown(page.body, base_url=page.final_url)
                 text = md_doc.markdown
                 chash = "sha256:" + content_hash(text)
+                event_id = emit_typed(
+                    investigation_id,
+                    DocumentLoadedPayload(
+                        media_type="url_extracted",
+                        content_hash=chash,
+                        size_bytes=len(text.encode("utf-8")),
+                        title=md_doc.title,
+                        page_count=None,
+                        source_uri=page.final_url,
+                    ),
+                    document_id=document_id,
+                    role="acquisition",
+                    policy_id="acquisition/urls/browserbase",
+                )
+                assert event_id is not None
 
         if md_doc.word_count < min_word_count:
+            skipped_reason = "low_word_count_after_fallback" if escalation_ran else "low_word_count"
+            reader_snapshot_path = _write_url_projection(
+                page=page,
+                document_id=document_id,
+                canonical_content_hash=chash,
+                source_event_id=event_id,
+                viewable=False,
+                non_viewable_reason=skipped_reason,
+            )
             return IngestUrlResult(
                 document_id=document_id,
                 final_url=page.final_url,
                 document_loaded_event_id=event_id,
-                skipped_reason=(
-                    "low_word_count_after_fallback"
-                    if escalation_ran
-                    else "low_word_count"
-                ),
+                skipped_reason=skipped_reason,
                 title=md_doc.title,
                 author=md_doc.author,
+                reader_snapshot_path=reader_snapshot_path,
             )
 
     resolved_db_path = db_path or default_db_path()
     ensure_initialized(resolved_db_path)
+
+    if on_conflict == "ignore":
+        existing = _existing_url_document(document_id, db_path=resolved_db_path)
+        if existing is not None:
+            stored_hash, stored_title, stored_author, stored_chunk_ids = existing
+            admission_reason = None if stored_hash == chash else "changed_content_requires_replace"
+            return IngestUrlResult(
+                document_id=document_id,
+                final_url=page.final_url,
+                chunk_ids=stored_chunk_ids,
+                document_loaded_event_id=event_id,
+                chunks_written=0,
+                skipped_reason=admission_reason,
+                title=stored_title,
+                author=stored_author,
+                reader_snapshot_path=_resolve_alias_projection(
+                    document_id,
+                    requested_url=page.requested_url,
+                    db_path=resolved_db_path,
+                ),
+            )
 
     chunks: list[Chunk] = chunk_markdown(text)
     chunk_ids: list[str] = []
     node_ids: list[str] = []
     chunks_written = 0
     emb = embedder or default_embedding_provider()
+    document_metadata = {
+        "requested_url": page.requested_url,
+        "final_url": page.final_url,
+        "content_type": page.content_type,
+        "status_code": page.status_code,
+        "fetched_at": datetime.now(UTC).isoformat(),
+        "canonical_content_hash": chash,
+        "source_event_id": event_id,
+        "projection_version": "reader-html-allowlist-v1",
+        "reader_projection_state": "pending",
+        "reader_projection_hash": None,
+    }
 
     from runtime.db_lock import connect_write
 
     with connect_write(resolved_db_path, purpose="acquisition/urls") as con:
-        # On a CHANGED re-ingest (``on_conflict="replace"``), drop the prior
-        # document row + its chunks FIRST so the re-insert below is a genuine
-        # fresh write of the edited body under the SAME deterministic id (no
-        # fork) — and so a shrinking edit leaves no orphan tail chunks. We then
-        # call insert_document with ``"ignore"`` (the row is gone, so it inserts
-        # cleanly and the SPR-01 deny-by-default guard still fires). Scoped to
-        # the replace path; the default ignore/no-op path is untouched.
-        # ``insert_document`` itself only knows "error"/"ignore"; replace is the
-        # adapter's responsibility (delete-then-insert) so we never pass an
-        # unsupported value down.
+        # ``replace`` is adapter-level admission; insert_document itself only
+        # accepts error/ignore. The canonical row remains in place so foreign
+        # keys and URL aliases preserve stable identity.
         insert_on_conflict = on_conflict
         if on_conflict == "replace":
             # A CHANGED re-ingest must overwrite the body under the SAME id
             # without forking. We do NOT delete the documents row (other tables
             # FK-reference it, so a DELETE trips a foreign-key constraint);
-            # instead we UPDATE raw_text in place, then refresh the chunks.
-            # Chunks are deleted first (deterministic content-addressed ids mean
-            # a shrinking edit would otherwise orphan tail rows) and re-inserted
-            # below. insert_document is then told "ignore" (the row already
-            # exists) so it does not raise; the UPDATE is what persists the edit.
-            con.execute(
-                "UPDATE documents SET raw_text = ? WHERE document_id = ?",
-                [text, document_id],
-            )
-            con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+            # instead we UPDATE in place. Referenced chunks are cloned to a
+            # historical revision before the canonical chunk set is refreshed;
+            # unreferenced chunks can be removed directly.
+            # DuckDB 1.5 rejects a multi-column UPDATE of an FK target as an
+            # implied row replacement. Independent unindexed-column updates
+            # remain within this one transaction and preserve the referenced
+            # document identity.
+            for column, value in (
+                ("source_uri", page.final_url),
+                ("title", md_doc.title),
+                ("author", md_doc.author),
+                ("raw_text", text),
+                ("metadata", json.dumps(document_metadata)),
+            ):
+                con.execute(
+                    f"UPDATE documents SET {column} = ? WHERE document_id = ?",
+                    [value, document_id],
+                )
+            _archive_url_chunks_for_replace(con, document_id)
             insert_on_conflict = "ignore"
         insert_document(
             con,
@@ -384,13 +687,7 @@ def ingest_url(
             published_at=None,
             investigation_id=investigation_id,
             raw_text=text,
-            metadata={
-                "requested_url": page.requested_url,
-                "final_url": page.final_url,
-                "content_type": page.content_type,
-                "status_code": page.status_code,
-                "fetched_at": datetime.now(UTC).isoformat(),
-            },
+            metadata=document_metadata,
             on_conflict=insert_on_conflict,
         )
         register_source_document(
@@ -468,37 +765,21 @@ def ingest_url(
             )
             node_ids.append(node_id)
 
-    reader_snapshot_path: str | None = None
-    if os.environ.get("ANTIEK_READER_SNAPSHOT", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-    ):
-        from acquisition.snapshot.reader_html import (  # noqa: E402
-            build_reader_snapshot,
-            reader_snapshot_path_for,
-            write_reader_snapshot,
-        )
-
-        snap_path = reader_snapshot_path_for(document_id)
-        ingested_at = datetime.now(UTC).isoformat()
-        # ``FetchedHtml.body`` is declared ``bytes``, but the guard below
-        # tolerates duck-typed ``fetched=`` callers passing str — the union
-        # keeps that existing isinstance narrowing honest for mypy.
-        raw_html: str | bytes = page.body
-        if isinstance(raw_html, bytes):
-            raw_html = raw_html.decode(page.charset or "utf-8", errors="replace")
-        snap_html = build_reader_snapshot(
-            source_url=page.final_url,
-            document_id=document_id,
-            ip_holder_id=None,
-            main_html=raw_html,
-            ingested_at=ingested_at,
-            canonical_content_hash=chash,
-            source_event_id=event_id,
-        )
-        write_reader_snapshot(snap_path, snap_html)
-        reader_snapshot_path = str(snap_path)
+    # Publish only after the substrate transaction has committed. Atomic file
+    # replacement ensures readers see either the prior complete version or this
+    # complete version, never a partially written projection.
+    reader_snapshot_path = _write_url_projection(
+        page=page,
+        document_id=document_id,
+        canonical_content_hash=chash,
+        source_event_id=event_id,
+        viewable=True,
+    )
+    _mark_url_projection_ready(
+        db_path=resolved_db_path,
+        document_id=document_id,
+        snapshot_path=reader_snapshot_path,
+    )
 
     return IngestUrlResult(
         document_id=document_id,
