@@ -7,7 +7,12 @@ import os
 from pathlib import Path
 
 
-def owner_graph_db_path(owner_id: str, *, root: Path | str | None = None) -> str:
+def owner_graph_db_path(
+    owner_id: str,
+    *,
+    root: Path | str | None = None,
+    create_parent: bool = True,
+) -> str:
     """Resolve one owner's graph without exposing identity in the filesystem.
 
     The historical operator keeps the canonical graph. Authenticated accounts
@@ -31,8 +36,40 @@ def owner_graph_db_path(owner_id: str, *, root: Path | str | None = None) -> str
         b"antiek.owner-graph.path.v1\0" + owner.encode("utf-8")
     ).hexdigest()
     path = base / digest[:2] / f"{digest}.duckdb"
-    path.parent.mkdir(parents=True, exist_ok=True)
+    if create_parent:
+        path.parent.mkdir(parents=True, exist_ok=True)
     return str(path)
+
+
+def existing_owner_graph_db_path(
+    owner_id: str, *, root: Path | str | None = None
+) -> str | None:
+    """Resolve an existing owner graph without mutating the filesystem.
+
+    Personal reads must never initialize storage or fall back to the operator
+    graph.  The explicit ``None`` result is the honest unmaterialized state.
+    """
+    path = owner_graph_db_path(owner_id, root=root, create_parent=False)
+    return path if Path(path).is_file() else None
+
+
+def owner_graph_readiness(
+    owner_id: str, *, root: Path | str | None = None
+) -> dict[str, str | bool | None]:
+    """Return non-sensitive routing truth for one authenticated owner."""
+    path = owner_graph_db_path(owner_id, root=root, create_parent=False)
+    materialized = Path(path).is_file()
+    return {
+        "owner_graph_scope": (
+            "operator_canonical"
+            if owner_id == "__operator__"
+            else "physically_isolated"
+            if materialized
+            else "unmaterialized"
+        ),
+        "materialized": materialized,
+        "graph_path_sha256": owner_graph_path_sha256(path),
+    }
 
 
 def owner_graph_path_sha256(db_path: str) -> str:

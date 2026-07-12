@@ -1130,7 +1130,7 @@ class ComposeContextResponse(BaseModel):
 
 
 def _compose_context(
-    items: list[ContextItem], *, owner: bool,
+    items: list[ContextItem], *, owner: bool, owner_id: str = "__operator__",
 ) -> ComposeContextResponse:
     """Compose a §9.0-aware system_context from @-selected items (CK-4).
 
@@ -1158,14 +1158,23 @@ def _compose_context(
     from runtime.db_lock import connect_read
     from substrate.books.serve_guard import serve_full_text_guarded
     from substrate.graph import default_db_path
+    from substrate.graph.personal_recall import get_owner_node
+    from substrate.graph.search import get_node_by_id
     from substrate.rights import T3BodyServeError
 
     blocks: list[str] = []
     withheld: list[str] = []
     missing: list[str] = []
+    canonical_items: list[ContextItem] = []
+    for item in items:
+        personal = get_owner_node(owner_id, item.id) if item.kind == "insight" else None
+        if personal and personal.get("label"):
+            blocks.append(f"@insight {item.id}\n{personal['label']}")
+        else:
+            canonical_items.append(item)
     try:
         with connect_read(default_db_path()) as con:
-            for item in items:
+            for item in canonical_items:
                 if item.kind == "doc":
                     # Route through the serving-boundary guard (never the
                     # raw gate) so the license-tier cross-check fires too —
@@ -1187,18 +1196,33 @@ def _compose_context(
                         withheld.append(item.id)
                     else:
                         missing.append(item.id)
-                else:  # insight — operator-authored node text
-                    row = con.execute(
-                        "SELECT canonical_label FROM nodes WHERE node_id = ?",
-                        [item.id],
-                    ).fetchone()
-                    if row and row[0]:
-                        blocks.append(f"@insight {item.id}\n{row[0]}")
+                else:  # unresolved personal insight — policy-gated canonical
+                    if owner_id == "__operator__":
+                        row = con.execute(
+                            "SELECT node_id, node_type, canonical_label FROM nodes "
+                            "WHERE node_id = ? LIMIT 1",
+                            [item.id],
+                        ).fetchone()
+                        canonical = (
+                            {"node_id": row[0], "node_type": row[1], "label": row[2]}
+                            if row is not None
+                            else None
+                        )
+                    else:
+                        canonical = get_node_by_id(
+                            con,
+                            item.id,
+                            policy_tag=(
+                                "operator_only" if owner else "attribution_eligible"
+                            ),
+                        )
+                    if canonical and canonical.get("label"):
+                        blocks.append(f"@insight {item.id}\n{canonical['label']}")
                     else:
                         missing.append(item.id)
     except Exception:
-        # Absent graph: every item is missing — honest, well-formed response.
-        missing = [item.id for item in items]
+        # Absent canonical graph does not erase already-resolved personal nodes.
+        missing.extend(item.id for item in canonical_items if item.id not in missing)
     return ComposeContextResponse(
         system_context="\n\n".join(blocks),
         withheld=withheld,
@@ -1237,7 +1261,11 @@ class ThoughtPartnerRequest(BaseModel):
 
 
 def _retrieve_thought_partner_context(
-    prompt: str, policy_tag: str, *, top_k: int = 8,
+    prompt: str,
+    policy_tag: str,
+    *,
+    owner_id: str = "__operator__",
+    top_k: int = 8,
 ) -> list[dict[str, Any]]:
     """Retrieve the most semantically-relevant passages from the operator's
     knowledge graph for ``prompt`` and map them to the thought-partner
@@ -1254,6 +1282,7 @@ def _retrieve_thought_partner_context(
     endpoint fast on a cold box and keeps tests hermetic)."""
     from runtime.db_lock import connect_read
     from substrate.graph import default_db_path
+    from substrate.graph.personal_recall import recall_owner_nodes
     from substrate.graph.search import SentenceTransformerEmbedding, search
 
     try:
@@ -1263,7 +1292,7 @@ def _retrieve_thought_partner_context(
                 con, prompt, model=model, top_k=top_k, policy_tag=policy_tag,
             )
     except Exception:
-        return []
+        retrieved = {"results": [], "node_matches": []}
     notes: list[dict[str, Any]] = []
     for hit in retrieved.get("results", []):
         doc_id = hit.get("document_id")
@@ -1271,9 +1300,40 @@ def _retrieve_thought_partner_context(
             "note_id": hit.get("chunk_id"),
             "note_text": hit.get("chunk_text", ""),  # search() emits "chunk_text" (graph/search.py:260); the prior "text" key never existed, so every retrieved note mapped to empty string and starved the model of library grounding.
             "source_event_ids": [doc_id] if doc_id else [],
-            "confidence": float(hit.get("similarity") or 0.0),
+            # Calibrate cosine [-1, 1] into the same [0, 1] rank space used
+            # by personal node recall before cross-scope fusion.
+            "confidence": (float(hit.get("similarity") or 0.0) + 1.0) / 2.0,
+            "knowledge_scope": "canonical_corpus",
         })
-    return notes
+    for hit in retrieved.get("node_matches", []):
+        node_id = str(hit.get("node_id") or "")
+        label = str(hit.get("label") or "")
+        if node_id and label:
+            notes.append({
+                "note_id": node_id,
+                "note_text": label,
+                "source_event_ids": [node_id],
+                "confidence": 0.55,
+                "knowledge_scope": "canonical_corpus",
+            })
+    if owner_id != "__operator__":
+        # Personal and canonical scopes degrade independently. A corrupt or
+        # migrating owner graph must not suppress public grounding or prevent
+        # the thought partner from answering.
+        with contextlib.suppress(Exception):
+            notes.extend(recall_owner_nodes(owner_id, prompt, top_k=top_k))
+    unique: dict[str, dict[str, Any]] = {}
+    for note in notes:
+        note_id = str(note.get("note_id") or "")
+        prior = unique.get(note_id)
+        if prior is None or float(note.get("confidence") or 0.0) > float(
+            prior.get("confidence") or 0.0
+        ):
+            unique[note_id] = note
+    return sorted(
+        unique.values(),
+        key=lambda item: (-float(item.get("confidence") or 0.0), str(item.get("note_id") or "")),
+    )[:top_k]
 
 
 class CrossGraphCitationRequest(BaseModel):
@@ -5567,7 +5627,9 @@ def create_app(
         role_prompt = compose_thought_partner_prompt(
             user_prompt=req.prompt,
             selected_notes=_retrieve_thought_partner_context(
-                req.prompt, effective_policy_tag,
+                req.prompt,
+                effective_policy_tag,
+                owner_id=str(getattr(request.state, "user_id", "") or "__operator__"),
             ),
         )
         assembled_prompt = THOUGHT_PARTNER_SYSTEM_PROMPT
@@ -5640,7 +5702,8 @@ def create_app(
 
         effective_policy_tag = _owner_read_policy_tag(request)
         owner = effective_policy_tag in PRIVILEGED_POLICY_TAGS
-        return _compose_context(req.items, owner=owner)
+        owner_id = str(getattr(request.state, "user_id", "") or "__operator__")
+        return _compose_context(req.items, owner=owner, owner_id=owner_id)
 
     # ── Sprint 22 multi-user auth-probe endpoint ──
     class AuthProbeResponse(BaseModel):

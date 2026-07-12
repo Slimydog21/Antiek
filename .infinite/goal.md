@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Route owner-native graph reads, search, and prompt context through the same physical owner partition used by confirmed twin promotion, so promoted research-session intelligence actually informs its owner's workstation without leaking into or depending on the operator graph.
+Close Antiek's production multi-user identity seam so real authenticated accounts—not test-injected claims—reach the owner-native session, graph promotion, recall, and thought-partner paths while operator privileges remain explicit and caller-spoofing fails closed.
 
 ## Derivation trail
 
@@ -17,3 +17,4 @@ Route owner-native graph reads, search, and prompt context through the same phys
 - The next load-bearing seam is capability parity: non-operator windows must use owner-native attach/progress/evidence/context/collective paths backed by store-enforced authority rather than losing those tools or reopening global IDs.
 - Cycle 8 closed that capability seam and hardened browser identity on auth changes, complete-only merge authority, and mutation honesty. The remaining deliberate preview is now the narrowest blocker to the user's recursive knowledge graph: graph promotion itself lacks owner namespace and confirmed transaction semantics.
 - Cycle 9 delivered physically isolated owner graph writes, hash-pinned preview→confirm authority, owner-bound idempotency receipts, transactional graph/event outbox recovery, and explicit retry-safe browser confirmation. Archaeology then showed the read/search/context surfaces still call `default_db_path()` broadly, so durable personal intelligence is not yet consumed by the owner-native research loop.
+- Cycle 10 closed the declared thought-partner/context-picker read loop by fusing rights-gated canonical corpus results with only the request owner's physical insight/question graph, including provider-pinned semantic recall, honest readiness, and end-to-end confirmed-promotion→dispatch privacy proof. The proof also exposed the next boundary: the production app middleware still resolves successful login paths to static `operator_claims()`, so non-operator identities currently exist only behind injected/test middleware rather than a real account credential path.

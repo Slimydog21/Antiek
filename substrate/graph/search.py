@@ -408,6 +408,30 @@ def search_nodes_by_label(
     ]
 
 
+def get_node_by_id(
+    con: Any,
+    node_id: str,
+    *,
+    policy_tag: str = "attribution_eligible",
+) -> dict[str, Any] | None:
+    """Resolve one node through the same provenance gate as label search."""
+    gate_sql, gate_params = _retrieval_gate.non_privileged_node_provenance_clause(
+        node_alias="n", policy_tag=policy_tag,
+    )
+    row = con.execute(
+        f"""
+        SELECT n.node_id, n.node_type, n.canonical_label
+        FROM nodes n
+        WHERE n.node_id = ?{gate_sql}
+        LIMIT 1
+        """,
+        [node_id, *gate_params],
+    ).fetchone()
+    if row is None:
+        return None
+    return {"node_id": row[0], "node_type": row[1], "label": row[2]}
+
+
 def open_read(db_path: str) -> Any:
     """Convenience: open a read-only connection. Same as
     ``runtime.db_lock.connect_read`` — exposed here so search.py is

@@ -132,6 +132,20 @@ def _coerce_confidence_float(confidence: str) -> float:
     return _CONFIDENCE_TO_FLOAT.get(confidence, 0.5)
 
 
+def _stamp_embedding_identity(metadata: dict[str, Any], provider: Any) -> None:
+    """Bind a node vector to the provider space that produced it."""
+    from processing.embedding import (
+        embedding_model_name,
+        embedding_provider_fingerprint,
+        embedding_provider_name,
+    )
+
+    metadata["embedding_provider"] = embedding_provider_name(provider)
+    metadata["embedding_model"] = embedding_model_name(provider)
+    metadata["embedding_dimension"] = int(provider.dimension)
+    metadata["embedding_fingerprint"] = embedding_provider_fingerprint(provider)
+
+
 def _add_provenance_edges(
     con: LockedConnection,
     *,
@@ -298,6 +312,7 @@ def promote_insight(
         if chunk_id:
             node_meta.setdefault("chunk_id", chunk_id)
         provider = embedding_provider or _default_provider()
+        _stamp_embedding_identity(node_meta, provider)
         # AFF SPR-07 — link a near-duplicate instead of inserting a new row.
         if dedup:
             match = _dedup_check(
@@ -412,6 +427,7 @@ def promote_question(
         if chunk_id:
             node_meta.setdefault("chunk_id", chunk_id)
         provider = embedding_provider or _default_provider()
+        _stamp_embedding_identity(node_meta, provider)
         # AFF SPR-07 — link a near-duplicate question instead of inserting.
         if dedup:
             match = _dedup_check(

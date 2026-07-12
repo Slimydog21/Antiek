@@ -101,9 +101,11 @@ from substrate.floating_session.store import (
     SessionStore,
 )
 from substrate.graph_per_user.runtime import (
+    existing_owner_graph_db_path,
     owner_graph_db_path,
     owner_graph_events_dir,
     owner_graph_path_sha256,
+    owner_graph_readiness,
 )
 
 engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
@@ -1113,6 +1115,74 @@ def _parent_revision_sha256(parent_asset_id: str, owner_id: str) -> str:
     return document_revision_sha256(
         _eng().get_document(owned_document_id(owner_id, parent_asset_id))
     )
+
+
+@engagement_router.get("/graph/readiness")
+def get_owner_graph_readiness(request: Request) -> dict[str, Any]:
+    """Expose authenticated routing truth without paths or caller owner input."""
+    owner_id = _request_owner(request)
+    readiness = owner_graph_readiness(owner_id)
+    path = existing_owner_graph_db_path(owner_id)
+    node_count = 0
+    graph_read = False
+    embedding_space_status = "empty"
+    if path is not None:
+        from processing.embedding import (
+            default_embedding_provider,
+            embedding_provider_fingerprint,
+        )
+        from runtime.db_lock import connect_read
+
+        try:
+            configured_fingerprint = embedding_provider_fingerprint(
+                default_embedding_provider()
+            )
+            with connect_read(path) as con:
+                row = con.execute("SELECT COUNT(*) FROM nodes").fetchone()
+                node_count = int(row[0]) if row else 0
+                fingerprint_rows = con.execute(
+                    "SELECT DISTINCT json_extract_string(metadata, '$.embedding_fingerprint') "
+                    "FROM nodes WHERE node_type IN ('insight', 'question') "
+                    "AND embedding IS NOT NULL AND "
+                    "json_extract_string(metadata, '$.embedding_fingerprint') IS NOT NULL"
+                ).fetchall()
+                legacy_row = con.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE embedding IS NOT NULL AND "
+                    "node_type IN ('insight', 'question') AND "
+                    "json_extract_string(metadata, '$.embedding_fingerprint') IS NULL"
+                ).fetchone()
+                embedded_row = con.execute(
+                    "SELECT COUNT(*) FROM nodes WHERE embedding IS NOT NULL AND "
+                    "node_type IN ('insight', 'question')"
+                ).fetchone()
+                stored_fingerprints = {str(row[0]) for row in fingerprint_rows}
+                legacy_count = int(legacy_row[0]) if legacy_row else 0
+                embedded_count = int(embedded_row[0]) if embedded_row else 0
+                embedding_space_status = (
+                    "empty"
+                    if embedded_count == 0
+                    else "legacy_only"
+                    if not stored_fingerprints
+                    else "mixed_compatible"
+                    if configured_fingerprint in stored_fingerprints
+                    and (len(stored_fingerprints) > 1 or legacy_count > 0)
+                    else "compatible"
+                    if stored_fingerprints == {configured_fingerprint}
+                    and legacy_count == 0
+                    else "configured_mismatch"
+                    if configured_fingerprint not in stored_fingerprints
+                    else "empty"
+                )
+                graph_read = True
+        except Exception:
+            readiness = {**readiness, "owner_graph_scope": "unreadable"}
+            embedding_space_status = "unreadable"
+    return {
+        **readiness,
+        "node_count": node_count,
+        "graph_read": graph_read,
+        "embedding_space_status": embedding_space_status,
+    }
 
 
 @engagement_router.post("/sessions/open")

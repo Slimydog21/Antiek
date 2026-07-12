@@ -247,3 +247,149 @@ def test_thought_partner_request_exposes_no_client_policy_tag_field():
     from interfaces.research.api.app import ThoughtPartnerRequest
 
     assert "policy_tag" not in ThoughtPartnerRequest.model_fields
+
+
+def test_thought_partner_dispatches_only_authenticated_owner_private_memory(
+    monkeypatch, tmp_path
+):
+    import importlib
+
+    from interfaces.research.api.engagement_routes import reset_engagement_stores
+    from processing.embedding import HashEmbedding, _reset_default_provider
+    from runtime.db_lock import connect_write
+    from substrate.graph.ops import insert_chunk, insert_document
+    from substrate.graph.schema import init_database
+    from substrate.graph_per_user.runtime import owner_graph_db_path
+    from substrate.multi_user.auth import UserClaims
+
+    monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owners"))
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "absent-canonical.duckdb"))
+    monkeypatch.setenv("ANTIEK_EMBEDDING_PROVIDER", "hash")
+    monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
+    monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
+    _reset_default_provider()
+    canonical = connect_write(
+        str(tmp_path / "absent-canonical.duckdb"), purpose="thought_partner_public_seed"
+    )
+    try:
+        init_database(canonical)
+        model = HashEmbedding()
+        insert_document(
+            canonical,
+            document_id="public-doc",
+            source_tier=1,
+            document_type="paper",
+            title="Public photonics",
+            content_class="public_domain",
+        )
+        insert_chunk(
+            canonical,
+            document_id="public-doc",
+            chunk_index=0,
+            text="PUBLIC PHOTONIC CORPUS EVIDENCE",
+            embedding=model.encode("PUBLIC PHOTONIC CORPUS EVIDENCE"),
+            embedding_provider=model,
+        )
+    finally:
+        canonical.close()
+    search_mod = importlib.import_module("substrate.graph.search")
+    monkeypatch.setattr(search_mod, "SentenceTransformerEmbedding", HashEmbedding)
+    current_owner = {"id": "alice"}
+    monkeypatch.setattr(
+        "substrate.multi_user.auth.operator_claims",
+        lambda: UserClaims(
+            user_id=current_owner["id"],
+            email=f"{current_owner['id']}@example.test",
+            scopes=frozenset({"private_research"}),
+            issued_at="2026-07-12T00:00:00Z",
+        ),
+    )
+    from interfaces.research.api.app import create_app
+
+    provider = _MockZaiProvider(
+        '{"shape":"synthesis","synthesis_text":"owner grounded"}'
+    )
+    register_provider(provider)
+    reset_engagement_stores()
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    client = TestClient(app)
+
+    def promote(owner: str, text: str) -> str:
+        current_owner["id"] = owner
+        opened = client.post(
+            "/engagement/sessions/open",
+            json={"asset_id": "shared-asset", "selection_text": "same passage"},
+        )
+        assert opened.status_code == 200, opened.text
+        session_id = opened.json()["session_id"]
+        recorded = client.post(
+            f"/engagement/sessions/{session_id}/twins",
+            json={"kind": "insight", "text": text},
+        )
+        assert recorded.status_code == 200, recorded.text
+        preview = client.post(
+            f"/engagement/sessions/{session_id}/twins/promote-preview",
+            json={"include_html": False},
+        )
+        assert preview.status_code == 200, preview.text
+        confirmed = client.post(
+            f"/engagement/sessions/{session_id}/twins/promote-confirm",
+            json={
+                "include_html": False,
+                "expected_preview_sha256": preview.json()["promotion_preview_sha256"],
+                "idempotency_key": f"{owner}-prompt-proof-001",
+            },
+        )
+        assert confirmed.status_code == 200, confirmed.text
+        assert confirmed.json()["promotion_receipt_state"] == "applied"
+        return str(confirmed.json()["graph_node_ids"][0])
+
+    alice_node = promote("alice", "ALICE PRIVATE PHOTONIC MEMORY")
+    promote("bob", "BOB PRIVATE PHOTONIC MEMORY")
+
+    current_owner["id"] = "alice"
+    readiness = client.get("/engagement/graph/readiness")
+    assert readiness.status_code == 200
+    assert readiness.json()["embedding_space_status"] == "compatible"
+    assert readiness.json()["graph_read"] is True
+    own_context = client.post(
+        "/compose-context",
+        json={"items": [{"kind": "insight", "id": alice_node}]},
+    )
+    assert own_context.status_code == 200
+    assert "ALICE PRIVATE PHOTONIC MEMORY" in own_context.json()["system_context"]
+    current_owner["id"] = "bob"
+    foreign_context = client.post(
+        "/compose-context",
+        json={"items": [{"kind": "insight", "id": alice_node}]},
+    )
+    assert foreign_context.status_code == 200
+    assert foreign_context.json()["system_context"] == ""
+    assert foreign_context.json()["missing"] == [alice_node]
+
+    for owner, own_marker, foreign_marker in (
+        ("alice", "ALICE PRIVATE PHOTONIC MEMORY", "BOB PRIVATE PHOTONIC MEMORY"),
+        ("bob", "BOB PRIVATE PHOTONIC MEMORY", "ALICE PRIVATE PHOTONIC MEMORY"),
+    ):
+        current_owner["id"] = owner
+        response = client.post(
+            "/thought-partner", json={"prompt": "private photonic memory"}
+        )
+        assert response.status_code == 200, response.text
+        dispatched = provider.calls[-1]["prompt"]
+        assert "PUBLIC PHOTONIC CORPUS EVIDENCE" in dispatched
+        assert own_marker in dispatched
+        assert foreign_marker not in dispatched
+
+    current_owner["id"] = "charlie"
+    charlie_path = owner_graph_db_path("charlie", create_parent=False)
+    assert not os.path.exists(charlie_path)
+    response = client.post(
+        "/thought-partner", json={"prompt": "private photonic memory"}
+    )
+    assert response.status_code == 200, response.text
+    dispatched = provider.calls[-1]["prompt"]
+    assert "PUBLIC PHOTONIC CORPUS EVIDENCE" in dispatched
+    assert "ALICE PRIVATE" not in dispatched
+    assert "BOB PRIVATE" not in dispatched
+    assert not os.path.exists(charlie_path)

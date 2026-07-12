@@ -600,6 +600,85 @@ def test_session_routes_require_explicit_identity(monkeypatch):
     assert response.status_code == 401
 
 
+def test_owner_graph_readiness_is_authenticated_and_non_disclosing(monkeypatch, tmp_path):
+    monkeypatch.setenv("ANTIEK_USER_GRAPH_DIR", str(tmp_path / "owners"))
+    reset_engagement_stores()
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_test_owner(request: Request, call_next):
+        request.state.user_id = request.headers.get("x-test-owner", "")
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    client = TestClient(app)
+    response = client.get(
+        "/engagement/graph/readiness", headers={"x-test-owner": "alice"}
+    )
+    assert response.status_code == 200
+    assert response.json()["owner_graph_scope"] == "unmaterialized"
+    assert response.json()["materialized"] is False
+    assert response.json()["graph_read"] is False
+    assert response.json()["node_count"] == 0
+    assert set(response.json()) == {
+        "owner_graph_scope",
+        "materialized",
+        "graph_path_sha256",
+        "node_count",
+        "graph_read",
+        "embedding_space_status",
+    }
+    assert not (tmp_path / "owners").exists()
+
+    from processing.embedding import HashEmbedding
+    from runtime.db_lock import connect_write
+    from substrate.graph.insight_question import promote_insight
+    from substrate.graph.schema import init_database
+
+    bob_path = owner_graph_db_path("bob")
+    con = connect_write(bob_path, purpose="readiness_embedding_compatibility")
+    try:
+        init_database(con)
+        promote_insight(
+            text="Bob pinned embedding memory",
+            investigation_id="inv-bob-readiness",
+            embedding_provider=HashEmbedding(8),
+            con=con,
+            emit_events=False,
+        )
+    finally:
+        con.close()
+    set_default_embedding_provider(HashEmbedding(16))
+    mismatch = client.get(
+        "/engagement/graph/readiness", headers={"x-test-owner": "bob"}
+    )
+    assert mismatch.json()["embedding_space_status"] == "configured_mismatch"
+    set_default_embedding_provider(HashEmbedding(8))
+    compatible = client.get(
+        "/engagement/graph/readiness", headers={"x-test-owner": "bob"}
+    )
+    assert compatible.json()["embedding_space_status"] == "compatible"
+
+    unreadable_path = Path(owner_graph_db_path("alice"))
+    unreadable_path.write_text("not a duckdb file", encoding="utf-8")
+    unreadable = client.get(
+        "/engagement/graph/readiness", headers={"x-test-owner": "alice"}
+    )
+    assert unreadable.status_code == 200
+    assert unreadable.json()["owner_graph_scope"] == "unreadable"
+    assert unreadable.json()["materialized"] is True
+    assert unreadable.json()["graph_read"] is False
+    assert unreadable.json()["node_count"] == 0
+    assert unreadable.json()["embedding_space_status"] == "unreadable"
+
+    monkeypatch.delenv("ANTIEK_ALLOW_UNAUTHENTICATED_LOCAL", raising=False)
+    no_identity_app = FastAPI()
+    register_engagement_routes(no_identity_app)
+    missing_identity = TestClient(no_identity_app).get("/engagement/graph/readiness")
+    assert missing_identity.status_code == 401
+    _reset_default_provider()
+
+
 def test_ownerless_legacy_session_is_quarantined(client):
     session_id = "fsess_3333333333333333"
     eng_mod._sess().put_session(
