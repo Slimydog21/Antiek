@@ -7,6 +7,7 @@ import hashlib
 import hmac
 import json
 import os
+import re
 import shutil
 import stat
 import subprocess
@@ -23,6 +24,7 @@ _MAX_SOURCE_BYTES = 64 * 1024 * 1024
 _MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
 _MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 _APPROVED_EXECUTABLE_ROOTS = (Path("/opt/homebrew/Cellar/ffmpeg"), Path("/usr/bin"))
+_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 
 
 class LocalAudibleProductionError(RuntimeError):
@@ -118,6 +120,7 @@ def produce_local_audible_track(
     sample_rate_hz: int = 24_000,
     channels: Literal[1, 2] = 1,
     timeout_seconds: int = 300,
+    publication_id: str | None = None,
 ) -> LocalAudibleProductionArtifact:
     if (
         not isinstance(inputs, LocalAudibleInputs)
@@ -136,8 +139,14 @@ def produce_local_audible_track(
     root = _private_directory(output_dir)
     ffmpeg = _executable(ffmpeg_path)
     ffprobe = _executable(ffprobe_path)
+    publication_suffix = ""
+    if publication_id is not None:
+        if not isinstance(publication_id, str) or not _ID.fullmatch(publication_id):
+            raise ValueError("local audible publication identity is invalid")
+        publication_suffix = f"-{publication_id}"
     destination = root / (
         f"{inputs.asset_id}-{inputs.revision_id}-audible-{inputs.input_digest[:16]}"
+        f"{publication_suffix}"
     )
     if destination.exists() or destination.is_symlink():
         raise FileExistsError(f"audible destination already exists: {destination.name}")

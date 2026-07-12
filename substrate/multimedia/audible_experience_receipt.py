@@ -125,57 +125,66 @@ def issue_audible_experience_receipt(
     if now.tzinfo is None:
         raise ValueError("audio receipt timestamp must be timezone-aware")
     path = audible_receipt_path(production)
+    pending = path.with_name(".receipt.pending.json")
     if path.exists() or path.is_symlink():
+        _remove_same_inode_pending(path, pending)
         existing = AudibleExperienceReceipt.reopen_from_file(
             path,
             signing_key=signing_key,
             production_integrity_key=production_integrity_key,
         )
-        if (
-            existing.owner_digest != owner_digest
-            or existing.production != production
-            or existing.audible_run != audible_run
-        ):
+        if not _same_authority(existing, owner_digest, production, audible_run):
             raise AudibleExperienceReceiptError("existing audio receipt conflicts") from None
         return existing
-    unsigned = AudibleExperienceReceipt(
-        owner_digest=owner_digest,
-        asset_id=production.manifest.asset_id,
-        revision_id=production.manifest.revision_id,
-        production=production,
-        audible_run=audible_run,
-        issued_at=now.astimezone(UTC).isoformat().replace("+00:00", "Z"),
-        receipt_mac="0" * 64,
-    )
-    receipt = unsigned.model_copy(update={"receipt_mac": _receipt_mac(unsigned, signing_key)})
-    receipt = AudibleExperienceReceipt.reopen(
-        receipt.to_json(),
-        signing_key=signing_key,
-        production_integrity_key=production_integrity_key,
-    )
-    payload = receipt.to_json().encode("ascii")
+    if pending.exists() or pending.is_symlink():
+        try:
+            receipt = AudibleExperienceReceipt.reopen(
+                _read_private_receipt(pending, expected_name=pending.name),
+                signing_key=signing_key,
+                production_integrity_key=production_integrity_key,
+            )
+        except AudibleExperienceReceiptError:
+            _discard_pending(pending)
+            receipt = None
+        if receipt is not None and not _same_authority(
+            receipt, owner_digest, production, audible_run
+        ):
+            raise AudibleExperienceReceiptError("pending audio receipt conflicts")
+    else:
+        receipt = None
+    if receipt is None:
+        unsigned = AudibleExperienceReceipt(
+            owner_digest=owner_digest,
+            asset_id=production.manifest.asset_id,
+            revision_id=production.manifest.revision_id,
+            production=production,
+            audible_run=audible_run,
+            issued_at=now.astimezone(UTC).isoformat().replace("+00:00", "Z"),
+            receipt_mac="0" * 64,
+        )
+        receipt = unsigned.model_copy(
+            update={"receipt_mac": _receipt_mac(unsigned, signing_key)}
+        )
+        receipt = AudibleExperienceReceipt.reopen(
+            receipt.to_json(),
+            signing_key=signing_key,
+            production_integrity_key=production_integrity_key,
+        )
+        _write_pending(pending, receipt.to_json().encode("ascii"))
+    _fsync_directory(path.parent)
     try:
-        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        os.link(pending, path, follow_symlinks=False)
     except FileExistsError:
+        _remove_same_inode_pending(path, pending)
         existing = AudibleExperienceReceipt.reopen_from_file(
             path,
             signing_key=signing_key,
             production_integrity_key=production_integrity_key,
         )
-        if (
-            existing.owner_digest != owner_digest
-            or existing.production != production
-            or existing.audible_run != audible_run
-        ):
+        if not _same_authority(existing, owner_digest, production, audible_run):
             raise AudibleExperienceReceiptError("existing audio receipt conflicts") from None
         return existing
-    try:
-        view = memoryview(payload)
-        while view:
-            view = view[os.write(descriptor, view) :]
-        os.fsync(descriptor)
-    finally:
-        os.close(descriptor)
+    os.unlink(pending)
     _fsync_directory(path.parent)
     return AudibleExperienceReceipt.reopen_from_file(
         path,
@@ -200,8 +209,8 @@ def _receipt_mac(receipt: AudibleExperienceReceipt, key: bytes) -> str:
     return hmac.new(key, payload, hashlib.sha256).hexdigest()
 
 
-def _read_private_receipt(path: Path) -> bytes:
-    if path.name != "receipt.json" or not path.is_absolute() or path.is_symlink():
+def _read_private_receipt(path: Path, *, expected_name: str = "receipt.json") -> bytes:
+    if path.name != expected_name or not path.is_absolute() or path.is_symlink():
         raise AudibleExperienceReceiptError("audio receipt path is invalid")
     try:
         descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
@@ -230,6 +239,72 @@ def _read_private_receipt(path: Path) -> bytes:
         return b"".join(chunks)
     finally:
         os.close(descriptor)
+
+
+def _write_pending(path: Path, payload: bytes) -> None:
+    try:
+        descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        raise AudibleExperienceReceiptError("pending audio receipt election conflicts") from None
+    try:
+        view = memoryview(payload)
+        while view:
+            view = view[os.write(descriptor, view) :]
+        os.fsync(descriptor)
+    except BaseException:
+        os.close(descriptor)
+        raise
+    os.close(descriptor)
+
+
+def _remove_same_inode_pending(path: Path, pending: Path) -> None:
+    if not pending.exists() and not pending.is_symlink():
+        return
+    try:
+        final_info = path.lstat()
+        pending_info = pending.lstat()
+    except OSError:
+        raise AudibleExperienceReceiptError("audio receipt publication changed") from None
+    if (
+        stat.S_ISLNK(final_info.st_mode)
+        or stat.S_ISLNK(pending_info.st_mode)
+        or (final_info.st_dev, final_info.st_ino)
+        != (pending_info.st_dev, pending_info.st_ino)
+    ):
+        return
+    os.unlink(pending)
+    _fsync_directory(path.parent)
+
+
+def _discard_pending(path: Path) -> None:
+    try:
+        info = path.lstat()
+    except OSError:
+        raise AudibleExperienceReceiptError("pending audio receipt changed") from None
+    if (
+        path.is_symlink()
+        or not stat.S_ISREG(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o600
+        or info.st_nlink != 1
+        or info.st_size > _MAX_RECEIPT_BYTES
+    ):
+        raise AudibleExperienceReceiptError("pending audio receipt is unsafe")
+    os.unlink(path)
+    _fsync_directory(path.parent)
+
+
+def _same_authority(
+    receipt: AudibleExperienceReceipt,
+    owner_digest: str,
+    production: LocalAudibleProductionArtifact,
+    audible_run: AudibleRunArtifact,
+) -> bool:
+    return (
+        receipt.owner_digest == owner_digest
+        and receipt.production == production
+        and receipt.audible_run == audible_run
+    )
 
 
 def _fsync_directory(path: Path) -> None:

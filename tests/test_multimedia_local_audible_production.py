@@ -183,6 +183,44 @@ def test_audio_only_receipt_cross_binds_and_issues_idempotently(tmp_path: Path) 
     )
 
 
+def test_receipt_issuance_recovers_partial_and_post_link_pending_files(
+    tmp_path: Path,
+) -> None:
+    inputs = _inputs(tmp_path)
+    output = tmp_path / "published"
+    output.mkdir(mode=0o700)
+    production = produce_local_audible_track(
+        inputs, output_dir=str(output), integrity_key=KEY
+    )
+    owner_digest = hashlib.sha256(b"owner-1").hexdigest()
+    receipt_path = Path(production.manifest.output_path).with_name("receipt.json")
+    pending = receipt_path.with_name(".receipt.pending.json")
+    pending.write_bytes(b'{"partial":')
+    os.chmod(pending, 0o600)
+    receipt = issue_audible_experience_receipt(
+        owner_digest=owner_digest,
+        production=production,
+        audible_run=inputs.audible_run,
+        signing_key=RECEIPT_KEY,
+        production_integrity_key=KEY,
+        now=NOW,
+    )
+    assert receipt_path.exists() and not pending.exists()
+
+    os.link(receipt_path, pending)
+    assert receipt_path.stat().st_nlink == 2
+    replay = issue_audible_experience_receipt(
+        owner_digest=owner_digest,
+        production=production,
+        audible_run=inputs.audible_run,
+        signing_key=RECEIPT_KEY,
+        production_integrity_key=KEY,
+        now=NOW + timedelta(hours=1),
+    )
+    assert replay == receipt and receipt_path.stat().st_nlink == 1
+    assert not pending.exists()
+
+
 def test_receipt_rejects_wrong_owner_authority_and_keys(tmp_path: Path) -> None:
     inputs = _inputs(tmp_path)
     output = tmp_path / "published"

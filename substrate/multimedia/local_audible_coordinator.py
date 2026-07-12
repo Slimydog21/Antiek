@@ -124,6 +124,9 @@ class LocalAudibleCoordinator:
                     "ffmpeg_digest": ffmpeg_digest,
                     "ffprobe_digest": ffprobe_digest,
                     "output_root": str(self._root),
+                    "coordinator_key_identity": hmac.new(
+                        signing_key, b"local-audible-coordinator", hashlib.sha256
+                    ).hexdigest(),
                     "production_key_identity": hmac.new(
                         signing_key, production_integrity_key, hashlib.sha256
                     ).hexdigest(),
@@ -391,6 +394,7 @@ class LocalAudibleCoordinator:
             sample_rate_hz=inputs.sample_rate_hz,
             channels=inputs.channels,
             timeout_seconds=self._timeout,
+            publication_id=self._config_digest[:16],
         )
 
     def _reopen_production(
@@ -426,6 +430,7 @@ class LocalAudibleCoordinator:
     def _production_manifest_path(self, inputs: LocalAudibleInputs) -> Path:
         directory = self._root / (
             f"{inputs.asset_id}-{inputs.revision_id}-audible-{inputs.input_digest[:16]}"
+            f"-{self._config_digest[:16]}"
         )
         return directory / "audible.json"
 
