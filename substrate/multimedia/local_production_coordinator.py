@@ -11,19 +11,45 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import duckdb
+
 from runtime.db_lock import FlockWriteCoordinator, connect_read
 
 from .chapter_tts_production import PreparedChapterTTSRequest
+from .documentary_production import reopen_ken_burns_documentary
+from .educational_video_production import (
+    EducationalVideoProductionArtifact,
+    produce_educational_video,
+)
+from .educational_video_receipt import (
+    EducationalVideoReceipt,
+    receipt_file_path,
+)
+from .educational_video_receipt import (
+    issue as issue_educational_video_receipt,
+)
 from .local_narration_bridge import (
     LocalNarrationInputs,
     LocalTTSArtifactResolver,
     compile_local_narration_inputs,
 )
+from .local_video_bridge import (
+    LocalSourceCardInput,
+    LocalSourceCardResolver,
+    LocalVideoInputs,
+    compile_local_video_inputs,
+)
 from .narration_production import (
     NarrationProductionArtifact,
     produce_narration_track,
 )
+from .production_registration import (
+    MultimediaProductionRegistrationRequest,
+    register_multimedia_production,
+)
 from .read_model import MultimediaAssetStore
+from .verified_playback import VerifiedPlaybackRuntime
+from .visual_selection import EvidenceVerifier
 
 _MAX_MANIFEST_BYTES = 2 * 1024 * 1024
 _MAX_EXECUTABLE_BYTES = 256 * 1024 * 1024
@@ -35,6 +61,16 @@ CREATE TABLE IF NOT EXISTS multimedia_local_production_runs (
  status TEXT NOT NULL, narration_manifest_path TEXT NOT NULL,
  narration_manifest_sha256 TEXT NOT NULL, created_at TEXT NOT NULL,
  updated_at TEXT NOT NULL, row_mac TEXT NOT NULL)
+"""
+
+_VIDEO_DDL = """
+CREATE TABLE IF NOT EXISTS multimedia_local_video_runs (
+ run_id TEXT PRIMARY KEY, narration_run_id TEXT NOT NULL, owner_digest TEXT NOT NULL,
+ asset_id TEXT NOT NULL, revision_id TEXT NOT NULL, input_digest TEXT NOT NULL,
+ config_digest TEXT NOT NULL, status TEXT NOT NULL, render_manifest_path TEXT NOT NULL,
+ render_manifest_sha256 TEXT NOT NULL, receipt_path TEXT NOT NULL,
+ receipt_sha256 TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+ row_mac TEXT NOT NULL)
 """
 
 
@@ -64,6 +100,24 @@ class LocalNarrationRunArtifact:
     config_digest: str
     narration: NarrationProductionArtifact
     cost_usd: float = 0.0
+
+
+@dataclass(frozen=True)
+class LocalVideoRunRequest:
+    narration: LocalNarrationRunRequest
+    source_cards: tuple[LocalSourceCardInput, ...]
+
+
+@dataclass(frozen=True)
+class LocalVideoRunArtifact:
+    run_id: str
+    narration_run_id: str
+    owner_digest: str
+    input_digest: str
+    config_digest: str
+    receipt: EducationalVideoReceipt
+    cost_usd: float = 0.0
+    registered: bool = False
 
 
 class LocalProductionCoordinator:
@@ -329,18 +383,454 @@ class LocalProductionCoordinator:
         return self._root / f"{asset_id}-{revision_id}-narration" / "narration.json"
 
     def _load(self, run_id: str):  # noqa: ANN202
+        if not Path(self._db_path).exists():
+            return None
         try:
             with connect_read(self._db_path) as connection:
                 return connection.execute(
                     "SELECT * FROM multimedia_local_production_runs WHERE run_id=?", [run_id]
                 ).fetchone()
-        except Exception:
+        except duckdb.CatalogException:
             return None
+        except Exception as exc:
+            raise LocalProductionCoordinatorError(
+                "local production database is unavailable"
+            ) from exc
+
+
+class LocalVideoProductionCoordinator:
+    """Compose attested local visuals, render, and canonical receipt durably."""
+
+    def __init__(
+        self,
+        *,
+        narration_coordinator: LocalProductionCoordinator,
+        source_card_resolver: LocalSourceCardResolver,
+        verify_evidence: EvidenceVerifier,
+        visual_output_dir: str,
+        render_output_dir: str,
+        receipt_output_dir: str,
+        visual_integrity_key: bytes,
+        evidence_authority_key: bytes,
+        render_integrity_key: bytes,
+        receipt_integrity_key: bytes,
+        width_px: int = 1280,
+        height_px: int = 720,
+        fps: int = 30,
+    ) -> None:
+        keys = (
+            visual_integrity_key, evidence_authority_key,
+            render_integrity_key, receipt_integrity_key,
+        )
+        if any(not isinstance(key, bytes) or len(key) < 32 for key in keys):
+            raise ValueError("local video integrity configuration is invalid")
+        if width_px != 1280 or height_px != 720 or fps != 30:
+            raise ValueError("local video render shape must be 1280x720 at 30 fps")
+        self._narration = narration_coordinator
+        self._cards = source_card_resolver
+        self._verify_evidence = verify_evidence
+        self._visual_root = _private_directory(visual_output_dir)
+        self._render_root = _private_directory(render_output_dir)
+        self._receipt_root = _private_directory(receipt_output_dir)
+        self._visual_key = visual_integrity_key
+        self._evidence_key = evidence_authority_key
+        self._render_key = render_integrity_key
+        self._receipt_key = receipt_integrity_key
+        self._width = width_px
+        self._height = height_px
+        self._fps = fps
+        self._config_digest = hashlib.sha256(
+            _canonical(
+                {
+                    "evidence_key_identity": self._key_identity(evidence_authority_key),
+                    "fps": fps,
+                    "height_px": height_px,
+                    "receipt_key_identity": self._key_identity(receipt_integrity_key),
+                    "receipt_root": str(self._receipt_root),
+                    "render_key_identity": self._key_identity(render_integrity_key),
+                    "render_root": str(self._render_root),
+                    "schema_version": "antiek.local-video-production-config.v1",
+                    "visual_key_identity": self._key_identity(visual_integrity_key),
+                    "visual_root": str(self._visual_root),
+                    "width_px": width_px,
+                }
+            )
+        ).hexdigest()
+
+    def produce(
+        self, request: LocalVideoRunRequest, *, now: datetime
+    ) -> LocalVideoRunArtifact:
+        narration_run = self._narration.produce_narration(request.narration, now=now)
+        inputs, owner_digest = self._narration._inputs(request.narration)
+        video = self._video_inputs(request, inputs, narration_run.narration)
+        run_id = _video_run_id(
+            narration_run.run_id, owner_digest, video.input_digest, self._config_digest
+        )
+        existing = self._load(run_id)
+        if existing is not None:
+            return self._resume_existing(
+                existing, request, narration_run, inputs, video, owner_digest, now
+            )
+        timestamp = _timestamp(now)
+        values: list[object] = [
+            run_id, narration_run.run_id, owner_digest, request.narration.asset_id,
+            request.narration.expected_revision_id, video.input_digest,
+            self._config_digest, "rendering", str(self._render_manifest_path(request)),
+            "", receipt_file_path(
+                str(self._receipt_root), request.narration.asset_id,
+                request.narration.expected_revision_id,
+            ), "", timestamp, timestamp,
+        ]
+        coordinator = FlockWriteCoordinator(self._narration._db_path)
+        with coordinator.acquire_write_context("multimedia.local_video.begin") as connection:
+            connection.execute(_VIDEO_DDL)
+            prior = connection.execute(
+                "SELECT * FROM multimedia_local_video_runs WHERE run_id=?", [run_id]
+            ).fetchone()
+            if prior is not None:
+                return self._resume_existing(
+                    prior, request, narration_run, inputs, video, owner_digest, now
+                )
+            connection.execute(
+                "INSERT INTO multimedia_local_video_runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [*values, _mac(values, self._narration._key)],
+            )
+        try:
+            production = self._produce(request, narration_run.narration, video)
+            row = self._complete_render(values, production, request, video, owner_digest)
+            return self._issue(row, request, narration_run, inputs, video, owner_digest, now)
+        except LocalProductionOutcomeUnknown:
+            raise
+        except Exception as exc:
+            raise LocalProductionOutcomeUnknown(
+                "local video production outcome requires explicit recovery"
+            ) from exc
+
+    def recover(
+        self, request: LocalVideoRunRequest, *, now: datetime
+    ) -> LocalVideoRunArtifact:
+        narration_run = self._narration.recover_narration(request.narration, now=now)
+        inputs, owner_digest = self._narration._inputs(request.narration)
+        video = self._video_inputs(request, inputs, narration_run.narration)
+        run_id = _video_run_id(
+            narration_run.run_id, owner_digest, video.input_digest, self._config_digest
+        )
+        row = self._load(run_id)
+        if row is None:
+            raise LocalProductionCoordinatorError("local video run is unavailable")
+        self._verify_row(row, request, narration_run, video, owner_digest)
+        return self._resume_existing(
+            row, request, narration_run, inputs, video, owner_digest, now, recovering=True
+        )
+
+    def register(
+        self, request: LocalVideoRunRequest, *, now: datetime
+    ) -> LocalVideoRunArtifact:
+        """Verify bounded playback and idempotently attach the exact current revision."""
+        artifact = self.produce(request, now=now)
+        playback = VerifiedPlaybackRuntime(
+            receipt_root=str(self._receipt_root),
+            receipt_key=self._receipt_key,
+            narration_key=self._narration._narration_key,
+            visual_key=self._visual_key,
+            render_key=self._render_key,
+        )
+        metadata = playback.metadata(
+            asset_id=request.narration.asset_id,
+            revision_id=request.narration.expected_revision_id,
+        )
+        for kind in ("video", "audio"):
+            media = playback.read(
+                asset_id=request.narration.asset_id,
+                revision_id=request.narration.expected_revision_id,
+                kind=kind,
+                range_header="bytes=0-1023",
+            )
+            if media.start != 0 or media.end < 0 or media.total <= 0 or not media.payload:
+                raise LocalProductionCoordinatorError("local verified playback is unavailable")
+        if (
+            metadata.receipt_sha256
+            != hashlib.sha256(artifact.receipt.to_json().encode()).hexdigest()
+        ):
+            raise LocalProductionCoordinatorError("local playback receipt identity conflicts")
+        register_multimedia_production(
+            request.narration.asset_id,
+            MultimediaProductionRegistrationRequest(
+                expected_revision_id=request.narration.expected_revision_id
+            ),
+            owner_id=request.narration.owner_id,
+            store=self._narration._store,
+            playback=playback,
+        )
+        row = self._load(artifact.run_id)
+        if row is None:
+            raise LocalProductionCoordinatorError("local video run is unavailable")
+        if row[7] == "registered":
+            return artifact
+        if row[7] != "succeeded":
+            raise LocalProductionCoordinatorError("local video registration state conflicts")
+        updated = list(row[:14])
+        updated[7] = "registered"
+        updated[13] = _timestamp(now)
+        self._transition(row, updated, "multimedia.local_video.register")
+        return artifact.__class__(
+            run_id=artifact.run_id,
+            narration_run_id=artifact.narration_run_id,
+            owner_digest=artifact.owner_digest,
+            input_digest=artifact.input_digest,
+            config_digest=artifact.config_digest,
+            receipt=artifact.receipt,
+            registered=True,
+        )
+
+    def _resume_existing(
+        self, row, request: LocalVideoRunRequest,  # noqa: ANN001
+        narration_run: LocalNarrationRunArtifact, inputs: LocalNarrationInputs,
+        video: LocalVideoInputs, owner_digest: str, now: datetime,
+        *, recovering: bool = False,
+    ) -> LocalVideoRunArtifact:
+        self._verify_row(row, request, narration_run, video, owner_digest)
+        if row[7] in {"succeeded", "registered"}:
+            return self._reopen_receipt(row, narration_run, video, owner_digest)
+        if row[7] == "rendering":
+            if not recovering:
+                raise LocalProductionOutcomeUnknown("local video render outcome is unknown")
+            try:
+                production = self._reopen_production(request, narration_run.narration, video)
+            except Exception as exc:
+                raise LocalProductionOutcomeUnknown("local video render output is unavailable") from exc
+            row = self._complete_render(
+                list(row[:14]), production, request, video, owner_digest
+            )
+        if row[7] in {"render_succeeded", "receipting"}:
+            return self._issue(
+                row, request, narration_run, inputs, video, owner_digest, now,
+                recovering=recovering,
+            )
+        raise LocalProductionCoordinatorError("local video production state conflicts")
+
+    def _produce(
+        self, request: LocalVideoRunRequest, narration: NarrationProductionArtifact,
+        video: LocalVideoInputs,
+    ) -> EducationalVideoProductionArtifact:
+        return produce_educational_video(
+            asset_id=request.narration.asset_id,
+            revision_id=request.narration.expected_revision_id,
+            narration=narration,
+            narration_integrity_key=self._narration._narration_key,
+            timeline=video.timeline,
+            selections=video.selections,
+            visual_output_dir=str(self._visual_root),
+            render_output_dir=str(self._render_root),
+            visual_integrity_key=self._visual_key,
+            evidence_authority_key=self._evidence_key,
+            render_integrity_key=self._render_key,
+            verify_evidence=self._verify_evidence,
+            ffmpeg_path=self._narration._ffmpeg,
+            ffprobe_path=self._narration._ffprobe,
+            width_px=self._width, height_px=self._height, fps=self._fps,
+            timeout_seconds=self._narration._timeout,
+        )
+
+    def _reopen_production(
+        self, request: LocalVideoRunRequest, narration: NarrationProductionArtifact,
+        video: LocalVideoInputs,
+    ) -> EducationalVideoProductionArtifact:
+        documentary = reopen_ken_burns_documentary(
+            asset_id=request.narration.asset_id,
+            revision_id=request.narration.expected_revision_id,
+            timeline=video.timeline,
+            narration_path=narration.manifest.output_path,
+            visual_output_dir=str(self._visual_root),
+            render_output_dir=str(self._render_root),
+            visual_integrity_key=self._visual_key,
+            render_integrity_key=self._render_key,
+            width_px=self._width, height_px=self._height, fps=self._fps,
+        )
+        return EducationalVideoProductionArtifact(narration=narration, documentary=documentary)
+
+    def _complete_render(
+        self, prior_values: list[object], production: EducationalVideoProductionArtifact,
+        request: LocalVideoRunRequest, video: LocalVideoInputs, owner_digest: str,
+    ) -> tuple[object, ...]:
+        reopened = self._reopen_production(request, production.narration, video)
+        if reopened != production:
+            raise LocalProductionCoordinatorError("local video render conflicts")
+        path = self._render_manifest_path(request)
+        digest = hashlib.sha256(_read_private(path)).hexdigest()
+        completed = [*prior_values]
+        completed[7] = "render_succeeded"
+        completed[8] = str(path)
+        completed[9] = digest
+        coordinator = FlockWriteCoordinator(self._narration._db_path)
+        with coordinator.acquire_write_context("multimedia.local_video.render") as connection:
+            current = connection.execute(
+                "SELECT * FROM multimedia_local_video_runs WHERE run_id=?", [completed[0]]
+            ).fetchone()
+            self._verify_row_base(current, list(prior_values))
+            if current[7] == "render_succeeded":
+                return current
+            if current[7] != "rendering":
+                raise LocalProductionCoordinatorError("local video render state conflicts")
+            connection.execute(
+                "UPDATE multimedia_local_video_runs SET status=?, render_manifest_path=?, "
+                "render_manifest_sha256=?, row_mac=? WHERE run_id=?",
+                [completed[7], completed[8], completed[9],
+                 _mac(completed, self._narration._key), completed[0]],
+            )
+        return tuple([*completed, _mac(completed, self._narration._key)])
+
+    def _issue(
+        self, row, request: LocalVideoRunRequest, narration_run: LocalNarrationRunArtifact,  # noqa: ANN001
+        inputs: LocalNarrationInputs, video: LocalVideoInputs, owner_digest: str,
+        now: datetime, *, recovering: bool = False,
+    ) -> LocalVideoRunArtifact:
+        self._verify_row(row, request, narration_run, video, owner_digest)
+        production = self._reopen_production(request, narration_run.narration, video)
+        current = row
+        if row[7] == "render_succeeded":
+            started = list(row[:14])
+            started[7] = "receipting"
+            started[13] = _timestamp(now)
+            current = self._transition(row, started, "multimedia.local_video.receipting")
+        elif row[7] == "receipting" and not recovering:
+            raise LocalProductionOutcomeUnknown("local video receipt outcome is unknown")
+        try:
+            receipt = issue_educational_video_receipt(
+                artifact=production,
+                receipt_key=self._receipt_key,
+                narration_key=self._narration._narration_key,
+                visual_key=self._visual_key,
+                render_key=self._render_key,
+                output_dir=str(self._receipt_root),
+            )
+        except Exception as exc:
+            raise LocalProductionOutcomeUnknown("local video receipt output is unknown") from exc
+        path = Path(str(current[10]))
+        payload = _read_private(path)
+        reopened = EducationalVideoReceipt.reopen_from_file(
+            str(path), self._receipt_key, self._narration._narration_key,
+            self._visual_key, self._render_key,
+        )
+        if reopened != receipt:
+            raise LocalProductionCoordinatorError("local video receipt conflicts")
+        completed = list(current[:14])
+        completed[7] = "succeeded"
+        completed[11] = hashlib.sha256(payload).hexdigest()
+        completed[13] = _timestamp(now)
+        final = self._transition(current, completed, "multimedia.local_video.complete")
+        return self._reopen_receipt(final, narration_run, video, owner_digest)
+
+    def _transition(self, current, updated: list[object], operation: str):  # noqa: ANN001, ANN202
+        coordinator = FlockWriteCoordinator(self._narration._db_path)
+        with coordinator.acquire_write_context(operation) as connection:
+            stored = connection.execute(
+                "SELECT * FROM multimedia_local_video_runs WHERE run_id=?", [updated[0]]
+            ).fetchone()
+            self._verify_row_base(stored, list(current[:14]))
+            if stored[7] == updated[7] and list(stored[:14]) == updated:
+                return stored
+            connection.execute(
+                "UPDATE multimedia_local_video_runs SET status=?, receipt_sha256=?, "
+                "updated_at=?, row_mac=? WHERE run_id=?",
+                [updated[7], updated[11], updated[13],
+                 _mac(updated, self._narration._key), updated[0]],
+            )
+        return tuple([*updated, _mac(updated, self._narration._key)])
+
+    def _reopen_receipt(
+        self, row, narration_run: LocalNarrationRunArtifact,  # noqa: ANN001
+        video: LocalVideoInputs, owner_digest: str,
+    ) -> LocalVideoRunArtifact:
+        path = Path(str(row[10]))
+        payload = _read_private(path)
+        if not hmac.compare_digest(hashlib.sha256(payload).hexdigest(), str(row[11])):
+            raise LocalProductionCoordinatorError("local video receipt digest conflicts")
+        receipt = EducationalVideoReceipt.reopen_from_file(
+            str(path), self._receipt_key, self._narration._narration_key,
+            self._visual_key, self._render_key,
+        )
+        return LocalVideoRunArtifact(
+            run_id=str(row[0]), narration_run_id=narration_run.run_id,
+            owner_digest=owner_digest, input_digest=video.input_digest,
+            config_digest=self._config_digest, receipt=receipt,
+            registered=row[7] == "registered",
+        )
+
+    def _video_inputs(
+        self, request: LocalVideoRunRequest, inputs: LocalNarrationInputs,
+        narration: NarrationProductionArtifact,
+    ) -> LocalVideoInputs:
+        record = self._narration._store.get(
+            request.narration.asset_id, owner_id=request.narration.owner_id
+        )
+        return compile_local_video_inputs(
+            record.plan, inputs, narration, request.source_cards,
+            owner_id=request.narration.owner_id, resolver=self._cards,
+            verify_evidence=self._verify_evidence,
+        )
+
+    def _verify_row(self, row, request, narration_run, video, owner_digest) -> None:  # noqa: ANN001
+        expected = [
+            _video_run_id(narration_run.run_id, owner_digest, video.input_digest, self._config_digest),
+            narration_run.run_id, owner_digest, request.narration.asset_id,
+            request.narration.expected_revision_id, video.input_digest, self._config_digest,
+        ]
+        if row is None or len(row) != 15 or list(row[:7]) != expected:
+            raise LocalProductionCoordinatorError("stored local video integrity failed")
+        self._verify_row_mac(row)
+
+    def _verify_row_base(self, row, expected: list[object]) -> None:  # noqa: ANN001
+        if (
+            row is None or len(row) != 15 or list(row[:14]) != expected
+        ):
+            raise LocalProductionCoordinatorError("stored local video integrity failed")
+        self._verify_row_mac(row)
+
+    def _verify_row_mac(self, row) -> None:  # noqa: ANN001
+        if (
+            not isinstance(row[14], str)
+            or not hmac.compare_digest(
+                row[14], _mac(list(row[:14]), self._narration._key)
+            )
+        ):
+            raise LocalProductionCoordinatorError("stored local video integrity failed")
+
+    def _render_manifest_path(self, request: LocalVideoRunRequest) -> Path:
+        return self._render_root / (
+            f"{request.narration.asset_id}-{request.narration.expected_revision_id}"
+        ) / "render.json"
+
+    def _load(self, run_id: str):  # noqa: ANN202
+        if not Path(self._narration._db_path).exists():
+            return None
+        try:
+            with connect_read(self._narration._db_path) as connection:
+                return connection.execute(
+                    "SELECT * FROM multimedia_local_video_runs WHERE run_id=?", [run_id]
+                ).fetchone()
+        except duckdb.CatalogException:
+            return None
+        except Exception as exc:
+            raise LocalProductionCoordinatorError(
+                "local production database is unavailable"
+            ) from exc
+
+    def _key_identity(self, key: bytes) -> str:
+        return hmac.new(self._narration._key, key, hashlib.sha256).hexdigest()
 
 
 def _run_id(owner_digest: str, input_digest: str, config_digest: str) -> str:
     return "mmlocalrun_" + hashlib.sha256(
         f"{owner_digest}\0{input_digest}\0{config_digest}".encode()
+    ).hexdigest()
+
+
+def _video_run_id(
+    narration_run_id: str, owner_digest: str, input_digest: str, config_digest: str
+) -> str:
+    return "mmlocalvideo_" + hashlib.sha256(
+        f"{narration_run_id}\0{owner_digest}\0{input_digest}\0{config_digest}".encode()
     ).hexdigest()
 
 
@@ -440,4 +930,7 @@ __all__ = [
     "LocalProductionCoordinator",
     "LocalProductionCoordinatorError",
     "LocalProductionOutcomeUnknown",
+    "LocalVideoProductionCoordinator",
+    "LocalVideoRunArtifact",
+    "LocalVideoRunRequest",
 ]

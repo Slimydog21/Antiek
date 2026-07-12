@@ -9,6 +9,7 @@ import wave
 from pathlib import Path
 
 import pytest
+from PIL import Image
 from pydantic import ValidationError
 
 import substrate.multimedia.ken_burns_renderer as renderer
@@ -132,6 +133,17 @@ def test_real_ffmpeg_render_has_verified_streams_and_reopens_without_process(
     assert all(cue.source_chunk_ids for cue in manifest.captions)
     sidecar = output / "aircraft-revision-1" / "render.json"
     assert sidecar.exists()
+    frame = output / "decoded-frame.png"
+    subprocess.run(
+        [
+            "/opt/homebrew/bin/ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-ss", "0.2", "-i", manifest.output_path, "-frames:v", "1", str(frame),
+        ],
+        check=True,
+    )
+    with Image.open(frame) as decoded:
+        right_edge = decoded.convert("RGB").getpixel((decoded.width - 4, decoded.height // 2))
+    assert right_edge[0] > 150 and right_edge[1] < 100 and right_edge[2] < 100
 
     monkeypatch.setattr(subprocess, "run", lambda *args, **kwargs: pytest.fail("no subprocess"))
     assert KenBurnsRenderArtifact.reopen(sidecar.read_text(), _INTEGRITY_KEY) == artifact

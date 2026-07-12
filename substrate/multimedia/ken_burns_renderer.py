@@ -409,8 +409,6 @@ def _ffmpeg_argv(
             [
                 "-protocol_whitelist",
                 "file,pipe",
-                "-f",
-                "image2",
                 "-loop",
                 "1",
                 "-t",
@@ -443,7 +441,8 @@ def _ffmpeg_argv(
         motion = _motion_filter(entry.motion, frames)
         filters.append(
             f"[{index}:v]scale={width_px}:{height_px}:force_original_aspect_ratio=increase,"
-            f"crop={width_px}:{height_px},zoompan={motion}:d={frames}:s={width_px}x{height_px}:fps={fps},"
+            f"crop={width_px}:{height_px},setsar=1,"
+            f"zoompan={motion}:d={frames}:s={width_px}x{height_px}:fps={fps},"
             f"setpts=PTS-STARTPTS[v{index}]"
         )
     joined = "".join(f"[v{index}]" for index in range(len(timeline)))

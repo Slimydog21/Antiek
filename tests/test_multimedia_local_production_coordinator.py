@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import duckdb
 import pytest
+from PIL import Image, ImageDraw
 
 import substrate.multimedia.local_production_coordinator as coordinator_module
 from substrate.contracts.multimedia import ScriptLine
@@ -18,9 +19,17 @@ from substrate.multimedia.local_production_coordinator import (
     LocalProductionCoordinator,
     LocalProductionCoordinatorError,
     LocalProductionOutcomeUnknown,
+    LocalVideoProductionCoordinator,
+    LocalVideoRunRequest,
+)
+from substrate.multimedia.local_source_card import (
+    LocalSourceCardArtifact,
+    LocalSourceCardRequest,
 )
 from substrate.multimedia.local_tts import LocalTTSArtifact
+from substrate.multimedia.local_video_bridge import LocalSourceCardInput
 from substrate.multimedia.planner import ChapterPlan, MultimediaPlan, MultimediaPlanRequest
+from substrate.multimedia.visual_selection import VerifiedVisualEvidence
 
 NOW = datetime(2026, 7, 13, tzinfo=UTC)
 FFMPEG = Path("/opt/homebrew/bin/ffmpeg")
@@ -68,11 +77,26 @@ class Store:
             ),
             plan=plan,
             mode="hybrid",
+            production_link=None,
         )
 
     def get(self, asset_id: str, *, owner_id: str):  # noqa: ANN201
         if asset_id != "asset-1" or owner_id != "owner-1":
             raise KeyError(asset_id)
+        return self.record
+
+    def attach_production_link(
+        self, asset_id, link, *, expected_revision_id, owner_id  # noqa: ANN001
+    ):  # noqa: ANN201
+        if (
+            asset_id != self.record.asset.asset_id
+            or expected_revision_id != self.record.asset.revision_id
+            or owner_id != "owner-1"
+        ):
+            raise ValueError("production identity conflicts")
+        if self.record.production_link is not None and self.record.production_link != link:
+            raise ValueError("production link conflicts")
+        self.record.production_link = link
         return self.record
 
 
@@ -202,3 +226,170 @@ def test_stale_revision_and_database_tamper_fail_closed(runtime) -> None:
     with pytest.raises(LocalProductionCoordinatorError, match="integrity"):
         coordinator.produce_narration(request, now=NOW)
     assert Path(artifact.narration.manifest.output_path).exists()
+
+
+class CardResolver:
+    def __init__(self, artifact: LocalSourceCardArtifact) -> None:
+        self.artifact = artifact
+
+    def reopen(self, card_id, request, *, owner_id):  # noqa: ANN001, ANN201
+        if card_id != self.artifact.card_id or owner_id != "owner-1":
+            raise RuntimeError("card unavailable")
+        return self.artifact
+
+
+def _video_runtime(runtime):  # noqa: ANN201
+    narration, narration_request, store, _resolver, tmp_path = runtime
+    card_path = tmp_path / "card.png"
+    card_image = Image.new("RGB", (1280, 720), "white")
+    card_draw = ImageDraw.Draw(card_image)
+    card_draw.rectangle((0, 0, 1280, 96), fill="#18232f")
+    card_draw.rectangle((0, 0, 18, 720), fill="#f2c94c")
+    card_draw.text((56, 34), "ANTIEK LOCAL SOURCE CARD", fill="white")
+    card_draw.text((96, 250), "AIRCRAFT FACTORY FLOW", fill="#18232f")
+    card_draw.text((96, 320), "Factories coordinate work through staged flow.", fill="#35495e")
+    card_image.save(card_path, format="PNG")
+    card_path.chmod(0o600)
+    card_request = LocalSourceCardRequest(
+        asset_id="asset-1", revision_id="revision-1", chapter_id="chapter-1",
+        scene_id="scene-chapter-1", title="Flow", information_purpose="Explain flow",
+        source_chunk_ids=("chunk-1",),
+    )
+    card = LocalSourceCardArtifact(
+        card_id="card-1", asset_id="asset-1", revision_id="revision-1",
+        chapter_id="chapter-1", scene_id="scene-chapter-1",
+        source_chunk_ids=("chunk-1",), output_path=str(card_path),
+        output_sha256=hashlib.sha256(card_path.read_bytes()).hexdigest(),
+        input_digest="6" * 64, snapshot_digest="7" * 64,
+        renderer_version="renderer", font_digest="8" * 64,
+        width_px=1280, height_px=720, created_at="2026-07-13T00:00:00Z",
+    )
+    evidence_key = b"video-evidence-authority-key-32bytes"
+
+    def verify(selection, digest):  # noqa: ANN001, ANN202
+        return VerifiedVisualEvidence.issue(
+            scene_id=selection.scene_id, visual_label="diagram", content_sha256=digest,
+            evidence_digest="9" * 64, authority_key=evidence_key,
+        )
+
+    roots = []
+    for name in ("visuals", "renders", "receipts"):
+        root = tmp_path / name
+        root.mkdir(mode=0o700)
+        roots.append(root)
+    video = LocalVideoProductionCoordinator(
+        narration_coordinator=narration,
+        source_card_resolver=CardResolver(card),
+        verify_evidence=verify,
+        visual_output_dir=str(roots[0]), render_output_dir=str(roots[1]),
+        receipt_output_dir=str(roots[2]),
+        visual_integrity_key=b"video-visual-integrity-key-32bytes",
+        evidence_authority_key=evidence_key,
+        render_integrity_key=b"video-render-integrity-key-32bytes",
+        receipt_integrity_key=b"video-receipt-integrity-key-32bytes",
+    )
+    request = LocalVideoRunRequest(
+        narration=narration_request,
+        source_cards=(LocalSourceCardInput("card-1", card_request),),
+    )
+    return video, request, store, tmp_path
+
+
+def test_renders_receipts_and_exactly_replays_local_video(
+    runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video, request, _store, _tmp = _video_runtime(runtime)
+    first = video.produce(request, now=NOW)
+    assert first.cost_usd == 0.0
+    assert Path(first.receipt.render.manifest.output_path).read_bytes()[4:8] == b"ftyp"
+    assert Path(first.receipt.render.manifest.captions_path).read_text().startswith("WEBVTT")
+
+    def no_second_render(**_kwargs):  # noqa: ANN003, ANN202
+        raise AssertionError("exact replay must not render")
+
+    monkeypatch.setattr(coordinator_module, "produce_educational_video", no_second_render)
+    assert video.produce(request, now=NOW) == first
+
+
+def test_render_publication_crash_is_adopted_only_by_recovery(
+    runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video, request, _store, _tmp = _video_runtime(runtime)
+    real_complete = LocalVideoProductionCoordinator._complete_render
+
+    def interrupted(*_args, **_kwargs):  # noqa: ANN002, ANN003, ANN202
+        raise RuntimeError("crash after render publication")
+
+    monkeypatch.setattr(LocalVideoProductionCoordinator, "_complete_render", interrupted)
+    with pytest.raises(LocalProductionOutcomeUnknown):
+        video.produce(request, now=NOW)
+    with pytest.raises(LocalProductionOutcomeUnknown, match="render outcome"):
+        video.produce(request, now=NOW)
+    monkeypatch.setattr(LocalVideoProductionCoordinator, "_complete_render", real_complete)
+    recovered = video.recover(request, now=NOW)
+    assert Path(recovered.receipt.render.manifest.output_path).is_file()
+
+
+def test_receipt_publication_crash_remains_unknown_until_recovery(
+    runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video, request, _store, _tmp = _video_runtime(runtime)
+    real_issue = coordinator_module.issue_educational_video_receipt
+
+    def interrupted(**kwargs):  # noqa: ANN003, ANN202
+        real_issue(**kwargs)
+        raise RuntimeError("crash after receipt publication")
+
+    monkeypatch.setattr(coordinator_module, "issue_educational_video_receipt", interrupted)
+    with pytest.raises(LocalProductionOutcomeUnknown, match="receipt output"):
+        video.produce(request, now=NOW)
+    with pytest.raises(LocalProductionOutcomeUnknown, match="receipt outcome"):
+        video.produce(request, now=NOW)
+    monkeypatch.setattr(coordinator_module, "issue_educational_video_receipt", real_issue)
+    recovered = video.recover(request, now=NOW)
+    assert recovered.receipt.asset_id == "asset-1"
+
+
+def test_video_row_tamper_fails_closed(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.produce(request, now=NOW)
+    with duckdb.connect(str(tmp_path / "runs.duckdb")) as connection:
+        connection.execute(
+            "UPDATE multimedia_local_video_runs SET receipt_sha256=?", ["0" * 64]
+        )
+    with pytest.raises(LocalProductionCoordinatorError, match="integrity"):
+        video.produce(request, now=NOW)
+
+
+def test_rendered_media_tamper_fails_receipt_replay(runtime) -> None:
+    video, request, _store, _tmp = _video_runtime(runtime)
+    artifact = video.produce(request, now=NOW)
+    Path(artifact.receipt.render.manifest.output_path).write_bytes(b"tampered")
+    Path(artifact.receipt.render.manifest.output_path).chmod(0o600)
+    with pytest.raises(RuntimeError, match="digest"):
+        video.produce(request, now=NOW)
+
+
+def test_verified_playback_registers_exact_current_revision_and_replays(runtime) -> None:
+    video, request, store, _tmp = _video_runtime(runtime)
+    first = video.register(request, now=NOW)
+    assert first.registered is True
+    assert store.record.production_link is not None
+    assert store.record.production_link.receipt_sha256 == hashlib.sha256(
+        first.receipt.to_json().encode()
+    ).hexdigest()
+    assert video.register(request, now=NOW) == first
+
+
+def test_database_failure_is_not_misreported_as_missing(
+    runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    coordinator, _request, _store, _resolver, tmp_path = runtime
+    Path(tmp_path / "runs.duckdb").touch(mode=0o600)
+
+    def unavailable(_path):  # noqa: ANN001, ANN202
+        raise OSError("disk failure")
+
+    monkeypatch.setattr(coordinator_module, "connect_read", unavailable)
+    with pytest.raises(LocalProductionCoordinatorError, match="database"):
+        coordinator._load("missing")  # noqa: SLF001

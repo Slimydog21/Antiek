@@ -11,6 +11,7 @@ import stat
 import tempfile
 import textwrap
 import threading
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -472,6 +473,11 @@ def _private_png(path: Path) -> str:
         raise LocalSourceCardError("local source-card output is unavailable") from None
     try:
         info = os.fstat(fd)
+        for _attempt in range(20):
+            if info.st_nlink != 2:
+                break
+            time.sleep(0.005)
+            info = os.fstat(fd)
         if not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid() or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or not 32 <= info.st_size <= _MAX_CARD_BYTES:
             raise LocalSourceCardError("local source-card output is not private and bounded")
         header = os.read(fd, 24)
