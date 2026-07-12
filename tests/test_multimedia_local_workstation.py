@@ -7,6 +7,7 @@ from types import SimpleNamespace
 
 import duckdb
 import pytest
+from PIL import Image
 
 from substrate.contracts.multimedia import ScriptLine
 from substrate.multimedia.local_production_coordinator import LocalProductionOutcomeUnknown
@@ -70,6 +71,7 @@ class TTS:
         self.rows: dict[str, LocalTTSArtifact] = {}
         self.unknown_once = False
         self.synthesis_calls = 0
+        self.recovery_fails = False
 
     def _artifact(self, request) -> LocalTTSArtifact:  # noqa: ANN001
         return LocalTTSArtifact(
@@ -90,6 +92,8 @@ class TTS:
         return self.rows.setdefault(request.body_digest, self._artifact(request))
 
     def recover(self, request):  # noqa: ANN001, ANN201
+        if self.recovery_fails:
+            raise LocalTTSError("pending output unavailable")
         return self.rows[request.body_digest]
 
     def reopen(self, request):  # noqa: ANN001, ANN201
@@ -100,17 +104,21 @@ class TTS:
 
 
 class Cards:
-    def __init__(self) -> None:
+    def __init__(self, root: Path) -> None:
         self.rows: dict[str, LocalSourceCardArtifact] = {}
         self.attested: set[str] = set()
+        self.root = root
 
     def create(self, request: LocalSourceCardRequest, *, owner_id: str, now: datetime):  # noqa: ANN201
         card_id = "card-" + request.chapter_id
+        output_path = self.root / f"{card_id}.png"
+        Image.new("RGB", (1280, 720), "white").save(output_path, format="PNG")
+        output_path.chmod(0o600)
         artifact = LocalSourceCardArtifact(
             card_id=card_id, asset_id=request.asset_id, revision_id=request.revision_id,
             chapter_id=request.chapter_id, scene_id=request.scene_id,
-            source_chunk_ids=request.source_chunk_ids, output_path="/private/card.png",
-            output_sha256="4" * 64, input_digest="5" * 64,
+            source_chunk_ids=request.source_chunk_ids, output_path=str(output_path),
+            output_sha256=hashlib.sha256(output_path.read_bytes()).hexdigest(), input_digest="5" * 64,
             snapshot_digest="6" * 64, renderer_version="renderer",
             font_digest="7" * 64, width_px=1280, height_px=720,
             created_at="2026-07-13T00:00:00Z",
@@ -148,7 +156,7 @@ class Video:
 
 @pytest.fixture
 def runtime(tmp_path: Path):  # noqa: ANN201
-    tts, cards, video, store = TTS(), Cards(), Video(), Store()
+    tts, cards, video, store = TTS(), Cards(tmp_path), Video(), Store()
 
     def verify(selection, digest):  # noqa: ANN001, ANN202
         if "card-chapter-1" not in cards.attested:
@@ -174,6 +182,11 @@ def test_prepare_requires_explicit_attestation_then_registers_and_replays(runtim
     assert prepared.status == "review_required" and prepared.cost_usd == 0.0
     assert prepared.chapters[0].narration_ready and prepared.chapters[0].card_ready
     assert prepared.chapters[0].attested is False
+    preview = service.preview_card(
+        "asset-1", "revision-1", prepared.set_id, prepared.chapters[0].card_id or "",
+        owner_id="owner-1",
+    )
+    assert preview[:8] == b"\x89PNG\r\n\x1a\n"
     with pytest.raises(LocalWorkstationError, match="explicit review"):
         service.produce("asset-1", "revision-1", prepared.set_id, owner_id="owner-1")
     reviewed = service.attest(
@@ -202,6 +215,18 @@ def test_preparation_unknown_requires_explicit_recovery(runtime) -> None:
         "asset-1", "revision-1", pending.set_id, owner_id="owner-1"
     )
     assert recovered.status == "review_required" and not recovered.recoverable
+
+
+def test_failed_preparation_recovery_remains_honestly_recoverable(runtime) -> None:
+    service, tts, _cards, _video, _store, _tmp = runtime
+    tts.unknown_once = True
+    pending = service.prepare("asset-1", "revision-1", owner_id="owner-1")
+    tts.unknown_once = True
+    tts.recovery_fails = True
+    unresolved = service.recover(
+        "asset-1", "revision-1", pending.set_id, owner_id="owner-1"
+    )
+    assert unresolved.status == "preparation_unknown" and unresolved.recoverable
 
 
 def test_production_unknown_requires_recovery(runtime) -> None:

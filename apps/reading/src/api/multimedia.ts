@@ -218,6 +218,40 @@ export interface MultimediaPlayback {
   audio_url: string;
 }
 
+export interface MultimediaLocalCapability {
+  available: boolean;
+  reason: "ready" | "unavailable";
+  route_policy: "cheapest";
+  cost_usd: 0;
+}
+
+export type MultimediaLocalStatus =
+  | "preparing"
+  | "preparation_unknown"
+  | "review_required"
+  | "ready_to_produce"
+  | "production_unknown"
+  | "registered";
+
+export interface MultimediaLocalPreparedSet {
+  set_id: string;
+  asset_id: string;
+  revision_id: string;
+  status: MultimediaLocalStatus;
+  recoverable: boolean;
+  cost_usd: 0;
+  playback_ready: boolean;
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    narration_ready: boolean;
+    card_id: string | null;
+    card_ready: boolean;
+    attested: boolean;
+    source_count: number;
+  }>;
+}
+
 export interface MultimediaNarrationAuthorization {
   chapter_id: string;
   child_revision_id: string;
@@ -472,6 +506,145 @@ export async function registerMultimediaProduction(
     throw new Error("multimedia_production_identity_conflict");
   }
   return record;
+}
+
+export async function getMultimediaLocalCapability(): Promise<MultimediaLocalCapability> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/local/capability`);
+  if (!resp.ok) throw new Error(`GET /multimedia/local/capability: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalCapability;
+  if (
+    typeof result.available !== "boolean" ||
+    result.reason !== (result.available ? "ready" : "unavailable") ||
+    result.route_policy !== "cheapest" ||
+    result.cost_usd !== 0
+  ) {
+    throw new Error("multimedia_local_capability_conflict");
+  }
+  return result;
+}
+
+export async function prepareMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(assetId, revisionId, "/prepare", undefined);
+}
+
+export async function inspectMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local/${encodeURIComponent(revisionId)}/${encodeURIComponent(setId)}`,
+  );
+  return localResponse(resp, assetId, revisionId, setId, "GET local prepared set");
+}
+
+export async function attestMultimediaLocalCard(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+  cardId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(
+    assetId,
+    revisionId,
+    `/cards/${encodeURIComponent(cardId)}/attest`,
+    setId,
+  );
+}
+
+export async function produceMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(assetId, revisionId, "/produce", setId);
+}
+
+export async function recoverMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(assetId, revisionId, "/recover", setId);
+}
+
+export function multimediaLocalCardPreviewUrl(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+  cardId: string,
+): string {
+  return `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local/${encodeURIComponent(revisionId)}/${encodeURIComponent(setId)}/cards/${encodeURIComponent(cardId)}/content`;
+}
+
+async function localCommand(
+  assetId: string,
+  revisionId: string,
+  suffix: string,
+  setId: string | undefined,
+): Promise<MultimediaLocalPreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local${suffix}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        ...(setId === undefined ? {} : { set_id: setId }),
+      }),
+    },
+  );
+  return localResponse(resp, assetId, revisionId, setId, `POST local${suffix}`);
+}
+
+async function localResponse(
+  resp: Response,
+  assetId: string,
+  revisionId: string,
+  setId: string | undefined,
+  operation: string,
+): Promise<MultimediaLocalPreparedSet> {
+  if (resp.status === 404) throw new Error("multimedia_local_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_local_conflict");
+  if (resp.status === 503) throw new Error("multimedia_local_runtime_unavailable");
+  if (!resp.ok) throw new Error(`${operation}: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalPreparedSet;
+  const statuses: MultimediaLocalStatus[] = [
+    "preparing", "preparation_unknown", "review_required",
+    "ready_to_produce", "production_unknown", "registered",
+  ];
+  const chapterIds = result.chapters?.map((chapter) => chapter.chapter_id) ?? [];
+  const cardIds = result.chapters?.flatMap((chapter) => chapter.card_id ? [chapter.card_id] : []) ?? [];
+  const allAttested = result.chapters?.length > 0 && result.chapters.every((chapter) => chapter.attested);
+  const recoverable = ["preparing", "preparation_unknown", "production_unknown"].includes(result.status);
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    (setId !== undefined && result.set_id !== setId) ||
+    !/^mmlocalset_[0-9a-f]{64}$/.test(result.set_id) ||
+    !statuses.includes(result.status) ||
+    result.cost_usd !== 0 ||
+    result.recoverable !== recoverable ||
+    result.playback_ready !== (result.status === "registered") ||
+    !Array.isArray(result.chapters) ||
+    new Set(chapterIds).size !== chapterIds.length ||
+    new Set(cardIds).size !== cardIds.length ||
+    result.chapters.some(
+      (chapter) =>
+        !chapter.chapter_id || !chapter.title ||
+        typeof chapter.narration_ready !== "boolean" ||
+        typeof chapter.card_ready !== "boolean" ||
+        typeof chapter.attested !== "boolean" ||
+        !Number.isSafeInteger(chapter.source_count) || chapter.source_count < 0,
+    ) ||
+    (["ready_to_produce", "registered"].includes(result.status) && !allAttested)
+  ) {
+    throw new Error("multimedia_local_identity_conflict");
+  }
+  return result;
 }
 
 export async function authorizeMultimediaNarration(

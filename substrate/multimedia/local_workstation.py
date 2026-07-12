@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import os
+import stat
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -189,7 +191,15 @@ class LocalWorkstationRuntime:
                 try:
                     artifacts.append(self.tts.synthesize(request, now=now))
                 except LocalTTSOutcomeUnknown:
-                    artifacts.append(self.tts.recover(request))
+                    try:
+                        artifacts.append(self.tts.recover(request))
+                    except LocalTTSError:
+                        row = self._update(
+                            set_id, status="preparation_unknown", now=now
+                        )
+                        return self._inspect(
+                            row, record, requests, card_requests, owner_id
+                        )
             cards = tuple(
                 self.cards.create(request, owner_id=owner_id, now=now)
                 for request in card_requests
@@ -268,6 +278,24 @@ class LocalWorkstationRuntime:
         )
         row = self._required(set_id, owner_digest, asset_id, expected_revision_id, plan_digest)
         return self._inspect(row, record, requests, card_requests, owner_id)
+
+    def preview_card(
+        self, asset_id: str, expected_revision_id: str, set_id: str, card_id: str,
+        *, owner_id: str,
+    ) -> bytes:
+        _record, _requests, card_requests, owner_digest, plan_digest = self._authority(
+            asset_id, expected_revision_id, owner_id
+        )
+        row = self._required(
+            set_id, owner_digest, asset_id, expected_revision_id, plan_digest
+        )
+        card_ids = _ids(str(row[7]))
+        try:
+            index = card_ids.index(card_id)
+        except ValueError:
+            raise LocalWorkstationError("local source card is unavailable") from None
+        card = self.cards.reopen(card_id, card_requests[index], owner_id=owner_id)
+        return _read_private_png(card.output_path, card.output_sha256)
 
     def _authority(self, asset_id: str, revision_id: str, owner_id: str):  # noqa: ANN202
         try:
@@ -348,7 +376,11 @@ class LocalWorkstationRuntime:
             )
         status = str(row[5])
         if status in {"review_required", "ready_to_produce"}:
-            status = "ready_to_produce" if chapters and all(row.attested for row in chapters) else "review_required"
+            status = (
+                "ready_to_produce"
+                if chapters and all(chapter.attested for chapter in chapters)
+                else "review_required"
+            )
         return LocalPreparedSet(
             set_id=str(row[0]), asset_id=str(row[2]), revision_id=str(row[3]),
             status=status,  # type: ignore[arg-type]
@@ -487,6 +519,38 @@ def _clock(factory) -> datetime:  # noqa: ANN001
     if not isinstance(value, datetime):
         raise ValueError("local workstation clock is invalid")
     return value
+
+
+def _read_private_png(path: str, expected_digest: str) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError:
+        raise LocalWorkstationError("local source card is unavailable") from None
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode) or info.st_uid != os.getuid()
+            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1
+            or not 32 <= info.st_size <= 16 * 1024 * 1024
+        ):
+            raise LocalWorkstationError("local source card is unavailable")
+        payload = b""
+        remaining = info.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(remaining, 1024 * 1024))
+            if not chunk:
+                raise LocalWorkstationError("local source card is unavailable")
+            payload += chunk
+            remaining -= len(chunk)
+        if (
+            payload[:8] != b"\x89PNG\r\n\x1a\n"
+            or not hmac.compare_digest(hashlib.sha256(payload).hexdigest(), expected_digest)
+        ):
+            raise LocalWorkstationError("local source card is unavailable")
+        return payload
+    finally:
+        os.close(descriptor)
 
 
 __all__ = [

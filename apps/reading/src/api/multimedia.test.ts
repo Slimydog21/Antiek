@@ -20,12 +20,18 @@ import {
   getMultimediaReviewedVisualSet,
   getChapterTtsReconciliation,
   getMultimediaAsset,
+  getMultimediaLocalCapability,
   getMultimediaPlayback,
   getNarrationRunReconciliation,
   materializeMultimediaVisualCandidates,
   listMultimediaAssets,
   listMultimediaJobs,
   prepareMultimediaLiveExecution,
+  prepareMultimediaLocal,
+  inspectMultimediaLocal,
+  attestMultimediaLocalCard,
+  produceMultimediaLocal,
+  recoverMultimediaLocal,
   pollMultimediaVisualGeneration,
   previewMultimediaVisualCandidate,
   manualGateIds,
@@ -110,6 +116,95 @@ function mockFetch() {
 }
 
 describe("multimedia API client", () => {
+  it("validates the complete local capability and prepared-set command lifecycle", async () => {
+    const setId = `mmlocalset_${"a".repeat(64)}`;
+    const prepared = {
+      set_id: setId,
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      status: "review_required",
+      recoverable: false,
+      cost_usd: 0,
+      playback_ready: false,
+      chapters: [{
+        chapter_id: "chapter-1", title: "Flow", narration_ready: true,
+        card_id: "card-1", card_ready: true, attested: false, source_count: 1,
+      }],
+    } as const;
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      available: true, reason: "ready", route_policy: "cheapest", cost_usd: 0,
+    }));
+    await expect(getMultimediaLocalCapability()).resolves.toMatchObject({ available: true });
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, prepared));
+    await expect(prepareMultimediaLocal("mm-1", "rev-1")).resolves.toEqual(prepared);
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/local/prepare",
+      expect.objectContaining({ body: JSON.stringify({ expected_revision_id: "rev-1" }) }),
+    );
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, prepared));
+    await inspectMultimediaLocal("mm-1", "rev-1", setId);
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      `/multimedia/assets/mm-1/local/rev-1/${setId}`,
+      expect.anything(),
+    );
+
+    const ready = {
+      ...prepared,
+      status: "ready_to_produce",
+      chapters: [{ ...prepared.chapters[0], attested: true }],
+    } as const;
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, ready));
+    await attestMultimediaLocalCard("mm-1", "rev-1", setId, "card-1");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...ready, status: "production_unknown", recoverable: true,
+    }));
+    await produceMultimediaLocal("mm-1", "rev-1", setId);
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...ready, status: "registered", playback_ready: true,
+    }));
+    await recoverMultimediaLocal("mm-1", "rev-1", setId);
+  });
+
+  it("rejects drifted or dishonest local prepared-set responses", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      available: false, reason: "ready", route_policy: "cheapest", cost_usd: 0,
+    }));
+    await expect(getMultimediaLocalCapability()).rejects.toThrow("capability_conflict");
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      set_id: `mmlocalset_${"a".repeat(64)}`,
+      asset_id: "foreign",
+      revision_id: "rev-1",
+      status: "registered",
+      recoverable: false,
+      cost_usd: 0,
+      playback_ready: false,
+      chapters: [],
+    }));
+    await expect(prepareMultimediaLocal("mm-1", "rev-1")).rejects.toThrow(
+      "local_identity_conflict",
+    );
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      set_id: `mmlocalset_${"b".repeat(64)}`,
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      status: "ready_to_produce",
+      recoverable: false,
+      cost_usd: 0,
+      playback_ready: false,
+      chapters: [{
+        chapter_id: "chapter-1", title: "Flow", narration_ready: true,
+        card_id: "card-1", card_ready: true, attested: false, source_count: 1,
+      }],
+    }));
+    await expect(prepareMultimediaLocal("mm-1", "rev-1")).rejects.toThrow(
+      "local_identity_conflict",
+    );
+  });
+
   it("posts a draft, lists, gets, approves, steers, and hardens", async () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(201, record));
     await createMultimediaDraft({ topic: "x", target_minutes: 20, mode: "hybrid", route_policy: "cheapest" });

@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.multimedia.local_workstation import (
@@ -127,6 +127,29 @@ def produce_local_multimedia(
         lambda: runtime.produce(
             asset_id, body.expected_revision_id, body.set_id, owner_id=operator_id
         )
+    )
+
+
+@multimedia_local_router.get(
+    "/assets/{asset_id}/local/{revision_id}/{set_id}/cards/{card_id}/content"
+)
+def preview_local_multimedia_card(
+    asset_id: str,
+    revision_id: str,
+    set_id: str,
+    card_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: LocalWorkstationRuntime = Depends(get_multimedia_local_runtime),
+) -> Response:
+    payload = _command(
+        lambda: runtime.preview_card(
+            asset_id, revision_id, set_id, card_id, owner_id=operator_id
+        )
+    )
+    return Response(
+        content=payload,
+        media_type="image/png",
+        headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
 
 

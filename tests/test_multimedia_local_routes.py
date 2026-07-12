@@ -67,6 +67,10 @@ class Runtime:
     def recover(self, asset_id, revision_id, set_id, *, owner_id):  # noqa: ANN001, ANN201
         return self._return("recover", asset_id, revision_id, set_id, owner_id)
 
+    def preview_card(self, asset_id, revision_id, set_id, card_id, *, owner_id):  # noqa: ANN001, ANN201
+        self.calls.append(("preview", asset_id, revision_id, set_id, card_id, owner_id))
+        return b"\x89PNG\r\n\x1a\nfixture"
+
 
 def _client(runtime: Runtime | None = None) -> TestClient:
     app = FastAPI()
@@ -94,6 +98,12 @@ def test_authenticated_commands_pass_only_owner_revision_and_opaque_set() -> Non
         "/multimedia/assets/asset-1/local/prepare",
         json={"expected_revision_id": "revision-1"},
     ).status_code == 200
+    preview = client.get(
+        f"/multimedia/assets/asset-1/local/revision-1/{SET_ID}/cards/card-1/content"
+    )
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/png"
+    assert preview.headers["cache-control"] == "private, no-store"
     assert client.get(
         f"/multimedia/assets/asset-1/local/revision-1/{SET_ID}"
     ).status_code == 200

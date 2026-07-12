@@ -265,7 +265,8 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: /Cheapest/ }));
 
     expect(screen.getByTestId("multimedia-estimated-cost").textContent).toBe("$22.28");
-    expect(screen.getByText(/Local placeholders first/)).toBeTruthy();
+    expect(screen.getByText(/Fully local narration and source-card documentary/)).toBeTruthy();
+    expect(screen.getByText(/No Krea or paid-provider fallback/)).toBeTruthy();
   });
 
   it("reviews a plan before render approval and then opens playback", async () => {

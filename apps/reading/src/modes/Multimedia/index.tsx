@@ -27,6 +27,7 @@ import type {
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
+import { LocalProductionPanel } from "./LocalProductionPanel";
 import { VisualReviewPanel } from "./VisualReviewPanel";
 import { projectMultimediaPlan } from "./planProjection";
 
@@ -50,7 +51,7 @@ const TIER_COPY: Record<RouteTier, { label: string; multiplier: number; tradeoff
   cheapest: {
     label: "Cheapest",
     multiplier: 0.55,
-    tradeoff: "Local placeholders first; Krea only for missing motion beats.",
+    tradeoff: "Fully local narration and source-card documentary. No Krea or paid-provider fallback.",
   },
   balanced: {
     label: "Balanced",
@@ -909,7 +910,14 @@ export default function Multimedia() {
                   </section>
                 )}
 
-                {selectedRecord && selectedRecord.mode !== "audio" && (
+                {selectedRecord && selectedRecord.mode !== "audio" && selectedRecord.asset.route_policy === "cheapest" && (
+                  <LocalProductionPanel
+                    record={selectedRecord}
+                    onRegistered={() => reopenAsset(selectedRecord.asset.asset_id)}
+                  />
+                )}
+
+                {selectedRecord && selectedRecord.mode !== "audio" && selectedRecord.asset.route_policy !== "cheapest" && (
                   <>
                     {reviewedVisualStatus === "loading" ? (
                       <p className="border-t border-rule pt-4 font-mono text-[11px] text-shadow-2 dark:border-charcoal-1 dark:text-moonlight">
