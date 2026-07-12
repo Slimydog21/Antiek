@@ -242,23 +242,6 @@ jobs:
         run: |
           python tools/lint/contact_guard_check.py
 
-      - name: Compose-tier HTML-escaping gate
-        # compose-xss-guard: forbid raw-HTML-interpolation in substrate compose
-        # modules. An AST check that fails (exit 1) when a substrate/*_compose*.py
-        # module builds an HTML tag by interpolating an unescaped value (f-string
-        # attribute/content, .format, %, + concatenation). Makes the recurring
-        # raw-HTML-interpolation XSS class structurally impossible at CI: the
-        # class was found in PRs #962 (recursive_twin_note_taker_compose) and
-        # #955 (write_mode_twin_draft_merge_compose), BOTH Strix-PASS. The
-        # codebase escapes correctly in render.py::_esc and the frontend
-        # _DOM_MUTATION gate; the compose tier was the only un-gated surface.
-        # Models boundary_check.py / serve_guard_check.py (same path:line output,
-        # same exit-code contract, no `|| echo` swallow — the step's pass/fail IS
-        # the gate's verdict). Escaper allow-list = html.escape / _esc / *_escape
-        # / any .escape attr (the render.py convention). Sub-second on substrate/.
-        run: |
-          python tools/compose_html_escape_check.py substrate
-
       - name: Merge-age gate (anti-stranding)
         # SPR-01 (Antiek Flywheel Foundation). Reds when the PR's base is more
         # than N=25 commits behind origin/main — the stale-base stranding that
@@ -393,6 +376,50 @@ jobs:
           OPENAI_API_KEY: ""
         run: |
           python -m pytest compounding/benchmark/tests/ -q -m "not slow" -p no:cacheprovider
+
+  compose-escape-gate:
+    name: compose-escape-gate
+    runs-on: ubuntu-latest
+    # compose-xss-guard: this gate runs in its OWN job, NOT as a tail step of
+    # `pytest`. Same rationale as `keystone` above: the `pytest` job on this
+    # shared ubuntu-latest runner is reliably CANCELLED at the ~22-40 min wall
+    # (see docs/decisions/ci-pytest-timeout.md) even with xdist `-n auto`
+    # already enabled in pyproject, and a CANCELLED job reports its tail steps
+    # as never-run — so a gate bolted to the end of `pytest` can never prove
+    # green on CI (observed: 3 CANCELLED pytest runs on this branch, the gate
+    # step null each time). This gate is a PURE-STDLIB AST check
+    # (argparse/ast/re/sys/pathlib/dataclasses — no project imports, no install
+    # needed), so its job is hermetic: checkout + python + run, ~30-60s, fully
+    # decoupled from the pytest wall. This does NOT weaken the gate: the SAME
+    # check runs, still fails (exit 1) on a real defect, and the gate still
+    # reds the PR — it just no longer competes with the full ~5400-test suite
+    # for a wall it would never reach. Reconsider-if: pytest no longer cancels
+    # (suite sharded/xdist'd under the wall), after which this can rejoin the
+    # pytest boundary-check gauntlet.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Set up Python 3.14
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - name: Compose-tier HTML-escaping gate
+        # compose-xss-guard: forbid raw-HTML-interpolation in substrate compose
+        # modules. An AST check that fails (exit 1) when a substrate/*_compose*.py
+        # module builds an HTML tag by interpolating an unescaped value (f-string
+        # attribute/content, .format, %, + concatenation). Makes the recurring
+        # raw-HTML-interpolation XSS class structurally impossible at CI: the
+        # class was found in PRs #962 (recursive_twin_note_taker_compose) and
+        # #955 (write_mode_twin_draft_merge_compose), BOTH Strix-PASS. The
+        # codebase escapes correctly in render.py::_esc and the frontend
+        # _DOM_MUTATION gate; the compose tier was the only un-gated surface.
+        # Models boundary_check.py / serve_guard_check.py (same path:line output,
+        # same exit-code contract, no `|| echo` swallow — the step's pass/fail IS
+        # the gate's verdict). Escaper allow-list = html.escape / _esc / *_escape
+        # / any .escape attr (the render.py convention). Sub-second on substrate/.
+        run: |
+          python tools/compose_html_escape_check.py substrate
 
   tsc:
     name: tsc
