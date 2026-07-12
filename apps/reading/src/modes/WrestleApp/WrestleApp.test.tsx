@@ -20,6 +20,32 @@ vi.mock("../../hooks/useEventStream", () => ({
   useEventStream: () => ({ events: [], status: "open", reconnects: 0 }),
 }));
 vi.mock("../../lib/api", () => ({ postTypedEvent }));
+vi.mock("../../components/windows/HostedHtmlDocumentHost", () => ({
+  default: (props: {
+    document_id: string;
+    html: string;
+    onHighlightSelection?: (selection: {
+      text: string;
+      charStart: number;
+      charEnd: number;
+    }) => void;
+  }) => (
+    <article
+      data-testid="shared-hosted-html-document"
+      data-document-id={props.document_id}
+      data-html={props.html}
+      onMouseUp={() =>
+        props.onHighlightSelection?.({
+          text: "selected canonical passage",
+          charStart: 0,
+          charEnd: 26,
+        })
+      }
+    >
+      selected canonical passage
+    </article>
+  ),
+}));
 vi.mock("../../workspace/PanelHost", () => ({
   PanelHost: ({
     children,
@@ -69,7 +95,7 @@ describe("WrestleApp canonical hosted transport", () => {
     fireEvent.change(input, { target: { files: [file] } });
 
     expect(
-      (await screen.findByTestId("canonical-html-wrestler")).getAttribute(
+      (await screen.findByTestId("shared-hosted-html-document")).getAttribute(
         "data-document-id",
       ),
     ).toBe("hdoc_server_owned");
@@ -92,12 +118,7 @@ describe("WrestleApp canonical hosted transport", () => {
         files: [new File(["x"], "research.txt", { type: "text/plain" })],
       },
     });
-    const article = await screen.findByTestId("canonical-html-wrestler");
-    const textNode = article.querySelector("p")?.firstChild;
-    vi.spyOn(window, "getSelection").mockReturnValue({
-      toString: () => "selected canonical passage",
-      anchorNode: textNode,
-    } as Selection);
+    const article = await screen.findByTestId("shared-hosted-html-document");
     fireEvent.mouseUp(article);
 
     await waitFor(() => expect(postTypedEvent).toHaveBeenCalledTimes(1));
@@ -116,10 +137,10 @@ describe("WrestleApp canonical hosted transport", () => {
 
     expect(await screen.findByText(/hosted document API 403/)).toBeTruthy();
     expect(document.querySelector("main")?.getAttribute("data-starter-count")).toBe("0");
-    expect(screen.queryByTestId("canonical-html-wrestler")).toBeNull();
+    expect(screen.queryByTestId("shared-hosted-html-document")).toBeNull();
   });
 
-  it("sanitizes active content again at the canonical HTML mount", async () => {
+  it("passes server HTML and identity into the shared sanitized interaction host", async () => {
     ingestHostedDocument.mockResolvedValue({
       ...readyReceipt,
       html: '<p>safe</p><img src="x" onerror="steal()"><script>attack()</script>',
@@ -129,25 +150,39 @@ describe("WrestleApp canonical hosted transport", () => {
     fireEvent.change(input, {
       target: { files: [new File(["safe"], "safe.html", { type: "text/html" })] },
     });
-    const article = await screen.findByTestId("canonical-html-wrestler");
-    expect(article.textContent).toContain("safe");
-    expect(article.innerHTML).not.toContain("script");
-    expect(article.innerHTML).not.toContain("onerror");
-    expect(article.innerHTML).not.toContain("attack");
+    const article = await screen.findByTestId("shared-hosted-html-document");
+    expect(article.getAttribute("data-document-id")).toBe("hdoc_server_owned");
+    expect(article.getAttribute("data-html")).toContain("<script>attack()</script>");
   });
 
   it("clears an authorized document before a changed route id is accepted", async () => {
     routeParams.documentId = "hdoc_allowed";
     fetchHostedDocument.mockResolvedValueOnce(readyReceipt);
     const view = render(<WrestleApp />);
-    expect(await screen.findByTestId("canonical-html-wrestler")).toBeTruthy();
+    expect(await screen.findByTestId("shared-hosted-html-document")).toBeTruthy();
 
     routeParams.documentId = "hdoc_denied";
     fetchHostedDocument.mockRejectedValueOnce(new Error("hosted document API 403"));
     view.rerender(<WrestleApp />);
 
     expect(await screen.findByText(/hosted document API 403/)).toBeTruthy();
-    expect(screen.queryByTestId("canonical-html-wrestler")).toBeNull();
+    expect(screen.queryByTestId("shared-hosted-html-document")).toBeNull();
     expect(document.querySelector("main")?.getAttribute("data-starter-count")).toBe("0");
+  });
+
+  it("surfaces a failed region event without discarding the hosted document", async () => {
+    postTypedEvent.mockRejectedValueOnce(new Error("event log unavailable"));
+    render(<WrestleApp />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(["x"], "research.txt", { type: "text/plain" })] },
+    });
+    const host = await screen.findByTestId("shared-hosted-html-document");
+    fireEvent.mouseUp(host);
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Highlight event failed: event log unavailable",
+    );
+    expect(screen.getByTestId("shared-hosted-html-document")).toBeTruthy();
   });
 });

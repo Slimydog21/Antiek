@@ -1782,4 +1782,93 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       );
     });
   });
+
+  it("reports highlight offsets while float/full research, twins, collective, and Write retain one document id", async () => {
+    const onHighlightSelection = vi.fn();
+    collectDeepResearchSpawnIds.mockReturnValue(["spawn_identity"]);
+    render(
+      <HostedHtmlDocumentHost
+        document_id="hdoc_identity"
+        title="Identity proof"
+        view_format="html"
+        html="<p>prefix shared identity passage suffix</p>"
+        source="wrestle"
+        onHighlightSelection={onHighlightSelection}
+      />,
+    );
+    const body = screen.getByTestId("hosted-html-body");
+    const textNode = body.querySelector("p")?.firstChild;
+    if (!textNode) throw new Error("fixture text node missing");
+    const range = document.createRange();
+    range.setStart(textNode, 7);
+    range.setEnd(textNode, 30);
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "shared identity passage",
+      rangeCount: 1,
+      getRangeAt: () => range,
+    } as unknown as Selection);
+    fireEvent.mouseUp(body);
+
+    expect(onHighlightSelection).toHaveBeenCalledWith({
+      text: "shared identity passage",
+      charStart: 7,
+      charEnd: 30,
+    });
+    expect(screen.getByTestId("twin-notes-panel-stub").textContent).toContain(
+      "hdoc_identity",
+    );
+    expect(screen.getByTestId("research-context-panel-stub").textContent).toContain(
+      "hdoc_identity",
+    );
+    expect(
+      screen.getByTestId("hosted-html-open-write").getAttribute("href") || "",
+    ).toContain("hdoc_identity");
+    expect(
+      screen.getByTestId("collective-research-panel-stub").textContent,
+    ).toContain("hdoc_identity");
+    fireEvent.click(screen.getByTestId("hosted-html-deep-research"));
+    await waitFor(() =>
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_identity",
+          view_mode: "floating",
+        }),
+      ),
+    );
+    fireEvent.click(screen.getByTestId("hosted-html-deep-research-full"));
+    await waitFor(() =>
+      expect(launchFloatingDeepResearch).toHaveBeenCalledWith(
+        expect.objectContaining({
+          asset_id: "hdoc_identity",
+          view_mode: "full",
+        }),
+      ),
+    );
+  });
+
+  it("does not report a stale selection outside the hosted body", () => {
+    const onHighlightSelection = vi.fn();
+    render(
+      <>
+        <p data-testid="outside-selection">outside passage</p>
+        <HostedHtmlDocumentHost
+          document_id="hdoc_containment"
+          view_format="html"
+          html="<p>inside passage</p>"
+          onHighlightSelection={onHighlightSelection}
+        />
+      </>,
+    );
+    const outside = screen.getByTestId("outside-selection").firstChild;
+    if (!outside) throw new Error("outside text node missing");
+    const range = document.createRange();
+    range.selectNodeContents(outside);
+    vi.spyOn(window, "getSelection").mockReturnValue({
+      toString: () => "outside passage",
+      rangeCount: 1,
+      getRangeAt: () => range,
+    } as unknown as Selection);
+    fireEvent.mouseUp(screen.getByTestId("hosted-html-body"));
+    expect(onHighlightSelection).not.toHaveBeenCalled();
+  });
 });

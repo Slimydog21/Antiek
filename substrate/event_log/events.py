@@ -588,6 +588,16 @@ def trajectory(
             with contextlib.suppress(TypeError, ValueError):
                 r["payload"] = json.loads(r["payload"])
 
+    deduplicated: list[dict[str, Any]] = []
+    seen_event_ids: set[str] = set()
+    for row in rows:
+        event_id = str(row.get("event_id") or "")
+        if event_id and event_id in seen_event_ids:
+            continue
+        if event_id:
+            seen_event_ids.add(event_id)
+        deduplicated.append(row)
+    rows = deduplicated
     rows.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
     return rows
 

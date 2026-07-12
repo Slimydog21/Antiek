@@ -1,17 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import type { DocumentRegionSelectedPayload } from "../../generated/types";
 import { useEventStream } from "../../hooks/useEventStream";
 import { postTypedEvent } from "../../lib/api";
-import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import {
   fetchHostedDocument,
   ingestHostedDocument,
+  type HostedDocumentReceipt,
 } from "../../api/hostedDocuments";
+
+const HostedHtmlDocumentHost = lazy(
+  () => import("../../components/windows/HostedHtmlDocumentHost"),
+);
 
 /**
  * Mode B — Document Wrestler (S6 redesign).
@@ -54,7 +58,7 @@ export default function WrestleApp() {
     return fresh;
   });
 
-  const [hostedHtml, setHostedHtml] = useState<string | null>(null);
+  const [hosted, setHosted] = useState<HostedDocumentReceipt | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadVersion = useRef(0);
@@ -78,7 +82,7 @@ export default function WrestleApp() {
           );
         }
         if (version === loadVersion.current) {
-          setHostedHtml(receipt.html);
+          setHosted(receipt);
           setDocumentId(receipt.document_id);
         }
       } catch (err) {
@@ -91,7 +95,7 @@ export default function WrestleApp() {
 
   useEffect(() => {
     const version = ++loadVersion.current;
-    setHostedHtml(null);
+    setHosted(null);
     setDocumentId(null);
     setLoadError(null);
     if (!routeDocumentId) return;
@@ -104,7 +108,7 @@ export default function WrestleApp() {
           receipt.state === "ready" &&
           receipt.html
         ) {
-          setHostedHtml(receipt.html);
+          setHosted(receipt);
           setDocumentId(receipt.document_id);
         }
       })
@@ -117,6 +121,35 @@ export default function WrestleApp() {
       cancelled = true;
     };
   }, [routeDocumentId]);
+
+  const onHighlightSelection = useCallback(
+    async (selection: { text: string; charStart: number; charEnd: number }) => {
+      if (!documentId) return;
+      const boundedText = selection.text.slice(0, 2_000);
+      const payload: DocumentRegionSelectedPayload = {
+        action_type: "document.region_selected",
+        region_id: `region-${crypto.randomUUID()}`,
+        page: null,
+        char_start: selection.charStart,
+        char_end: selection.charStart + boundedText.length,
+        bbox: null,
+        text_excerpt: boundedText,
+      };
+      try {
+        await postTypedEvent({
+          investigation_id: investigationId,
+          document_id: documentId,
+          payload,
+          role: "user_agent",
+        });
+      } catch (error: unknown) {
+        setLoadError(
+          `Highlight event failed: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+    },
+    [documentId, investigationId],
+  );
 
   useEffect(() => {
     console.info(
@@ -158,13 +191,36 @@ export default function WrestleApp() {
 
   return (
     <PanelHost key={documentId ?? "empty"} starters={starters}>
-      {hostedHtml && documentId ? (
-        <div className="h-full overflow-auto bg-ice-2 p-6 dark:bg-space-2">
-          <CanonicalHtmlWrestler
-            html={hostedHtml}
-            investigationId={investigationId}
-            documentId={documentId}
-          />
+      {hosted?.html && documentId ? (
+        <div className="relative h-full overflow-auto bg-ice-2 dark:bg-space-2">
+          {loadError ? (
+            <div
+              className="sticky top-0 z-10 bg-emperor px-3 py-2 text-xs font-mono text-white"
+              role="alert"
+            >
+              {loadError}
+            </div>
+          ) : null}
+          <Suspense
+            fallback={
+              <p className="p-4 text-xs font-mono" role="status">
+                Loading canonical reading tools…
+              </p>
+            }
+          >
+            <HostedHtmlDocumentHost
+              document_id={documentId}
+              title={hosted.title}
+              html={hosted.html}
+              view_format="html"
+              license_class="private_upload"
+              owner_id={hosted.owner_id}
+              source="wrestle"
+              onHighlightSelection={(selection) =>
+                void onHighlightSelection(selection)
+              }
+            />
+          </Suspense>
         </div>
       ) : (
         <EmptyState
@@ -244,59 +300,4 @@ function fileToBase64(file: File): Promise<string> {
     };
     reader.readAsDataURL(file);
   });
-}
-
-function CanonicalHtmlWrestler({
-  html,
-  investigationId,
-  documentId,
-}: {
-  html: string;
-  investigationId: string;
-  documentId: string;
-}) {
-  const captureSelection = useCallback(async () => {
-    const selection = window.getSelection();
-    const rawSelection = selection?.toString() || "";
-    const excerpt = rawSelection.trim();
-    if (!excerpt) return;
-    const article = selection?.anchorNode?.parentElement?.closest("article");
-    if (!article) return;
-    let charStart = Math.max(0, (article.textContent || "").indexOf(excerpt));
-    if (selection && selection.rangeCount > 0) {
-      const selectedRange = selection.getRangeAt(0);
-      if (article.contains(selectedRange.commonAncestorContainer)) {
-        const prefix = selectedRange.cloneRange();
-        prefix.selectNodeContents(article);
-        prefix.setEnd(selectedRange.startContainer, selectedRange.startOffset);
-        charStart = prefix.toString().length + rawSelection.search(/\S/);
-      }
-    }
-    const boundedExcerpt = excerpt.slice(0, 2_000);
-    const payload: DocumentRegionSelectedPayload = {
-      action_type: "document.region_selected",
-      region_id: `region-${crypto.randomUUID()}`,
-      page: null,
-      char_start: charStart,
-      char_end: charStart + boundedExcerpt.length,
-      bbox: null,
-      text_excerpt: boundedExcerpt,
-    };
-    await postTypedEvent({
-      investigation_id: investigationId,
-      document_id: documentId,
-      payload,
-      role: "user_agent",
-    });
-  }, [documentId, investigationId]);
-
-  return (
-    <article
-      data-testid="canonical-html-wrestler"
-      data-document-id={documentId}
-      className="prose mx-auto max-w-4xl dark:prose-invert"
-      onMouseUp={() => void captureSelection()}
-      dangerouslySetInnerHTML={{ __html: sanitizeHostedHtml(html) }}
-    />
-  );
 }

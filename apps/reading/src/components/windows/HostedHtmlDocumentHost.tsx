@@ -61,6 +61,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import type { SyntheticEvent } from "react";
 
 import { fetchDepthTiers } from "../../api/settings";
 import { mapDepthTierToResearchTier } from "../../lib/researchTier";
@@ -125,6 +126,14 @@ export type HostedHtmlDocumentHostProps = {
   /** Residual (ts): multi-spawn count when source=collective_unit_prompt. */
   spawn_count?: number | null;
   research_tier?: string | null;
+  /** Canonical host seam: report a bounded highlight with offsets relative to
+   * the rendered HTML body. Wrestle uses this to emit document.region_selected
+   * while every downstream action continues to share document_id. */
+  onHighlightSelection?: (selection: {
+    text: string;
+    charStart: number;
+    charEnd: number;
+  }) => void;
   __windowId?: string;
 };
 
@@ -281,15 +290,30 @@ export default function HostedHtmlDocumentHost(
     [assetId, viewFormat, highlightText],
   );
 
-  const captureHighlight = useCallback(() => {
+  const captureHighlight = useCallback((event: SyntheticEvent<HTMLDivElement>) => {
     if (typeof window === "undefined" || !window.getSelection) return;
-    const text = (window.getSelection()?.toString() || "").trim();
+    const selection = window.getSelection();
+    const raw = selection?.toString() || "";
+    const text = raw.trim().slice(0, 8000);
     // Only replace when the user actually selected something; empty
     // mouseup (click) keeps the last highlight so budget/DR stay stable.
     if (text) {
       setHighlightText(text.slice(0, 8000));
+      if (!props.onHighlightSelection) return;
+      if (!selection || selection.rangeCount === 0) return;
+      const range = selection.getRangeAt(0);
+      if (!event.currentTarget.contains(range.commonAncestorContainer)) return;
+      const prefix = range.cloneRange();
+      prefix.selectNodeContents(event.currentTarget);
+      prefix.setEnd(range.startContainer, range.startOffset);
+      const charStart = prefix.toString().length + raw.search(/\S/);
+      props.onHighlightSelection?.({
+        text,
+        charStart,
+        charEnd: charStart + text.length,
+      });
     }
-  }, []);
+  }, [props.onHighlightSelection]);
 
   const clearHighlight = useCallback(() => {
     setHighlightText("");
