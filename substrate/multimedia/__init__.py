@@ -107,6 +107,12 @@ from .tts import (
     TTSResult,
     make_tts_provider,
 )
+from .verified_playback import (
+    MediaByteRange,
+    PlaybackMediaMetadata,
+    VerifiedPlaybackError,
+    VerifiedPlaybackRuntime,
+)
 from .video import (
     CaptionCue,
     MotionPreset,
@@ -223,4 +229,9 @@ __all__ = [
     "MultimediaAssetSummary",
     "MultimediaKnowledgeLink",
     "SteeringRequest",
+    # Receipt-verified browser delivery
+    "MediaByteRange",
+    "PlaybackMediaMetadata",
+    "VerifiedPlaybackError",
+    "VerifiedPlaybackRuntime",
 ]

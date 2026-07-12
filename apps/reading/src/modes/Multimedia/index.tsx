@@ -6,6 +6,7 @@ import {
   createMultimediaDraft,
   failedGateIds,
   getMultimediaAsset,
+  getMultimediaPlayback,
   listMultimediaAssets,
   manualGateIds,
   runMultimediaHardening,
@@ -15,6 +16,7 @@ import type {
   CreateMultimediaDraftRequest,
   MultimediaAssetRecord,
   MultimediaAssetSummary,
+  MultimediaPlayback as MultimediaPlaybackRecord,
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
@@ -191,6 +193,8 @@ export default function Multimedia() {
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
   const [knowledgeMutationPending, setKnowledgeMutationPending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [playback, setPlayback] = useState<MultimediaPlaybackRecord | null>(null);
+  const [playbackLoading, setPlaybackLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -212,6 +216,32 @@ export default function Multimedia() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setPlayback(null);
+    if (!approved || !selectedRecord) {
+      setPlaybackLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    const { asset_id: assetId, revision_id: revisionId } = selectedRecord.asset;
+    setPlaybackLoading(true);
+    getMultimediaPlayback(assetId, revisionId)
+      .then((result) => {
+        if (!cancelled) setPlayback(result);
+      })
+      .catch(() => {
+        if (!cancelled) setPlayback(null);
+      })
+      .finally(() => {
+        if (!cancelled) setPlaybackLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [approved, selectedRecord]);
 
   const exampleChapters = useMemo(() => {
     const minutes = distributeMinutes(duration);
@@ -772,7 +802,9 @@ export default function Multimedia() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Asset playback</p>
-                  <h2 className="font-serif text-xl text-ink dark:text-bright">Draft render package</h2>
+                  <h2 className="font-serif text-xl text-ink dark:text-bright">
+                    {playback ? "Verified media" : "Playback unavailable"}
+                  </h2>
                 </div>
                 <div role="radiogroup" aria-label="Playback type" className="flex gap-2">
                   {(["video", "audio"] as PlayerView[]).map((view) => (
@@ -792,16 +824,37 @@ export default function Multimedia() {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="space-y-3">
-                  <div className="flex aspect-video items-center justify-center rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1">
-                    <div className="text-center">
-                      <p className="font-mono text-[12px] uppercase text-moonlight">
-                        {playerView === "video" ? "Ken Burns preview" : "Audio waveform"}
-                      </p>
-                      <p className="mt-2 font-serif text-xl">{activeChapter?.title ?? "No chapter available"}</p>
-                      <p className="mt-1 text-[12px] text-moonlight">
-                        Visual label: {activeChapter?.visualLabel ?? "unavailable"}
-                      </p>
-                    </div>
+                  <div className="flex aspect-video items-center justify-center overflow-hidden rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1">
+                    {playbackLoading ? (
+                      <p className="font-mono text-[12px] uppercase text-moonlight" role="status">Verifying media...</p>
+                    ) : playback && playerView === "video" ? (
+                      <video
+                        key={`${playback.revision_id}-video`}
+                        controls
+                        crossOrigin="use-credentials"
+                        preload="metadata"
+                        src={playback.video_url}
+                        className="h-full w-full bg-black object-contain"
+                        aria-label={`Video playback for ${selectedRecord?.asset.title ?? "multimedia asset"}`}
+                      />
+                    ) : playback ? (
+                      <audio
+                        key={`${playback.revision_id}-audio`}
+                        controls
+                        crossOrigin="use-credentials"
+                        preload="metadata"
+                        src={playback.audio_url}
+                        className="w-[min(90%,640px)]"
+                        aria-label={`Audio playback for ${selectedRecord?.asset.title ?? "multimedia asset"}`}
+                      />
+                    ) : (
+                      <div className="px-6 text-center" role="status">
+                        <p className="font-mono text-[12px] uppercase text-moonlight">No verified media receipt</p>
+                        <p className="mt-2 text-[13px] text-moonlight">
+                          This revision has plan and transcript data, but no verified video or narration is available to play.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="grid grid-cols-1 gap-2 md:grid-cols-3">

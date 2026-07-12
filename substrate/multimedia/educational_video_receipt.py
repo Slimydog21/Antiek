@@ -343,6 +343,14 @@ def _bundle_name(asset_id: str, revision_id: str) -> str:
     return "mmvideo_" + hashlib.sha256(identity).hexdigest()
 
 
+def receipt_file_path(output_dir: str, asset_id: str, revision_id: str) -> str:
+    """Return the canonical receipt path without asserting that it exists."""
+    _identifier(asset_id, "asset_id")
+    _identifier(revision_id, "revision_id")
+    root = _private_directory(output_dir)
+    return str(root / _bundle_name(asset_id, revision_id) / "receipt.json")
+
+
 def _identifier(value: str, field: str) -> str:
     if not isinstance(value, str) or not _IDENTIFIER.fullmatch(value):
         raise ValueError(f"{field} is not a bounded identifier")

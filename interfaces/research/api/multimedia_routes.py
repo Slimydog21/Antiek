@@ -36,6 +36,11 @@ from substrate.multimedia.read_model import (
     SteeringRequest,
 )
 
+from .multimedia_playback_routes import (
+    get_multimedia_playback_runtime,
+    multimedia_playback_router,
+    multimedia_playback_runtime_from_environment,
+)
 from .multimedia_reconciliation_routes import (
     authenticated_multimedia_operator,
     get_multimedia_reconciliation_runtime,
@@ -45,6 +50,7 @@ from .multimedia_reconciliation_routes import (
 
 multimedia_router = APIRouter(prefix="/multimedia", tags=["multimedia"])
 multimedia_router.include_router(multimedia_reconciliation_router)
+multimedia_router.include_router(multimedia_playback_router)
 _STORE = MultimediaAssetStore()
 
 
@@ -278,6 +284,15 @@ def register_multimedia_routes(app: FastAPI) -> None:
     knowledge_runtime = multimedia_knowledge_runtime_from_environment()
     if knowledge_runtime is not None:
         app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
+    playback_runtime = multimedia_playback_runtime_from_environment()
+    if playback_runtime is not None:
+        playback_runtime = replace(
+            playback_runtime,
+            asset_revision_resolver=lambda asset_id, operator_id: get_store()
+            .get(asset_id, owner_id=operator_id)
+            .asset.revision_id,
+        )
+        app.dependency_overrides[get_multimedia_playback_runtime] = lambda: playback_runtime
 
 
 __all__ = [

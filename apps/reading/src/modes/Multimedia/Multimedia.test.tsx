@@ -6,6 +6,7 @@ import {
   approveMultimediaDryRun,
   createMultimediaDraft,
   getMultimediaAsset,
+  getMultimediaPlayback,
   listMultimediaAssets,
   runMultimediaHardening,
   steerMultimediaAsset,
@@ -23,6 +24,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     approveMultimediaDryRun: vi.fn(),
     createMultimediaDraft: vi.fn(),
     getMultimediaAsset: vi.fn(),
+    getMultimediaPlayback: vi.fn(),
     listMultimediaAssets: vi.fn(),
     runMultimediaHardening: vi.fn(),
     steerMultimediaAsset: vi.fn(),
@@ -32,6 +34,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
 const mockApprove = vi.mocked(approveMultimediaDryRun);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
+const mockPlayback = vi.mocked(getMultimediaPlayback);
 const mockList = vi.mocked(listMultimediaAssets);
 const mockHarden = vi.mocked(runMultimediaHardening);
 const mockSteer = vi.mocked(steerMultimediaAsset);
@@ -131,6 +134,20 @@ beforeEach(() => {
   });
   mockCreate.mockResolvedValue(draftRecord);
   mockGet.mockResolvedValue(draftRecord);
+  mockPlayback.mockResolvedValue({
+    asset_id: "mm-1",
+    revision_id: "rev-1",
+    duration_seconds: 30,
+    video_sha256: "a".repeat(64),
+    audio_sha256: "b".repeat(64),
+    video_size_bytes: 100,
+    audio_size_bytes: 80,
+    width_px: 1920,
+    height_px: 1080,
+    chapter_ids: ["server-intro", "server-mechanism"],
+    video_url: "/multimedia/assets/mm-1/playback/rev-1/video",
+    audio_url: "/multimedia/assets/mm-1/playback/rev-1/audio",
+  });
   mockApprove.mockResolvedValue(approvedRecord);
   mockSteer.mockResolvedValue(steeredRecord);
   mockHarden.mockResolvedValue(hardenedRecord);
@@ -181,6 +198,17 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByTestId("multimedia-player")).toBeTruthy();
     expect(mockApprove).toHaveBeenCalledWith("mm-1");
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
+    const video = await screen.findByLabelText(/Video playback for/);
+    expect(video.getAttribute("src")).toBe("/multimedia/assets/mm-1/playback/rev-1/video");
+  });
+
+  it("does not present simulated media when verified playback is unavailable", async () => {
+    mockPlayback.mockRejectedValueOnce(new Error("multimedia_playback_unavailable"));
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    await screen.findByText("No verified media receipt");
+    expect(screen.queryByLabelText(/Video playback for/)).toBeNull();
+    expect(screen.queryByText("Ken Burns preview")).toBeNull();
   });
 
   it("blocks approval while the persisted plan contains an unsourced factual line", async () => {

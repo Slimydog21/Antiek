@@ -186,6 +186,21 @@ export interface MultimediaPlanWire {
   duration_tolerance_minutes: number;
 }
 
+export interface MultimediaPlayback {
+  asset_id: string;
+  revision_id: string;
+  duration_seconds: number;
+  video_sha256: string;
+  audio_sha256: string;
+  video_size_bytes: number;
+  audio_size_bytes: number;
+  width_px: number;
+  height_px: number;
+  chapter_ids: string[];
+  video_url: string;
+  audio_url: string;
+}
+
 export interface MultimediaJobRecord {
   job_id: string;
   asset_id: string;
@@ -300,6 +315,36 @@ export async function getMultimediaAsset(assetId: string): Promise<MultimediaAss
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function getMultimediaPlayback(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaPlayback> {
+  const asset = encodeURIComponent(assetId);
+  const revision = encodeURIComponent(revisionId);
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${asset}/playback?revision_id=${revision}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_playback_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_playback_stale_revision");
+  if (resp.status === 503) throw new Error("multimedia_playback_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/playback: HTTP ${resp.status}`);
+  const playback = (await resp.json()) as MultimediaPlayback;
+  const expectedPath = `/multimedia/assets/${asset}/playback/${revision}`;
+  if (
+    playback.asset_id !== assetId ||
+    playback.revision_id !== revisionId ||
+    playback.video_url !== `${expectedPath}/video` ||
+    playback.audio_url !== `${expectedPath}/audio`
+  ) {
+    throw new Error("multimedia_playback_identity_conflict");
+  }
+  return {
+    ...playback,
+    video_url: `${API_BASE}${playback.video_url}`,
+    audio_url: `${API_BASE}${playback.audio_url}`,
+  };
 }
 
 export async function listMultimediaJobs(assetId: string): Promise<MultimediaJobList> {

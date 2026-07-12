@@ -16,6 +16,7 @@ import {
   getAssetReconciliationLinks,
   getChapterTtsReconciliation,
   getMultimediaAsset,
+  getMultimediaPlayback,
   getNarrationRunReconciliation,
   listMultimediaAssets,
   listMultimediaJobs,
@@ -146,6 +147,32 @@ describe("multimedia API client", () => {
     // The record carries latest job status so the client does not need a
     // second status model (SPR-11: one progress contract).
     expect(record.jobs.at(-1)?.status).toBe("succeeded");
+  });
+
+  it("cross-binds playback identity and canonical media paths", async () => {
+    const playback = {
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      duration_seconds: 20,
+      video_sha256: "a".repeat(64),
+      audio_sha256: "b".repeat(64),
+      video_size_bytes: 100,
+      audio_size_bytes: 80,
+      width_px: 1920,
+      height_px: 1080,
+      chapter_ids: ["chapter-1"],
+      video_url: "/multimedia/assets/mm-1/playback/rev-1/video",
+      audio_url: "/multimedia/assets/mm-1/playback/rev-1/audio",
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, playback));
+    expect((await getMultimediaPlayback("mm-1", "rev-1")).video_url).toBe(playback.video_url);
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/playback?revision_id=rev-1",
+      expect.anything(),
+    );
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...playback, revision_id: "rev-other" }));
+    await expect(getMultimediaPlayback("mm-1", "rev-1")).rejects.toThrow("identity_conflict");
   });
 
   it("surfaces a typed not-found error for a 404 job list", async () => {
