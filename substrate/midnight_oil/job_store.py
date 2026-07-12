@@ -93,6 +93,17 @@ class OwnerJobStore(Protocol):
         consent_expires_at_ms: int,
     ) -> CompareAndSetResult: ...
 
+    def reset_undelivered_consent(
+        self,
+        *,
+        owner_user_id: str,
+        job_id: str,
+        expected_version: int,
+        expected_state: OperationState,
+        operation_id: str,
+        consent_receipt_id: str,
+    ) -> CompareAndSetResult: ...
+
     def compare_and_set(
         self,
         *,
@@ -746,6 +757,91 @@ class DurableOwnerJobStore:
                 connection.execute("ROLLBACK")
                 raise
 
+    def reset_undelivered_consent(
+        self,
+        *,
+        owner_user_id: str,
+        job_id: str,
+        expected_version: int,
+        expected_state: OperationState,
+        operation_id: str,
+        consent_receipt_id: str,
+    ) -> CompareAndSetResult:
+        """Revoke authority that has never crossed the delivery boundary.
+
+        The caller must hold the queue's operation lock and prove that neither
+        an active nor terminal delivery exists.  This CAS is deliberately
+        narrower than ``compare_and_set``: only exact unclaimed
+        ``CONSENT_ISSUED`` or claimed-but-undelivered ``QUEUED`` authority can
+        be cleared, and every consent/operation column returns to NULL.
+        """
+        owner = _text(owner_user_id, "owner_user_id")
+        jid = _text(job_id, "job_id")
+        operation = _text(operation_id, "operation_id")
+        receipt = _text(consent_receipt_id, "consent_receipt_id")
+        before = _state(expected_state)
+        if before not in {OperationState.CONSENT_ISSUED, OperationState.QUEUED}:
+            raise ValueError("only undelivered consent authority can be reset")
+        if type(expected_version) is not int or expected_version < 0:
+            raise ValueError("expected_version must be a non-negative integer")
+        with self._coordinator.acquire_write_context("midnight_oil.job_store") as connection:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                current = connection.execute(
+                    f"SELECT {', '.join(_COLUMNS)} FROM midnight_oil_jobs "
+                    "WHERE owner_user_id = ? AND job_id = ?",
+                    [owner, jid],
+                ).fetchone()
+                if current is None:
+                    connection.execute("COMMIT")
+                    return CompareAndSetResult(applied=False, job=None)
+                decoded = _decode(tuple(current))
+                if (
+                    decoded.state_version != expected_version
+                    or decoded.operation_state is not before
+                    or decoded.operation_id != operation
+                    or decoded.consent_receipt_id != receipt
+                ):
+                    connection.execute("COMMIT")
+                    return CompareAndSetResult(applied=False, job=decoded)
+                changed = connection.execute(
+                    "UPDATE midnight_oil_jobs SET state_version = ?, "
+                    "approved_ceiling_cents = NULL, consent_receipt_id = NULL, "
+                    "consent_config_hash = NULL, consent_issued_at_ms = NULL, "
+                    "consent_expires_at_ms = NULL, consent_claimed_at_ms = NULL, "
+                    "operation_id = NULL, operation_state = ?, "
+                    "dispatch_started_at_ms = NULL, dispatched_at_ms = NULL, "
+                    "completed_at_ms = NULL WHERE owner_user_id = ? AND job_id = ? "
+                    "AND state_version = ? AND operation_state = ? "
+                    "AND operation_id = ? AND consent_receipt_id = ? RETURNING state_version",
+                    [
+                        expected_version + 1,
+                        OperationState.NONE.value,
+                        owner,
+                        jid,
+                        expected_version,
+                        before.value,
+                        operation,
+                        receipt,
+                    ],
+                ).fetchone()
+                if changed is None:
+                    connection.execute("ROLLBACK")
+                    return CompareAndSetResult(applied=False, job=decoded)
+                updated = connection.execute(
+                    f"SELECT {', '.join(_COLUMNS)} FROM midnight_oil_jobs "
+                    "WHERE owner_user_id = ? AND job_id = ?",
+                    [owner, jid],
+                ).fetchone()
+                if updated is None:
+                    raise InvalidStoredJob("job disappeared during consent reset")
+                result = _decode(tuple(updated))
+                connection.execute("COMMIT")
+                return CompareAndSetResult(applied=True, job=result)
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
     def compare_and_set(
         self,
         *,
@@ -914,6 +1010,55 @@ class TestOnlyInMemoryOwnerJobStore:
                     "consent_expires_at_ms": consent_expires_at_ms,
                     "operation_id": operation_id,
                     "operation_state": OperationState.CONSENT_ISSUED,
+                }
+            )
+            self._jobs[key] = _validate(updated)
+            return CompareAndSetResult(applied=True, job=replace_payload(self._jobs[key]))
+
+    def reset_undelivered_consent(
+        self,
+        *,
+        owner_user_id: str,
+        job_id: str,
+        expected_version: int,
+        expected_state: OperationState,
+        operation_id: str,
+        consent_receipt_id: str,
+    ) -> CompareAndSetResult:
+        key = (_text(owner_user_id, "owner_user_id"), _text(job_id, "job_id"))
+        operation = _text(operation_id, "operation_id")
+        receipt = _text(consent_receipt_id, "consent_receipt_id")
+        before = _state(expected_state)
+        if before not in {OperationState.CONSENT_ISSUED, OperationState.QUEUED}:
+            raise ValueError("only undelivered consent authority can be reset")
+        if type(expected_version) is not int or expected_version < 0:
+            raise ValueError("expected_version must be a non-negative integer")
+        with self._lock:
+            current = self._jobs.get(key)
+            if current is None:
+                return CompareAndSetResult(applied=False, job=None)
+            if (
+                current.state_version != expected_version
+                or current.operation_state is not before
+                or current.operation_id != operation
+                or current.consent_receipt_id != receipt
+            ):
+                return CompareAndSetResult(applied=False, job=replace_payload(current))
+            updated = OwnerJob(
+                **{
+                    **current.__dict__,
+                    "state_version": expected_version + 1,
+                    "approved_ceiling_cents": None,
+                    "consent_receipt_id": None,
+                    "consent_config_hash": None,
+                    "consent_issued_at_ms": None,
+                    "consent_expires_at_ms": None,
+                    "consent_claimed_at_ms": None,
+                    "operation_id": None,
+                    "operation_state": OperationState.NONE,
+                    "dispatch_started_at_ms": None,
+                    "dispatched_at_ms": None,
+                    "completed_at_ms": None,
                 }
             )
             self._jobs[key] = _validate(updated)

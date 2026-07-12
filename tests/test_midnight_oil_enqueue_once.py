@@ -84,22 +84,76 @@ def test_claim_before_cas_failure_recovers_same_operation(tmp_path: Path) -> Non
     assert queue.get(recovered.json()["operation_id"]) is not None
 
 
-def test_cas_before_insert_failure_repairs_queue(tmp_path: Path) -> None:
+def test_cas_before_insert_failure_can_reset_and_reissue_after_refresh(tmp_path: Path) -> None:
     client, deps, queue, token = _authorized(tmp_path)
-    original = queue.enqueue_once
+    original = queue.enqueue_once_guarded
 
     def crash(**kwargs):  # type: ignore[no-untyped-def]
         raise RuntimeError("cas-to-insert crash")
 
-    queue.enqueue_once = crash  # type: ignore[method-assign]
+    queue.enqueue_once_guarded = crash  # type: ignore[method-assign]
     failed = _run(client, token)
     assert failed.status_code == 503
     assert "cas-to-insert" not in failed.text
     authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
     assert authority is not None and authority.operation_state.value == "queued"
-    queue.enqueue_once = original  # type: ignore[method-assign]
-    assert _run(client, token).status_code == 200
-    assert queue.get(authority.operation_id or "missing") is not None
+    assert queue.get(authority.operation_id or "missing") is None
+    queue.enqueue_once_guarded = original  # type: ignore[method-assign]
+
+    reset = client.delete(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert reset.json()["operator_action"] == "issue_consent"
+
+    object.__setattr__(
+        deps,
+        "random_token",
+        lambda size: "replacement-operation" if size == 24 else "replacement-nonce-value",
+    )
+    replacement = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    )
+    assert replacement.status_code == 200, replacement.text
+    rerun = _run(client, replacement.json()["token"])
+    assert rerun.status_code == 200, rerun.text
+    assert rerun.json()["operation_id"] == "replacement-operation"
+    assert queue.get("replacement-operation") is not None
+
+
+def test_reset_wins_against_delayed_enqueue_guard_without_orphan(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    original = queue.enqueue_once_guarded
+    reached_delivery = threading.Event()
+    permit_delivery = threading.Event()
+
+    def delayed(**kwargs):  # type: ignore[no-untyped-def]
+        reached_delivery.set()
+        assert permit_delivery.wait(timeout=5)
+        return original(**kwargs)
+
+    queue.enqueue_once_guarded = delayed  # type: ignore[method-assign]
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pending = pool.submit(_run, client, token)
+        assert reached_delivery.wait(timeout=5)
+        authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+        assert authority is not None
+        assert authority.operation_state is OperationState.QUEUED
+        reset = client.delete(
+            "/midnight-oil/jobs/job-owned/spend-consent",
+            headers={"x-test-user": "alice"},
+        )
+        assert reset.status_code == 200, reset.text
+        permit_delivery.set()
+        run = pending.result(timeout=5)
+    queue.enqueue_once_guarded = original  # type: ignore[method-assign]
+    assert run.status_code == 409
+    assert queue.get(authority.operation_id or "missing") is None
+    final = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert final is not None and final.operation_state is OperationState.NONE
 
 
 def test_token_is_header_only_and_duplicate_rejected(tmp_path: Path) -> None:

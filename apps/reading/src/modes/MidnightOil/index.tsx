@@ -82,11 +82,16 @@ import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
   depositMidnightOilJob,
+  fetchMidnightOilArtifact,
   fetchMidnightOilLiveStepStatus,
+  getMidnightOilJob,
+  getMidnightOilLifecycle,
+  resetMidnightOilSpendConsent,
   runMidnightOilJob,
   type MidnightOilDepositResponse,
   type MidnightOilJobResponse,
   type MidnightOilLiveStepStatusResponse,
+  type MidnightOilLifecycleStatus,
   type MidnightOilRunResponse,
 } from "../../api/midnightOil";
 import { fetchDecisionTreeSelection, fetchDepthTiers } from "../../api/settings";
@@ -214,6 +219,9 @@ export default function MidnightOil() {
     null,
   );
   const [runResult, setRunResult] = useState<MidnightOilRunResponse | null>(
+    null,
+  );
+  const [lifecycle, setLifecycle] = useState<MidnightOilLifecycleStatus | null>(
     null,
   );
   const [ceilingInput, setCeilingInput] = useState("");
@@ -475,6 +483,29 @@ export default function MidnightOil() {
       .catch(() => {
         /* keep default deep */
       });
+    const resumeJobId = new URL(window.location.href).searchParams.get("moil_job");
+    if (resumeJobId?.trim()) {
+      void Promise.all([
+        getMidnightOilJob(resumeJobId.trim()),
+        getMidnightOilLifecycle(resumeJobId.trim()),
+      ])
+        .then(([resumedJob, resumedLifecycle]) => {
+          if (cancelled) return;
+          setJob({
+            ...resumedJob,
+            status: resumedLifecycle.state,
+            runnable: false,
+            lifecycle: resumedLifecycle,
+          });
+          setLifecycle(resumedLifecycle);
+          setCeilingInput(String(resumedJob.recommended_price_ceiling_usd));
+        })
+        .catch((err: unknown) => {
+          if (!cancelled) {
+            setError(err instanceof Error ? err.message : String(err));
+          }
+        });
+    }
     return () => {
       cancelled = true;
     };
@@ -536,11 +567,16 @@ export default function MidnightOil() {
         research_tier: researchTier,
         // Residual (adc): pass fan-out into recommended ceiling formula.
         fanout_depth: fanout,
+        live: true,
       });
       if (created.view_format !== "html") {
         throw new Error("Midnight Oil view_format must be html");
       }
       setJob(created);
+      setLifecycle(null);
+      const resumeUrl = new URL(window.location.href);
+      resumeUrl.searchParams.set("moil_job", created.job_id);
+      window.history.replaceState({}, "", resumeUrl);
       setCeilingInput(String(created.recommended_price_ceiling_usd));
       // Echo server-normalized tier if present.
       if (created.research_tier) {
@@ -591,8 +627,10 @@ export default function MidnightOil() {
         use_recommended: true,
       });
       setJob(approved);
+      setLifecycle(approved.lifecycle ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      await refreshLifecycleAfterEnqueueFailure(job.job_id);
     } finally {
       setBusy(false);
     }
@@ -620,8 +658,45 @@ export default function MidnightOil() {
         force_below: forceBelow,
       });
       setJob(approved);
+      setLifecycle(approved.lifecycle ?? null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      await refreshLifecycleAfterEnqueueFailure(job.job_id);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refreshLifecycleAfterEnqueueFailure(jobId: string) {
+    try {
+      const next = await getMidnightOilLifecycle(jobId);
+      setLifecycle(next);
+      setJob((current) =>
+        current == null
+          ? current
+          : { ...current, status: next.state, runnable: false, lifecycle: next },
+      );
+    } catch {
+      // Preserve the original enqueue error. Reload will recover owner-safe status.
+    }
+  }
+
+  async function onResetConsent() {
+    if (!job || lifecycle?.operator_action !== "reset_consent") return;
+    setBusy(true);
+    setError(null);
+    try {
+      await resetMidnightOilSpendConsent(job.job_id);
+      const next = await getMidnightOilLifecycle(job.job_id);
+      setLifecycle(next);
+      setJob((current) =>
+        current == null
+          ? current
+          : { ...current, status: next.state, runnable: false, lifecycle: next },
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      await refreshLifecycleAfterEnqueueFailure(job.job_id);
     } finally {
       setBusy(false);
     }
@@ -696,6 +771,76 @@ export default function MidnightOil() {
     }
   }
 
+  const lifecycleTerminal = useMemo(
+    () =>
+      lifecycle != null &&
+      [
+        "complete",
+        "blocked_provider",
+        "reconcile_required",
+        "failed",
+        "budget_halted",
+        "timed_out",
+      ].includes(lifecycle.state),
+    [lifecycle],
+  );
+
+  useEffect(() => {
+    if (!job?.job_id || !lifecycle || lifecycleTerminal) return;
+    let cancelled = false;
+    let timer: number | null = null;
+    const poll = async () => {
+      try {
+        const next = await getMidnightOilLifecycle(job.job_id);
+        if (cancelled) return;
+        setLifecycle(next);
+        setJob((current) =>
+          current == null
+            ? current
+            : { ...current, status: next.state, runnable: false, lifecycle: next },
+        );
+        setError(null);
+      } catch (err: unknown) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      } finally {
+        if (!cancelled) timer = window.setTimeout(() => void poll(), 2_000);
+      }
+    };
+    timer = window.setTimeout(() => void poll(), 2_000);
+    return () => {
+      cancelled = true;
+      if (timer != null) window.clearTimeout(timer);
+    };
+  }, [job?.job_id, lifecycle, lifecycleTerminal]);
+
+  async function onOpenLifecycleArtifact() {
+    if (!job || !lifecycle?.deposit_document_id || lifecycle.state !== "complete") {
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const html = await fetchMidnightOilArtifact(job.job_id);
+      const windowId = openMidnightOilDepositWindow(
+        {
+          job_id: job.job_id,
+          asset_id: lifecycle.deposit_document_id,
+          document_id: lifecycle.deposit_document_id,
+          view_format: "html",
+          html,
+        },
+        "floating",
+      );
+      if (windowId) setDepositWindowId(windowId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div
       className="h-full overflow-y-auto p-6"
@@ -706,7 +851,7 @@ export default function MidnightOil() {
       data-goal-templates={String(MOIL_GOAL_TEMPLATES.length)}
       data-soft-budget="true"
       data-budget-before-fire="true"
-      data-l4-live-step="deferred"
+      data-l4-live-step="durable-queued"
       data-never-auto-route="true"
     >
       <header className="mb-6 space-y-1">
@@ -723,8 +868,8 @@ export default function MidnightOil() {
           Set goals (one per line · research templates · fan-out coverage) and
           duration; review the recommended price ceiling; approve before the
           swarm may run. Deliverable: HTML research asset (never PDF). Soft
-          budget ceiling · budget-before-fire · L4 live multi-provider step
-          dual-gate · never auto-route model choice.
+          budget ceiling · budget-before-fire · durable worker queue with
+          provider attestation · never auto-route model choice.
         </p>
         {/* Residual (aqn): MO budget/model honesty nav (parity Settings aqj–aqm). */}
         <p
@@ -734,7 +879,7 @@ export default function MidnightOil() {
           data-soft-budget="true"
           data-budget-before-fire="true"
           data-never-auto-route="true"
-          data-l4-live-step="deferred"
+          data-l4-live-step="durable-queued"
           role="navigation"
           aria-label="Midnight Oil budget and model honesty navigation"
         >
@@ -766,12 +911,64 @@ export default function MidnightOil() {
             className="opacity-70"
             data-testid="moil-soft-budget-hint"
           >
-            soft budget · budget-before-fire · L4 deferred · never auto-route
+            soft budget · budget-before-fire · durable enqueue · never auto-route
           </span>
         </p>
       </header>
 
-      {/* Residual (hy): live worker step dual-gate readiness (never enables). */}
+      {lifecycle ? (
+        <section
+          className="mb-4 max-w-xl space-y-2 rounded border border-ink/20 p-3 font-mono text-xs dark:border-bright/20"
+          data-testid="moil-durable-lifecycle"
+          data-state={lifecycle.state}
+          data-cost-state={lifecycle.cost_state}
+          data-unknown-outcome={String(lifecycle.unknown_outcome)}
+          data-consent-token-persisted="false"
+          role="status"
+          aria-live="polite"
+        >
+          <p>
+            Durable operation: <strong>{lifecycle.state}</strong> · action: {" "}
+            {lifecycle.operator_action}
+          </p>
+          <p>
+            Cost: confirmed ${(lifecycle.confirmed_spent_cents / 100).toFixed(2)}
+            {" · "}reserved ${(lifecycle.reserved_cents / 100).toFixed(2)}
+            {lifecycle.remaining_cents != null
+              ? ` · remaining $${(lifecycle.remaining_cents / 100).toFixed(2)}`
+              : " · remaining unknown"}
+            {lifecycle.unknown_outcome ? " · provider outcome requires reconciliation" : ""}
+          </p>
+          {lifecycle.operator_action === "reset_consent" ? (
+            <div className="space-y-1">
+              <p>
+                Spend authority exists but queue delivery was not confirmed.
+                Resetting invalidates that authority before you explicitly approve again.
+              </p>
+              <button
+                type="button"
+                data-testid="moil-reset-consent"
+                disabled={busy}
+                onClick={() => void onResetConsent()}
+              >
+                Reset unqueued consent
+              </button>
+            </div>
+          ) : null}
+          {lifecycle.state === "complete" && lifecycle.deposit_document_id ? (
+            <button
+              type="button"
+              data-testid="moil-open-lifecycle-artifact"
+              disabled={busy}
+              onClick={() => void onOpenLifecycleArtifact()}
+            >
+              Open deposited HTML
+            </button>
+          ) : null}
+        </section>
+      ) : null}
+
+      {/* Legacy synthetic-runner diagnostics. Durable jobs use the lifecycle receipt above. */}
       {liveStepStatus ? (
         <div
           className="mb-4 max-w-xl space-y-1 rounded border border-ink/15 p-3 font-mono text-[11px] dark:border-bright/15"
@@ -785,11 +982,11 @@ export default function MidnightOil() {
           role="status"
         >
           <p>
-            Worker mode:{" "}
+            Legacy synthetic fallback:{" "}
             <strong>
               {liveStepStatus.offline_honest
-                ? "offline-honest stub steps"
-                : "live step dual-gate ready"}
+                ? "offline-honest and not used by durable jobs"
+                : "configured for compatibility only"}
             </strong>
           </p>
           <p>
@@ -815,7 +1012,7 @@ export default function MidnightOil() {
         data-offline-surface-count={String(
           competitiveDrOfflineSurfaceCatalog().count,
         )}
-        data-live-injectors-deferred="true"
+        data-live-injectors-deferred="false"
         data-notdiamond-is-router="false"
         role="navigation"
         aria-label="Midnight Oil competitive deep-research navigation"
@@ -832,18 +1029,18 @@ export default function MidnightOil() {
           href="/settings#moil-live-step-status"
           data-testid="moil-settings-l4-live-step-link"
           className="underline opacity-80 hover:opacity-100"
-          title="Open Settings Midnight Oil L4 live-step readiness (offline default · never enables live worker)"
+          title="Open Settings Midnight Oil durable-runtime readiness"
         >
-          Settings · L4 MO live-step
+          Settings · durable runtime
         </a>
         {/* Residual (wx): L4 MO live-step checklist section deep-link. */}
         <a
           href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
           data-testid="moil-dual-gate-checklist-link"
           className="underline opacity-80 hover:opacity-100"
-          title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
+          title="Midnight Oil durable-runtime activation checklist"
         >
-          Dual-gate L4 MO checklist
+          Runtime activation checklist
         </a>
         {/* Residual (aiu/arp): autonomous swarm → competitive DR honesty map (parity arm/arn/aro). */}
         <a
@@ -1420,7 +1617,7 @@ export default function MidnightOil() {
         <section className="mt-8 space-y-3 max-w-xl" data-testid="moil-job">
           <h2 className="text-lg font-medium">Job {job.job_id}</h2>
           <p>
-            Status: <strong>{job.status}</strong>
+            Status: <strong>{lifecycle?.state ?? job.status}</strong>
             {job.runnable ? " · runnable" : ""}
           </p>
           {/* Residual (gs): show curated research tier on job receipt. */}
@@ -1732,7 +1929,9 @@ export default function MidnightOil() {
             </p>
           ) : null}
 
-          {job.status === "awaiting_approval" ? (
+          {(job.status === "awaiting_approval" ||
+            lifecycle?.state === "consent_required") &&
+          lifecycle?.state !== "consent_issued" ? (
             <div className="space-y-2 border rounded p-3">
               {/* Residual (me/arz): force when ceiling may_exceed remaining budget · CTA soft-gate. */}
               {(() => {
@@ -1780,7 +1979,7 @@ export default function MidnightOil() {
                       : "Approve Midnight Oil at recommended price ceiling"
                 }
               >
-                Approve at recommended
+                Approve at recommended &amp; enqueue
               </button>
               <div className="flex flex-wrap items-center gap-2">
                 <input
@@ -1822,7 +2021,7 @@ export default function MidnightOil() {
                         : "Approve Midnight Oil at custom price ceiling"
                   }
                 >
-                  Approve custom ceiling
+                  Approve custom ceiling &amp; enqueue
                 </button>
               </div>
                   </>
@@ -1880,11 +2079,11 @@ export default function MidnightOil() {
             </div>
           ) : null}
 
-          {job.status === "approved" ||
+          {!lifecycle && (job.status === "approved" ||
           job.status === "complete" ||
           job.status === "running" ||
           job.status === "timed_out" ||
-          job.status === "budget_halted" ? (
+          job.status === "budget_halted") ? (
             <div className="space-y-2 border rounded p-3">
               <p className="text-sm opacity-80">
                 Offline run simulates the autonomous swarm (one step per goal,

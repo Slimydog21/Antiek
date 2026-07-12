@@ -211,12 +211,23 @@ def _recover_terminal(
     clock_ms: Callable[[], int],
 ) -> WorkerPhaseRecord:
     queue = runtime.stores.operation_queue
-    leased, won = queue.lease(
-        operation_id=operation_id,
-        worker_id=worker_id,
-        leased_at_ms=now_ms,
-        lease_expires_at_ms=now_ms + runtime.config.worker_lease_ms,
-    )
+    try:
+        leased, won = queue.lease(
+            operation_id=operation_id,
+            worker_id=worker_id,
+            leased_at_ms=now_ms,
+            lease_expires_at_ms=now_ms + runtime.config.worker_lease_ms,
+        )
+    except KeyError:
+        # Another worker may archive the terminal operation after this worker's
+        # claimable read but before the per-operation lease lock is acquired.
+        return WorkerPhaseRecord(
+            result="contended",
+            phase="terminal_recovery_claim",
+            worker_id=worker_id,
+            operation_id=operation_id,
+            job_id=job_id,
+        )
     if not won:
         return WorkerPhaseRecord(
             result="contended",

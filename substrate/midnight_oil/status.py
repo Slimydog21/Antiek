@@ -14,6 +14,7 @@ from .operation_queue import OperationQueue, QueuedOperation, TerminalOperation
 LifecycleState = Literal[
     "consent_required",
     "consent_issued",
+    "consent_delivery_failed",
     "queued",
     "leased",
     "lease_pending",
@@ -37,7 +38,7 @@ TerminalOutcome = Literal[
 ]
 OperatorAction = Literal[
     "issue_consent",
-    "enqueue_with_current_consent",
+    "reset_consent",
     "wait_for_worker",
     "restart_worker",
     "inspect_reconciliation",
@@ -235,9 +236,11 @@ def project_lifecycle_status(
     elif authority.operation_state is OperationState.CONSENT_ISSUED:
         if operation_id is None or active is not None or archived is not None:
             raise LifecycleIntegrityError("consent-issued job has incoherent delivery state")
-        state, action = "consent_issued", "enqueue_with_current_consent"
+        state, action = "consent_issued", "reset_consent"
     elif authority.operation_state is OperationState.QUEUED:
-        if active is None or active.state != "queued" or archived is not None:
+        if active is None and archived is None:
+            state, action = "consent_delivery_failed", "reset_consent"
+        elif active is None or active.state != "queued" or archived is not None:
             state, action = "reconcile_required", "inspect_reconciliation"
         else:
             state, action = "queued", "wait_for_worker"

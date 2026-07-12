@@ -59,9 +59,22 @@ class OperationQueue(Protocol):
         options: dict[str, object],
     ) -> tuple[QueuedOperation, bool]: ...
 
+    def enqueue_once_guarded(
+        self,
+        *,
+        operation_id: str,
+        owner_user_id: str,
+        job_id: str,
+        enqueued_at_ms: int,
+        options: dict[str, object],
+        authority_guard: Callable[[], None],
+    ) -> tuple[QueuedOperation, bool]: ...
+
     def get(self, operation_id: str) -> QueuedOperation | None: ...
 
     def get_terminal(self, operation_id: str) -> TerminalOperation | None: ...
+
+    def run_if_undelivered(self, operation_id: str, action: Callable[[], T]) -> T: ...
 
     def next_claimable(self, *, now_ms: int) -> QueuedOperation | None: ...
 
@@ -139,7 +152,10 @@ def _time(value: object, field: str) -> int:
 
 def _options(value: object) -> tuple[dict[str, object], str]:
     if not isinstance(value, dict) or set(value) - {
-        "max_steps", "auto_deposit", "draft_combined", "force_offline"
+        "max_steps",
+        "auto_deposit",
+        "draft_combined",
+        "force_offline",
     }:
         raise ValueError("queue options are outside the closed execution contract")
     if any("token" in str(key).lower() or "secret" in str(key).lower() for key in value):
@@ -170,10 +186,7 @@ def _decode(row: tuple[object, ...]) -> QueuedOperation:
     if leased is not None and leased < enqueued:
         raise ValueError("lease predates enqueue")
     if state == "running" and (
-        leased is None
-        or lease_owner is None
-        or lease_expires is None
-        or lease_expires <= leased
+        leased is None or lease_owner is None or lease_expires is None or lease_expires <= leased
     ):
         raise ValueError("stored lease authority is incoherent")
     return QueuedOperation(
@@ -305,7 +318,56 @@ class DurableOperationQueue:
         job = _text(job_id, "job_id")
         at = _time(enqueued_at_ms, "enqueued_at_ms")
         checked_options, encoded = _options(options)
-        with self._connect() as connection:
+        return self._enqueue_once_locked(
+            operation=operation,
+            owner=owner,
+            job=job,
+            at=at,
+            checked_options=checked_options,
+            encoded=encoded,
+            authority_guard=lambda: None,
+        )
+
+    def enqueue_once_guarded(
+        self,
+        *,
+        operation_id: str,
+        owner_user_id: str,
+        job_id: str,
+        enqueued_at_ms: int,
+        options: dict[str, object],
+        authority_guard: Callable[[], None],
+    ) -> tuple[QueuedOperation, bool]:
+        """Recheck authority under the delivery lock immediately before insert."""
+        if not callable(authority_guard):
+            raise ValueError("authority_guard must be callable")
+        operation = _text(operation_id, "operation_id")
+        owner = _text(owner_user_id, "owner_user_id")
+        job = _text(job_id, "job_id")
+        at = _time(enqueued_at_ms, "enqueued_at_ms")
+        checked_options, encoded = _options(options)
+        return self._enqueue_once_locked(
+            operation=operation,
+            owner=owner,
+            job=job,
+            at=at,
+            checked_options=checked_options,
+            encoded=encoded,
+            authority_guard=authority_guard,
+        )
+
+    def _enqueue_once_locked(
+        self,
+        *,
+        operation: str,
+        owner: str,
+        job: str,
+        at: int,
+        checked_options: dict[str, object],
+        encoded: str,
+        authority_guard: Callable[[], None],
+    ) -> tuple[QueuedOperation, bool]:
+        with self._operation_lock(operation), self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
                 terminal = connection.execute(
@@ -324,6 +386,7 @@ class DurableOperationQueue:
                             "terminal operation replay conflicts with durable delivery"
                         )
                     raise ValueError("operation is already terminal")
+                authority_guard()
                 cursor = connection.execute(
                     "INSERT OR IGNORE INTO midnight_oil_operation_queue "
                     "(operation_id, owner_user_id, job_id, state, enqueued_at_ms, options_json) "
@@ -334,13 +397,19 @@ class DurableOperationQueue:
                 if row is None:
                     conflict = connection.execute(
                         "SELECT operation_id FROM midnight_oil_operation_queue "
-                        "WHERE owner_user_id = ? AND job_id = ?", (owner, job)
+                        "WHERE owner_user_id = ? AND job_id = ?",
+                        (owner, job),
                     ).fetchone()
                     raise ValueError(
                         "job is already bound to a different operation"
-                        if conflict is not None else "enqueue did not persist"
+                        if conflict is not None
+                        else "enqueue did not persist"
                     )
-                if (row.owner_user_id, row.job_id, row.options) != (owner, job, checked_options):
+                if (row.owner_user_id, row.job_id, row.options) != (
+                    owner,
+                    job,
+                    checked_options,
+                ):
                     raise ValueError("operation queue replay conflicts with durable authority")
                 connection.execute("COMMIT")
                 return row, cursor.rowcount == 1
@@ -381,6 +450,20 @@ class DurableOperationQueue:
                 (operation,),
             ).fetchone()
         return None if row is None else _decode_terminal(tuple(row))
+
+    def run_if_undelivered(self, operation_id: str, action: Callable[[], T]) -> T:
+        """Run ``action`` while enqueue/lease are excluded and no delivery exists."""
+        operation = _text(operation_id, "operation_id")
+        with self._operation_lock(operation):
+            with self._connect() as connection:
+                active = self._select(connection, operation)
+                terminal = connection.execute(
+                    "SELECT 1 FROM midnight_oil_operation_terminal WHERE operation_id = ?",
+                    (operation,),
+                ).fetchone()
+            if active is not None or terminal is not None:
+                raise ValueError("operation already crossed the delivery boundary")
+            return action()
 
     def next_claimable(self, *, now_ms: int) -> QueuedOperation | None:
         """Return the oldest queued or expired operation; ``lease`` arbitrates."""
@@ -551,13 +634,9 @@ class DurableOperationQueue:
                 # Renew while the same per-operation lock is still held so no
                 # successor generation can overlap terminal disposition.
                 if renew_expires_at_ms is not None:
-                    exceptional_expiry = _time(
-                        renew_expires_at_ms(), "renew_expires_at_ms"
-                    )
+                    exceptional_expiry = _time(renew_expires_at_ms(), "renew_expires_at_ms")
                     if exceptional_expiry <= now:
-                        raise ValueError(
-                            "fenced renewal must extend beyond fence time"
-                        ) from None
+                        raise ValueError("fenced renewal must extend beyond fence time") from None
                     with self._connect() as connection:
                         renewed = connection.execute(
                             "UPDATE midnight_oil_operation_queue SET "
@@ -571,9 +650,7 @@ class DurableOperationQueue:
                                 "exceptional paid fence lost its lease generation"
                             ) from None
                 raise
-            renewal_expiry = (
-                None if renew_expires_at_ms is None else renew_expires_at_ms()
-            )
+            renewal_expiry = None if renew_expires_at_ms is None else renew_expires_at_ms()
             if renewal_expiry is not None:
                 renewal_expiry = _time(renewal_expiry, "renew_expires_at_ms")
                 if renewal_expiry <= now:

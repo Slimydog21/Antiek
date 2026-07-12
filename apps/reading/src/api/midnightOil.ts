@@ -85,6 +85,8 @@ export type MidnightOilJobResponse = {
   view_format: "html";
   runnable: boolean;
   html?: string;
+  spawn_ids?: string[];
+  lifecycle?: MidnightOilLifecycleStatus;
 };
 
 async function readJson<T>(res: Response): Promise<T> {
@@ -121,6 +123,7 @@ export async function createMidnightOilJob(body: {
   asset_id?: string | null;
   /** Residual (gs): fast | deep | wrestle */
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
+  live?: boolean;
 }): Promise<MidnightOilJobResponse> {
   const res = await apiFetch(`${API_BASE}/midnight-oil/create`, {
     method: "POST",
@@ -130,18 +133,175 @@ export async function createMidnightOilJob(body: {
   return readJson<MidnightOilJobResponse>(res);
 }
 
+export type MidnightOilSpendConsentResponse = {
+  token: string;
+  operation_id: string;
+  ceiling_cents: number;
+  issued_at_ms: number;
+  expires_at_ms: number;
+};
+
+export type MidnightOilEnqueueResponse = {
+  job_id: string;
+  operation_id: string;
+  state: "queued" | string;
+};
+
+export type MidnightOilLifecycleState =
+  | "consent_required"
+  | "consent_issued"
+  | "consent_delivery_failed"
+  | "queued"
+  | "leased"
+  | "lease_pending"
+  | "blocked_provider"
+  | "reconcile_required"
+  | "deposit_pending"
+  | "projection_pending"
+  | "archive_pending"
+  | "complete"
+  | "failed"
+  | "budget_halted"
+  | "timed_out";
+
+export type MidnightOilLifecycleStatus = {
+  schema_version: 1;
+  job_id: string;
+  operation_id: string | null;
+  state: MidnightOilLifecycleState;
+  terminal_outcome:
+    | "complete"
+    | "blocked_provider"
+    | "failed"
+    | "failed_reconcile"
+    | "budget_halted"
+    | "timed_out"
+    | null;
+  approved_ceiling_cents: number | null;
+  confirmed_spent_cents: number;
+  reserved_cents: number;
+  unknown_outcome: boolean;
+  remaining_cents: number | null;
+  cost_state: "not_reserved" | "reserved" | "unknown_outcome" | "settled";
+  consent_expires_at_ms: number | null;
+  enqueued_at_ms: number | null;
+  lease_expires_at_ms: number | null;
+  completed_at_ms: number | null;
+  deposit_document_id: string | null;
+  deposit_href: string | null;
+  graph_deliverable_id: string | null;
+  graph_deep_links: string[];
+  operator_action: string;
+  view_format: "html";
+};
+
+export type MidnightOilConsentResetResponse = {
+  schema_version: 1;
+  job_id: string;
+  state: "consent_required";
+  operation_state: "none";
+  state_version: number;
+  operator_action: "issue_consent";
+};
+
+export async function issueMidnightOilSpendConsent(body: {
+  job_id: string;
+  ceiling_usd?: number | null;
+  use_recommended?: boolean;
+  force_below?: boolean;
+}): Promise<MidnightOilSpendConsentResponse> {
+  const scaledCeiling =
+    body.ceiling_usd == null ? null : body.ceiling_usd * 100;
+  const ceilingCents = scaledCeiling == null ? null : Math.round(scaledCeiling);
+  if (
+    ceilingCents != null &&
+    (!Number.isSafeInteger(ceilingCents) ||
+      ceilingCents < 1 ||
+      scaledCeiling == null ||
+      Math.abs(scaledCeiling - ceilingCents) > 1e-7)
+  ) {
+    throw new Error("Midnight Oil ceiling must be positive with at most two decimals");
+  }
+  const res = await apiFetch(
+    `${API_BASE}/midnight-oil/jobs/${encodeURIComponent(body.job_id)}/spend-consent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ceiling_cents: body.use_recommended ? null : ceilingCents,
+        use_recommended: Boolean(body.use_recommended),
+        force_below: Boolean(body.force_below),
+      }),
+    },
+  );
+  return readJson<MidnightOilSpendConsentResponse>(res);
+}
+
+export async function enqueueMidnightOilJob(
+  jobId: string,
+  spendConsent: string,
+): Promise<MidnightOilEnqueueResponse> {
+  if (!spendConsent) throw new Error("Midnight Oil spend consent is required");
+  const res = await apiFetch(`${API_BASE}/midnight-oil/run`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Midnight-Oil-Spend-Consent": spendConsent,
+    },
+    body: JSON.stringify({
+      job_id: jobId,
+      max_steps: null,
+      auto_deposit: true,
+      draft_combined: true,
+      force_offline: false,
+    }),
+  });
+  return readJson<MidnightOilEnqueueResponse>(res);
+}
+
+export async function resetMidnightOilSpendConsent(
+  jobId: string,
+): Promise<MidnightOilConsentResetResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/midnight-oil/jobs/${encodeURIComponent(jobId)}/spend-consent`,
+    { method: "DELETE", cache: "no-store" },
+  );
+  return readJson<MidnightOilConsentResetResponse>(res);
+}
+
+export async function getMidnightOilLifecycle(
+  jobId: string,
+): Promise<MidnightOilLifecycleStatus> {
+  const res = await apiFetch(
+    `${API_BASE}/midnight-oil/jobs/${encodeURIComponent(jobId)}/status`,
+    { cache: "no-store" },
+  );
+  return readJson<MidnightOilLifecycleStatus>(res);
+}
+
+/**
+ * Explicit confirmation boundary. The credential remains a stack-local value,
+ * is sent once as a header, and is unreachable after this function returns.
+ */
 export async function approveMidnightOilCeiling(body: {
   job_id: string;
   ceiling_usd?: number | null;
   use_recommended?: boolean;
   force_below?: boolean;
 }): Promise<MidnightOilJobResponse> {
-  const res = await apiFetch(`${API_BASE}/midnight-oil/approve`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  return readJson<MidnightOilJobResponse>(res);
+  const consent = await issueMidnightOilSpendConsent(body);
+  await enqueueMidnightOilJob(body.job_id, consent.token);
+  const [job, lifecycle] = await Promise.all([
+    getMidnightOilJob(body.job_id),
+    getMidnightOilLifecycle(body.job_id),
+  ]);
+  return {
+    ...job,
+    status: lifecycle.state,
+    approved_ceiling_usd: consent.ceiling_cents / 100,
+    runnable: false,
+    lifecycle,
+  };
 }
 
 export async function getMidnightOilJob(
@@ -232,16 +392,24 @@ export async function runMidnightOilJob(body: {
   auto_deposit?: boolean;
   draft_combined?: boolean;
 }): Promise<MidnightOilRunResponse> {
-  const res = await apiFetch(`${API_BASE}/midnight-oil/run`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      job_id: body.job_id,
-      max_steps: body.max_steps ?? null,
-      spent_per_goal: body.spent_per_goal ?? 0.05,
-      auto_deposit: Boolean(body.auto_deposit),
-      draft_combined: body.draft_combined ?? true,
-    }),
-  });
-  return readJson<MidnightOilRunResponse>(res);
+  void body;
+  throw new Error(
+    "Synchronous Midnight Oil execution is retired; issue consent and enqueue the durable worker",
+  );
+}
+
+export async function fetchMidnightOilArtifact(jobId: string): Promise<string> {
+  const res = await apiFetch(
+    `${API_BASE}/midnight-oil/jobs/${encodeURIComponent(jobId)}/artifact`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`midnight-oil artifact ${res.status}: ${text.slice(0, 200)}`);
+  }
+  const contentType = res.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().startsWith("text/html")) {
+    throw new Error("Midnight Oil artifact must be text/html");
+  }
+  return res.text();
 }

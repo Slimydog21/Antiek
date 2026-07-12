@@ -114,6 +114,17 @@ def test_status_projects_consent_queue_and_lease_without_mutation(tmp_path: Path
     )
     assert consent.state == "consent_issued"
 
+    delivery_failed = project_lifecycle_status(
+        authority=_owner(OperationState.QUEUED, "status-operation"),
+        job=job,
+        operation_queue=queue,
+        now_ms=19,
+    )
+    assert (delivery_failed.state, delivery_failed.operator_action) == (
+        "consent_delivery_failed",
+        "reset_consent",
+    )
+
     queued = _enqueue(queue)
     queued_status = project_lifecycle_status(
         authority=_owner(OperationState.QUEUED, queued.operation_id),

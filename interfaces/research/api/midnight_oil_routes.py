@@ -56,9 +56,7 @@ from substrate.midnight_oil.spend_consent import (
 from substrate.midnight_oil.status import LifecycleIntegrityError, project_lifecycle_status
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
-midnight_oil_preflight_router = APIRouter(
-    prefix="/research/midnight-oil", tags=["deep-research"]
-)
+midnight_oil_preflight_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
 _DEPENDENCIES = "midnight_oil_dependencies"
 CONSENT_TTL_MS = 15 * 60 * 1000
 
@@ -219,9 +217,7 @@ class RunBody(BaseModel):
     force_offline: StrictBool = False
 
 
-def _owner_payload(
-    job: Any, *, live_plan: LiveExecutionPlan | None = None
-) -> dict[str, object]:
+def _owner_payload(job: Any, *, live_plan: LiveExecutionPlan | None = None) -> dict[str, object]:
     recommended_cents = int(
         (Decimal(str(job.recommended_price_ceiling_usd)) * 100).to_integral_value(
             rounding=ROUND_FLOOR
@@ -238,21 +234,13 @@ def _owner_payload(
         "recommended_ceiling_cents": recommended_cents,
         "display_usd": job.recommended_price_ceiling_usd,
         "live_plan_hash": None if live_plan is None else live_plan.plan_hash,
-        "live_allowed_routes": (
-            [] if live_plan is None else list(live_plan.allowed_routes)
-        ),
-        "live_projected_max_cents": (
-            None if live_plan is None else live_plan.projected_max_cents
-        ),
-        "live_source_policy": (
-            [] if live_plan is None else list(live_plan.source_policy)
-        ),
+        "live_allowed_routes": ([] if live_plan is None else list(live_plan.allowed_routes)),
+        "live_projected_max_cents": (None if live_plan is None else live_plan.projected_max_cents),
+        "live_source_policy": ([] if live_plan is None else list(live_plan.source_policy)),
         "live_dispatch_config_hash": (
             None if live_plan is None else live_plan.dispatch_config_hash
         ),
-        "live_max_input_bytes": (
-            None if live_plan is None else live_plan.max_input_bytes
-        ),
+        "live_max_input_bytes": (None if live_plan is None else live_plan.max_input_bytes),
     }
 
 
@@ -501,6 +489,84 @@ def post_spend_consent(
     }
 
 
+@midnight_oil_router.delete("/jobs/{job_id}/spend-consent")
+def delete_spend_consent(request: Request, job_id: str, response: Response) -> dict[str, object]:
+    """Reset exact authority that has not crossed the delivery boundary.
+
+    The operation queue lock arbitrates reset against enqueue.  The authority
+    CAS then binds the reset to the exact version, operation, and receipt that
+    the owner observed.  Either unclaimed ``CONSENT_ISSUED`` authority or
+    claimed ``QUEUED`` authority with no active or terminal queue row may be
+    reset.  Delivered, running, and terminal authority can never be reopened.
+    """
+    deps, authority = _owned(request, job_id)
+    if deps.operation_queue is None:
+        raise HTTPException(
+            status_code=503,
+            detail="durable operation queue is unavailable",
+            headers={"Cache-Control": "no-store"},
+        )
+    if (
+        authority.operation_state
+        not in {OperationState.CONSENT_ISSUED, OperationState.QUEUED}
+        or authority.operation_id is None
+        or authority.consent_receipt_id is None
+        or (
+            authority.operation_state is OperationState.CONSENT_ISSUED
+            and authority.consent_claimed_at_ms is not None
+        )
+        or (
+            authority.operation_state is OperationState.QUEUED
+            and authority.consent_claimed_at_ms is None
+        )
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="spend consent is not resettable",
+            headers={"Cache-Control": "no-store"},
+        )
+
+    def reset_authority() -> Any:
+        return deps.owner_jobs.reset_undelivered_consent(
+            owner_user_id=authority.owner_user_id,
+            job_id=authority.job_id,
+            expected_version=authority.state_version,
+            expected_state=authority.operation_state,
+            operation_id=authority.operation_id or "",
+            consent_receipt_id=authority.consent_receipt_id or "",
+        )
+
+    try:
+        reset = deps.operation_queue.run_if_undelivered(authority.operation_id, reset_authority)
+    except ValueError:
+        raise HTTPException(
+            status_code=409,
+            detail="spend consent already crossed the delivery boundary",
+            headers={"Cache-Control": "no-store"},
+        ) from None
+    except Exception:
+        raise HTTPException(
+            status_code=503,
+            detail="spend consent reset is unavailable",
+            headers={"Cache-Control": "no-store"},
+        ) from None
+    if not reset.applied or reset.job is None:
+        raise HTTPException(
+            status_code=409,
+            detail="spend consent changed during reset",
+            headers={"Cache-Control": "no-store"},
+        )
+    response.headers["Cache-Control"] = "no-store"
+    return {
+        "schema_version": 1,
+        "job_id": reset.job.job_id,
+        "state": "consent_required",
+        "operation_state": reset.job.operation_state.value,
+        "state_version": reset.job.state_version,
+        "operator_action": "issue_consent",
+    }
+
+
 @midnight_oil_router.get("/jobs/{job_id}")
 def get_job_route(request: Request, job_id: str) -> dict[str, Any]:
     deps, _ = _owned(request, job_id)
@@ -528,9 +594,7 @@ def get_job_route(request: Request, job_id: str) -> dict[str, Any]:
 
 
 @midnight_oil_router.get("/jobs/{job_id}/status")
-def get_job_status_route(
-    request: Request, job_id: str, response: Response
-) -> dict[str, object]:
+def get_job_status_route(request: Request, job_id: str, response: Response) -> dict[str, object]:
     deps, authority = _owned(request, job_id)
     if deps.operation_queue is None:
         raise HTTPException(status_code=503, detail="durable operation queue is unavailable")
@@ -550,9 +614,7 @@ def get_job_status_route(
             except ReservationNotFound:
                 exposure = None
             except Exception as exc:
-                raise LifecycleIntegrityError(
-                    "budget exposure cannot be read"
-                ) from exc
+                raise LifecycleIntegrityError("budget exposure cannot be read") from exc
         status = project_lifecycle_status(
             authority=authority,
             job=job,
@@ -606,8 +668,7 @@ def get_job_artifact_route(request: Request, job_id: str) -> HTMLResponse:
         or document.get("job_id") != job.job_id
         or document.get("view_format") != "html"
         or job.deposit_html_sha256 is None
-        or hashlib.sha256(html_value.encode("utf-8")).hexdigest()
-        != job.deposit_html_sha256
+        or hashlib.sha256(html_value.encode("utf-8")).hexdigest() != job.deposit_html_sha256
     ):
         raise HTTPException(status_code=409, detail="HTML artifact requires reconciliation")
     return HTMLResponse(
@@ -739,14 +800,34 @@ def post_run(
     current = latest
     if current.operation_state is OperationState.CONSENT_ISSUED:
         raise _run_error(503, "operation transition did not persist")
+    if current.operation_state is OperationState.NONE:
+        # A concurrent owner reset won the authority CAS.  Never deliver the
+        # now-revoked operation using the stale pre-reset snapshot.
+        raise _run_error(409, "spend consent changed before enqueue")
 
     try:
         queued = deps.operation_queue.get(claim.receipt.operation_id)
     except Exception:
         raise _run_error(503, "operation queue is unavailable") from None
     if current.operation_state is OperationState.QUEUED and queued is None:
+        expected_version = current.state_version
+        expected_receipt_id = current.consent_receipt_id
+
+        def require_current_queue_authority() -> None:
+            latest_for_delivery = deps.owner_jobs.get_job(
+                owner_user_id=owner, job_id=body.job_id
+            )
+            if (
+                latest_for_delivery is None
+                or latest_for_delivery.state_version != expected_version
+                or latest_for_delivery.operation_state is not OperationState.QUEUED
+                or latest_for_delivery.operation_id != claim.receipt.operation_id
+                or latest_for_delivery.consent_receipt_id != expected_receipt_id
+            ):
+                raise ValueError("operation authority changed before delivery")
+
         try:
-            queued, _ = deps.operation_queue.enqueue_once(
+            queued, _ = deps.operation_queue.enqueue_once_guarded(
                 operation_id=claim.receipt.operation_id,
                 owner_user_id=owner,
                 job_id=body.job_id,
@@ -757,14 +838,13 @@ def post_run(
                     "draft_combined": body.draft_combined,
                     "force_offline": body.force_offline,
                 },
+                authority_guard=require_current_queue_authority,
             )
         except ValueError:
             raise _run_error(409, "operation queue conflicts with authority") from None
         except Exception:
             raise _run_error(503, "operation enqueue is unavailable") from None
-    elif queued is not None and (
-        queued.owner_user_id != owner or queued.job_id != body.job_id
-    ):
+    elif queued is not None and (queued.owner_user_id != owner or queued.job_id != body.job_id):
         raise _run_error(409, "operation queue conflicts with authority")
     return {
         "job_id": body.job_id,

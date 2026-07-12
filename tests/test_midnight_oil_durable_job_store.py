@@ -144,6 +144,45 @@ def test_cas_rejects_stale_version_state_operation_and_owner_without_mutation(
     assert cross_owner.applied is False and cross_owner.job is None
 
 
+def test_durable_reset_clears_only_exact_unclaimed_consent(tmp_path: Path) -> None:
+    path = tmp_path / "jobs.duckdb"
+    store = DurableOwnerJobStore(path)
+    store.put_job(_job())
+    published = _publish(store)
+    assert published.job is not None
+    for operation, receipt in (
+        ("wrong-operation", "receipt-safe-metadata"),
+        ("operation-1", "wrong-receipt"),
+    ):
+        refused = store.reset_undelivered_consent(
+            owner_user_id="owner-a",
+            job_id="job-1",
+            expected_version=1,
+            expected_state=OperationState.CONSENT_ISSUED,
+            operation_id=operation,
+            consent_receipt_id=receipt,
+        )
+        assert not refused.applied
+    reset = store.reset_undelivered_consent(
+        owner_user_id="owner-a",
+        job_id="job-1",
+        expected_version=1,
+        expected_state=OperationState.CONSENT_ISSUED,
+        operation_id="operation-1",
+        consent_receipt_id="receipt-safe-metadata",
+    )
+    assert reset.applied and reset.job is not None
+    assert reset.job.operation_state is OperationState.NONE
+    assert reset.job.state_version == 2
+    assert reset.job.operation_id is None
+    assert reset.job.approved_ceiling_cents is None
+    assert reset.job.consent_receipt_id is None
+    assert reset.job.consent_config_hash is None
+    assert reset.job.consent_issued_at_ms is None
+    assert reset.job.consent_expires_at_ms is None
+    assert DurableOwnerJobStore(path).get_job(owner_user_id="owner-a", job_id="job-1") == reset.job
+
+
 def test_fifty_separate_store_contenders_have_one_winner(tmp_path: Path) -> None:
     path = tmp_path / "jobs.duckdb"
     DurableOwnerJobStore(path).put_job(_job())
@@ -216,8 +255,22 @@ def test_exact_v1_safe_ready_row_migrates_and_active_row_fails_closed(tmp_path: 
     connection.execute(ddl)
     connection.execute(
         "INSERT INTO midnight_oil_jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ["owner-a", "job-1", 0, None, None, None, None, None, "ready", None, None, None,
-         '{"goals":["safe"]}', 1],
+        [
+            "owner-a",
+            "job-1",
+            0,
+            None,
+            None,
+            None,
+            None,
+            None,
+            "ready",
+            None,
+            None,
+            None,
+            '{"goals":["safe"]}',
+            1,
+        ],
     )
     connection.close()
     migrated = DurableOwnerJobStore(safe_path).get_job(owner_user_id="owner-a", job_id="job-1")
@@ -228,15 +281,31 @@ def test_exact_v1_safe_ready_row_migrates_and_active_row_fails_closed(tmp_path: 
     connection.execute(ddl)
     connection.execute(
         "INSERT INTO midnight_oil_jobs VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        ["owner-a", "job-1", 1, 100, "receipt", "config", 10, "operation", "claimed",
-         None, None, None, '{"goals":["unsafe"]}', 1],
+        [
+            "owner-a",
+            "job-1",
+            1,
+            100,
+            "receipt",
+            "config",
+            10,
+            "operation",
+            "claimed",
+            None,
+            None,
+            None,
+            '{"goals":["unsafe"]}',
+            1,
+        ],
     )
     connection.close()
     with pytest.raises(InvalidStoredJob, match="reconciliation"):
         DurableOwnerJobStore(active_path)
     check = duckdb.connect(str(active_path), read_only=True)
     try:
-        assert check.execute("SELECT operation_state FROM midnight_oil_jobs").fetchone() == ("claimed",)
+        assert check.execute("SELECT operation_state FROM midnight_oil_jobs").fetchone() == (
+            "claimed",
+        )
     finally:
         check.close()
 

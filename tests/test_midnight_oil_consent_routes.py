@@ -343,6 +343,187 @@ def test_consent_is_bound_published_and_returned_once_no_store(
     assert token not in conflict.text
 
 
+def test_owner_can_reset_only_unclaimed_undelivered_consent(tmp_path: Path) -> None:
+    client, deps = _client(tmp_path)
+    _create(client)
+    issued = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    )
+    assert issued.status_code == 200
+    before = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert before is not None
+
+    reset = client.delete(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+    )
+    assert reset.status_code == 200, reset.text
+    assert reset.headers["cache-control"] == "no-store"
+    assert reset.json() == {
+        "schema_version": 1,
+        "job_id": "job-owned",
+        "state": "consent_required",
+        "operation_state": "none",
+        "state_version": before.state_version + 1,
+        "operator_action": "issue_consent",
+    }
+    after = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert after is not None
+    assert after.operation_state is OperationState.NONE
+    assert after.operation_id is None
+    assert after.approved_ceiling_cents is None
+    assert after.consent_receipt_id is None
+    assert after.consent_config_hash is None
+    assert after.consent_issued_at_ms is None
+    assert after.consent_expires_at_ms is None
+    status = client.get(
+        "/midnight-oil/jobs/job-owned/status",
+        headers={"x-test-user": "alice"},
+    )
+    assert status.status_code == 200
+    assert (status.json()["state"], status.json()["operator_action"]) == (
+        "consent_required",
+        "issue_consent",
+    )
+
+
+def test_reset_is_owner_isolated_and_old_token_cannot_enqueue(tmp_path: Path) -> None:
+    client, deps = _client(tmp_path)
+    _create(client)
+    issued = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    ).json()
+    foreign = client.delete(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "mallory"},
+    )
+    assert foreign.status_code == 404
+    reset = client.delete(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+    )
+    assert reset.status_code == 200
+    stale = client.post(
+        "/midnight-oil/run",
+        headers={
+            "x-test-user": "alice",
+            "X-Midnight-Oil-Spend-Consent": issued["token"],
+        },
+        json={"job_id": "job-owned"},
+    )
+    assert stale.status_code == 409
+    assert deps.operation_queue is not None
+    assert deps.operation_queue.get(issued["operation_id"]) is None
+
+
+def test_reset_refuses_any_existing_queue_delivery(tmp_path: Path) -> None:
+    client, deps = _client(tmp_path)
+    _create(client)
+    issued = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    ).json()
+    assert deps.operation_queue is not None
+    deps.operation_queue.enqueue_once(
+        operation_id=issued["operation_id"],
+        owner_user_id="alice",
+        job_id="job-owned",
+        enqueued_at_ms=1_000_001,
+        options={
+            "max_steps": None,
+            "auto_deposit": False,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    refused = client.delete(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+    )
+    assert refused.status_code == 409
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None
+    assert authority.operation_state is OperationState.CONSENT_ISSUED
+    assert authority.operation_id == issued["operation_id"]
+
+
+def test_reset_cas_race_has_one_winner_and_never_reopens_twice(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    client, deps = _client(tmp_path)
+    _create(client)
+    client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    )
+
+    def revoke() -> int:
+        return client.delete(
+            "/midnight-oil/jobs/job-owned/spend-consent",
+            headers={"x-test-user": "alice"},
+        ).status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        statuses = sorted(pool.map(lambda _: revoke(), range(2)))
+    assert statuses == [200, 409]
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None
+    assert authority.operation_state is OperationState.NONE
+    assert authority.state_version == 2
+
+
+def test_reset_racing_claim_and_enqueue_converges_without_orphan(tmp_path: Path) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+
+    client, deps = _client(tmp_path)
+    _create(client)
+    issued = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    ).json()
+
+    def revoke() -> tuple[str, int]:
+        response = client.delete(
+            "/midnight-oil/jobs/job-owned/spend-consent",
+            headers={"x-test-user": "alice"},
+        )
+        return "reset", response.status_code
+
+    def enqueue() -> tuple[str, int]:
+        response = client.post(
+            "/midnight-oil/run",
+            headers={
+                "x-test-user": "alice",
+                "X-Midnight-Oil-Spend-Consent": issued["token"],
+            },
+            json={"job_id": "job-owned"},
+        )
+        return "run", response.status_code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(fn) for fn in (revoke, enqueue)]
+        outcomes = dict(future.result() for future in futures)
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None
+    assert deps.operation_queue is not None
+    delivery = deps.operation_queue.get(issued["operation_id"])
+    if outcomes["reset"] == 200:
+        assert outcomes["run"] == 409
+        assert authority.operation_state is OperationState.NONE
+        assert delivery is None
+    else:
+        assert outcomes == {"reset": 409, "run": 200}
+        assert authority.operation_state is OperationState.QUEUED
+        assert delivery is not None
+
+
 def test_receipt_rejects_each_bound_config_mutation_and_key_time_failures(
     tmp_path: Path,
 ) -> None:

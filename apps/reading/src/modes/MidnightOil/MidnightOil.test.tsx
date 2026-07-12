@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MidnightOil from "./index";
 
@@ -9,6 +9,9 @@ const {
   runMidnightOilJob,
   getMidnightOilJob,
   fetchMidnightOilLiveStepStatus,
+  getMidnightOilLifecycle,
+  resetMidnightOilSpendConsent,
+  fetchMidnightOilArtifact,
   fetchDecisionTreeSelection,
   seedTwinNotes,
   hydratePublicationRefsMock,
@@ -35,6 +38,9 @@ const {
     ],
     html: "<p>offline_honest=true</p>",
   })),
+  getMidnightOilLifecycle: vi.fn<(...args: unknown[]) => unknown>(),
+  resetMidnightOilSpendConsent: vi.fn<(...args: unknown[]) => unknown>(),
+  fetchMidnightOilArtifact: vi.fn<(...args: unknown[]) => unknown>(),
   fetchDecisionTreeSelection: vi.fn<(...args: unknown[]) => unknown>(),
   seedTwinNotes: vi.fn<(...args: unknown[]) => unknown>(),
   hydratePublicationRefsMock: vi.fn(async (refs: string[]) => ({
@@ -98,6 +104,9 @@ vi.mock("../../api/midnightOil", () => ({
   runMidnightOilJob,
   getMidnightOilJob,
   fetchMidnightOilLiveStepStatus,
+  getMidnightOilLifecycle,
+  resetMidnightOilSpendConsent,
+  fetchMidnightOilArtifact,
 }));
 
 vi.mock("../../api/engagement", () => ({
@@ -324,9 +333,13 @@ vi.mock("../../components/windows/openWindow", () => ({
 describe("MidnightOil mode", () => {
   afterEach(() => cleanup());
   beforeEach(() => {
+    window.history.replaceState({}, "", "/midnight-oil");
     createMidnightOilJob.mockReset();
     approveMidnightOilCeiling.mockReset();
     fetchMidnightOilLiveStepStatus.mockClear();
+    getMidnightOilLifecycle.mockReset();
+    resetMidnightOilSpendConsent.mockReset();
+    fetchMidnightOilArtifact.mockReset();
     seedTwinNotes.mockReset().mockResolvedValue({
       asset_id: "draft_moil_asset_dep_abc",
       seeded: true,
@@ -397,7 +410,202 @@ describe("MidnightOil mode", () => {
     expect(panel.getAttribute("data-offline-honest")).toBe("true");
     expect(panel.getAttribute("data-live-env")).toBe("false");
     expect(panel.getAttribute("data-injector-installed")).toBe("false");
-    expect(panel.textContent).toMatch(/offline-honest stub steps/);
+    expect(panel.textContent).toMatch(/legacy synthetic fallback/i);
+    expect(panel.textContent).toMatch(/not used by durable jobs/i);
+  });
+
+  it("resumes durable lifecycle by job id without consent replay", async () => {
+    window.history.replaceState({}, "", "/midnight-oil?moil_job=moil_resume");
+    getMidnightOilJob.mockResolvedValue({
+      job_id: "moil_resume",
+      goals: ["Resume durable work"],
+      duration_minutes: 60,
+      status: "running",
+      research_tier: "deep",
+      recommended_price_ceiling_usd: 2,
+      approved_ceiling_usd: 2,
+      view_format: "html",
+      runnable: false,
+    });
+    getMidnightOilLifecycle.mockResolvedValue({
+      schema_version: 1,
+      job_id: "moil_resume",
+      operation_id: "op_resume",
+      state: "projection_pending",
+      terminal_outcome: "complete",
+      approved_ceiling_cents: 200,
+      confirmed_spent_cents: 25,
+      reserved_cents: 0,
+      unknown_outcome: false,
+      remaining_cents: 175,
+      cost_state: "settled",
+      consent_expires_at_ms: 20,
+      enqueued_at_ms: 11,
+      lease_expires_at_ms: null,
+      completed_at_ms: 19,
+      deposit_document_id: "doc_resume",
+      deposit_href: "/midnight-oil/jobs/moil_resume/artifact",
+      graph_deliverable_id: null,
+      graph_deep_links: [],
+      operator_action: "restart_worker",
+      view_format: "html",
+    });
+
+    render(<MidnightOil />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("moil-durable-lifecycle")).toBeTruthy();
+    });
+    expect(getMidnightOilJob).toHaveBeenCalledWith("moil_resume");
+    expect(getMidnightOilLifecycle).toHaveBeenCalledWith("moil_resume");
+    expect(approveMidnightOilCeiling).not.toHaveBeenCalled();
+    expect(runMidnightOilJob).not.toHaveBeenCalled();
+    expect(
+      screen.getByTestId("moil-durable-lifecycle").getAttribute("data-state"),
+    ).toBe("projection_pending");
+    expect(screen.getByText(/Status:/).textContent).toMatch(/projection_pending/);
+  });
+
+  it("recovers refresh-stranded post-claim authority before reapproval", async () => {
+    window.history.replaceState({}, "", "/midnight-oil?moil_job=moil_reset");
+    getMidnightOilJob.mockResolvedValue({
+      job_id: "moil_reset",
+      goals: ["Recover authority"],
+      duration_minutes: 60,
+      status: "awaiting_approval",
+      research_tier: "deep",
+      recommended_price_ceiling_usd: 2,
+      view_format: "html",
+      runnable: false,
+    });
+    const consentIssued = {
+      schema_version: 1 as const,
+      job_id: "moil_reset",
+      operation_id: "op_reset",
+      state: "consent_delivery_failed" as const,
+      terminal_outcome: null,
+      approved_ceiling_cents: 200,
+      confirmed_spent_cents: 0,
+      reserved_cents: 0,
+      unknown_outcome: false,
+      remaining_cents: 200,
+      cost_state: "not_reserved" as const,
+      consent_expires_at_ms: 20,
+      enqueued_at_ms: null,
+      lease_expires_at_ms: null,
+      completed_at_ms: null,
+      deposit_document_id: null,
+      deposit_href: null,
+      graph_deliverable_id: null,
+      graph_deep_links: [],
+      operator_action: "reset_consent",
+      view_format: "html" as const,
+    };
+    const consentRequired = {
+      ...consentIssued,
+      operation_id: null,
+      state: "consent_required" as const,
+      approved_ceiling_cents: null,
+      remaining_cents: null,
+      consent_expires_at_ms: null,
+      operator_action: "issue_consent",
+    };
+    getMidnightOilLifecycle
+      .mockResolvedValueOnce(consentIssued)
+      .mockResolvedValueOnce(consentRequired);
+    resetMidnightOilSpendConsent.mockResolvedValue({
+      schema_version: 1,
+      job_id: "moil_reset",
+      state: "consent_required",
+      operation_state: "none",
+      state_version: 2,
+      operator_action: "issue_consent",
+    });
+
+    render(<MidnightOil />);
+    await waitFor(() => expect(screen.getByTestId("moil-reset-consent")).toBeTruthy());
+    expect(screen.queryByTestId("moil-approve-recommended")).toBeNull();
+    fireEvent.click(screen.getByTestId("moil-reset-consent"));
+    await waitFor(() => {
+      expect(resetMidnightOilSpendConsent).toHaveBeenCalledWith("moil_reset");
+      expect(screen.getByTestId("moil-approve-recommended")).toBeTruthy();
+    });
+    expect(screen.queryByTestId("moil-reset-consent")).toBeNull();
+  });
+
+  it("keeps polling after a transient status failure and converges on one terminal status", async () => {
+    vi.useFakeTimers();
+    try {
+      window.history.replaceState({}, "", "/midnight-oil?moil_job=moil_poll");
+      getMidnightOilJob.mockResolvedValue({
+        job_id: "moil_poll",
+        goals: ["Poll durably"],
+        duration_minutes: 60,
+        status: "running",
+        research_tier: "deep",
+        recommended_price_ceiling_usd: 2,
+        view_format: "html",
+        runnable: false,
+      });
+      const queued = {
+        schema_version: 1 as const,
+        job_id: "moil_poll",
+        operation_id: "op_poll",
+        state: "queued" as const,
+        terminal_outcome: null,
+        approved_ceiling_cents: 200,
+        confirmed_spent_cents: 0,
+        reserved_cents: 200,
+        unknown_outcome: false,
+        remaining_cents: 0,
+        cost_state: "reserved" as const,
+        consent_expires_at_ms: 20,
+        enqueued_at_ms: 11,
+        lease_expires_at_ms: null,
+        completed_at_ms: null,
+        deposit_document_id: null,
+        deposit_href: null,
+        graph_deliverable_id: null,
+        graph_deep_links: [],
+        operator_action: "wait_for_worker",
+        view_format: "html" as const,
+      };
+      const complete = {
+        ...queued,
+        state: "complete" as const,
+        terminal_outcome: "complete",
+        confirmed_spent_cents: 25,
+        reserved_cents: 0,
+        remaining_cents: 175,
+        cost_state: "settled" as const,
+        completed_at_ms: 19,
+        deposit_document_id: "doc_poll",
+        deposit_href: "/midnight-oil/jobs/moil_poll/artifact",
+        operator_action: "open_artifact",
+      };
+      getMidnightOilLifecycle
+        .mockResolvedValueOnce(queued)
+        .mockRejectedValueOnce(new Error("temporary status outage"))
+        .mockResolvedValueOnce(complete);
+
+      render(<MidnightOil />);
+      await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+      expect(screen.getByTestId("moil-durable-lifecycle").getAttribute("data-state")).toBe("queued");
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(screen.getByRole("alert").textContent).toMatch(/temporary status outage/);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(2_000);
+      });
+      expect(screen.getByTestId("moil-durable-lifecycle").getAttribute("data-state")).toBe("complete");
+      expect(screen.getByText(/Status:/).textContent).toMatch(/complete/);
+      expect(screen.queryByText(/Status: queued/)).toBeNull();
+    } finally {
+      cleanup();
+      vi.useRealTimers();
+    }
   });
 
   it("links to Settings for driver & budget (ic)", () => {
@@ -412,7 +620,7 @@ describe("MidnightOil mode", () => {
     // Residual (arp): offline product surface catalog honesty (parity arm/arn/aro).
     const links = screen.getByTestId("moil-competitive-links");
     expect(links.getAttribute("data-html-first")).toBe("true");
-    expect(links.getAttribute("data-live-injectors-deferred")).toBe("true");
+    expect(links.getAttribute("data-live-injectors-deferred")).toBe("false");
     expect(links.getAttribute("data-notdiamond-is-router")).toBe("false");
     expect(
       Number(links.getAttribute("data-offline-surface-count") || 0),
@@ -442,7 +650,7 @@ describe("MidnightOil mode", () => {
     const dual = screen.getByTestId("moil-dual-gate-checklist-link");
     // Residual (wx): deep-link L4 MO section (not checklist root only).
     expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
-    expect(dual.textContent).toMatch(/L4 MO checklist/i);
+    expect(dual.textContent).toMatch(/runtime activation checklist/i);
   });
 
   it("links Settings L4 MO live-step readiness (uh)", async () => {
@@ -455,7 +663,7 @@ describe("MidnightOil mode", () => {
     expect(panel.getAttribute("data-never-enables-live")).toBe("true");
     const l4 = screen.getByTestId("moil-settings-l4-live-step-link");
     expect(l4.getAttribute("href")).toBe("/settings#moil-live-step-status");
-    expect(l4.textContent).toMatch(/L4 MO live-step/i);
+    expect(l4.textContent).toMatch(/durable runtime/i);
   });
 
   it("shows multi-goal swarm plan chrome and appends templates (aof)", () => {
@@ -773,14 +981,40 @@ describe("MidnightOil mode", () => {
       job_id: "moil_test",
       goals: ["Map residual risks"],
       duration_minutes: 60,
-      status: "approved",
+      status: "complete",
       research_tier: "deep",
       recommended_price_ceiling_usd: 3.6,
       approved_ceiling_usd: 3.6,
       view_format: "html",
-      runnable: true,
+      runnable: false,
       html: "<p>Approved</p>",
+      lifecycle: {
+        schema_version: 1,
+        job_id: "moil_test",
+        operation_id: "op_test",
+        state: "complete",
+        terminal_outcome: "complete",
+        approved_ceiling_cents: 360,
+        confirmed_spent_cents: 12,
+        reserved_cents: 0,
+        unknown_outcome: false,
+        remaining_cents: 348,
+        cost_state: "settled",
+        consent_expires_at_ms: 20,
+        enqueued_at_ms: 11,
+        lease_expires_at_ms: null,
+        completed_at_ms: 19,
+        deposit_document_id: "moil-document",
+        deposit_href: "/midnight-oil/jobs/moil_test/artifact",
+        graph_deliverable_id: "dlv-test",
+        graph_deep_links: ["antiek://deliverable/dlv-test"],
+        operator_action: "open_html_result",
+        view_format: "html",
+      },
     });
+    fetchMidnightOilArtifact.mockResolvedValue(
+      "<!doctype html><html><body>durable result</body></html>",
+    );
 
     render(<MidnightOil />);
     fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
@@ -803,6 +1037,7 @@ describe("MidnightOil mode", () => {
       expect.objectContaining({
         fanout_depth: 5,
         duration_minutes: expect.any(Number),
+        live: true,
       }),
     );
     // Residual (hn/add): recommended ceiling metrics + formula transparency.
@@ -885,6 +1120,24 @@ describe("MidnightOil mode", () => {
       job_id: "moil_test",
       use_recommended: true,
     });
+    const durable = screen.getByTestId("moil-durable-lifecycle");
+    expect(durable.getAttribute("data-state")).toBe("complete");
+    expect(durable.getAttribute("data-cost-state")).toBe("settled");
+    expect(durable.getAttribute("data-consent-token-persisted")).toBe("false");
+    expect(durable.textContent).not.toMatch(/token/i);
+    fireEvent.click(screen.getByTestId("moil-open-lifecycle-artifact"));
+    await waitFor(() => {
+      expect(fetchMidnightOilArtifact).toHaveBeenCalledWith("moil_test");
+    });
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({
+        document_id: "moil-document",
+        html: expect.stringContaining("durable result"),
+        source: "midnight_oil_deposit",
+      }),
+      expect.objectContaining({ mode: "floating" }),
+    );
   });
 
   it("soft-gates approve when ceiling may exceed remaining budget (me)", async () => {
@@ -1208,7 +1461,7 @@ describe("MidnightOil mode", () => {
     // Residual (aqn): soft budget · budget-before-fire · L4 deferred · never auto-route.
     expect(moilMode.getAttribute("data-soft-budget")).toBe("true");
     expect(moilMode.getAttribute("data-budget-before-fire")).toBe("true");
-    expect(moilMode.getAttribute("data-l4-live-step")).toBe("deferred");
+    expect(moilMode.getAttribute("data-l4-live-step")).toBe("durable-queued");
     expect(moilMode.getAttribute("data-never-auto-route")).toBe("true");
     expect(
       Number(moilMode.getAttribute("data-goal-templates")),
@@ -1217,7 +1470,7 @@ describe("MidnightOil mode", () => {
       /multi-goal|templates|fan-out/i,
     );
     expect(screen.getByTestId("moil-mode-intro").textContent).toMatch(
-      /budget|ceiling|L4/i,
+      /budget|ceiling|durable worker/i,
     );
     const honesty = screen.getByTestId("moil-honesty-nav");
     expect(honesty.getAttribute("data-soft-budget")).toBe("true");
