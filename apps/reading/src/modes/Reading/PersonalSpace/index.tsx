@@ -77,7 +77,10 @@ export default function PersonalSpace({ metaDocsOnly = false }: Props) {
   // The visible asset set (M4 filter applied). Source-book reads drop out of
   // the meta-docs tab; created deliverables stay.
   const visibleAssets = useMemo(
-    () => (metaDocsOnly ? assets.filter((a) => a.kind === "meta_reading") : assets),
+    () =>
+      metaDocsOnly
+        ? assets.filter((a) => a.kind !== "saved_read")
+        : assets,
     [assets, metaDocsOnly],
   );
   const visibleIds = useMemo(
@@ -278,8 +281,12 @@ function AssetRow({
         <div className="flex items-center justify-between gap-3">
           <span className="font-serif text-ink dark:text-bright truncate">{asset.title}</span>
           {/* M4 — the visible created-asset vs source-book distinction. */}
-          <LemonTag colour={asset.kind === "meta_reading" ? "aurora" : "muted"}>
-            {asset.kind === "meta_reading" ? "reading" : "book"}
+          <LemonTag colour={asset.kind === "saved_read" ? "muted" : "aurora"}>
+            {asset.kind === "canonical_research"
+              ? "research"
+              : asset.kind === "meta_reading"
+                ? "reading"
+                : "book"}
           </LemonTag>
         </div>
       </button>

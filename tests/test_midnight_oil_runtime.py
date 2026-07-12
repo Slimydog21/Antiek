@@ -309,6 +309,82 @@ def test_canonical_merge_commit_is_exact_revisioned_and_idempotent(
     revision = client.get("/engagement/merge/revision/dlv-reviewed-draft")
     assert revision.status_code == 200
     assert revision.json()["revision"] == first.json()["new_revision"]
+    reloaded = client.get(
+        "/engagement/merge/canonical/html",
+        params={"deliverable_id": "dlv-reviewed-draft"},
+    )
+    assert reloaded.status_code == 200
+    assert reloaded.json()["draft_sha256"] == draft["draft_sha256"]
+    assert "Reviewed research output." in reloaded.json()["html"]
+    restarted_client = TestClient(
+        create_midnight_oil_production_app(path, environ=environment)
+    )
+    cold_reloaded = restarted_client.get(
+        "/engagement/merge/canonical/html",
+        params={"deliverable_id": "dlv-reviewed-draft"},
+    )
+    assert cold_reloaded.status_code == 200
+    assert cold_reloaded.json()["html"] == reloaded.json()["html"]
+    slash_draft_id = f"{draft['document_id']}-slash-target"
+    store.put_document(slash_draft_id, reviewed_document)
+    slash_commit = client.post(
+        "/engagement/merge/commit",
+        json={
+            **body,
+            "draft_document_id": slash_draft_id,
+            "target_deliverable_id": "project/dlv-reviewed-draft",
+        },
+    )
+    assert slash_commit.status_code == 200, slash_commit.text
+    slash_reloaded = restarted_client.get(
+        "/engagement/merge/canonical/html",
+        params={"deliverable_id": "project/dlv-reviewed-draft"},
+    )
+    assert slash_reloaded.status_code == 200
+    assert slash_reloaded.json()["deliverable_id"] == "project/dlv-reviewed-draft"
+    assert "Reviewed research output." in slash_reloaded.json()["html"]
+    assert (
+        client.get(
+            "/engagement/merge/canonical/html",
+            params={"deliverable_id": "missing-deliverable"},
+        ).status_code
+        == 404
+    )
+    with connect_write(str(app.state.engagement_graph_db_path)) as con:
+        original_metadata = con.execute(
+            "SELECT metadata FROM deliverables WHERE deliverable_id = ?",
+            ["dlv-reviewed-draft"],
+        ).fetchone()[0]
+        changed = json.loads(original_metadata)
+        changed["last_draft_sha256"] = "0" * 64
+        con.execute(
+            "UPDATE deliverables SET metadata = ? WHERE deliverable_id = ?",
+            [json.dumps(changed), "dlv-reviewed-draft"],
+        )
+    assert (
+        client.get(
+            "/engagement/merge/canonical/html",
+            params={"deliverable_id": "dlv-reviewed-draft"},
+        ).status_code
+        == 409
+    )
+    with connect_write(str(app.state.engagement_graph_db_path)) as con:
+        con.execute(
+            "UPDATE deliverables SET metadata = ? WHERE deliverable_id = ?",
+            [original_metadata, "dlv-reviewed-draft"],
+        )
+        con.execute(
+            "INSERT INTO deliverables "
+            "(deliverable_id, title, deliverable_kind, owner_user_id) "
+            "VALUES ('dlv-ordinary', 'Ordinary draft', 'research_memo', '__operator__')"
+        )
+    assert (
+        client.get(
+            "/engagement/merge/canonical/html",
+            params={"deliverable_id": "dlv-ordinary"},
+        ).status_code
+        == 409
+    )
     with connect_read(str(app.state.engagement_graph_db_path)) as con:
         metadata = json.loads(
             con.execute(

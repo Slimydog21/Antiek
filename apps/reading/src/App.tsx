@@ -34,6 +34,7 @@ import PrivacyDashboard from "./modes/PrivacyDashboard";
 import BookReader from "./modes/Reading";
 import MetaReading from "./modes/Reading/MetaReading";
 import PersonalSpace from "./modes/Reading/PersonalSpace";
+import CanonicalResearch from "./modes/Reading/CanonicalResearch";
 import Replay from "./modes/Replay";
 import DeepResearchWorkspace from "./modes/DeepResearchWorkspace";
 import ResearchWorkstation from "./modes/ResearchWorkstation";
@@ -154,6 +155,10 @@ function AuthenticatedRoutes() {
             space item opens back into the meta-doc view). Declared after the
             literal /read/meta-reading so it doesn't shadow the generator. */}
         <Route path="/read/meta-reading/:assetId" element={<MetaReading />} />
+        <Route
+          path="/read/canonical/:deliverableId"
+          element={<CanonicalResearch />}
+        />
         {/* SPR-13 M1 — the personal document space (created deliverables +
             saved reads, auto-categorized, suggest-file-into-project). */}
         <Route path="/readings" element={<PersonalSpace />} />

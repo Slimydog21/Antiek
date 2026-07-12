@@ -632,6 +632,42 @@ def get_canonical_merge_revision(deliverable_id: str) -> dict[str, str]:
     return {"deliverable_id": deliverable_id, "revision": revision}
 
 
+@engagement_router.get("/merge/canonical/html")
+def get_canonical_merge_html(deliverable_id: str) -> dict[str, Any]:
+    """Reload exact reviewed canonical research as HTML."""
+
+    from substrate.engagement_spine.canonical_commit import (
+        CanonicalMergeConflict,
+        load_latest_reviewed_document_model,
+    )
+    from substrate.engagement_spine.project import project_to_html
+
+    try:
+        with _graph_promotion_batch():
+            con = _request_graph_connection.get()
+            if con is None:
+                raise RuntimeError("canonical HTML reload requires graph authority")
+            model, section_id, revision, draft_sha = (
+                load_latest_reviewed_document_model(con, deliverable_id)
+            )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="canonical research not found") from exc
+    except CanonicalMergeConflict as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        "deliverable_id": deliverable_id,
+        "section_id": section_id,
+        "revision": revision,
+        "draft_sha256": draft_sha,
+        "view_format": "html",
+        "html": project_to_html(
+            model,
+            document_id=deliverable_id,
+            creator="engagement_spine.canonical_merge_reload",
+        ),
+    }
+
+
 @engagement_router.get("/merge/blocks/search")
 def search_canonical_merge_blocks(q: str = "", limit: int = 20) -> dict[str, Any]:
     """Search committed merge blocks against the same graph authority."""

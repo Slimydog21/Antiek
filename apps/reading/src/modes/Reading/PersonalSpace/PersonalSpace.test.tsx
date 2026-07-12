@@ -216,4 +216,36 @@ describe("M4 — meta-docs tab", () => {
     // The created-asset tag distinguishes it (the M4 visible distinction).
     expect(screen.getByText("reading")).toBeTruthy();
   });
+
+  it("includes canonical research and opens its stable HTML reader route", async () => {
+    listMock.mockResolvedValue({
+      assets: [
+        ...space().assets,
+        {
+          asset_id: "dlv-canonical",
+          kind: "canonical_research",
+          title: "Canonical collective analysis",
+          prompt: null,
+          document_ids: ["doc-1"],
+          emitted_at: "2026-05-06T00:00:00Z",
+          open_route: "/read/canonical/dlv-canonical",
+        },
+      ],
+      count: 3,
+    });
+    categoriesMock.mockResolvedValue({
+      categories: [],
+      ordering: "recency",
+      stability_bound: 4,
+    });
+    render(<PersonalSpace metaDocsOnly />);
+    const title = await screen.findByText("Canonical collective analysis");
+    expect(title).toBeTruthy();
+    expect(screen.getByText("research")).toBeTruthy();
+    fireEvent.click(title.closest("button")!);
+    expect(navigateMock).toHaveBeenCalledWith(
+      "/read/canonical/dlv-canonical",
+    );
+    expect(screen.queryByText("Meditations")).toBeNull();
+  });
 });

@@ -268,6 +268,24 @@ export async function commitReviewedMergeDraft(body: {
   return readJson<CanonicalMergeCommitResponse>(res);
 }
 
+export type CanonicalMergeHtmlResponse = {
+  deliverable_id: string;
+  section_id: string;
+  revision: string;
+  draft_sha256: string;
+  view_format: "html" | string;
+  html: string;
+};
+
+export async function getCanonicalMergeHtml(
+  deliverableId: string,
+): Promise<CanonicalMergeHtmlResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/merge/canonical/html?deliverable_id=${encodeURIComponent(deliverableId)}`,
+  );
+  return readJson<CanonicalMergeHtmlResponse>(res);
+}
+
 /** Residual (hq): offline-vs-live hydrate injector readiness (Settings). */
 export type HydrateLiveStatusResponse = {
   view_format: "html" | string;

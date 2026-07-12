@@ -222,6 +222,26 @@ def load_reviewed_document_model(
     return model
 
 
+def load_latest_reviewed_document_model(
+    con: LockedConnection, deliverable_id: str
+) -> tuple[dict[str, Any], str, str, str]:
+    row = con.execute(
+        "SELECT metadata FROM deliverables WHERE deliverable_id = ?", [deliverable_id]
+    ).fetchone()
+    if row is None:
+        raise KeyError(deliverable_id)
+    metadata = _json(row[0])
+    section_id = str(metadata.get("last_merge_section_id") or "")
+    revision = str(metadata.get("revision") or "")
+    draft_sha = str(metadata.get("last_draft_sha256") or "")
+    if not section_id or not revision or not draft_sha:
+        raise CanonicalMergeConflict("deliverable is not canonical reviewed research")
+    if _target_revision(con, deliverable_id) != revision:
+        raise CanonicalMergeConflict("canonical reviewed research has drifted")
+    model = load_reviewed_document_model(con, deliverable_id, section_id)
+    return model, section_id, revision, draft_sha
+
+
 def commit_reviewed_draft(
     *,
     con: LockedConnection,
@@ -566,4 +586,5 @@ __all__ = [
     "canonical_deliverable_revision",
     "commit_reviewed_draft",
     "load_reviewed_document_model",
+    "load_latest_reviewed_document_model",
 ]

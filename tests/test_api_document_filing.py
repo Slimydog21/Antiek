@@ -16,6 +16,8 @@ The load-bearing invariants (single-writer + suggest-only):
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import shutil
 import tempfile
@@ -110,6 +112,69 @@ def test_listing_and_suggestion_never_auto_file(isolated):
     # sentence-transformers — either way it must not file. Tolerate both.
     client.get("/meta-readings/file-suggestion?document_id=doc-2")
     assert _doc_row(client, "doc-2")["investigation_id"] is None
+
+
+def test_personal_space_discovers_canonical_research_deliverables(isolated):
+    from runtime.db_lock import connect_write
+    from substrate.engagement_spine import InMemoryEngagementStore
+    from substrate.engagement_spine.canonical_commit import commit_reviewed_draft
+
+    model = {
+        "title": "[Draft] Canonical collective analysis",
+        "content": [
+            {
+                "type": "paragraph",
+                "attrs": {
+                    "provenance": {
+                        "kind": "source",
+                        "parent_asset_id": "source-paper",
+                    }
+                },
+                "content": [{"type": "text", "text": "Canonical analysis."}],
+            }
+        ],
+    }
+    draft_sha = hashlib.sha256(
+        json.dumps(
+            model, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    ).hexdigest()
+    store = InMemoryEngagementStore()
+    store.put_document(
+        "draft-canonical-reading",
+        {
+            "mode": "draft_combined",
+            "parent_asset_id": "source-paper",
+            "doc_model": model,
+            "draft_sha256": draft_sha,
+        },
+    )
+    with connect_write(isolated, purpose="test:canonical_personal_space") as con:
+        commit_reviewed_draft(
+            con=con,
+            engagement_store=store,
+            draft_document_id="draft-canonical-reading",
+            target_deliverable_id="dlv-canonical-reading",
+            expected_revision="new",
+            reviewed_draft_sha256=draft_sha,
+            create_combined=True,
+        )
+    response = _client().get("/meta-readings")
+    assert response.status_code == 200, response.text
+    asset = next(
+        item
+        for item in response.json()["assets"]
+        if item["asset_id"] == "dlv-canonical-reading"
+    )
+    assert asset == {
+        "asset_id": "dlv-canonical-reading",
+        "kind": "canonical_research",
+        "title": "Canonical collective analysis",
+        "prompt": None,
+        "document_ids": ["source-paper"],
+        "emitted_at": asset["emitted_at"],
+        "open_route": "/read/canonical/dlv-canonical-reading",
+    }
 
 
 def test_filing_missing_document_404s_nothing_filed(isolated):

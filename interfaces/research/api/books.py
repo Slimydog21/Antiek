@@ -24,8 +24,10 @@ with the single writer.
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Literal, cast
+from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -416,7 +418,7 @@ class PersonalAssetResponse(BaseModel):
     Substrate-backed — reconstructed from the event log, NOT a new store."""
 
     asset_id: str
-    kind: Literal["meta_reading", "saved_read"]
+    kind: Literal["meta_reading", "saved_read", "canonical_research"]
     title: str
     prompt: str | None
     document_ids: list[str]
@@ -1001,15 +1003,60 @@ def register_book_routes(app: FastAPI) -> None:
         except Exception:
             return None
 
+    def _personal_space_assets():
+        from runtime.db_lock import connect_read
+        from substrate.books.personal_space import PersonalAsset, list_personal_assets
+        from substrate.engagement_spine.canonical_commit import (
+            CanonicalMergeConflict,
+            load_latest_reviewed_document_model,
+        )
+
+        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        con = connect_read(_resolve_db_path())
+        try:
+            rows = con.execute(
+                "SELECT deliverable_id, title, metadata, "
+                "strftime(updated_at, '%Y-%m-%dT%H:%M:%S') "
+                "FROM deliverables ORDER BY updated_at DESC"
+            ).fetchall()
+            known = {asset.asset_id for asset in assets}
+            for deliverable_id, title, raw_metadata, updated_at in rows:
+                try:
+                    metadata = json.loads(str(raw_metadata or "{}"))
+                except (TypeError, ValueError):
+                    continue
+                if not isinstance(metadata, dict) or deliverable_id in known:
+                    continue
+                try:
+                    load_latest_reviewed_document_model(con, str(deliverable_id))
+                except (KeyError, CanonicalMergeConflict):
+                    continue
+                source_id = str(metadata.get("source_document_id") or "").strip()
+                assets.append(
+                    PersonalAsset(
+                        asset_id=str(deliverable_id),
+                        kind="canonical_research",
+                        title=str(title),
+                        prompt=None,
+                        document_ids=[source_id] if source_id else [],
+                        emitted_at=str(updated_at) if updated_at else None,
+                        open_route=(
+                            f"/read/canonical/{quote(str(deliverable_id), safe='')}"
+                        ),
+                    )
+                )
+        finally:
+            con.close()
+        assets.sort(key=lambda asset: asset.emitted_at or "", reverse=True)
+        return assets
+
     @app.get("/meta-readings", response_model=PersonalSpaceResponse, tags=["books"])
     async def list_personal_space() -> PersonalSpaceResponse:
         """List the personal-space assets — created deliverables + saved reads,
         newest first (Read SPR-13 M1). Substrate-backed (event-log scan), NOT a
         new document store. Each asset's ``open_route`` re-opens it into the
         SPR-08 meta-doc view / the SPR-07 reader."""
-        from substrate.books.personal_space import list_personal_assets
-
-        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        assets = _personal_space_assets()
         return PersonalSpaceResponse(
             assets=[PersonalAssetResponse(**a.to_dict()) for a in assets],
             count=len(assets),
@@ -1029,10 +1076,9 @@ def register_book_routes(app: FastAPI) -> None:
         degrades to the recency fallback rather than failing the request."""
         from substrate.books.personal_space import (
             categorize_assets,
-            list_personal_assets,
         )
 
-        assets = list_personal_assets(book_title_resolver=_book_title_resolver)
+        assets = _personal_space_assets()
         try:
             from substrate.graph.search import SentenceTransformerEmbedding
 

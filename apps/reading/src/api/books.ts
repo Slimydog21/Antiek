@@ -373,7 +373,7 @@ export async function generateMetaReading(
  * a source-book read (the M4 visible distinction). ``open_route`` re-opens it. */
 export interface PersonalAsset {
   asset_id: string;
-  kind: "meta_reading" | "saved_read";
+  kind: "meta_reading" | "saved_read" | "canonical_research";
   title: string;
   prompt: string | null;
   document_ids: string[];

@@ -3,6 +3,7 @@ import {
   attachSourceRefs,
   commitReviewedMergeDraft,
   fetchResearchContext,
+  getCanonicalMergeHtml,
   mergeSpawnOutputs,
   openEngagementSession,
   spawnFromHighlight,
@@ -173,6 +174,25 @@ describe("engagement API client", () => {
       expected_revision: "new",
       create_combined: true,
     });
+  });
+
+  it("getCanonicalMergeHtml reloads the canonical deliverable identity", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        deliverable_id: "dlv-canonical",
+        section_id: "sec-canonical",
+        revision: "b".repeat(64),
+        draft_sha256: "a".repeat(64),
+        view_format: "html",
+        html: "<article>Reloaded canonical research</article>",
+      }),
+    });
+    const result = await getCanonicalMergeHtml("dlv/canonical");
+    expect(result.revision).toBe("b".repeat(64));
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/engagement/merge/canonical/html?deliverable_id=dlv%2Fcanonical",
+    );
   });
 
   it("throws on non-ok", async () => {
