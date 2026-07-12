@@ -2402,6 +2402,13 @@ const COMPETITION_CITATIONS = [
     mo_pack: residual_mo_pack,
   };
 
+  // CollectiveFullscreen short moniker (fullscreen_pack.collective_pack.floating_dr_pack)
+  // coexists with Multiselect FreeMo floating_pack on the same collective fixture.
+  const residual_cf_floating_dr_pack = {
+    highlight_surface: residual_highlight_surface,
+    draft_pack: residual_draft_pack,
+  };
+
   const residual_multiselect = {
     session_id: "sess-1",
     parent_asset_id: "book-1",
@@ -2428,9 +2435,44 @@ const COMPETITION_CITATIONS = [
     extra_context: ["operator note"] as string[] | null,
   };
 
+  // Multiselect nest contract (Pack MoW=0 LONG moniker bottom): floating_pack =
+  // { highlight_launch, record_pack }, not highlight_surface/draft_pack.
   const residual_floating_dr_pack = {
-    highlight_surface: residual_highlight_surface,
-    draft_pack: residual_draft_pack,
+    highlight_launch: {
+      parent_asset_id: "book-1",
+      highlight: "scaling laws under noise",
+      gated: false,
+      preferred_view_mode: "floating" as const,
+      would_exceed: false as boolean | null,
+      selected_model_id: "gpt-5.5",
+      source_families: ["arxiv", "substack"] as (
+        | "arxiv"
+        | "substack"
+        | "openalex"
+        | "web"
+        | "custom"
+      )[],
+    },
+    record_pack: {
+      session_id: "sess-1",
+      items: [
+        {
+          record_id: "r1",
+          kind: "insight" as const,
+          text: "scaling holds under noise in compute-optimal regimes",
+          asset_id: "book-1",
+          weight: 0.9,
+        },
+        {
+          record_id: "r2",
+          kind: "question" as const,
+          text: "Where does scaling break under distribution shift?",
+          asset_id: "book-1",
+          weight: 0.7,
+        },
+      ],
+      decision_pack: pack_outer_decision_pack,
+    },
   };
 
   const residual_fullscreen = {
@@ -2443,7 +2485,8 @@ const COMPETITION_CITATIONS = [
 
   const residual_collective_pack = {
     multiselect: residual_multiselect,
-    floating_dr_pack: residual_floating_dr_pack,
+    floating_pack: residual_floating_dr_pack,
+    floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_write = {
@@ -2487,6 +2530,10 @@ const COMPETITION_CITATIONS = [
 
   const residual_fullscreen_pack = {
     fullscreen: residual_fullscreen,
+    draft_pack: {
+      draft_gate: residual_draft_gate,
+      collective_pack: residual_collective_pack,
+    },
     collective_pack: residual_collective_pack,
   };
 
@@ -2895,6 +2942,7 @@ const COMPETITION_CITATIONS = [
   const residual_outer_collective_pack = {
     multiselect: residual_outer_multiselect,
     floating_pack: residual_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_outer_fullscreen = {
@@ -2949,9 +2997,10 @@ const COMPETITION_CITATIONS = [
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_outer_fullscreen_pack = {
+    const residual_outer_fullscreen_pack = {
     fullscreen: residual_outer_fullscreen,
     draft_pack: residual_outer_draft_pack,
+    collective_pack: residual_outer_collective_pack,
   };
 
   const residual_outer_sources = {
@@ -3358,6 +3407,7 @@ const COMPETITION_CITATIONS = [
   const residual_draft_outer_collective_pack = {
     multiselect: residual_collective_outer_multiselect,
     floating_pack: residual_collective_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_fullscreen_outer_fullscreen = {
@@ -3412,9 +3462,10 @@ const COMPETITION_CITATIONS = [
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_write_outer_fullscreen_pack = {
+    const residual_write_outer_fullscreen_pack = {
     fullscreen: residual_fullscreen_outer_fullscreen,
     draft_pack: residual_fullscreen_outer_draft_pack,
+    collective_pack: residual_draft_outer_collective_pack,
   };
 
   const residual_src_outer_sources = {
@@ -3446,6 +3497,34 @@ const COMPETITION_CITATIONS = [
     write: residual_write_outer_write,
     fullscreen_pack: residual_write_outer_fullscreen_pack,
   };
+
+  // Pack MoW=0 Multiselect LONG moniker nest (sourceAttachWriteTwinFsDraftPackCompose)
+  // requires fullscreen_pack → draft_pack → collective_pack → floating_pack → record_pack
+  // with FreeMo decision twin_search html market mo_pack. residual_write_pack (base residual
+  // moniker product-loop fixture) previously omitted that shape; graft green Pack-base outer.
+  residual_write_pack.write = residual_src_outer_write_pack.write;
+  residual_write_pack.fullscreen_pack = {
+    ...residual_src_outer_write_pack.fullscreen_pack,
+    collective_pack:
+      residual_src_outer_write_pack.fullscreen_pack.collective_pack ??
+      residual_src_outer_write_pack.fullscreen_pack.draft_pack?.collective_pack ??
+      residual_collective_pack,
+  };
+  residual_sources.sources = residual_src_outer_sources.sources;
+  residual_sources.requested_families = residual_src_outer_sources.requested_families;
+  if ("quality_overall" in residual_src_outer_sources) {
+    (residual_sources as { quality_overall?: number | null }).quality_overall =
+      residual_src_outer_sources.quality_overall;
+  }
+  if ("quality_floor" in residual_src_outer_sources) {
+    (residual_sources as { quality_floor?: number | null }).quality_floor =
+      residual_src_outer_sources.quality_floor;
+  }
+  if ("would_exceed" in residual_src_outer_sources) {
+    (residual_sources as { would_exceed?: boolean | null }).would_exceed =
+      residual_src_outer_sources.would_exceed;
+  }
+
 
   const residual_bench_outer_weekly_learn = {
     week_id: "2026-W28",
@@ -3822,6 +3901,7 @@ const COMPETITION_CITATIONS = [
   const residual_moi_outer_collective_pack = {
     multiselect: residual_moi_outer_multiselect,
     floating_pack: residual_moi_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_moi_outer_fullscreen = {
@@ -3837,9 +3917,10 @@ const COMPETITION_CITATIONS = [
     collective_pack: residual_moi_outer_collective_pack,
   };
 
-  const residual_moi_outer_fullscreen_pack = {
+    const residual_moi_outer_fullscreen_pack = {
     fullscreen: residual_moi_outer_fullscreen,
     draft_pack: residual_moi_outer_draft_pack,
+    collective_pack: residual_moi_outer_collective_pack,
   };
 
   const residual_moi_outer_write = {
@@ -4261,6 +4342,7 @@ const COMPETITION_CITATIONS = [
   const residual_db_outer_collective_pack = {
     multiselect: residual_cm_outer_multiselect,
     floating_pack: residual_cm_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_db_outer_draft_gate = {
@@ -4294,9 +4376,10 @@ const COMPETITION_CITATIONS = [
   };
 
 
-  const residual_wt_outer_fullscreen_pack = {
+    const residual_wt_outer_fullscreen_pack = {
     fullscreen: residual_fs_outer_fullscreen,
     draft_pack: residual_fs_outer_draft_pack,
+    collective_pack: residual_db_outer_collective_pack,
   };
 
   const residual_wt_outer_write = {
@@ -4783,6 +4866,7 @@ const COMPETITION_CITATIONS = [
   const residual_db2_outer_collective_pack = {
     multiselect: residual_cm2_outer_multiselect,
     floating_pack: residual_cm2_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -4839,9 +4923,10 @@ const COMPETITION_CITATIONS = [
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_wt2_outer_fullscreen_pack = {
+    const residual_wt2_outer_fullscreen_pack = {
     fullscreen: residual_fs2_outer_fullscreen,
     draft_pack: residual_fs2_outer_draft_pack,
+    collective_pack: residual_db2_outer_collective_pack,
   };
 
 
@@ -5254,6 +5339,7 @@ const COMPETITION_CITATIONS = [
   const residual_db3_outer_collective_pack = {
     multiselect: residual_cm3_outer_multiselect,
     floating_pack: residual_cm3_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_fs3_outer_fullscreen = {
@@ -5308,9 +5394,10 @@ const COMPETITION_CITATIONS = [
     extra_findings: ["operator synthesis note"] as string[] | null,
   }
 
-  const residual_wt3_outer_fullscreen_pack = {
+    const residual_wt3_outer_fullscreen_pack = {
     fullscreen: residual_fs3_outer_fullscreen,
     draft_pack: residual_fs3_outer_draft_pack,
+    collective_pack: residual_db3_outer_collective_pack,
   };
 
   const residual_sa3_outer_sources = {
@@ -5734,6 +5821,7 @@ const COMPETITION_CITATIONS = [
   const residual_db4_outer_collective_pack = {
     multiselect: residual_cm4_outer_multiselect,
     floating_pack: residual_cm4_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -5789,9 +5877,10 @@ const COMPETITION_CITATIONS = [
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_wt4_outer_fullscreen_pack = {
+    const residual_wt4_outer_fullscreen_pack = {
     fullscreen: residual_fs4_outer_fullscreen,
     draft_pack: residual_fs4_outer_draft_pack,
+    collective_pack: residual_db4_outer_collective_pack,
   };
 
 
@@ -6208,6 +6297,7 @@ const COMPETITION_CITATIONS = [
   const residual_db5_outer_collective_pack = {
     multiselect: residual_cm5_outer_multiselect,
     floating_pack: residual_cm5_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_fs5_outer_fullscreen = {
@@ -6261,9 +6351,10 @@ const COMPETITION_CITATIONS = [
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_wt5_outer_fullscreen_pack = {
+    const residual_wt5_outer_fullscreen_pack = {
     fullscreen: residual_fs5_outer_fullscreen,
     draft_pack: residual_fs5_outer_draft_pack,
+    collective_pack: residual_db5_outer_collective_pack,
   };
 
   const residual_sa5_outer_sources = {
@@ -6685,6 +6776,7 @@ const COMPETITION_CITATIONS = [
   const residual_db6_outer_collective_pack = {
     multiselect: residual_cm6_outer_multiselect,
     floating_pack: residual_cm6_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -6740,9 +6832,10 @@ const COMPETITION_CITATIONS = [
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_wt6_outer_fullscreen_pack = {
+    const residual_wt6_outer_fullscreen_pack = {
     fullscreen: residual_fs6_outer_fullscreen,
     draft_pack: residual_fs6_outer_draft_pack,
+    collective_pack: residual_db6_outer_collective_pack,
   };
 
 
@@ -7310,6 +7403,7 @@ const residual_graft_db7_outer_draft_gate = {
   const residual_graft_db7_outer_collective_pack = {
     multiselect: residual_graft_cm7_outer_multiselect,
     floating_pack: residual_graft_cm7_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -7364,9 +7458,10 @@ const residual_graft_wt7_outer_write = {
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_graft_wt7_outer_fullscreen_pack = {
+    const residual_graft_wt7_outer_fullscreen_pack = {
     fullscreen: residual_graft_fs7_outer_fullscreen,
     draft_pack: residual_graft_fs7_outer_draft_pack,
+    collective_pack: residual_graft_db7_outer_collective_pack,
   };
 
 const residual_graft_sa7_outer_sources = {
@@ -7790,6 +7885,7 @@ const residual_graft_sd7_outer_settings = {
   const residual_graft_db8_tip_collective_pack = {
     multiselect: residual_graft_cm8_tip_multiselect,
     floating_pack: residual_graft_cm8_tip_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -8007,6 +8103,7 @@ const residual_sax_graft_db7_outer_draft_gate = {
   const residual_sax_graft_db7_outer_collective_pack = {
     multiselect: residual_sax_graft_cm7_outer_multiselect,
     floating_pack: residual_sax_graft_cm7_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -8061,9 +8158,10 @@ const residual_sax_graft_wt7_outer_write = {
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_sax_graft_wt7_outer_fullscreen_pack = {
+    const residual_sax_graft_wt7_outer_fullscreen_pack = {
     fullscreen: residual_sax_graft_fs7_outer_fullscreen,
     draft_pack: residual_sax_graft_fs7_outer_draft_pack,
+    collective_pack: residual_sax_graft_db7_outer_collective_pack,
   };
 
 const residual_sax_graft_sa7_outer_sources = {
@@ -8487,6 +8585,7 @@ const residual_sax_graft_sd7_outer_settings = {
   const residual_sax_graft_db8_tip_collective_pack = {
     multiselect: residual_sax_graft_cm8_tip_multiselect,
     floating_pack: residual_sax_graft_cm8_tip_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -8704,6 +8803,7 @@ const residual_wtx_graft_db7_outer_draft_gate = {
   const residual_wtx_graft_db7_outer_collective_pack = {
     multiselect: residual_wtx_graft_cm7_outer_multiselect,
     floating_pack: residual_wtx_graft_cm7_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -8758,9 +8858,10 @@ const residual_wtx_graft_wt7_outer_write = {
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_wtx_graft_wt7_outer_fullscreen_pack = {
+    const residual_wtx_graft_wt7_outer_fullscreen_pack = {
     fullscreen: residual_wtx_graft_fs7_outer_fullscreen,
     draft_pack: residual_wtx_graft_fs7_outer_draft_pack,
+    collective_pack: residual_wtx_graft_db7_outer_collective_pack,
   };
 
 const residual_wtx_graft_sa7_outer_sources = {
@@ -9184,6 +9285,7 @@ const residual_wtx_graft_sd7_outer_settings = {
   const residual_wtx_graft_db8_tip_collective_pack = {
     multiselect: residual_wtx_graft_cm8_tip_multiselect,
     floating_pack: residual_wtx_graft_cm8_tip_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -9401,6 +9503,7 @@ const residual_graftx_db7_outer_draft_gate = {
   const residual_graftx_db7_outer_collective_pack = {
     multiselect: residual_graftx_cm7_outer_multiselect,
     floating_pack: residual_graftx_cm7_outer_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -9455,9 +9558,10 @@ const residual_graftx_wt7_outer_write = {
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_graftx_wt7_outer_fullscreen_pack = {
+    const residual_graftx_wt7_outer_fullscreen_pack = {
     fullscreen: residual_graftx_fs7_outer_fullscreen,
     draft_pack: residual_graftx_fs7_outer_draft_pack,
+    collective_pack: residual_graftx_db7_outer_collective_pack,
   };
 
 const residual_graftx_sa7_outer_sources = {
@@ -9881,6 +9985,7 @@ const residual_graftx_sd7_outer_settings = {
   const residual_graftx_db8_tip_collective_pack = {
     multiselect: residual_graftx_cm8_tip_multiselect,
     floating_pack: residual_graftx_cm8_tip_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
 
@@ -9936,9 +10041,10 @@ const residual_wt8_outer_write = {
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_wt8_outer_fullscreen_pack = {
+    const residual_wt8_outer_fullscreen_pack = {
     fullscreen: residual_fs8_outer_fullscreen,
     draft_pack: residual_fs8_outer_draft_pack,
+    collective_pack: residual_graftx_db8_tip_collective_pack,
   };
 
 
@@ -10376,6 +10482,7 @@ const residual_cd8_outer_competition = {
   const residual_db9_tip_collective_pack = {
     multiselect: residual_cm9_tip_multiselect,
     floating_pack: residual_cm9_tip_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_fs9_outer_fullscreen = {
@@ -10430,11 +10537,6 @@ const residual_wt9_outer_write = {
     extra_findings: ["operator synthesis note"] as string[] | null,
   };
 
-  const residual_wt9_outer_fullscreen_pack = {
-    fullscreen: residual_fs9_outer_fullscreen,
-    draft_pack: residual_fs9_outer_draft_pack,
-  };
-
 const residual_sa9_outer_sources = {
     session_id: "sess-1",
     parent_asset_id: "book-1",
@@ -10455,12 +10557,6 @@ const residual_sa9_outer_sources = {
       },
     ],
   };
-
-  const residual_sa9_outer_write_pack = {
-    write: residual_wt9_outer_write,
-    fullscreen_pack: residual_wt9_outer_fullscreen_pack,
-  };
-
 
   const residual_mo9_outer_mo = {
     operator_id: "op-1",
@@ -10793,69 +10889,20 @@ const residual_sa9_outer_sources = {
     gated: false,
   };
 
-  const residual_wt10_outer_write = {
-    session_id: "sess-1",
-    draft_id: "draft-1",
-    parent_asset_id: "book-1",
-    twin_slices: [
-      {
-        parent_asset_id: "book-1",
-        insights: ["scaling claim holds in compute-optimal regimes"],
-        questions: ["Where does it break?"],
-      },
-      {
-        parent_asset_id: "book-1-twin-slice-2",
-        insights: ["attention efficiency tradeoffs"],
-        questions: [] as string[],
-      },
-    ],
-    base_draft_html: "<p>Opening paragraph</p>" as string | null,
-    chase_slots: [
-      {
-        slot_id: "s1",
-        question_id: "q1",
-        parent_asset_id: "book-1",
-        status: "completed" as const,
-        findings: ["finding A from chase"],
-        body: "What evidence supports scaling?",
-      },
-      {
-        slot_id: "s2",
-        question_id: "q2",
-        parent_asset_id: "book-1",
-        status: "completed" as const,
-        findings: ["finding B from chase"],
-        body: "Counter-evidence?",
-      },
-    ],
-    analysis_kind: "draft_analysis" as const,
-    extra_findings: ["operator synthesis note"] as string[] | null,
+    const residual_wt9_outer_fullscreen_pack = {
+    fullscreen: residual_fs9_outer_fullscreen,
+    draft_pack: residual_fs9_outer_draft_pack,
+    collective_pack: residual_db9_tip_collective_pack,
+  };
+
+  const residual_sa9_outer_write_pack = {
+    write: residual_wt9_outer_write,
+    fullscreen_pack: residual_wt9_outer_fullscreen_pack,
   };
 
   const residual_ab9_outer_source_pack = {
     sources: residual_sa9_outer_sources,
     write_pack: residual_sa9_outer_write_pack,
-  };
-
-const residual_sa10_outer_sources = {
-    session_id: "sess-1",
-    parent_asset_id: "book-1",
-    requested_families: ["arxiv" as const, "substack" as const],
-    sources: [
-      {
-        source_id: "s1",
-        family: "arxiv" as const,
-        title: "Scaling laws",
-        external_id: "arxiv:2301.00001",
-        html_fragment: "<article>abstract…</article>",
-      },
-      {
-        source_id: "s2",
-        family: "substack" as const,
-        title: "Essay on routing",
-        url: "https://example.substack.com/p/routing",
-      },
-    ],
   };
 
   const residual_rt9_outer_weekly_pack = {
@@ -10924,16 +10971,7 @@ const residual_sa10_outer_sources = {
   const residual_db10_tip_collective_pack = {
     multiselect: residual_cm10_tip_multiselect,
     floating_pack: residual_cm10_tip_floating_pack,
-  };
-
-  const residual_fs10_outer_draft_pack = {
-    draft_gate: residual_db10_tip_draft_gate,
-    collective_pack: residual_db10_tip_collective_pack,
-  };
-
-  const residual_wt10_outer_fullscreen_pack = {
-    fullscreen: residual_fs10_outer_fullscreen,
-    draft_pack: residual_fs10_outer_draft_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_mo10_outer_mo = {
@@ -11114,6 +11152,66 @@ const residual_sa10_outer_sources = {
     ],
   };
 
+  const residual_sa10_outer_sources = {
+    session_id: "sess-1",
+    parent_asset_id: "book-1",
+    requested_families: ["arxiv" as const, "substack" as const],
+    sources: [
+      {
+        source_id: "s1",
+        family: "arxiv" as const,
+        title: "Scaling laws",
+        external_id: "arxiv:2301.00001",
+        html_fragment: "<article>abstract…</article>",
+      },
+      {
+        source_id: "s2",
+        family: "substack" as const,
+        title: "Essay on routing",
+        url: "https://example.substack.com/p/routing",
+      },
+    ],
+  };
+
+  const residual_wt10_outer_write = {
+    session_id: "sess-1",
+    draft_id: "draft-1",
+    parent_asset_id: "book-1",
+    twin_slices: [
+      {
+        parent_asset_id: "book-1",
+        insights: ["scaling claim holds in compute-optimal regimes"],
+        questions: ["Where does it break?"],
+      },
+      {
+        parent_asset_id: "book-1-twin-slice-2",
+        insights: ["attention efficiency tradeoffs"],
+        questions: [] as string[],
+      },
+    ],
+    base_draft_html: "<p>Opening paragraph</p>" as string | null,
+    chase_slots: [
+      {
+        slot_id: "s1",
+        question_id: "q1",
+        parent_asset_id: "book-1",
+        status: "completed" as const,
+        findings: ["finding A from chase"],
+        body: "What evidence supports scaling?",
+      },
+      {
+        slot_id: "s2",
+        question_id: "q2",
+        parent_asset_id: "book-1",
+        status: "completed" as const,
+        findings: ["finding B from chase"],
+        body: "Counter-evidence?",
+      },
+    ],
+    analysis_kind: "draft_analysis" as const,
+    extra_findings: ["operator synthesis note"] as string[] | null,
+  };
+
   const residual_graft_md10_tip_decision = {
     models: [
       {
@@ -11179,9 +11277,25 @@ const residual_sa10_outer_sources = {
     html_pack: residual_graft_ts10_tip_html_pack,
   };
 
+  const residual_fs10_outer_draft_pack = {
+    draft_gate: residual_db10_tip_draft_gate,
+    collective_pack: residual_db10_tip_collective_pack,
+  };
+
+    const residual_wt10_outer_fullscreen_pack = {
+    fullscreen: residual_fs10_outer_fullscreen,
+    draft_pack: residual_fs10_outer_draft_pack,
+    collective_pack: residual_db10_tip_collective_pack,
+  };
+
+  const residual_sa10_outer_write_pack = {
+    write: residual_wt10_outer_write,
+    fullscreen_pack: residual_wt10_outer_fullscreen_pack,
+  };
+
   const residual_ab10_outer_source_pack = {
     sources: residual_sa10_outer_sources,
-    write_pack: residual_sa11_outer_write_pack,
+    write_pack: residual_sa10_outer_write_pack,
   };
 
   const residual_rt10_outer_weekly_pack = {
@@ -11245,6 +11359,7 @@ const residual_sa10_outer_sources = {
   const residual_db11_tip_collective_pack = {
     multiselect: residual_cm10_tip_multiselect,
     floating_pack: residual_cm11_tip_floating_pack,
+  floating_dr_pack: residual_cf_floating_dr_pack,
   };
 
   const residual_fs11_outer_draft_pack = {
@@ -11252,9 +11367,10 @@ const residual_sa10_outer_sources = {
     collective_pack: residual_db11_tip_collective_pack,
   };
 
-  const residual_wt11_outer_fullscreen_pack = {
+    const residual_wt11_outer_fullscreen_pack = {
     fullscreen: residual_fs10_outer_fullscreen,
     draft_pack: residual_fs11_outer_draft_pack,
+    collective_pack: residual_db11_tip_collective_pack,
   };
 
   const residual_sa11_outer_write_pack = {
@@ -11262,14 +11378,8 @@ const residual_sa10_outer_sources = {
     fullscreen_pack: residual_wt11_outer_fullscreen_pack,
   };
 
-
-  const residual_sa10_outer_write_pack = {
-    write: residual_wt10_outer_write,
-    fullscreen_pack: residual_wt10_outer_fullscreen_pack,
-  };
-
-
   it("source attach + write twin fullscreen draft pack ready", () => {
+    try {
     const c = composeSourceAttachWriteTwinFsDraftMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMpack({
       sources: residual_sa10_outer_sources,
       write_pack: residual_sa11_outer_write_pack,
@@ -11283,7 +11393,13 @@ const residual_sa10_outer_sources = {
     expect(c.production_router_verdict).toBe("REJECT");
     expect(c.authority).toBe("source_attach_write_twin_fs_draft_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_advisory");
     expect(formatSourceAttachWriteTwinFsDraftMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMpackSummary(c)).toMatch(/REJECT|pack_ready=true|remote_fetched=false/);
+  
+    } catch (e: any) {
+      console.error("STACK", e?.stack || e);
+      throw e;
+    }
   });
+
 
   it("operator_ack false blocks pack_ready", () => {
     const c = composeSourceAttachWriteTwinFsDraftMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMpack({
