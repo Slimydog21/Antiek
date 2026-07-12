@@ -12,6 +12,14 @@ from .audio_assembly import (
     ChapterAudio,
     assemble_audio_experience,
 )
+from .authorized_production_worker import (
+    AuthorizedProductionError,
+    AuthorizedProductionRequest,
+    AuthorizedProductionRuntime,
+    AuthorizedProductionUnavailable,
+    ChapterNarrationAuthority,
+    produce_authorized_multimedia,
+)
 from .hardening import (
     GateFinding,
     GateResult,
@@ -272,4 +280,10 @@ __all__ = [
     "VisualCandidateBinding",
     "get_reviewed_visuals",
     "register_reviewed_visuals",
+    "AuthorizedProductionError",
+    "AuthorizedProductionRequest",
+    "AuthorizedProductionRuntime",
+    "AuthorizedProductionUnavailable",
+    "ChapterNarrationAuthority",
+    "produce_authorized_multimedia",
 ]

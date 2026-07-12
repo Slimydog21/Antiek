@@ -13,6 +13,7 @@ import {
   manualGateIds,
   runMultimediaHardening,
   registerMultimediaProduction,
+  produceAuthorizedMultimedia,
   steerMultimediaAsset,
 } from "../../api/multimedia";
 import type {
@@ -210,6 +211,8 @@ export default function Multimedia() {
   const [narrationAuthorizationPending, setNarrationAuthorizationPending] = useState(false);
   const [reviewedVisualSet, setReviewedVisualSet] = useState<MultimediaReviewedVisualSet | null>(null);
   const [reviewedVisualStatus, setReviewedVisualStatus] = useState<"idle" | "loading" | "missing" | "error" | "ready">("idle");
+  const [chapterNarrationAuthorities, setChapterNarrationAuthorities] = useState<Record<string, MultimediaNarrationAuthorization>>({});
+  const [productionWorkerPending, setProductionWorkerPending] = useState(false);
 
   useEffect(() => {
     productionRequestId.current += 1;
@@ -223,6 +226,11 @@ export default function Multimedia() {
     setNarrationSpendAcknowledged(false);
     setNarrationAuthorizationPending(false);
   }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id, activeChapterId]);
+
+  useEffect(() => {
+    setChapterNarrationAuthorities({});
+    setProductionWorkerPending(false);
+  }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -491,6 +499,10 @@ export default function Multimedia() {
       });
       if (completionId === narrationAuthorizationRequestId.current) {
         setNarrationAuthorization(authority);
+        setChapterNarrationAuthorities((current) => ({
+          ...current,
+          [authority.chapter_id]: authority,
+        }));
         setApiError(null);
       }
     } catch {
@@ -501,6 +513,30 @@ export default function Multimedia() {
       if (completionId === narrationAuthorizationRequestId.current) {
         setNarrationAuthorizationPending(false);
       }
+    }
+  }
+
+  async function produceCurrentDocumentary() {
+    if (!selectedRecord || !reviewedVisualSet || productionWorkerPending) return;
+    const authorities = planChapters.map((chapter) => chapterNarrationAuthorities[chapter.id]);
+    if (authorities.some((authority) => !authority)) return;
+    const requestedRecord = selectedRecord;
+    setProductionWorkerPending(true);
+    try {
+      const produced = await produceAuthorizedMultimedia(
+        requestedRecord.asset.asset_id,
+        requestedRecord.asset.revision_id,
+        authorities.map((authority, index) => ({
+          chapter_id: planChapters[index].id,
+          authorization: authority!.authorization,
+        })),
+      );
+      setSelectedRecord((current) => (current === requestedRecord ? produced : current));
+      setApiError(null);
+    } catch {
+      setApiError("Could not produce this revision from its current authorities.");
+    } finally {
+      setProductionWorkerPending(false);
     }
   }
 
@@ -774,12 +810,26 @@ export default function Multimedia() {
                   {selectedRecord ? "Persisted storyboard" : "Offline example storyboard"}
                 </p>
                 <ol className="space-y-2" aria-label="Storyboard outline">
-                  {planChapters.map((chapter) => (
+                  {planChapters.map((chapter, chapterIndex) => (
                     <li
                       key={chapter.id}
-                      className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1"
+                      className="list-none"
                     >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
+                      <button
+                        type="button"
+                        aria-label={`Select storyboard chapter ${chapterIndex + 1}`}
+                        onClick={() => {
+                          setActiveChapterId(chapter.id);
+                          setSelectedSourceId(chapter.sourceId ?? "");
+                        }}
+                        className={
+                          "w-full rounded-md border p-3 text-left " +
+                          (chapter.id === activeChapterId
+                            ? "border-sun bg-sun/20"
+                            : "border-rule bg-ice-0 dark:border-charcoal-1 dark:bg-charcoal-1")
+                        }
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
                         <div>
                           <h3 className="font-serif text-base text-ink dark:text-bright">{chapter.title}</h3>
                           <p className="mt-1 text-[13px] leading-relaxed text-shadow-1 dark:text-moonlight">
@@ -792,7 +842,8 @@ export default function Multimedia() {
                             {chapter.visualLabel}
                           </LemonTag>
                         </div>
-                      </div>
+                        </div>
+                      </button>
                     </li>
                   ))}
                 </ol>
@@ -876,6 +927,18 @@ export default function Multimedia() {
                         {reviewedVisualSet.set_id}
                       </p>
                     )}
+                    <LemonButton
+                      type="button"
+                      variant="secondary"
+                      onClick={produceCurrentDocumentary}
+                      disabled={
+                        !reviewedVisualSet ||
+                        productionWorkerPending ||
+                        planChapters.some((chapter) => !chapterNarrationAuthorities[chapter.id])
+                      }
+                    >
+                      {productionWorkerPending ? "Producing..." : "Produce documentary"}
+                    </LemonButton>
                   </section>
                 )}
 

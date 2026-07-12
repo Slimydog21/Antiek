@@ -102,6 +102,50 @@ def produce_ken_burns_documentary(
     return DocumentaryProductionArtifact(packet, verified)
 
 
+def reopen_ken_burns_documentary(
+    *,
+    asset_id: str,
+    revision_id: str,
+    timeline: tuple[TimelineEntry, ...],
+    narration_path: str,
+    visual_output_dir: str,
+    render_output_dir: str,
+    visual_integrity_key: bytes,
+    render_integrity_key: bytes,
+    width_px: int,
+    height_px: int,
+    fps: int,
+) -> DocumentaryProductionArtifact:
+    """Reopen an exact completed documentary after a post-render crash."""
+    packet_path = (
+        Path(visual_output_dir).resolve()
+        / f"{asset_id}-{revision_id}-visuals"
+        / "visual-packet.json"
+    )
+    render_path = (
+        Path(render_output_dir).resolve()
+        / f"{asset_id}-{revision_id}"
+        / "render.json"
+    )
+    packet = VisualSelectionPacket.reopen(packet_path.read_bytes(), visual_integrity_key)
+    artifact = KenBurnsRenderArtifact.reopen(
+        render_path.read_bytes(), render_integrity_key
+    )
+    narration_sha256 = _hash_regular(narration_path)
+    _verify_cross_artifact_binding(
+        packet,
+        artifact,
+        timeline=timeline,
+        narration_path=narration_path,
+        narration_sha256=narration_sha256,
+        render_output_dir=render_output_dir,
+        width_px=width_px,
+        height_px=height_px,
+        fps=fps,
+    )
+    return DocumentaryProductionArtifact(packet, artifact)
+
+
 def _verify_cross_artifact_binding(
     packet: VisualSelectionPacket,
     artifact: KenBurnsRenderArtifact,
@@ -203,4 +247,5 @@ __all__ = [
     "DocumentaryProductionArtifact",
     "DocumentaryProductionError",
     "produce_ken_burns_documentary",
+    "reopen_ken_burns_documentary",
 ]

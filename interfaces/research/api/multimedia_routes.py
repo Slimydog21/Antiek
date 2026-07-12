@@ -50,6 +50,7 @@ from .multimedia_playback_routes import (
     multimedia_playback_router,
     multimedia_playback_runtime_from_environment,
 )
+from .multimedia_production_worker_routes import multimedia_production_worker_router
 from .multimedia_reconciliation_routes import (
     authenticated_multimedia_operator,
     get_multimedia_reconciliation_runtime,
@@ -67,6 +68,7 @@ multimedia_router.include_router(multimedia_reconciliation_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
+multimedia_router.include_router(multimedia_production_worker_router)
 _STORE = MultimediaAssetStore()
 
 

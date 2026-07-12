@@ -26,6 +26,7 @@ import {
   manualGateIds,
   runMultimediaHardening,
   registerMultimediaProduction,
+  produceAuthorizedMultimedia,
   executeChapterTtsReconciliation,
   steerMultimediaAsset,
 } from "./multimedia";
@@ -275,6 +276,62 @@ describe("multimedia API client", () => {
     await expect(getMultimediaReviewedVisualSet("mm-1", "rev-1")).rejects.toThrow(
       "identity_conflict",
     );
+  });
+
+  it("cross-binds authorized production to the selected asset revision", async () => {
+    const produced = {
+      ...record,
+      production_link: {
+        owner_identity_digest: "a".repeat(64),
+        asset_id: "mm-1",
+        revision_id: "rev-1",
+        receipt_sha256: "b".repeat(64),
+        video_sha256: "c".repeat(64),
+        audio_sha256: "d".repeat(64),
+        duration_seconds: 10,
+        width_px: 320,
+        height_px: 240,
+        chapter_ids: ["chapter-1"],
+      },
+    };
+    const authority = {
+      version: 2,
+      authorization_id: "mmauth2-test",
+      request_id: "request-1",
+      operator_id: "owner-1",
+      asset_id: "mm-1",
+      revision_id: "tts-child",
+      provider: "trusted-tts",
+      route_policy: "balanced",
+      model: "voice-1",
+      endpoint_capability: "text-to-speech",
+      catalog_version: "catalog-1",
+      catalog_digest: "a".repeat(64),
+      quote_id: "quote-1",
+      quote_expires_at: "2026-07-12T01:10:00Z",
+      recovery_authority_id: "recovery-1",
+      recovery_verification_key_digest: "b".repeat(64),
+      approved_ceiling_microdollars: 100_000,
+      request_body_digest: "e".repeat(64),
+      issued_at: "2026-07-12T01:00:00Z",
+      expires_at: "2026-07-12T01:15:00Z",
+      signature: "f".repeat(64),
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, produced));
+    expect((await produceAuthorizedMultimedia("mm-1", "rev-1", [
+      { chapter_id: "chapter-1", authorization: authority },
+    ])).production_link?.asset_id).toBe("mm-1");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...produced,
+      production_link: { ...produced.production_link, revision_id: "rev-other" },
+    }));
+    await expect(produceAuthorizedMultimedia("mm-1", "rev-1", [
+      { chapter_id: "chapter-1", authorization: authority },
+    ])).rejects.toThrow("identity_conflict");
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, { ...produced, production_link: null }));
+    await expect(produceAuthorizedMultimedia("mm-1", "rev-1", [
+      { chapter_id: "chapter-1", authorization: authority },
+    ])).rejects.toThrow("missing_link");
   });
 
   it("surfaces a typed not-found error for a 404 job list", async () => {

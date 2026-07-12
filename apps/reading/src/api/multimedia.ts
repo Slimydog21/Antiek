@@ -493,6 +493,44 @@ export async function getMultimediaReviewedVisualSet(
   return result;
 }
 
+export async function produceAuthorizedMultimedia(
+  assetId: string,
+  expectedRevisionId: string,
+  chapterAuthorities: Array<{
+    chapter_id: string;
+    authorization: MultimediaNarrationAuthorization["authorization"];
+  }>,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/production`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: expectedRevisionId,
+        chapter_authorities: chapterAuthorities,
+      }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_production_worker_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_production_worker_conflict");
+  if (resp.status === 503) throw new Error("multimedia_production_worker_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/production: HTTP ${resp.status}`);
+  const record = (await resp.json()) as MultimediaAssetRecord;
+  if (!record.production_link) {
+    throw new Error("multimedia_production_worker_missing_link");
+  }
+  if (
+    record.asset.asset_id !== assetId ||
+    record.asset.revision_id !== expectedRevisionId ||
+    record.production_link.asset_id !== assetId ||
+    record.production_link.revision_id !== expectedRevisionId
+  ) {
+    throw new Error("multimedia_production_worker_identity_conflict");
+  }
+  return record;
+}
+
 export async function listMultimediaJobs(assetId: string): Promise<MultimediaJobList> {
   const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/jobs`);
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
