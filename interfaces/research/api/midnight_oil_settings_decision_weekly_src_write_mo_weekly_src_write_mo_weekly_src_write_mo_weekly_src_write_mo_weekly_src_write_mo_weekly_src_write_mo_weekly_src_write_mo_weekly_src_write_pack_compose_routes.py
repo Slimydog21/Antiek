@@ -1,0 +1,152 @@
+"""Registerable HTTP surface for Midnight Oil over settings decision competition DR."""
+
+from __future__ import annotations
+
+import sys
+
+if sys.getrecursionlimit() < 10000:
+    sys.setrecursionlimit(10000)
+
+from typing import Any, Literal
+
+from fastapi import APIRouter, FastAPI, HTTPException
+from pydantic import BaseModel, Field
+
+from interfaces.research.api.settings_decision_competition_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_routes import (
+    CompetitionPackBody,
+    SettingsBody,
+)
+from substrate.midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose import (
+    MidnightOilSettingsDecisionWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWritePackComposeError,
+    compose_midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack,
+)
+
+midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_router = APIRouter(
+    prefix="/research/midnight-oil-settings-decision-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-pack",
+    tags=["midnight-oil-settings-decision-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-mo-weekly-src-write-pack-compose"],
+)
+
+
+class GoalBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    goal_id: str = Field(min_length=1, max_length=256)
+    title: str = Field(min_length=1, max_length=2000)
+
+
+class MoBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    operator_id: str = Field(min_length=1, max_length=256)
+    work_minutes: int = Field(ge=1)
+    goals: list[GoalBody] = Field(min_length=1)
+    price_ceiling_ack: bool = Field(strict=True)
+    stage: Literal["recommend_only", "approve_ceiling", "unattended_pack"]
+    usd_per_hour: float | None = Field(default=None, ge=0)
+    goal_intensity: float | None = Field(default=None, ge=0)
+    approved_ceiling_usd: float | None = Field(default=None, ge=0)
+    below_recommend_override: bool | None = Field(default=None, strict=True)
+    unattended_ack: bool | None = Field(default=None, strict=True)
+    spend_consent: bool | None = Field(default=None, strict=True)
+
+
+class SettingsPackBody(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    settings: SettingsBody
+    competition_pack: CompetitionPackBody
+    require_both: bool | None = Field(default=None, strict=True)
+
+
+class ComposeRequest(BaseModel):
+    model_config = {"extra": "forbid"}
+
+    mo: MoBody
+    settings_pack: SettingsPackBody
+    operator_ack: bool = Field(strict=True)
+    require_both: bool = Field(default=True, strict=True)
+
+
+def _surface(result: Any) -> dict[str, Any]:
+    """HTTP surface projection — honesty flags + child pack_ready only."""
+    return {
+        "week_id": result.week_id,
+        "session_id": result.session_id,
+        "parent_asset_id": result.parent_asset_id,
+        "asset_id": result.asset_id,
+        "title": result.title,
+        "account_id": result.account_id,
+        "operator_id": result.operator_id,
+        "focus_task": result.focus_task,
+        "pack_ready": result.pack_ready,
+        "live_execution_authorized": False,
+        "charge_executed": False,
+        "secrets_stored": False,
+        "inventory_mutated": False,
+        "live_router_authorized": False,
+        "live_dispatch_authorized": False,
+        "remote_fetched": False,
+        "backlog_mutated": False,
+        "store_mutated": False,
+        "suite_rewritten": False,
+        "twin_written": False,
+        "prompts_injected": False,
+        "merge_executed": False,
+        "draft_written": False,
+        "analysis_written": False,
+        "live_dispatched": False,
+        "pack_dispatched": False,
+        "pdf_view_authorized": False,
+        "pdf_primary": False,
+        "record_persisted": False,
+        "purchase_executed": False,
+        "hosted": False,
+        "remote_index_queried": False,
+        "production_router_verdict": "REJECT",
+        "authority": result.authority,
+        "notes_count": len(result.notes),
+        "mo": {
+            "pack_ready": result.mo.pack_ready,
+            "live_execution_authorized": getattr(
+                result.mo, "live_execution_authorized", False
+            ),
+            "charge_executed": getattr(result.mo, "charge_executed", False),
+        },
+        "settings_pack": {
+            "pack_ready": result.settings_pack.pack_ready,
+            "secrets_stored": getattr(result.settings_pack, "secrets_stored", False),
+            "production_router_verdict": getattr(
+                result.settings_pack, "production_router_verdict", "REJECT"
+            ),
+        },
+    }
+
+
+@midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_router.post(
+    "/compose"
+)
+def post_compose(req: ComposeRequest) -> dict[str, Any]:
+    try:
+        result = compose_midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack(
+            mo=req.mo.model_dump(),
+            settings_pack=req.settings_pack.model_dump(),
+            operator_ack=req.operator_ack,
+            require_both=req.require_both,
+        )
+    except MidnightOilSettingsDecisionWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWritePackComposeError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    return _surface(result)
+
+
+def register_midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_routes(
+    app: FastAPI,
+) -> None:
+    app.include_router(
+        midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_router
+    )
+
+
+__all__ = [
+    "midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_router",
+    "register_midnight_oil_settings_decision_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_pack_compose_routes",
+]
