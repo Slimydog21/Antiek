@@ -25,6 +25,7 @@ class _StubEmbedding:
 
     def encode(self, text: str) -> list[float]:
         import hashlib
+
         d = hashlib.sha256(text.encode()).digest()
         return [b / 255.0 for b in d[: self.dimension]]
 
@@ -49,8 +50,9 @@ def client(monkeypatch):
 
 
 def _make_approved_plan(client, sub_questions=("sub one", "sub two")):
-    r = client.post("/research/plans", json={"problem": "the big problem",
-                                             "sub_questions": list(sub_questions)})
+    r = client.post(
+        "/research/plans", json={"problem": "the big problem", "sub_questions": list(sub_questions)}
+    )
     assert r.status_code == 200, r.text
     root = r.json()["root_node_id"]
     client.post(f"/research/plans/{root}/approve", json={"approver": "operator"})
@@ -79,6 +81,7 @@ def test_budget_defaults_reads_the_contract(client):
     # The entry UI shows "estimated up to $X for N researches" off this, so it
     # must be the BudgetCap contract default, not a hardcoded API number.
     from runtime.research_runner import BudgetCap
+
     r = client.get("/research/budget-defaults")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -88,6 +91,7 @@ def test_budget_defaults_reads_the_contract(client):
     # SPR-05: the monitor reads the real host-local semaphore cap off the
     # contract for its honest "N running, M queued" — not a hardcoded UI number.
     from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
+
     assert body["host_local_max_concurrency"] == DEFAULT_MAX_CONCURRENCY
 
 
@@ -100,19 +104,25 @@ def test_create_plan_returns_editable_tree(client):
 
 
 def test_get_plan_not_launchable_before_approval(client):
-    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()["root_node_id"]
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()[
+        "root_node_id"
+    ]
     r = client.get(f"/research/plans/{root}")
     assert r.status_code == 200 and r.json()["launchable"] is False
 
 
 def test_approve_makes_launchable_and_edit_reopens_gate(client):
-    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a", "b"]}).json()["root_node_id"]
+    root = client.post(
+        "/research/plans", json={"problem": "P", "sub_questions": ["a", "b"]}
+    ).json()["root_node_id"]
     assert client.post(f"/research/plans/{root}/approve", json={}).json()["launchable"] is True
     # Editing re-opens the gate.
     tree = client.get(f"/research/plans/{root}").json()["tree"]
     child_local = tree["root"]["children"][0]["local_id"]
-    r = client.post(f"/research/plans/{root}/edit",
-                    json={"op": "reword", "target_local_id": child_local, "question": "reworded"})
+    r = client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "reword", "target_local_id": child_local, "question": "reworded"},
+    )
     assert r.status_code == 200 and r.json()["launchable"] is False
 
 
@@ -122,7 +132,9 @@ def test_approve_makes_launchable_and_edit_reopens_gate(client):
 
 
 def test_launch_refuses_unapproved_plan(client):
-    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()["root_node_id"]
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()[
+        "root_node_id"
+    ]
     r = client.post(f"/research/plans/{root}/launch", json={})
     assert r.status_code == 409
     assert "not approved" in r.json()["detail"]
@@ -194,8 +206,7 @@ def test_launch_resolves_authenticated_recursive_assets_into_start_pack(client, 
     _poll_until_terminal(client, body["session_id"])
     leaf_id = body["researches"][0]["investigation_id"]
     pack_event = next(
-        row for row in trajectory(leaf_id)
-        if row["action_type"] == "context_pack.assembled"
+        row for row in trajectory(leaf_id) if row["action_type"] == "context_pack.assembled"
     )
     receipt = pack_event["payload"]["recursive_context"]
     assert len(receipt["included_units"]) == 1
@@ -207,6 +218,123 @@ def test_production_exa_factory_marks_real_reasoning_consumer(monkeypatch):
     monkeypatch.setenv("ANTIEK_DRW_GATHER", "exa")
     loop = cr._research_loop_factory()
     assert getattr(loop, "consumes_prompt_context", False) is True
+
+
+def test_recursive_outcome_resolves_server_receipt_and_supports_opt_out(client):
+    from substrate.context_pack import LayerSource, build_canonical_recursive_pack
+    from substrate.context_pack.knowledge_reuse import assemble_context_pack_with_reuse
+    from substrate.engagement_spine import InMemoryEngagementStore, record_twin_insight
+    from substrate.event_log import emit_typed
+    from substrate.schemas import DispatchCallPayload
+
+    store = InMemoryEngagementStore()
+    record_twin_insight("asset", "Private unit prose.", store=store)
+    recursive_pack = build_canonical_recursive_pack(
+        store=store,
+        owner_user_id="__operator__",
+        asset_ids=["asset"],
+        asset_owner=lambda _asset: "__operator__",
+        goal="private unit",
+    )
+    investigation_id = "inv-recursive-outcome-api"
+    assembled = assemble_context_pack_with_reuse(
+        role="user_agent",
+        investigation_id=investigation_id,
+        layers=[LayerSource(kind="session", source="question", content="Question")],
+        units=[],
+        include_reuse=False,
+        recursive_notes_pack=recursive_pack,
+    ).pack
+    assert assembled.event_id
+    dispatch_event_id = emit_typed(
+        investigation_id,
+        DispatchCallPayload(
+            provider="fake",
+            model="fake-model",
+            tier="pro",
+            target_role="user_agent",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0,
+            latency_ms=1,
+            prompt_hash="sha256:test",
+            context_pack_event_id=assembled.event_id,
+        ),
+        role="user_agent",
+        policy_id="fake/fake-model",
+    )
+    response = client.post(
+        "/research/recursive-context/outcomes",
+        json={
+            "observation_id": "explicit-save-1",
+            "investigation_id": investigation_id,
+            "context_pack_event_id": assembled.event_id,
+            "outcome": "saved",
+        },
+    )
+    assert response.status_code == 200, response.text
+    receipt = response.json()["receipt"]
+    assert receipt["dispatch_event_id"] == dispatch_event_id
+    assert receipt["outcome"] == "saved"
+    assert receipt["signal_source"] == "explicit_user"
+    assert "Private unit prose" not in json.dumps(response.json())
+    duplicate = client.post(
+        "/research/recursive-context/outcomes",
+        json={
+            "observation_id": "explicit-save-1",
+            "investigation_id": investigation_id,
+            "context_pack_event_id": assembled.event_id,
+            "outcome": "saved",
+        },
+    )
+    assert duplicate.status_code == 200
+    foreign_pack = build_canonical_recursive_pack(
+        store=store,
+        owner_user_id="other-owner",
+        asset_ids=["asset"],
+        asset_owner=lambda _asset: "other-owner",
+        goal="private unit",
+    )
+    foreign_investigation = "inv-recursive-outcome-foreign"
+    foreign_context = assemble_context_pack_with_reuse(
+        role="user_agent",
+        investigation_id=foreign_investigation,
+        layers=[LayerSource(kind="session", source="question", content="Question")],
+        units=[],
+        include_reuse=False,
+        recursive_notes_pack=foreign_pack,
+    ).pack
+    assert foreign_context.event_id
+    emit_typed(
+        foreign_investigation,
+        DispatchCallPayload(
+            provider="fake",
+            model="fake-model",
+            tier="pro",
+            target_role="user_agent",
+            input_tokens=10,
+            output_tokens=5,
+            cost_usd=0.0,
+            latency_ms=1,
+            prompt_hash="sha256:foreign",
+            context_pack_event_id=foreign_context.event_id,
+        ),
+        role="user_agent",
+        policy_id="fake/fake-model",
+    )
+    foreign = client.post(
+        "/research/recursive-context/outcomes",
+        json={
+            "observation_id": "foreign-save-1",
+            "investigation_id": foreign_investigation,
+            "context_pack_event_id": foreign_context.event_id,
+            "outcome": "saved",
+        },
+    )
+    assert foreign.status_code == 403
+    deleted = client.delete("/research/recursive-context/outcomes")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"deleted_receipt_count": 1, "opted_out": True}
 
 
 # --------------------------------------------------------------------------
@@ -283,6 +411,7 @@ def test_budget_halted_cascade_is_not_working_in_investigations(client):
     assert any(x["status"] == "stopped" for x in cascade_rows), cascade_rows
     # The halted state agrees with the reconstruct path (the honest one).
     from orchestration.cascade_session import reconstruct_session
+
     rec = reconstruct_session(sid)
     halted = {r.investigation_id for r in rec.researches if r.state == "budget_halted"}
     listed_stopped = {x["investigation_id"] for x in cascade_rows if x["status"] == "stopped"}
@@ -307,10 +436,15 @@ def test_stopped_research_surfaces_as_stopped_not_done(client):
     # itself is covered by test_steer_endpoint_wiring + the runner unit; here we
     # pin that the LIST endpoint reads the outcome, the M1-vocabulary gap.)
     iid = "inv-stopped-001"
-    log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
-              payload={"question": "A question the operator stopped"}, role="user_agent")
-    log_event(iid, ActionType.INVESTIGATION_COMPLETED,
-              payload={"outcome": "stopped"}, role="user_agent")
+    log_event(
+        iid,
+        ActionType.INVESTIGATION_START_REQUESTED,
+        payload={"question": "A question the operator stopped"},
+        role="user_agent",
+    )
+    log_event(
+        iid, ActionType.INVESTIGATION_COMPLETED, payload={"outcome": "stopped"}, role="user_agent"
+    )
 
     rows = client.get("/investigations", params={"limit": 200}).json()["investigations"]
     row = next(x for x in rows if x["investigation_id"] == iid)
@@ -383,7 +517,7 @@ def test_session_stream_emits_events(client):
                 continue
             text = line if isinstance(line, str) else line.decode()
             if text.startswith("data: "):
-                kinds.append(json.loads(text[len("data: "):]).get("kind"))
+                kinds.append(json.loads(text[len("data: ") :]).get("kind"))
             if kinds and kinds[-1] == "session_done":
                 break
     assert "session_done" in kinds

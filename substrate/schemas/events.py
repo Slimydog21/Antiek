@@ -745,10 +745,12 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v31: Phase-8 operator reviews become immutable events linked to a prior
 #     skill.patch_gate_decided event. Calibration status can now compute
 #     operator-reviewed count and agreement without mutating old trajectory rows.
+# v33: Recursive context unit receipts carry owner_scope_digest so outcome
+#      endpoints can reject cross-owner event references. 2026-07-12.
 # v32: Context-pack events can carry a text-free canonical recursive-note
 #      assembly receipt and identify the distinct recursive_notes layer.
 #      2026-07-12.
-EVENT_SCHEMA_VERSION: int = 32
+EVENT_SCHEMA_VERSION: int = 33
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -973,6 +975,7 @@ class RecursiveContextUnitReceipt(BaseModel):
     unit_id: str
     text_digest: str = Field(min_length=64, max_length=64)
     authority: Literal["engagement_twin", "depth_graph"]
+    owner_scope_digest: str = Field(min_length=64, max_length=64)
 
 
 class RecursiveContextAssemblyReceipt(BaseModel):

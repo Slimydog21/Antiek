@@ -130,6 +130,7 @@ def build_recursive_context_assembly_receipt(
                 unit_id=unit.unit_id,
                 text_digest=unit.text_digest,
                 authority=unit.authority,
+                owner_scope_digest=unit.account_scope_digest,
             )
             for unit in included
         ],

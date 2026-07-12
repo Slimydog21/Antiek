@@ -39,13 +39,15 @@ import contextlib
 import json
 import logging
 import os
+import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import contextmanager
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from interfaces.research.api.dispatch_failure import classify_dispatch_failure
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
@@ -78,6 +80,7 @@ from substrate.graph import default_db_path, ensure_initialized
 if TYPE_CHECKING:
     from orchestration.session_evidence_pack import SessionEvidencePack
     from processing.embedding import EmbeddingProvider
+    from substrate.context_pack.recursive_feedback import FileRecursiveFeedbackStore
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +117,19 @@ def _db() -> str:
     return path
 
 
+def _recursive_feedback_store() -> FileRecursiveFeedbackStore:
+    from substrate.context_pack.recursive_feedback import FileRecursiveFeedbackStore
+
+    configured = os.environ.get("ANTIEK_RECURSIVE_FEEDBACK_DIR", "").strip()
+    root = (
+        Path(configured)
+        if configured
+        else Path(os.environ.get("ANTIEK_RESEARCH_EVENTS_DIR", ".antiek/events")).parent
+        / "recursive-feedback"
+    )
+    return FileRecursiveFeedbackStore(root)
+
+
 @contextmanager
 def _write(purpose: str) -> Iterator[Any]:
     con = connect_write(_db(), purpose=purpose)
@@ -136,6 +152,7 @@ def _translate() -> Iterator[None]:
 
 def _embedding_provider() -> EmbeddingProvider:
     from processing.embedding import default_embedding_provider
+
     return default_embedding_provider()
 
 
@@ -199,9 +216,7 @@ class _LazyReuseSubstrate:
 
             # Read-write, NO flock — shares the funnel's DuckDB instance.
             self._parent = duckdb.connect(self._db_path)
-            self._inner = make_substrate_from_con(
-                "brute_force", self._parent, model=self._model
-            )
+            self._inner = make_substrate_from_con("brute_force", self._parent, model=self._model)
         return self._inner
 
     @property
@@ -257,9 +272,7 @@ def _decompose(problem: str, max_depth: int) -> PlanReport:
     return build_plan(problem, decomposer=DispatchDecomposer(), max_depth=max_depth)
 
 
-def _research_loop_factory(
-    *, reasoning_projected_max_cost_usd: float = 0.25
-) -> BrowseLoop:
+def _research_loop_factory(*, reasoning_projected_max_cost_usd: float = 0.25) -> BrowseLoop:
     """The browse loop each investigation runs.
 
     Default = the contract gather stub (an honest placeholder that does
@@ -324,6 +337,15 @@ class LaunchRequest(BaseModel):
     aggregate_budget_usd: float | None = None
     recursive_asset_ids: list[str] = Field(default_factory=list, max_length=64)
     reasoning_projected_max_cost_usd: float = Field(default=0.25, ge=0.25, le=100)
+
+
+class RecursiveOutcomeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    observation_id: str = Field(min_length=1, max_length=512)
+    investigation_id: str = Field(min_length=1, max_length=512)
+    context_pack_event_id: str = Field(min_length=1, max_length=512)
+    outcome: str
 
 
 class SteerRequest(BaseModel):
@@ -423,6 +445,7 @@ async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
         class _Fixed:
             def decompose(self, q: str, *, context: str = "") -> list[SubQuestion]:
                 return [SubQuestion(question=s) for s in sub_questions]
+
         report = build_plan(req.problem, decomposer=_Fixed(), max_depth=req.max_depth)
     else:
         try:
@@ -445,11 +468,15 @@ async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
             ) from exc
     tree = report.tree
     with _write("create_plan") as con:
-        root_id = persist_tree(tree, investigation_id="__operator__",
-                               embedding_provider=_embedding_provider(), con=con)
-    return {"root_node_id": root_id, "tree": tree.to_dict(),
-            "capped_nodes": report.capped_nodes,
-            "over_broad_leaves": report.over_broad_leaves}
+        root_id = persist_tree(
+            tree, investigation_id="__operator__", embedding_provider=_embedding_provider(), con=con
+        )
+    return {
+        "root_node_id": root_id,
+        "tree": tree.to_dict(),
+        "capped_nodes": report.capped_nodes,
+        "over_broad_leaves": report.over_broad_leaves,
+    }
 
 
 @cascade_router.get("/plans/{root_id}")
@@ -457,8 +484,11 @@ async def get_plan(root_id: str) -> dict[str, Any]:
     tree = load_tree(root_id, db_path=_db())
     if tree is None:
         raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
-    return {"root_node_id": root_id, "tree": tree.to_dict(),
-            "launchable": is_plan_launchable(root_id, db_path=_db())}
+    return {
+        "root_node_id": root_id,
+        "tree": tree.to_dict(),
+        "launchable": is_plan_launchable(root_id, db_path=_db()),
+    }
 
 
 @cascade_router.post("/plans/{root_id}/edit")
@@ -473,10 +503,17 @@ async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
         if not ok:
             raise HTTPException(status_code=400, detail=f"edit {req.op!r} failed (bad target?)")
         with _write("edit_plan") as con:
-            persist_tree(tree, investigation_id="__operator__",
-                         embedding_provider=_embedding_provider(), con=con)
-    return {"root_node_id": root_id, "tree": tree.to_dict(),
-            "launchable": is_plan_launchable(root_id, db_path=_db())}
+            persist_tree(
+                tree,
+                investigation_id="__operator__",
+                embedding_provider=_embedding_provider(),
+                con=con,
+            )
+    return {
+        "root_node_id": root_id,
+        "tree": tree.to_dict(),
+        "launchable": is_plan_launchable(root_id, db_path=_db()),
+    }
 
 
 def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
@@ -487,7 +524,9 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
     if req.op == "reword":
         return tree.reword(req.target_local_id, req.question or "")
     if req.op == "set_budget":
-        return tree.set_budget(req.target_local_id, budget_usd=req.budget_usd, max_depth=req.max_depth)
+        return tree.set_budget(
+            req.target_local_id, budget_usd=req.budget_usd, max_depth=req.max_depth
+        )
     if req.op == "split":
         return tree.split(req.target_local_id, req.into or [])
     raise HTTPException(status_code=400, detail=f"unknown edit op {req.op!r}")
@@ -496,10 +535,14 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
 @cascade_router.post("/plans/{root_id}/approve")
 async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
     with _write("approve_plan") as con:
-        approval = approve_plan(root_id, approver=req.approver,
-                                investigation_id="__operator__", con=con)
-    return {"root_node_id": root_id, "approval": approval,
-            "launchable": is_plan_launchable(root_id, db_path=_db())}
+        approval = approve_plan(
+            root_id, approver=req.approver, investigation_id="__operator__", con=con
+        )
+    return {
+        "root_node_id": root_id,
+        "approval": approval,
+        "launchable": is_plan_launchable(root_id, db_path=_db()),
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -518,16 +561,20 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
     with _translate():
         if not is_plan_launchable(root_id, db_path=_db()):
             raise PlanNotApproved(
-                f"plan {root_id!r} is not approved — the glass-box gate refuses launch.")
+                f"plan {root_id!r} is not approved — the glass-box gate refuses launch."
+            )
         tree = load_tree(root_id, db_path=_db())
         if tree is None:
             raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
 
     session_id = f"session-{root_id}"
     leaves = [
-        Leaf(investigation_id=f"{session_id}-leaf-{i}", sub_question=leaf.question,
-             question_node_id=leaf.graph_node_id,
-             budget=BudgetCap(cost_usd=req.per_research_budget_usd))
+        Leaf(
+            investigation_id=f"{session_id}-leaf-{i}",
+            sub_question=leaf.question,
+            question_node_id=leaf.graph_node_id,
+            budget=BudgetCap(cost_usd=req.per_research_budget_usd),
+        )
         for i, leaf in enumerate(tree.leaves)
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
@@ -563,9 +610,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
         asset_ids = tuple(dict.fromkeys(req.recursive_asset_ids))
         engagement_store = get_engagement_store(create_if_missing=True)
 
-        def recursive_notes_provider(
-            _investigation_id: str, plan: ResearchPlan
-        ) -> Any:
+        def recursive_notes_provider(_investigation_id: str, plan: ResearchPlan) -> Any:
             with _write("canonical_recursive_context") as con:
                 owner_rows = con.execute(
                     "SELECT deliverable_id, owner_user_id FROM deliverables "
@@ -573,7 +618,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                     [list(asset_ids)],
                 ).fetchall()
                 owners = {str(row[0]): str(row[1]) for row in owner_rows}
-                return build_canonical_recursive_pack(
+                pack = build_canonical_recursive_pack(
                     store=engagement_store,
                     con=con,
                     owner_user_id=owner_user_id,
@@ -581,11 +626,32 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                     asset_owner=owners.get,
                     goal=plan.sub_question,
                 )
+            from substrate.context_pack.recursive_ranking import (
+                apply_advisory_ranking,
+                build_ranking_snapshot,
+            )
 
-    runner = HostLocalRunner(research_loop, budget=budget,
-                             on_emit=funnel.submit, seal_on_complete=False,
-                             retrieval_substrate=reuse_substrate,
-                             recursive_notes_provider=recursive_notes_provider)
+            feedback_store = _recursive_feedback_store()
+            snapshot = build_ranking_snapshot(
+                owner_user_id=owner_user_id,
+                task_class="research_reasoning",
+                receipts=feedback_store.list(owner_user_id),
+                now_ms=int(time.time() * 1000),
+            )
+            return apply_advisory_ranking(
+                pack,
+                owner_user_id=owner_user_id,
+                snapshot=snapshot,
+            )
+
+    runner = HostLocalRunner(
+        research_loop,
+        budget=budget,
+        on_emit=funnel.submit,
+        seal_on_complete=False,
+        retrieval_substrate=reuse_substrate,
+        recursive_notes_provider=recursive_notes_provider,
+    )
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     try:
         await session.launch(root_id, leaves)
@@ -605,12 +671,122 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
     return {
         "session_id": session_id,
         "researches": [
-            {"investigation_id": leaf.investigation_id, "sub_question": leaf.sub_question,
-             "question_node_id": leaf.question_node_id}
+            {
+                "investigation_id": leaf.investigation_id,
+                "sub_question": leaf.sub_question,
+                "question_node_id": leaf.question_node_id,
+            }
             for leaf in leaves
         ],
         "aggregate_cap_usd": budget.aggregate_cap_usd,
     }
+
+
+@cascade_router.post("/recursive-context/outcomes")
+async def record_recursive_context_outcome(
+    body: RecursiveOutcomeRequest, request: Request
+) -> dict[str, Any]:
+    from dataclasses import asdict
+
+    from substrate.context_pack.recursive_feedback import (
+        FeedbackUnitRef,
+        build_outcome_receipt,
+    )
+    from substrate.event_log import trajectory
+
+    owner_user_id = str(getattr(request.state, "user_id", "") or "").strip()
+    if not owner_user_id:
+        raise HTTPException(
+            status_code=503,
+            detail="authenticated request identity is unavailable",
+        )
+    rows = trajectory(body.investigation_id)
+    context_event = next(
+        (
+            row
+            for row in rows
+            if row.get("event_id") == body.context_pack_event_id
+            and row.get("action_type") == "context_pack.assembled"
+        ),
+        None,
+    )
+    if context_event is None:
+        raise HTTPException(status_code=404, detail="context pack event not found")
+    payload = context_event.get("payload")
+    recursive_context = payload.get("recursive_context") if isinstance(payload, dict) else None
+    included = (
+        recursive_context.get("included_units") if isinstance(recursive_context, dict) else None
+    )
+    if not isinstance(included, list) or not included:
+        raise HTTPException(
+            status_code=409,
+            detail="context pack contains no consumed recursive units",
+        )
+    units = [
+        FeedbackUnitRef(
+            unit_id=str(unit.get("unit_id") or ""),
+            text_digest=str(unit.get("text_digest") or ""),
+        )
+        for unit in included
+        if isinstance(unit, dict)
+    ]
+    from substrate.context_pack import account_scope_digest
+
+    expected_scope = account_scope_digest(owner_user_id)
+    if len(units) != len(included) or any(
+        str(unit.get("owner_scope_digest") or "") != expected_scope
+        for unit in included
+        if isinstance(unit, dict)
+    ):
+        raise HTTPException(
+            status_code=403,
+            detail="recursive context does not belong to authenticated identity",
+        )
+    dispatch_event = next(
+        (
+            row
+            for row in reversed(rows)
+            if row.get("action_type") == "dispatch.call"
+            and isinstance(row.get("payload"), dict)
+            and row["payload"].get("context_pack_event_id") == body.context_pack_event_id
+        ),
+        None,
+    )
+    if dispatch_event is None:
+        raise HTTPException(
+            status_code=409,
+            detail="recursive context was assembled but no linked dispatch consumed it",
+        )
+    try:
+        receipt = build_outcome_receipt(
+            owner_user_id=owner_user_id,
+            observation_id=body.observation_id,
+            context_pack_event_id=body.context_pack_event_id,
+            dispatch_event_id=str(dispatch_event.get("event_id") or ""),
+            units=units,
+            # This route only records feedback for a research cascade. The
+            # ranking cohort is server-owned, not a client classification.
+            task_class="research_reasoning",
+            model_policy_id=str(dispatch_event.get("policy_id") or "unknown"),
+            outcome=body.outcome,  # type: ignore[arg-type]
+            observed_at_ms=int(time.time() * 1000),
+        )
+        stored = _recursive_feedback_store().append(owner_user_id, receipt)
+    except (PermissionError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"receipt": asdict(stored), "text_logged": False}
+
+
+@cascade_router.delete("/recursive-context/outcomes")
+async def delete_recursive_context_outcomes(request: Request) -> dict[str, Any]:
+    owner_user_id = str(getattr(request.state, "user_id", "") or "").strip()
+    if not owner_user_id:
+        raise HTTPException(
+            status_code=503,
+            detail="authenticated request identity is unavailable",
+        )
+    deleted = _recursive_feedback_store().delete_and_opt_out(owner_user_id)
+    return {"deleted_receipt_count": deleted, "opted_out": True}
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
@@ -644,10 +820,15 @@ async def session_status(session_id: str) -> dict[str, Any]:
         cost = live.aggregate_cost()
         terminal = live.terminal_status()
         return {
-            "session_id": session_id, "live": True,
+            "session_id": session_id,
+            "live": True,
             "researches": [
-                {"investigation_id": s.investigation_id, "sub_question": s.sub_question,
-                 "state": s.state, "question_node_id": s.question_node_id}
+                {
+                    "investigation_id": s.investigation_id,
+                    "sub_question": s.sub_question,
+                    "state": s.state,
+                    "question_node_id": s.question_node_id,
+                }
                 for s in live.status()
             ],
             "cost": cost,
@@ -662,10 +843,14 @@ async def session_status(session_id: str) -> dict[str, Any]:
     if not rec.researches:
         raise HTTPException(status_code=404, detail=f"no session {session_id!r}")
     return {
-        "session_id": session_id, "live": False,
+        "session_id": session_id,
+        "live": False,
         "researches": [
-            {"investigation_id": r.investigation_id, "sub_question": r.sub_question,
-             "state": r.state}
+            {
+                "investigation_id": r.investigation_id,
+                "sub_question": r.sub_question,
+                "state": r.state,
+            }
             for r in rec.researches
         ],
         "all_terminal": rec.all_terminal,
@@ -693,8 +878,11 @@ async def steer(session_id: str, investigation_id: str, req: SteerRequest) -> di
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
     await live.steer(investigation_id, _command(req.kind, req.payload))
     status = {s.investigation_id: s.state for s in live.status()}
-    return {"session_id": session_id, "investigation_id": investigation_id,
-            "state": status.get(investigation_id)}
+    return {
+        "session_id": session_id,
+        "investigation_id": investigation_id,
+        "state": status.get(investigation_id),
+    }
 
 
 @cascade_router.get("/sessions/{session_id}/stream")
@@ -714,11 +902,18 @@ async def session_stream(session_id: str) -> StreamingResponse:
         idle_after_complete = 0
         while True:
             for ev in live_session.drain_nowait():
-                yield _sse({
-                    "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
-                    "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
-                    "state": ev.state.value if ev.state else None, "data": ev.data,
-                })
+                yield _sse(
+                    {
+                        "investigation_id": ev.investigation_id,
+                        "seq": ev.seq,
+                        "kind": ev.kind,
+                        "text": ev.text,
+                        "cost_usd": ev.cost_usd,
+                        "tokens": ev.tokens,
+                        "state": ev.state.value if ev.state else None,
+                        "data": ev.data,
+                    }
+                )
             if live_session.is_complete():
                 # Drain one more cycle to flush any final events, then close.
                 idle_after_complete += 1
@@ -726,18 +921,31 @@ async def session_stream(session_id: str) -> StreamingResponse:
                     break
             await asyncio.sleep(0.02)
         for ev in live_session.drain_nowait():
-            yield _sse({
-                "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
-                "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
-                "state": ev.state.value if ev.state else None, "data": ev.data,
-            })
+            yield _sse(
+                {
+                    "investigation_id": ev.investigation_id,
+                    "seq": ev.seq,
+                    "kind": ev.kind,
+                    "text": ev.text,
+                    "cost_usd": ev.cost_usd,
+                    "tokens": ev.tokens,
+                    "state": ev.state.value if ev.state else None,
+                    "data": ev.data,
+                }
+            )
         yield _sse({"kind": "session_done"})
 
     async def _recovered() -> AsyncIterator[str]:
         rec = reconstruct_session(session_id)
         for r in rec.researches:
-            yield _sse({"investigation_id": r.investigation_id, "kind": "status",
-                        "text": r.sub_question, "state": r.state})
+            yield _sse(
+                {
+                    "investigation_id": r.investigation_id,
+                    "kind": "status",
+                    "text": r.sub_question,
+                    "state": r.state,
+                }
+            )
         yield _sse({"kind": "session_done", "recovered": True})
 
     gen = _live(live) if live is not None else _recovered()

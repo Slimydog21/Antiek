@@ -20,6 +20,12 @@ from .assembler import (
     assemble_context_pack,
     default_budget_for,
 )
+from .recursive_feedback import (
+    FeedbackUnitRef,
+    FileRecursiveFeedbackStore,
+    RecursiveOutcomeReceipt,
+    build_outcome_receipt,
+)
 from .recursive_notes import (
     AdvisoryPreview,
     ContentUnit,
@@ -35,6 +41,12 @@ from .recursive_notes_prompt import (
     build_recursive_notes_layer,
 )
 from .recursive_notes_resolvers import build_canonical_recursive_pack
+from .recursive_ranking import (
+    RecursiveRankingSnapshot,
+    apply_advisory_ranking,
+    build_ranking_snapshot,
+    weekly_replay,
+)
 from .style_guide import (
     QUANTITATIVE_SKIP_THRESHOLD,
     STYLE_EXTRACTOR_FLAG,
@@ -67,6 +79,14 @@ __all__ = [
     "account_scope_digest",
     "build_canonical_recursive_pack",
     "digest_text",
+    "FeedbackUnitRef",
+    "FileRecursiveFeedbackStore",
+    "RecursiveOutcomeReceipt",
+    "build_outcome_receipt",
+    "RecursiveRankingSnapshot",
+    "apply_advisory_ranking",
+    "build_ranking_snapshot",
+    "weekly_replay",
     "RECURSIVE_CONTEXT_POLICY_VERSION",
     "RecursiveLayerSelection",
     "build_recursive_notes_layer",

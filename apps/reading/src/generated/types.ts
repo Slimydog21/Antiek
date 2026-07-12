@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 32;
+export const EVENT_SCHEMA_VERSION = 33;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -229,6 +229,7 @@ export interface RecursiveContextUnitReceipt {
   unit_id: string;
   text_digest: string;
   authority: "engagement_twin" | "depth_graph";
+  owner_scope_digest: string;
 }
 
 /**

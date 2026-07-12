@@ -59,7 +59,7 @@ def test_event_schema_version_bumped():
     (DiscoveryProvider Literal += "parallel", restore #134) -> 30/31
     (SkillPatchGateDecided + SkillPatchGateReviewed, GF-3c/d Phase-8
     gate calibration audit events)."""
-    assert EVENT_SCHEMA_VERSION == 32
+    assert EVENT_SCHEMA_VERSION == 33
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────
