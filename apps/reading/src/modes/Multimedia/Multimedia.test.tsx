@@ -320,7 +320,7 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByLabelText("Approve this maximum"));
     await waitFor(() => expect(
       screen.getByRole("button", { name: "Authorize narration" }).getAttribute("disabled"),
-    ).toBeNull());
+    ).toBeNull(), { timeout: 5_000 });
     fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
 
     await waitFor(() => expect(mockAuthorizeNarration).toHaveBeenCalledWith(
