@@ -1117,6 +1117,56 @@ class BudgetLedger:
         finally:
             con.close()
 
+    def run_stage_fenced(
+        self,
+        run_id: str,
+        call_key: str,
+        *,
+        expected_states: frozenset[str],
+        action: Callable[[StageBudgetExposure], T],
+    ) -> T:
+        """Run a stage CAS while keyed cent exposure cannot change.
+
+        Lock order for stage mutations is fixed and load-bearing:
+        ``OperationQueue.run_fenced`` operation flock → this budget
+        coordinator/transaction → stage SQLite ``BEGIN IMMEDIATE``. Callers
+        must never acquire these in reverse order.
+        """
+        checked = _call_key(call_key)
+        assert checked is not None
+        if not expected_states or not expected_states.issubset(
+            {"open", "unknown", "settled", "released"}
+        ):
+            raise ValueError("expected stage exposure states are invalid")
+        with (
+            self._coordinator.acquire_write_context(
+                "midnight_oil.budget_ledger.stage_fence"
+            ) as ctx,
+            self._txn(ctx),
+        ):
+            row = ctx.execute(
+                "SELECT hold_id, role, projected_max_cents, state, actual_cents "
+                "FROM midnight_oil_call_holds WHERE run_id = ? AND call_key = ?",
+                [run_id, checked],
+            ).fetchone()
+            if row is None:
+                raise ReservationNotFound(checked)
+            hold_id, role, projected, state, actual = row
+            exposure = self._stage_exposure_row(
+                run_id=run_id,
+                call_key=checked,
+                hold_id=str(hold_id),
+                role=str(role),
+                projected_cents=int(projected),
+                state=str(state),
+                actual_cents=None if actual is None else int(actual),
+            )
+            if exposure.state not in expected_states:
+                raise ValueError(
+                    "stage transition conflicts with authoritative budget exposure"
+                )
+            return action(exposure)
+
     # --- guarded_call -----------------------------------------------------
 
     def guarded_call(
