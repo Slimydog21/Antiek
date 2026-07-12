@@ -1,0 +1,116 @@
+"""Route tests for floating multi-select + source attach quality compose."""
+
+from __future__ import annotations
+
+from fastapi import FastAPI
+from fastapi.testclient import TestClient
+
+from interfaces.research.api.floating_multi_select_source_attach_quality_compose_routes import (
+    register_floating_multi_select_source_attach_quality_compose_routes,
+)
+
+
+def _client() -> TestClient:
+    app = FastAPI()
+    register_floating_multi_select_source_attach_quality_compose_routes(app)
+    return TestClient(app)
+
+
+def test_compose_route():
+    c = _client()
+    r = c.post(
+        "/research/floating-multi-select-source-attach-quality/compose",
+        json={
+            "session_id": "sess-1",
+            "parent_asset_id": "asset-1",
+            "members": [
+                {
+                    "instance_id": "inst-a",
+                    "parent_asset_id": "asset-1",
+                    "status": "open",
+                    "highlight": "scaling laws claim",
+                },
+                {
+                    "instance_id": "inst-b",
+                    "parent_asset_id": "asset-1",
+                    "status": "completed",
+                    "highlight": "counter-evidence",
+                    "findings": ["finding-b1"],
+                },
+            ],
+            "selected_instance_ids": ["inst-a", "inst-b"],
+            "pack_mode": "cohesive_prompt",
+            "cohesive_prompt": "Synthesize A and B with arxiv/substack",
+            "operator_ack": True,
+            "requested_families": ["arxiv", "substack"],
+            "sources": [
+                {
+                    "source_id": "arx-1",
+                    "family": "arxiv",
+                    "title": "Scaling Laws for Neural Language Models",
+                    "html_fragment": "<article>abstract…</article>",
+                },
+                {
+                    "source_id": "sub-1",
+                    "family": "substack",
+                    "title": "Deep research essay",
+                    "html_fragment": "<article>essay…</article>",
+                },
+            ],
+            "quality_overall": 0.88,
+            "quality_floor": 0.7,
+            "would_exceed": False,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["pack_ready"] is True
+    assert body["live_dispatched"] is False
+    assert body["remote_fetched"] is False
+    assert body["pdf_view_authorized"] is False
+    assert body["analysis_written"] is False
+    assert body["authority"] == (
+        "floating_multi_select_source_attach_quality_compose_advisory"
+    )
+
+
+def test_compose_route_budget_block():
+    c = _client()
+    r = c.post(
+        "/research/floating-multi-select-source-attach-quality/compose",
+        json={
+            "session_id": "sess-2",
+            "parent_asset_id": "asset-1",
+            "members": [
+                {
+                    "instance_id": "inst-a",
+                    "parent_asset_id": "asset-1",
+                    "status": "open",
+                },
+                {
+                    "instance_id": "inst-b",
+                    "parent_asset_id": "asset-1",
+                    "status": "completed",
+                },
+            ],
+            "selected_instance_ids": ["inst-a", "inst-b"],
+            "pack_mode": "cohesive_prompt",
+            "cohesive_prompt": "Go",
+            "operator_ack": True,
+            "requested_families": ["arxiv"],
+            "sources": [
+                {
+                    "source_id": "arx-1",
+                    "family": "arxiv",
+                    "title": "Paper",
+                    "html_fragment": "<p>x</p>",
+                }
+            ],
+            "quality_overall": 0.9,
+            "would_exceed": True,
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["pack_ready"] is False
+    assert body["live_dispatched"] is False
