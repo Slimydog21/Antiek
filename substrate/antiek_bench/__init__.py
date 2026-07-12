@@ -22,6 +22,14 @@ from .recorder import (
     week_usage_events,
     week_view_records,
 )
+from .runner import (
+    DEFAULT_SEED,
+    DEFAULT_TEMPERATURE,
+    ModelCaller,
+    RawModelOutput,
+    RunResult,
+    run_and_score,
+)
 from .scorer import (
     ExactScorer,
     HumanScorer,
@@ -40,13 +48,18 @@ from .task_registry import (
 
 __all__ = [
     "BenchTask",
+    "DEFAULT_SEED",
+    "DEFAULT_TEMPERATURE",
     "ExactScorer",
     "GENESIS_HASH",
     "HumanScorer",
     "LedgerCorruption",
+    "ModelCaller",
     "RubricJudge",
     "RubricScorer",
     "RunRecord",
+    "RawModelOutput",
+    "RunResult",
     "ScoreVerdict",
     "ScoringMethod",
     "TaskFamily",
@@ -56,6 +69,7 @@ __all__ = [
     "ViewRecord",
     "append_to_ledger",
     "load_default_registry",
+    "run_and_score",
     "read_ledger",
     "record_verdict",
     "week_incomplete",
