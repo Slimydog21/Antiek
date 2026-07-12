@@ -76,11 +76,13 @@ def create_midnight_oil_production_app(
 
     from .app import create_app
 
-    runtime = build_midnight_oil_api_runtime(config_path, environ=environ)
+    environment = os.environ if environ is None else environ
+    runtime = build_midnight_oil_api_runtime(config_path, environ=environment)
     app = create_app(
         register_providers=False,
         enable_midnight_oil=True,
         midnight_oil_dependencies=runtime.dependencies,
+        operator_auth_environ=environment,
     )
     app.state.midnight_oil_runtime = runtime
     return app

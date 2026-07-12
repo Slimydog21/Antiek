@@ -28,6 +28,24 @@ loading requires absolute real paths, base64url consent keys in the named
 environment variables, an exact SHA-256 of the deployed dispatch config, and a
 provider idempotency evidence reference. Start the API and worker only after
 `uv run antiek midnight-oil-worker --help` resolves from the installed project.
+
+Before starting either unit, run the zero-spend composition proof from the
+same installed virtualenv and environment file:
+
+```console
+/opt/antiek/.venv/bin/antiek midnight-oil-readiness \
+  --config /etc/antiek/midnight-oil.runtime.json --format html
+```
+
+Exit `0` means the closed config, key shapes, provider attestations, dispatch
+hash, durable roots, graph database, fail-closed route posture, and a
+stopped-before-claim worker iteration passed. The receipt deliberately contains
+no secret values, environment-variable names, or filesystem paths. It is a
+configuration/readiness receipt—not evidence of a provider call, idempotency
+behavior, deployment health, or paid live smoke. A nonzero exit writes only a
+sanitized error code to stderr. Do not redirect shell tracing or the environment
+file into the retained receipt.
+
 - `backup.sh` — nightly backup of `~/.antiek/` to S3-compatible
   storage (Backblaze B2 or Wasabi for cost). The event log is the
   recoverable source of truth; the DuckDB file can be reconstructed

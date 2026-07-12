@@ -32,7 +32,7 @@ import asyncio
 import contextlib
 import os
 import sys
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import replace
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -1370,6 +1370,7 @@ def create_app(
     register_providers: bool = True,
     midnight_oil_dependencies: Any = None,
     enable_midnight_oil: bool = False,
+    operator_auth_environ: Mapping[str, str] | None = None,
 ) -> FastAPI:
     """Create the FastAPI app. Pass ``broadcaster`` for tests that want to
     inspect subscriber state; production calls ``create_app()`` and gets
@@ -1509,15 +1510,18 @@ def create_app(
     _CF_ACCESS_EMAIL_HEADER = "Cf-Access-Authenticated-User-Email"
     _CF_ACCESS_CLIENT_ID_HEADER = "Cf-Access-Client-Id"
     _SESSION_COOKIE_NAME = "ANTIEK_SESSION"
+    auth_environment = os.environ if operator_auth_environ is None else operator_auth_environ
 
     @app.middleware("http")
     async def _operator_auth_middleware(
         request: Request,
         call_next: Callable[[Request], Awaitable[Response]],
     ) -> Response:
-        expected_token = os.environ.get(_OPERATOR_TOKEN_ENV, "").strip()
-        operator_emails = operator_allowlist_from_env(_OPERATOR_EMAIL_ENV)
-        expected_st_client_id = os.environ.get(
+        expected_token = auth_environment.get(_OPERATOR_TOKEN_ENV, "").strip()
+        operator_emails = operator_allowlist_from_env(
+            _OPERATOR_EMAIL_ENV, environ=auth_environment
+        )
+        expected_st_client_id = auth_environment.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
         if not expected_token and not operator_emails and not expected_st_client_id:
@@ -1566,7 +1570,7 @@ def create_app(
         # Access so a cookie-bearing request always takes our path.
         # Allowlist enforcement against the expected email blocks
         # stale cookies after an allowlist change.
-        if os.environ.get("ANTIEK_AUTH_SECRET", "").strip():
+        if auth_environment.get("ANTIEK_AUTH_SECRET", "").strip():
             session_value = request.cookies.get(_SESSION_COOKIE_NAME, "")
             if session_value:
                 cookie_claims: SessionClaims | None

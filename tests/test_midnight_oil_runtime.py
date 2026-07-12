@@ -6,6 +6,7 @@ import json
 from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
+from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,7 @@ from runtime.db_lock import connect_read, connect_write
 from substrate.dispatch import (
     DispatchConfig,
     NormalizedUsage,
+    OpenAICompatProvider,
     ProviderError,
     RawProviderResponse,
     get_provider,
@@ -32,6 +34,8 @@ from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.midnight_oil.job import create_job, put_job_state
 from substrate.midnight_oil.job_store import OperationState, OwnerJob
+from substrate.midnight_oil.readiness import build_readiness_receipt
+from substrate.midnight_oil.readiness import main as readiness_main
 from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfig,
     MidnightOilRuntimeConfigError,
@@ -47,6 +51,27 @@ class _Embedding:
     def encode(self, text: str) -> list[float]:
         del text
         return [1.0, 0.0]
+
+
+class _ReadinessJsonParser(HTMLParser):
+    def __init__(self) -> None:
+        super().__init__()
+        self.capture = False
+        self.payload = ""
+
+    def handle_starttag(
+        self, tag: str, attrs: list[tuple[str, str | None]]
+    ) -> None:
+        values = dict(attrs)
+        self.capture = tag == "script" and values.get("id") == "midnight-oil-readiness"
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag == "script":
+            self.capture = False
+
+    def handle_data(self, data: str) -> None:
+        if self.capture:
+            self.payload += data
 
 
 @pytest.fixture(autouse=True)
@@ -128,6 +153,7 @@ role_tiers:
     environment = {
         "MO_PRIMARY_KEY": base64.urlsafe_b64encode(b"k" * 32).decode().rstrip("="),
         "VERIFIED_PROVIDER_KEY": "test-key-never-serialized",
+        "ANTIEK_OPERATOR_TOKEN": "operator-token-never-serialized",
     }
     return runtime, environment, attestation
 
@@ -165,6 +191,102 @@ def test_worker_no_work_is_structured_and_non_spending(tmp_path: Path) -> None:
     assert record.result == "no_work"
     assert record.phase == "queue_empty"
     assert "test-key-never-serialized" not in record.to_json()
+
+
+def test_readiness_receipt_proves_zero_spend_composition_without_secrets(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    monkeypatch.setattr(
+        OpenAICompatProvider,
+        "_ensure_client",
+        lambda self: (_ for _ in ()).throw(AssertionError("provider network attempted")),
+    )
+
+    receipt = build_readiness_receipt(
+        path, environ=environment, checked_at_ms=1_234
+    )
+
+    assert receipt.state == "ready"
+    assert receipt.checked_at_ms == 1_234
+    assert receipt.attested_providers == ("verified-provider",)
+    assert receipt.worker_result == "no_work"
+    assert receipt.worker_phase == "shutdown_before_claim"
+    assert all(check.passed for check in receipt.checks)
+    serialized = receipt.to_json() + receipt.to_html()
+    assert "test-key-never-serialized" not in serialized
+    assert "MO_PRIMARY_KEY" not in serialized
+    assert "operator-token-never-serialized" not in serialized
+    assert str(tmp_path) not in serialized
+    assert "<script type=\"application/json\"" in receipt.to_html()
+    parser = _ReadinessJsonParser()
+    parser.feed(receipt.to_html())
+    assert json.loads(parser.payload) == json.loads(receipt.to_json())
+
+
+def test_readiness_does_not_touch_claimable_work(tmp_path: Path) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_midnight_oil_api_runtime(path, environ=environment)
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="operation-readiness-blocked",
+        owner_user_id="operator",
+        job_id="job-readiness-blocked",
+        enqueued_at_ms=1,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+
+    receipt = build_readiness_receipt(path, environ=environment, checked_at_ms=2)
+    assert receipt.state == "ready"
+    assert receipt.worker_phase == "shutdown_before_claim"
+    stop_check = next(
+        check for check in receipt.checks if check.name == "zero_spend_worker_stop_boundary"
+    )
+    assert stop_check.passed is True
+    assert stop_check.evidence == "stopped_before_claim"
+
+    queued = runtime.stores.operation_queue.get("operation-readiness-blocked")
+    assert queued is not None
+    assert queued.lease_generation == 0
+    assert queued.lease_owner is None
+
+
+def test_readiness_rejects_open_operator_auth(tmp_path: Path) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    environment.pop("ANTIEK_OPERATOR_TOKEN")
+
+    with pytest.raises(MidnightOilRuntimeConfigError, match="authentication is not enabled"):
+        build_readiness_receipt(path, environ=environment, checked_at_ms=2)
+
+
+def test_readiness_cli_failure_is_sanitized(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    for name, value in environment.items():
+        if name != "VERIFIED_PROVIDER_KEY":
+            monkeypatch.setenv(name, value)
+    monkeypatch.delenv("VERIFIED_PROVIDER_KEY", raising=False)
+
+    assert readiness_main(["--config", str(path)]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    payload = json.loads(captured.err)
+    assert payload == {
+        "error_code": "configuration_not_ready",
+        "schema_version": 1,
+        "state": "not_ready",
+    }
+    assert "VERIFIED_PROVIDER_KEY" not in captured.err
+    assert str(tmp_path) not in captured.err
+    assert "test-key-never-serialized" not in captured.err
 
 
 def test_attestation_fingerprint_tamper_fails_before_provider_install(

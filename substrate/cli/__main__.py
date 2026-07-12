@@ -21,6 +21,8 @@ def _import_subcommand(name: str) -> Callable[[list[str] | None], int]:
         from substrate.cli.queue import main
     elif name == "midnight-oil-worker":
         from substrate.midnight_oil.worker_cli import main
+    elif name == "midnight-oil-readiness":
+        from substrate.midnight_oil.readiness import main
     elif name == "lint":
         import importlib.util
         from pathlib import Path
@@ -47,6 +49,7 @@ SUBCOMMANDS = (
     "compact",
     "queue",
     "midnight-oil-worker",
+    "midnight-oil-readiness",
     "lint",
 )
 
@@ -63,6 +66,7 @@ def _print_usage() -> None:
         "  compact   Manual compaction\n"
         "  queue     Bounded-queue inspection\n"
         "  midnight-oil-worker  Durable autonomous research worker\n"
+        "  midnight-oil-readiness  Zero-spend production readiness receipt\n"
         "  lint      Context-injection static analysis\n"
         "\n"
         "Run `antiek <subcommand> --help` for subcommand-specific flags.\n"
