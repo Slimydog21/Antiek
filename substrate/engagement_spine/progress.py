@@ -61,6 +61,7 @@ def record_progress(
     *,
     store: EngagementStore,
     ts: float | None = None,
+    owner_id: str = "__operator__",
 ) -> ProgressEvent:
     """Append one progress event for a spawn. Raises if stage invalid or spawn missing."""
     if not spawn_id.strip():
@@ -70,38 +71,44 @@ def record_progress(
         raise ValueError(
             f"invalid stage {stage!r}; expected one of {sorted(_VALID_STAGES)}"
         )
-    if store.get_spawn(spawn_id) is None:
+    if store.get_owned_spawn(spawn_id, owner_id) is None:
         raise KeyError(f"unknown spawn_id: {spawn_id}")
 
     key = _run_key(spawn_id)
     # Progress log lives in the document store under a reserved key.
-    doc = store.get_document(key) or {"document_id": key, "events": []}
-    events = list(doc.get("events") or [])
-    seq = len(events) + 1
-    ev = ProgressEvent(
-        spawn_id=spawn_id,
-        stage=stage_s,  # type: ignore[arg-type]
-        message=str(message or "").strip()[:500],
-        ts=float(ts if ts is not None else time.time()),
-        sequence=seq,
-    )
-    events.append(ev.to_dict())
-    store.put_document(
-        key,
-        {
-            "document_id": key,
+    recorded: ProgressEvent | None = None
+
+    def append(doc: dict[str, Any] | None) -> dict[str, Any]:
+        nonlocal recorded
+        events = list((doc or {}).get("events") or [])
+        recorded = ProgressEvent(
+            spawn_id=spawn_id,
+            stage=stage_s,  # type: ignore[arg-type]
+            message=str(message or "").strip()[:500],
+            ts=float(ts if ts is not None else time.time()),
+            sequence=len(events) + 1,
+        )
+        events.append(recorded.to_dict())
+        return {
+            "document_id": owned_document_id(owner_id, key),
             "spawn_id": spawn_id,
             "events": events,
             "latest_stage": stage_s,
             "view_format": "html",
             "mode": "research_progress",
-        },
-    )
-    return ev
+        }
+
+    from .store import owned_document_id
+
+    store.mutate_owned_document(key, owner_id, append)
+    assert recorded is not None
+    return recorded
 
 
-def list_progress(spawn_id: str, *, store: EngagementStore) -> list[ProgressEvent]:
-    doc = store.get_document(_run_key(spawn_id))
+def list_progress(
+    spawn_id: str, *, store: EngagementStore, owner_id: str = "__operator__"
+) -> list[ProgressEvent]:
+    doc = store.get_owned_document(_run_key(spawn_id), owner_id)
     if not doc:
         return []
     out: list[ProgressEvent] = []
@@ -190,6 +197,7 @@ def progress_payload(
     *,
     store: EngagementStore,
     include_html: bool = False,
+    owner_id: str = "__operator__",
 ) -> dict[str, Any]:
     """Product-facing progress snapshot for API/UI.
 
@@ -199,11 +207,11 @@ def progress_payload(
     """
     from substrate.dispatch.research_tier import normalize_research_tier
 
-    events = list_progress(spawn_id, store=store)
+    events = list_progress(spawn_id, store=store, owner_id=owner_id)
     stages = [e.stage for e in events]
     latest = stages[-1] if stages else None
     is_terminal = latest in ("complete", "failed") if latest else False
-    spawn_row = store.get_spawn(spawn_id) or {}
+    spawn_row = store.get_owned_spawn(spawn_id, owner_id) or {}
     tier = normalize_research_tier(spawn_row.get("research_tier"))
     event_dicts = [e.to_dict() for e in events]
     stage_pipeline = competitive_stage_pipeline_progress(
@@ -337,6 +345,7 @@ def seed_default_pipeline(
     *,
     store: EngagementStore,
     messages: Sequence[str] | None = None,
+    owner_id: str = "__operator__",
 ) -> list[ProgressEvent]:
     """Record a default plan→gather→synthesize→cite skeleton (not terminal)."""
     defaults = messages or (
@@ -348,5 +357,7 @@ def seed_default_pipeline(
     stages: list[ProgressStage] = ["plan", "gather", "synthesize", "cite"]
     out: list[ProgressEvent] = []
     for stage, msg in zip(stages, defaults, strict=False):
-        out.append(record_progress(spawn_id, stage, msg, store=store))
+        out.append(
+            record_progress(spawn_id, stage, msg, store=store, owner_id=owner_id)
+        )
     return out

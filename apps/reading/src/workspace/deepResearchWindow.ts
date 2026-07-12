@@ -29,6 +29,7 @@ import type { OpenWindowOptions, WindowMode } from "./windowsStore";
 export const DEEP_RESEARCH_WINDOW_KIND = "deep_research_session";
 
 export type DeepResearchSessionPayload = {
+  owner_id: string;
   session_id: string;
   spawn_id: string;
   investigation_id: string;
@@ -64,6 +65,18 @@ export function windowIdForSession(sessionId: string): string {
   const sid = sessionId.trim();
   if (!sid) throw new Error("session_id is required");
   return `wdr_${sid}`;
+}
+
+/** Remove private research chrome as soon as the authenticated owner changes. */
+export function reconcileDeepResearchWindowsForOwner(ownerId: string | null): void {
+  const expected = (ownerId || "").trim();
+  const store = useWindows.getState();
+  for (const window of Object.values(store.windows)) {
+    if (window.kind !== DEEP_RESEARCH_WINDOW_KIND) continue;
+    if (!expected || String(window.payload.owner_id || "").trim() !== expected) {
+      store.close(window.id);
+    }
+  }
 }
 
 /**
@@ -130,8 +143,10 @@ export async function reopenDeepResearchWindowsForAsset(
   parentAssetId: string,
 ): Promise<string[]> {
   const response = await listEngagementSessions(parentAssetId, false);
+  reconcileDeepResearchWindowsForOwner(response.owner_id);
   return response.sessions.map((session) =>
     openDeepResearchFromHighlight({
+      owner_id: session.owner_id,
       asset_id: session.parent_asset_id,
       selection_text: session.selection_text,
       session_id: session.session_id,
@@ -152,6 +167,7 @@ export async function reopenDeepResearchWindowsForAsset(
  * Does not re-launch research; composes existing openDeepResearchWindow.
  */
 export type HighlightDeepResearchInput = {
+  owner_id: string;
   asset_id: string;
   selection_text: string;
   session_id: string;
@@ -193,6 +209,7 @@ export function openDeepResearchFromHighlight(
     parent_asset_id: input.asset_id,
     spawn_id: input.spawn_id,
     payload: {
+      owner_id: input.owner_id,
       session_id: input.session_id,
       spawn_id: input.spawn_id,
       investigation_id: input.investigation_id,

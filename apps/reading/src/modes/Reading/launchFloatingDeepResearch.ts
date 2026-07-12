@@ -142,6 +142,7 @@ export async function launchFloatingDeepResearch(
   })();
 
   const windowId = openDeepResearchFromHighlight({
+    owner_id: session.owner_id,
     asset_id: session.parent_asset_id || assetId,
     selection_text: session.selection_text || selection,
     session_id: session.session_id,

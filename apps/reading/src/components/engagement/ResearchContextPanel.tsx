@@ -49,11 +49,16 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   attachSourceRefs,
+  attachSessionReferences,
   fetchEvidencePack,
   fetchResearchContext,
+  fetchSessionEvidence,
+  fetchSessionResearchContext,
   hydratePublicationRef,
   promoteTwinsToContext,
+  previewSessionTwins,
   searchEngagementContext,
+  searchSessionContext,
   type ContextSearchResponse,
   type EvidencePackResponse,
   type HydrateRefResponse,
@@ -135,6 +140,7 @@ import { researchContextPackOpenReadiness } from "../../workspace/researchContex
 export type ResearchContextPanelProps = {
   assetId: string;
   spawnId?: string | null;
+  sessionId?: string | null;
   /** Optional controlled initial query filter */
   initialQuery?: string;
   /**
@@ -157,6 +163,7 @@ export type ResearchContextPanelProps = {
 export function ResearchContextPanel({
   assetId,
   spawnId = null,
+  sessionId = null,
   initialQuery = "",
   domainSubjects = null,
   autoLoad = false,
@@ -210,11 +217,17 @@ export function ResearchContextPanel({
     setBusy(true);
     setError(null);
     try {
-      const ctx = await fetchResearchContext({
-        asset_id: assetId,
-        spawn_id: spawnId,
-        query: query.trim() || null,
-      });
+      const session = String(sessionId || "").trim();
+      const ctx = session
+        ? await fetchSessionResearchContext({
+            session_id: session,
+            query: query.trim() || null,
+          })
+        : await fetchResearchContext({
+            asset_id: assetId,
+            spawn_id: spawnId,
+            query: query.trim() || null,
+          });
       if (ctx.view_format !== "html") {
         throw new Error("research context view_format must be html");
       }
@@ -224,17 +237,20 @@ export function ResearchContextPanel({
     } finally {
       setBusy(false);
     }
-  }, [assetId, spawnId, query]);
+  }, [assetId, sessionId, spawnId, query]);
 
   const loadEvidence = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const packEv = await fetchEvidencePack({
-        asset_id: assetId,
-        spawn_id: spawnId,
-        include_html: true,
-      });
+      const session = String(sessionId || "").trim();
+      const packEv = session
+        ? await fetchSessionEvidence(session, true)
+        : await fetchEvidencePack({
+            asset_id: assetId,
+            spawn_id: spawnId,
+            include_html: true,
+          });
       if (packEv.view_format !== "html") {
         throw new Error("evidence pack view_format must be html");
       }
@@ -244,7 +260,7 @@ export function ResearchContextPanel({
     } finally {
       setBusy(false);
     }
-  }, [assetId, spawnId]);
+  }, [assetId, sessionId, spawnId]);
 
   useEffect(() => {
     if (!autoLoad || !assetId.trim()) return;
@@ -259,25 +275,44 @@ export function ResearchContextPanel({
     setBusy(true);
     setError(null);
     try {
-      await attachSourceRefs(spawnId, [refInput.trim()]);
+      const session = String(sessionId || "").trim();
+      if (session) {
+        await attachSessionReferences({
+          session_id: session,
+          references: [refInput.trim()],
+          hydrate: false,
+        });
+      } else {
+        await attachSourceRefs(spawnId, [refInput.trim()]);
+      }
       setRefInput("");
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
       setBusy(false);
     }
-  }, [spawnId, refInput, load]);
+  }, [sessionId, spawnId, refInput, load]);
 
   const hydrate = useCallback(async () => {
     if (!refInput.trim()) return;
     setBusy(true);
     setError(null);
     try {
-      const asset = await hydratePublicationRef({
-        reference: refInput.trim(),
-        include_html: true,
-        attach_spawn_id: spawnId,
-      });
+      const session = String(sessionId || "").trim();
+      const asset = session
+        ? (
+            await attachSessionReferences({
+              session_id: session,
+              references: [refInput.trim()],
+              hydrate: true,
+            })
+          ).hydrated_assets[0]
+        : await hydratePublicationRef({
+            reference: refInput.trim(),
+            include_html: true,
+            attach_spawn_id: spawnId,
+          });
+      if (!asset) throw new Error("session hydrate returned no asset");
       if (asset.view_format !== "html") {
         throw new Error("hydrate view_format must be html");
       }
@@ -288,7 +323,7 @@ export function ResearchContextPanel({
     } finally {
       setBusy(false);
     }
-  }, [refInput, spawnId, load]);
+  }, [refInput, sessionId, spawnId, load]);
 
   const searchContext = useCallback(async () => {
     const q = query.trim();
@@ -299,12 +334,19 @@ export function ResearchContextPanel({
     setBusy(true);
     setError(null);
     try {
-      const hits = await searchEngagementContext({
-        query: q,
-        asset_id: assetId,
-        spawn_id: spawnId,
-        include_html: true,
-      });
+      const session = String(sessionId || "").trim();
+      const hits = session
+        ? await searchSessionContext({
+            session_id: session,
+            query: q,
+            include_html: true,
+          })
+        : await searchEngagementContext({
+            query: q,
+            asset_id: assetId,
+            spawn_id: spawnId,
+            include_html: true,
+          });
       if (hits.view_format !== "html") {
         throw new Error("context search view_format must be html");
       }
@@ -314,28 +356,41 @@ export function ResearchContextPanel({
     } finally {
       setBusy(false);
     }
-  }, [query, assetId, spawnId]);
+  }, [query, assetId, sessionId, spawnId]);
 
   /** Residual (bm): promote twins → load research context pack in one click. */
   const runContextFlywheel = useCallback(async () => {
     setBusy(true);
     setError(null);
     try {
-      const promoted = await promoteTwinsToContext({
-        asset_id: assetId,
-        query: query.trim() || null,
-        include_html: true,
-      });
+      const session = String(sessionId || "").trim();
+      const promoted = session
+        ? await previewSessionTwins({
+            session_id: session,
+            query: query.trim() || null,
+            include_html: true,
+          })
+        : await promoteTwinsToContext({
+            asset_id: assetId,
+            query: query.trim() || null,
+            include_html: true,
+          });
       if (promoted.view_format !== "html") {
         throw new Error("promote view_format must be html");
       }
       setFlywheel(promoted);
-      const ctx = await fetchResearchContext({
-        asset_id: assetId,
-        spawn_id: spawnId,
-        query: query.trim() || null,
-        include_twin_promote: true,
-      });
+      const ctx = session
+        ? await fetchSessionResearchContext({
+            session_id: session,
+            query: query.trim() || null,
+            include_twin_preview: true,
+          })
+        : await fetchResearchContext({
+            asset_id: assetId,
+            spawn_id: spawnId,
+            query: query.trim() || null,
+            include_twin_promote: true,
+          });
       if (ctx.view_format !== "html") {
         throw new Error("research context view_format must be html");
       }
@@ -345,7 +400,7 @@ export function ResearchContextPanel({
     } finally {
       setBusy(false);
     }
-  }, [assetId, spawnId, query]);
+  }, [assetId, sessionId, spawnId, query]);
 
   return (
     <section

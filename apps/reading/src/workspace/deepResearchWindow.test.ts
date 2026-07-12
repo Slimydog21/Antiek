@@ -14,6 +14,7 @@ vi.mock("../api/engagement", () => ({
 import {
   DEEP_RESEARCH_WINDOW_KIND,
   openDeepResearchFromHighlight,
+  reconcileDeepResearchWindowsForOwner,
   reopenDeepResearchWindowsForAsset,
   syncDeepResearchWindowModeDurably,
   windowIdForSession,
@@ -22,6 +23,7 @@ import { isWindowEligible } from "../components/windows/openWindow";
 import { useWindows } from "./windowsStore";
 
 const FIXTURE = {
+  owner_id: "alice",
   asset_id: "launch-asset",
   selection_text: "Transformer attention is content-addressable memory.",
   session_id: "fsess_launch_1",
@@ -85,6 +87,7 @@ describe("openDeepResearchFromHighlight", () => {
   it("reopens owner-scoped durable sessions after reload", async () => {
     listEngagementSessions.mockResolvedValue({
       parent_asset_id: "launch-asset",
+      owner_id: "alice",
       count: 1,
       view_format: "html",
       sessions: [
@@ -99,6 +102,31 @@ describe("openDeepResearchFromHighlight", () => {
     const ids = await reopenDeepResearchWindowsForAsset("launch-asset");
     expect(ids).toEqual([windowIdForSession(FIXTURE.session_id)]);
     expect(useWindows.getState().windows[ids[0]]?.mode).toBe("full");
+  });
+
+  it("quarantines prior-owner research windows on account change", async () => {
+    const aliceWindow = openDeepResearchFromHighlight(FIXTURE);
+    expect(useWindows.getState().windows[aliceWindow]?.payload.owner_id).toBe("alice");
+    listEngagementSessions.mockResolvedValue({
+      parent_asset_id: "launch-asset",
+      owner_id: "bob",
+      count: 0,
+      view_format: "html",
+      sessions: [],
+    });
+
+    expect(await reopenDeepResearchWindowsForAsset("launch-asset")).toEqual([]);
+    expect(useWindows.getState().windows[aliceWindow]).toBeUndefined();
+  });
+
+  it("purges private research chrome at the global auth boundary", () => {
+    const aliceWindow = openDeepResearchFromHighlight(FIXTURE);
+    reconcileDeepResearchWindowsForOwner(null);
+    expect(useWindows.getState().windows[aliceWindow]).toBeUndefined();
+
+    const reopened = openDeepResearchFromHighlight(FIXTURE);
+    reconcileDeepResearchWindowsForOwner("bob");
+    expect(useWindows.getState().windows[reopened]).toBeUndefined();
   });
 
   it("updates server view CAS before mirroring local chrome", async () => {

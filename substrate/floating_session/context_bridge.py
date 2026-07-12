@@ -96,7 +96,15 @@ def attach_session_source_references(
     row = session_store.get_session(session_id)
     if row is None:
         raise KeyError(f"unknown session_id: {session_id}")
-    attach_source_references(row["spawn_id"], references, store=engagement_store)
+    owner_id = str(row.get("owner_id") or "")
+    if not owner_id:
+        raise ValueError("session ownership requires reconciliation")
+    attach_source_references(
+        row["spawn_id"],
+        references,
+        store=engagement_store,
+        owner_id=owner_id,
+    )
     return _from_row(row)
 
 
@@ -141,11 +149,15 @@ def sessions_collective_research(
     if not session_ids:
         raise ValueError("at least one session_id is required")
     spawn_ids: list[str] = []
+    owner_ids: set[str] = set()
     for sid in session_ids:
         row = session_store.get_session(sid)
         if row is None:
             raise KeyError(f"unknown session_id: {sid}")
+        owner_ids.add(str(row.get("owner_id") or ""))
         spawn_ids.append(row["spawn_id"])
+    if len(owner_ids) != 1 or "" in owner_ids:
+        raise ValueError("collective sessions require one explicit owner")
     return merge_spawns_collective(
         spawn_ids,
         store=engagement_store,
@@ -153,6 +165,7 @@ def sessions_collective_research(
         promote_insight_fn=promote_insight_fn,
         promote_question_fn=promote_question_fn,
         include_twin_promote=include_twin_promote,
+        owner_id=next(iter(owner_ids)),
     )
 
 

@@ -14,6 +14,7 @@ import hmac
 import json
 import os
 import threading
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -38,6 +39,14 @@ def owned_document_id(owner_id: str, logical_document_id: str) -> str:
     return f"owner_{digest}_{logical_document_id}"
 
 
+def _document_owner_matches(row: dict[str, Any], owner_id: str) -> bool:
+    """Fail closed on embedded-owner drift; operator alone may adopt legacy rows."""
+    embedded = row.get("owner_id")
+    if owner_id == "__operator__" and embedded in (None, "__operator__"):
+        return True
+    return embedded == owner_id
+
+
 @runtime_checkable
 class EngagementStore(Protocol):
     def put_spawn(self, spawn: dict[str, Any]) -> None: ...
@@ -52,6 +61,22 @@ class EngagementStore(Protocol):
     def compare_and_set_document(
         self, document_id: str, expected_sha256: str, doc: dict[str, Any]
     ) -> bool: ...
+    def get_owned_spawn(self, spawn_id: str, owner_id: str) -> dict[str, Any] | None: ...
+    def mutate_owned_spawn(
+        self,
+        spawn_id: str,
+        owner_id: str,
+        mutation: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> dict[str, Any]: ...
+    def get_owned_document(
+        self, logical_document_id: str, owner_id: str
+    ) -> dict[str, Any] | None: ...
+    def mutate_owned_document(
+        self,
+        logical_document_id: str,
+        owner_id: str,
+        mutation: Callable[[dict[str, Any] | None], dict[str, Any]],
+    ) -> dict[str, Any]: ...
 
 
 @dataclass
@@ -71,6 +96,29 @@ class InMemoryEngagementStore:
         with self._lock:
             row = self._spawns.get(spawn_id)
             return dict(row) if row is not None else None
+
+    def get_owned_spawn(self, spawn_id: str, owner_id: str) -> dict[str, Any] | None:
+        with self._lock:
+            row = self._spawns.get(spawn_id)
+            if row is None or row.get("owner_id") != owner_id:
+                return None
+            return dict(row)
+
+    def mutate_owned_spawn(
+        self,
+        spawn_id: str,
+        owner_id: str,
+        mutation: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> dict[str, Any]:
+        with self._lock:
+            current = self._spawns.get(spawn_id)
+            if current is None or current.get("owner_id") != owner_id:
+                raise KeyError(spawn_id)
+            updated = mutation(dict(current))
+            if updated.get("spawn_id") != spawn_id or updated.get("owner_id") != owner_id:
+                raise ValueError("owned spawn mutation cannot change identity or owner")
+            self._spawns[spawn_id] = dict(updated)
+            return dict(updated)
 
     def list_spawns(self, asset_id: str) -> list[dict[str, Any]]:
         with self._lock:
@@ -101,6 +149,32 @@ class InMemoryEngagementStore:
         with self._lock:
             row = self._docs.get(document_id)
             return dict(row) if row is not None else None
+
+    def get_owned_document(
+        self, logical_document_id: str, owner_id: str
+    ) -> dict[str, Any] | None:
+        row = self.get_document(owned_document_id(owner_id, logical_document_id))
+        if row is None or not _document_owner_matches(row, owner_id):
+            return None
+        return row
+
+    def mutate_owned_document(
+        self,
+        logical_document_id: str,
+        owner_id: str,
+        mutation: Callable[[dict[str, Any] | None], dict[str, Any]],
+    ) -> dict[str, Any]:
+        document_id = owned_document_id(owner_id, logical_document_id)
+        with self._lock:
+            current = self._docs.get(document_id)
+            if current is not None and not _document_owner_matches(current, owner_id):
+                raise ValueError("owned document has conflicting embedded owner")
+            updated = mutation(dict(current) if current is not None else None)
+            if updated.get("owner_id") not in (None, owner_id):
+                raise ValueError("owned document mutation cannot change owner")
+            updated = {**updated, "owner_id": owner_id}
+            self._docs[document_id] = dict(updated)
+            return dict(updated)
 
     def compare_and_set_document(
         self, document_id: str, expected_sha256: str, doc: dict[str, Any]
@@ -138,7 +212,7 @@ class FileEngagementStore:
         safe = document_id.replace("/", "_")
         return self.root / "docs" / f"{safe}.json"
 
-    def _write_document_unlocked(self, path: Path, doc: dict[str, Any]) -> None:
+    def _write_document_unlocked(self, path: Path, doc: Any) -> None:
         temp = path.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")
         try:
             with temp.open("w", encoding="utf-8") as handle:
@@ -156,7 +230,10 @@ class FileEngagementStore:
 
     def put_spawn(self, spawn: dict[str, Any]) -> None:
         path = self._spawn_path(spawn["spawn_id"])
-        path.write_text(json.dumps(spawn, sort_keys=True, indent=2), encoding="utf-8")
+        lock_path = path.with_suffix(".lock")
+        with self._lock, lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            self._write_document_unlocked(path, spawn)
 
     def get_spawn(self, spawn_id: str) -> dict[str, Any] | None:
         path = self._spawn_path(spawn_id)
@@ -164,6 +241,67 @@ class FileEngagementStore:
             return None
         data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         return data
+
+    def get_owned_document(
+        self, logical_document_id: str, owner_id: str
+    ) -> dict[str, Any] | None:
+        row = self.get_document(owned_document_id(owner_id, logical_document_id))
+        if row is None or not _document_owner_matches(row, owner_id):
+            return None
+        return row
+
+    def mutate_owned_document(
+        self,
+        logical_document_id: str,
+        owner_id: str,
+        mutation: Callable[[dict[str, Any] | None], dict[str, Any]],
+    ) -> dict[str, Any]:
+        document_id = owned_document_id(owner_id, logical_document_id)
+        path = self._doc_path(document_id)
+        lock_path = path.with_suffix(".lock")
+        with self._lock, lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            current: dict[str, Any] | None = None
+            if path.is_file():
+                decoded = json.loads(path.read_text(encoding="utf-8"))
+                if not isinstance(decoded, dict):
+                    raise ValueError("durable document must be a JSON object")
+                current = decoded
+            if current is not None and not _document_owner_matches(current, owner_id):
+                raise ValueError("owned document has conflicting embedded owner")
+            updated = mutation(dict(current) if current is not None else None)
+            if updated.get("owner_id") not in (None, owner_id):
+                raise ValueError("owned document mutation cannot change owner")
+            updated = {**updated, "owner_id": owner_id}
+            self._write_document_unlocked(path, updated)
+            return dict(updated)
+
+    def get_owned_spawn(self, spawn_id: str, owner_id: str) -> dict[str, Any] | None:
+        row = self.get_spawn(spawn_id)
+        if row is None or row.get("owner_id") != owner_id:
+            return None
+        return row
+
+    def mutate_owned_spawn(
+        self,
+        spawn_id: str,
+        owner_id: str,
+        mutation: Callable[[dict[str, Any]], dict[str, Any]],
+    ) -> dict[str, Any]:
+        path = self._spawn_path(spawn_id)
+        lock_path = path.with_suffix(".lock")
+        with self._lock, lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            if not path.is_file():
+                raise KeyError(spawn_id)
+            current = json.loads(path.read_text(encoding="utf-8"))
+            if not isinstance(current, dict) or current.get("owner_id") != owner_id:
+                raise KeyError(spawn_id)
+            updated = mutation(dict(current))
+            if updated.get("spawn_id") != spawn_id or updated.get("owner_id") != owner_id:
+                raise ValueError("owned spawn mutation cannot change identity or owner")
+            self._write_document_unlocked(path, updated)
+            return dict(updated)
 
     def list_spawns(self, asset_id: str) -> list[dict[str, Any]]:
         out: list[dict[str, Any]] = []
@@ -176,18 +314,21 @@ class FileEngagementStore:
     def put_twin(self, note: dict[str, Any]) -> None:
         owner = str(note.get("owner_id") or "__operator__")
         path = self._twin_path(note["asset_id"], owner)
-        notes: list[dict[str, Any]] = []
-        if path.is_file():
-            notes = json.loads(path.read_text(encoding="utf-8"))
-        replaced = False
-        for i, existing in enumerate(notes):
-            if existing.get("note_id") == note["note_id"]:
-                notes[i] = note
-                replaced = True
-                break
-        if not replaced:
-            notes.append(note)
-        path.write_text(json.dumps(notes, sort_keys=True, indent=2), encoding="utf-8")
+        lock_path = path.with_suffix(".lock")
+        with self._lock, lock_path.open("a+b") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            notes: list[dict[str, Any]] = []
+            if path.is_file():
+                notes = json.loads(path.read_text(encoding="utf-8"))
+            replaced = False
+            for i, existing in enumerate(notes):
+                if existing.get("note_id") == note["note_id"]:
+                    notes[i] = note
+                    replaced = True
+                    break
+            if not replaced:
+                notes.append(note)
+            self._write_document_unlocked(path, notes)
 
     def list_twins(
         self, asset_id: str, owner_id: str = "__operator__"

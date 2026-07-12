@@ -1,5 +1,5 @@
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 
 import AppShell from "./AppShell";
 import PanelWindowApp from "./PanelWindowApp";
@@ -50,6 +50,7 @@ import TrustCenter from "./modes/TrustCenter";
 import WriteHome from "./modes/Write/WriteHome";
 import WrestleApp from "./modes/WrestleApp";
 import { PRODUCT_MODE_ROUTES } from "./productModeRoutes";
+import { reconcileDeepResearchWindowsForOwner } from "./workspace/deepResearchWindow";
 
 /**
  * Top-level route registry.
@@ -82,6 +83,16 @@ function RequireAuth({ children }: { children: ReactNode }) {
     return <Navigate to={`/login?next=${next}`} replace />;
   }
   return <>{children}</>;
+}
+
+function ResearchWindowOwnerBoundary() {
+  const { state } = useAuth();
+  useEffect(() => {
+    reconcileDeepResearchWindowsForOwner(
+      state.status === "authenticated" ? state.identity.user_id : null,
+    );
+  }, [state]);
+  return null;
 }
 
 /** Speak SPR-08 one-door redirect for legacy /interview/:id deep-links.
@@ -232,6 +243,7 @@ function AuthenticatedRoutes() {
 export default function App() {
   return (
     <AuthProvider>
+      <ResearchWindowOwnerBoundary />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/trust" element={<TrustCenter />} />

@@ -77,6 +77,7 @@ def hydrate_reference(
     include_html: bool = True,
     attach_spawn_id: str | None = None,
     seed_twins: bool = True,
+    owner_id: str = "__operator__",
 ) -> HydratedAsset:
     """Parse a publication handle and land an HTML-first asset in the store.
 
@@ -143,9 +144,7 @@ def hydrate_reference(
         )
 
     offline_honest = not fetched
-    store.put_document(
-        asset_id,
-        {
+    hydrated_document = {
             "document_id": asset_id,
             "title": title,
             "body_text": body,
@@ -156,7 +155,9 @@ def hydrate_reference(
             "offline_honest": offline_honest,
             "mode": "publication_hydrate",
             "html": html,
-        },
+        }
+    store.mutate_owned_document(
+        asset_id, owner_id, lambda _current: hydrated_document
     )
 
     if attach_spawn_id:
@@ -164,7 +165,7 @@ def hydrate_reference(
 
         try:
             attach_source_references(
-                attach_spawn_id, [raw], store=store
+                attach_spawn_id, [raw], store=store, owner_id=owner_id
             )
             notes.append(f"Attached reference to spawn {attach_spawn_id}.")
         except Exception as exc:
@@ -182,6 +183,7 @@ def hydrate_reference(
                 body_text=body,
                 source_spawn_id=attach_spawn_id,
                 include_html=include_html,
+                owner_id=owner_id,
             )
             if twins_payload.get("seeded"):
                 notes.append(

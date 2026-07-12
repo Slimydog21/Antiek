@@ -587,6 +587,115 @@ def test_ownerless_legacy_session_is_quarantined(client):
     assert response.json()["detail"] == "session ownership requires reconciliation"
 
 
+def test_session_capability_parity_is_owner_native():
+    reset_engagement_stores()
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def attach_test_owner(request: Request, call_next):
+        request.state.user_id = request.headers.get("x-test-owner", "")
+        return await call_next(request)
+
+    register_engagement_routes(app)
+    c = TestClient(app)
+
+    def open_for(owner: str) -> dict:
+        response = c.post(
+            "/engagement/sessions/open",
+            headers={"x-test-owner": owner},
+            json={
+                "asset_id": "shared-capability-asset",
+                "selection_text": "same passage",
+                "region_id": "same-capability-region",
+            },
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    alice = open_for("alice")
+    bob = open_for("bob")
+    alice_headers = {"x-test-owner": "alice"}
+    bob_headers = {"x-test-owner": "bob"}
+
+    attached = c.post(
+        f"/engagement/sessions/{alice['session_id']}/references",
+        headers=alice_headers,
+        json={"references": ["1706.03762"], "hydrate": True},
+    )
+    assert attached.status_code == 200, attached.text
+    assert attached.json()["source_references"][0]["kind"] == "arxiv"
+    assert attached.json()["hydrated_assets"][0]["view_format"] == "html"
+
+    seeded_progress = c.post(
+        f"/engagement/sessions/{alice['session_id']}/progress/seed",
+        headers=alice_headers,
+    )
+    assert seeded_progress.status_code == 200
+    appended = c.post(
+        f"/engagement/sessions/{alice['session_id']}/progress",
+        headers=alice_headers,
+        json={"stage": "complete", "message": "Alice finished"},
+    )
+    assert appended.status_code == 200
+    assert appended.json()["event_count"] == 5
+    bob_progress = c.get(
+        f"/engagement/sessions/{bob['session_id']}/progress",
+        headers=bob_headers,
+    )
+    assert bob_progress.json()["event_count"] == 0
+
+    seeded_twins = c.post(
+        f"/engagement/sessions/{alice['session_id']}/twins/seed",
+        headers=alice_headers,
+        json={"title": "Alice source", "body_text": "Alice private body"},
+    )
+    assert seeded_twins.status_code == 200
+    recorded = c.post(
+        f"/engagement/sessions/{alice['session_id']}/twins",
+        headers=alice_headers,
+        json={"kind": "insight", "text": "Alice capability insight"},
+    )
+    assert recorded.status_code == 200
+    alice_twins = c.get(
+        f"/engagement/sessions/{alice['session_id']}/twins",
+        headers=alice_headers,
+    ).json()
+    bob_twins = c.get(
+        f"/engagement/sessions/{bob['session_id']}/twins",
+        headers=bob_headers,
+    ).json()
+    assert any(note["text"] == "Alice capability insight" for note in alice_twins["notes"])
+    assert bob_twins["note_count"] == 0
+
+    preview = c.post(
+        f"/engagement/sessions/{alice['session_id']}/twins/promote-preview",
+        headers=alice_headers,
+        json={"query": "Alice"},
+    )
+    assert preview.status_code == 200
+    assert preview.json()["twin_context_mode"] == "preview_non_mutating"
+    evidence = c.get(
+        f"/engagement/sessions/{alice['session_id']}/evidence",
+        headers=alice_headers,
+    )
+    assert evidence.status_code == 200
+    assert evidence.json()["ref_count"] == 1
+    assert evidence.json()["insight_count"] >= 1
+    searched = c.post(
+        f"/engagement/sessions/{alice['session_id']}/context-search",
+        headers=alice_headers,
+        json={"query": "capability"},
+    )
+    assert searched.status_code == 200
+    assert searched.json()["hit_count"] >= 1
+
+    foreign = c.get(
+        f"/engagement/sessions/{alice['session_id']}/evidence",
+        headers=bob_headers,
+    )
+    assert foreign.status_code == 404
+
+
 def test_confirmed_merge_recovers_after_parent_write_before_receipt_settle(
     client, monkeypatch
 ):

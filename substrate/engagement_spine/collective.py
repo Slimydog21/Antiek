@@ -119,6 +119,7 @@ def merge_spawns_collective(
     embedding_provider: Any = None,
     con: Any = None,
     include_twin_promote: bool = True,
+    owner_id: str = "__operator__",
 ) -> CollectiveResearchUnit:
     """Merge multiple reserved/complete spawns into one collective unit.
 
@@ -129,7 +130,7 @@ def merge_spawns_collective(
     if len(ids) < 1:
         raise ValueError("at least one spawn_id is required")
     # Allow single spawn (degenerate collective) for uniform API.
-    missing = [s for s in ids if store.get_spawn(s) is None]
+    missing = [s for s in ids if store.get_owned_spawn(s, owner_id) is None]
     if missing:
         raise KeyError(f"unknown spawn_id(s): {missing}")
 
@@ -141,15 +142,10 @@ def merge_spawns_collective(
     all_twins: list[TwinContextUnit] = []
     all_refs: list[SourceReference] = []
     tier_list: list[str] = []
-    owner_ids: set[str] = set()
 
     for sid in ids:
-        row = store.get_spawn(sid)
+        row = store.get_owned_spawn(sid, owner_id)
         assert row is not None
-        owner_id = str(row.get("owner_id") or "__operator__")
-        owner_ids.add(owner_id)
-        if len(owner_ids) > 1:
-            raise ValueError("collective spawns cannot cross owners")
         asset = str(row.get("parent_asset_id") or "").strip()
         if not asset:
             raise ValueError(f"spawn {sid} missing parent_asset_id")

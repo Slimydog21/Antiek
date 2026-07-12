@@ -22,6 +22,7 @@ def search_engagement_context(
     spawn_id: str | None = None,
     include_html: bool = True,
     limit: int = 50,
+    owner_id: str = "__operator__",
 ) -> dict[str, Any]:
     """Search twin notes and optional spawn source refs for ``query``.
 
@@ -38,7 +39,9 @@ def search_engagement_context(
     hits: list[dict[str, Any]] = []
 
     if asset_id and asset_id.strip():
-        for note in list_twin_notes(asset_id.strip(), store=store):
+        for note in list_twin_notes(
+            asset_id.strip(), store=store, owner_id=owner_id
+        ):
             if q_lower in note.text.lower():
                 hits.append(
                     {
@@ -53,7 +56,9 @@ def search_engagement_context(
                 break
 
     if spawn_id and spawn_id.strip() and len(hits) < lim:
-        for ref in list_source_references(spawn_id.strip(), store=store):
+        for ref in list_source_references(
+            spawn_id.strip(), store=store, owner_id=owner_id
+        ):
             hay = f"{ref.raw} {ref.canonical_url or ''} {ref.external_id or ''} {ref.title_hint or ''}".lower()
             if q_lower in hay:
                 hits.append(
@@ -73,7 +78,7 @@ def search_engagement_context(
     if spawn_id and spawn_id.strip():
         from substrate.dispatch.research_tier import normalize_research_tier
 
-        row = store.get_spawn(spawn_id.strip()) or {}
+        row = store.get_owned_spawn(spawn_id.strip(), owner_id) or {}
         research_tier = normalize_research_tier(row.get("research_tier"))
 
     payload: dict[str, Any] = {

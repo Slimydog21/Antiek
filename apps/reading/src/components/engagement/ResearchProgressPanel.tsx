@@ -37,7 +37,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchResearchProgress,
+  fetchSessionProgress,
   seedResearchProgress,
+  seedSessionProgress,
   type ResearchProgressResponse,
 } from "../../api/engagement";
 import { mapResearchTierToProgressPollMs } from "../../lib/researchTier";
@@ -70,6 +72,7 @@ import {
 
 export type ResearchProgressPanelProps = {
   spawnId: string;
+  sessionId?: string | null;
   /** Residual (cp): fetch progress on mount. */
   autoLoad?: boolean;
   /**
@@ -95,6 +98,7 @@ export type ResearchProgressPanelProps = {
 
 export function ResearchProgressPanel({
   spawnId,
+  sessionId = null,
   autoLoad = false,
   autoSeedIfEmpty = false,
   pollIntervalMs = 0,
@@ -191,7 +195,9 @@ export function ResearchProgressPanel({
     setBusy(true);
     setError(null);
     try {
-      const p = await fetchResearchProgress(spawnId, { includeHtml: true });
+      const p = sessionId?.trim()
+        ? await fetchSessionProgress(sessionId.trim(), { includeHtml: true })
+        : await fetchResearchProgress(spawnId, { includeHtml: true });
       if (p.view_format !== "html") {
         throw new Error("progress view_format must be html");
       }
@@ -203,13 +209,15 @@ export function ResearchProgressPanel({
     } finally {
       setBusy(false);
     }
-  }, [spawnId]);
+  }, [sessionId, spawnId]);
 
   const seed = useCallback(async (): Promise<ResearchProgressResponse | null> => {
     setBusy(true);
     setError(null);
     try {
-      const p = await seedResearchProgress(spawnId, { includeHtml: true });
+      const p = sessionId?.trim()
+        ? await seedSessionProgress(sessionId.trim(), { includeHtml: true })
+        : await seedResearchProgress(spawnId, { includeHtml: true });
       if (p.view_format !== "html") {
         throw new Error("progress view_format must be html");
       }
@@ -221,7 +229,7 @@ export function ResearchProgressPanel({
     } finally {
       setBusy(false);
     }
-  }, [spawnId]);
+  }, [sessionId, spawnId]);
 
   useEffect(() => {
     if (!autoLoad || !spawnId.trim()) return;

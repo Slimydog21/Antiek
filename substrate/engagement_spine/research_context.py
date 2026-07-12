@@ -138,11 +138,11 @@ def assemble_research_context(
     if sid:
         from substrate.dispatch.research_tier import normalize_research_tier
 
-        listed = list_source_references(sid, store=store)
+        listed = list_source_references(sid, store=store, owner_id=owner_id)
         if query:
             listed = filter_references(listed, query=query)
         refs = tuple(listed)
-        row = store.get_spawn(sid)
+        row = store.get_owned_spawn(sid, owner_id)
         if row:
             # Residual (kk): surface reserved spawn research_tier on pack.
             research_tier = normalize_research_tier(row.get("research_tier"))

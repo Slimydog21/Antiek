@@ -191,6 +191,7 @@ def evidence_pack_payload(
     store: EngagementStore,
     spawn_id: str | None = None,
     include_html: bool = True,
+    owner_id: str = "__operator__",
 ) -> dict[str, Any]:
     """Assemble evidence pack from twins + optional spawn source refs.
 
@@ -204,8 +205,12 @@ def evidence_pack_payload(
 
     if not asset_id.strip():
         raise ValueError("asset_id is required")
-    twins = list_twin_notes(asset_id, store=store)
-    refs = list_source_references(spawn_id, store=store) if spawn_id else []
+    twins = list_twin_notes(asset_id, store=store, owner_id=owner_id)
+    refs = (
+        list_source_references(spawn_id, store=store, owner_id=owner_id)
+        if spawn_id
+        else []
+    )
     # Also collect refs from any spawns if spawn_id omitted? keep explicit.
     insights = [t for t in twins if t.kind == "insight"]
     questions = [t for t in twins if t.kind == "question"]
@@ -214,7 +219,7 @@ def evidence_pack_payload(
     ref_dicts = [r.to_dict() for r in refs]
     research_tier = None
     if spawn_id:
-        row = store.get_spawn(spawn_id) or {}
+        row = store.get_owned_spawn(spawn_id, owner_id) or {}
         research_tier = normalize_research_tier(row.get("research_tier"))
     chain = build_citation_chain_hops(insight_texts, question_texts, ref_dicts)
     chain_complete = citation_chain_complete(len(insights), len(refs))

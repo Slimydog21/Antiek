@@ -36,6 +36,7 @@ const updateEngagementSessionView = vi.hoisted(() =>
   })),
 );
 const mergeEngagementSessions = vi.hoisted(() => vi.fn());
+const fetchSessionsCollective = vi.hoisted(() => vi.fn());
 
 vi.mock("../../api/engagement", () => ({
   updateEngagementSessionView: (body: {
@@ -44,6 +45,7 @@ vi.mock("../../api/engagement", () => ({
   }) => updateEngagementSessionView(body),
   listEngagementSessions: vi.fn(),
   mergeEngagementSessions,
+  fetchSessionsCollective,
 }));
 
 vi.mock("../../api/settings", () => ({
@@ -202,6 +204,7 @@ vi.mock("../engagement/DecisionTreeDriverBadge", () => ({
 }));
 
 const FIXTURE = {
+  owner_id: "alice",
   session_id: "fsess_launch_1",
   spawn_id: "spn_launch_1",
   investigation_id: "inv_launch_1",
@@ -221,6 +224,7 @@ describe("DeepResearchSessionHost", () => {
 
   beforeEach(() => {
     mergeEngagementSessions.mockReset();
+    fetchSessionsCollective.mockReset();
     fetchDepthTiers.mockReset().mockResolvedValue({
       active_depth_tier: null,
       active_preset: null,
@@ -380,33 +384,19 @@ describe("DeepResearchSessionHost", () => {
     ).toBeTruthy();
   });
 
-  it("mounts SpawnMergePanel when spawn and parent present (ci/agu)", () => {
+  it("quarantines legacy spawn merge for an owner-native session", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
-    const mount = screen.getByTestId("deep-research-spawn-merge-mount");
-    expect(mount).toBeTruthy();
-    // Residual (agu): seamless highlight→DR→merge mount path honesty.
-    expect(mount.getAttribute("data-seamless-spawn-merge")).toBe("true");
-    expect(mount.getAttribute("data-seamless-highlight-dr-merge")).toBe("true");
-    expect(mount.getAttribute("data-spawn-id")).toBe("spn_launch_1");
-    expect(mount.getAttribute("data-parent-asset-id")).toBe("launch-asset");
-    expect(mount.getAttribute("data-view-format")).toBe("html");
-    expect(screen.getByTestId("spawn-merge-panel-stub").textContent).toMatch(
-      /spn_launch_1→launch-asset/,
-    );
+    expect(screen.queryByTestId("deep-research-spawn-merge-mount")).toBeNull();
+    expect(screen.queryByTestId("spawn-merge-panel-stub")).toBeNull();
+    expect(screen.getByTestId("durable-session-merge-panel")).toBeTruthy();
   });
 
-  it("passes session researchTier into SpawnMergePanel budget soft-gate (anp)", () => {
+  it("keeps durable session merge independent of the legacy tier-gated panel", () => {
     render(
       <DeepResearchSessionHost {...FIXTURE} research_tier="wrestle" />,
     );
-    const mount = screen.getByTestId("deep-research-spawn-merge-mount");
-    expect(mount.getAttribute("data-research-tier")).toBe("wrestle");
-    expect(mount.getAttribute("data-depth-prefill")).toBe("session");
-    expect(
-      screen
-        .getByTestId("spawn-merge-panel-stub")
-        .getAttribute("data-research-tier"),
-    ).toBe("wrestle");
+    expect(screen.getByTestId("durable-session-merge-panel")).toBeTruthy();
+    expect(screen.queryByTestId("spawn-merge-panel-stub")).toBeNull();
   });
 
   it("mounts PublicationAttachPanel when spawn present (ck)", () => {
@@ -451,6 +441,17 @@ describe("DeepResearchSessionHost", () => {
     ).toBe("1");
   });
 
+  it("enables merge immediately after in-place session completion", () => {
+    render(<DeepResearchSessionHost {...FIXTURE} status="reserved" />);
+    const preview = screen.getByTestId("preview-session-merge") as HTMLButtonElement;
+    expect(preview.disabled).toBe(true);
+    fireEvent.click(screen.getByTestId("session-flywheel-notify"));
+    expect(preview.disabled).toBe(false);
+    expect(screen.getByTestId("session-merge-readiness").textContent).toMatch(
+      /1 of 1 sessions complete/i,
+    );
+  });
+
   it("remounts research context after spawn merge notify (eh)", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(
@@ -458,7 +459,7 @@ describe("DeepResearchSessionHost", () => {
         .getByTestId("deep-research-context-refresh")
         .getAttribute("data-refresh-key"),
     ).toBe("0");
-    fireEvent.click(screen.getByTestId("spawn-merge-notify"));
+    fireEvent.click(screen.getByTestId("publication-attach-notify"));
     expect(
       screen
         .getByTestId("deep-research-context-refresh")
@@ -473,7 +474,7 @@ describe("DeepResearchSessionHost", () => {
         .getByTestId("deep-research-twins-refresh")
         .getAttribute("data-refresh-key"),
     ).toBe("0");
-    fireEvent.click(screen.getByTestId("spawn-merge-notify"));
+    fireEvent.click(screen.getByTestId("publication-attach-notify"));
     expect(
       screen
         .getByTestId("deep-research-twins-refresh")
@@ -486,11 +487,11 @@ describe("DeepResearchSessionHost", () => {
     ).toBe("1");
   });
 
-  it("mounts ResearchProgressPanel with autoLoad+autoSeedIfEmpty (cp)", () => {
+  it("loads progress without silently seeding an authenticated session", () => {
     render(<DeepResearchSessionHost {...FIXTURE} />);
     expect(screen.getByTestId("deep-research-progress-mount")).toBeTruthy();
     expect(screen.getByTestId("research-progress-panel-stub").textContent).toMatch(
-      /spn_launch_1:auto=true:seed=true:poll=4000/,
+      /spn_launch_1:auto=true:seed=false:poll=4000/,
     );
     // Residual (jo): default deep → 4s poll.
     expect(
@@ -701,6 +702,39 @@ describe("DeepResearchSessionHost", () => {
     );
   });
 
+  it("excludes incomplete sibling sessions from merge authority", async () => {
+    useWindows.getState().reset();
+    openWindow(
+      DEEP_RESEARCH_WINDOW_KIND as keyof typeof WINDOW_PAGES,
+      {
+        owner_id: "alice",
+        session_id: "fsess_incomplete",
+        spawn_id: "spn_incomplete",
+        parent_asset_id: "launch-asset",
+        selection_text: "unfinished",
+        status: "reserved",
+        view_format: "html",
+        investigation_id: "inv_incomplete",
+      },
+      { id: "wdr_fsess_incomplete", mode: "floating" },
+    );
+    mergeEngagementSessions.mockResolvedValueOnce({
+      mode: "draft_combined",
+      parent_revision_sha256: "a".repeat(64),
+      html: "<article>complete only</article>",
+    });
+    render(<DeepResearchSessionHost {...FIXTURE} status="complete" />);
+
+    expect(screen.getByTestId("session-merge-readiness").textContent).toMatch(
+      /1 of 2 sessions complete/i,
+    );
+    fireEvent.click(screen.getByTestId("preview-session-merge"));
+    await waitFor(() => expect(mergeEngagementSessions).toHaveBeenCalledOnce());
+    expect(mergeEngagementSessions.mock.calls[0][0].session_ids).toEqual([
+      "fsess_launch_1",
+    ]);
+  });
+
   it("path choices require parent+spawn for draft/into-parent readiness (aqw)", () => {
     const { parent_asset_id: _drop, ...noParent } = FIXTURE;
     render(
@@ -751,49 +785,28 @@ describe("DeepResearchSessionHost", () => {
     expect(screen.queryByTestId("deep-research-research-context-mount")).toBeNull();
   });
 
-  it("mounts CollectiveResearchPanel with available spawn ids from session", () => {
+  it("quarantines the legacy collective panel for owner-native sessions", () => {
     useWindows.getState().reset();
-    const first = render(<DeepResearchSessionHost {...FIXTURE} />);
-    const mount = screen.getByTestId("deep-research-collective-mount");
-    expect(mount).toBeTruthy();
-    expect(mount.getAttribute("data-view-format")).toBe("html");
-    expect(mount.getAttribute("data-available-spawn-count")).toBe("1");
-    // Residual (anq): open-vs-recent honesty + seamless DR session collective.
-    expect(mount.getAttribute("data-open-spawn-count")).toBe("1");
-    expect(mount.getAttribute("data-recent-count")).toMatch(/^\d+$/);
-    expect(mount.getAttribute("data-seamless-dr-session-collective")).toBe(
-      "true",
-    );
-    // Shipped collective panel chrome
-    expect(
-      screen.getByRole("heading", { name: /collective deep research/i }),
-    ).toBeTruthy();
-    // Spawn appears in identity row + collective checkbox list
-    expect(screen.getAllByText("spn_launch_1").length).toBeGreaterThanOrEqual(1);
-    first.unmount();
-    // Double-run remount stable
     render(<DeepResearchSessionHost {...FIXTURE} />);
-    expect(screen.getByTestId("deep-research-collective-mount")).toBeTruthy();
+    expect(screen.queryByTestId("deep-research-collective-mount")).toBeNull();
     expect(
-      screen.getByTestId("deep-research-collective-mount").getAttribute(
-        "data-available-spawn-count",
-      ),
-    ).toBe("1");
-    expect(
-      screen
-        .getByTestId("deep-research-collective-mount")
-        .getAttribute("data-open-spawn-count"),
-    ).toBe("1");
+      (screen.getByTestId("build-session-collective") as HTMLButtonElement).disabled,
+    ).toBe(true);
   });
 
-  it("includes spawn ids from other open deep_research_session windows", () => {
+  it("builds collective context from other owner-native session windows", async () => {
     useWindows.getState().reset();
+    fetchSessionsCollective.mockResolvedValueOnce({
+      session_ids: ["fsess_launch_1", "fsess_other"],
+      html: "<!doctype html><title>Owner collective</title>",
+    });
     openWindow(
       DEEP_RESEARCH_WINDOW_KIND as keyof typeof WINDOW_PAGES,
       {
         session_id: "fsess_other",
+        owner_id: "alice",
         spawn_id: "spn_other_2",
-        parent_asset_id: "other-asset",
+        parent_asset_id: "launch-asset",
         selection_text: "other",
         status: "reserved",
         view_format: "html",
@@ -807,28 +820,29 @@ describe("DeepResearchSessionHost", () => {
         available_spawn_ids={["spn_extra_3"]}
       />,
     );
-    const mount = screen.getByTestId("deep-research-collective-mount");
-    // current + open window + extra
-    expect(Number(mount.getAttribute("data-available-spawn-count"))).toBeGreaterThanOrEqual(
-      2,
-    );
-    expect(mount.textContent).toContain("spn_launch_1");
-    expect(mount.textContent).toContain("spn_other_2");
-    expect(mount.textContent).toContain("spn_extra_3");
+    fireEvent.click(screen.getByTestId("build-session-collective"));
+    await waitFor(() => expect(fetchSessionsCollective).toHaveBeenCalledOnce());
+    expect(fetchSessionsCollective).toHaveBeenCalledWith({
+      session_ids: ["fsess_launch_1", "fsess_other"],
+      include_twin_preview: true,
+      include_prompt_block: true,
+      include_html: true,
+    });
+    expect(await screen.findByTestId("session-collective-preview")).toBeTruthy();
+    expect(screen.queryByTestId("deep-research-collective-mount")).toBeNull();
   });
 
-  it("includes recent_ring spawn ids on collective mount (ox)", () => {
+  it("does not grant recent global spawn ids authority in a session collective", () => {
     useWindows.getState().reset();
     clearRecentDeepResearchSpawnIds();
     pushRecentDeepResearchSpawnId("spn_chased_closed");
     render(<DeepResearchSessionHost {...FIXTURE} />);
-    const mount = screen.getByTestId("deep-research-collective-mount");
-    expect(mount.getAttribute("data-recent-count")).toBe("1");
+    expect(screen.queryByTestId("deep-research-collective-mount")).toBeNull();
     expect(
-      Number(mount.getAttribute("data-available-spawn-count") || 0),
-    ).toBeGreaterThanOrEqual(2);
-    expect(mount.textContent).toContain("spn_chased_closed");
-    expect(mount.textContent).toContain("spn_launch_1");
+      screen
+        .getByTestId("durable-session-merge-panel")
+        .getAttribute("data-session-count"),
+    ).toBe("1");
     clearRecentDeepResearchSpawnIds();
   });
 

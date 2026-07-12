@@ -267,6 +267,7 @@ def attach_source_references(
     references: Sequence[str | SourceReference],
     *,
     store: EngagementStore,
+    owner_id: str = "__operator__",
 ) -> tuple[Any, tuple[SourceReference, ...]]:
     """Attach parsed references onto an existing spawn row.
 
@@ -276,7 +277,7 @@ def attach_source_references(
     # Local import avoids circular import at module load (spawn imports store only)
     from .spawn import _from_row
 
-    row = store.get_spawn(spawn_id)
+    row = store.get_owned_spawn(spawn_id, owner_id)
     if row is None:
         raise KeyError(f"unknown spawn_id: {spawn_id}")
 
@@ -289,18 +290,27 @@ def attach_source_references(
                 continue
             incoming.append(parse_source_reference(str(item)))
 
-    prior = refs_from_rows(row.get("source_references"))
-    merged = merge_references(prior, incoming)
+    def attach(current: dict[str, Any]) -> dict[str, Any]:
+        prior = refs_from_rows(current.get("source_references"))
+        merged_refs = merge_references(prior, incoming)
+        return {
+            **current,
+            "source_references": [ref.to_dict() for ref in merged_refs],
+        }
 
-    row = dict(row)
-    row["source_references"] = [r.to_dict() for r in merged]
-    store.put_spawn(row)
+    row = store.mutate_owned_spawn(spawn_id, owner_id, attach)
+    merged = refs_from_rows(row.get("source_references"))
     spawn = _from_row(row)
     return spawn, merged
 
 
-def list_source_references(spawn_id: str, *, store: EngagementStore) -> list[SourceReference]:
-    row = store.get_spawn(spawn_id)
+def list_source_references(
+    spawn_id: str,
+    *,
+    store: EngagementStore,
+    owner_id: str = "__operator__",
+) -> list[SourceReference]:
+    row = store.get_owned_spawn(spawn_id, owner_id)
     if row is None:
         return []
     return list(refs_from_rows(row.get("source_references")))
@@ -403,5 +413,7 @@ def spawn_from_highlight_with_references(
     )
     if not references:
         return spawn
-    spawn, _merged = attach_source_references(spawn.spawn_id, references, store=store)
+    spawn, _merged = attach_source_references(
+        spawn.spawn_id, references, store=store, owner_id=owner_id
+    )
     return spawn

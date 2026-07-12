@@ -49,6 +49,7 @@ from substrate.engagement_spine import (
     attach_source_references,
     evidence_pack_payload,
     hydrate_reference,
+    list_source_references,
     merge_product_payload,
     merge_spawns_collective,
     progress_payload,
@@ -56,6 +57,7 @@ from substrate.engagement_spine import (
     record_twin_product,
     search_engagement_context,
     seed_default_pipeline,
+    seed_twins_for_asset,
     spawn_from_highlight_with_references,
     twin_promote_context_payload,
     twins_product_payload,
@@ -67,6 +69,7 @@ from substrate.engagement_spine.store import (
     owned_document_id,
 )
 from substrate.floating_session import (
+    attach_session_source_references,
     compare_and_set_view_mode,
     complete_session_with_context_flywheel,
     get_session,
@@ -380,6 +383,45 @@ class SessionsMergeBody(_ClosedSessionBody):
         ):
             raise ValueError("session_ids must be unique canonical session identities")
         return self
+
+
+class SessionReferencesBody(_ClosedSessionBody):
+    references: list[str] = Field(min_length=1, max_length=64)
+    include_html: bool = True
+    hydrate: bool = True
+    seed_twins: bool = True
+
+
+class SessionProgressBody(_ClosedSessionBody):
+    stage: Literal["plan", "gather", "synthesize", "cite", "complete", "failed"]
+    message: str = Field(default="", max_length=500)
+    include_html: bool = True
+
+
+class SessionTwinBody(_ClosedSessionBody):
+    kind: Literal["insight", "question"]
+    text: str = Field(min_length=1, max_length=20_000)
+    include_html: bool = True
+
+
+class SessionTwinSeedBody(_ClosedSessionBody):
+    title: str = Field(default="", max_length=2_000)
+    body_text: str = Field(default="", max_length=200_000)
+    include_html: bool = True
+    force_offline: bool = False
+
+
+class SessionTwinPromoteBody(_ClosedSessionBody):
+    query: str | None = Field(default=None, max_length=8_000)
+    include_html: bool = True
+    kinds: list[Literal["insight", "question"]] | None = None
+    note_ids: list[str] | None = Field(default=None, max_length=256)
+
+
+class SessionContextSearchBody(_ClosedSessionBody):
+    query: str = Field(min_length=1, max_length=8_000)
+    include_html: bool = True
+    limit: int = Field(default=50, ge=1, le=200)
 
 
 # ── routes ───────────────────────────────────────────────────────────────
@@ -1176,6 +1218,7 @@ def get_sessions_for_asset(
     verified = [_verified_session(row.session_id, owner_id) for row in sessions]
     return {
         "parent_asset_id": parent_asset_id,
+        "owner_id": owner_id,
         "sessions": [_session_payload(session, include_html=include_html) for session in verified],
         "count": len(verified),
         "view_format": "html",
@@ -1207,6 +1250,224 @@ def put_session_view(session_id: str, body: SessionViewBody, request: Request) -
     if not applied:
         raise HTTPException(status_code=409, detail="session view changed concurrently")
     return _session_payload(updated, include_html=True)
+
+
+@engagement_router.post("/sessions/{session_id}/references")
+def post_session_references(
+    session_id: str, body: SessionReferencesBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    try:
+        attach_session_source_references(
+            session_id,
+            body.references,
+            session_store=_sess(),
+            engagement_store=_eng(),
+        )
+        hydrated: list[dict[str, Any]] = []
+        if body.hydrate:
+            from substrate.engagement_spine import (
+                arxiv_metadata_fetch_publication,
+                compose_fetch_publication,
+                substack_post_fetch_publication,
+            )
+
+            adapters: list[Any] = []
+            if hydrate_fetch_publication is not None:
+                adapters.append(hydrate_fetch_publication)
+            if hydrate_arxiv_fetch_by_id is not None:
+                adapters.append(
+                    arxiv_metadata_fetch_publication(
+                        fetch_by_id=hydrate_arxiv_fetch_by_id
+                    )
+                )
+            if hydrate_substack_fetch_post is not None:
+                adapters.append(
+                    substack_post_fetch_publication(
+                        fetch_post=hydrate_substack_fetch_post
+                    )
+                )
+            fetcher = compose_fetch_publication(*adapters) if adapters else None
+            for reference in body.references:
+                asset = hydrate_reference(
+                    reference,
+                    store=_eng(),
+                    fetch_publication=fetcher,
+                    include_html=body.include_html,
+                    attach_spawn_id=session.spawn_id,
+                    seed_twins=body.seed_twins,
+                    owner_id=owner_id,
+                )
+                hydrated.append(asset.to_dict())
+        refs = list_source_references(
+            session.spawn_id, store=_eng(), owner_id=owner_id
+        )
+    except (KeyError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail="session references are invalid") from exc
+    return {
+        "session_id": session_id,
+        "spawn_id": session.spawn_id,
+        "source_references": [reference.to_dict() for reference in refs],
+        "hydrated_assets": hydrated,
+        "research_tier": session.research_tier,
+        "view_format": "html",
+    }
+
+
+@engagement_router.post("/sessions/{session_id}/progress")
+def post_session_progress(
+    session_id: str, body: SessionProgressBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    record_progress(
+        session.spawn_id,
+        body.stage,
+        body.message,
+        store=_eng(),
+        owner_id=owner_id,
+    )
+    return progress_payload(
+        session.spawn_id,
+        store=_eng(),
+        include_html=body.include_html,
+        owner_id=owner_id,
+    )
+
+
+@engagement_router.post("/sessions/{session_id}/progress/seed")
+def post_session_progress_seed(
+    session_id: str, request: Request, include_html: bool = True
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    seed_default_pipeline(session.spawn_id, store=_eng(), owner_id=owner_id)
+    return progress_payload(
+        session.spawn_id,
+        store=_eng(),
+        include_html=include_html,
+        owner_id=owner_id,
+    )
+
+
+@engagement_router.get("/sessions/{session_id}/progress")
+def get_session_progress(
+    session_id: str, request: Request, include_html: bool = False
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    return progress_payload(
+        session.spawn_id,
+        store=_eng(),
+        include_html=include_html,
+        owner_id=owner_id,
+    )
+
+
+@engagement_router.get("/sessions/{session_id}/evidence")
+def get_session_evidence(
+    session_id: str, request: Request, include_html: bool = True
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    return evidence_pack_payload(
+        session.parent_asset_id,
+        store=_eng(),
+        spawn_id=session.spawn_id,
+        include_html=include_html,
+        owner_id=owner_id,
+    )
+
+
+@engagement_router.get("/sessions/{session_id}/twins")
+def get_session_twins(
+    session_id: str, request: Request, include_html: bool = True
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    return twins_product_payload(
+        session.parent_asset_id,
+        store=_eng(),
+        include_html=include_html,
+        spawn_id=session.spawn_id,
+        owner_id=owner_id,
+    )
+
+
+@engagement_router.post("/sessions/{session_id}/twins")
+def post_session_twin(
+    session_id: str, body: SessionTwinBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    return record_twin_product(
+        session.parent_asset_id,
+        store=_eng(),
+        kind=body.kind,
+        text=body.text,
+        source_spawn_id=session.spawn_id,
+        investigation_id=session.investigation_id,
+        include_html=body.include_html,
+        owner_id=owner_id,
+    )
+
+
+@engagement_router.post("/sessions/{session_id}/twins/seed")
+def post_session_twins_seed(
+    session_id: str, body: SessionTwinSeedBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    return seed_twins_for_asset(
+        session.parent_asset_id,
+        store=_eng(),
+        title=body.title or session.parent_asset_id,
+        body_text=body.body_text,
+        source_spawn_id=session.spawn_id,
+        include_html=body.include_html,
+        force_offline=body.force_offline,
+        owner_id=owner_id,
+    )
+
+
+@engagement_router.post("/sessions/{session_id}/twins/promote-preview")
+def post_session_twins_promote_preview(
+    session_id: str, body: SessionTwinPromoteBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    out = twin_promote_context_payload(
+        session.parent_asset_id,
+        store=_eng(),
+        query=body.query,
+        investigation_id=session.investigation_id,
+        promote_insight_fn=_offline_promote_insight,
+        promote_question_fn=_offline_promote_question,
+        include_html=body.include_html,
+        kinds=body.kinds,
+        note_ids=body.note_ids,
+        owner_id=owner_id,
+    )
+    out["twin_context_mode"] = "preview_non_mutating"
+    return out
+
+
+@engagement_router.post("/sessions/{session_id}/context-search")
+def post_session_context_search(
+    session_id: str, body: SessionContextSearchBody, request: Request
+) -> dict[str, Any]:
+    owner_id = _request_owner(request)
+    session = _verified_session(session_id, owner_id)
+    return search_engagement_context(
+        store=_eng(),
+        query=body.query,
+        asset_id=session.parent_asset_id,
+        spawn_id=session.spawn_id,
+        include_html=body.include_html,
+        limit=body.limit,
+        owner_id=owner_id,
+    )
 
 
 @engagement_router.post("/sessions/context")

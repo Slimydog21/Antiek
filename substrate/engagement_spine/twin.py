@@ -139,7 +139,7 @@ def twins_product_payload(
     if sid:
         from substrate.dispatch.research_tier import normalize_research_tier
 
-        row = store.get_spawn(sid) or {}
+        row = store.get_owned_spawn(sid, owner_id) or {}
         research_tier = normalize_research_tier(row.get("research_tier"))
     payload: dict[str, Any] = {
         "asset_id": asset_id.strip(),
@@ -174,6 +174,7 @@ def record_twin_product(
     source_spawn_id: str | None = None,
     investigation_id: str | None = None,
     include_html: bool = False,
+    owner_id: str = "__operator__",
 ) -> dict[str, Any]:
     """Product entry: record one twin note then return full twin payload."""
     if kind == "insight":
@@ -183,6 +184,7 @@ def record_twin_product(
             store=store,
             source_spawn_id=source_spawn_id,
             investigation_id=investigation_id,
+            owner_id=owner_id,
         )
     elif kind == "question":
         record_twin_question(
@@ -191,10 +193,13 @@ def record_twin_product(
             store=store,
             source_spawn_id=source_spawn_id,
             investigation_id=investigation_id,
+            owner_id=owner_id,
         )
     else:
         raise ValueError(f"invalid twin kind: {kind!r}")
-    return twins_product_payload(asset_id, store=store, include_html=include_html)
+    return twins_product_payload(
+        asset_id, store=store, include_html=include_html, owner_id=owner_id
+    )
 
 
 # Residual (bz): optional live note_taker for twin seed — default OFF.
@@ -236,6 +241,7 @@ def seed_twins_for_asset(
     include_html: bool = False,
     force_offline: bool = False,
     live_fn: TwinSeedLiveFn | None = None,
+    owner_id: str = "__operator__",
 ) -> dict[str, Any]:
     """Recursive note-taker seed: insight + question twins for an asset.
 
@@ -248,9 +254,11 @@ def seed_twins_for_asset(
     aid = (asset_id or "").strip()
     if not aid:
         raise ValueError("asset_id is required")
-    existing = list_twin_notes(aid, store=store)
+    existing = list_twin_notes(aid, store=store, owner_id=owner_id)
     if existing:
-        payload = twins_product_payload(aid, store=store, include_html=include_html)
+        payload = twins_product_payload(
+            aid, store=store, include_html=include_html, owner_id=owner_id
+        )
         payload["seeded"] = False
         payload["seed_skipped"] = "twins_already_present"
         payload["live_seed"] = False
@@ -259,7 +267,7 @@ def seed_twins_for_asset(
         if sid:
             from substrate.dispatch.research_tier import normalize_research_tier
 
-            row = store.get_spawn(sid) or {}
+            row = store.get_owned_spawn(sid, owner_id) or {}
             payload["source_spawn_id"] = sid
             payload["research_tier"] = normalize_research_tier(
                 row.get("research_tier")
@@ -304,14 +312,24 @@ def seed_twins_for_asset(
     for kind, text in pairs:
         if kind == "insight":
             record_twin_insight(
-                aid, text, store=store, source_spawn_id=source_spawn_id
+                aid,
+                text,
+                store=store,
+                source_spawn_id=source_spawn_id,
+                owner_id=owner_id,
             )
         else:
             record_twin_question(
-                aid, text, store=store, source_spawn_id=source_spawn_id
+                aid,
+                text,
+                store=store,
+                source_spawn_id=source_spawn_id,
+                owner_id=owner_id,
             )
 
-    payload = twins_product_payload(aid, store=store, include_html=False)
+    payload = twins_product_payload(
+        aid, store=store, include_html=False, owner_id=owner_id
+    )
     payload["seeded"] = True
     payload["seed_skipped"] = None
     payload["live_seed"] = used_live
@@ -326,7 +344,7 @@ def seed_twins_for_asset(
     if sid:
         from substrate.dispatch.research_tier import normalize_research_tier
 
-        row = store.get_spawn(sid) or {}
+        row = store.get_owned_spawn(sid, owner_id) or {}
         research_tier = normalize_research_tier(row.get("research_tier"))
         payload["source_spawn_id"] = sid
     payload["research_tier"] = research_tier

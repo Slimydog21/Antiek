@@ -116,6 +116,7 @@ export type OpenWindowOptions = {
 export type WindowsActions = {
   open: (kind: WindowKind, payload?: Record<string, unknown>, opts?: OpenWindowOptions) => string;
   close: (id: string) => void;
+  patchPayload: (id: string, patch: Record<string, unknown>) => void;
   focus: (id: string) => void;
   setRect: (id: string, rect: Partial<WindowRect>) => void;
   expand: (id: string) => void;
@@ -222,6 +223,19 @@ export const useWindows = create<Store>()((set, get) => ({
       // SPR-09 M8 focus management.
       const focusedId = s.focusedId === id ? (order[order.length - 1] ?? null) : s.focusedId;
       return { ...s, windows: rest, order, focusedId };
+    }),
+
+  patchPayload: (id, patch) =>
+    set((s) => {
+      const window = s.windows[id];
+      if (!window) return s;
+      return {
+        ...s,
+        windows: {
+          ...s.windows,
+          [id]: { ...window, payload: { ...window.payload, ...patch } },
+        },
+      };
     }),
 
   focus: (id) =>

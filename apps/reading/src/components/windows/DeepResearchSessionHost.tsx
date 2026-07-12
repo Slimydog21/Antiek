@@ -54,7 +54,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
+  fetchSessionsCollective,
   mergeEngagementSessions,
+  type CollectiveResponse,
   type SessionMergeResponse,
 } from "../../api/engagement";
 import { fetchDepthTiers } from "../../api/settings";
@@ -84,6 +86,7 @@ import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
 
 export type DeepResearchSessionHostProps = {
+  owner_id?: string;
   session_id?: string;
   spawn_id?: string;
   investigation_id?: string;
@@ -131,7 +134,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const spawnId = props.spawn_id?.trim() || "(missing spawn_id)";
   const parent = props.parent_asset_id?.trim() || "(missing parent)";
   const selection = props.selection_text?.trim() || "(no selection)";
-  const status = props.status?.trim() || "unknown";
+  const [status, setStatus] = useState(props.status?.trim() || "unknown");
   const viewFormat = (props.view_format?.trim() || "html").toLowerCase();
   const isHtml = viewFormat === "html";
 
@@ -187,6 +190,17 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
 
   // Subscribe to open windows so multi-session spawns appear in collective list.
   const windows = useWindows((s) => s.windows);
+  const patchWindowPayload = useWindows((s) => s.patchPayload);
+  const windowId = props.__windowId?.trim() || "";
+  const onSessionCompleted = useCallback(
+    (result: { status?: string }) => {
+      const completedStatus = result.status?.trim() || "complete";
+      setStatus(completedStatus);
+      if (windowId) patchWindowPayload(windowId, { status: completedStatus });
+      onContextNeedsRefresh();
+    },
+    [onContextNeedsRefresh, patchWindowPayload, windowId],
+  );
   // Residual (ob/oc): re-read recent ring when windows change or clear recent.
   const [recentTick, setRecentTick] = useState(0);
   const recentSpawnIds = useMemo(
@@ -216,17 +230,37 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   const availableSessionIds = useMemo(() => {
     const ids = new Set<string>();
     if (rawSessionId) ids.add(rawSessionId);
+    const ownerId = props.owner_id?.trim() || "";
     for (const window of Object.values(windows)) {
       if (window.kind !== "deep_research_session") continue;
+      if (String(window.payload.owner_id || "").trim() !== ownerId) continue;
       const parentId = String(window.payload.parent_asset_id || "").trim();
       const sessionId = String(window.payload.session_id || "").trim();
       if (parentId === props.parent_asset_id?.trim() && sessionId) ids.add(sessionId);
     }
     return [...ids];
-  }, [props.parent_asset_id, rawSessionId, windows]);
+  }, [props.owner_id, props.parent_asset_id, rawSessionId, windows]);
+  const completedSessionIds = useMemo(() => {
+    const ids = new Set<string>();
+    if (rawSessionId && status === "complete") ids.add(rawSessionId);
+    const ownerId = props.owner_id?.trim() || "";
+    for (const window of Object.values(windows)) {
+      if (window.kind !== "deep_research_session") continue;
+      if (String(window.payload.owner_id || "").trim() !== ownerId) continue;
+      if (String(window.payload.parent_asset_id || "").trim() !== props.parent_asset_id?.trim()) continue;
+      if (String(window.payload.status || "").trim() !== "complete") continue;
+      const candidate = String(window.payload.session_id || "").trim();
+      if (candidate) ids.add(candidate);
+    }
+    return [...ids];
+  }, [props.owner_id, props.parent_asset_id, rawSessionId, status, windows]);
   const [sessionMerge, setSessionMerge] = useState<SessionMergeResponse | null>(null);
+  const [sessionCollective, setSessionCollective] = useState<
+    (CollectiveResponse & { html?: string }) | null
+  >(null);
   const [sessionMergeError, setSessionMergeError] = useState<string | null>(null);
   const [sessionMergeBusy, setSessionMergeBusy] = useState(false);
+  const [previewedSessionIds, setPreviewedSessionIds] = useState<string[]>([]);
   const mergeKey = useRef(
     `browser-merge-${
       typeof crypto !== "undefined" && crypto.randomUUID
@@ -236,24 +270,45 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
   );
   const previewSessionMerge = useCallback(async () => {
     const parentAssetId = props.parent_asset_id?.trim();
-    if (!parentAssetId || availableSessionIds.length === 0) return;
+    if (!parentAssetId || completedSessionIds.length === 0) return;
     setSessionMergeBusy(true);
     setSessionMergeError(null);
     try {
       setSessionMerge(
         await mergeEngagementSessions({
           parent_asset_id: parentAssetId,
-          session_ids: availableSessionIds,
+          session_ids: completedSessionIds,
           mode: "draft_combined",
           include_html: true,
         }),
       );
+      setPreviewedSessionIds(completedSessionIds);
     } catch (error) {
       setSessionMergeError(error instanceof Error ? error.message : "Draft merge failed");
     } finally {
       setSessionMergeBusy(false);
     }
-  }, [availableSessionIds, props.parent_asset_id]);
+  }, [completedSessionIds, props.parent_asset_id]);
+  const buildSessionCollective = useCallback(async () => {
+    setSessionMergeBusy(true);
+    setSessionMergeError(null);
+    try {
+      setSessionCollective(
+        await fetchSessionsCollective({
+          session_ids: availableSessionIds,
+          include_twin_preview: true,
+          include_prompt_block: true,
+          include_html: true,
+        }),
+      );
+    } catch (error) {
+      setSessionMergeError(
+        error instanceof Error ? error.message : "Collective context failed",
+      );
+    } finally {
+      setSessionMergeBusy(false);
+    }
+  }, [availableSessionIds]);
   const confirmSessionMerge = useCallback(async () => {
     const parentAssetId = props.parent_asset_id?.trim();
     if (!parentAssetId || !sessionMerge?.parent_revision_sha256) return;
@@ -262,7 +317,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     try {
       const committed = await mergeEngagementSessions({
         parent_asset_id: parentAssetId,
-        session_ids: availableSessionIds,
+        session_ids: previewedSessionIds,
         mode: "into_parent",
         confirm_parent_write: true,
         expected_parent_sha256: sessionMerge.parent_revision_sha256,
@@ -278,9 +333,8 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
     } finally {
       setSessionMergeBusy(false);
     }
-  }, [availableSessionIds, onContextNeedsRefresh, props.parent_asset_id, sessionMerge]);
+  }, [onContextNeedsRefresh, previewedSessionIds, props.parent_asset_id, sessionMerge]);
 
-  const windowId = props.__windowId?.trim() || "";
   const hostWindow = windowId ? windows[windowId] : undefined;
   const isFull = hostWindow?.mode === "full";
   const [modeSyncError, setModeSyncError] = useState<string | null>(null);
@@ -584,6 +638,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               key={`ctx-${props.parent_asset_id.trim()}-${contextRefreshKey}`}
               assetId={props.parent_asset_id.trim()}
               spawnId={props.spawn_id?.trim() || null}
+              sessionId={rawSessionId}
               autoLoad
               researchTier={researchTier}
               domainSubjects={domainSubjects}
@@ -606,8 +661,9 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
           >
             <ResearchProgressPanel
               spawnId={props.spawn_id.trim()}
+              sessionId={rawSessionId}
               autoLoad
-              autoSeedIfEmpty
+              autoSeedIfEmpty={!rawSessionId}
               researchTier={researchTier}
               pollIntervalMs={mapResearchTierToProgressPollMs(researchTier)}
               /* Residual (qw): terminal Open Write seed provenance. */
@@ -633,9 +689,10 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               key={`twins-${props.parent_asset_id.trim()}-${contextRefreshKey}`}
               assetId={props.parent_asset_id.trim()}
               spawnId={props.spawn_id?.trim() || null}
+              sessionId={rawSessionId}
               autoLoad
-              autoSeedIfEmpty
-              autoPromoteAfterLoad
+              autoSeedIfEmpty={!rawSessionId}
+              autoPromoteAfterLoad={!rawSessionId}
               onPromoted={onContextNeedsRefresh}
               seedTitle={props.goal?.trim() || props.parent_asset_id.trim()}
               seedBodyText={
@@ -661,7 +718,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               props.goal?.trim() ||
               (selection !== "(no selection)" ? selection : "")
             }
-            onCompleted={onContextNeedsRefresh}
+            onCompleted={onSessionCompleted}
             researchTier={researchTier}
           />
         </section>
@@ -676,6 +733,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
         >
           <PublicationAttachPanel
             spawnId={props.spawn_id.trim()}
+            sessionId={rawSessionId}
             onAttached={onContextNeedsRefresh}
             researchTier={researchTier}
           />
@@ -683,7 +741,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
       ) : null}
 
       {/* Residual (ci/agu): one-click merge this spawn into reading parent/draft. */}
-      {props.spawn_id?.trim() && props.parent_asset_id?.trim() ? (
+      {props.spawn_id?.trim() && props.parent_asset_id?.trim() && !rawSessionId ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-spawn-merge-mount"
@@ -715,17 +773,27 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             <button
               type="button"
               className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
-              disabled={sessionMergeBusy}
+              disabled={sessionMergeBusy || availableSessionIds.length < 2}
+              onClick={() => void buildSessionCollective()}
+              data-testid="build-session-collective"
+            >
+              Build collective context
+            </button>
+            <button
+              type="button"
+              className="rounded border border-ink/30 px-3 py-1.5 text-xs disabled:opacity-40"
+              disabled={sessionMergeBusy || completedSessionIds.length === 0}
               onClick={() => void previewSessionMerge()}
               data-testid="preview-session-merge"
             >
-              Preview {availableSessionIds.length > 1 ? "collective " : ""}draft
+              Preview {completedSessionIds.length > 1 ? "collective " : ""}draft
             </button>
             <button
               type="button"
               className="rounded border border-ink bg-ink px-3 py-1.5 text-xs text-white disabled:opacity-40"
               disabled={
                 sessionMergeBusy ||
+                previewedSessionIds.length === 0 ||
                 sessionMerge?.mode !== "draft_combined" ||
                 !sessionMerge.parent_revision_sha256
               }
@@ -735,11 +803,24 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
               Confirm merge into reading asset
             </button>
           </div>
+          <p className="text-[10px] font-mono opacity-75" data-testid="session-merge-readiness">
+            {completedSessionIds.length} of {availableSessionIds.length} sessions complete and mergeable.
+            Collective context is a non-mutating preview; incomplete sessions may contribute context but cannot merge.
+          </p>
           {sessionMergeError ? <p role="alert">{sessionMergeError}</p> : null}
           {sessionMerge?.merge_receipt_id ? (
             <p className="text-[10px] font-mono" data-testid="session-merge-receipt">
               Applied receipt {sessionMerge.merge_receipt_id}
             </p>
+          ) : null}
+          {sessionCollective?.html ? (
+            <iframe
+              title="Collective research context"
+              sandbox=""
+              srcDoc={sessionCollective.html}
+              className="h-64 w-full rounded border border-black/10 bg-white"
+              data-testid="session-collective-preview"
+            />
           ) : null}
           {sessionMerge?.html && sessionMerge.mode === "draft_combined" ? (
             <iframe
@@ -755,7 +836,7 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
 
       {/* Product mount (ah/ox): multi-select open + recent DR spawns. */}
       {/* Residual (anq): open-vs-recent honesty stamps (parity ResearchThis ou). */}
-      {availableSpawnIds.length > 0 ? (
+      {availableSpawnIds.length > 0 && !rawSessionId ? (
         <section
           className="mt-2 border-t border-black/10 pt-4 dark:border-white/10"
           data-testid="deep-research-collective-mount"

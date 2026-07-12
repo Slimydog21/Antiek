@@ -419,6 +419,7 @@ def twin_promote_context_payload(
     include_html: bool = True,
     kinds: Sequence[TwinKind] | None = None,
     note_ids: Sequence[str] | None = None,
+    owner_id: str = "__operator__",
 ) -> dict[str, Any]:
     """Settings/workstation product shape for twin promote → context.
 
@@ -463,6 +464,7 @@ def twin_promote_context_payload(
         promote_question_fn=promote_question_fn,
         kinds=kinds_norm,
         note_ids=note_ids_norm,
+        owner_id=owner_id,
     )
     result_dict = result.to_dict()
     # Residual (ajo/ajt): content-addressed depth-graph honesty (pure helper).

@@ -25,6 +25,7 @@
 import { useCallback, useMemo, useState } from "react";
 import {
   attachSourceRefs,
+  attachSessionReferences,
   hydratePublicationRef,
   type HydrateRefResponse,
 } from "../../api/engagement";
@@ -57,6 +58,7 @@ export type PublicationAttachResult = {
 export type PublicationAttachPanelProps = {
   /** Residual (asb): optional until bound — CTA gates on publicationAttachReadiness. */
   spawnId?: string | null;
+  sessionId?: string | null;
   /** Residual (ed): fire after successful attach+hydrate (HTML assets only). */
   onAttached?: (result: PublicationAttachResult) => void;
   /**
@@ -68,6 +70,7 @@ export type PublicationAttachPanelProps = {
 
 export function PublicationAttachPanel({
   spawnId = "",
+  sessionId = null,
   onAttached,
   researchTier: researchTierProp = null,
 }: PublicationAttachPanelProps) {
@@ -111,26 +114,45 @@ export function PublicationAttachPanel({
     setBusy(true);
     setError(null);
     try {
-      const attach = await attachSourceRefs(sid, refs);
-      if (attach.view_format !== "html") {
-        throw new Error("attach view_format must be html");
+      const session = String(sessionId || "").trim();
+      let assets: HydrateRefResponse[] = [];
+      let attachedTier: string | null | undefined;
+      if (session) {
+        const attach = await attachSessionReferences({
+            session_id: session,
+            references: refs,
+            hydrate: true,
+            seed_twins: true,
+          });
+        if (attach.view_format !== "html") {
+          throw new Error("attach view_format must be html");
+        }
+        assets = attach.hydrated_assets;
+        attachedTier = attach.research_tier;
+      } else {
+        const attach = await attachSourceRefs(sid, refs);
+        if (attach.view_format !== "html") {
+          throw new Error("attach view_format must be html");
+        }
+        attachedTier = attach.research_tier;
       }
       setAttached(refs);
       // Residual (ko): reserved spawn research_tier from attach response.
       setAttachResearchTier(
-        (attach.research_tier || "").trim().toLowerCase() || null,
+        (attachedTier || "").trim().toLowerCase() || null,
       );
-      const assets: HydrateRefResponse[] = [];
-      for (const reference of refs) {
-        const asset = await hydratePublicationRef({
-          reference,
-          include_html: true,
-          attach_spawn_id: sid,
-        });
-        if (asset.view_format !== "html") {
-          throw new Error(`hydrate view_format must be html for ${reference}`);
+      if (!session) {
+        for (const reference of refs) {
+          const asset = await hydratePublicationRef({
+            reference,
+            include_html: true,
+            attach_spawn_id: sid,
+          });
+          if (asset.view_format !== "html") {
+            throw new Error(`hydrate view_format must be html for ${reference}`);
+          }
+          assets.push(asset);
         }
-        assets.push(asset);
       }
       setHydrated(assets);
       onAttached?.({
@@ -144,7 +166,7 @@ export function PublicationAttachPanel({
     } finally {
       setBusy(false);
     }
-  }, [spawnId, raw, onAttached]);
+  }, [spawnId, sessionId, raw, onAttached]);
 
   /** Residual (agx): insert preset ref (dedupe) without auto-hydrate. */
   const insertPreset = useCallback((reference: string) => {

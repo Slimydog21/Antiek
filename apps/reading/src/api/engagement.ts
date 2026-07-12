@@ -55,7 +55,7 @@ export type SessionOpenResponse = {
   goal?: string;
   research_tier?: "fast" | "deep" | "wrestle" | string | null;
   view_format: "html";
-  owner_id?: string;
+  owner_id: string;
   /**
    * Residual (nw/asu): Antiek-bench usage event recorded on open
    * (floating_deep_research | twin_chase | highlight_dr_launch) for recursive suite rewrite.
@@ -733,6 +733,7 @@ export type SessionLifecycleResponse = SessionOpenResponse & {
 
 export type SessionListResponse = {
   parent_asset_id: string;
+  owner_id: string;
   sessions: SessionLifecycleResponse[];
   count: number;
   view_format: "html";
@@ -819,4 +820,216 @@ export async function mergeEngagementSessions(body: {
     }),
   });
   return readJson<SessionMergeResponse>(res);
+}
+
+export async function attachSessionReferences(body: {
+  session_id: string;
+  references: string[];
+  hydrate?: boolean;
+  seed_twins?: boolean;
+  include_html?: boolean;
+}): Promise<{
+  session_id: string;
+  spawn_id: string;
+  source_references: SourceReference[];
+  hydrated_assets: HydrateRefResponse[];
+  research_tier?: string | null;
+  view_format: "html";
+}> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(body.session_id)}/references`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        references: body.references,
+        hydrate: body.hydrate ?? true,
+        seed_twins: body.seed_twins ?? true,
+        include_html: body.include_html ?? true,
+      }),
+    },
+  );
+  return readJson(res);
+}
+
+export async function fetchSessionProgress(
+  sessionId: string,
+  opts?: { includeHtml?: boolean },
+): Promise<ResearchProgressResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(sessionId)}/progress${q}`,
+  );
+  return readJson<ResearchProgressResponse>(res);
+}
+
+export async function seedSessionProgress(
+  sessionId: string,
+  opts?: { includeHtml?: boolean },
+): Promise<ResearchProgressResponse> {
+  const q = opts?.includeHtml ? "?include_html=true" : "";
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(sessionId)}/progress/seed${q}`,
+    { method: "POST" },
+  );
+  return readJson<ResearchProgressResponse>(res);
+}
+
+export async function fetchSessionEvidence(
+  sessionId: string,
+  includeHtml = true,
+): Promise<EvidencePackResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(sessionId)}/evidence?include_html=${String(includeHtml)}`,
+  );
+  return readJson<EvidencePackResponse>(res);
+}
+
+export async function fetchSessionTwins(
+  sessionId: string,
+  includeHtml = true,
+): Promise<TwinNotesResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(sessionId)}/twins?include_html=${String(includeHtml)}`,
+  );
+  return readJson<TwinNotesResponse>(res);
+}
+
+export async function recordSessionTwin(body: {
+  session_id: string;
+  kind: "insight" | "question";
+  text: string;
+  include_html?: boolean;
+}): Promise<TwinNotesResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(body.session_id)}/twins`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        kind: body.kind,
+        text: body.text,
+        include_html: body.include_html ?? true,
+      }),
+    },
+  );
+  return readJson<TwinNotesResponse>(res);
+}
+
+export async function seedSessionTwins(body: {
+  session_id: string;
+  title?: string;
+  body_text?: string;
+  include_html?: boolean;
+  force_offline?: boolean;
+}): Promise<
+  TwinNotesResponse & {
+    seeded?: boolean;
+    seed_skipped?: string | null;
+    live_seed?: boolean;
+    seed_source?: string | null;
+  }
+> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(body.session_id)}/twins/seed`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: body.title ?? "",
+        body_text: body.body_text ?? "",
+        include_html: body.include_html ?? true,
+        force_offline: body.force_offline ?? false,
+      }),
+    },
+  );
+  return readJson(res);
+}
+
+export async function previewSessionTwins(body: {
+  session_id: string;
+  query?: string | null;
+  kinds?: Array<"insight" | "question"> | null;
+  note_ids?: string[] | null;
+  include_html?: boolean;
+}): Promise<TwinPromoteContextResponse & { twin_context_mode: "preview_non_mutating" }> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(body.session_id)}/twins/promote-preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: body.query ?? null,
+        kinds: body.kinds ?? null,
+        note_ids: body.note_ids ?? null,
+        include_html: body.include_html ?? true,
+      }),
+    },
+  );
+  return readJson(res);
+}
+
+export async function searchSessionContext(body: {
+  session_id: string;
+  query: string;
+  include_html?: boolean;
+  limit?: number;
+}): Promise<ContextSearchResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/${encodeURIComponent(body.session_id)}/context-search`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: body.query,
+        include_html: body.include_html ?? true,
+        limit: body.limit ?? 50,
+      }),
+    },
+  );
+  return readJson<ContextSearchResponse>(res);
+}
+
+export async function fetchSessionResearchContext(body: {
+  session_id: string;
+  query?: string | null;
+  include_twin_preview?: boolean;
+  include_prompt_block?: boolean;
+  include_html?: boolean;
+}): Promise<ResearchContextResponse & { twin_context_mode: string; html?: string }> {
+  const res = await apiFetch(`${API_BASE}/engagement/sessions/context`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_id: body.session_id,
+      query: body.query ?? null,
+      include_twin_preview: body.include_twin_preview ?? false,
+      include_prompt_block: body.include_prompt_block ?? true,
+      include_html: body.include_html ?? true,
+    }),
+  });
+  return readJson(res);
+}
+
+export async function fetchSessionsCollective(body: {
+  session_ids: string[];
+  query?: string | null;
+  include_twin_preview?: boolean;
+  allow_cross_asset?: boolean;
+  include_prompt_block?: boolean;
+  include_html?: boolean;
+}): Promise<CollectiveResponse & { source_session_ids: string[]; twin_context_mode: string }> {
+  const res = await apiFetch(`${API_BASE}/engagement/sessions/collective`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      session_ids: body.session_ids,
+      query: body.query ?? null,
+      include_twin_preview: body.include_twin_preview ?? false,
+      allow_cross_asset: body.allow_cross_asset ?? false,
+      include_prompt_block: body.include_prompt_block ?? true,
+      include_html: body.include_html ?? true,
+    }),
+  });
+  return readJson(res);
 }

@@ -87,6 +87,32 @@ SPRINTS: list[dict[str, Any]] = [
         "pattern": "fan-out-and-synthesize",
         "lenses": "owner isolation/migration; two-process receipt and parent-write crash safety; browser reload/confirmation behavior",
     },
+    {
+        "id": "FSW-SPR-03",
+        "slug": "owner-native-capability-parity",
+        "title": "Owner-native engagement capability parity",
+        "status": "done",
+        "wave": 3,
+        "goal": "Move reference attachment, progress, evidence, context search, twin notes, hydration, and collective context behind owner-verified session authority without duplicating canonical writers.",
+        "files": "substrate/engagement_spine/{store,source_refs,progress,evidence,context_search,research_context,collective,twin,twin_promote,hydrate}.py; interfaces/research/api/engagement_routes.py; apps/reading/src/{api/engagement.ts,components/engagement,components/windows/DeepResearchSessionHost*}; tests/test_engagement_routes.py",
+        "milestones": [
+            ("Close store authority", "Add owner-verifying spawn/document reads and atomic mutation callbacks to memory and file stores; quarantine ownerless rows from normal accounts.", "Same logical identifiers remain disjoint by owner, foreign rows read as missing, and compound append/update operations execute under the store lock."),
+            ("Expose session capability routes", "Compose references, progress, evidence, twins, hydration, promotion preview, context search, research context, and collective context only after resolving the authenticated session owner.", "Strict request models reject extras; every endpoint returns 404 for a foreign session and never accepts caller-supplied owner identity."),
+            ("Migrate the research window", "When session_id exists, route every primary panel through session APIs and remove global spawn merge/collective authority from that browser path.", "Attach/progress/evidence/context/twins survive authenticated reload; collective uses same-parent session IDs; legacy operator panels remain available only on explicitly sessionless surfaces."),
+            ("Keep promotion honest", "Offer twin promotion as a non-mutating preview until graph ownership and an owner-scoped promotion transaction exist.", "The response labels preview_non_mutating; no graph edge is written, and the next sprint starts at owner-scoped graph persistence rather than mistaking a preview for promotion."),
+        ],
+        "out": "No claim of owner-scoped graph promotion, shared workspace ACLs, arbitrary cross-asset twin merging, provider dispatch, or automatic parent mutation.",
+        "gates": "uv run pytest -q tests/test_engagement_routes.py tests/test_floating_session.py tests/test_floating_session_context_bridge.py tests/test_session_context_flywheel.py; uv run mypy --strict substrate/engagement_spine/*.py interfaces/research/api/engagement_routes.py; npm --prefix apps/reading run typecheck; npm --prefix apps/reading run build; npx --prefix apps/reading vitest run <targeted engagement suites>; hardenx --strict --no-color .",
+        "rigor": {
+            "1 · Intellectual honesty": "Session-scoped twin promotion is preview-only because the graph substrate is not owner-namespaced. The UI and API must not imply that preview results were persisted.",
+            "2 · Fairness": "Legacy operator routes remain for local workflows, but authenticated session windows do not inherit their global identifier authority. Existing local users keep a path while multi-user users gain isolation.",
+            "3 · Rigor": "Test Alice and Bob with identical logical asset IDs through attach, hydrate, progress, twin, evidence, context search, and foreign-session 404 behavior; test atomic mutations rather than only endpoint shapes.",
+            "4 · Diligence": "Thread owner_id through the canonical functions and use store mutation callbacks. Do not clone engagement behavior inside route handlers or React panels.",
+            "5 · Defensibility": "Collective authority is a list of owner-resolved session IDs sharing a parent. Recent global spawn rings and arbitrary client-supplied spawn IDs are not authorization evidence.",
+        },
+        "pattern": "adversarial-verification",
+        "lenses": "owner confusion and foreign logical-ID collision; lost updates in compound file mutations; frontend fallback to legacy global routes",
+    },
 ]
 
 
@@ -106,7 +132,7 @@ def sprint_page(row: dict[str, Any]) -> str:
 <section class="block"><h2>Verification gates</h2><pre><code>{esc(row['gates'])}</code></pre><p>Every command must exit 0. Skipped gates are recorded as NOT RUN.</p></section>
 <section class="block"><h2>Handoff packet</h2><pre><code>## {esc(row['id'])} handoff\nStatus: done | partial | blocked\nFiles touched: path:line + reason\nMilestones: exact result per item\nGates: command + exit + count\nAssumptions and rejected alternative\nOpen questions and next-start condition</code></pre></section>
 <section class="block" id="harness-hint" data-harness-pattern="{esc(row['pattern'])}" data-harness-fanout-unit="file-disjoint owner/store/frontend seams" data-harness-verifier-lenses="{esc(row['lenses'])}" data-harness-rounds-floor="1" data-harness-rounds-cap="6"><h2>Execution harness hint</h2><p>{esc(row['lenses'])}</p></section>
-<footer class="spec-footer">{esc(row['id'])} · generated {DATE} · source: active Antiek /goal Cycle 6</footer>"""
+<footer class="spec-footer">{esc(row['id'])} · generated {DATE} · source: active Antiek /goal Cycle 8</footer>"""
     return shell(f"{row['id']} · {row['title']}", body)
 
 
@@ -115,7 +141,7 @@ def index_page() -> str:
         f'<a class="sprint-card" href="sprint-{index:02d}-{row["slug"]}.html"><span class="id">{esc(row["id"])}</span><span class="title">{esc(row["title"])}</span><span class="goal">{esc(row["goal"])}</span><span class="footer"><span class="tag tag--blue">Wave {row["wave"]}</span><span class="tag tag--{"green" if row["status"]=="done" else "yellow"}">{row["status"]}</span></span></a>'
         for index, row in enumerate(SPRINTS, 1)
     )
-    body = f"""<header class="hero"><p class="eyebrow">Master spec · ANT-FSW</p><h1>Floating-session research workstation</h1><p class="tagline">Make every highlight research window reopenable, context-bearing, collectively promptable, and safely mergeable.</p><div class="meta-row"><span class="tag tag--blue">Status: sprint 1 executed · sprint 2 ready</span><span class="tag tag--yellow">Owner: Antiek /infinite</span><span class="tag tag--grey">2 sprints · 2 waves</span></div></header>
+    body = f"""<header class="hero"><p class="eyebrow">Master spec · ANT-FSW</p><h1>Floating-session research workstation</h1><p class="tagline">Make every highlight research window reopenable, context-bearing, collectively promptable, and safely mergeable.</p><div class="meta-row"><span class="tag tag--blue">Status: lifecycle and owner-native parity executed</span><span class="tag tag--yellow">Owner: Antiek /infinite</span><span class="tag tag--grey">3 sprints · 3 waves</span></div></header>
 <section id="spec-lineage" class="block" data-spec-depth="0" data-parent-spec=""><h2>Spec lineage</h2><p>Root spec. No parent and no child specs yet; ownership and browser implementation remain Sprint 2 rather than a decorative subtree.</p><ul class="child-specs"></ul></section>
 <section class="block"><h2>Goal</h2><p>Close the missing API lifecycle over Antiek's existing floating-session substrate, then define the exact ownership, durability, idempotency, and browser work required for a multi-user workstation.</p><h3>Success criteria</h3><ul><li>Session identity maps to one matching spawn/asset/investigation or fails reconciliation.</li><li>Context and collective operations are explicit, bounded, HTML-native, and cross-asset conscious.</li><li>Draft merge leaves parent content unchanged; parent merge requires confirmation plus the exact previewed parent hash and preserves unrelated metadata.</li><li>Future ownership and multi-worker work has executable crash and browser gates.</li></ul></section>
 <section class="block"><h2>Architecture overview</h2><div class="dep-graph">Highlight → FloatingSession → verified Spawn provenance\n             ├→ context pack → HTML / optional prompt\n             ├→ collective unit (cross-asset opt-in)\n             └→ draft preview → confirmed parent merge\nFuture: authenticated owner + CAS/receipt store + browser windowsStore</div><h3>Key invariants</h3><ul><li>No second twin, context, collective, merge, or HTML writer.</li><li>No global session enumeration and no claim of owner isolation until owner columns exist.</li><li>No implicit graph promotion, prompt-body exposure, cross-asset collective, or parent mutation.</li></ul></section>
@@ -123,7 +149,7 @@ def index_page() -> str:
 <section class="block"><h2>Rejected alternatives</h2><table class="spec"><thead><tr><th>Alternative</th><th>Why rejected</th><th>Reconsider if</th></tr></thead><tbody><tr><td>New session/merge service</td><td>Duplicates shipped engagement_spine writers and breaks recursive twin provenance.</td><td>The canonical spine is deliberately retired through a migration.</td></tr><tr><td>Silent cross-asset collective</td><td>A multi-selection mistake can mix unrelated or future foreign-owner context.</td><td>Ownership policy explicitly defines shared workspaces and UI communicates scope.</td></tr><tr><td>Automatic into-parent merge</td><td>Destroys the draft-review boundary the product vision explicitly asks for.</td><td>Never; confirmation may become a richer review transaction, not disappear.</td></tr><tr><td>Claim multi-user readiness on file stores</td><td>Rows lack owners; parent-document CAS is cross-process safe, but session, twin, receipt, and broader mutation coordination is not yet comprehensively multi-process.</td><td>FSW-SPR-02 owner migration and race/crash gates pass.</td></tr></tbody></table></section>
 <section class="block"><h2>Open questions</h2><table class="spec"><tbody><tr><td>Which authenticated workspace owns pre-owner rows?</td><td>Do not guess; operator-supplied migration mapping or quarantine.</td><td>Operator + Sprint 2 executor</td></tr><tr><td>Which browser surface owns window state?</td><td>Extend the shipped windowsStore rather than create another chrome store.</td><td>Frontend implementation archaeology</td></tr></tbody></table></section>
 <section class="block" id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="FSW-SPR-01"><h2>Execution harness hint</h2><p>SPR-01 is a tight existing-writer composition. SPR-02 may fan out owner/store and frontend work only in isolated file scopes, then synthesize behind crash and browser gates.</p></section>
-<footer class="spec-footer">Generated by htmlspec · source: active Antiek /goal Cycle 6 · {DATE}</footer>"""
+<footer class="spec-footer">Generated by htmlspec · source: active Antiek /goal Cycle 8 · {DATE}</footer>"""
     return shell("Floating-session workstation — Master Spec", body, wide=True)
 
 

@@ -73,8 +73,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
   fetchTwinNotes,
+  fetchSessionTwins,
+  previewSessionTwins,
   promoteTwinsToContext,
+  recordSessionTwin,
   recordTwinNote,
+  seedSessionTwins,
   seedTwinNotes,
   type TwinNotesResponse,
   type TwinPromoteContextResponse,
@@ -220,6 +224,7 @@ export function buildTwinDraftHtml(
 export type TwinNotesPanelProps = {
   assetId: string;
   spawnId?: string | null;
+  sessionId?: string | null;
   /** Residual (cq): fetch twin notes on mount. */
   autoLoad?: boolean;
   /**
@@ -255,6 +260,7 @@ export type TwinNotesPanelProps = {
 export function TwinNotesPanel({
   assetId,
   spawnId = null,
+  sessionId = null,
   autoLoad = false,
   autoSeedIfEmpty = false,
   seedTitle = null,
@@ -454,11 +460,14 @@ export function TwinNotesPanel({
     setBusy(true);
     setError(null);
     try {
-      let t = await fetchTwinNotes(assetId, {
-        includeHtml: true,
-        // Residual (le): scope list research_tier when spawn known.
-        spawnId: spawnId,
-      });
+      const session = String(sessionId || "").trim();
+      let t = session
+        ? await fetchSessionTwins(session, true)
+        : await fetchTwinNotes(assetId, {
+            includeHtml: true,
+            // Residual (le): scope list research_tier when spawn known.
+            spawnId: spawnId,
+          });
       if (t.view_format !== "html") {
         throw new Error("twin notes view_format must be html");
       }
@@ -466,14 +475,22 @@ export function TwinNotesPanel({
       // Panel always force_offline — never invents live LLM note_taker content.
       if (autoSeedIfEmpty && (t.note_count ?? 0) === 0) {
         try {
-          const seeded = await seedTwinNotes({
-            asset_id: assetId,
-            title: seedTitle?.trim() || assetId,
-            body_text: seedBodyText?.trim() || "",
-            source_spawn_id: spawnId,
-            include_html: true,
-            force_offline: true,
-          });
+          const seeded = session
+            ? await seedSessionTwins({
+                session_id: session,
+                title: seedTitle?.trim() || assetId,
+                body_text: seedBodyText?.trim() || "",
+                include_html: true,
+                force_offline: true,
+              })
+            : await seedTwinNotes({
+                asset_id: assetId,
+                title: seedTitle?.trim() || assetId,
+                body_text: seedBodyText?.trim() || "",
+                source_spawn_id: spawnId,
+                include_html: true,
+                force_offline: true,
+              });
           if (seeded.view_format !== "html") {
             throw new Error("twin seed view_format must be html");
           }
@@ -519,10 +536,15 @@ export function TwinNotesPanel({
       // Residual (ea): promote seeded/loaded twins into context for prompts.
       if (autoPromoteAfterLoad && (t.note_count ?? 0) > 0) {
         try {
-          const p = await promoteTwinsToContext({
-            asset_id: assetId,
-            include_html: true,
-          });
+          const p = session
+            ? await previewSessionTwins({
+                session_id: session,
+                include_html: true,
+              })
+            : await promoteTwinsToContext({
+                asset_id: assetId,
+                include_html: true,
+              });
           if (p.view_format !== "html") {
             throw new Error("twin promote view_format must be html");
           }
@@ -550,6 +572,7 @@ export function TwinNotesPanel({
     seedTitle,
     seedBodyText,
     spawnId,
+    sessionId,
     autoPromoteAfterLoad,
     onPromoted,
   ]);
@@ -566,13 +589,21 @@ export function TwinNotesPanel({
     setBusy(true);
     setError(null);
     try {
-      const t = await recordTwinNote({
-        asset_id: assetId,
-        kind,
-        text: text.trim(),
-        source_spawn_id: spawnId,
-        include_html: true,
-      });
+      const session = String(sessionId || "").trim();
+      const t = session
+        ? await recordSessionTwin({
+            session_id: session,
+            kind,
+            text: text.trim(),
+            include_html: true,
+          })
+        : await recordTwinNote({
+            asset_id: assetId,
+            kind,
+            text: text.trim(),
+            source_spawn_id: spawnId,
+            include_html: true,
+          });
       if (t.view_format !== "html") {
         throw new Error("twin notes view_format must be html");
       }
@@ -583,7 +614,7 @@ export function TwinNotesPanel({
     } finally {
       setBusy(false);
     }
-  }, [assetId, kind, text, spawnId]);
+  }, [assetId, kind, text, sessionId, spawnId]);
 
   /** Residual (mr): notes visible under list filter. */
   const visibleNotes = useMemo(() => {
@@ -675,12 +706,20 @@ export function TwinNotesPanel({
               : null;
         const note_ids =
           fromOverride && fromOverride.length > 0 ? fromOverride : null;
-        const p = await promoteTwinsToContext({
-          asset_id: assetId,
-          include_html: true,
-          kinds,
-          note_ids,
-        });
+        const session = String(sessionId || "").trim();
+        const p = session
+          ? await previewSessionTwins({
+              session_id: session,
+              include_html: true,
+              kinds,
+              note_ids,
+            })
+          : await promoteTwinsToContext({
+              asset_id: assetId,
+              include_html: true,
+              kinds,
+              note_ids,
+            });
         if (p.view_format !== "html") {
           throw new Error("twin promote view_format must be html");
         }
@@ -709,7 +748,7 @@ export function TwinNotesPanel({
         setBusy(false);
       }
     },
-    [assetId, onPromoted, promoteKinds, selectedNoteIds],
+    [assetId, onPromoted, promoteKinds, selectedNoteIds, sessionId],
   );
 
   /** Residual (ms): promote using current list filter (browse→merge). */

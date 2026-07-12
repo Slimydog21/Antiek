@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Make the remaining engagement capabilities owner-native across stores, session APIs, and browser controls so authenticated research windows retain publication attach, progress, evidence, recursive context, and collective work without reopening global legacy authority.
+Make twin insight/question promotion owner-scoped, idempotent, and explicitly confirmed so the knowledge graph can accept research-session intelligence without cross-account leakage or pretending a preview mutated durable graph state.
 
 ## Derivation trail
 
@@ -15,3 +15,4 @@ Make the remaining engagement capabilities owner-native across stores, session A
 - FSW-SPR-02 is therefore the narrowest high-leverage bridge from shipped substrate to the user's daily reading/research workstation; broader account-scoping and full collective/merge browser E2E remain explicit follow-ons.
 - Cycle 7 delivered owner-bound sessions/twins/documents, recoverable merge receipts, server-authoritative window mode, reload rehydration, and visible draft→confirmed merge; operator-only legacy routes now prevent bypass.
 - The next load-bearing seam is capability parity: non-operator windows must use owner-native attach/progress/evidence/context/collective paths backed by store-enforced authority rather than losing those tools or reopening global IDs.
+- Cycle 8 closed that capability seam and hardened browser identity on auth changes, complete-only merge authority, and mutation honesty. The remaining deliberate preview is now the narrowest blocker to the user's recursive knowledge graph: graph promotion itself lacks owner namespace and confirmed transaction semantics.
