@@ -10,7 +10,7 @@ import re
 import uuid
 from dataclasses import dataclass
 from html.parser import HTMLParser
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -36,6 +36,7 @@ _DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _MAX_LINES = 10_000
 _MAX_TRANSCRIPT_BYTES = 8 * 1024 * 1024
+_RECOVERY_STALE_SECONDS = 15 * 60
 
 
 class MultimediaKnowledgeRegistrationError(RuntimeError):
@@ -55,6 +56,13 @@ class MultimediaTwinResult(_Model):
     question_node_ids: tuple[str, ...]
     twin_html: str
     twin_html_sha256: str = Field(pattern=_DIGEST.pattern)
+
+
+class MultimediaDistillationState(_Model):
+    state: Literal["not_started", "in_progress", "completed", "integrity_conflict"]
+    recovery_eligible: bool
+    recovery_stale_seconds: int = _RECOVERY_STALE_SECONDS
+    claim_started_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -203,6 +211,7 @@ async def register_multimedia_with_twin(
     distiller: Distiller,
     events_dir: str | None = None,
     embedding_provider: Any = None,
+    distillation_recovery_token: str | None = None,
 ) -> MultimediaTwinResult:
     registrar = CanonicalMultimediaKnowledgeRegistrar(
         db_path=db_path, owner_id=owner_id, events_dir=events_dir
@@ -231,6 +240,7 @@ async def register_multimedia_with_twin(
         source_event_id=source_event_id,
         transcript=transcript,
         distiller=distiller,
+        recovery_token=distillation_recovery_token,
     )
     connection = connect_write(db_path, purpose="multimedia_twin_promote")
     try:
@@ -301,10 +311,19 @@ async def _checkpoint_distillation(
     source_event_id: str,
     transcript: str,
     distiller: Distiller,
+    recovery_token: str | None = None,
 ) -> Distillation:
-    run_id = f"mm-run-{hashlib.sha256(f'{owner_id}:{source_document_id}'.encode()).hexdigest()[:24]}"
+    run_id = _run_id(owner_id, source_document_id)
     row = _checkpoint_row(db_path, run_id)
     if row is not None:
+        _verify_completed_claim(
+            db_path,
+            run_id,
+            owner_id,
+            source_document_id,
+            asset.html_sha256,
+            source_event_id,
+        )
         return _decode_checkpoint(row, owner_id, source_document_id, asset, source_event_id)
 
     claim_token = uuid.uuid4().hex
@@ -317,35 +336,59 @@ async def _checkpoint_distillation(
             "FROM multimedia_twin_runs WHERE run_id=?",
             [run_id],
         ).fetchone()
+        if row is not None:
+            claim = connection.execute(
+                "SELECT owner_user_id, source_document_id, source_html_sha256, "
+                "source_event_id, status FROM multimedia_distillation_claims WHERE run_id=?",
+                [run_id],
+            ).fetchone()
+            _validate_completed_claim(
+                claim,
+                owner_id,
+                source_document_id,
+                asset.html_sha256,
+                source_event_id,
+            )
         if row is None:
             claim = connection.execute(
                 "SELECT owner_user_id, source_document_id, source_html_sha256, "
-                "source_event_id FROM multimedia_distillation_claims WHERE run_id=?",
+                "source_event_id, claim_token, status "
+                "FROM multimedia_distillation_claims WHERE run_id=?",
                 [run_id],
             ).fetchone()
             if claim is not None:
                 expected = (owner_id, source_document_id, asset.html_sha256, source_event_id)
-                if tuple(claim) != expected:
+                if tuple(claim[:4]) != expected:
                     raise MultimediaKnowledgeRegistrationError(
                         "multimedia distillation claim conflicts"
                     )
+                if recovery_token is None or tuple(claim[4:]) != (
+                    recovery_token,
+                    "in_progress",
+                ):
+                    raise MultimediaKnowledgeRegistrationError(
+                        "multimedia distillation outcome requires recovery"
+                    )
+                claim_token = recovery_token
+            elif recovery_token is not None:
                 raise MultimediaKnowledgeRegistrationError(
-                    "multimedia distillation outcome requires recovery"
+                    "multimedia distillation recovery authority conflicts"
                 )
-            connection.execute(
-                "INSERT INTO multimedia_distillation_claims "
-                "(run_id, owner_user_id, source_document_id, source_html_sha256, "
-                "source_event_id, claim_token, status) "
-                "VALUES (?, ?, ?, ?, ?, ?, 'in_progress')",
-                [
-                    run_id,
-                    owner_id,
-                    source_document_id,
-                    asset.html_sha256,
-                    source_event_id,
-                    claim_token,
-                ],
-            )
+            else:
+                connection.execute(
+                    "INSERT INTO multimedia_distillation_claims "
+                    "(run_id, owner_user_id, source_document_id, source_html_sha256, "
+                    "source_event_id, claim_token, status) "
+                    "VALUES (?, ?, ?, ?, ?, ?, 'in_progress')",
+                    [
+                        run_id,
+                        owner_id,
+                        source_document_id,
+                        asset.html_sha256,
+                        source_event_id,
+                        claim_token,
+                    ],
+                )
         connection.execute("COMMIT")
     except Exception:
         connection.execute("ROLLBACK")
@@ -405,6 +448,206 @@ def _checkpoint_row(db_path: str, run_id: str) -> Any:
             "FROM multimedia_twin_runs WHERE run_id=?",
             [run_id],
         ).fetchone()
+
+
+def _verify_completed_claim(
+    db_path: str,
+    run_id: str,
+    owner_id: str,
+    source_document_id: str,
+    source_html_sha256: str,
+    source_event_id: str,
+) -> None:
+    with connect_read(db_path) as connection:
+        claim = connection.execute(
+            "SELECT owner_user_id, source_document_id, source_html_sha256, "
+            "source_event_id, status FROM multimedia_distillation_claims WHERE run_id=?",
+            [run_id],
+        ).fetchone()
+    _validate_completed_claim(
+        claim,
+        owner_id,
+        source_document_id,
+        source_html_sha256,
+        source_event_id,
+    )
+
+
+def _validate_completed_claim(
+    claim: Any,
+    owner_id: str,
+    source_document_id: str,
+    source_html_sha256: str,
+    source_event_id: str,
+) -> None:
+    expected = (
+        owner_id,
+        source_document_id,
+        source_html_sha256,
+        source_event_id,
+        "completed",
+    )
+    if claim is None or tuple(claim) != expected:
+        raise MultimediaKnowledgeRegistrationError(
+            "multimedia distillation completed claim conflicts"
+        )
+
+
+def get_multimedia_distillation_state(
+    asset: MultimediaInformationAsset,
+    *,
+    db_path: str,
+    owner_id: str,
+) -> MultimediaDistillationState:
+    owner = _owner(owner_id)
+    owner_digest = hashlib.sha256(owner.encode()).hexdigest()
+    _validate_and_parse(asset, owner_digest)
+    source_document_id, _, _ = _identities(asset)
+    run_id = _run_id(owner, source_document_id)
+    with connect_read(db_path) as connection:
+        checkpoint = connection.execute(
+            "SELECT owner_user_id, source_document_id, source_html_sha256, "
+            "source_event_id, distillation_json, distillation_sha256 "
+            "FROM multimedia_twin_runs WHERE run_id=?",
+            [run_id],
+        ).fetchone()
+        claim = connection.execute(
+            "SELECT owner_user_id, source_document_id, source_html_sha256, "
+            "source_event_id, status, CAST(created_at AS VARCHAR), "
+            "created_at <= CURRENT_TIMESTAMP - INTERVAL '15 minutes' "
+            "FROM multimedia_distillation_claims WHERE run_id=?",
+            [run_id],
+        ).fetchone()
+        if checkpoint is not None:
+            if claim is None or tuple(claim[:3]) != (
+                owner,
+                source_document_id,
+                asset.html_sha256,
+            ) or claim[4] != "completed":
+                return MultimediaDistillationState(
+                    state="integrity_conflict", recovery_eligible=False
+                )
+            try:
+                _decode_checkpoint(
+                    checkpoint,
+                    owner,
+                    source_document_id,
+                    asset,
+                    str(claim[3]),
+                )
+            except MultimediaKnowledgeRegistrationError:
+                return MultimediaDistillationState(
+                    state="integrity_conflict",
+                    recovery_eligible=claim[4] == "completed",
+                    claim_started_at=str(claim[5]),
+                )
+            return MultimediaDistillationState(
+                state="completed", recovery_eligible=False
+            )
+    if claim is None:
+        return MultimediaDistillationState(state="not_started", recovery_eligible=False)
+    if tuple(claim[:3]) != (owner, source_document_id, asset.html_sha256) or claim[4] != "in_progress":
+        raise MultimediaKnowledgeRegistrationError("multimedia distillation claim conflicts")
+    return MultimediaDistillationState(
+        state="in_progress",
+        claim_started_at=str(claim[5]),
+        recovery_eligible=bool(claim[6]),
+    )
+
+
+def authorize_multimedia_distillation_recovery(
+    asset: MultimediaInformationAsset,
+    *,
+    db_path: str,
+    owner_id: str,
+) -> str:
+    owner = _owner(owner_id)
+    owner_digest = hashlib.sha256(owner.encode()).hexdigest()
+    _validate_and_parse(asset, owner_digest)
+    source_document_id, _, _ = _identities(asset)
+    run_id = _run_id(owner, source_document_id)
+    new_token = uuid.uuid4().hex
+    connection = connect_write(db_path, purpose="multimedia_distillation_recovery")
+    try:
+        connection.execute("BEGIN")
+        checkpoint = connection.execute(
+            "SELECT owner_user_id, source_document_id, source_html_sha256, "
+            "source_event_id, distillation_json, distillation_sha256 "
+            "FROM multimedia_twin_runs WHERE run_id=?",
+            [run_id],
+        ).fetchone()
+        claim = connection.execute(
+            "SELECT owner_user_id, source_document_id, source_html_sha256, "
+            "source_event_id, claim_token, status, "
+            "created_at <= CURRENT_TIMESTAMP - INTERVAL '15 minutes' "
+            "FROM multimedia_distillation_claims WHERE run_id=?",
+            [run_id],
+        ).fetchone()
+        if claim is None:
+            raise MultimediaKnowledgeRegistrationError(
+                "multimedia distillation recovery is unavailable"
+            )
+        expected = (owner, source_document_id, asset.html_sha256)
+        if tuple(claim[:3]) != expected:
+            raise MultimediaKnowledgeRegistrationError(
+                "multimedia distillation claim conflicts"
+            )
+        checkpoint_corrupt = False
+        if checkpoint is not None:
+            try:
+                _decode_checkpoint(
+                    checkpoint,
+                    owner,
+                    source_document_id,
+                    asset,
+                    str(claim[3]),
+                )
+            except MultimediaKnowledgeRegistrationError:
+                checkpoint_corrupt = True
+            else:
+                raise MultimediaKnowledgeRegistrationError(
+                    "multimedia distillation is already completed"
+                )
+        if checkpoint_corrupt:
+            if claim[5] != "completed":
+                raise MultimediaKnowledgeRegistrationError(
+                    "multimedia distillation claim conflicts"
+                )
+            connection.execute("DELETE FROM multimedia_twin_runs WHERE run_id=?", [run_id])
+        elif claim[5] != "in_progress":
+            raise MultimediaKnowledgeRegistrationError(
+                "multimedia distillation claim conflicts"
+            )
+        elif not bool(claim[6]):
+            raise MultimediaKnowledgeRegistrationError(
+                "multimedia distillation claim is not stale"
+            )
+        old_token = claim[4]
+        connection.execute(
+            "UPDATE multimedia_distillation_claims SET claim_token=?, "
+            "status='in_progress', created_at=CURRENT_TIMESTAMP, completed_at=NULL "
+            "WHERE run_id=? AND claim_token=?",
+            [new_token, run_id, old_token],
+        )
+        rotated = connection.execute(
+            "SELECT claim_token FROM multimedia_distillation_claims WHERE run_id=?",
+            [run_id],
+        ).fetchone()
+        if rotated != (new_token,):
+            raise MultimediaKnowledgeRegistrationError(
+                "multimedia distillation recovery authority conflicts"
+            )
+        connection.execute("COMMIT")
+    except Exception:
+        connection.execute("ROLLBACK")
+        raise
+    finally:
+        connection.close()
+    return new_token
+
+
+def _run_id(owner_id: str, source_document_id: str) -> str:
+    return f"mm-run-{hashlib.sha256(f'{owner_id}:{source_document_id}'.encode()).hexdigest()[:24]}"
 
 
 def _encode_distillation(value: Distillation) -> str:

@@ -33,12 +33,19 @@ from .knowledge_finalization import (
     MultimediaKnowledgeFinalizationError,
     MultimediaKnowledgeFinalizationRequest,
     MultimediaKnowledgeFinalizationResponse,
+    MultimediaKnowledgeFinalizationStatus,
+    MultimediaKnowledgeRecoveryRequest,
     finalize_multimedia_knowledge,
+    inspect_multimedia_knowledge_finalization,
+    recover_multimedia_knowledge_finalization,
 )
 from .knowledge_registration import (
     CanonicalMultimediaKnowledgeRegistrar,
+    MultimediaDistillationState,
     MultimediaKnowledgeRegistrationError,
     MultimediaTwinResult,
+    authorize_multimedia_distillation_recovery,
+    get_multimedia_distillation_state,
     register_multimedia_with_twin,
 )
 from .narration import (
@@ -196,7 +203,14 @@ __all__ = [
     "MultimediaKnowledgeFinalizationError",
     "MultimediaKnowledgeFinalizationRequest",
     "MultimediaKnowledgeFinalizationResponse",
+    "MultimediaKnowledgeFinalizationStatus",
+    "MultimediaKnowledgeRecoveryRequest",
     "finalize_multimedia_knowledge",
+    "inspect_multimedia_knowledge_finalization",
+    "recover_multimedia_knowledge_finalization",
+    "MultimediaDistillationState",
+    "authorize_multimedia_distillation_recovery",
+    "get_multimedia_distillation_state",
     # SPR-09 API persistence/read-model
     "CreateMultimediaDraftRequest",
     "MultimediaAssetList",

@@ -18,7 +18,11 @@ from substrate.multimedia.knowledge_finalization import (
     MultimediaKnowledgeFinalizationError,
     MultimediaKnowledgeFinalizationRequest,
     MultimediaKnowledgeFinalizationResponse,
+    MultimediaKnowledgeFinalizationStatus,
+    MultimediaKnowledgeRecoveryRequest,
     finalize_multimedia_knowledge,
+    inspect_multimedia_knowledge_finalization,
+    recover_multimedia_knowledge_finalization,
 )
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
@@ -161,6 +165,53 @@ async def finalize_multimedia_asset_knowledge(
 ) -> MultimediaKnowledgeFinalizationResponse:
     try:
         return await finalize_multimedia_knowledge(
+            asset_id,
+            request,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+            distiller_factory=runtime.distiller_factory,
+            events_dir=runtime.events_dir,
+            embedding_provider=runtime.embedding_provider,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@multimedia_router.get(
+    "/assets/{asset_id}/knowledge-finalization",
+    response_model=MultimediaKnowledgeFinalizationStatus,
+)
+def get_multimedia_asset_knowledge_finalization(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaKnowledgeFinalizationStatus:
+    try:
+        return inspect_multimedia_knowledge_finalization(
+            asset_id,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@multimedia_router.post(
+    "/assets/{asset_id}/recover-knowledge-finalization",
+    response_model=MultimediaKnowledgeFinalizationResponse,
+)
+async def recover_multimedia_asset_knowledge_finalization(
+    asset_id: str,
+    request: MultimediaKnowledgeRecoveryRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaKnowledgeFinalizationResponse:
+    try:
+        return await recover_multimedia_knowledge_finalization(
             asset_id,
             request,
             owner_id=operator_id,
