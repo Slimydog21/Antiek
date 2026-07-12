@@ -1,6 +1,4 @@
-"""Fullscreen-open residual (mpk FS-255) over draft-before-merge collective mpack tip (pure).
-
-Dual of c937 TS Mpack; parent draft is c936 mpack tip.
+"""Fullscreen-open over draft-before-merge collective MO weekly src write floating DR (pure).
 
 live_dispatched / merge_executed / draft_written always False.
 pack_dispatched / analysis_written / record_persisted always False.
@@ -12,10 +10,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from substrate.draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mpack_compose import (
-    DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwMpackCompose,
-    DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwMpackComposeError,
-    compose_draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mpack,
+from substrate.draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mw_mpk_compose import (
+    DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwPackCompose,
+    DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwPackComposeError,
+    compose_draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mw_pack,
 )
 from substrate.floating_fullscreen_open_compose import (
     FloatingFullscreenOpenCompose,
@@ -37,7 +35,7 @@ class FullscreenOpenDraftBeforeMergeCollectiveMoWeeklySrcWriteMoWeeklySrcWriteMo
     title: str
     account_id: str
     fullscreen: FloatingFullscreenOpenCompose
-    draft_pack: DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwMpackCompose
+    draft_pack: DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwPackCompose
     session_aligned: bool
     parent_aligned: bool
     pack_ready: bool
@@ -173,13 +171,13 @@ def compose_fullscreen_open_draft_before_merge_collective_mo_weekly_src_write_mo
     notes.extend(f"[fullscreen] {n}" for n in fs.notes)
 
     try:
-        dp = compose_draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mpack(
+        dp = compose_draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mw_pack(
             draft_gate=draft_pack.get("draft_gate"),
             collective_pack=draft_pack.get("collective_pack"),
             operator_ack=operator_ack,
             require_both=draft_pack.get("require_both"),
         )
-    except DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwMpackComposeError as e:
+    except DraftBeforeMergeCollectiveFloatingDrMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMwPackComposeError as e:
         raise FullscreenOpenDraftBeforeMergeCollectiveMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMoWeeklySrcWriteMpkComposeError(
             str(e)
         ) from e

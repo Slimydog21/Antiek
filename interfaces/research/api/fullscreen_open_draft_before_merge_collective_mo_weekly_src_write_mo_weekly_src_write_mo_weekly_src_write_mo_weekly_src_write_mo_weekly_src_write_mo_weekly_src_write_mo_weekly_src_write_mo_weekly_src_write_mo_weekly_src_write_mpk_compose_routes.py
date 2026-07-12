@@ -1,4 +1,4 @@
-"""Registerable HTTP surface for fullscreen residual mpk over draft-before-merge mpack tip."""
+"""Registerable HTTP surface for fullscreen + draft-before-merge collective MO weekly src write pack."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from typing import Any
 from fastapi import APIRouter, FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
-from interfaces.research.api.draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mpack_compose_routes import (
+from interfaces.research.api.draft_before_merge_collective_floating_dr_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mo_weekly_src_write_mw_mpk_compose_routes import (
     CollectivePackBody,
     DraftGateBody,
 )

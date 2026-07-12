@@ -1,4 +1,4 @@
-"""Route tests for fullscreen residual mpk over draft-before-merge mpack tip."""
+"""Route tests for fullscreen + draft-before-merge collective MO weekly src write pack."""
 
 from __future__ import annotations
 
