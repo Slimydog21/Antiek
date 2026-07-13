@@ -310,6 +310,17 @@ def _server_catalog() -> tuple[CostCatalogEntry, ...]:
     never_stale = datetime.max.replace(tzinfo=UTC)
     local_entries = (
         CostCatalogEntry(
+            seam_id="cascade.operator.spend_approval",
+            provider="antiek",
+            model="operator-authority",
+            operation="approve",
+            rates=(UnitRate(BillingUnit.LOCAL_OPERATION, Decimal(0)),),
+            snapshot="antiek-local-v1",
+            expires_at=never_stale,
+            paid_service=False,
+            assumptions=("operator approval is recorded locally and has no provider charge",),
+        ),
+        CostCatalogEntry(
             seam_id="cascade.session.launch",
             provider="antiek",
             model="host-local",

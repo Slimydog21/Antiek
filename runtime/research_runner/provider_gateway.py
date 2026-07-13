@@ -40,6 +40,7 @@ Projector = Callable[[CostProjectionRequest], CostProjection]
 # keys to dispatch_inventory.json so a newly reachable call cannot land without
 # an explicit gateway or fail-closed decision.
 HARD_MODE_DISPATCH_POLICY: Mapping[str, str] = {
+    "cascade.operator.spend_approval": "zero_cost_receipt",
     "cascade.session.launch": "zero_cost_receipt",
     "cascade.plan.decomposer": "refused_before_dispatch",
     "cascade.gather.contract_stub": "zero_cost_receipt",
