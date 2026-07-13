@@ -18,6 +18,7 @@
  */
 import "./iceFishing";
 import "./researchLens";
+import "./writingNib";
 
 export {
   registerActivity,
@@ -27,10 +28,8 @@ export {
 } from "./registry";
 export { iceFishingActivity } from "./iceFishing";
 export { researchLensActivity } from "./researchLens";
-export {
-  activityIdForPathname,
-  getActivityForPathname,
-} from "./selection";
+export { writingNibActivity } from "./writingNib";
+export { activityIdForPathname, getActivityForPathname } from "./selection";
 export type {
   ActivityId,
   ActivityUnlock,
