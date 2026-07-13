@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Specify and execute FSW-SPR-11B-D: an exact local owner-private excerpt reader, exact byte-and-role private-provider matcher, last-moment capability/revocation proof, and publication receipt v4, while consent, queue delivery, provider dispatch, and every output sink remain fail-closed until the downstream taint boundary exists.
+Continue FSW-SPR-11B-E by implementing the frozen OverlapCheckerV1 and atomic encrypted compliance checkpoint on top of the accepted fixture-only capability-v2/request-core/receipt-v5/envelope-v2 authority chain; production transport and every generic/public/export/training sink remain fail-closed.
 
 ## Derivation trail
 
@@ -25,3 +25,5 @@ Specify and execute FSW-SPR-11B-D: an exact local owner-private excerpt reader, 
 - Cycles 15–21 connected cohesive sessions to signed Midnight Oil execution, owner-safe terminal effects, reviewed publication scope, attested arXiv egress, owner-selected Substack excerpt authority, manifest v2, and a non-conferring mixed-source readiness projection.
 - Cycles 22–24 froze the private-provider capability/output policy, composed rollback-safe live revocation state, and propagated a canonical non-conferring owner-private carrier through context v2, JobConsentConfig v6, durable owner authority, prospective queue commitment, and pre-CAS worker denial.
 - Commit `416fa7aa2` closed 11B-C with 552 broad Midnight Oil tests, strict static gates, hardenx LOW/0 real, and three independent ACCEPT verdicts. The next load-bearing seam is 11B-D: prove exact local bytes and role-specific dispatch eligibility without yet making any provider or sink reachable.
+- Commit `42751afb6` closed 11B-D with 620 broad Midnight Oil passes, one deliberately strict admission-race xfail, strict static gates, hardenx LOW/0 real, and three independent ACCEPT verdicts. The next load-bearing seam is 11B-E: define compliant owner-private output handling before any production transport can exist.
+- Cycle 26 authored and sharpened the complete 11B-E HTML spec, froze Unicode/checker/parser/renderer/AEAD/policy identities and a 69-vector adversarial corpus, and implemented a fixture-only live-revoked capability-v2 → exact request-core-v2 → receipt-v5 → prepared-envelope-v2 chain with a separately signed zero-source planner prompt authority. Production remains mechanically unreachable; the next slice is the executable checker and atomic encrypted PASS checkpoint.
