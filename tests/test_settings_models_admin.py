@@ -95,6 +95,7 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
     row = next(
         m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek"
     )
+    assert row["registered"] is True
     assert row["ready"] is False
     assert row["tier_bindings"] == []
     assert row["notes"] == "registered, but not bound to an active dispatch tier"

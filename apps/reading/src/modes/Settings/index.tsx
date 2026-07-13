@@ -230,7 +230,7 @@ export default function Settings() {
                           : "text-amber-700 dark:text-amber-300"
                       }
                     >
-                      {m.ready ? "ready" : "not registered"}
+                      {m.ready ? "ready" : m.registered ? "registered" : "not registered"}
                     </span>
                     {m.tier_bindings.length > 0 && (
                       <span className="w-full text-[11px] text-ink-soft dark:text-starlight">

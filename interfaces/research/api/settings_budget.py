@@ -50,6 +50,7 @@ _MAX_FALLBACK_DEPTH = 16
 
 class ModelRow(BaseModel):
     provider_id: str
+    registered: bool
     ready: bool
     tier_bindings: list[str] = Field(default_factory=list)
     primary_model: str | None = None
@@ -597,6 +598,7 @@ def get_settings_models(request: Request) -> ModelsResponse:
         rows.append(
             ModelRow(
                 provider_id=pid,
+                registered=provider_registered,
                 ready=is_ready,
                 tier_bindings=provider_bindings,
                 primary_model=_primary_model_for_provider(cfg, pid),
