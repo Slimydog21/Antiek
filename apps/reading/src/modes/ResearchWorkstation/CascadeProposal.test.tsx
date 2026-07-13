@@ -25,12 +25,16 @@ const {
   approvePlanMock,
   launchPlanMock,
   getBudgetDefaultsMock,
+  getPlanMock,
+  getSessionMock,
 } = vi.hoisted(() => ({
   createPlanMock: vi.fn(),
   editPlanMock: vi.fn(),
   approvePlanMock: vi.fn(),
   launchPlanMock: vi.fn(),
   getBudgetDefaultsMock: vi.fn(),
+  getPlanMock: vi.fn(),
+  getSessionMock: vi.fn(),
 }));
 
 vi.mock("../../api/research", async (orig) => {
@@ -42,6 +46,8 @@ vi.mock("../../api/research", async (orig) => {
     approvePlan: approvePlanMock,
     launchPlan: launchPlanMock,
     getBudgetDefaults: getBudgetDefaultsMock,
+    getPlan: getPlanMock,
+    getSession: getSessionMock,
   };
 });
 
@@ -85,6 +91,8 @@ beforeEach(() => {
   approvePlanMock.mockReset();
   launchPlanMock.mockReset();
   getBudgetDefaultsMock.mockReset();
+  getPlanMock.mockReset();
+  getSessionMock.mockReset();
   getBudgetDefaultsMock.mockResolvedValue({ per_research_cost_usd: 0.5, per_research_max_steps: 50 });
 });
 afterEach(() => cleanup());
@@ -119,8 +127,9 @@ describe("CascadeProposal — propose the sub-question tree (M1)", () => {
   it("shows the real budget estimate read from the contract, not a hardcoded number", async () => {
     createPlanMock.mockResolvedValue(CREATE_RESP);
     renderProposal();
-    // 3 sub-questions × $0.50 default per-research cap = up to $1.50.
-    expect(await screen.findByText(/estimated up to \$1\.50 for 3 researches/i)).toBeTruthy();
+    // 3 sub-questions × $0.50 default per-research limit = a recommended $1.50 stop limit.
+    expect(await screen.findByText(/recommended \$1\.50 stop limit for 3 researches/i)).toBeTruthy();
+    expect(screen.getByText(/final in-flight steps can exceed it/i)).toBeTruthy();
   });
 
   it("counts and renders the leaves the backend launches, not just the top level", async () => {
@@ -174,6 +183,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     editPlanMock.mockResolvedValue(reduced);
     renderProposal();
     await screen.findByText(/chokepoints replace oil/i);
+    fireEvent.click(screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }));
     // Remove the third sub-question.
     fireEvent.click(screen.getAllByRole("button", { name: "remove" })[2]);
     await waitFor(() =>
@@ -183,6 +193,77 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
       ),
     );
     await waitFor(() => expect(screen.queryByText(/chokepoints replace oil/i)).toBeNull());
+    const revisedApproval = screen.getByRole("checkbox", { name: /approve a \$1\.00 aggregate stop limit/i });
+    expect((revisedApproval as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("button", { name: /Start 2 researches/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("revokes approval while an edit is in flight so the stale tree cannot launch", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    let resolveEdit!: (value: PlanResponse) => void;
+    editPlanMock.mockReturnValue(
+      new Promise<PlanResponse>((resolve) => {
+        resolveEdit = resolve;
+      }),
+    );
+    renderProposal();
+    const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    const approval = screen.getByRole("checkbox", {
+      name: /approve a \$1\.50 aggregate stop limit/i,
+    });
+    fireEvent.click(approval);
+    expect((launch as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "remove" })[2]);
+    expect((approval as HTMLInputElement).checked).toBe(false);
+    expect((approval as HTMLInputElement).disabled).toBe(true);
+    expect((launch as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(launch);
+    expect(approvePlanMock).not.toHaveBeenCalled();
+    expect(launchPlanMock).not.toHaveBeenCalled();
+
+    resolveEdit({
+      root_node_id: "q-pn-root",
+      tree: { ...TREE, root: { ...TREE.root, children: TREE.root.children.slice(0, 2) } },
+      launchable: false,
+    });
+    await screen.findByRole("button", { name: /Start 2 researches/i });
+    expect(
+      (screen.getByRole("checkbox", {
+        name: /approve a \$1\.00 aggregate stop limit/i,
+      }) as HTMLInputElement).checked,
+    ).toBe(false);
+  });
+
+  it("fails closed when an edit response is lost instead of launching a stale visible tree", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    editPlanMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    renderProposal();
+    await screen.findByText(/chokepoints replace oil/i);
+    fireEvent.click(screen.getAllByRole("button", { name: "remove" })[2]);
+
+    expect(await screen.findByText(/Couldn’t update the research plan/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Start 3 researches/i })).toBeNull();
+    expect(approvePlanMock).not.toHaveBeenCalled();
+    expect(launchPlanMock).not.toHaveBeenCalled();
+  });
+
+  it("reloads authoritative plan state after an ambiguous edit failure", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    editPlanMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    getPlanMock.mockResolvedValue({
+      root_node_id: "q-pn-root",
+      tree: { ...TREE, root: { ...TREE.root, children: TREE.root.children.slice(0, 2) } },
+      launchable: false,
+    });
+    renderProposal();
+    await screen.findByText(/chokepoints replace oil/i);
+    fireEvent.click(screen.getAllByRole("button", { name: "remove" })[2]);
+    fireEvent.click(await screen.findByRole("button", { name: "Reload plan" }));
+
+    expect(await screen.findByRole("button", { name: /Start 2 researches/i })).toBeTruthy();
+    expect(getPlanMock).toHaveBeenCalledWith("q-pn-root");
+    expect(screen.queryByText(/chokepoints replace oil/i)).toBeNull();
   });
 
   it("launch approves then launches the plan and hands back the session", async () => {
@@ -199,10 +280,136 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     });
     const { onLaunched } = renderProposal();
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    expect((launch as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }));
     fireEvent.click(launch);
     await waitFor(() => expect(approvePlanMock).toHaveBeenCalledWith("q-pn-root"));
-    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root"));
+    await waitFor(() =>
+      expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root", {
+        aggregate_budget_usd: 1.5,
+      }),
+    );
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("session-q-pn-root"));
+  });
+
+  it("freezes plan and budget controls while approval and launch are in flight", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    let resolveApproval!: (value: unknown) => void;
+    approvePlanMock.mockReturnValue(
+      new Promise((resolve) => {
+        resolveApproval = resolve;
+      }),
+    );
+    launchPlanMock.mockResolvedValue({
+      session_id: "session-q-pn-root",
+      researches: [],
+      aggregate_cap_usd: 1.5,
+    });
+    renderProposal();
+    const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+    );
+    fireEvent.click(launch);
+
+    expect(await screen.findByRole("button", { name: "Starting…" })).toBeTruthy();
+    expect((screen.getAllByRole("button", { name: "edit" })[0] as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getAllByRole("button", { name: "remove" })[0] as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("spinbutton", { name: "Aggregate stop limit" }) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: /Ask one question instead/i }) as HTMLButtonElement).disabled).toBe(true);
+    expect(editPlanMock).not.toHaveBeenCalled();
+
+    resolveApproval({});
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledOnce());
+  });
+
+  it("recovers an existing session after a launch response is lost", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    approvePlanMock.mockResolvedValue({});
+    launchPlanMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    getSessionMock.mockResolvedValue({
+      session_id: "session-q-pn-root",
+      live: true,
+      researches: [],
+    });
+    const { onLaunched } = renderProposal();
+    const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+    );
+    fireEvent.click(launch);
+    fireEvent.click(await screen.findByRole("button", { name: "Check launch status" }));
+
+    await waitFor(() => expect(getSessionMock).toHaveBeenCalledWith("session-q-pn-root"));
+    expect(onLaunched).toHaveBeenCalledWith("session-q-pn-root");
+    expect(createPlanMock).toHaveBeenCalledOnce();
+  });
+
+  it("reloads the plan when approval fails before launch", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    approvePlanMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    getPlanMock.mockResolvedValue({
+      root_node_id: "q-pn-root",
+      tree: TREE,
+      launchable: true,
+    });
+    renderProposal();
+    const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+    );
+    fireEvent.click(launch);
+    fireEvent.click(await screen.findByRole("button", { name: "Reload plan" }));
+
+    expect(await screen.findByRole("button", { name: /Start 3 researches/i })).toBeTruthy();
+    expect(getPlanMock).toHaveBeenCalledWith("q-pn-root");
+    expect(launchPlanMock).not.toHaveBeenCalled();
+  });
+
+  it("returns to the authoritative plan when launch status confirms no session", async () => {
+    const { ApiError } = await import("../../lib/api");
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    approvePlanMock.mockResolvedValue({});
+    launchPlanMock.mockRejectedValue(new TypeError("Failed to fetch"));
+    getSessionMock.mockRejectedValue(new ApiError("missing", 404, "{}"));
+    getPlanMock.mockResolvedValue({
+      root_node_id: "q-pn-root",
+      tree: TREE,
+      launchable: true,
+    });
+    renderProposal();
+    const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    fireEvent.click(
+      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+    );
+    fireEvent.click(launch);
+    fireEvent.click(await screen.findByRole("button", { name: "Check launch status" }));
+
+    const recoveredLaunch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    expect((recoveredLaunch as HTMLButtonElement).disabled).toBe(true);
+    expect(getPlanMock).toHaveBeenCalledWith("q-pn-root");
+  });
+
+  it("requires a valid explicit stop limit and invalidates approval when it changes", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    renderProposal();
+    const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
+    const ceiling = screen.getByRole("spinbutton", { name: "Aggregate stop limit" });
+    const approval = screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i });
+    fireEvent.click(approval);
+    expect((launch as HTMLButtonElement).disabled).toBe(false);
+
+    fireEvent.change(ceiling, { target: { value: "0" } });
+    expect(screen.getByRole("alert").textContent).toMatch(/positive amount/i);
+    expect((approval as HTMLInputElement).checked).toBe(false);
+    expect((approval as HTMLInputElement).disabled).toBe(true);
+    expect((launch as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.change(ceiling, { target: { value: "2.25" } });
+    const updatedApproval = screen.getByRole("checkbox", { name: /approve a \$2\.25 aggregate stop limit/i });
+    expect((updatedApproval as HTMLInputElement).disabled).toBe(false);
+    fireEvent.click(updatedApproval);
+    expect((launch as HTMLButtonElement).disabled).toBe(false);
   });
 });
 
@@ -279,9 +486,14 @@ describe("CascadeProposal — renders the planner's REAL output, no placeholders
     );
     expect(await screen.findByText(/who controls the minerals/i)).toBeTruthy();
     // Launch approves the CURRENT (edited) tree, then launches it.
+    fireEvent.click(screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Start 3 researches/i }));
     await waitFor(() => expect(approvePlanMock).toHaveBeenCalledWith("q-pn-root"));
-    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root"));
+    await waitFor(() =>
+      expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root", {
+        aggregate_budget_usd: 1.5,
+      }),
+    );
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("sess-edited"));
   });
 });
