@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Acquisition cache → corpus bridge</title></head>
+<body>
+<main>
+<h1>Acquisition cache → corpus bridge</h1>
+<p>Status: implementation composition of PR #760 and PR #751; no production wiring.</p>
+<h2>User outcome</h2>
+<p>Cached scholarly and newsletter evidence can enter deep research through one immutable
+<code>search</code> → <code>fetch</code> boundary without a network fallback or paywall bypass.</p>
+<h2>Contract</h2>
+<ul>
+<li>arXiv OAI-PMH, OpenAlex, and accessible Substack cache snapshots pass the reusable corpus conformance kit.</li>
+<li>Every fetch preserves source, record identity, acquisition time, and a non-empty rights class.</li>
+<li>Substack HTML is reduced to inert research text; script, style, template, and noscript content never enters synthesis.</li>
+<li>Inaccessible Substack entries expose metadata search only and return a typed policy miss on fetch.</li>
+<li>Construction detaches from caller dictionaries; later mutation cannot alter search or fetch.</li>
+</ul>
+<p>Semantic Scholar is deliberately excluded: PR #760 enriches in memory and does not create a
+cache record with <code>fetched_at</code>. Claiming a cache adapter for it would be unreachable
+test-only code; a later persistence owner must establish the snapshot contract first.</p>
+<h2>Non-goals</h2>
+<p>No network calls, PDF fetching, paywall fallback, rendering, routing, production wiring,
+campaign mutation, merge, deployment, or live spend.</p>
+<h2>Acceptance</h2>
+<pre>uv run --with pytest --with mypy python -m pytest tests/test_corpus_contract.py tests/test_acquisition_corpus_bridge.py -q
+uv run --with pytest --with mypy python -m mypy --strict substrate/corpus_contract acquisition/corpus_bridge tests/test_acquisition_corpus_bridge.py
+uv run --with ruff ruff check acquisition/corpus_bridge tests/test_acquisition_corpus_bridge.py
+git diff --check</pre>
+</main>
+</body>
+</html>
