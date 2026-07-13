@@ -322,7 +322,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     });
     await screen.findByRole("button", { name: /Start 2 researches/i });
     expect(
-      (screen.getByRole("checkbox", {
+      (await screen.findByRole("checkbox", {
         name: /approve a \$1\.00 aggregate stop limit/i,
       }) as HTMLInputElement).checked,
     ).toBe(false);
