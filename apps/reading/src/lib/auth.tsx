@@ -130,7 +130,7 @@ export function useAuth(): AuthContextValue {
 }
 
 export type AuthRequestResult =
-  | { kind: "sent"; diagnostic_code: null; layer: null }
+  | { kind: "sent"; attempt_id: string; claim_secret: string; device_code: string; diagnostic_code: null; layer: null }
   | {
       kind: "error";
       code: string;
@@ -161,7 +161,15 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
       body: JSON.stringify({ email, next: nextPath }),
     });
     if (r.ok) {
-      return { kind: "sent", diagnostic_code: null, layer: null };
+      const body = (await r.json()) as { attempt_id: string; claim_secret: string; device_code: string };
+      return {
+        kind: "sent",
+        attempt_id: body.attempt_id,
+        claim_secret: body.claim_secret,
+        device_code: body.device_code,
+        diagnostic_code: null,
+        layer: null,
+      };
     }
     let detail: { code?: string; message?: string } = {};
     try {
@@ -184,6 +192,33 @@ export async function requestMagicLink(email: string, nextPath: string = "/"): P
   } catch {
     return authRequestError("transport_fetch_failed", AUTH_TRANSPORT_FETCH_MESSAGE, "A-TRANSPORT-FETCH");
   }
+}
+
+export type LoginClaimResult =
+  | { status: "pending" }
+  | { status: "authenticated"; setup_passkey: boolean; next: string }
+  | { status: "expired" };
+
+export async function claimLogin(attemptId: string, claimSecret: string): Promise<LoginClaimResult> {
+  const r = await apiFetch(authUrl("/auth/claim"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ attempt_id: attemptId, claim_secret: claimSecret }),
+  });
+  if (r.status === 202) return { status: "pending" };
+  if (r.status === 410) return { status: "expired" };
+  if (!r.ok) throw new Error("Antiek couldn't finish the device handoff.");
+  const body = (await r.json()) as { setup_passkey: boolean; next: string };
+  return { status: "authenticated", ...body };
+}
+
+export async function approveLogin(attemptId: string): Promise<void> {
+  const r = await apiFetch(authUrl("/auth/approve"), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ attempt_id: attemptId }),
+  });
+  if (!r.ok) throw new Error("This device handoff has expired.");
 }
 
 export interface PasskeyStatus {
