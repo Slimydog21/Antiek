@@ -1,20 +1,20 @@
 {
-  "cycle": 30,
+  "cycle": 31,
   "phase": "CERTIFIED",
-  "subgoal": "Specify and implement non-conferring PolicyV3, signed CapabilityV3, and durable current-head resolution that directly bind the certified CheckerV2 source adapter; reserve CoreV3, ReceiptV6, and EnvelopeV3 until durable source authority exists, and move encrypted checkpoint authority to a separately hashed V4 chain",
+  "subgoal": "Certify the verifier-only creation anchor, sealed exact-source bundle, declarative source-vault contract, semantic identity, and production quarantine while leaving encrypted storage, source heads, witnesses, resolution, provider execution, checkpoints, and sinks unimplemented",
   "lanes": [
-    "policy-v3-nonconferring-contract",
-    "capability-v3-signature-and-key-separation",
-    "durable-current-head-resolution",
-    "core-v3-receipt-v6-envelope-v3-deferred-for-source-authority",
-    "encrypted-checkpoint-moved-to-v4-chain"
+    "verifier-only-creation-anchor",
+    "sealed-exact-source-bundle-and-range-joins",
+    "declarative-source-vault-contract",
+    "semantic-source-attestation-and-production-quarantine",
+    "encrypted-store-head-witness-and-sinks-deferred"
   ],
   "engineHealth": {
-    "grok": "Cycle 30 failed HTTP 402 before producing a deliverable",
-    "mimo": "Cycle 30 proposed a broader five-artifact chain and caller registry reuse; the unsafe/premature portions were rejected",
-    "claude": "Cycle 30 standing reviewers aligned the exact contract and closed input-bound, quarantine, and pre-I/O validation gaps",
-    "codex": "Cycle 30 GPT-5.6 performed deep read-only archaeology but was interrupted before a final report; its version-boundary evidence supported the narrow slice",
-    "glm-cc": "Cycle 30 ultracode activated but lost context and returned no usable repository-grounded result",
+    "grok": "Cycle 31 failed HTTP 402 before producing a deliverable",
+    "mimo": "Cycle 31 returned grounded inventory but proposed unsafe plaintext indexes and audit storage; those recommendations were rejected",
+    "claude": "Cycle 31 standing reviewers found and closed verifier bypass, import-quarantine, exact-lineage, nonconferral, and absolute-range gaps",
+    "codex": "Cycle 31 default GPT-5.6-sol performed extensive read-only archaeology and established why storage, external rollback authority, production issuance, and cross-database coordination must remain deferred",
+    "glm-cc": "Cycle 31 ultracode ran from a false repository premise and returned an unrelated greenfield design; no result was used",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -39,7 +39,8 @@
     {"cycle": 27, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false},
     {"cycle": 28, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false},
     {"cycle": 29, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false},
-    {"cycle": 30, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 16, "corpusCertified": false}
+    {"cycle": 30, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 16, "corpusCertified": false},
+    {"cycle": 31, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 17, "corpusCertified": false}
   ],
-  "updatedAt": "2026-07-13T16:51:13Z"
+  "updatedAt": "2026-07-13T17:33:20Z"
 }
