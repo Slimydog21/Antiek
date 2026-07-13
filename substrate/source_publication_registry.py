@@ -203,7 +203,7 @@ def select_publication_sources(
 
     return SourceSelectionPack(
         sources=tuple(sources),
-        families=families,  # type: ignore[arg-type]
+        families=families,
         fetched=False,
         notes=tuple(notes),
         authority="source_publication_registry_advisory",
