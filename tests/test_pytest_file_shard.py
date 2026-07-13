@@ -11,11 +11,15 @@ from tools.pytest_file_shard import (
 
 def test_partition_is_complete_disjoint_and_stable() -> None:
     nodeids = tuple(f"tests/test_{index}.py::test_case" for index in range(200))
-    first = partition_nodeids(nodeids, 2)
-    second = partition_nodeids(nodeids, 2)
+    first = partition_nodeids(nodeids, 3)
+    second = partition_nodeids(nodeids, 3)
     assert first == second
-    assert set(first[0]).isdisjoint(first[1])
-    assert set(first[0]) | set(first[1]) == set(nodeids)
+    assert all(
+        set(left).isdisjoint(right)
+        for index, left in enumerate(first)
+        for right in first[index + 1 :]
+    )
+    assert set().union(*map(set, first)) == set(nodeids)
     assert all(first)
 
 
@@ -38,5 +42,6 @@ def test_invalid_shard_configuration_fails_closed(
 
 
 def test_valid_shard_configuration() -> None:
-    assert parse_shard_config("2", "0") == (2, 0)
-    assert parse_shard_config("2", "1") == (2, 1)
+    assert parse_shard_config("3", "0") == (3, 0)
+    assert parse_shard_config("3", "1") == (3, 1)
+    assert parse_shard_config("3", "2") == (3, 2)

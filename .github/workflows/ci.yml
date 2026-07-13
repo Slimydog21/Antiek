@@ -30,13 +30,13 @@ env:
 
 jobs:
   pytest-suite:
-    name: pytest shard ${{ matrix.shard_index }} of 2
+    name: pytest shard ${{ matrix.shard_index }} of 3
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1]
+        shard_index: [0, 1, 2]
 
     steps:
       - name: Checkout
@@ -65,7 +65,7 @@ jobs:
 
       - name: Run pytest shard
         env:
-          ANTIEK_PYTEST_SHARD_COUNT: "2"
+          ANTIEK_PYTEST_SHARD_COUNT: "3"
           ANTIEK_PYTEST_SHARD_INDEX: ${{ matrix.shard_index }}
           DEEPSEEK_API_KEY: ""
           OPENROUTER_API_KEY: ""
@@ -83,9 +83,9 @@ jobs:
     needs: pytest-suite
     if: ${{ always() }}
     runs-on: ubuntu-latest
-    # The full tests/ gate runs in the two pytest-suite shards above. This job
+    # The full tests/ gate runs in the three pytest-suite shards above. This job
     # retains the stable required-check name and runs the service suites plus
-    # structural invariant gates only after both shards pass.
+    # structural invariant gates only after all three shards pass.
     timeout-minutes: 20
 
     steps:

@@ -4,8 +4,12 @@
 > `29230281708` reached 95% with no failures and was cancelled at the exact
 > 40-minute job ceiling after FFmpeg-backed multimedia tests became executable
 > on Linux. The binding reconsider-if below is now active: `tests/` is split
-> deterministically by source file across two parallel runners. A stable
-> aggregate `pytest` job always runs, fails unless both shards succeeded, and
+> deterministically by source file across three parallel runners. The initial
+> two-shard version passed on the PR but shard 0 varied from 24m36s to the
+> 30-minute ceiling on the immediate `main` push while still at 90% with no
+> failure. Three shards retain the same full file-atomic coverage while adding
+> runner-variance headroom without another timeout increase. A stable
+> aggregate `pytest` job always runs, fails unless all three shards succeeded, and
 > owns the service and structural tail gates. Shards keep file-local tests
 > together, their assignment is complete/disjoint/stable under unit test, and no
 > test or assertion is skipped. The shard ceiling is 30 minutes and the
