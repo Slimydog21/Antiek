@@ -1450,6 +1450,7 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        "/auth/claim",
         "/auth/passkey/status",
         "/auth/passkey/login/options",
         "/auth/passkey/login/verify",
