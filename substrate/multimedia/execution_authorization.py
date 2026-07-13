@@ -494,7 +494,9 @@ def execute_authorized_call(  # noqa: UP047 - package supports Python 3.11.
         result, actual_cents = output
         return result, _actual_cents(actual_cents)
 
-    result, _ = ledger.guarded_call(run_id, role, projected, checked_call)
+    result, _ = ledger.guarded_call(
+        run_id, role, projected, checked_call, on_call_error="conservative",
+    )
     ledger.release_role(run_id, role)
     balance = ledger.release(run_id)
     _settle_authorization(db_path, authorization.authorization_id, balance.spent_cents)

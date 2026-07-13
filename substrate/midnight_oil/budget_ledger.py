@@ -1144,6 +1144,7 @@ class BudgetLedger:
         role: str,
         projected_max_cents: int,
         call: Callable[[], tuple[T, int]],
+        on_call_error: str = "unknown",
     ) -> tuple[T, RemainingBalance]:
         """Execute *call* with budget guard.
 
@@ -1162,6 +1163,11 @@ class BudgetLedger:
           original provider exception and the bookkeeping exception, with
           the exact ``CallHold``.  The hold remains open (fail closed).
         """
+        if on_call_error not in ("unknown", "conservative"):
+            raise ValueError(
+                "on_call_error must be 'unknown' or 'conservative', got "
+                f"{on_call_error!r}",
+            )
         hold = self.reserve_call(run_id, role, projected_max_cents)
         try:
             result, actual_cents = call()
@@ -1170,7 +1176,14 @@ class BudgetLedger:
             self._release_hold(hold)
             raise
         except Exception as provider_error:
-            # Unknown outcome: fail closed.  Transition hold to 'unknown'.
+            if on_call_error == "conservative":
+                # Completed-but-unusable outcome (e.g. a malformed provider
+                # return value): charge the projected maximum conservatively
+                # and consume, then re-raise the original exception.  Never
+                # under- or double-charge.
+                self.settle(hold, projected_max_cents)
+                raise
+            # Unknown outcome (default): fail closed.  Transition hold to 'unknown'.
             # H2: raise UnknownCallOutcome with durable hold.
             # M2: if persistence itself fails, raise
             #     UnknownOutcomePersistenceError with BOTH errors.
