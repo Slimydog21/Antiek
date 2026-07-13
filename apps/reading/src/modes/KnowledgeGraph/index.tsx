@@ -12,7 +12,10 @@ const NODE_TYPES = ["", "insight", "question", "claim", "mechanism", "entity"];
 const SCOPES = ["", "depth", "cross_domain", "constraint"];
 
 export default function KnowledgeGraph() {
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return (new URLSearchParams(window.location.search).get("q") || "").trim();
+  });
   const [nodeType, setNodeType] = useState("");
   const [scope, setScope] = useState("");
   const [investigationId, setInvestigationId] = useState("");
@@ -22,6 +25,7 @@ export default function KnowledgeGraph() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const loadGeneration = useRef(0);
+  const didInitialLoad = useRef(false);
 
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
@@ -51,6 +55,11 @@ export default function KnowledgeGraph() {
   }, [investigationId, nodeType, query, scope]);
 
   useEffect(() => {
+    // React StrictMode replays mount effects in development. The inventory is a
+    // read, but issuing it twice wastes work and can let the replay obscure the
+    // deep-link request in diagnostics.
+    if (didInitialLoad.current) return;
+    didInitialLoad.current = true;
     void load();
     // Initial graph inventory only. Filters run on the explicit Explore action.
     // eslint-disable-next-line react-hooks/exhaustive-deps

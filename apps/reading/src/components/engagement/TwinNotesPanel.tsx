@@ -2096,6 +2096,30 @@ export function TwinNotesPanel({
             role="navigation"
             aria-label="Twin promote depth-graph navigation"
           >
+            {(() => {
+              const graphNodeIds = Array.from(
+                new Set(
+                  (Array.isArray(promoted.graph_node_ids)
+                    ? promoted.graph_node_ids
+                    : (promoted.promoted || []).map((item) => item.graph_node_id)
+                  )
+                    .map((id) => String(id || "").trim())
+                    .filter(Boolean),
+                ),
+              );
+              return graphNodeIds.map((nodeId, index) => (
+                <a
+                  key={nodeId}
+                  href={`/knowledge-graph?q=${encodeURIComponent(nodeId)}`}
+                  data-testid={`twin-promote-open-graph-${index}`}
+                  data-view-format="html"
+                  className="underline decoration-sun decoration-2 opacity-90 hover:opacity-100"
+                  title="Inspect this promoted note in the live knowledge graph"
+                >
+                  Knowledge graph · promoted note {index + 1}
+                </a>
+              ));
+            })()}
             <a
               href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
               data-testid="twin-promote-twin-matrix-link"

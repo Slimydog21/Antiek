@@ -1,4 +1,5 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import KnowledgeGraph from "./index";
@@ -54,12 +55,15 @@ const response = {
 };
 
 describe("KnowledgeGraph", () => {
-  beforeEach(() => exploreGraph.mockReset());
+  beforeEach(() => {
+    exploreGraph.mockReset();
+    window.history.replaceState({}, "", "/knowledge-graph");
+  });
   afterEach(cleanup);
 
   it("traces a selected node through an edge to exact evidence", async () => {
     exploreGraph.mockResolvedValue(response);
-    render(<KnowledgeGraph />);
+    render(<StrictMode><KnowledgeGraph /></StrictMode>);
 
     await screen.findByTestId("graph-node-insight-1");
     expect(screen.getByTestId("knowledge-graph").getAttribute("data-read-only")).toBe("true");
@@ -122,5 +126,24 @@ describe("KnowledgeGraph", () => {
     );
     expect(await screen.findByText(/Nothing in the graph matches/)).toBeTruthy();
     expect(screen.queryByTestId("graph-evidence-rail")).toBeNull();
+  });
+
+  it("honors an encoded graph-node deep link on initial load", async () => {
+    window.history.replaceState({}, "", "/knowledge-graph?q=insight_a%2Fb");
+    exploreGraph.mockResolvedValue({ ...response, query: "insight_a/b" });
+    render(<KnowledgeGraph />);
+
+    await waitFor(() =>
+      expect(exploreGraph).toHaveBeenCalledWith({
+        query: "insight_a/b",
+        nodeType: "",
+        graphScope: "",
+        investigationId: "",
+      }),
+    );
+    expect((screen.getByLabelText("Search graph") as HTMLInputElement).value).toBe(
+      "insight_a/b",
+    );
+    expect(exploreGraph).toHaveBeenCalledTimes(1);
   });
 });
