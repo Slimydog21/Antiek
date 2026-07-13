@@ -175,7 +175,7 @@ describe("CollectiveResearchPanel", () => {
     expect(honesty.textContent).toMatch(/offline merge unit only/i);
     // Residual (wi): L6 checklist deep-link (parity Settings dual-gate wh).
     const l6 = screen.getByTestId("collective-l6-checklist-link");
-    expect(l6.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    expect(l6.getAttribute("href")).toBe("/settings#collective-live-council-status");
     expect(l6.textContent).toMatch(/L6 checklist/i);
   });
 
@@ -212,10 +212,10 @@ describe("CollectiveResearchPanel", () => {
     const future = screen.getByTestId(
       "collective-competitive-dr-future-agent-link",
     );
-    expect(future.getAttribute("href") || "").toMatch(
-      /FUTURE-AGENT-SPEC-competitive-deep-research-quality/,
+    expect(future.getAttribute("href") || "").toBe(
+      "/settings#settings-competitive-dr-scorecard",
     );
-    expect(future.textContent).toMatch(/competitive DR brief/i);
+    expect(future.textContent).toMatch(/competitive quality status/i);
   });
 
   it("links Settings prompt-cost projection for budget-before-fire (akm)", () => {
@@ -999,7 +999,7 @@ describe("CollectiveResearchPanel", () => {
     );
     const dual = screen.getByTestId("collective-dual-gate-checklist-link");
     // Residual (xg/aat): L6 collective checklist section deep-link + label honesty.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    expect(dual.getAttribute("href")).toBe("/settings#collective-live-council-status");
     expect(dual.textContent).toMatch(/L6 collective checklist/i);
   });
 

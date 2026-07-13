@@ -109,9 +109,9 @@ describe("ChatInputArea publication refs (ct)", () => {
     expect(prep.getAttribute("data-l1-arxiv")).toBe("deferred");
     expect(prep.getAttribute("data-l2-substack")).toBe("deferred");
     const l1 = screen.getByTestId("chat-input-l1-checklist-link");
-    expect(l1.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(l1.getAttribute("href")).toBe("/settings#hydrate-live-status");
     const l2 = screen.getByTestId("chat-input-l2-checklist-link");
-    expect(l2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(l2.getAttribute("href")).toBe("/settings#hydrate-live-status");
   });
 
   it("inserts knowledge-dense quick-call presets on chase follow-ups (agz)", () => {

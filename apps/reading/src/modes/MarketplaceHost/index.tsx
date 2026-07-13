@@ -92,6 +92,7 @@
  * parity HostedHtml eu · TalkToBook ang · MetaReading anh).
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
@@ -1237,7 +1238,7 @@ export default function MarketplaceHost({
               {/* Residual (mm): dual-gate checklist prep (never enables L1–L4). */}
               {/* Residual (ye): marketplace dual-gate → L5 payment section (host path). */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                href={capabilityGuidanceLinks.marketplacePayment}
                 data-testid="marketplace-dual-gate-checklist-link"
                 className="underline opacity-80 hover:opacity-100"
                 title="Dual-gate L5 payment rails deferred checklist (manual receipt only)"
@@ -1254,12 +1255,12 @@ export default function MarketplaceHost({
                 Settings · competitive DR scorecard
               </a>
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                href={capabilityGuidanceLinks.competitiveQuality}
                 data-testid="marketplace-competitive-dr-future-agent-link"
                 className="underline opacity-80 hover:opacity-100"
-                title="FUTURE-AGENT competitive deep-research quality brief"
+                title="Settings competitive deep-research quality status"
               >
-                FUTURE · competitive DR brief
+                Settings · competitive quality status
               </a>
             </p>
           </div>
@@ -1587,7 +1588,7 @@ export default function MarketplaceHost({
           </span>
           {/* Residual (wj): L5 checklist section deep-link (parity Settings wh). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+            href={capabilityGuidanceLinks.marketplacePayment}
             data-testid="marketplace-l5-dual-gate-link"
             className="underline hover:opacity-100"
             title="Dual-gate checklist L5 payment rails deferred (manual receipt only)"
@@ -2038,7 +2039,7 @@ export default function MarketplaceHost({
               · HTML host only · payment=manual_receipt_only · L5 rails deferred
               (no live rails)
             </p>
-            {/* Residual (akb): host land → FUTURE L5 digital book port + dual-gate L5. */}
+            {/* Residual (akb): host land → Settings L5 payment status + dual-gate L5. */}
             {/* Residual (aks): host land stamps Sprint 1 payment_adapter shipped offline (akr). */}
             <p
               className="space-x-3"
@@ -2055,15 +2056,15 @@ export default function MarketplaceHost({
               aria-label="Marketplace host L5 payment honesty navigation"
             >
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                href={capabilityGuidanceLinks.marketplacePayment}
                 data-testid="marketplace-host-l5-future-agent-link"
                 className="underline opacity-90 hover:opacity-100"
-                title="Future-agent L5 digital book seamless port brief (Sprint 1 payment adapter shipped offline akr · Sprint 2 purchase path deferred · manual receipt)"
+                title="Settings L5 digital-book payment status (Sprint 1 payment adapter shipped offline akr · Sprint 2 purchase path deferred · manual receipt)"
               >
-                FUTURE · L5 digital book seamless port
+                Settings · L5 payment status
               </a>
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                href={capabilityGuidanceLinks.marketplacePayment}
                 data-testid="marketplace-host-l5-dual-gate-link"
                 className="underline opacity-90 hover:opacity-100"
                 title="Dual-gate L5 payment rails checklist (prep only · manual receipt only)"
@@ -2372,7 +2373,7 @@ export default function MarketplaceHost({
                 </a>
                 {/* Residual (xd): L1 arxiv checklist section deep-link (parity pubs xc). */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  href={capabilityGuidanceLinks.arxivHydration}
                   data-testid="marketplace-host-hydrate-dual-gate-link"
                   className="underline hover:opacity-100"
                   title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -2382,7 +2383,7 @@ export default function MarketplaceHost({
                 {/* Residual (aal): L2 substack section — label claimed L1–L2 but only
                     linked L1; knowledge-dense Substack prep needs its own anchor. */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  href={capabilityGuidanceLinks.substackAcquisition}
                   data-testid="marketplace-host-hydrate-dual-gate-l2-link"
                   className="underline hover:opacity-100"
                   title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"

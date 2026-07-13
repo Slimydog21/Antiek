@@ -641,7 +641,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
       screen
         .getByTestId("twin-seed-live-l3-checklist-link")
         .getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
+    ).toBe("/settings#twin-seed-live-status");
     const gateMatrix = screen.getByTestId("twin-seed-live-l3-gate-matrix");
     expect(gateMatrix.getAttribute("data-l3-live-ready")).toBe("false");
     expect(gateMatrix.textContent).toMatch(/L3 gate matrix/i);
@@ -689,10 +689,10 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("hydrate-live-l1-l2-prep")).toBeTruthy();
     expect(
       screen.getByTestId("hydrate-live-l1-checklist-link").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen.getByTestId("hydrate-live-l2-checklist-link").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     const gateMatrix = screen.getByTestId("hydrate-live-l1-l2-gate-matrix");
     expect(gateMatrix.getAttribute("data-l1-arxiv-live-ready")).toBe("false");
     expect(gateMatrix.getAttribute("data-l2-substack-live-ready")).toBe(
@@ -918,7 +918,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
       screen
         .getByTestId("prompt-cost-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(
       screen.getByTestId("prompt-cost-decision-tree-link").getAttribute("href"),
     ).toBe("#decision-tree-panel");
@@ -1095,44 +1095,44 @@ describe("Settings SPR-01 + decision-tree install", () => {
       screen
         .getByTestId("competitive-dr-payment-l5-future-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    ).toBe("/settings#marketplace-live-payment-status");
     // Residual (aki): twin notes row FUTURE completeness matrix deep-link.
     expect(
       screen
         .getByTestId("competitive-dr-twin-notes-future-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     // Residual (akh): deferred live rows deep-link dual-gate L1/L2/L4/L6 prep.
     expect(
       screen
         .getByTestId("competitive-dr-live-hydrate-l1-link")
         .getAttribute("href") || "",
-    ).toMatch(/#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen
         .getByTestId("competitive-dr-live-hydrate-l2-link")
         .getAttribute("href") || "",
-    ).toMatch(/#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen
         .getByTestId("competitive-dr-live-moil-l4-link")
         .getAttribute("href") || "",
-    ).toMatch(/#l4-moil/);
+    ).toBe("/settings#moil-live-step-status");
     expect(
       screen
         .getByTestId("competitive-dr-live-council-l6-link")
         .getAttribute("href") || "",
-    ).toMatch(/#l6-collective/);
+    ).toBe("/settings#collective-live-council-status");
     expect(
       screen
         .getByTestId("competitive-dr-live-council-l6-future-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l6-live-multiagent-collective/);
+    ).toBe("/settings#collective-live-council-status");
     expect(
       screen
         .getByTestId("settings-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     const panel = screen.getByTestId("settings-deferred-honest");
     expect(panel.textContent).toMatch(/truly deferred|dual-gate/i);
     expect(screen.getByTestId("settings-deferred-shipped-spine").textContent).toMatch(
@@ -1165,28 +1165,28 @@ describe("Settings SPR-01 + decision-tree install", () => {
       screen
         .getByTestId("settings-deferred-l5-checklist-link")
         .getAttribute("href"),
-    ).toMatch(/#l5-payment/);
+    ).toBe("/settings#marketplace-live-payment-status");
     expect(
       screen
         .getByTestId("settings-deferred-l6-checklist-link")
         .getAttribute("href"),
-    ).toMatch(/#l6-collective/);
+    ).toBe("/settings#collective-live-council-status");
     expect(
       screen
         .getByTestId("settings-deferred-l7-checklist-link")
         .getAttribute("href"),
-    ).toMatch(/#l7-notdiamond/);
+    ).toBe("/settings#notdiamond-advisory");
     // Residual (ahz): FUTURE-AGENT L5/L6 executable briefs from deferred map.
     expect(
       screen
         .getByTestId("settings-deferred-l5-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    ).toBe("/settings#marketplace-live-payment-status");
     expect(
       screen
         .getByTestId("settings-deferred-l6-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l6-live-multiagent-collective/);
+    ).toBe("/settings#collective-live-council-status");
     // Residual (wo): Deferred L7 → in-app ND advisory panel (never-router).
     expect(
       screen
@@ -1201,7 +1201,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
       screen
         .getByTestId("settings-deferred-twin-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
   });
 
   it("surfaces dual-gate L1–L4 prep strip on decision-tree (sw)", async () => {
@@ -1246,13 +1246,13 @@ describe("Settings SPR-01 + decision-tree install", () => {
       screen
         .getByTestId("settings-dual-gate-l1-checklist-link")
         .getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     // Residual (xr): L2 checklist section #l2-substack.
     expect(
       screen
         .getByTestId("settings-dual-gate-l2-checklist-link")
         .getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     expect(screen.getByTestId("settings-dual-gate-l3-link").getAttribute("href")).toBe(
       "#twin-seed-live-status",
     );
@@ -1261,27 +1261,27 @@ describe("Settings SPR-01 + decision-tree install", () => {
       screen
         .getByTestId("settings-dual-gate-l3-checklist-link")
         .getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
+    ).toBe("/settings#twin-seed-live-status");
     expect(screen.getByTestId("settings-dual-gate-l4-link").getAttribute("href")).toBe(
       "#moil-live-step-status",
     );
     // Residual (wy): L4 checklist section #l4-moil (parity MO wx).
     expect(
       screen.getByTestId("settings-dual-gate-l4-checklist-link").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    ).toBe("/settings#moil-live-step-status");
     // Residual (wh): L5/L6/L7 checklist deep-links (complete operator map).
     expect(
       screen.getByTestId("settings-dual-gate-l5-payment").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
+    ).toBe("/settings#marketplace-live-payment-status");
     expect(
       screen.getByTestId("settings-dual-gate-l6-collective").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    ).toBe("/settings#collective-live-council-status");
     expect(screen.getByTestId("settings-dual-gate-l7-link").getAttribute("href")).toBe(
       "#notdiamond-advisory",
     );
     expect(
       screen.getByTestId("settings-dual-gate-l7-checklist-link").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l7-notdiamond/);
+    ).toBe("/settings#notdiamond-advisory");
     // Residual (aip): competitive DR scorecard from decision-tree dual-gate prep.
     expect(
       screen
@@ -1331,7 +1331,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     expect(screen.getByTestId("moil-live-l4-prep")).toBeTruthy();
     expect(
       screen.getByTestId("moil-live-l4-checklist-link").getAttribute("href"),
-    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    ).toBe("/settings#moil-live-step-status");
     const gateMatrix = screen.getByTestId("moil-live-l4-gate-matrix");
     expect(gateMatrix.getAttribute("data-l4-live-ready")).toBe("false");
     expect(gateMatrix.textContent).toMatch(/L4 gate matrix/i);
@@ -1456,13 +1456,13 @@ describe("Settings SPR-01 + decision-tree install", () => {
     );
     expect(
       screen.getByTestId("notdiamond-live-l7-checklist-link").getAttribute("href") || "",
-    ).toMatch(/#l7-notdiamond/);
+    ).toBe("/settings#notdiamond-advisory");
     // Residual (ahy): FUTURE-AGENT advisory-only brief deep-link.
     expect(
       screen
         .getByTestId("notdiamond-future-agent-advisory-spec-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-notdiamond-advisory-only/);
+    ).toBe("/settings#notdiamond-advisory");
     const l7 = screen.getByTestId("notdiamond-live-l7-gate-matrix");
     expect(l7.getAttribute("data-l7-advisory-only")).toBe("true");
     expect(l7.getAttribute("data-l7-is-dispatch-authority")).toBe("false");
@@ -1710,7 +1710,7 @@ describe("Settings SPR-01 + decision-tree install", () => {
     });
     const dual = screen.getByTestId("antiek-bench-dual-gate-checklist-link");
     // Residual (yj): Antiek-bench dual-gate → L7 ND never-router section.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l7-notdiamond/);
+    expect(dual.getAttribute("href")).toBe("/settings#notdiamond-advisory");
     expect(dual.textContent).toMatch(/L7 ND checklist/i);
     const nd = screen.getByTestId("antiek-bench-notdiamond-advisory-only");
     expect(nd.getAttribute("data-notdiamond-authority")).toBe("advisory_only");

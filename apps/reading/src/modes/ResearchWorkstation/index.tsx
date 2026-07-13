@@ -1,3 +1,4 @@
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 
@@ -255,7 +256,7 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
         aria-label="Dual-gate checklist prep for twin seed and collective"
       >
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+          href={capabilityGuidanceLinks.twinSeed}
           data-testid="research-workstation-l3-checklist-link"
           data-l3-twin-seed="deferred"
           className="underline opacity-80 hover:opacity-100"
@@ -264,7 +265,7 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
           L3 twin seed checklist
         </a>
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+          href={capabilityGuidanceLinks.collectiveCouncil}
           data-testid="research-workstation-l6-checklist-link"
           data-l6-live-multiagent="deferred"
           className="underline opacity-80 hover:opacity-100"

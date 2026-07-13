@@ -574,7 +574,7 @@ describe("SpawnMergePanel residual ci", () => {
     const settings = screen.getByTestId("spawn-merge-settings-link");
     const dual = screen.getByTestId("spawn-merge-dual-gate-checklist-link");
     // Residual (xn/aat): multi-spawn merge prep → L6 collective checklist section.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    expect(dual.getAttribute("href")).toBe("/settings#collective-live-council-status");
     expect(dual.textContent).toMatch(/L6 collective checklist/i);
     expect(settings.getAttribute("href")).toBe("/settings#decision-tree-panel");
     expect(settings.textContent).toMatch(/driver & budget/i);
@@ -588,7 +588,7 @@ describe("SpawnMergePanel residual ci", () => {
       screen
         .getByTestId("spawn-merge-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (akn): highlight→DR→merge budget-before-fire → Settings prompt-cost.
     expect(
       screen

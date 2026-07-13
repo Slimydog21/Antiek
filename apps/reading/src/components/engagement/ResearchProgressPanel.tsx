@@ -34,6 +34,7 @@
  * HTML-first; never PDF.
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchResearchProgress,
@@ -356,7 +357,7 @@ export function ResearchProgressPanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+            href={capabilityGuidanceLinks.midnightOilLiveStep}
             data-testid="research-progress-dual-gate-checklist-link"
             title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
           >
@@ -373,11 +374,11 @@ export function ResearchProgressPanel({
           </a>
           {/* Residual (akt): FUTURE competitive DR quality brief during multi-minute jobs. */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            href={capabilityGuidanceLinks.competitiveQuality}
             data-testid="research-progress-competitive-dr-future-agent-link"
-            title="FUTURE-AGENT competitive deep-research quality brief (long-horizon wrestle · multi-minute plan→cite)"
+            title="Settings competitive deep-research quality status (long-horizon wrestle · multi-minute plan→cite)"
           >
-            FUTURE · competitive DR quality
+            Settings · competitive quality status
           </a>
           {/* Residual (akl): multi-minute wrestle budget-before-fire → Settings prompt-cost (ake/akk). */}
           <a
@@ -590,12 +591,12 @@ export function ResearchProgressPanel({
                       Settings · competitive DR scorecard
                     </a>
                     <a
-                      href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                      href={capabilityGuidanceLinks.competitiveQuality}
                       data-testid="research-progress-pipeline-future-agent-link"
                       className="underline opacity-90 hover:opacity-100"
-                      title="FUTURE-AGENT competitive deep-research quality brief"
+                      title="Settings competitive deep-research quality status"
                     >
-                      FUTURE · competitive DR brief
+                      Settings · competitive quality status
                     </a>
                   </p>
                 </>

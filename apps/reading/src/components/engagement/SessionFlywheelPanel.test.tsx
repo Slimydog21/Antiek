@@ -286,11 +286,11 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
     render(<SessionFlywheelPanel sessionId="fsess_1" />);
     const dual = screen.getByTestId("session-flywheel-dual-gate-checklist-link");
     // Residual (yc): session land → bench feed prep → L1 hydrate checklist section.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(dual.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(dual.textContent).toMatch(/L1 arxiv checklist/i);
     // Residual (aas): L2 Substack checklist (parity aal–aaq).
     const dualL2 = screen.getByTestId("session-flywheel-dual-gate-l2-link");
-    expect(dualL2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(dualL2.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(dualL2.textContent).toMatch(/L2 Substack checklist/i);
   });
 
@@ -305,7 +305,7 @@ describe("SessionFlywheelPanel residual cl/ee", () => {
       screen
         .getByTestId("session-flywheel-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (apy): hop/stage pipeline honesty on session land.
     const pipeHint = screen.getByTestId(
       "session-flywheel-competitive-pipeline-hint",

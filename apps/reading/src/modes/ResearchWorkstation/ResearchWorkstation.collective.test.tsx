@@ -389,10 +389,10 @@ describe("ResearchWorkstation collective multi-select (afr)", () => {
     expect(prep.getAttribute("data-l3-twin-seed")).toBe("deferred");
     expect(prep.getAttribute("data-l6-live-multiagent")).toBe("deferred");
     const l3 = screen.getByTestId("research-workstation-l3-checklist-link");
-    expect(l3.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
+    expect(l3.getAttribute("href")).toBe("/settings#twin-seed-live-status");
     expect(l3.getAttribute("data-l3-twin-seed")).toBe("deferred");
     const l6 = screen.getByTestId("research-workstation-l6-checklist-link");
-    expect(l6.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l6-collective/);
+    expect(l6.getAttribute("href")).toBe("/settings#collective-live-council-status");
     expect(l6.getAttribute("data-l6-live-multiagent")).toBe("deferred");
   });
 

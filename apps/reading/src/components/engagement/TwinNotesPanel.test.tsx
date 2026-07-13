@@ -276,14 +276,14 @@ describe("TwinNotesPanel", () => {
     render(<TwinNotesPanel assetId="paper" />);
     const dual = screen.getByTestId("twin-notes-dual-gate-checklist-link");
     // Residual (xa): L3 twin checklist section deep-link.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l3-twin/);
+    expect(dual.getAttribute("href")).toBe("/settings#twin-seed-live-status");
     expect(dual.textContent).toMatch(/L3 twin checklist/i);
     // Residual (aio): FUTURE-AGENT twin matrix + competitive scorecard deep-links.
     expect(
       screen
         .getByTestId("twin-notes-future-agent-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     expect(
       screen
         .getByTestId("twin-notes-competitive-scorecard-link")
@@ -294,11 +294,11 @@ describe("TwinNotesPanel", () => {
       screen
         .getByTestId("twin-notes-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(
       screen.getByTestId("twin-notes-competitive-dr-future-agent-link")
         .textContent,
-    ).toMatch(/competitive DR quality/i);
+    ).toMatch(/competitive quality status/i);
     expect(
       screen
         .getByTestId("twin-notes-prompt-cost-projection-link")
@@ -865,7 +865,7 @@ describe("TwinNotesPanel", () => {
       screen
         .getByTestId("twin-promote-twin-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     expect(
       screen
         .getByTestId("twin-promote-competitive-scorecard-link")

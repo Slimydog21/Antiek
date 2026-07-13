@@ -27,6 +27,7 @@
  * parity collective merge ank · continue-as-unit di).
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   mergeSpawnOutputs,
@@ -334,7 +335,7 @@ export function SpawnMergePanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+            href={capabilityGuidanceLinks.collectiveCouncil}
             data-testid="spawn-merge-dual-gate-checklist-link"
             className="underline opacity-80 hover:opacity-100"
             title="Dual-gate L6 live multi-agent checklist (prep only · offline merge unit)"
@@ -352,12 +353,12 @@ export function SpawnMergePanel({
             Settings · competitive DR scorecard
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            href={capabilityGuidanceLinks.competitiveQuality}
             data-testid="spawn-merge-competitive-dr-future-agent-link"
             className="underline opacity-80 hover:opacity-100"
-            title="FUTURE-AGENT competitive deep-research quality brief"
+            title="Settings competitive deep-research quality status"
           >
-            FUTURE · competitive DR brief
+            Settings · competitive quality status
           </a>
           {/* Residual (akn): highlight→DR→merge budget-before-fire → Settings prompt-cost. */}
           <a

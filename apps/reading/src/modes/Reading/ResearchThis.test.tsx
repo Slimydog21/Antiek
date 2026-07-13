@@ -492,7 +492,7 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
       screen
         .getByTestId("research-this-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(
       screen.getByTestId("research-this-competitive-pipeline-hint").textContent,
     ).toMatch(/insights.*questions.*sources/i);
@@ -524,13 +524,13 @@ describe("ResearchThis residual cc/cu/cx/jg", () => {
       screen
         .getByTestId("research-this-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     // Residual (aao): L2 Substack checklist (parity aal–aan).
     expect(
       screen
         .getByTestId("research-this-hydrate-dual-gate-l2-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     fireEvent.click(
       screen.getByTestId("research-this-preset-attention-is-all-you-need"),
     );

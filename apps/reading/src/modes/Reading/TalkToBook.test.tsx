@@ -386,7 +386,7 @@ describe("TalkToBook (M2)", () => {
       screen
         .getByTestId("talk-to-book-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (apt): hop/stage pipeline honesty on talk competitive links.
     const talkComp = screen.getByTestId("talk-to-book-competitive-links");
     expect(talkComp.getAttribute("data-hop-pipeline")).toBe("api");
@@ -398,7 +398,7 @@ describe("TalkToBook (M2)", () => {
       screen
         .getByTestId("talk-to-book-twin-completeness-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     const mount = screen.getByTestId("talk-to-book-twins-mount");
     expect(mount.getAttribute("data-view-format")).toBe("html");
     expect(mount.getAttribute("data-document-id")).toBe("doc-twin");

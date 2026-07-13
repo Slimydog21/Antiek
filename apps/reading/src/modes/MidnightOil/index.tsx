@@ -76,6 +76,7 @@
  * multi-goal swarm coverage is honest (never auto-change fanout).
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
 import {
@@ -956,7 +957,7 @@ export default function MidnightOil() {
         </a>
         {/* Residual (wx): L4 MO live-step checklist section deep-link. */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+          href={capabilityGuidanceLinks.midnightOilLiveStep}
           data-testid="moil-dual-gate-checklist-link"
           className="underline opacity-80 hover:opacity-100"
           title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
@@ -977,12 +978,12 @@ export default function MidnightOil() {
           Settings · competitive DR scorecard
         </a>
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          href={capabilityGuidanceLinks.competitiveQuality}
           data-testid="moil-competitive-dr-future-agent-link"
           className="underline opacity-80 hover:opacity-100"
-          title="FUTURE-AGENT competitive deep-research quality brief (L4 MO live dual-gate)"
+          title="Settings competitive deep-research quality status (L4 MO live dual-gate)"
         >
-          FUTURE · competitive DR brief
+          Settings · competitive quality status
         </a>
         {/* Residual (akk): autonomous budget-before-fire → Settings prompt-cost projection (ake). */}
         <a
@@ -1244,7 +1245,7 @@ export default function MidnightOil() {
             </a>
             {/* Residual (xy): L1 arxiv checklist section (pub-refs hydrate prep). */}
             <a
-              href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+              href={capabilityGuidanceLinks.arxivHydration}
               data-testid="moil-pub-refs-dual-gate-link"
               className="underline opacity-80 hover:opacity-100"
               title="Dual-gate L1 arxiv hydrate checklist (prep only · offline identity default)"
@@ -1253,7 +1254,7 @@ export default function MidnightOil() {
             </a>
             {/* Residual (aan): L2 Substack section (parity aal/aam · midnight oil pubs). */}
             <a
-              href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+              href={capabilityGuidanceLinks.substackAcquisition}
               data-testid="moil-pub-refs-dual-gate-l2-link"
               className="underline opacity-80 hover:opacity-100"
               title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
@@ -2374,15 +2375,15 @@ export default function MidnightOil() {
                   Settings · competitive DR scorecard
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                  href={capabilityGuidanceLinks.competitiveQuality}
                   data-testid="moil-deposit-competitive-dr-future-agent-link"
                   className="underline opacity-80 hover:opacity-100"
-                  title="FUTURE-AGENT competitive deep-research quality brief (L4 MO live dual-gate)"
+                  title="Settings competitive deep-research quality status (L4 MO live dual-gate)"
                 >
-                  FUTURE · competitive DR brief
+                  Settings · competitive quality status
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                  href={capabilityGuidanceLinks.midnightOilLiveStep}
                   data-testid="moil-deposit-dual-gate-l4-link"
                   className="underline opacity-80 hover:opacity-100"
                   title="Dual-gate L4 Midnight Oil live-step checklist (prep only · deposit is offline HTML land)"

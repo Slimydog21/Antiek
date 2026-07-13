@@ -402,7 +402,7 @@ describe("MarketplaceHost mode", () => {
     // Residual (mm): dual-gate checklist (prep only).
     const dual = screen.getByTestId("marketplace-dual-gate-checklist-link");
     // Residual (ye): marketplace dual-gate → L5 payment section.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
+    expect(dual.getAttribute("href")).toBe("/settings#marketplace-live-payment-status");
     expect(dual.textContent).toMatch(/L5 payment checklist/i);
     // Residual (ajl): free STEM marketplace → competitive DR honesty map.
     expect(
@@ -414,7 +414,7 @@ describe("MarketplaceHost mode", () => {
       screen
         .getByTestId("marketplace-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     await waitFor(() => {
       expect(screen.getByText("Pride and Prejudice")).toBeTruthy();
     });
@@ -465,7 +465,7 @@ describe("MarketplaceHost mode", () => {
     expect(
       screen.getByTestId("marketplace-l5-dual-gate-link").getAttribute("href") ||
         "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
+    ).toBe("/settings#marketplace-live-payment-status");
     expect(
       screen.getByTestId("marketplace-l5-dual-gate-link").textContent,
     ).toMatch(/L5 payment checklist/i);
@@ -629,7 +629,7 @@ describe("MarketplaceHost mode", () => {
       screen
         .getByTestId("marketplace-host-l5-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    ).toBe("/settings#marketplace-live-payment-status");
     expect(
       screen
         .getByTestId("marketplace-host-l5-future-agent-link")
@@ -639,7 +639,7 @@ describe("MarketplaceHost mode", () => {
       screen
         .getByTestId("marketplace-host-l5-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l5-payment/);
+    ).toBe("/settings#marketplace-live-payment-status");
     expect(
       screen
         .getByTestId("marketplace-host-competitive-scorecard-link")
@@ -3790,13 +3790,13 @@ describe("MarketplaceHost mode", () => {
       screen
         .getByTestId("marketplace-host-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     // Residual (aal): L2 Substack checklist section (parity Settings xr).
     expect(
       screen
         .getByTestId("marketplace-host-hydrate-dual-gate-l2-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     fireEvent.click(
       screen.getByTestId("marketplace-host-preset-attention-is-all-you-need"),
     );

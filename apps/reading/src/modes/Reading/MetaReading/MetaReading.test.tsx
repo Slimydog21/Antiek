@@ -330,7 +330,7 @@ describe("MetaReading (M4)", () => {
       screen
         .getByTestId("meta-reading-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (apt): hop/stage pipeline honesty on meta competitive links.
     const metaComp = screen.getByTestId("meta-reading-competitive-links");
     expect(metaComp.getAttribute("data-hop-pipeline")).toBe("api");
@@ -342,7 +342,7 @@ describe("MetaReading (M4)", () => {
       screen
         .getByTestId("meta-reading-twin-completeness-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     const twins = screen.getByTestId("twin-notes-panel-stub");
     expect(twins.getAttribute("data-asset-id")).toBe("mr-abc123");
     expect(twins.getAttribute("data-auto-load")).toBe("true");

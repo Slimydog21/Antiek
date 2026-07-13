@@ -1,3 +1,4 @@
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -290,12 +291,12 @@ export default function ResearchThis({
           Settings · competitive DR
         </a>
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          href={capabilityGuidanceLinks.competitiveQuality}
           data-testid="research-this-competitive-dr-future-agent-link"
           className="underline opacity-80 hover:opacity-100"
-          title="FUTURE-AGENT competitive deep-research quality brief"
+          title="Settings competitive deep-research quality status"
         >
-          FUTURE · competitive DR
+          Settings · competitive quality
         </a>
         <span
           className="opacity-70"
@@ -420,7 +421,7 @@ export default function ResearchThis({
           </a>
           {/* Residual (xd): L1 arxiv checklist section deep-link (parity pubs xc). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+            href={capabilityGuidanceLinks.arxivHydration}
             data-testid="research-this-hydrate-dual-gate-link"
             className="underline hover:opacity-100"
             title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -429,7 +430,7 @@ export default function ResearchThis({
           </a>
           {/* Residual (aao): L2 Substack section (parity aal–aan · reading DR). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+            href={capabilityGuidanceLinks.substackAcquisition}
             data-testid="research-this-hydrate-dual-gate-l2-link"
             className="underline hover:opacity-100"
             title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"

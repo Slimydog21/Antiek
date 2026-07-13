@@ -253,7 +253,7 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
     });
     const dual = screen.getByTestId("decision-tree-dual-gate-checklist-link");
     // Residual (aaz): deep-link L7 ND advisory-only section (never router).
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l7-notdiamond/);
+    expect(dual.getAttribute("href")).toBe("/settings#notdiamond-advisory");
     expect(dual.textContent).toMatch(/L7 ND advisory/i);
     // Residual (yl): shared chokepoint dual-gate honesty stamps.
     expect(dual.getAttribute("data-offline-default")).toBe("true");
@@ -287,11 +287,11 @@ describe("DecisionTreeDriverBadge residual cw/eq", () => {
       screen
         .getByTestId("decision-tree-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(
       screen.getByTestId("decision-tree-competitive-dr-future-agent-link")
         .textContent,
-    ).toMatch(/competitive DR quality/i);
+    ).toMatch(/competitive quality status/i);
     expect(
       screen
         .getByTestId("decision-tree-prompt-cost-projection-link")

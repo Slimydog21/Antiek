@@ -442,10 +442,10 @@ describe("MidnightOil mode", () => {
     expect(scorecard.getAttribute("data-notdiamond-is-router")).toBe("false");
     expect(scorecard.textContent).toMatch(/competitive DR scorecard/i);
     const future = screen.getByTestId("moil-competitive-dr-future-agent-link");
-    expect(future.getAttribute("href") || "").toMatch(
-      /FUTURE-AGENT-SPEC-competitive-deep-research-quality/,
+    expect(future.getAttribute("href") || "").toBe(
+      "/settings#settings-competitive-dr-scorecard",
     );
-    expect(future.textContent).toMatch(/competitive DR brief/i);
+    expect(future.textContent).toMatch(/competitive quality status/i);
   });
 
   it("links Settings prompt-cost projection for budget-before-fire (akk)", () => {
@@ -459,7 +459,7 @@ describe("MidnightOil mode", () => {
     render(<MidnightOil />);
     const dual = screen.getByTestId("moil-dual-gate-checklist-link");
     // Residual (wx): deep-link L4 MO section (not checklist root only).
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    expect(dual.getAttribute("href")).toBe("/settings#moil-live-step-status");
     expect(dual.textContent).toMatch(/L4 MO checklist/i);
   });
 
@@ -1794,12 +1794,12 @@ describe("MidnightOil mode", () => {
       screen
         .getByTestId("moil-deposit-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(
       screen
         .getByTestId("moil-deposit-dual-gate-l4-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    ).toBe("/settings#moil-live-step-status");
   });
 
   it("includes pub refs in budget projection promptText (pa)", () => {
@@ -1833,11 +1833,11 @@ describe("MidnightOil mode", () => {
     render(<MidnightOil />);
     const link = screen.getByTestId("moil-pub-refs-dual-gate-link");
     // Residual (xy): L1 arxiv checklist section deep-link.
-    expect(link.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(link.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(link.textContent).toMatch(/L1 arxiv checklist/i);
     // Residual (aan): L2 Substack checklist (parity aal/aam).
     const l2 = screen.getByTestId("moil-pub-refs-dual-gate-l2-link");
-    expect(l2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(l2.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(l2.textContent).toMatch(/L2 Substack checklist/i);
     const offline = screen.getByTestId("moil-pub-refs-offline-default");
     expect(offline.getAttribute("data-offline-honest")).toBe("true");

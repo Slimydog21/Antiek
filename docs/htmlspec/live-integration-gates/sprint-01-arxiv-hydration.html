@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>LIG-SPR-01 · L1 · governed arXiv HTML hydration</title><style>/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+
+  /* Spacing scale (4px base) */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-11: 44px;
+  --space-12: 48px;
+
+  /* Typography scale */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-body: 15px;
+  --text-lg: 16px;
+  --text-xl: 17px;
+  --text-2xl: 22px;
+  --text-3xl: 32px;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: var(--text-body);
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-7) var(--space-12) var(--space-7);
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-7) var(--space-7) var(--space-6) var(--space-7);
+  margin-bottom: var(--space-7);
+}
+
+header.hero .eyebrow {
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 var(--space-1) 0;
+}
+
+header.hero h1 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-3xl);
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-xl);
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-6) var(--space-6) var(--space-5) var(--space-6);
+  margin: 0 0 var(--space-5) 0;
+}
+
+section.block > h2 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 var(--space-4) 0;
+  color: var(--color-muted);
+  font-size: var(--text-base);
+}
+
+section.block h3 {
+  margin: var(--space-5) 0 var(--space-2) 0;
+  font-size: var(--text-body);
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 var(--space-3) 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 var(--space-3) 0;
+  padding-left: var(--space-5);
+}
+
+section.block li { margin-bottom: var(--space-1); }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: var(--space-2); height: var(--space-2); border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: var(--space-4) 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: var(--text-md);
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-1) 0 var(--space-3) 0;
+  font-size: var(--text-base);
+}
+
+table.spec th, table.spec td {
+  padding: var(--space-2) 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: var(--text-md);
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  margin: var(--space-2) 0 var(--space-3) 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-sm);
+  margin: var(--space-2) 0 var(--space-3) 0;
+  font-size: var(--text-base);
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-3);
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: var(--space-2);
+}
+
+.rigor-card h4 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-body);
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: var(--text-base);
+}
+
+.milestone .title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: var(--space-1);
+}
+
+.milestone .desc {
+  font-size: var(--text-base);
+  margin: var(--space-1) 0 var(--space-2) 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: var(--space-1) 0 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: var(--space-1) 0 0 0; padding-left: var(--space-4); }
+.milestone .criteria li { margin-bottom: 3px; }
+.milestone .files {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-md);
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: var(--border-thin);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: var(--space-2) 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: var(--text-base);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--text-sm);
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: var(--space-6) 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: var(--space-5) 0 var(--space-1) 0;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+</style></head>
+<body><main class="page">
+<header class="hero"><p class="eyebrow"><a href="index.html">&larr; Live integration gates</a> · LIG-SPR-01</p>
+<h1>L1 · governed arXiv HTML hydration</h1><p class="tagline">Prove that an operator-enabled arXiv reference becomes a canonical HTML asset with governed network behavior and exact source receipts.</p><div class="meta-row">
+<span class="tag tag--blue">Wave 1</span><span class="tag tag--yellow">Status: operator-gated</span>
+<span class="tag tag--grey">3 milestones</span><span class="tag tag--grey">Owner: future executing agent</span></div></header>
+<section class="block"><h2>Parent context</h2><p>Antiek already ships the offline product loop for this capability. This sprint is the cold-executable contract for crossing one live boundary without duplicating that substrate or rounding an enable flag up to a working product.</p><p>All live work remains operator-controlled. Default and CI behavior stays offline, every network or paid effect needs two independent authorities, and human-viewable output remains canonical HTML.</p><div class="callout callout--info"><strong>Position:</strong> LIG-SPR-01 is one independent gate in the L1-L7 map; it does not authorize another gate.</div></section>
+<section class="block"><h2>Goal</h2><p><strong>Prove that an operator-enabled arXiv reference becomes a canonical HTML asset with governed network behavior and exact source receipts.</strong></p></section>
+<section class="block"><h2>Technical milestones</h2><div class="milestone"><div class="num">1</div><div><div class="title">Pin the body contract</div><p class="desc">Separate metadata, abstract, source text, and unavailable states so the adapter cannot relabel metadata as a hydrated paper.</p><div class="criteria"><strong>Acceptance criteria</strong><ul><li>A fixture for each state produces a distinct typed receipt and only a real body can set hydrated=true.</li></ul></div><div class="files"><span class="file">substrate/engagement_spine/hydrate_adapters.py; acquisition/arxiv/</span></div></div></div><div class="milestone"><div class="num">2</div><div><div class="title">Govern network execution</div><p class="desc">Keep ANTIEK_HYDRATE_LIVE_ARXIV plus an installed injector as dual authority and apply the existing host-scoped rate governor.</p><div class="criteria"><strong>Acceptance criteria</strong><ul><li>Env-off and env-on-without-injector perform zero requests; redirects and rate limits retain host policy.</li></ul></div><div class="files"><span class="file">substrate/engagement_spine/hydrate_live_wiring.py; interfaces/research/api/app.py</span></div></div></div><div class="milestone"><div class="num">3</div><div><div class="title">Land and reopen HTML</div><p class="desc">Route acquired bytes through canonical hosted-document extraction, preserving arXiv ID, URL, content digest, conversion receipt, and owner binding.</p><div class="criteria"><strong>Acceptance criteria</strong><ul><li>The browser reopens one canonical HTML document; no PDF viewer is introduced and every claim-to-source hop remains resolvable.</li></ul></div><div class="files"><span class="file">interfaces/research/api/engagement_routes.py; acquisition/documents/; apps/reading/src/</span></div></div></div></section>
+<section class="block"><h2>Rigor — operating manual for this sprint</h2><div class="rigor"><article class="rigor-card"><span class="label">1 · Intellectual honesty</span><p>Do not call an Atom title and abstract a hydrated paper body. Record metadata-only, body-complete, and body-unavailable as different L1 outcomes.</p></article><article class="rigor-card"><span class="label">2 · Fairness</span><p>Steelman direct PDF rendering for fidelity, then reject it only because Antiek requires canonical agent-editable HTML; preserve the original PDF/source URL for audit and accessibility alternatives.</p></article><article class="rigor-card"><span class="label">3 · Rigor</span><p>Red-prove zero network for every missing gate, then test redirects, 429/backoff, oversized bodies, malformed XML, and a successful HTML reopen with exact provenance.</p></article><article class="rigor-card"><span class="label">4 · Diligence</span><p>Read the existing arXiv rate governor, T1 storage decisions, hydrate adapter, and canonical ingest path before adding any fetch or conversion code.</p></article><article class="rigor-card"><span class="label">5 · Defensibility</span><p>Persist the exact network policy, source URL, body classification, digest, and conversion receipt so an operator can reconstruct why L1 was marked live.</p></article></div></section>
+<section class="block"><h2>Dependencies</h2><p>Operator approval for outbound arxiv.org access; existing acquisition.arxiv client, hydrate-ref route, and canonical HTML ingest.</p></section>
+<section class="block"><h2>Out of scope</h2><p>No PDF reading surface, broad crawler, silent CI network, or claim that Atom metadata alone is a full paper body.</p></section>
+<section class="block"><h2>Verification gates</h2><pre><code>pytest -q tests/test_hydrate_arxiv_adapter.py tests/test_hydrate_live_wiring.py tests/test_engagement_hydrate_boot_wiring.py tests/test_acquisition_arxiv.py; operator smoke is NOT RUN until approved</code></pre><p>Record exact exits and counts. Operator-only or paid smoke stays <strong>NOT RUN</strong> until explicitly authorized.</p></section>
+<section class="block"><h2>Handoff packet</h2><ul><li>Commit SHA and exact files/authority boundaries changed.</li><li>Every gate command with count and NOT RUN reason.</li><li>Offline, missing-authority, live-success, rollback, and adverse-path receipts.</li><li>Operator decision or external contract still required.</li><li>Any divergence from this sprint and what would reverse it.</li></ul></section>
+<section class="block" id="harness-hint" data-harness-pattern="adversarial-verification" data-harness-fanout-unit="one builder in an isolated worktree" data-harness-verifier-lenses="metadata-as-body false green; network gate and provenance bypass" data-harness-rounds-floor="2" data-harness-rounds-cap="6"><h2>Execution harness hint</h2><p><code>adversarial-verification</code> · verifier lenses: metadata-as-body false green; network gate and provenance bypass</p><p>Irreversible enablement, spend, deployment, merge, and operator decisions remain in the primary orchestrator.</p></section>
+<footer class="spec-footer">LIG-SPR-01 · generated 2026-07-13 · source: research-reading-spine handoff, canonical decisions, and deleted campaign archaeology</footer></main></body></html>

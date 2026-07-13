@@ -75,6 +75,7 @@
  * written analysis · parity single-spawn agu highlight→DR→merge).
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   fetchCollectiveResearch,
@@ -816,7 +817,7 @@ export function CollectiveResearchPanel({
           L6 live multi-agent council: deferred · offline merge unit only · never
           silent live council ·{" "}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+            href={capabilityGuidanceLinks.collectiveCouncil}
             data-testid="collective-l6-checklist-link"
             className="underline opacity-90 hover:opacity-100"
             title="L6 live multi-agent deferred — dual-gate checklist (offline merge unit only)"
@@ -880,7 +881,7 @@ export function CollectiveResearchPanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+            href={capabilityGuidanceLinks.collectiveCouncil}
             data-testid="collective-dual-gate-checklist-link"
             title="Dual-gate L6 live multi-agent checklist (prep only · offline merge unit)"
           >
@@ -896,11 +897,11 @@ export function CollectiveResearchPanel({
             Settings · competitive DR scorecard
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            href={capabilityGuidanceLinks.competitiveQuality}
             data-testid="collective-competitive-dr-future-agent-link"
-            title="FUTURE-AGENT competitive deep-research quality brief (L6 live dual-gate)"
+            title="Settings competitive deep-research quality status (L6 live dual-gate)"
           >
-            FUTURE · competitive DR brief
+            Settings · competitive quality status
           </a>
           {/* Residual (akm): multi-agent merge budget-before-fire → Settings prompt-cost (ake/akl). */}
           <a

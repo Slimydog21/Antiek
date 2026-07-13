@@ -37,6 +37,9 @@ Authoritative executable specifications and decisions:
 - `docs/htmlspec/antiek-html-transport/`
 - `docs/htmlspec/deep-research-loop/`
 - `docs/htmlspec/competitive-deep-research/`
+- `docs/htmlspec/live-integration-gates/` — cold-executable L1–L7 integration contracts; these are
+  repository-native agent instructions, while product guidance resolves to served Settings status
+  panels.
 - `docs/htmlspec/midnight-oil/`
 - `docs/htmlspec/marketplace-host/`
 - `docs/htmlspec/antiek-bench-recursive/`

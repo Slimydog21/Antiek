@@ -1,3 +1,4 @@
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useMemo, useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
@@ -217,20 +218,20 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
             Settings · competitive DR
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            href={capabilityGuidanceLinks.competitiveQuality}
             data-testid="talk-to-book-competitive-dr-future-agent-link"
             className="underline opacity-80 hover:opacity-100"
-            title="FUTURE-AGENT competitive deep-research quality brief"
+            title="Settings competitive deep-research quality status"
           >
-            FUTURE · competitive DR
+            Settings · competitive quality
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+            href={capabilityGuidanceLinks.twinSeed}
             data-testid="talk-to-book-twin-completeness-future-agent-link"
             className="underline opacity-80 hover:opacity-100"
-            title="FUTURE-AGENT twin note-taker completeness matrix (talk twins)"
+            title="Settings twin seed readiness and completeness status (talk twins)"
           >
-            FUTURE · twin matrix
+            Settings · twin seed status
           </a>
           {/* Residual (apt): hop/stage pipeline honesty (parity ResearchThis aps). */}
           <span

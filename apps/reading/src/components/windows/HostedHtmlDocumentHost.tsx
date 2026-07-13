@@ -60,6 +60,7 @@
  * Props arrive via WindowsLayer: `<Renderer {...win.payload} />`.
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { SyntheticEvent } from "react";
 
@@ -782,12 +783,12 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                    href={capabilityGuidanceLinks.competitiveQuality}
                     data-testid="hosted-html-evidence-future-agent-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT competitive deep-research quality brief"
+                    title="Settings competitive deep-research quality status"
                   >
-                    FUTURE · competitive DR brief
+                    Settings · competitive quality status
                   </a>
                 </p>
               </div>
@@ -829,12 +830,12 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-collective-unit-twin-matrix-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                    title="Settings twin seed readiness and completeness status"
                   >
-                    FUTURE · twin completeness matrix
+                    Settings · twin seed status
                   </a>
                 </p>
               </div>
@@ -867,15 +868,15 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-moil-deposit-twin-matrix-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT twin note-taker completeness matrix (MO deposit gap #1)"
+                    title="Settings twin seed readiness and completeness status (MO deposit gap #1)"
                   >
-                    FUTURE · twin completeness matrix
+                    Settings · twin seed status
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                    href={capabilityGuidanceLinks.midnightOilLiveStep}
                     data-testid="hosted-html-moil-deposit-dual-gate-l4-link"
                     className="underline opacity-90 hover:opacity-100"
                     title="Dual-gate L4 Midnight Oil live worker step (operator only)"
@@ -922,15 +923,15 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                    href={capabilityGuidanceLinks.marketplacePayment}
                     data-testid="hosted-html-marketplace-host-l5-future-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT L5 digital book seamless port brief"
+                    title="Settings L5 digital-book payment status"
                   >
-                    FUTURE · L5 seamless port
+                    Settings · L5 payment status
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                    href={capabilityGuidanceLinks.marketplacePayment}
                     data-testid="hosted-html-marketplace-host-dual-gate-l5-link"
                     className="underline opacity-90 hover:opacity-100"
                     title="Dual-gate L5 payment rails (operator only)"
@@ -968,12 +969,12 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                    href={capabilityGuidanceLinks.marketplacePayment}
                     data-testid="hosted-html-marketplace-catalog-l5-future-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT L5 digital book seamless port brief"
+                    title="Settings L5 digital-book payment status"
                   >
-                    FUTURE · L5 seamless port
+                    Settings · L5 payment status
                   </a>
                 </p>
               </div>
@@ -1009,12 +1010,12 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md"
+                    href={capabilityGuidanceLinks.collectiveCouncil}
                     data-testid="hosted-html-collective-analysis-l6-future-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT L6 live multi-agent collective brief"
+                    title="Settings L6 collective council status"
                   >
-                    FUTURE · L6 multi-agent
+                    Settings · L6 council status
                   </a>
                 </p>
               </div>
@@ -1085,12 +1086,12 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                    href={capabilityGuidanceLinks.competitiveQuality}
                     data-testid="hosted-html-research-progress-future-agent-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT competitive deep-research quality brief"
+                    title="Settings competitive deep-research quality status"
                   >
-                    FUTURE · competitive DR brief
+                    Settings · competitive quality status
                   </a>
                 </p>
               </div>
@@ -1123,12 +1124,12 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-session-flywheel-twin-matrix-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                    title="Settings twin seed readiness and completeness status"
                   >
-                    FUTURE · twin completeness matrix
+                    Settings · twin seed status
                   </a>
                 </p>
               </div>
@@ -1161,15 +1162,15 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-twin-cross-asset-twin-matrix-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                    title="Settings twin seed readiness and completeness status"
                   >
-                    FUTURE · twin completeness matrix
+                    Settings · twin seed status
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-twin-cross-asset-dual-gate-l3-link"
                     className="underline opacity-90 hover:opacity-100"
                     title="Dual-gate L3 live twin seed checklist (never enables injectors)"
@@ -1208,15 +1209,15 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-twin-draft-twin-matrix-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                    title="Settings twin seed readiness and completeness status"
                   >
-                    FUTURE · twin completeness matrix
+                    Settings · twin seed status
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-twin-draft-dual-gate-l3-link"
                     className="underline opacity-90 hover:opacity-100"
                     title="Dual-gate L3 live twin seed checklist (never enables injectors)"
@@ -1253,12 +1254,12 @@ export default function HostedHtmlDocumentHost(
                     Settings · competitive DR scorecard
                   </a>
                   <a
-                    href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                    href={capabilityGuidanceLinks.twinSeed}
                     data-testid="hosted-html-research-context-pack-twin-matrix-link"
                     className="underline opacity-90 hover:opacity-100"
-                    title="FUTURE-AGENT twin note-taker completeness matrix"
+                    title="Settings twin seed readiness and completeness status"
                   >
-                    FUTURE · twin completeness matrix
+                    Settings · twin seed status
                   </a>
                 </p>
               </div>
@@ -1522,7 +1523,7 @@ export default function HostedHtmlDocumentHost(
               </a>
               {/* Residual (xd): L1 arxiv checklist section deep-link (parity pubs xc). */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                href={capabilityGuidanceLinks.arxivHydration}
                 data-testid="hosted-html-hydrate-dual-gate-link"
                 className="underline hover:opacity-100"
                 title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -1531,7 +1532,7 @@ export default function HostedHtmlDocumentHost(
               </a>
               {/* Residual (aam): L2 Substack section (parity marketplace aal). */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                href={capabilityGuidanceLinks.substackAcquisition}
                 data-testid="hosted-html-hydrate-dual-gate-l2-link"
                 className="underline hover:opacity-100"
                 title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"

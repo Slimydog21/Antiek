@@ -27,6 +27,7 @@
  * DecisionTree atf · budget-before-fire + multi-minute long-horizon foresight).
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -333,7 +334,7 @@ export function ResearchLaunchBudgetPanel({
           {/* Residual (nu/ym): dual-gate prep on shared launch budget chokepoint. */}
           {/* Residual (aaz): deep-link #l7-notdiamond (parity DecisionTreeDriverBadge). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+            href={capabilityGuidanceLinks.notDiamondAdvisory}
             data-testid="research-launch-budget-dual-gate-checklist-link"
             data-offline-default="true"
             data-l7-notdiamond="advisory_only"
@@ -352,12 +353,12 @@ export function ResearchLaunchBudgetPanel({
             Competitive DR scorecard
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            href={capabilityGuidanceLinks.competitiveQuality}
             data-testid="research-launch-budget-competitive-dr-future-agent-link"
             className="text-[10px] font-mono underline opacity-80 hover:opacity-100"
-            title="FUTURE-AGENT competitive deep-research quality brief (budget-capped autonomous runs)"
+            title="Settings competitive deep-research quality status (budget-capped autonomous runs)"
           >
-            FUTURE · competitive DR brief
+            Settings · competitive quality status
           </a>
           {/* Residual (akp): launch foresight → full Settings prompt-cost projection (ake). */}
           <a

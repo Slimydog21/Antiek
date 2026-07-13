@@ -356,11 +356,11 @@ describe("ResearchContextPanel", () => {
     );
     const dual = screen.getByTestId("research-context-dual-gate-checklist-link");
     // Residual (xe): L1 arxiv checklist section deep-link.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(dual.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(dual.textContent).toMatch(/L1 arxiv checklist/i);
     // Residual (aaq): L2 Substack checklist (parity aal–aap).
     const dualL2 = screen.getByTestId("research-context-dual-gate-l2-link");
-    expect(dualL2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(dualL2.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(dualL2.textContent).toMatch(/L2 Substack checklist/i);
   });
 
@@ -968,12 +968,12 @@ describe("ResearchContextPanel", () => {
       screen
         .getByTestId("evidence-citation-trust-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen
         .getByTestId("evidence-citation-trust-dual-gate-l2-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     // Residual (hu): machine-readable evidence pack metrics.
     const metrics = screen.getByTestId("evidence-pack-metrics");
     expect(metrics.getAttribute("data-insight-count")).toBe("1");
@@ -1107,7 +1107,7 @@ describe("ResearchContextPanel", () => {
       screen
         .getByTestId("evidence-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (alc): evidence pack budget-before-fire → prompt-cost projection.
     expect(
       screen
@@ -1232,12 +1232,12 @@ describe("ResearchContextPanel", () => {
       screen
         .getByTestId("evidence-citation-trust-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen
         .getByTestId("evidence-citation-trust-dual-gate-l2-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
   });
 
   it("mounts DecisionTreeDriverBadge with prompt_block foresight (qq)", async () => {

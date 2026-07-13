@@ -69,8 +69,8 @@ describe("ResearchWorkstation — dense IDE exempt from floating stack chrome", 
       "utf8",
     );
     expect(src).toMatch(/research-workstation-dual-gate-prep/);
-    expect(src).toMatch(/#l3-twin/);
-    expect(src).toMatch(/#l6-collective/);
+    expect(src).toMatch(/capabilityGuidanceLinks\.twinSeed/);
+    expect(src).toMatch(/capabilityGuidanceLinks\.collectiveCouncil/);
     expect(src).toMatch(/data-l3-twin-seed/);
   });
 });

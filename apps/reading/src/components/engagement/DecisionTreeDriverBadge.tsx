@@ -31,6 +31,7 @@
  * train that weekly best · advisory only).
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   estimatePromptCost,
@@ -286,7 +287,7 @@ export function DecisionTreeDriverBadge({
         {/* Residual (aaz): deep-link #l7-notdiamond — badge stamps advisory_only L7;
             root checklist alone did not land operators on ND-never-router doctrine. */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+          href={capabilityGuidanceLinks.notDiamondAdvisory}
           data-testid="decision-tree-dual-gate-checklist-link"
           data-offline-default="true"
           data-l7-notdiamond="advisory_only"
@@ -306,12 +307,12 @@ export function DecisionTreeDriverBadge({
         </a>
         {/* Residual (akx): FUTURE competitive DR quality + prompt-cost at driver chokepoint. */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          href={capabilityGuidanceLinks.competitiveQuality}
           data-testid="decision-tree-competitive-dr-future-agent-link"
           className="underline opacity-80 hover:opacity-100"
-          title="FUTURE-AGENT competitive deep-research quality brief (model choice · ND advisory only · budget-before-fire)"
+          title="Settings competitive deep-research quality status (model choice · ND advisory only · budget-before-fire)"
         >
-          FUTURE · competitive DR quality
+          Settings · competitive quality status
         </a>
         <a
           href="/settings#prompt-cost-projection"

@@ -45,6 +45,7 @@
  * · fall back to client pure helper (never invent hops).
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
@@ -367,7 +368,7 @@ export function ResearchContextPanel({
           </a>
           {/* Residual (xe): L1 arxiv checklist section deep-link (parity hydrate xd). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+            href={capabilityGuidanceLinks.arxivHydration}
             data-testid="research-context-dual-gate-checklist-link"
             title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
           >
@@ -375,7 +376,7 @@ export function ResearchContextPanel({
           </a>
           {/* Residual (aaq): L2 Substack section (parity aal–aap · research context). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+            href={capabilityGuidanceLinks.substackAcquisition}
             data-testid="research-context-dual-gate-l2-link"
             title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
           >
@@ -1082,12 +1083,12 @@ export function ResearchContextPanel({
               Settings · competitive DR scorecard
             </a>
             <a
-              href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+              href={capabilityGuidanceLinks.competitiveQuality}
               data-testid="evidence-competitive-dr-future-agent-link"
               className="underline opacity-80 hover:opacity-100"
-              title="FUTURE-AGENT competitive deep-research quality brief"
+              title="Settings competitive deep-research quality status"
             >
-              FUTURE · competitive DR brief
+              Settings · competitive quality status
             </a>
             {/* Residual (alc): evidence/search substrate budget-before-fire → prompt-cost. */}
             <a
@@ -1257,7 +1258,7 @@ export function ResearchContextPanel({
                   Settings · hydrate readiness
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  href={capabilityGuidanceLinks.arxivHydration}
                   data-testid="evidence-citation-trust-dual-gate-link"
                   className="underline hover:opacity-100"
                   title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -1265,7 +1266,7 @@ export function ResearchContextPanel({
                   Dual-gate L1 arxiv checklist
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  href={capabilityGuidanceLinks.substackAcquisition}
                   data-testid="evidence-citation-trust-dual-gate-l2-link"
                   className="underline hover:opacity-100"
                   title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
@@ -1301,7 +1302,7 @@ export function ResearchContextPanel({
                   Settings · hydrate readiness
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  href={capabilityGuidanceLinks.arxivHydration}
                   data-testid="evidence-citation-trust-dual-gate-link"
                   className="underline hover:opacity-100"
                   title="Dual-gate L1 arxiv hydrate checklist (maintain prep · offline default)"
@@ -1309,7 +1310,7 @@ export function ResearchContextPanel({
                   Dual-gate L1 arxiv checklist
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  href={capabilityGuidanceLinks.substackAcquisition}
                   data-testid="evidence-citation-trust-dual-gate-l2-link"
                   className="underline hover:opacity-100"
                   title="Dual-gate L2 Substack hydrate checklist (maintain prep · factory + ToS)"

@@ -22,6 +22,7 @@
  * HTML-first; offline hydrate by default.
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useMemo, useState } from "react";
 import {
   attachSourceRefs,
@@ -294,7 +295,7 @@ export function PublicationAttachPanel({
         </a>
         {/* Residual (mj/xc): dual-gate L1 arxiv checklist section — prep only. */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+          href={capabilityGuidanceLinks.arxivHydration}
           data-testid="publication-attach-dual-gate-checklist-link"
           className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
           title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -303,7 +304,7 @@ export function PublicationAttachPanel({
         </a>
         {/* Residual (aap): L2 Substack section (parity aal–aao · attach path). */}
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+          href={capabilityGuidanceLinks.substackAcquisition}
           data-testid="publication-attach-dual-gate-l2-link"
           className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
           title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
@@ -320,12 +321,12 @@ export function PublicationAttachPanel({
           Settings · competitive DR scorecard
         </a>
         <a
-          href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+          href={capabilityGuidanceLinks.competitiveQuality}
           data-testid="publication-attach-competitive-dr-future-agent-link"
           className="text-[11px] font-mono underline opacity-80 hover:opacity-100"
-          title="FUTURE-AGENT competitive deep-research quality brief"
+          title="Settings competitive deep-research quality status"
         >
-          FUTURE · competitive DR brief
+          Settings · competitive quality status
         </a>
         {/* Residual (ald): knowledge-dense attach budget-before-fire → prompt-cost. */}
         <a
@@ -426,7 +427,7 @@ export function PublicationAttachPanel({
               </a>
               {/* Residual (xc): L1 arxiv checklist section deep-link. */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                href={capabilityGuidanceLinks.arxivHydration}
                 data-testid="publication-attach-hydrate-dual-gate-link"
                 className="underline hover:opacity-100"
                 title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -435,7 +436,7 @@ export function PublicationAttachPanel({
               </a>
               {/* Residual (aap): L2 Substack section (maintain-prep after attach). */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                href={capabilityGuidanceLinks.substackAcquisition}
                 data-testid="publication-attach-hydrate-dual-gate-l2-link"
                 className="underline hover:opacity-100"
                 title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"

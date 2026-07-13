@@ -316,7 +316,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-research-progress-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     const seedBody =
       screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
       "";
@@ -377,7 +377,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-session-flywheel-twin-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     const seedBody =
       screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
       "";
@@ -479,12 +479,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-marketplace-host-l5-future-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    ).toBe("/settings#marketplace-live-payment-status");
     expect(
       screen
         .getByTestId("hosted-html-marketplace-host-dual-gate-l5-link")
         .getAttribute("href") || "",
-    ).toMatch(/#l5-payment/);
+    ).toBe("/settings#marketplace-live-payment-status");
     const twins = screen.getByTestId("twin-notes-panel-stub");
     expect(twins.getAttribute("data-seed-title") || "").toMatch(
       /Marketplace host/,
@@ -633,12 +633,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-moil-deposit-twin-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     expect(
       screen
         .getByTestId("hosted-html-moil-deposit-dual-gate-l4-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    ).toBe("/settings#moil-live-step-status");
     const twinsMount = screen.getByTestId("hosted-html-twins-mount");
     expect(twinsMount.getAttribute("data-midnight-oil-deposit")).toBe("true");
     expect(twinsMount.getAttribute("data-auto-seed-if-empty")).toBe("true");
@@ -695,7 +695,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-marketplace-catalog-l5-future-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port/);
+    ).toBe("/settings#marketplace-live-payment-status");
     const twinsMount = screen.getByTestId("hosted-html-twins-mount");
     expect(twinsMount.getAttribute("data-marketplace-catalog")).toBe("true");
     const twins = screen.getByTestId("twin-notes-panel-stub");
@@ -850,12 +850,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-twin-cross-asset-twin-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     expect(
       screen
         .getByTestId("hosted-html-twin-cross-asset-dual-gate-l3-link")
         .getAttribute("href") || "",
-    ).toMatch(/#l3-twin/);
+    ).toBe("/settings#twin-seed-live-status");
     const seedBody =
       screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
       "";
@@ -887,12 +887,12 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-twin-draft-twin-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     expect(
       screen
         .getByTestId("hosted-html-twin-draft-dual-gate-l3-link")
         .getAttribute("href") || "",
-    ).toMatch(/#l3-twin/);
+    ).toBe("/settings#twin-seed-live-status");
     const seedBody =
       screen.getByTestId("twin-notes-panel-stub").getAttribute("data-seed-body") ||
       "";
@@ -955,7 +955,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-collective-unit-twin-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     const twinsMount = screen.getByTestId("hosted-html-twins-mount");
     expect(twinsMount.getAttribute("data-collective-unit-prompt")).toBe("true");
     expect(twinsMount.getAttribute("data-auto-seed-if-empty")).toBe("true");
@@ -1132,7 +1132,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-evidence-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
   });
 
   it("stamps collective_written_analysis twin seed path honesty (app)", () => {
@@ -1165,7 +1165,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-collective-analysis-l6-future-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-l6-live-multiagent-collective/);
+    ).toBe("/settings#collective-live-council-status");
     const twins = screen.getByTestId("twin-notes-panel-stub");
     expect(twins.getAttribute("data-seed-title") || "").toMatch(
       /Collective written analysis/,
@@ -1207,7 +1207,7 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-research-context-pack-twin-matrix-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix/);
+    ).toBe("/settings#twin-seed-live-status");
     const twins = screen.getByTestId("twin-notes-panel-stub");
     expect(twins.getAttribute("data-seed-title") || "").toMatch(
       /Research context pack/,
@@ -1739,13 +1739,13 @@ describe("HostedHtmlDocumentHost residual bt/bw/cv/da", () => {
       screen
         .getByTestId("hosted-html-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     // Residual (aam): L2 Substack checklist (parity marketplace aal).
     expect(
       screen
         .getByTestId("hosted-html-hydrate-dual-gate-l2-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     fireEvent.click(
       screen.getByTestId("hosted-html-preset-attention-is-all-you-need"),
     );

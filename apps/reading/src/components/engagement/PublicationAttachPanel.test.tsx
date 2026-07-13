@@ -205,11 +205,11 @@ describe("PublicationAttachPanel residual ck/ed", () => {
     // Residual (mj): dual-gate checklist link (prep only; never enables injectors).
     const dual = screen.getByTestId("publication-attach-dual-gate-checklist-link");
     // Residual (xc): L1 arxiv checklist section deep-link.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    expect(dual.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(dual.textContent).toMatch(/L1 arxiv checklist/i);
     // Residual (aap): L2 Substack checklist (parity aal–aao).
     const dualL2 = screen.getByTestId("publication-attach-dual-gate-l2-link");
-    expect(dualL2.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    expect(dualL2.getAttribute("href")).toBe("/settings#hydrate-live-status");
     expect(dualL2.textContent).toMatch(/L2 Substack checklist/i);
     // Residual (ajc): knowledge-dense attach → competitive DR honesty map.
     expect(
@@ -221,7 +221,7 @@ describe("PublicationAttachPanel residual ck/ed", () => {
       screen
         .getByTestId("publication-attach-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (ald): knowledge-dense attach budget-before-fire → prompt-cost.
     expect(
       screen
@@ -266,12 +266,12 @@ describe("PublicationAttachPanel residual ck/ed", () => {
       screen
         .getByTestId("publication-attach-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen
         .getByTestId("publication-attach-hydrate-dual-gate-l2-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     // Residual (hz): machine-readable attach+hydrate metrics.
     const metrics = screen.getByTestId("publication-attach-metrics");
     expect(metrics.getAttribute("data-attached-count")).toBe("1");
@@ -451,7 +451,7 @@ describe("PublicationAttachPanel residual ck/ed", () => {
       screen
         .getByTestId("publication-attach-hydrate-dual-gate-link")
         .getAttribute("href") || "",
-    ).toMatch(/DUAL-GATE-L1-L4/);
+    ).toBe("/settings#hydrate-live-status");
   });
 
   it("falls back to attach response research_tier when prop absent (lz)", async () => {

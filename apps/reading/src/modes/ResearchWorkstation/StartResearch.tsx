@@ -1,3 +1,4 @@
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -867,7 +868,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               aria-label="Dual-gate checklist prep for arxiv and Substack hydrate"
             >
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                href={capabilityGuidanceLinks.arxivHydration}
                 data-testid="start-research-l1-checklist-link"
                 data-l1-arxiv="deferred"
                 className="underline opacity-80 hover:opacity-100"
@@ -876,7 +877,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 L1 arxiv checklist
               </a>
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                href={capabilityGuidanceLinks.substackAcquisition}
                 data-testid="start-research-l2-checklist-link"
                 data-l2-substack="deferred"
                 className="underline opacity-80 hover:opacity-100"

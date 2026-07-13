@@ -25,6 +25,7 @@
  * Composes shipped completeSessionFlywheel. HTML-first context pack.
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useMemo, useState } from "react";
 import {
   completeSessionFlywheel,
@@ -217,7 +218,7 @@ export function SessionFlywheelPanel({
             Settings · driver & budget
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+            href={capabilityGuidanceLinks.arxivHydration}
             data-testid="session-flywheel-dual-gate-checklist-link"
             className="underline opacity-80 hover:opacity-100"
             title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -226,7 +227,7 @@ export function SessionFlywheelPanel({
           </a>
           {/* Residual (aas): L2 Substack section (parity aal–aaq · session land). */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+            href={capabilityGuidanceLinks.substackAcquisition}
             data-testid="session-flywheel-dual-gate-l2-link"
             className="underline opacity-80 hover:opacity-100"
             title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
@@ -243,12 +244,12 @@ export function SessionFlywheelPanel({
             Settings · competitive DR scorecard
           </a>
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            href={capabilityGuidanceLinks.competitiveQuality}
             data-testid="session-flywheel-competitive-dr-future-agent-link"
             className="underline opacity-80 hover:opacity-100"
-            title="FUTURE-AGENT competitive deep-research quality brief"
+            title="Settings competitive deep-research quality status"
           >
-            FUTURE · competitive DR brief
+            Settings · competitive quality status
           </a>
           {/* Residual (apy): hop/stage pipeline honesty (parity aps/apx). */}
           <span

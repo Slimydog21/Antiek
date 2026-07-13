@@ -122,7 +122,7 @@ describe("ResearchLaunchBudgetPanel", () => {
       "research-launch-budget-dual-gate-checklist-link",
     );
     // Residual (aaz): deep-link L7 ND advisory-only section (parity driver badge).
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l7-notdiamond/);
+    expect(dual.getAttribute("href")).toBe("/settings#notdiamond-advisory");
     expect(dual.textContent).toMatch(/L7 ND advisory/i);
     // Residual (ym): launch budget dual-gate honesty stamps (parity DecisionTree yl).
     expect(dual.getAttribute("data-offline-default")).toBe("true");
@@ -145,7 +145,7 @@ describe("ResearchLaunchBudgetPanel", () => {
       screen
         .getByTestId("research-launch-budget-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (akp): launch foresight → full Settings prompt-cost projection panel.
     expect(
       screen

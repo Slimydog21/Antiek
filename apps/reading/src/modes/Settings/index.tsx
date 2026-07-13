@@ -1,3 +1,4 @@
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useEffect, useMemo, useState } from "react";
 import {
   notDiamondBenchDelta,
@@ -1729,7 +1730,7 @@ export default function Settings() {
                 </a>
                 {/* Residual (xh): L1 checklist section deep-link (parity pubs/reading). */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  href={capabilityGuidanceLinks.arxivHydration}
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l1-checklist-link"
                   title="L1 arxiv hydrate checklist section (prep only)"
@@ -1738,7 +1739,7 @@ export default function Settings() {
                 </a>
                 {/* Residual (xr): L2 substack checklist section deep-link. */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  href={capabilityGuidanceLinks.substackAcquisition}
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l2-checklist-link"
                   title="L2 Substack hydrate checklist section (prep only · ToS factory)"
@@ -1755,7 +1756,7 @@ export default function Settings() {
                 </a>
                 {/* Residual (xb): L3 checklist section deep-link (parity TwinNotes xa). */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                  href={capabilityGuidanceLinks.twinSeed}
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l3-checklist-link"
                   title="L3 twin live seed checklist section (prep only)"
@@ -1772,7 +1773,7 @@ export default function Settings() {
                 </a>
                 {/* Residual (wy): L4 checklist section deep-link (parity MO wx). */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                  href={capabilityGuidanceLinks.midnightOilLiveStep}
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l4-checklist-link"
                   title="L4 Midnight Oil live-step checklist section (prep only)"
@@ -1781,7 +1782,7 @@ export default function Settings() {
                 </a>
                 {/* Residual (vt/wh): L5 payment rails honesty + checklist deep-link. */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                  href={capabilityGuidanceLinks.marketplacePayment}
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l5-payment"
                   data-l5-payment-rails="deferred"
@@ -1792,7 +1793,7 @@ export default function Settings() {
                 </a>
                 {/* Residual (vz/wh): L6 deferred + checklist deep-link (parity Collective vx). */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+                  href={capabilityGuidanceLinks.collectiveCouncil}
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l6-collective"
                   data-l6-live-multiagent="deferred"
@@ -1811,7 +1812,7 @@ export default function Settings() {
                 </a>
                 {/* Residual (wh): L7 checklist section (never-router) alongside Settings ND panel. */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+                  href={capabilityGuidanceLinks.notDiamondAdvisory}
                   className="underline opacity-80 hover:opacity-100"
                   data-testid="settings-dual-gate-l7-checklist-link"
                   title="L7 NotDiamond never-router checklist section"
@@ -2237,7 +2238,7 @@ export default function Settings() {
               aria-label="L3 twin live seed dual-gate prep"
             >
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+                href={capabilityGuidanceLinks.twinSeed}
                 className="underline opacity-80 hover:opacity-100"
                 data-testid="twin-seed-live-l3-checklist-link"
                 title="Dual-gate L3 twin live seed checklist (prep only · offline default)"
@@ -2407,7 +2408,7 @@ export default function Settings() {
               aria-label="L4 Midnight Oil live-step dual-gate prep"
             >
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                href={capabilityGuidanceLinks.midnightOilLiveStep}
                 className="underline opacity-80 hover:opacity-100"
                 data-testid="moil-live-l4-checklist-link"
                 title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
@@ -2567,7 +2568,7 @@ export default function Settings() {
               aria-label="L1 arxiv and L2 Substack hydrate dual-gate prep"
             >
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                href={capabilityGuidanceLinks.arxivHydration}
                 className="underline opacity-80 hover:opacity-100"
                 data-testid="hydrate-live-l1-checklist-link"
                 title="Dual-gate L1 arxiv hydrate checklist (prep only · offline identity default)"
@@ -2578,7 +2579,7 @@ export default function Settings() {
                 ·
               </span>
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                href={capabilityGuidanceLinks.substackAcquisition}
                 className="underline opacity-80 hover:opacity-100"
                 data-testid="hydrate-live-l2-checklist-link"
                 title="Dual-gate L2 Substack hydrate checklist (prep only · ToS factory)"
@@ -2798,7 +2799,7 @@ export default function Settings() {
               aria-label="L7 NotDiamond advisory dual-gate prep"
             >
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+                href={capabilityGuidanceLinks.notDiamondAdvisory}
                 className="underline opacity-80 hover:opacity-100"
                 data-testid="notdiamond-live-l7-checklist-link"
                 title="L7 NotDiamond never-router checklist (advisory only forever)"
@@ -2821,12 +2822,12 @@ export default function Settings() {
               </span>
               {/* Residual (ahy): FUTURE-AGENT advisory-only verdict deep-link (ahw). */}
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-notdiamond-advisory-only.md"
+                href={capabilityGuidanceLinks.notDiamondAdvisory}
                 className="underline opacity-80 hover:opacity-100"
                 data-testid="notdiamond-future-agent-advisory-spec-link"
-                title="Future-agent brief: NotDiamond useful as advisor, never as router"
+                title="Settings NotDiamond advisory: useful as advisor, never as router"
               >
-                FUTURE-AGENT ND advisory-only
+                Settings · ND advisory status
               </a>
               <span className="opacity-40" aria-hidden>
                 ·
@@ -4393,7 +4394,7 @@ export default function Settings() {
             {/* Residual (nt/yj): dual-gate L7 Never-router checklist + ND panel. */}
             <p className="text-[11px] font-mono space-x-3">
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+                href={capabilityGuidanceLinks.notDiamondAdvisory}
                 data-testid="antiek-bench-dual-gate-checklist-link"
                 className="underline opacity-80 hover:opacity-100"
                 title="Dual-gate L7 NotDiamond never-router checklist (advisory only forever)"
@@ -4993,12 +4994,12 @@ export default function Settings() {
                 Competitive DR scorecard
               </a>
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                href={capabilityGuidanceLinks.competitiveQuality}
                 data-testid="prompt-cost-competitive-dr-future-agent-link"
                 className="underline opacity-90 hover:opacity-100"
-                title="FUTURE-AGENT competitive deep-research quality brief (budget-capped runs)"
+                title="Settings competitive deep-research quality status (budget-capped runs)"
               >
-                FUTURE · competitive DR brief
+                Settings · competitive quality status
               </a>
               <a
                 href="#decision-tree-panel"
@@ -5285,19 +5286,19 @@ export default function Settings() {
                 (ajn–ajw) — <strong>shipped offline</strong> · L3 live seed
                 dual-gate ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                  href={capabilityGuidanceLinks.twinSeed}
                   data-testid="competitive-dr-twin-notes-future-link"
                   className="underline opacity-90 hover:opacity-100"
-                  title="FUTURE-AGENT twin note-taker completeness matrix"
+                  title="Settings twin seed readiness and completeness status"
                 >
-                  FUTURE twin completeness matrix
+                  Settings twin seed status
                 </a>
               </li>
               <li data-status="deferred" data-testid="competitive-dr-live-hydrate">
                 Live arxiv/Substack body hydrate —{" "}
                 <strong>deferred dual-gate L1/L2</strong> ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l1-arxiv"
+                  href={capabilityGuidanceLinks.arxivHydration}
                   data-testid="competitive-dr-live-hydrate-l1-link"
                   className="underline opacity-90 hover:opacity-100"
                   title="Dual-gate L1 arxiv hydrate checklist (prep only · offline default)"
@@ -5306,7 +5307,7 @@ export default function Settings() {
                 </a>
                 {" · "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l2-substack"
+                  href={capabilityGuidanceLinks.substackAcquisition}
                   data-testid="competitive-dr-live-hydrate-l2-link"
                   className="underline opacity-90 hover:opacity-100"
                   title="Dual-gate L2 Substack hydrate checklist (prep only · factory + ToS)"
@@ -5318,7 +5319,7 @@ export default function Settings() {
                 Live Midnight Oil multi-provider step —{" "}
                 <strong>deferred dual-gate L4</strong> ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l4-moil"
+                  href={capabilityGuidanceLinks.midnightOilLiveStep}
                   data-testid="competitive-dr-live-moil-l4-link"
                   className="underline opacity-90 hover:opacity-100"
                   title="Dual-gate L4 Midnight Oil live-step checklist (prep only · offline default)"
@@ -5330,7 +5331,7 @@ export default function Settings() {
                 Live multi-agent council —{" "}
                 <strong>deferred dual-gate L6</strong> ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+                  href={capabilityGuidanceLinks.collectiveCouncil}
                   data-testid="competitive-dr-live-council-l6-link"
                   className="underline opacity-90 hover:opacity-100"
                   title="Dual-gate L6 live multi-agent collective checklist (prep only · offline merge unit)"
@@ -5339,25 +5340,25 @@ export default function Settings() {
                 </a>
                 {" · "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md"
+                  href={capabilityGuidanceLinks.collectiveCouncil}
                   data-testid="competitive-dr-live-council-l6-future-link"
                   className="underline opacity-90 hover:opacity-100"
-                  title="FUTURE-AGENT L6 live multi-agent collective brief"
+                  title="Settings L6 collective council status"
                 >
-                  FUTURE L6 multi-agent
+                  Settings L6 council status
                 </a>
               </li>
               <li data-status="deferred" data-testid="competitive-dr-payment">
                 Live marketplace payment rails —{" "}
                 <strong>deferred L5</strong> · manual receipt only · host land
-                FUTURE L5 deep-links (akb) ·{" "}
+                Settings L5 status links (akb) ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                  href={capabilityGuidanceLinks.marketplacePayment}
                   data-testid="competitive-dr-payment-l5-future-link"
                   className="underline opacity-90 hover:opacity-100"
-                  title="FUTURE-AGENT L5 digital book seamless port brief"
+                  title="Settings L5 digital-book payment status"
                 >
-                  FUTURE L5 digital book port
+                  Settings L5 payment status
                 </a>
               </li>
               <li data-status="never" data-testid="competitive-dr-nd-router">
@@ -5367,18 +5368,18 @@ export default function Settings() {
             </ul>
             <p className="text-[11px] font-mono space-x-2">
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                href={capabilityGuidanceLinks.competitiveQuality}
                 data-testid="settings-competitive-dr-future-agent-link"
                 className="underline opacity-90 hover:opacity-100"
-                title="Future-agent competitive DR quality brief"
+                title="Settings competitive DR quality status"
               >
-                FUTURE-AGENT competitive DR quality
+                Settings competitive DR quality
               </a>
               <span className="opacity-40" aria-hidden>
                 ·
               </span>
               <a
-                href="/docs/campaigns/2026-07-09-research-reading-spine/competitive-deep-research-notes.md"
+                href={capabilityGuidanceLinks.competitiveQuality}
                 data-testid="settings-competitive-dr-notes-link"
                 className="underline opacity-90 hover:opacity-100"
                 title="Campaign competitive deep-research notes"
@@ -5393,6 +5394,7 @@ export default function Settings() {
         <LemonCard title="Deferred (honest)" elevation="z1">
           <div
             className="p-4 space-y-2 text-sm text-ink dark:text-bright"
+            id="settings-deferred-honest"
             data-testid="settings-deferred-honest"
             data-view-format="html"
             role="status"
@@ -5406,17 +5408,21 @@ export default function Settings() {
                 Live L1–L4 injectors (arxiv/substack hydrate · twin seed · MO
                 step) — dual-gate only · offline default ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md"
+                  href={capabilityGuidanceLinks.liveIntegrationGates}
                   data-testid="settings-deferred-l1-l4-checklist-link"
                   className="underline opacity-90 hover:opacity-100"
                 >
                   checklist
                 </a>
               </li>
-              <li data-deferred="l5-payment" data-testid="settings-deferred-l5">
+              <li
+                id="marketplace-live-payment-status"
+                data-deferred="l5-payment"
+                data-testid="settings-deferred-l5"
+              >
                 L5 marketplace payment rails — manual receipt only today ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l5-payment"
+                  href={capabilityGuidanceLinks.marketplacePayment}
                   data-testid="settings-deferred-l5-checklist-link"
                   className="underline opacity-90 hover:opacity-100"
                 >
@@ -5425,18 +5431,22 @@ export default function Settings() {
                 {" · "}
                 {/* Residual (ahz): FUTURE-AGENT L5 digital book port brief. */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l5-digital-book-seamless-port.md"
+                  href={capabilityGuidanceLinks.marketplacePayment}
                   data-testid="settings-deferred-l5-future-agent-link"
                   className="underline opacity-90 hover:opacity-100"
-                  title="Future-agent executable brief for L5 digital book seamless port"
+                  title="Settings L5 digital-book payment status"
                 >
-                  FUTURE-AGENT L5 port
+                  Settings L5 payment status
                 </a>
               </li>
-              <li data-deferred="l6-collective" data-testid="settings-deferred-l6">
+              <li
+                id="collective-live-council-status"
+                data-deferred="l6-collective"
+                data-testid="settings-deferred-l6"
+              >
                 L6 live multi-agent council — offline merge unit only today ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l6-collective"
+                  href={capabilityGuidanceLinks.collectiveCouncil}
                   data-testid="settings-deferred-l6-checklist-link"
                   className="underline opacity-90 hover:opacity-100"
                 >
@@ -5445,18 +5455,18 @@ export default function Settings() {
                 {" · "}
                 {/* Residual (ahz): FUTURE-AGENT L6 live multi-agent brief. */}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-l6-live-multiagent-collective.md"
+                  href={capabilityGuidanceLinks.collectiveCouncil}
                   data-testid="settings-deferred-l6-future-agent-link"
                   className="underline opacity-90 hover:opacity-100"
-                  title="Future-agent executable brief for L6 live multi-agent collective"
+                  title="Settings L6 collective council status"
                 >
-                  FUTURE-AGENT L6 council
+                  Settings L6 council status
                 </a>
               </li>
               <li data-deferred="l7-nd" data-testid="settings-deferred-l7">
                 L7 NotDiamond as router — never · advisory only (correct) ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l7-notdiamond"
+                  href={capabilityGuidanceLinks.notDiamondAdvisory}
                   data-testid="settings-deferred-l7-checklist-link"
                   className="underline opacity-90 hover:opacity-100"
                 >
@@ -5480,12 +5490,12 @@ export default function Settings() {
               >
                 L3 twin live seed deferred · offline twin mounts shipped ·{" "}
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                  href={capabilityGuidanceLinks.twinSeed}
                   data-testid="settings-deferred-twin-future-agent-link"
                   className="underline opacity-90 hover:opacity-100"
-                  title="Future-agent twin note-taker completeness matrix"
+                  title="Settings twin seed readiness and completeness status"
                 >
-                  FUTURE-AGENT twin matrix
+                  Settings · twin seed status
                 </a>
               </li>
               <li data-deferred="secret-vault" data-testid="settings-deferred-vault">

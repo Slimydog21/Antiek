@@ -69,6 +69,7 @@
  * HTML-first; never PDF.
  */
 
+import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
 import {
@@ -1140,7 +1141,7 @@ export function TwinNotesPanel({
           </a>
           {/* Residual (xa): L3 twin live-seed checklist section deep-link. */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/DUAL-GATE-L1-L4-OPERATOR-CHECKLIST.md#l3-twin"
+            href={capabilityGuidanceLinks.twinSeed}
             data-testid="twin-notes-dual-gate-checklist-link"
             title="Dual-gate L3 twin live seed checklist (prep only · offline default)"
           >
@@ -1148,11 +1149,11 @@ export function TwinNotesPanel({
           </a>
           {/* Residual (aio): twin completeness FUTURE brief + competitive scorecard. */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+            href={capabilityGuidanceLinks.twinSeed}
             data-testid="twin-notes-future-agent-matrix-link"
-            title="Future-agent twin note-taker completeness matrix"
+            title="Settings twin seed readiness and completeness status"
           >
-            FUTURE-AGENT twin matrix
+            Settings · twin seed status
           </a>
           <a
             href="/settings#settings-competitive-dr-scorecard"
@@ -1163,11 +1164,11 @@ export function TwinNotesPanel({
           </a>
           {/* Residual (aky): competitive FUTURE + prompt-cost on recursive note-taker. */}
           <a
-            href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+            href={capabilityGuidanceLinks.competitiveQuality}
             data-testid="twin-notes-competitive-dr-future-agent-link"
-            title="FUTURE-AGENT competitive deep-research quality brief (recursive twin substrate · reading ≡ research)"
+            title="Settings competitive deep-research quality status (recursive twin substrate · reading ≡ research)"
           >
-            FUTURE · competitive DR quality
+            Settings · competitive quality status
           </a>
           <a
             href="/settings#prompt-cost-projection"
@@ -2121,12 +2122,12 @@ export function TwinNotesPanel({
               ));
             })()}
             <a
-              href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+              href={capabilityGuidanceLinks.twinSeed}
               data-testid="twin-promote-twin-matrix-link"
               className="underline opacity-90 hover:opacity-100"
-              title="FUTURE-AGENT twin note-taker completeness matrix (promote→context · recursive substrate)"
+              title="Settings twin seed readiness and completeness status (promote→context · recursive substrate)"
             >
-              FUTURE · twin completeness matrix
+              Settings · twin seed status
             </a>
             <a
               href="/settings#settings-competitive-dr-scorecard"

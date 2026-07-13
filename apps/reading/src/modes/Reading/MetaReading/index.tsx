@@ -1,3 +1,4 @@
+import { capabilityGuidanceLinks } from "../../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
@@ -359,20 +360,20 @@ export default function MetaReading() {
                   Settings · competitive DR scorecard
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-competitive-deep-research-quality.md"
+                  href={capabilityGuidanceLinks.competitiveQuality}
                   data-testid="meta-reading-competitive-dr-future-agent-link"
                   className="underline opacity-80 hover:opacity-100"
-                  title="FUTURE-AGENT competitive deep-research quality brief (meta-reading synthesis · HTML-first)"
+                  title="Settings competitive deep-research quality status (meta-reading synthesis · HTML-first)"
                 >
-                  FUTURE · competitive DR brief
+                  Settings · competitive quality status
                 </a>
                 <a
-                  href="/docs/campaigns/2026-07-09-research-reading-spine/FUTURE-AGENT-SPEC-twin-note-taker-completeness-matrix.md"
+                  href={capabilityGuidanceLinks.twinSeed}
                   data-testid="meta-reading-twin-completeness-future-agent-link"
                   className="underline opacity-80 hover:opacity-100"
-                  title="FUTURE-AGENT twin note-taker completeness matrix (meta-reading twin substrate)"
+                  title="Settings twin seed readiness and completeness status (meta-reading twin substrate)"
                 >
-                  FUTURE · twin completeness matrix
+                  Settings · twin seed status
                 </a>
                 <span
                   className="opacity-70"

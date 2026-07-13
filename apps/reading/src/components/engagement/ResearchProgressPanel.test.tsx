@@ -144,11 +144,11 @@ describe("ResearchProgressPanel", () => {
       screen
         .getByTestId("research-progress-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(
       screen.getByTestId("research-progress-competitive-dr-future-agent-link")
         .textContent,
-    ).toMatch(/competitive DR quality/i);
+    ).toMatch(/competitive quality status/i);
     // Residual (akl): multi-minute budget-before-fire → Settings prompt-cost (parity akk).
     expect(
       screen
@@ -161,7 +161,7 @@ describe("ResearchProgressPanel", () => {
     ).toMatch(/prompt-cost projection/i);
     const dual = screen.getByTestId("research-progress-dual-gate-checklist-link");
     // Residual (xu/aau): multi-minute job prep → L4 MO live-step checklist section.
-    expect(dual.getAttribute("href")).toMatch(/DUAL-GATE-L1-L4.*#l4-moil/);
+    expect(dual.getAttribute("href")).toBe("/settings#moil-live-step-status");
     expect(dual.textContent).toMatch(/L4 Midnight Oil checklist/i);
   });
 
@@ -275,7 +275,7 @@ describe("ResearchProgressPanel", () => {
       screen
         .getByTestId("research-progress-pipeline-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     // Residual (apu/aqh): world-class DR bar prefers substrate when present.
     const wc = screen.getByTestId("research-progress-world-class-readiness");
     expect(wc.getAttribute("data-world-class-source")).toBe("substrate");

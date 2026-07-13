@@ -406,7 +406,7 @@ describe("WriteHome — the re-homed door", () => {
       screen
         .getByTestId("write-home-competitive-dr-future-agent-link")
         .getAttribute("href") || "",
-    ).toMatch(/FUTURE-AGENT-SPEC-competitive-deep-research-quality/);
+    ).toBe("/settings#settings-competitive-dr-scorecard");
     expect(
       screen.getByTestId("write-home-competitive-pipeline-hint").textContent,
     ).toMatch(/insights.*questions.*sources/i);
@@ -1179,11 +1179,11 @@ describe("WriteHome — the re-homed door", () => {
     expect(
       screen.getByTestId("write-piece-dual-gate-l1-link").getAttribute("href") ||
         "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l1-arxiv/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen.getByTestId("write-piece-dual-gate-l2-link").getAttribute("href") ||
         "",
-    ).toMatch(/DUAL-GATE-L1-L4.*#l2-substack/);
+    ).toBe("/settings#hydrate-live-status");
     expect(
       screen
         .getByTestId("write-piece-pub-refs-offline-default")
