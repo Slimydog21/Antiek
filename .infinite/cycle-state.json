@@ -1,14 +1,14 @@
 {
-  "cycle": 19,
-  "phase": "DERIVE",
-  "subgoal": "Add authenticated collective-bound Substack excerpt review and confirmation without weakening the production-disabled boundary",
+  "cycle": 20,
+  "phase": "RE_DERIVE",
+  "subgoal": "Freeze manifest-v2 mixed-source authority while preserving legacy arXiv vectors and zero-provider-call failure boundaries",
   "lanes": [],
   "engineHealth": {
-    "grok": "degraded: Cycle 18 wrapper failed before engine launch; prior HTTP 402 remains unresolved",
-    "mimo": "degraded: Cycle 18 invocation used invalid flag placement and produced no review",
+    "grok": "degraded: Cycle 20 invocation failed HTTP 402 due exhausted balance",
+    "mimo": "ok: Cycle 20 produced extensive repository archaeology; unsafe connector broadening was rejected",
     "claude": "ok",
-    "codex": "degraded: Cycle 18 archaeology was useful but interrupted without a final report",
-    "glm-cc": "degraded: Cycle 18 ultracode stalled in its network helper and produced no report",
+    "codex": "ok: Cycle 20 produced a substantive independent manifest-v2 architecture report",
+    "glm-cc": "degraded: Cycle 20 ultracode invocation misparsed and returned generic help",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -22,7 +22,8 @@
     {"cycle": 16, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 17, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 18, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
-    {"cycle": 19, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
+    {"cycle": 19, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
+    {"cycle": 20, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12}
   ],
-  "updatedAt": "2026-07-13T08:45:09Z"
+  "updatedAt": "2026-07-13T09:06:11Z"
 }
