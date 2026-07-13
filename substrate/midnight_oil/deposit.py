@@ -64,11 +64,18 @@ def _materialize_and_complete(
     questions: tuple[str, ...] | list[str],
     region_id: str | None,
     step_index: int,
+    completed_before_deposit: frozenset[str],
 ) -> ResearchSpawn:
     """Ensure a spawn row exists (caller id or fresh), complete it, write twins."""
-    ins = list(insights) if insights else [f"Progress on: {goal_text}"]
-    qs = list(questions) if questions else [f"What remains open for: {goal_text}?"]
-    body = output_text or f"Partial result for: {goal_text}"
+    ins = [text for text in insights if (text or "").strip()]
+    qs = [text for text in questions if (text or "").strip()]
+    if not qs:
+        qs = [f"What remains open for: {goal_text}?"]
+    body = (
+        output_text
+        if (output_text or "").strip()
+        else f"No research result was returned for: {goal_text}"
+    )
 
     if spawn_id:
         spawn = ensure_spawn(
@@ -93,6 +100,20 @@ def _materialize_and_complete(
             model_id=job.model_id,
             force_new=False,
         )
+
+    if spawn.spawn_id in completed_before_deposit:
+        # A retry may arrive after engagement persistence but before the job
+        # checkpoint. The completed spawn is the durable content authority.
+        existing_body = spawn.output_text
+        body = (
+            existing_body
+            if existing_body and existing_body.strip()
+            else f"No research result was returned for: {goal_text}"
+        )
+        ins = [text for text in spawn.output_insights if (text or "").strip()]
+        qs = [text for text in spawn.output_questions if (text or "").strip()]
+        if not qs:
+            qs = [f"What remains open for: {goal_text}?"]
 
     complete_spawn(
         spawn.spawn_id,
@@ -157,7 +178,7 @@ def deposit_job_results(
         job = job_snapshot
     if not step_outputs and job.step_evidence:
         recovered: list[WorkerStepResult] = []
-        for evidence in job.step_evidence:
+        for index, evidence in enumerate(job.step_evidence):
             evidence_lines: list[str] = []
             if evidence.route_receipt:
                 provider = evidence.route_receipt.get("provider", "unknown")
@@ -173,17 +194,23 @@ def deposit_job_results(
                     f"(sha256={source.get('content_hash', 'unavailable')}; "
                     f"scope={source.get('hash_scope', 'unknown')})."
                 )
+            research_body = (
+                evidence.output_text
+                if evidence.output_text.strip()
+                else "No research result was returned for: "
+                f"{_goal_for_index(job, index)}"
+            )
+            operational_evidence = (
+                "Operational evidence:\n" + "\n".join(evidence_lines)
+                if evidence_lines
+                else ""
+            )
             recovered.append(
                 WorkerStepResult(
                     spent_usd=0.0,
                     spawn_id=evidence.spawn_id,
                     output_text="\n\n".join(
-                        part
-                        for part in (
-                            evidence.output_text,
-                            "\n".join(evidence_lines),
-                        )
-                        if part
+                        part for part in (research_body, operational_evidence) if part
                     ),
                     insights=evidence.insights,
                     questions=evidence.questions,
@@ -194,6 +221,11 @@ def deposit_job_results(
             )
         step_outputs = tuple(recovered)
     asset_id = job.asset_id or f"moil_asset_{job.job_id}"
+    completed_before_deposit = frozenset(
+        str(row["spawn_id"])
+        for row in engagement_store.list_spawns(asset_id)
+        if row.get("status") == "complete" and row.get("spawn_id")
+    )
 
     spawn_ids: list[str] = []
     seen: set[str] = set()
@@ -217,6 +249,7 @@ def deposit_job_results(
             questions=step.questions,
             region_id=f"moil-{job.job_id}-step-{i}",
             step_index=i,
+            completed_before_deposit=completed_before_deposit,
         )
         _track(spawn.spawn_id)
 
@@ -232,7 +265,7 @@ def deposit_job_results(
                     sid,
                     store=engagement_store,
                     output_text=existing.get("output_text")
-                    or f"Partial result for: {goal_text}",
+                    or f"No research result was returned for: {goal_text}",
                     insights=list(existing.get("output_insights") or ()),
                     questions=list(existing.get("output_questions") or ()),
                     status="complete",
@@ -245,11 +278,12 @@ def deposit_job_results(
             goal_text=goal_text,
             job=job,
             engagement_store=engagement_store,
-            output_text=f"Partial result for: {goal_text}",
-            insights=(f"Progress on: {goal_text}",),
+            output_text=f"No research result was returned for: {goal_text}",
+            insights=(),
             questions=(f"What remains open for: {goal_text}?",),
             region_id=f"moil-{job.job_id}-jobspawn-{i}",
             step_index=i,
+            completed_before_deposit=completed_before_deposit,
         )
         _track(spawn.spawn_id)
 
@@ -262,11 +296,12 @@ def deposit_job_results(
                 goal_text=goal,
                 job=job,
                 engagement_store=engagement_store,
-                output_text=f"Midnight oil deposit for goal: {goal}",
-                insights=(f"Investigated: {goal}",),
-                questions=(f"Open: {goal}?",),
+                output_text=f"No research result was returned for: {goal}",
+                insights=(),
+                questions=(f"What remains open for: {goal}?",),
                 region_id=f"moil-{job.job_id}-goal-{i}",
                 step_index=i,
+                completed_before_deposit=completed_before_deposit,
             )
             _track(spawn.spawn_id)
 

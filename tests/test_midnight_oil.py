@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import os
 import sys
+from dataclasses import replace
 
 import pytest
 
@@ -16,6 +17,9 @@ if _REPO not in sys.path:
 
 from substrate.engagement_spine import (  # noqa: E402
     FileEngagementStore,
+    complete_spawn,
+    ensure_spawn,
+    get_spawn,
     list_twin_notes,
 )
 from substrate.midnight_oil import (  # noqa: E402
@@ -32,7 +36,11 @@ from substrate.midnight_oil.ceiling import (  # noqa: E402
     TOKENS_PER_MINUTE,
     ModelPricing,
 )
-from substrate.midnight_oil.job import InMemoryJobStore  # noqa: E402
+from substrate.midnight_oil.job import (  # noqa: E402
+    InMemoryJobStore,
+    MidnightOilStepEvidence,
+    put_job_state,
+)
 from substrate.midnight_oil.worker import FakeClock, WorkerStepResult  # noqa: E402
 
 
@@ -243,10 +251,6 @@ def test_deposit_html_and_twins_idempotent(tmp_path):
     )
     approve_job(job.job_id, job.recommended_price_ceiling_usd, store=job_store)
     # Mark complete so deposit is meaningful
-    from dataclasses import replace
-
-    from substrate.midnight_oil.job import get_job, put_job_state
-
     j = get_job(job.job_id, store=job_store)
     assert j is not None
     put_job_state(replace(j, status="complete"), store=job_store)
@@ -284,6 +288,182 @@ def test_deposit_html_and_twins_idempotent(tmp_path):
     # Idempotent note_ids — count must not grow unboundedly
     assert len(twins_after) == len(twins_before)
     assert d2.html
+
+
+def test_deposit_does_not_invent_insight_when_worker_returns_none(tmp_path):
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "engagement-no-result")
+    job = create_job(["Test an unsupported hypothesis"], 30, store=job_store)
+    put_job_state(replace(job, status="complete"), store=job_store)
+
+    deposited = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+        step_outputs=[WorkerStepResult(spent_usd=0.0, done=True)],
+    )
+
+    twins = list_twin_notes(deposited.asset_id, store=eng)
+    assert not any(note.kind == "insight" for note in twins)
+    assert any(note.kind == "question" for note in twins)
+    assert "No research result was returned" in deposited.html
+    assert "Progress on:" not in deposited.html
+    assert "Investigated:" not in deposited.html
+
+
+def test_goal_only_deposit_preserves_empty_run_without_claiming_work(tmp_path):
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "engagement-goal-only")
+    job = create_job(["Research a goal that never ran"], 30, store=job_store)
+    put_job_state(replace(job, status="complete"), store=job_store)
+
+    deposited = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+    )
+
+    twins = list_twin_notes(deposited.asset_id, store=eng)
+    assert not any(note.kind == "insight" for note in twins)
+    assert any(note.kind == "question" for note in twins)
+    assert "No research result was returned" in deposited.html
+    assert "Investigated:" not in deposited.html
+
+
+def test_deposit_treats_whitespace_result_as_empty(tmp_path):
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "engagement-whitespace")
+    job = create_job(["Recover from an empty provider response"], 30, store=job_store)
+    put_job_state(replace(job, status="complete"), store=job_store)
+
+    deposited = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+        step_outputs=[
+            WorkerStepResult(
+                spent_usd=0.0,
+                output_text="   \n",
+                insights=("  ",),
+                questions=("  ",),
+                done=True,
+            )
+        ],
+    )
+
+    twins = list_twin_notes(deposited.asset_id, store=eng)
+    assert not any(note.kind == "insight" for note in twins)
+    assert any(note.kind == "question" for note in twins)
+    assert "No research result was returned" in deposited.html
+
+
+def test_recovered_receipts_do_not_masquerade_as_research_prose(tmp_path):
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "engagement-receipt-only")
+    job = create_job(["Recover a receipt-only result"], 30, store=job_store)
+    evidence = MidnightOilStepEvidence(
+        step_key="op:receipt-only",
+        spawn_id=None,
+        output_text="",
+        insights=(),
+        questions=(),
+        route_receipt={"provider": "test", "model": "test", "event_id": "event-1"},
+        source_receipts=(),
+    )
+    put_job_state(
+        replace(job, status="complete", step_evidence=(evidence,)),
+        store=job_store,
+    )
+
+    deposited = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+    )
+
+    assert "No research result was returned" in deposited.html
+    assert "Operational evidence:" in deposited.html
+    assert "Route receipt:" in deposited.html
+    assert "event-1" in deposited.html
+    assert not any(
+        note.kind == "insight"
+        for note in list_twin_notes(deposited.asset_id, store=eng)
+    )
+
+
+def test_deposit_retry_preserves_completed_spawn_content(tmp_path):
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "engagement-completed-spawn")
+    job = create_job(["Preserve completed research"], 30, store=job_store)
+    asset_id = job.asset_id or f"moil_asset_{job.job_id}"
+    spawn = ensure_spawn(
+        "spn_completed_research",
+        store=eng,
+        parent_asset_id=asset_id,
+        goal=job.goals[0],
+        selection_text=job.goals[0],
+    )
+    complete_spawn(
+        spawn.spawn_id,
+        store=eng,
+        output_text="A real returned result.",
+        insights=("A real returned insight.",),
+        questions=("A real returned question?",),
+    )
+    put_job_state(
+        replace(job, status="complete", spawn_ids=(spawn.spawn_id,)),
+        store=job_store,
+    )
+
+    deposited = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+    )
+
+    completed = get_spawn(spawn.spawn_id, store=eng)
+    assert completed is not None
+    assert completed.output_text == "A real returned result."
+    assert completed.output_insights == ("A real returned insight.",)
+    assert completed.output_questions == ("A real returned question?",)
+    assert "A real returned result." in deposited.html
+    assert "No research result was returned" not in deposited.html
+
+
+def test_same_spawn_later_step_is_not_mistaken_for_preexisting_content(tmp_path):
+    job_store = InMemoryJobStore()
+    eng = FileEngagementStore(tmp_path / "engagement-same-spawn-batch")
+    job = create_job(["Follow one research thread"], 30, store=job_store)
+    put_job_state(replace(job, status="complete"), store=job_store)
+
+    deposited = deposit_job_results(
+        job.job_id,
+        job_store=job_store,
+        engagement_store=eng,
+        step_outputs=[
+            WorkerStepResult(
+                spent_usd=0.0,
+                spawn_id="spn_same_batch",
+                output_text="First iteration.",
+                insights=("First insight.",),
+                questions=("First question?",),
+            ),
+            WorkerStepResult(
+                spent_usd=0.0,
+                spawn_id="spn_same_batch",
+                output_text="Later iteration.",
+                insights=("Later insight.",),
+                questions=("Later question?",),
+                done=True,
+            ),
+        ],
+    )
+
+    completed = get_spawn("spn_same_batch", store=eng)
+    assert completed is not None
+    assert completed.output_text == "Later iteration."
+    assert completed.output_insights == ("Later insight.",)
+    assert "Later iteration." in deposited.html
 
 
 def test_end_to_end_create_approve_run_deposit(tmp_path):
