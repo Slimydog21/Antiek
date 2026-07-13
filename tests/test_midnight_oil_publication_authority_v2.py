@@ -167,6 +167,9 @@ def test_v1_manifest_golden_vector_and_parser_remain_exact() -> None:
 
 def test_mixed_manifest_is_canonical_content_addressed_and_private() -> None:
     manifest = _mixed_manifest()
+    assert manifest.manifest_sha256 == (
+        "7bdd55ea1365c31b629ea4907ea9c9f7fb4385fb6d9237ccf27833a64bc65df1"
+    )
     assert [row.source.kind for row in manifest.sources] == ["arxiv", "substack"]
     assert manifest == build_reviewed_publication_manifest_v2(
         collective_unit_id=UNIT_ID,

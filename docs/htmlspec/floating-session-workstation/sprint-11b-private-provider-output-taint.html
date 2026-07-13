@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FSW-SPR-11B — Private provider capability and output taint</title>
+<style>body{margin:0;background:#f3efe5;color:#201d18;font:16px/1.55 system-ui,sans-serif}main{max-width:1080px;margin:auto;padding:40px 24px 80px}h1,h2,h3{font-family:Georgia,serif;line-height:1.15}h1{font-size:2.35rem}h2{margin-top:2.4rem;border-bottom:1px solid #8e826d;padding-bottom:.35rem}.meta,.card,.decision{border:1px solid #a79a83;background:#fffaf0;padding:16px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}table{width:100%;border-collapse:collapse;background:#fffaf0}th,td{border:1px solid #a79a83;padding:9px;vertical-align:top;text-align:left}code{background:#e8e0d1;padding:.1em .3em}.deny{color:#8d1f17}.allow{color:#1f6537}.future{color:#765b12}.small{font-size:.9rem;color:#5f584d}</style></head>
+<body><main><p><a href="sprint-11a-owner-authorized-substack-excerpts.html">← FSW-SPR-11A</a></p>
+<h1>Private provider capability and owner-private output taint</h1>
+<div class="meta"><strong>ID:</strong> FSW-SPR-11B · <strong>Status:</strong> 11B-A implemented; 11B-B–F unexecuted · <strong>Parent:</strong> FSW-SPR-11A milestone 3 · <strong>Stance:</strong> HTML-native owner-private research; no public/share/training path.</div>
+
+<section><h2>1. Falsifiable objective</h2><p>A mixed manifest may become execution-eligible only when the exact provider route and model have a live, operator-signed capability for processing <code>personal_reading</code> excerpts under the fixed Substack provider constraints, and every produced byte is durably bound to an owner-private derivative policy before reaching a sink.</p><div class="decision"><strong>Non-goal:</strong> the first slice does not enable acquisition, prepare, consent, queue, worker, provider dispatch, deposit, graph, sharing, or export. It freezes types and hash domains only. Existing arXiv v1/v5/v3 vectors and production Substack rejection remain unchanged.</div></section>
+
+<section><h2>2. Current truth and gap</h2><div class="grid">
+<article class="card"><h3>Source authority exists</h3><p>Manifest v2 binds owner, unit, revision, source, overlay, authorization, and receipt. Cycle 21 previews immutable binding and liveness without conferring authority.</p></article>
+<article class="card"><h3>Provider proof does not</h3><p>Current dispatch plans authorize cost/routes, not private-content handling. A route or API key is not evidence of no-training, no-retention, or no-provider-logging behavior.</p></article>
+<article class="card"><h3>Output taint does not</h3><p>Job evidence, HTML deposit, twins, session flywheel, and graph receipts lack a content-class/policy commitment. They cannot consume mixed outputs until versioned private sinks exist.</p></article>
+<article class="card"><h3>Legacy is T1-only</h3><p>The current publication execution path requires v1 <code>T1</code>. Substack <code>not_applicable</code> rights need distinct v2 consumers, never a weakened T1 check.</p></article></div></section>
+
+<section><h2>3. Closed authority contracts</h2><h3>3.1 PrivateProviderProcessingCapabilityV1</h3>
+<table><thead><tr><th>Group</th><th>Closed requirement</th><th>Why</th></tr></thead><tbody>
+<tr><td>Identity</td><td>schema 1; content-addressed id/hash; distinct signature domain and bounded key id</td><td>Prevents reuse of egress, spend-consent, or excerpt-authorization authority.</td></tr>
+<tr><td>Purpose</td><td>exact <code>midnight_oil_owner_private_substack_research</code>; input class <code>personal_reading</code>; exact compiled Substack constraint hash</td><td>General chat capability cannot be promoted.</td></tr>
+<tr><td>Route</td><td>one exact provider id, dispatch route id, model id, API mode, dispatch-contract hash, and processing region</td><td>No family wildcard, substitution, silent fallback, or region drift.</td></tr>
+<tr><td>Handling</td><td>training, request/response storage, provider logging, tool/network use, and provider caching disabled; fixed retention mode</td><td>Every promise is explicit and machine-compared.</td></tr>
+<tr><td>Evidence</td><td>bounded canonical ASCII HTTPS path without credentials/query/fragment or complete URN; evidence SHA-256/kind; observation no later than issuance and at most seven days old</td><td>The operator signature authorizes reviewed evidence; it does not prove a provider can never misbehave.</td></tr>
+<tr><td>Output</td><td>exact <code>OwnerPrivateDerivativePolicyV1</code> hash</td><td>Provider permission and sink restrictions cannot drift independently.</td></tr>
+<tr><td>Validity</td><td>issued/not-before/exclusive expiry; bounded rotation; exact hash/horizon match against a signed, bounded revocation reference no more than five minutes old</td><td>A signed reference does not prove current head or monotonicity. 11B-A's pure matcher is not a live loader or execution authority.</td></tr>
+<tr><td>Non-conferral</td><td><code>confers_execution_authority=false</code>; <code>live_reverification_required=true</code></td><td>One necessary proof is never sufficient execution authority.</td></tr>
+</tbody></table><p class="small">No API key, bearer token, account email, prompt, excerpt, output, owner id, or secret-bearing endpoint configuration enters this capability.</p>
+
+<h3>3.2 OwnerPrivateDerivativePolicyV1</h3><table><thead><tr><th>Commitment</th><th>Exact policy</th></tr></thead><tbody>
+<tr><td>Classification</td><td><code>content_class=personal_reading</code>; owner scope required; no downgrade to T1/open/platform-authored.</td></tr>
+<tr><td>Visibility</td><td>owner-only HTML; authentication required; private/no-store delivery; cross-owner and public serving denied.</td></tr>
+<tr><td>Reproduction</td><td>Policy v1 has no overlap-checker contract hash and therefore denies every sink. Before any sink can open, 11B-E must publish a separately hashed checker contract plus literal golden corpus defining normalization, match enumeration, overlap/repetition, multi-source aggregation, metadata treatment, and every threshold boundary; the output policy must then version and bind that hash.</td></tr>
+<tr><td>Lineage</td><td>Every future stage/output/deposit receipt binds owner scope, manifest-v2 hash, provider-capability hash, output-policy hash, and source-receipt set.</td></tr>
+<tr><td>Telemetry</td><td>Opaque non-content ids, timing, token/cost totals, categorical outcome only; no prompt, excerpt, output, private URL, excerpt hash/range, source identity, output hash, taint hash, or private receipt hash. Those hashes are owner-private metadata, not observability data.</td></tr>
+<tr><td>Training/evaluation</td><td>Text and embeddings denied to SFT/RL, prompt libraries, shared eval corpora, and benchmark content datasets. Aggregate task/outcome metrics may remain without content or reconstructable hashes.</td></tr>
+</tbody></table></section>
+
+<section><h2>4. Sink matrix</h2><table><thead><tr><th>Sink</th><th>Policy</th><th>Cycle-22 posture</th></tr></thead><tbody>
+<tr><td>Exact provider input</td><td class="allow">Future allow</td><td>Only after source authority, exact provider capability, local reader, consent, and final dispatch barrier agree.</td></tr>
+<tr><td>Volatile worker memory</td><td class="allow">Future allow</td><td>Bounded lifetime; no generic cache/checkpoint containing raw excerpt.</td></tr>
+<tr><td>Owner-private HTML deposit</td><td class="future">Future guarded allow</td><td>Needs a versioned model/receipt carrying policy and owner scope. Current deposit is blocked.</td></tr>
+<tr><td>Owner-private twins/prompt context/graph</td><td class="future">Future guarded allow</td><td>Needs owner-filtered storage/read paths and policy receipts. Ephemeral same-owner prompt retrieval is distinct from generic cache. Current flywheel, retrieval, and graph are blocked.</td></tr>
+<tr><td>Public/shared graph, public serve, share, export</td><td class="deny">Deny</td><td>No downgrade, redaction-only bypass, or user toggle.</td></tr>
+<tr><td>Ads, attribution/revenue, federation, snippets</td><td class="deny">Deny</td><td>Never eligible.</td></tr>
+<tr><td>Training/RL/shared benchmark corpus</td><td class="deny">Deny</td><td>Import canonical <code>NON_TRAINABLE_CONTENT_CLASSES</code>.</td></tr>
+<tr><td>Logs, traces, errors, analytics</td><td class="deny">Content denied</td><td>Opaque operational metadata only.</td></tr>
+</tbody></table></section>
+
+<section><h2>5. Selection and routing</h2><ol>
+<li>Model choice stays visible. A model is eligible only if its exact route/model capability covers the proposed horizon.</li>
+<li>Automatic routing, including Not Diamond, may choose only among capability hashes already committed by consent. No fallback outside the closed set.</li>
+<li>A router recommendation is not provider authority or consent. Router telemetry cannot receive private content without its own exact capability.</li>
+<li>Route/model changes invalidate readiness and require new preview and consent authority.</li>
+<li>If no exact route exists, UI says private processing is unavailable; it never omits the source or silently uses a generic model.</li>
+</ol></section>
+
+<section><h2>6. Required future version seams</h2><table><thead><tr><th>Consumer</th><th>Version</th><th>New commitments</th></tr></thead><tbody>
+<tr><td>Readiness</td><td>response extension</td><td>opaque capability ref, exact eligible route/model, output-policy hash; non-conferring.</td></tr>
+<tr><td>Context</td><td>v2</td><td>manifest v2 + provider capability + output policy; v1 unchanged.</td></tr>
+<tr><td>JobConsentConfig</td><td>v6</td><td>exact hashes and selected route/model; v1–v5 vectors unchanged.</td></tr>
+<tr><td>Owner payload / queue</td><td>closed new fields</td><td>canonical JSON+hashes, server-derived and recomputed.</td></tr>
+<tr><td>Source/stage receipts</td><td>publication v4</td><td>per-source authority kind, provider capability, output policy, owner-private class.</td></tr>
+<tr><td>Job/deposit/graph</td><td>new schemas</td><td>owner scope + resolved policy lineage; authenticated HTML serve receipt must prove owner and <code>Cache-Control: private, no-store</code>; public/shared effects impossible.</td></tr>
+</tbody></table></section>
+
+<section><h2>6.1 Revocation reference versus live authority</h2><p>The 11B-A object authenticates one bounded revocation reference and rejects future-dated or older-than-five-minute references during a match. It cannot establish that the reference is the latest or that a later epoch preserves every earlier revocation. Before propagation, 11B-B must add a live persisted current-head loader that requires an exact predecessor hash, strictly increasing epoch and issuance time, a cumulative revoked-hash superset, rollback-resistant storage, API/worker parity, and a final reload immediately before dispatch. Tests must cover omission, fork, rollback, stale replay, future timestamp, restart, and concurrent rotation.</p></section>
+
+<section><h2>7. Adversarial acceptance</h2><div class="grid">
+<article class="card"><h3>Substitution</h3><p>Reject route, model, provider, region, mode, compiled contract, evidence, constraint, output-policy, time, key, hash, or signature drift.</p></article>
+<article class="card"><h3>Routing escape</h3><p>Reject wildcards, uncommitted fallback, router-added candidates, endpoint/account drift, and expiry during delay.</p></article>
+<article class="card"><h3>Authority confusion</h3><p>Reject egress keys, spend keys, excerpt grants, API keys, UI booleans, or readiness JSON as provider capability.</p></article>
+<article class="card"><h3>Taint laundering</h3><p>Reject missing policy, downgrade, owner removal, T1 relabel, detached output, partial receipts, public redaction, and copy-to-new-document.</p></article>
+<article class="card"><h3>Leakage</h3><p>Canaries stay absent from logs/errors/telemetry/public graph/export/ads/training. Current sinks reject private output.</p></article>
+<article class="card"><h3>Legacy</h3><p>Manifest v1, context v1, consent v1–v5, queue, worker, receipt v3, deposit, and graph vectors remain unchanged.</p></article>
+</div></section>
+
+<section><h2>8. Execution sprints</h2><ol>
+<li><strong>11B-A — pure types:</strong> signed provider capability and signed revocation snapshot, reference-only matcher, derivative policy, strict parsing, golden/substitution tests, and explicitly unverified taint-material constructor. No I/O; no consumer accepts them; every sink denies while compliance is pending.</li>
+<li><strong>11B-B — composition:</strong> distinct keyring and exact provider evidence loader with API/worker registry parity. Still no mixed prepare.</li>
+<li><strong>11B-C — authority propagation:</strong> context v2, consent v6, owner payload and queue recomputation. Consent remains disabled until sinks exist.</li>
+<li><strong>11B-D — reader/dispatch:</strong> exact local receipt bytes, last-moment revocation/capability checks, no tools/fallback, receipt v4.</li>
+<li><strong>11B-E — private outputs:</strong> version job evidence, HTML deposit, twins/context, owner-filtered graph; a content-bound compliance receipt resolves and recomputes every source receipt, parent taint, exact output byte hash, normalization/checker version and threshold result before any persistence; public/export/training denial.</li>
+<li><strong>11B-F — narrow enablement:</strong> expose mixed prepare/consent only after restart, revocation, all-source, sink, and canary E2E proof.</li>
+</ol><div class="decision"><strong>Cycle 22 closure:</strong> 11B-A is implemented as an isolated pure module with no runtime consumers. Any change to prepare, consent, queue, worker, acquisition, dispatch, deposit, flywheel, graph, serve, export, ads, or training remains out of scope until later sprints close their complete authority chains.</div></section>
+
+<section><h2>9. Rejected shortcuts</h2><p>A boolean <code>private=true</code>; content class without lineage; provider-family allowlists; UI-selected capability hashes; router scores; provider self-description without evidence; post-generation redaction as the only gate; logging then deleting; prompt-only restrictions; arXiv-capability reuse; weakened T1 checks; and current unversioned graph output are rejected.</p></section>
+<section><h2>10. Five-values closure</h2><p><strong>Intellectual honesty:</strong> operator authorization is reviewed configuration evidence, not proof a provider can never misbehave. <strong>Fairness:</strong> private research utility does not turn paid text into public/training inventory. <strong>Rigor:</strong> closed hashes replace intent strings. <strong>Diligence:</strong> every transition is recomputed and live-checked. <strong>Defensibility:</strong> old execution stays unchanged until the entire new chain is executable.</p></section>
+<section><h2>11. Cycle 22 evidence</h2><p>The pure boundary now includes exact signed provider capability material, a signed bounded revocation reference, strict evidence hygiene/freshness, defensive signature and parent-taint recomputation, canonical owner-private taint lineage, a deny-all v1 sink policy, literal golden vectors, and unchanged manifest-v1/v2 vectors. Focused and broad Midnight Oil regressions, strict mypy, Ruff, HTML parsing, diff checks, hardenx, and three independent sharpen reviewers gate closure. Grok 4.5 was unavailable due account balance; GLM-CC ultracode produced non-repository architecture and was rejected; MiMo and Codex supplied useful repository archaeology and architecture tracing.</p></section>
+</main></body></html>
