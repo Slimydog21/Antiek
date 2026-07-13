@@ -65,11 +65,21 @@ class CommandKind(str, enum.Enum):
     DEEPEN = "deepen"       # extend budget + queue a follow-up
 
 
+class SpendControlMode(enum.StrEnum):
+    """Execution accounting policy selected by the operator."""
+
+    STOP_LIMIT = "stop_limit"
+    HARD_CEILING = "hard_ceiling"
+
+
 @dataclass(frozen=True)
 class BudgetCap:
-    """A research's spend ceiling. ``cost_usd`` is the hard cap; exceeding
-    it halts the research. ``max_steps`` bounds runaway loops independently
-    of cost (a loop that makes free calls still terminates)."""
+    """A research's stop limit based on reported cost.
+
+    This preserves the original runner behavior. It is not a pre-dispatch
+    authorization hold; ``SpendControlMode.HARD_CEILING`` uses the provider
+    gateway for that stronger contract.
+    """
 
     cost_usd: float = 0.50
     max_steps: int = 50
