@@ -71,6 +71,19 @@ def _canonical_evidence(job: MidnightOilJob) -> bytes:
                 "questions": evidence.questions,
                 "route_receipt": evidence.route_receipt,
                 "source_receipts": evidence.source_receipts,
+                "claim_evidence_schema_version": evidence.claim_evidence_schema_version,
+                "claim_evidence": [
+                    {
+                        "schema_version": claim.schema_version,
+                        "claim_id": claim.claim_id,
+                        "claim_class": claim.claim_class,
+                        "ordinal": claim.ordinal,
+                        "normalized_text": claim.normalized_text,
+                        "status": claim.status,
+                        "source_receipt_ids": claim.source_receipt_ids,
+                    }
+                    for claim in evidence.claim_evidence
+                ],
             }
             for evidence in job.step_evidence
         ],

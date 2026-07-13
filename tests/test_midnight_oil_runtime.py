@@ -31,6 +31,7 @@ from substrate.dispatch import (
 )
 from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
+from substrate.midnight_oil.contracts import canonical_source_receipt_id
 from substrate.midnight_oil.job import (
     MidnightOilStepEvidence,
     create_job,
@@ -895,8 +896,42 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
                     latency_ms=1,
                     retryable=True,
                 )
+            receipt_id = canonical_source_receipt_id(
+                document_id="runtime-source",
+                chunk_id="runtime-chunk",
+                hash_scope="retrieval_excerpt",
+                content_hash=hashlib.sha256(
+                    b"Seeded evidence for the runtime worker."
+                ).hexdigest(),
+                canonical_url=(
+                    "antiek://document/runtime-source#chunk=runtime-chunk"
+                ),
+            )
             return RawProviderResponse(
-                text="Runtime synthesis with durable evidence.",
+                text=json.dumps(
+                    {
+                        "schema_version": 1,
+                        "output_text": "Runtime synthesis with durable evidence.",
+                        "insights": ["Runtime synthesis with durable evidence."],
+                        "questions": [
+                            "Which claims remain unsupported by operator-corpus evidence?"
+                        ],
+                        "claim_support": [
+                            {
+                                "claim_class": "output_paragraph",
+                                "ordinal": 0,
+                                "source_receipt_ids": [receipt_id],
+                            },
+                            {
+                                "claim_class": "insight",
+                                "ordinal": 0,
+                                "source_receipt_ids": [receipt_id],
+                            },
+                        ],
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
                 raw_usage={"prompt_tokens": 10, "completion_tokens": 5},
                 finish_reason="stop",
                 latency_ms=1,

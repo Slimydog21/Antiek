@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from dataclasses import replace
@@ -20,7 +21,9 @@ from substrate.dispatch import (
     reset_provider_registry,
 )
 from substrate.engagement_spine.store import FileEngagementStore
+from substrate.midnight_oil.contracts import canonical_source_receipt_id
 from substrate.midnight_oil.job import MidnightOilJob, _job_from_row
+from substrate.midnight_oil.job_store import OperationState
 from substrate.midnight_oil.live import (
     LiveExecutionFailed,
     LiveExecutionPlan,
@@ -39,6 +42,45 @@ from substrate.midnight_oil.worker import FakeClock, lease_authorized_operation
 from tests.test_midnight_oil_consent_routes import _client
 
 HEADER = "X-Midnight-Oil-Spend-Consent"
+
+
+def _structured_result(text: str, *, supported: bool = True) -> str:
+    receipt_id = canonical_source_receipt_id(
+        document_id="document-1",
+        chunk_id="chunk-1",
+        hash_scope="retrieval_excerpt",
+        content_hash=hashlib.sha256(
+            b"Evidence with api_key=secret-value-never-forward."
+        ).hexdigest(),
+        canonical_url="antiek://document/document-1#chunk=chunk-1",
+    )
+    claim_support = (
+        [
+            {
+                "claim_class": "output_paragraph",
+                "ordinal": 0,
+                "source_receipt_ids": [receipt_id],
+            },
+            {
+                "claim_class": "insight",
+                "ordinal": 0,
+                "source_receipt_ids": [receipt_id],
+            },
+        ]
+        if supported
+        else []
+    )
+    return json.dumps(
+        {
+            "schema_version": 1,
+            "output_text": text,
+            "insights": [text],
+            "questions": ["Which claims remain unsupported by operator-corpus evidence?"],
+            "claim_support": claim_support,
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
 
 class _Retrieval:
@@ -214,7 +256,7 @@ def test_authorized_live_step_is_fenced_budgeted_and_durably_evidenced(
         dispatch_keys.append(idempotency_key)
         captured_prompts.append(prompt)
         return DispatchResult(
-            text="Evidence-backed synthesis.",
+            text=_structured_result("Evidence-backed synthesis."),
             usage=NormalizedUsage(input_tokens=100, output_tokens=20),
             cost_usd=0.01,
             latency_ms=5,
@@ -284,12 +326,158 @@ def test_authorized_live_step_is_fenced_budgeted_and_durably_evidenced(
     assert evidence.route_receipt is not None
     assert evidence.route_receipt["event_id"] == "dispatch-event-1"
     assert evidence.source_receipts[0]["source_url"].startswith("antiek://document/")
+    assert evidence.claim_evidence_schema_version == 1
+    assert [claim.status for claim in evidence.claim_evidence] == [
+        "supported",
+        "supported",
+        "exploratory",
+    ]
+    assert evidence.claim_evidence[0].source_receipt_ids == (
+        evidence.source_receipts[0]["receipt_id"],
+    )
 
     deposit = outcome.deposit
     assert "Evidence-backed synthesis" in deposit.html
     assert "dispatch-event-1" in deposit.html
     assert "antiek://document/document-1" in deposit.html
     assert FileEngagementStore(engagement_root).get_document(deposit.document_id) is not None
+
+
+def test_malformed_live_claim_mapping_fails_before_content_checkpoint(
+    tmp_path: Path,
+) -> None:
+    _, deps, queue, lease, plan = _lease(tmp_path)
+    calls: list[str] = []
+
+    def dispatch(
+        prompt: str,
+        role: str,
+        *,
+        investigation_id: str,
+        idempotency_key: str,
+    ) -> DispatchResult:
+        calls.append(idempotency_key)
+        return DispatchResult(
+            text=json.dumps(
+                {
+                    "schema_version": 1,
+                    "output_text": "unsupported",
+                    "insights": ["unsupported"],
+                    "questions": [],
+                    "claim_support": [
+                        {
+                            "claim_class": "insight",
+                            "ordinal": 0,
+                            "source_receipt_ids": ["0" * 64],
+                        }
+                    ],
+                }
+            ),
+            usage=NormalizedUsage(input_tokens=10, output_tokens=10),
+            cost_usd=0.01,
+            latency_ms=1,
+            provider="test-provider",
+            model="test-model",
+            tier="synthesis",
+            finish_reason="stop",
+            fallback_chain_index=0,
+            event_id="malformed-claim-event",
+        )
+
+    dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
+    with pytest.raises(LiveExecutionFailed):
+        run_authorized_live_iteration(
+            lease,
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            retrieval=_Retrieval(),
+            dispatch=dispatch,
+            clock=FakeClock(1_000_002),
+        )
+
+    persisted = _job_from_row(deps.jobs.get_job(lease.job_id) or {})
+    authority = deps.owner_jobs.get_job(
+        owner_user_id=lease.owner_user_id, job_id=lease.job_id
+    )
+    assert calls == [lease.idempotency_key(lease.step_index)]
+    assert persisted.step_evidence == ()
+    assert authority is not None
+    assert authority.operation_state is OperationState.FAILED_RECONCILE
+    from substrate.midnight_oil.budget_ledger import BudgetLedger
+
+    assert BudgetLedger(deps.jobs.budget_db_path()).balance(lease.job_id).held_cents > 0
+
+
+def test_prompt_uses_the_exact_normalized_persisted_receipt_id(tmp_path: Path) -> None:
+    _, deps, queue, lease, plan = _lease(tmp_path)
+    expected_receipt_id = canonical_source_receipt_id(
+        document_id="document-1",
+        chunk_id="chunk-1",
+        hash_scope="retrieval_excerpt",
+        content_hash=hashlib.sha256(b"exact evidence").hexdigest(),
+        canonical_url="antiek://document/document-1#chunk=chunk-1",
+    )
+
+    class WhitespaceRetrieval(_Retrieval):
+        def query(self, *args: object, **kwargs: object) -> dict[str, object]:
+            return {
+                "results": [
+                    {
+                        "document_id": " document-1 ",
+                        "chunk_id": " chunk-1 ",
+                        "document_title": "Source",
+                        "chunk_text": "exact evidence",
+                    }
+                ]
+            }
+
+    def dispatch(
+        prompt: str,
+        role: str,
+        *,
+        investigation_id: str,
+        idempotency_key: str,
+    ) -> DispatchResult:
+        assert expected_receipt_id in prompt
+        return DispatchResult(
+            text=json.dumps(
+                {
+                    "schema_version": 1,
+                    "output_text": "Supported.",
+                    "insights": [],
+                    "questions": [],
+                    "claim_support": [
+                        {
+                            "claim_class": "output_paragraph",
+                            "ordinal": 0,
+                            "source_receipt_ids": [expected_receipt_id],
+                        }
+                    ],
+                }
+            ),
+            usage=NormalizedUsage(input_tokens=10, output_tokens=10),
+            cost_usd=0.01,
+            latency_ms=1,
+            provider="test-provider",
+            model="test-model",
+            tier="synthesis",
+            finish_reason="stop",
+            fallback_chain_index=0,
+            event_id="normalized-receipt-event",
+        )
+
+    dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
+    completed = run_authorized_live_iteration(
+        lease,
+        operation_queue=queue,
+        owner_jobs=deps.owner_jobs,
+        store=deps.jobs,
+        retrieval=WhitespaceRetrieval(),
+        dispatch=dispatch,
+        clock=FakeClock(1_000_002),
+    )
+    assert completed.step_evidence[0].claim_evidence[0].status == "supported"
 
 
 def test_pre_network_provider_refusal_releases_hold(tmp_path: Path) -> None:
@@ -639,7 +827,6 @@ def test_ambiguous_provider_failure_is_sanitized_held_and_never_replayed(
     assert calls == [lease.idempotency_key(0)]
 
     from substrate.midnight_oil.budget_ledger import BudgetLedger
-    from substrate.midnight_oil.job_store import OperationState
 
     balance = BudgetLedger(deps.jobs.budget_db_path()).balance("job-owned")
     assert balance.held_cents == plan.projected_max_cents
@@ -677,7 +864,7 @@ def test_deposit_crash_retries_from_evidence_without_provider_replay(
     ) -> DispatchResult:
         provider_calls.append(idempotency_key)
         return DispatchResult(
-            text="Durable paid output.",
+            text=_structured_result("Durable paid output."),
             usage=NormalizedUsage(input_tokens=100, output_tokens=20),
             cost_usd=0.01,
             latency_ms=5,
@@ -754,7 +941,7 @@ def test_overlong_retrieval_is_hard_capped_before_provider(tmp_path: Path) -> No
     ) -> DispatchResult:
         prompt_sizes.append(len(prompt.encode("utf-8")))
         return DispatchResult(
-            text="Bounded synthesis.",
+            text=_structured_result("Bounded synthesis.", supported=False),
             usage=NormalizedUsage(input_tokens=100, output_tokens=20),
             cost_usd=0.01,
             latency_ms=1,

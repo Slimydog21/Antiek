@@ -42,12 +42,14 @@ from .graph_projection import (
 )
 from .job import (
     JobStatus,
+    MidnightOilClaimEvidence,
     MidnightOilGraphEffectReceipt,
     MidnightOilJob,
     MidnightOilStepEvidence,
     approve_job,
     create_job,
     get_job,
+    source_receipt_id,
 )
 from .live import (
     LiveExecutionFailed,
@@ -113,6 +115,7 @@ from .seams import (
 from .worker import (
     ProjectFn,
     StepFn,
+    WorkerClaimSupport,
     WorkerLease,
     WorkerStepResult,
     lease_authorized_operation,
@@ -138,6 +141,7 @@ __all__ = [
     "LedgerEvent",
     "JobStatus",
     "MidnightOilJob",
+    "MidnightOilClaimEvidence",
     "MidnightOilGraphEffectReceipt",
     "MidnightOilStepEvidence",
     "MidnightOilSeams",
@@ -175,10 +179,12 @@ __all__ = [
     "StepFn",
     "WorkerStepResult",
     "WorkerLease",
+    "WorkerClaimSupport",
     "approve_job",
     "build_router_live_plan",
     "canonical_research_claim_id",
     "canonical_source_receipt_id",
+    "source_receipt_id",
     "approve_price_ceiling",
     "clear_midnight_oil_live_step",
     "configure_midnight_oil_live_step",

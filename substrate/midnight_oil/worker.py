@@ -11,12 +11,15 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Protocol
 
 from .budget_ledger import BudgetCeilingExceeded, BudgetLedger
-from .contracts import research_acceptance_policy_from_authority
+from .contracts import ResearchClaimClass, research_acceptance_policy_from_authority
 from .job import (
     JobStore,
     MidnightOilJob,
     MidnightOilStepEvidence,
     _job_from_row,
+    _validate_versioned_route_receipt,
+    _validate_versioned_source_receipt,
+    build_step_claim_evidence,
     put_job_state,
 )
 from .job_store import InvalidStoredJob, OperationState, OwnerJobStore
@@ -48,6 +51,13 @@ class FakeClock:
 
 
 @dataclass(frozen=True)
+class WorkerClaimSupport:
+    claim_class: ResearchClaimClass
+    ordinal: int
+    source_receipt_ids: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class WorkerStepResult:
     """Outcome of one worker iteration (one goal chase / spawn)."""
 
@@ -58,6 +68,7 @@ class WorkerStepResult:
     questions: tuple[str, ...] = ()
     route_receipt: dict[str, object] | None = None
     source_receipts: tuple[dict[str, str], ...] = ()
+    claim_support: tuple[WorkerClaimSupport, ...] = ()
     done: bool = False
 
 
@@ -78,38 +89,88 @@ def _redact_evidence_text(value: object, *, limit: int) -> str:
 def _step_evidence(
     result: WorkerStepResult,
     *,
+    job_id: str,
     step_key: str,
 ) -> MidnightOilStepEvidence:
+    try:
+        _validate_versioned_route_receipt(result.route_receipt)
+        for receipt in result.source_receipts:
+            _validate_versioned_source_receipt(receipt)
+    except ValueError as exc:
+        raise ValueError("worker step evidence exceeds the durable v1 envelope") from exc
+    if (
+        type(result.output_text) is not str
+        or (
+            result.spawn_id is not None
+            and (type(result.spawn_id) is not str or len(result.spawn_id) > 512)
+        )
+        or len(result.output_text) > 200_000
+        or len(result.insights) > 100
+        or len(result.questions) > 100
+        or len(result.source_receipts) > 100
+        or len(result.claim_support) > 2_048
+        or any(type(value) is not str or len(value) > 20_000 for value in result.insights)
+        or any(type(value) is not str or len(value) > 20_000 for value in result.questions)
+        or any(
+            not isinstance(receipt, dict)
+            or any(type(key) is not str or len(key) > 128 for key in receipt)
+            or any(type(value) is not str or len(value) > 2_048 for value in receipt.values())
+            for receipt in result.source_receipts
+        )
+    ):
+        raise ValueError("worker step evidence exceeds the durable v1 envelope")
     route: dict[str, object] | None = None
     if result.route_receipt is not None:
         route = {
-            str(key)[:128]: (
-                _redact_evidence_text(value, limit=2048)
-                if isinstance(value, str)
-                else value
+            key: (
+                _redact_evidence_text(value, limit=2048) if isinstance(value, str) else value
             )
             for key, value in result.route_receipt.items()
             if isinstance(value, (str, int, float, bool)) or value is None
         }
     sources = tuple(
-        {
-            str(key)[:128]: _redact_evidence_text(value, limit=2048)
+        {key: _redact_evidence_text(value, limit=2048) for key, value in receipt.items()}
+        for receipt in result.source_receipts
+    )
+    output_text = _redact_evidence_text(result.output_text, limit=200_000)
+    insights = tuple(_redact_evidence_text(value, limit=20_000) for value in result.insights)
+    questions = tuple(_redact_evidence_text(value, limit=20_000) for value in result.questions)
+    if (
+        len(output_text) > 200_000
+        or any(len(value) > 20_000 for value in (*insights, *questions))
+        or any(
+            len(key) > 128 or len(value) > 2_048
+            for receipt in sources
             for key, value in receipt.items()
-        }
-        for receipt in result.source_receipts[:100]
+        )
+        or (
+            route is not None
+            and any(type(value) is str and len(value) > 2_048 for value in route.values())
+        )
+    ):
+        raise ValueError("redacted worker evidence exceeds the durable v1 envelope")
+    claim_evidence = build_step_claim_evidence(
+        job_id=job_id,
+        step_key=step_key,
+        output_text=output_text,
+        insights=insights,
+        questions=questions,
+        source_receipts=sources,
+        supported_claims=tuple(
+            (mapping.claim_class, mapping.ordinal, mapping.source_receipt_ids)
+            for mapping in result.claim_support
+        ),
     )
     return MidnightOilStepEvidence(
         step_key=step_key,
-        spawn_id=(None if result.spawn_id is None else str(result.spawn_id)[:512]),
-        output_text=_redact_evidence_text(result.output_text, limit=200_000),
-        insights=tuple(
-            _redact_evidence_text(value, limit=20_000) for value in result.insights[:100]
-        ),
-        questions=tuple(
-            _redact_evidence_text(value, limit=20_000) for value in result.questions[:100]
-        ),
+        spawn_id=result.spawn_id,
+        output_text=output_text,
+        insights=insights,
+        questions=questions,
         route_receipt=route,
         source_receipts=sources,
+        claim_evidence_schema_version=1,
+        claim_evidence=claim_evidence,
     )
 
 
@@ -605,7 +666,7 @@ def run_worker_iteration(
         ):
             checkpoint_spawn_ids += (result.spawn_id,)
         evidence_key = step_identity or f"unkeyed-step-{len(job.step_evidence)}"
-        returned_evidence = _step_evidence(result, step_key=evidence_key)
+        returned_evidence = _step_evidence(result, job_id=job.job_id, step_key=evidence_key)
         checkpoint_evidence = tuple(
             item for item in job.step_evidence if item.step_key != evidence_key
         ) + (returned_evidence,)

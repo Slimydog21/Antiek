@@ -43,6 +43,16 @@ Claim IDs use the exact domain string `antiek.midnight_oil.claim` and hash `doma
 
 Source-receipt IDs use the exact domain string `antiek.midnight_oil.source_receipt` and hash `domain`, `schema_version`, `document_id`, `chunk_id`, `hash_scope`, `content_hash`, and `canonical_url`. Titles and all other display metadata are excluded from authority.
 
+## Claim evidence v1
+
+Every new returned step persists `claim_evidence_schema_version = 1` and a complete ordered census of its non-empty normalized output paragraphs, non-empty insights, and non-empty exploratory questions. Each record carries the canonical claim ID, class, zero-based class ordinal, normalized text, one of the closed states `supported`, `unverified`, or `exploratory`, and an ordered tuple of canonical source-receipt IDs.
+
+`supported` is valid only for an insight or output paragraph with at least one unique reference to a receipt attached to that exact step. An omitted mapping becomes `unverified`; it is never linked to the first or nearest receipt. Exploratory questions carry no receipt references and remain `exploratory`. Duplicate claim IDs, duplicate source-receipt IDs, duplicate mappings, unknown claim ordinals, unknown receipt references, forged stored receipt IDs, and partial or oversized versioned records reject.
+
+The live synthesizer returns a closed JSON envelope containing output text, insights, questions, and explicit support mappings by claim class and ordinal. Receipt IDs are included in the untrusted evidence envelope so the synthesizer can cite exact identifiers. Malformed output cannot create a returned-content checkpoint. Provider dispatch may already have occurred, so this failure follows the existing unknown-paid-outcome reconciliation path rather than pretending the call was free.
+
+Rows without `claim_evidence_schema_version` remain reconstructable legacy evidence with an empty claim census. They are not upgraded from step-level receipts. The graph evidence hash includes the version and complete claim census; graph admission semantics remain the responsibility of SPR-04.
+
 ## Rejected alternatives
 
 - One citation per step does not prove each claim.

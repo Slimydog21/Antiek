@@ -21,9 +21,11 @@ from substrate.midnight_oil.graph_projection import (
 from substrate.midnight_oil.job import (
     InMemoryJobStore,
     MidnightOilStepEvidence,
+    build_step_claim_evidence,
     create_job,
     get_job,
     put_job_state,
+    source_receipt_id,
 )
 from substrate.midnight_oil.job_store import (
     OperationState,
@@ -321,6 +323,64 @@ def test_commit_before_checkpoint_replays_without_duplicate_rows(
         assert con.execute("SELECT count(*) FROM nodes").fetchone() == (3,)
         assert con.execute("SELECT count(*) FROM edges").fetchone() == (2,)
     assert result.job.graph_projection_state == "complete"
+
+
+def test_claim_mapping_is_part_of_durable_evidence_hash(tmp_path: Path) -> None:
+    store = DurableJobStore(tmp_path / "jobs.sqlite3")
+    job_id = _terminal_job(store)
+    db = tmp_path / "graph.duckdb"
+    _seed_source(db)
+    owner_jobs, engagement = _projection_dependencies(job_id)
+    first = project_terminal_job_to_graph(
+        job_id,
+        owner_user_id="operator",
+        owner_jobs=owner_jobs,
+        store=store,
+        engagement_store=engagement,
+        graph_db_path=db,
+    )
+    job = get_job(job_id, store=store)
+    assert job is not None
+    evidence = job.step_evidence[0]
+    receipt_id = source_receipt_id(evidence.source_receipts[0])
+    claims = build_step_claim_evidence(
+        job_id=job.job_id,
+        step_key=evidence.step_key,
+        output_text=evidence.output_text,
+        insights=evidence.insights,
+        questions=evidence.questions,
+        source_receipts=evidence.source_receipts,
+        supported_claims=(
+            ("output_paragraph", 0, (receipt_id,)),
+            ("insight", 0, (receipt_id,)),
+        ),
+    )
+    put_job_state(
+        replace(
+            job,
+            step_evidence=(
+                replace(
+                    evidence,
+                    claim_evidence_schema_version=1,
+                    claim_evidence=claims,
+                ),
+            ),
+            graph_projection_state="pending",
+            graph_effect_receipt=None,
+        ),
+        store=store,
+    )
+
+    with pytest.raises(GraphProjectionConflict, match="hashes conflict"):
+        project_terminal_job_to_graph(
+            job_id,
+            owner_user_id="operator",
+            owner_jobs=owner_jobs,
+            store=store,
+            engagement_store=engagement,
+            graph_db_path=db,
+        )
+    assert first.receipt.evidence_sha256
 
 
 def test_missing_source_row_is_recorded_without_fabricating_foreign_key(
