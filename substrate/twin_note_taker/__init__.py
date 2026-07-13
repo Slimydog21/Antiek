@@ -1,9 +1,4 @@
-"""Recursive twin note-taker — LLM-proposed insight/question twin per asset.
-
-Contains the signed twin-generation core (``generate``), the substrate search
-layer (``search``), and the graph-promotion planner (``promotion_planner``) for
-advisory promotion of twin material into the canonical knowledge graph.
-"""
+"""Recursive twin note-taker — LLM-proposed insight/question twin per asset."""
 
 from .generate import (
     AUTHORITY_VERIFY_KEY_ENV,
