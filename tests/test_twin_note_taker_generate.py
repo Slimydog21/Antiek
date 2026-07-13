@@ -441,7 +441,11 @@ def test_html_is_escaped_and_proposals_never_render_as_graph_nodes() -> None:
             )
         ),
         _proposal(insights=(ProposedInsight("x" * (MAX_PROPOSAL_ITEM_CHARS + 1), ""),)),
+        _proposal(insights=(ProposedInsight(" " * (MAX_PROPOSAL_ITEM_CHARS + 1), ""),)),
+        _proposal(insights=(ProposedInsight("claim", " " * (MAX_IDENTIFIER_CHARS + 1)),)),
+        _proposal(questions=(ProposedQuestion(" " * (MAX_PROPOSAL_ITEM_CHARS + 1)),)),
         _proposal(synthesis="x" * (MAX_SYNTHESIS_CHARS + 1)),
+        _proposal(synthesis=" " * (MAX_SYNTHESIS_CHARS + 1)),
     ],
 )
 def test_untrusted_output_limits_fail_closed(proposal: TwinProposal) -> None:
@@ -466,7 +470,14 @@ def test_aggregate_output_limit_fails_closed() -> None:
     ("asset", "model_id", "account_id", "message"),
     [
         (_asset(asset_id="x" * (MAX_IDENTIFIER_CHARS + 1)), "m", "account-1", "asset_id"),
+        (_asset(asset_id=" " * (MAX_IDENTIFIER_CHARS + 1)), "m", "account-1", "asset_id"),
         (_asset(title="x" * (MAX_TITLE_CHARS + 1)), "m", "account-1", "title"),
+        (
+            _asset(content_class=" " * (MAX_IDENTIFIER_CHARS + 1)),
+            "m",
+            "account-1",
+            "content_class",
+        ),
         (
             _asset(
                 source_event_ids=tuple(f"evt-{index}" for index in range(MAX_SOURCE_EVENTS + 1))
@@ -476,7 +487,9 @@ def test_aggregate_output_limit_fails_closed() -> None:
             "count ceiling",
         ),
         (_asset(), "m" * (MAX_IDENTIFIER_CHARS + 1), "account-1", "model_id"),
+        (_asset(), " " * (MAX_IDENTIFIER_CHARS + 1), "account-1", "model_id"),
         (_asset(), "m", "a" * (MAX_IDENTIFIER_CHARS + 1), "authenticated_account_id"),
+        (_asset(), "m", " " * (MAX_IDENTIFIER_CHARS + 1), "authenticated_account_id"),
     ],
 )
 def test_untrusted_metadata_limits_fail_closed(
@@ -491,6 +504,8 @@ def test_untrusted_metadata_limits_fail_closed(
     [
         _asset(content_text="x" * (MAX_CONTENT_CHARS + 1)),
         _asset(title="x" * (MAX_TITLE_CHARS + 1)),
+        _asset(asset_id=" " * (MAX_IDENTIFIER_CHARS + 1)),
+        _asset(source_event_ids=("evt-" + ("x" * (MAX_IDENTIFIER_CHARS + 1)),)),
         _asset(source_event_ids=tuple(f"evt-{index}" for index in range(MAX_SOURCE_EVENTS + 1))),
     ],
 )
@@ -505,6 +520,26 @@ def test_package_exports_public_contract() -> None:
     from substrate.twin_note_taker import generate_twin as public_generate_twin
 
     assert public_generate_twin is generate_twin
+
+
+def test_receipt_raw_claims_are_bounded_before_parsing() -> None:
+    asset, proposal = _asset(), _proposal()
+    valid = _receipt(asset, proposal)
+    hostile = [
+        replace(valid, receipt_id=" " * (MAX_IDENTIFIER_CHARS + 1)),
+        replace(valid, source_content_hash=" " * (MAX_IDENTIFIER_CHARS + 1)),
+        replace(valid, signature=" " * (MAX_IDENTIFIER_CHARS + 1)),
+        replace(valid, source_event_ids=("evt-" + ("x" * (MAX_IDENTIFIER_CHARS + 1)),)),
+    ]
+    for receipt in hostile:
+        with pytest.raises(TwinGenerationError):
+            generate_twin(
+                asset,
+                model_id="m",
+                authenticated_account_id="account-1",
+                proposal=proposal,
+                receipt=receipt,
+            )
 
 
 def test_exact_builtin_types_prevent_overridable_string_bypasses() -> None:

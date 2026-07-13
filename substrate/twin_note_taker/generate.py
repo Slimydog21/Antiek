@@ -68,6 +68,7 @@ MAX_IDENTIFIER_CHARS = 256
 MAX_TITLE_CHARS = 1_000
 MAX_CONTENT_CLASS_CHARS = 64
 MAX_SOURCE_EVENTS = 100
+MAX_EVENT_ID_CHARS = 260
 MAX_SIGNATURE_CHARS = 128
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
@@ -196,20 +197,24 @@ def _snapshot_asset(asset: AssetContent) -> AssetContent:
 
 
 def _validate_source(asset: AssetContent) -> None:
+    if len(asset.asset_id) > MAX_IDENTIFIER_CHARS:
+        raise TwinGenerationError("asset_id must be canonical and within its ceiling")
     if not asset.asset_id.strip():
         raise TwinGenerationError("asset_id must be non-empty")
-    if asset.asset_id != asset.asset_id.strip() or len(asset.asset_id) > MAX_IDENTIFIER_CHARS:
+    if asset.asset_id != asset.asset_id.strip():
         raise TwinGenerationError("asset_id must be canonical and within its ceiling")
     if len(asset.title) > MAX_TITLE_CHARS:
         raise TwinGenerationError("asset title exceeds its ceiling")
     if (
-        not asset.content_class.strip()
+        len(asset.content_class) > MAX_CONTENT_CLASS_CHARS
+        or not asset.content_class.strip()
         or asset.content_class != asset.content_class.strip()
-        or len(asset.content_class) > MAX_CONTENT_CLASS_CHARS
     ):
         raise TwinGenerationError("content_class must be canonical and within its ceiling")
     if len(asset.source_event_ids) > MAX_SOURCE_EVENTS:
         raise TwinGenerationError("source_event_ids exceeds its count ceiling")
+    if any(len(event_id) > MAX_EVENT_ID_CHARS for event_id in asset.source_event_ids):
+        raise TwinGenerationError("source event identifier exceeds its ceiling")
     if not asset.source_event_ids or any(
         not _EVENT_ID_RE.fullmatch(event_id) for event_id in asset.source_event_ids
     ):
@@ -277,6 +282,8 @@ def _snapshot_receipt(receipt: TwinGenerationReceipt) -> TwinGenerationReceipt:
         raise TwinGenerationError("receipt source events exceed their count ceiling")
     if any(type(event_id) is not str for event_id in receipt.source_event_ids):
         raise TwinGenerationError("receipt source events must be a tuple of exact strings")
+    if any(len(event_id) > MAX_EVENT_ID_CHARS for event_id in receipt.source_event_ids):
+        raise TwinGenerationError("receipt source event exceeds its ceiling")
     if type(receipt.expires_at_unix) is not int:
         raise TwinGenerationError("receipt expiry must be an integer timestamp")
     return TwinGenerationReceipt(
@@ -328,7 +335,10 @@ def _receipt_payload(receipt: TwinGenerationReceipt) -> bytes:
 
 def _verify_receipt(receipt: TwinGenerationReceipt) -> None:
     """Verify completion evidence against server configuration."""
-    encoded_key = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "").strip()
+    raw_key = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "")
+    if len(raw_key) > MAX_SIGNATURE_CHARS:
+        raise TwinGenerationError("twin receipt verification key exceeds its ceiling")
+    encoded_key = raw_key.strip()
     if not encoded_key:
         raise TwinGenerationError("twin receipt verification key is not configured")
     if receipt.expires_at_unix <= int(time.time()):
@@ -373,6 +383,7 @@ def _normalize_proposal(asset: AssetContent, proposal: TwinProposal) -> _Normali
         raise TwinGenerationError(f"proposal exceeds {MAX_QUESTIONS} questions")
 
     total_chars = 0
+    raw_total_chars = 0
     seen_insights: set[str] = set()
     insights: list[str] = []
     for insight in proposal.insights:
@@ -380,11 +391,16 @@ def _normalize_proposal(asset: AssetContent, proposal: TwinProposal) -> _Normali
             raise TwinGenerationError("proposal insights must be ProposedInsight values")
         if not isinstance(insight.text, str) or not isinstance(insight.source_asset_id, str):
             raise TwinGenerationError("proposed insight fields must be text")
+        if len(insight.text) > MAX_PROPOSAL_ITEM_CHARS:
+            raise TwinGenerationError("proposed insight exceeds the per-item ceiling")
+        if len(insight.source_asset_id) > MAX_IDENTIFIER_CHARS:
+            raise TwinGenerationError("proposed insight source_asset_id exceeds its ceiling")
+        raw_total_chars += len(insight.text)
+        if raw_total_chars > MAX_TOTAL_PROPOSAL_CHARS:
+            raise TwinGenerationError("proposal exceeds the aggregate output ceiling")
         clean = insight.text.strip()
         if not clean:
             continue
-        if len(clean) > MAX_PROPOSAL_ITEM_CHARS:
-            raise TwinGenerationError("proposed insight exceeds the per-item ceiling")
         claimed_source = insight.source_asset_id.strip()
         if claimed_source and claimed_source != asset.asset_id:
             raise TwinGenerationError("proposed insight source_asset_id must match the input asset")
@@ -402,11 +418,14 @@ def _normalize_proposal(asset: AssetContent, proposal: TwinProposal) -> _Normali
             raise TwinGenerationError("proposal questions must be ProposedQuestion values")
         if not isinstance(question.text, str):
             raise TwinGenerationError("proposed question text must be text")
+        if len(question.text) > MAX_PROPOSAL_ITEM_CHARS:
+            raise TwinGenerationError("proposed question exceeds the per-item ceiling")
+        raw_total_chars += len(question.text)
+        if raw_total_chars > MAX_TOTAL_PROPOSAL_CHARS:
+            raise TwinGenerationError("proposal exceeds the aggregate output ceiling")
         clean = question.text.strip()
         if not clean:
             continue
-        if len(clean) > MAX_PROPOSAL_ITEM_CHARS:
-            raise TwinGenerationError("proposed question exceeds the per-item ceiling")
         identity = canonical_text(clean)
         if identity in seen_questions:
             continue
@@ -414,9 +433,12 @@ def _normalize_proposal(asset: AssetContent, proposal: TwinProposal) -> _Normali
         questions.append(clean)
         total_chars += len(clean)
 
-    synthesis = proposal.synthesis_excerpt.strip()
-    if len(synthesis) > MAX_SYNTHESIS_CHARS:
+    if len(proposal.synthesis_excerpt) > MAX_SYNTHESIS_CHARS:
         raise TwinGenerationError("synthesis excerpt exceeds its ceiling")
+    raw_total_chars += len(proposal.synthesis_excerpt)
+    if raw_total_chars > MAX_TOTAL_PROPOSAL_CHARS:
+        raise TwinGenerationError("proposal exceeds the aggregate output ceiling")
+    synthesis = proposal.synthesis_excerpt.strip()
     total_chars += len(synthesis)
     if total_chars > MAX_TOTAL_PROPOSAL_CHARS:
         raise TwinGenerationError("proposal exceeds the aggregate output ceiling")
@@ -509,16 +531,20 @@ def generate_twin(
     """
     source = _snapshot_asset(asset)
     _validate_source(source)
-    if type(model_id) is not str or not model_id.strip():
+    if type(model_id) is not str:
         raise TwinGenerationError("model_id must be a non-empty exact string")
-    if type(authenticated_account_id) is not str or not authenticated_account_id.strip():
+    if len(model_id) > MAX_IDENTIFIER_CHARS or not model_id.strip():
+        raise TwinGenerationError("model_id must be a non-empty exact string")
+    if type(authenticated_account_id) is not str:
+        raise TwinGenerationError("authenticated_account_id must be a non-empty exact string")
+    if len(authenticated_account_id) > MAX_IDENTIFIER_CHARS or not authenticated_account_id.strip():
         raise TwinGenerationError("authenticated_account_id must be a non-empty exact string")
     bounded_identifiers = {
         "model_id": model_id,
         "authenticated_account_id": authenticated_account_id,
     }
     for field, value in bounded_identifiers.items():
-        if value != value.strip() or len(value) > MAX_IDENTIFIER_CHARS:
+        if len(value) > MAX_IDENTIFIER_CHARS or value != value.strip():
             raise TwinGenerationError(f"{field} must be canonical and within its ceiling")
     normalized = _NormalizedProposal(insights=(), questions=(), synthesis_excerpt="")
     account_id: str | None = None
@@ -531,19 +557,6 @@ def generate_twin(
         completed = _snapshot_proposal(proposal)
         evidence = _snapshot_receipt(receipt)
         normalized = _normalize_proposal(source, completed)
-        string_claims = (
-            evidence.receipt_id,
-            evidence.account_id,
-            evidence.asset_id,
-            evidence.model_id,
-            evidence.budget_authority_id,
-            evidence.source_content_hash,
-            evidence.source_asset_hash,
-            evidence.proposal_payload_hash,
-            evidence.signature,
-        )
-        if not all(value.strip() for value in string_claims):
-            raise TwinGenerationError("receipt fields must be non-empty")
         bounded_receipt_ids = (
             evidence.receipt_id,
             evidence.account_id,
@@ -552,17 +565,18 @@ def generate_twin(
             evidence.budget_authority_id,
         )
         if any(
-            value != value.strip() or len(value) > MAX_IDENTIFIER_CHARS
+            len(value) > MAX_IDENTIFIER_CHARS or not value or value != value.strip()
             for value in bounded_receipt_ids
         ):
             raise TwinGenerationError("receipt identifiers exceed their canonical ceiling")
-        if len(evidence.signature) > MAX_SIGNATURE_CHARS:
+        if not evidence.signature or len(evidence.signature) > MAX_SIGNATURE_CHARS:
             raise TwinGenerationError("receipt signature exceeds its ceiling")
-        if (
-            not _SHA256_RE.fullmatch(evidence.source_content_hash)
-            or not _SHA256_RE.fullmatch(evidence.source_asset_hash)
-            or not _SHA256_RE.fullmatch(evidence.proposal_payload_hash)
-        ):
+        receipt_hashes = (
+            evidence.source_content_hash,
+            evidence.source_asset_hash,
+            evidence.proposal_payload_hash,
+        )
+        if any(len(value) != 64 or not _SHA256_RE.fullmatch(value) for value in receipt_hashes):
             raise TwinGenerationError("receipt hashes must be canonical sha256 digests")
         if len(evidence.source_event_ids) > MAX_SOURCE_EVENTS:
             raise TwinGenerationError("receipt source events exceed their count ceiling")
@@ -617,6 +631,7 @@ __all__ = [
     "MAX_TOTAL_PROPOSAL_CHARS",
     "MAX_CONTENT_CHARS",
     "MAX_CONTENT_CLASS_CHARS",
+    "MAX_EVENT_ID_CHARS",
     "MAX_IDENTIFIER_CHARS",
     "MAX_SIGNATURE_CHARS",
     "MAX_SOURCE_EVENTS",
