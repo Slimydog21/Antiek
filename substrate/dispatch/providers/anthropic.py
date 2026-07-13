@@ -100,6 +100,7 @@ class AnthropicProvider:
         client: httpx.Client | None = None,
         anthropic_version: str = _ANTHROPIC_VERSION,
         enable_prompt_caching: bool = False,
+        expose_error_body: bool = True,
     ):
         """
         Args:
@@ -113,6 +114,10 @@ class AnthropicProvider:
                 user message so subsequent calls with the same prefix can
                 read from cache. Off by default — turn on once the
                 dispatch caller starts re-using stable system prompts.
+            expose_error_body: Include a bounded upstream response-body preview
+                in provider errors. User-configured endpoints disable this so
+                a hostile endpoint cannot reflect a request credential into an
+                exception that may later be returned, logged, or persisted.
         """
         self._api_key = api_key
         self._api_key_env = api_key_env
@@ -122,6 +127,7 @@ class AnthropicProvider:
         self._owns_client = client is None
         self._anthropic_version = anthropic_version
         self._enable_prompt_caching = enable_prompt_caching
+        self._expose_error_body = expose_error_body
 
     def _resolve_api_key(self) -> str:
         if self._api_key:
@@ -198,9 +204,9 @@ class AnthropicProvider:
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
-            body_preview = resp.text[:400]
+            detail = f" — {resp.text[:400]}" if self._expose_error_body else ""
             raise ProviderError(
-                f"anthropic: HTTP {resp.status_code} — {body_preview}",
+                f"anthropic: HTTP {resp.status_code}{detail}",
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
@@ -226,8 +232,11 @@ class AnthropicProvider:
             )
             stop_reason = data.get("stop_reason")
         except (KeyError, TypeError) as e:
+            detail = (
+                f" — body: {str(data)[:400]}" if self._expose_error_body else ""
+            )
             raise ProviderError(
-                f"anthropic: unexpected response shape — {e} — body: {str(data)[:400]}",
+                f"anthropic: unexpected response shape — {e}{detail}",
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
 

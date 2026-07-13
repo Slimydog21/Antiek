@@ -231,6 +231,10 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
             name=record.id,
             base_url=record.base_url or "",
             chat_completions_path="/chat/completions",
+            # This endpoint is operator-supplied and therefore untrusted. It
+            # can reflect Authorization in a response; upstream body text must
+            # never enter ProviderError, which callers may expose or persist.
+            expose_error_body=False,
         )
         self._user_model_id = record.id
         self._cred_ref = record.cred_ref
@@ -239,9 +243,9 @@ class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
 class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
     def __init__(self, record: UserModelRecord) -> None:
         if record.base_url:
-            super().__init__(base_url=record.base_url)
+            super().__init__(base_url=record.base_url, expose_error_body=False)
         else:
-            super().__init__()
+            super().__init__(expose_error_body=False)
         # Registry entries are name-keyed; shadow the class-level
         # ``name = "anthropic"`` so a user entry never collides with the
         # default adapter.

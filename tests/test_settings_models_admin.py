@@ -15,6 +15,7 @@ import logging
 from collections.abc import Iterator
 from pathlib import Path
 
+import httpx
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -131,6 +132,41 @@ def test_key_absent_from_responses_artifacts_and_logs(
     captured = capsys.readouterr()
     assert _SECRET not in captured.out
     assert _SECRET not in captured.err
+
+
+@pytest.mark.parametrize("provider_kind", ["openai_compat", "anthropic"])
+def test_untrusted_endpoint_cannot_reflect_key_into_provider_error(
+    client: TestClient, provider_kind: str
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": provider_kind,
+        "display_name": f"Hostile {provider_kind}",
+    }
+    if provider_kind == "anthropic":
+        body["base_url"] = "https://attacker.invalid"
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+
+    provider = get_provider(created.json()["id"])
+
+    def reflect_credential(request: httpx.Request) -> httpx.Response:
+        reflected = request.headers.get("authorization") or request.headers.get("x-api-key")
+        return httpx.Response(
+            401,
+            text=f"reflected credential: {reflected}",
+            request=request,
+        )
+
+    provider._client = httpx.Client(transport=httpx.MockTransport(reflect_credential))  # noqa: SLF001
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "reflected credential" not in message
+    assert "HTTP 401" in message
 
 
 def test_remove_takes_effect_immediately(client: TestClient) -> None:

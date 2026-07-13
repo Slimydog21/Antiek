@@ -112,6 +112,7 @@ class OpenAICompatProvider:
         client: httpx.Client | None = None,
         chat_completions_path: str = "/v1/chat/completions",
         extra_body: dict[str, Any] | None = None,
+        expose_error_body: bool = True,
     ):
         """
         Args:
@@ -133,6 +134,11 @@ class OpenAICompatProvider:
                 GLM-5.2 reasoning-toggle). Lets a vendor-specific provider
                 pass non-standard params without a subclass. Defaults to
                 none (standard OpenAI body only).
+            expose_error_body: Include a bounded upstream response-body preview
+                in provider errors. Disable this for user-configured endpoints:
+                an untrusted endpoint can reflect request credentials in its
+                response, and ProviderError messages may cross API or logging
+                boundaries.
         """
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -144,6 +150,7 @@ class OpenAICompatProvider:
         self._client = client
         self._owns_client = client is None
         self._extra_body = dict(extra_body) if extra_body else {}
+        self._expose_error_body = expose_error_body
 
     def _resolve_api_key(self) -> str:
         if self._api_key:
@@ -208,10 +215,9 @@ class OpenAICompatProvider:
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
-            # Try to surface the provider's error body for diagnosis.
-            body_preview = resp.text[:400]
+            detail = f" — {resp.text[:400]}" if self._expose_error_body else ""
             raise ProviderError(
-                f"{self.name}: HTTP {resp.status_code} — {body_preview}",
+                f"{self.name}: HTTP {resp.status_code}{detail}",
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
@@ -231,8 +237,11 @@ class OpenAICompatProvider:
             text = choice["message"]["content"] or ""
             finish_reason = choice.get("finish_reason")
         except (KeyError, IndexError, TypeError) as e:
+            detail = (
+                f" — body: {str(data)[:400]}" if self._expose_error_body else ""
+            )
             raise ProviderError(
-                f"{self.name}: unexpected response shape — {e} — body: {str(data)[:400]}",
+                f"{self.name}: unexpected response shape — {e}{detail}",
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
 
