@@ -1,14 +1,20 @@
 {
-  "cycle": 24,
-  "phase": "RE_DERIVE",
-  "subgoal": "Specify owner-private authority propagation across context v2, consent v6, queue recomputation, and last-moment live reverification without enabling execution",
-  "lanes": [],
+  "cycle": 25,
+  "phase": "RECORD",
+  "subgoal": "Specify the exact local owner-private excerpt reader, byte-and-role dispatch matcher, and publication receipt v4 while every output sink remains denied",
+  "lanes": [
+    {"id": "11b-d-fable-architecture", "engine": "claude-fable-5", "worktree": ".", "status": "gap-no-output", "session": 89536},
+    {"id": "11b-d-grok-reader", "engine": "grok-composer-2.5", "worktree": ".", "status": "gap-http-402", "session": 94073},
+    {"id": "11b-d-mimo-receipt", "engine": "mimo-v2.5-pro", "worktree": ".", "status": "rejected-ungrounded", "session": 9571},
+    {"id": "11b-d-codex-critic", "engine": "gpt-5.6-sol", "worktree": ".", "status": "complete-grounded", "session": 70559},
+    {"id": "11b-d-glm-ultracode", "engine": "glm-cc-ultracode", "worktree": ".", "status": "rejected-wrong-surface", "session": 9267}
+  ],
   "engineHealth": {
-    "grok": "degraded: Cycle 22 Grok 4.5 planning invocation failed HTTP 402 due exhausted balance",
-    "mimo": "degraded: Cycle 23 goal run wandered without a decision-ready final report",
-    "claude": "ok",
-    "codex": "ok: Cycle 23 GPT-5.6-sol produced substantive repository architecture tracing",
-    "glm-cc": "degraded: Cycle 23 ultracode falsely reported an empty repository and was rejected",
+    "grok": "probe ok; Cycle 25 lane failed HTTP 402 balance exhausted",
+    "mimo": "probe ok; Cycle 25 output rejected as ungrounded repository archaeology",
+    "claude": "probe ok; Cycle 25 Fable lane returned no usable output",
+    "codex": "probe ok; Cycle 25 GPT-5.6-sol supplied grounded reader/receipt/dispatch critique",
+    "glm-cc": "probe ok; Cycle 25 ultracode output rejected for inspecting a different JavaScript surface",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -27,7 +33,8 @@
     {"cycle": 21, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12},
     {"cycle": 22, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12},
     {"cycle": 23, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
-    {"cycle": 24, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13}
+    {"cycle": 24, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
+    {"cycle": 25, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13}
   ],
-  "updatedAt": "2026-07-13T11:39:16Z"
+  "updatedAt": "2026-07-13T13:25:00Z"
 }

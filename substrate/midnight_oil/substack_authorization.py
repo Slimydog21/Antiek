@@ -847,6 +847,10 @@ def require_active_stored_substack_excerpt(
     expected_receipt_sha256: str,
     verification_keys: Mapping[str, bytes],
     now_ms: int,
+    required_until_ms: int | None = None,
+    collective_unit_id: str | None = None,
+    collective_preview_sha256: str | None = None,
+    ref_id: str | None = None,
 ) -> tuple[SubstackAuthorization, SubstackExcerptReceipt]:
     """Recheck live use authority and exact local bytes under a final row barrier."""
     authorization, receipt, authorization_logical_id = _read_active_stored_substack_excerpt(
@@ -878,6 +882,10 @@ def require_active_stored_substack_excerpt(
             verification_keys=verification_keys,
             owner_id=owner_id,
             now_ms=now_ms,
+            required_until_ms=required_until_ms,
+            collective_unit_id=collective_unit_id,
+            collective_preview_sha256=collective_preview_sha256,
+            ref_id=ref_id,
         )
         return current
 

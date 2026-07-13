@@ -23,29 +23,42 @@ Public surface (mirrors ``acquisition/podcasts/__init__.py``):
 """
 from __future__ import annotations
 
-from .adapter import (
-    DEFAULT_SUBSTACK_SOURCE_TIER,
-    IngestResult,
-    PublicationIngestSummary,
-    ingest_post,
-    ingest_publication_feed,
-)
-from .client import (
-    MIN_FULL_BODY_CHARS,
-    TRUNCATION_MARKERS,
-    Post,
-    Publication,
-    detect_truncation,
-    fetch_feed,
-    substack_doc_id,
-)
-from .subscriptions import (
-    Subscription,
-    SubscriptionManifestError,
-    ingest_subscriptions,
-    load_subscriptions,
-    resolve_feed_url,
-)
+from importlib import import_module
+from typing import Any
+
+_EXPORT_MODULE = {
+    "DEFAULT_SUBSTACK_SOURCE_TIER": "adapter",
+    "IngestResult": "adapter",
+    "PublicationIngestSummary": "adapter",
+    "ingest_post": "adapter",
+    "ingest_publication_feed": "adapter",
+    "MIN_FULL_BODY_CHARS": "client",
+    "TRUNCATION_MARKERS": "client",
+    "Post": "client",
+    "Publication": "client",
+    "detect_truncation": "client",
+    "fetch_feed": "client",
+    "substack_doc_id": "client",
+    "Subscription": "subscriptions",
+    "SubscriptionManifestError": "subscriptions",
+    "ingest_subscriptions": "subscriptions",
+    "load_subscriptions": "subscriptions",
+    "resolve_feed_url": "subscriptions",
+}
+
+
+def __getattr__(name: str) -> Any:
+    """Load the legacy network connector only when its public symbol is requested."""
+    module_name = _EXPORT_MODULE.get(name)
+    if module_name is None:
+        raise AttributeError(name)
+    value = getattr(import_module(f"{__name__}.{module_name}"), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
 
 __all__ = [
     "Publication",

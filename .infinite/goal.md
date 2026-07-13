@@ -6,7 +6,7 @@ Execute the Antiek project and all unexecuted sprints into a comprehensive HTML-
 
 ## Current subgoal
 
-Turn an owner-bound cohesive research reservation into explicitly consented, budget-ceiling-enforced, model-routed provider execution that streams durable progress, settles actual usage honestly, completes the session flywheel, and remains recoverable across worker/process failure.
+Specify and execute FSW-SPR-11B-D: an exact local owner-private excerpt reader, exact byte-and-role private-provider matcher, last-moment capability/revocation proof, and publication receipt v4, while consent, queue delivery, provider dispatch, and every output sink remain fail-closed until the downstream taint boundary exists.
 
 ## Derivation trail
 
@@ -22,3 +22,6 @@ Turn an owner-bound cohesive research reservation into explicitly consented, bud
 - Cycle 12 delivered owner-wide durable session discovery, startup index reconciliation, store-level cursor paging, explicit checkbox selection, cross-asset consent, live status reconciliation, exact late-response authority, and per-preview merge receipts. Users can now review a collective context safely; the next narrow seam is making that reviewed unit itself durable and actionable as a new cohesive research or writing branch.
 - Cycle 13 delivered hash-pinned reviewed collective confirmation, immutable owner-native units with complete session/spawn/asset/investigation/output/twin/reference provenance, settled idempotent cohesive-research descendants, HTML-first written-analysis drafts, exact UI invalidation, and bounded ingestion/storage/prompt surfaces. The unit is durable but discovery still lives only in the confirming window, so reload/device continuity and lineage navigation are now the narrowest daily-workstation gap.
 - Cycle 14 delivered owner-prefixed, keyset-paged saved-unit discovery; cryptographically self-validating unit rows; capped and independently paged descendant lineage; replay repair after child-before-lineage crashes; live session/spawn state projection; real-credential cross-owner isolation; and reload-safe HTML/unit/child navigation. The remaining execution-honesty gap is now explicit: Continue as cohesive research reserves a session but does not dispatch paid work or enforce the displayed budget ceiling.
+- Cycles 15–21 connected cohesive sessions to signed Midnight Oil execution, owner-safe terminal effects, reviewed publication scope, attested arXiv egress, owner-selected Substack excerpt authority, manifest v2, and a non-conferring mixed-source readiness projection.
+- Cycles 22–24 froze the private-provider capability/output policy, composed rollback-safe live revocation state, and propagated a canonical non-conferring owner-private carrier through context v2, JobConsentConfig v6, durable owner authority, prospective queue commitment, and pre-CAS worker denial.
+- Commit `416fa7aa2` closed 11B-C with 552 broad Midnight Oil tests, strict static gates, hardenx LOW/0 real, and three independent ACCEPT verdicts. The next load-bearing seam is 11B-D: prove exact local bytes and role-specific dispatch eligibility without yet making any provider or sink reachable.

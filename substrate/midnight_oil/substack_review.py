@@ -169,6 +169,43 @@ def substack_review_overlay_sha256(
     return _digest(_OVERLAY_DOMAIN, _without(raw, "overlay_id", "overlay_sha256"))
 
 
+def require_exact_confirmed_substack_review_overlay(
+    store: EngagementStore,
+    *,
+    owner_id: str,
+    overlay_id: str,
+    expected_overlay_sha256: str,
+    collective_unit_id: str,
+    collective_preview_sha256: str,
+    ref_id: str,
+    authorization_id: str,
+    expected_authorization_sha256: str,
+    receipt_id: str,
+    expected_receipt_sha256: str,
+) -> ConfirmedSubstackReviewOverlay:
+    """Reload one exact owner-private overlay without consulting its draft text."""
+    row = store.get_owned_document(overlay_id, owner_id)
+    if row is None or row.get("document_type") != "confirmed_substack_review_overlay":
+        raise ValueError("Substack review overlay is unavailable")
+    overlay = ConfirmedSubstackReviewOverlay.model_validate(row.get("overlay"))
+    if (
+        row.get("overlay_sha256") != expected_overlay_sha256
+        or overlay.overlay_id != overlay_id
+        or overlay.overlay_sha256 != expected_overlay_sha256
+        or overlay.collective_unit_id != collective_unit_id
+        or overlay.collective_preview_sha256 != collective_preview_sha256
+        or overlay.ref_id != ref_id
+        or overlay.authorization_id != authorization_id
+        or overlay.authorization_sha256 != expected_authorization_sha256
+        or overlay.receipt_id != receipt_id
+        or overlay.receipt_sha256 != expected_receipt_sha256
+    ):
+        raise ValueError("Substack review overlay binding conflicts")
+    if store.get_owned_document(overlay_id, owner_id) != row:
+        raise ValueError("Substack review overlay changed during inspection")
+    return overlay
+
+
 def _logical_id(prefix: str, owner_id: str, idempotency_key: str) -> str:
     if _IDEMPOTENCY_RE.fullmatch(idempotency_key) is None:
         raise ValueError("Substack review idempotency key is invalid")
@@ -888,6 +925,7 @@ __all__ = [
     "list_confirmed_substack_reviews",
     "pending_substack_review_count",
     "reconcile_pending_substack_reviews",
+    "require_exact_confirmed_substack_review_overlay",
     "review_draft_projection",
     "substack_review_overlay_sha256",
     "substack_review_preview_sha256",
