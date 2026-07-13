@@ -1458,9 +1458,7 @@ class SubstrateManifestWrittenPayload(_PayloadBase):
     synthesis_timestamp: datetime
     manifest_rows_written: int = Field(ge=0)
     # entity_kind ('document' | 'chunk' | 'node' | 'edge') → count.
-    # Counts are pre-INSERT-OR-IGNORE (the input cardinality the
-    # pipeline asked to pin), not post-dedupe row count. Matches the
-    # Researchmaxx semantics for trajectory analytics.
+    # Counts match the validated, deduplicated rows durably pinned.
     counts_by_kind: dict[str, int]
 
 

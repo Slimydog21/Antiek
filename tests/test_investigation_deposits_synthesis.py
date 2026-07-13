@@ -106,6 +106,15 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
                 "PsiQuantum photonic quantum roadmap evidence: Quantum X holds.", 32,
             ],
         )
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope, metadata) "
+            "VALUES (?, ?, 'claim', 'cross_domain', ?)",
+            [
+                "node-chunk-1",
+                "PsiQuantum photonic substrate is established",
+                '{"chunk_id":"chunk-1"}',
+            ],
+        )
     finally:
         con.close()
     _reset_default_provider()
@@ -193,3 +202,12 @@ async def test_investigation_deposits_synthesis_with_manifest(
     assert recommendation == "proceed", recommendation
     pinned_chunks = {e for k, e in manifest if k == "chunk"}
     assert "chunk-1" in pinned_chunks, pinned_chunks
+    pinned_nodes = {e for k, e in manifest if k == "node"}
+    assert "node-chunk-1" in pinned_nodes, pinned_nodes
+
+    promoted = await async_client.post(
+        "/write/deliverables/from-investigation",
+        json={"investigation_id": inv, "deliverable_kind": "research_memo"},
+    )
+    assert promoted.status_code == 201, promoted.text
+    assert promoted.json()["block_count"] == 1

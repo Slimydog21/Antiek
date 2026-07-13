@@ -26,6 +26,7 @@ from __future__ import annotations
 import os
 import sys
 from dataclasses import dataclass, field
+from hashlib import sha256
 from typing import Literal
 
 try:
@@ -37,7 +38,9 @@ except ImportError:  # pragma: no cover — direct-script fallback
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
     from substrate.graph.ops import insert_deliverable, insert_section  # type: ignore[no-redef]
 
-from .outline_block import place_block
+from substrate.event_log import trajectory
+
+from .outline_block import emit_block_placed, place_block
 
 
 @dataclass(frozen=True)
@@ -70,10 +73,6 @@ class InvestigationPromoteResult:
                                = live). Seeded, not dropped — the writer
                                sees 'source unavailable' via provenance.
     - ``source_node_count``    distinct nodes the synthesis pinned.
-    - ``insufficient_evidence`` the dominant real case (the dogfood finding:
-                               every real investigation ended here) — a
-                               synthesis that exists but pinned zero nodes.
-                               Surfaced as a flag, never papered over.
     """
 
     deliverable_id: str
@@ -82,10 +81,29 @@ class InvestigationPromoteResult:
     block_count: int = 0
     dangling_count: int = 0
     source_node_count: int = 0
-    insufficient_evidence: bool = False
     synthesis_id: str | None = None
     synthesis_status: str | None = None
     synthesis_recommendation: str | None = None
+
+
+@dataclass(frozen=True)
+class InvestigationPromotionRefusal:
+    """A synthesis exists, but cannot honestly seed a writing deliverable.
+
+    This is distinct from ``None`` (no completed synthesis). Keeping the
+    refusal typed lets the HTTP boundary report a stable conflict reason
+    without repeating the promotion query or creating placeholder rows.
+    """
+
+    synthesis_id: str
+    synthesis_status: str
+    synthesis_recommendation: str
+    gate_failed: Literal[
+        "status", "recommendation", "no_source_nodes", "all_dangling"
+    ]
+    source_node_count: int
+    live_source_node_count: int
+    dangling_count: int
 
 
 # Outline block_kind for a synthesis-pinned graph node. The writing outline is
@@ -105,6 +123,33 @@ _NODE_TYPE_TO_BLOCK_KIND: dict[str, str] = {
 
 def _block_kind_for_node_type(node_type: str | None) -> str:
     return _NODE_TYPE_TO_BLOCK_KIND.get(node_type or "", "insight")
+
+
+def _ensure_placement_events(
+    *,
+    investigation_id: str,
+    deliverable_id: str,
+    section_id: str,
+    blocks: list[tuple[str, str, str | None, int]],
+) -> None:
+    emitted_ids = {
+        row.get("payload", {}).get("outline_block_id")
+        for row in trajectory(investigation_id)
+        if row.get("action_type") == "outline_block.placed"
+    }
+    for block_id, block_kind, node_id, index in blocks:
+        if block_id in emitted_ids:
+            continue
+        emit_block_placed(
+            outline_block_id=block_id,
+            deliverable_id=deliverable_id,
+            section_id=section_id,
+            block_kind=block_kind,
+            provenance_kind="graph_node",
+            node_id=node_id,
+            block_index=index,
+            investigation_id=investigation_id,
+        )
 
 
 def promote_to_outline(
@@ -151,7 +196,7 @@ def promote_investigation_to_deliverable(
     *,
     deliverable_kind: str,
     title: str | None = None,
-) -> InvestigationPromoteResult | None:
+) -> InvestigationPromoteResult | InvestigationPromotionRefusal | None:
     """Promote a completed investigation's synthesis into a seed deliverable
     (specs/write WV-SPR-01 M2) — the compounding flywheel's missing writing
     arm. A deliverable is created with one outline section holding one
@@ -160,10 +205,11 @@ def promote_investigation_to_deliverable(
     node → document → chunks).
 
     Returns ``None`` when the investigation has **no** depositable synthesis
-    (the route maps this to 404 — never an empty 200). Returns a result with
-    ``insufficient_evidence=True`` when the synthesis exists but pinned zero
-    source nodes — the dominant real case per the dogfood finding, surfaced
-    honestly rather than papered over with placeholder blocks.
+    (the route maps this to 404). Returns an
+    ``InvestigationPromotionRefusal`` when a synthesis exists but its verdict
+    or provenance cannot support a writing seed (the route maps this to 409).
+    Refusal happens before the first write, so it cannot leave an empty
+    deliverable or section behind.
 
     Dangling source nodes (pinned by the synthesis but since deleted from the
     graph) are STILL placed — with their ``node_id`` — so the writer sees
@@ -180,10 +226,8 @@ def promote_investigation_to_deliverable(
     #      is in-flight / unevaluated, not a completed conclusion, so it is not
     #      promoted as a deliverable (→ 404 if a draft is all that exists).
     #      The terminal outcomes (passed / regressed / max_iterations_reached /
-    #      escalated) all represent a completed run and ARE promoted — the
-    #      insufficient_evidence dogfood case is a terminal non-passed synthesis,
-    #      which must still reach the arm. status is surfaced in the result so
-    #      the operator sees exactly what was promoted.
+    #      escalated) all represent completed runs. Their recommendation and
+    #      evidence still have to pass the promotion gate below.
     #    - MOST RECENT = by synthesis_timestamp (when it was made), NOT
     #      archived_at: a late backfill/retry archives an OLD synthesis LATE, so
     #      archived_at would wrongly win. synthesis_timestamp is NOT NULL.
@@ -223,45 +267,145 @@ def promote_investigation_to_deliverable(
         ).fetchall()
         live_types = {r[0]: r[1] for r in type_rows}
 
-    # 4. Create the deliverable (linked to its source investigation) + one
-    #    section titled with the synthesis's target question.
-    did = insert_deliverable(
-        con,
-        title=title or target_question or "(untitled deliverable)",
-        deliverable_kind=deliverable_kind,
-        investigation_root_id=investigation_id,
-        metadata={
-            "promoted_from": "investigation_synthesis",
-            "source_synthesis_id": synthesis_id,
-        },
+    # 4. Decide whether the synthesis can honestly seed writing before the
+    #    first insert. DuckDB statements autocommit through this connection;
+    #    preflight ordering is what guarantees a refusal creates zero rows.
+    dangling = len(source_node_ids) - len(live_types)
+    effective_title = title or target_question or "(untitled deliverable)"
+    identity_material = "\0".join(
+        (synthesis_id, deliverable_kind, effective_title)
     )
-    sid = insert_section(
-        con,
-        deliverable_id=did,
-        section_index=0,
-        title=(target_question[:120] if target_question else None),
-    )
-
-    # 5. One graph-node block per pinned source node. A dangling node's type is
-    #    unknown (it is gone) → it places as a generic 'insight' block whose
-    #    resolve_provenance is 'dangling'. No node is dropped.
-    block_ids: list[str] = []
-    dangling = 0
-    for index, node_id in enumerate(source_node_ids):
-        if node_id not in live_types:
-            dangling += 1
-        block_kind = _block_kind_for_node_type(live_types.get(node_id))
-        obid = place_block(
-            con,
-            section_id=sid,
-            block_kind=block_kind,
-            provenance_kind="graph_node",
-            node_id=node_id,
-            block_index=index,
-            deliverable_id=did,
+    identity = sha256(identity_material.encode()).hexdigest()[:24]
+    did = f"dlv-promote-{identity}"
+    sid = f"sec-promote-{identity}"
+    existing = con.execute(
+        "SELECT 1 FROM deliverables WHERE deliverable_id = ?",
+        [did],
+    ).fetchone()
+    if existing is not None:
+        placed_blocks = [
+            (row[0], row[1], row[2], int(row[3]))
+            for row in con.execute(
+                "SELECT outline_block_id, block_kind, node_id, block_index "
+                "FROM outline_blocks WHERE section_id = ? "
+                "ORDER BY block_index, outline_block_id",
+                [sid],
+            ).fetchall()
+        ]
+        _ensure_placement_events(
             investigation_id=investigation_id,
+            deliverable_id=did,
+            section_id=sid,
+            blocks=placed_blocks,
         )
-        block_ids.append(obid)
+        return InvestigationPromoteResult(
+            deliverable_id=did,
+            section_id=sid,
+            block_ids=[row[0] for row in placed_blocks],
+            block_count=len(placed_blocks),
+            dangling_count=dangling,
+            source_node_count=len(source_node_ids),
+            synthesis_id=synthesis_id,
+            synthesis_status=synthesis_status,
+            synthesis_recommendation=recommendation,
+        )
+
+    if synthesis_status != "passed":
+        return InvestigationPromotionRefusal(
+            synthesis_id=synthesis_id,
+            synthesis_status=synthesis_status,
+            synthesis_recommendation=recommendation,
+            gate_failed="status",
+            source_node_count=len(source_node_ids),
+            live_source_node_count=len(live_types),
+            dangling_count=dangling,
+        )
+    if recommendation in {"undetermined", "insufficient_evidence"}:
+        return InvestigationPromotionRefusal(
+            synthesis_id=synthesis_id,
+            synthesis_status=synthesis_status,
+            synthesis_recommendation=recommendation,
+            gate_failed="recommendation",
+            source_node_count=len(source_node_ids),
+            live_source_node_count=len(live_types),
+            dangling_count=dangling,
+        )
+    if not source_node_ids:
+        return InvestigationPromotionRefusal(
+            synthesis_id=synthesis_id,
+            synthesis_status=synthesis_status,
+            synthesis_recommendation=recommendation,
+            gate_failed="no_source_nodes",
+            source_node_count=0,
+            live_source_node_count=0,
+            dangling_count=0,
+        )
+    if not live_types:
+        return InvestigationPromotionRefusal(
+            synthesis_id=synthesis_id,
+            synthesis_status=synthesis_status,
+            synthesis_recommendation=recommendation,
+            gate_failed="all_dangling",
+            source_node_count=len(source_node_ids),
+            live_source_node_count=0,
+            dangling_count=dangling,
+        )
+
+    # Stable request identity lets transport retries converge without collapsing
+    # intentionally different title or deliverable-kind seeds.
+    con.execute("BEGIN TRANSACTION")
+    try:
+        insert_deliverable(
+            con,
+            title=effective_title,
+            deliverable_kind=deliverable_kind,
+            investigation_root_id=investigation_id,
+            metadata={
+                "promoted_from": "investigation_synthesis",
+                "source_synthesis_id": synthesis_id,
+            },
+            deliverable_id=did,
+        )
+        insert_section(
+            con,
+            deliverable_id=did,
+            section_index=0,
+            title=(target_question[:120] if target_question else None),
+            section_id=sid,
+        )
+
+        # 6. One graph-node block per pinned source node. A dangling node's type
+        #    is unknown, so it places as a generic insight whose provenance
+        #    resolves to source unavailable. No node is silently dropped.
+        block_ids: list[str] = []
+        placed_blocks: list[tuple[str, str, str | None, int]] = []
+        for index, node_id in enumerate(source_node_ids):
+            block_kind = _block_kind_for_node_type(live_types.get(node_id))
+            obid = place_block(
+                con,
+                section_id=sid,
+                block_kind=block_kind,
+                provenance_kind="graph_node",
+                node_id=node_id,
+                block_index=index,
+                deliverable_id=did,
+                investigation_id=investigation_id,
+                outline_block_id=f"oblk-promote-{identity}-{index}",
+                emit_event=False,
+            )
+            block_ids.append(obid)
+            placed_blocks.append((obid, block_kind, node_id, index))
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+
+    _ensure_placement_events(
+        investigation_id=investigation_id,
+        deliverable_id=did,
+        section_id=sid,
+        blocks=placed_blocks,
+    )
 
     return InvestigationPromoteResult(
         deliverable_id=did,
@@ -270,7 +414,6 @@ def promote_investigation_to_deliverable(
         block_count=len(block_ids),
         dangling_count=dangling,
         source_node_count=len(source_node_ids),
-        insufficient_evidence=(len(block_ids) == 0),
         synthesis_id=synthesis_id,
         synthesis_status=synthesis_status,
         synthesis_recommendation=recommendation,

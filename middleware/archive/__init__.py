@@ -11,10 +11,12 @@ migrates.
 from .archive import (
     MANIFEST_ENTITY_KINDS,
     ArchiveInputs,
+    SynthesisArchiveConflict,
     archive_synthesis_via_db,
     compute_manifest_counts,
     emit_substrate_manifest_written,
     emit_synthesis_archived,
+    load_synthesis,
     new_synthesis_id,
     serialize_json_field,
 )
@@ -22,10 +24,12 @@ from .archive import (
 __all__ = [
     "MANIFEST_ENTITY_KINDS",
     "ArchiveInputs",
+    "SynthesisArchiveConflict",
     "new_synthesis_id",
     "serialize_json_field",
     "compute_manifest_counts",
     "emit_synthesis_archived",
     "emit_substrate_manifest_written",
+    "load_synthesis",
     "archive_synthesis_via_db",
 ]

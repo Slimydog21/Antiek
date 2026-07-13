@@ -266,9 +266,12 @@ def place_block(
     outline_block_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: Literal["error", "ignore"] = "error",
+    emit_event: bool = True,
 ) -> str:
     """Place a lego block into an outline section. Returns its
-    ``outline_block_id`` and emits ``OUTLINE_BLOCK_PLACED`` after commit.
+    ``outline_block_id`` and normally emits ``OUTLINE_BLOCK_PLACED`` after
+    the autocommitted insert. Transaction-owning callers may pass
+    ``emit_event=False`` and call ``emit_block_placed`` only after commit.
 
     The composition invariants are validated *before* the write (loud,
     typed). ``on_conflict='ignore'`` makes the write idempotent for a
@@ -299,11 +302,39 @@ def place_block(
             cluster_id, _maybe_json(metadata),
         ],
     )
+    if emit_event:
+        emit_block_placed(
+            outline_block_id=obid,
+            deliverable_id=did,
+            section_id=section_id,
+            block_kind=block_kind,
+            provenance_kind=provenance_kind,
+            node_id=node_id,
+            block_index=int(block_index),
+            investigation_id=investigation_id,
+            parent_event_id=parent_event_id,
+        )
+    return obid
+
+
+def emit_block_placed(
+    *,
+    outline_block_id: str,
+    deliverable_id: str,
+    section_id: str,
+    block_kind: str,
+    provenance_kind: str,
+    node_id: str | None,
+    block_index: int,
+    investigation_id: str = "__operator__",
+    parent_event_id: str | None = None,
+) -> None:
+    """Emit the placement fact after its owning database commit succeeds."""
     emit_typed(
         investigation_id,
         OutlineBlockPlacedPayload(
-            outline_block_id=obid,
-            deliverable_id=did,
+            outline_block_id=outline_block_id,
+            deliverable_id=deliverable_id,
             section_id=section_id,
             block_kind=block_kind,  # type: ignore[arg-type]
             provenance_kind=provenance_kind,  # type: ignore[arg-type]
@@ -313,7 +344,6 @@ def place_block(
         parent_event_id=parent_event_id,
         role="write_composition",
     )
-    return obid
 
 
 def place_node_block(

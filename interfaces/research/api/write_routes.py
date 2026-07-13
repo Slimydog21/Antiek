@@ -560,16 +560,53 @@ class FromInvestigationResponse(BaseModel):
     block_count: int
     dangling_count: int
     source_node_count: int
-    insufficient_evidence: bool
+    insufficient_evidence: bool = Field(default=False, deprecated=True)
     synthesis_id: str | None = None
     synthesis_status: str | None = None
     synthesis_recommendation: str | None = None
+
+
+class PromotionNotFoundDetail(BaseModel):
+    error: Literal["no_synthesis"]
+    reason: str
+    investigation_id: str
+
+
+class PromotionNotFoundResponse(BaseModel):
+    detail: PromotionNotFoundDetail
+
+
+class PromotionRefusalDetail(BaseModel):
+    error: Literal["not_promotable"]
+    reason: str
+    gate_failed: Literal["status", "recommendation", "no_source_nodes", "all_dangling"]
+    investigation_id: str
+    synthesis_id: str
+    synthesis_status: str
+    synthesis_recommendation: str
+    source_node_count: int
+    live_source_node_count: int
+    dangling_count: int
+
+
+class PromotionRefusalResponse(BaseModel):
+    detail: PromotionRefusalDetail
 
 
 @write_router.post(
     "/deliverables/from-investigation",
     status_code=201,
     response_model=FromInvestigationResponse,
+    responses={
+        404: {
+            "description": "No completed synthesis exists",
+            "model": PromotionNotFoundResponse,
+        },
+        409: {
+            "description": "Synthesis failed the writing-promotion evidence gate",
+            "model": PromotionRefusalResponse,
+        },
+    },
 )
 def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationResponse:
     """Seed a deliverable from a completed investigation's synthesis: one
@@ -579,14 +616,17 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
 
     Honest status (never an empty 200 that reads as success):
     - no depositable synthesis for the investigation → 404 ``no_synthesis``;
-    - otherwise a deliverable is created → 201, with ``insufficient_evidence``
-      flagging the dominant real case (a synthesis that pinned zero nodes);
-      ``dangling_count`` counts blocks whose source node was since deleted
-      (seeded, not dropped)."""
+    - an evidence-ineligible synthesis → 409 ``not_promotable``, with no rows
+      created;
+    - otherwise a deliverable is created → 201. ``dangling_count`` counts
+      blocks whose source node was since deleted (seeded, not dropped)."""
     # Local import (mirrors generate_section_draft at the draft_generation
     # import): keeps the top-level promote_context import unchanged so the
     # declared-bar line-keyed baseline for this file does not shift.
-    from substrate.write.promote_context import promote_investigation_to_deliverable
+    from substrate.write.promote_context import (
+        InvestigationPromotionRefusal,
+        promote_investigation_to_deliverable,
+    )
 
     with _translate(), _write("write/promote_investigation") as con:
         result = promote_investigation_to_deliverable(
@@ -607,13 +647,40 @@ def promote_investigation(req: FromInvestigationRequest) -> FromInvestigationRes
                 "investigation_id": req.investigation_id,
             },
         )
+    if isinstance(result, InvestigationPromotionRefusal):
+        reasons = {
+            "status": (
+                f"synthesis constraint-loop status {result.synthesis_status!r} "
+                "did not converge"
+            ),
+            "recommendation": (
+                f"synthesis recommendation {result.synthesis_recommendation!r} "
+                "does not support promotion"
+            ),
+            "no_source_nodes": "synthesis pinned no source nodes",
+            "all_dangling": "every synthesis-pinned source node is unavailable",
+        }
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "not_promotable",
+                "reason": reasons[result.gate_failed],
+                "gate_failed": result.gate_failed,
+                "investigation_id": req.investigation_id,
+                "synthesis_id": result.synthesis_id,
+                "synthesis_status": result.synthesis_status,
+                "synthesis_recommendation": result.synthesis_recommendation,
+                "source_node_count": result.source_node_count,
+                "live_source_node_count": result.live_source_node_count,
+                "dangling_count": result.dangling_count,
+            },
+        )
     return FromInvestigationResponse(
         deliverable_id=result.deliverable_id,
         section_id=result.section_id,
         block_count=result.block_count,
         dangling_count=result.dangling_count,
         source_node_count=result.source_node_count,
-        insufficient_evidence=result.insufficient_evidence,
         synthesis_id=result.synthesis_id,
         synthesis_status=result.synthesis_status,
         synthesis_recommendation=result.synthesis_recommendation,

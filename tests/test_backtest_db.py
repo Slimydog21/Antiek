@@ -12,7 +12,7 @@ B. Archive DB writer:
    5. substrate_manifest_counts derives from inputs.{document,chunk,node,edge}_ids
    6. JSON columns round-trip back through load_synthesis
    7. emits SYNTHESIS_ARCHIVED + SUBSTRATE_MANIFEST_WRITTEN events
-   8. duplicate synthesis_id raises (PK violation rolls back manifest)
+   8. exact duplicate synthesis_id converges; conflicting replay is rejected
    9. requires LockedConnection
 
 C. Outcomes writer + loader:
@@ -179,7 +179,7 @@ def test_archive_manifest_counts(db_path):
     finally:
         rcon.close()
     assert loaded.substrate_manifest_counts == {
-        "document": 1, "chunk": 3, "node": 0, "edge": 2,
+        "document": 1, "chunk": 3, "node": 0, "edge": 0,
     }
 
 
@@ -213,14 +213,13 @@ def test_archive_emits_typed_events(db_path):
     assert "synthesis.substrate_manifest.written" in types
 
 
-def test_archive_duplicate_id_raises(db_path):
+def test_archive_exact_duplicate_id_is_idempotent(db_path):
     inp = _inputs()
     with connect_write(db_path, purpose="test") as con:
         sid = archive_synthesis_via_db(con, inp, investigation_id="inv-1")
-        with pytest.raises(duckdb.ConstraintException):
-            archive_synthesis_via_db(
-                con, inp, investigation_id="inv-1", synthesis_id=sid,
-            )
+        assert archive_synthesis_via_db(
+            con, inp, investigation_id="inv-1", synthesis_id=sid,
+        ) == sid
 
 
 # ---------------------------------------------------------------------------

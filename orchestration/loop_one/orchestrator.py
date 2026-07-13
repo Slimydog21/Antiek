@@ -1809,15 +1809,26 @@ def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
         synth.constraint_loop_status, "draft"
     )
 
-    # Manifest pins: the chunks/edges the evidence retriever actually cited.
+    # Pin only selected reasoning paths so abandoned branches do not become
+    # apparent provenance for the archived conclusion.
     chunk_ids: list[str] = []
     edge_ids: list[str] = []
+    node_ids: list[str] = []
     for ev in ctx.evidence:
         for claim in getattr(ev, "supporting_claims", None) or []:
             chunk_ids.extend(getattr(claim, "chunk_ids", None) or [])
             edge_ids.extend(getattr(claim, "edge_ids", None) or [])
     chunk_ids = list(dict.fromkeys(chunk_ids))
     edge_ids = list(dict.fromkeys(edge_ids))
+    used_path_indices = {
+        path_index
+        for component in synth.thesis_components
+        for path_index in component.supporting_path_indices
+    }
+    for path_index in sorted(used_path_indices):
+        if 0 <= path_index < len(synth.reasoning_paths_used):
+            node_ids.extend(synth.reasoning_paths_used[path_index].path_node_ids)
+    node_ids = list(dict.fromkeys(node_ids))
 
     def _dump(obj: object) -> object:
         if hasattr(obj, "model_dump"):
@@ -1835,6 +1846,7 @@ def _deposit_synthesis_to_substrate(ctx: InvestigationContext) -> str | None:
         decomposition=_dump(ctx.decomposition) if ctx.decomposition is not None else None,
         parameters=_dump(ctx.parameters) if ctx.parameters is not None else None,
         chunk_ids=tuple(chunk_ids),
+        node_ids=tuple(node_ids),
         edge_ids=tuple(edge_ids),
     )
     try:

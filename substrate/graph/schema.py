@@ -215,6 +215,11 @@ CREATE TABLE IF NOT EXISTS synthesis_substrate_manifest (
     PRIMARY KEY (synthesis_id, entity_kind, entity_id)
 );
 
+CREATE TABLE IF NOT EXISTS synthesis_archive_requests (
+    synthesis_id                 TEXT PRIMARY KEY REFERENCES syntheses(synthesis_id),
+    manifest_request_fingerprint TEXT NOT NULL
+);
+
 -- ============================================================
 -- Outcomes — observer-recorded post-hoc analysis of a synthesis
 -- ============================================================
@@ -348,7 +353,7 @@ CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
 # Tables this schema creates. Used by tests + the diagnostic CLI.
 SCHEMA_TABLES: tuple[str, ...] = (
     "documents", "chunks", "nodes", "edges",
-    "syntheses", "synthesis_substrate_manifest",
+    "syntheses", "synthesis_substrate_manifest", "synthesis_archive_requests",
     "outcomes", "chunk_tier_overrides",
     "deliverables", "deliverable_sections", "section_blocks",
     "interview_projects", "interviews",

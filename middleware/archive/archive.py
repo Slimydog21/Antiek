@@ -39,8 +39,9 @@ import os
 import sys
 import uuid
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, datetime
+from hashlib import sha256
 from typing import Any
 
 
@@ -54,7 +55,7 @@ def _to_naive_utc(ts: datetime) -> datetime:
     return ts
 
 try:
-    from ...event_log import emit_typed
+    from ...event_log import emit_typed, trajectory
     from ...schemas import (
         SubstrateManifestWrittenPayload,
         SynthesisArchivedPayload,
@@ -64,7 +65,7 @@ try:
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.event_log import emit_typed, trajectory  # type: ignore[no-redef]
     from substrate.schemas import (  # type: ignore[no-redef]
         SubstrateManifestWrittenPayload,
         SynthesisArchivedPayload,
@@ -76,6 +77,39 @@ except ImportError:  # pragma: no cover — direct-script fallback
 # Entity kinds the substrate manifest knows about. Order matters for
 # downstream analytics consumers that diff counts across kinds.
 MANIFEST_ENTITY_KINDS: tuple[str, ...] = ("document", "chunk", "node", "edge")
+
+_ARCHIVE_REQUESTS_SQL = """
+CREATE TABLE IF NOT EXISTS synthesis_archive_requests (
+    synthesis_id TEXT PRIMARY KEY REFERENCES syntheses(synthesis_id),
+    manifest_request_fingerprint TEXT NOT NULL
+)
+"""
+
+
+class SynthesisArchiveConflict(ValueError):
+    """A deterministic synthesis id was reused for different archive content."""
+
+
+def _same_archive_material(stored: tuple[Any, ...], desired: list[Any]) -> bool:
+    """Compare immutable synthesis content while ignoring retry timestamp drift."""
+    if stored[:7] != tuple(desired[:7]):
+        return False
+    return all(
+        (json.loads(left) if left is not None else None)
+        == (json.loads(right) if right is not None else None)
+        for left, right in zip(stored[7:], desired[7:], strict=True)
+    )
+
+
+def _manifest_request_fingerprint(inputs: ArchiveInputs) -> str:
+    normalized = {
+        "document": sorted(set(inputs.document_ids)),
+        "chunk": sorted(set(inputs.chunk_ids)),
+        "node": sorted(set(inputs.node_ids)),
+        "edge": sorted(set(inputs.edge_ids)),
+    }
+    payload = json.dumps(normalized, sort_keys=True, separators=(",", ":"))
+    return sha256(payload.encode()).hexdigest()
 
 
 # ---------------------------------------------------------------------------
@@ -114,12 +148,9 @@ def compute_manifest_counts(
 ) -> dict[str, int]:
     """Build the ``counts_by_kind`` mapping for a substrate manifest.
 
-    Counts are the INPUT cardinality (what the pipeline asked to pin)
-    rather than the post-dedupe row count after INSERT OR IGNORE — same
-    convention as the Researchmaxx ``_write_manifest`` helper. The
-    distinction matters for RL trajectory analytics: it answers "how
-    much substrate did the pipeline ask to pin?" not "how much was
-    net-new on this archive?"."""
+    Callers pass the validated, deduplicated entity sets that will be written,
+    so emitted telemetry describes the durable manifest rather than requested
+    identifiers that may not exist in the graph."""
     return {
         "document": sum(1 for _ in document_ids),
         "chunk": sum(1 for _ in chunk_ids),
@@ -163,9 +194,8 @@ class ArchiveInputs:
     # model_versions field.
     model_versions: Mapping[str, str] = field(default_factory=dict)
 
-    # Substrate manifest pin sources. Pass the chunk/edge ids the
-    # pipeline actually retrieved; the writer derives doc/node ids from
-    # joins. If empty, the writer falls back to a GraphAtTime snapshot.
+    # Preserve raw retrieval identities so the archive can validate provenance
+    # against durable graph relationships instead of trusting derived adjacency.
     chunk_ids: tuple[str, ...] = ()
     edge_ids: tuple[str, ...] = ()
     # Explicit overrides for the derived ids — used by tests and by
@@ -236,6 +266,46 @@ def emit_substrate_manifest_written(
     )
 
 
+def _ensure_archive_events(
+    *,
+    investigation_id: str,
+    synthesis_id: str,
+    inputs: ArchiveInputs,
+    counts: Mapping[str, int],
+) -> None:
+    """Repair either append-only event when a committed archive is replayed."""
+    rows = trajectory(investigation_id)
+    archived = next(
+        (
+            row for row in rows
+            if row.get("synthesis_id") == synthesis_id
+            and row.get("action_type") == "synthesis.archived"
+        ),
+        None,
+    )
+    archive_event_id = archived.get("event_id") if archived is not None else None
+    if archived is None:
+        archive_event_id = emit_synthesis_archived(
+            investigation_id=investigation_id,
+            synthesis_id=synthesis_id,
+            inputs=inputs,
+        )
+    has_manifest_event = any(
+        row.get("synthesis_id") == synthesis_id
+        and row.get("action_type") == "synthesis.substrate_manifest.written"
+        and row.get("parent_event_id") == archive_event_id
+        for row in rows
+    )
+    if not has_manifest_event:
+        emit_substrate_manifest_written(
+            investigation_id=investigation_id,
+            synthesis_id=synthesis_id,
+            synthesis_timestamp=inputs.synthesis_timestamp,
+            counts_by_kind=counts,
+            parent_event_id=archive_event_id,
+        )
+
+
 def _estimate_token_count(text: str) -> int:
     """Cheap chars/4 heuristic — same convention as
     ``substrate.context_pack.DefaultTokenCounter``. For billing-accurate
@@ -268,7 +338,9 @@ def archive_synthesis_via_db(
 
     The DB writes happen inside a transaction so a manifest failure
     rolls back the syntheses row. Events fire AFTER commit so we
-    never advertise an archive that doesn't exist on disk."""
+    never advertise an archive that doesn't exist on disk. An exact replay of
+    an existing immutable synthesis is a no-op and emits no duplicate events;
+    changed content must use a new synthesis id."""
     try:
         from ..runtime.db_lock import LockedConnection  # type: ignore[import-not-found]
     except ImportError:
@@ -281,17 +353,191 @@ def archive_synthesis_via_db(
         )
 
     sid = synthesis_id or new_synthesis_id()
-    counts = compute_manifest_counts(
-        document_ids=inputs.document_ids,
-        chunk_ids=inputs.chunk_ids,
-        node_ids=inputs.node_ids,
-        edge_ids=inputs.edge_ids,
+    con.execute(_ARCHIVE_REQUESTS_SQL)
+    request_fingerprint = _manifest_request_fingerprint(inputs)
+    json_values = [
+        serialize_json_field(dict(inputs.model_versions)),
+        serialize_json_field(inputs.decomposition),
+        serialize_json_field(inputs.evidence),
+        serialize_json_field(inputs.parameters),
+        serialize_json_field(inputs.substrate),
+        serialize_json_field(inputs.thesis),
+        serialize_json_field(inputs.agent_trace),
+        serialize_json_field(inputs.constraint_history),
+        serialize_json_field(inputs.constraint_check_result),
+    ]
+    material_values = [
+        investigation_id,
+        inputs.target_question,
+        inputs.status,
+        inputs.implicit_recommendation,
+        inputs.thesis_text,
+        _estimate_token_count(inputs.thesis_text or ""),
+        inputs.constraint_check_result is not None,
+        *json_values,
+    ]
+    stored = con.execute(
+        "SELECT investigation_id, target_question, status, "
+        "implicit_recommendation, thesis_text, thesis_token_count, "
+        "has_constraint_check_result, model_versions, decomposition, evidence, "
+        "parameters, substrate, thesis, agent_trace, constraint_history, "
+        "constraint_check_result, synthesis_timestamp "
+        "FROM syntheses WHERE synthesis_id = ?",
+        [sid],
+    ).fetchone()
+    if stored is not None and not _same_archive_material(stored[:-1], material_values):
+        raise SynthesisArchiveConflict(
+            f"synthesis_id {sid!r} already identifies different content"
+        )
+    stored_request = con.execute(
+        "SELECT manifest_request_fingerprint FROM synthesis_archive_requests "
+        "WHERE synthesis_id = ?",
+        [sid],
+    ).fetchone()
+    if stored is not None and stored_request is not None:
+        if stored_request[0] != request_fingerprint:
+            raise SynthesisArchiveConflict(
+                f"synthesis_id {sid!r} already identifies a different manifest request"
+            )
+        manifest_rows = con.execute(
+            "SELECT entity_kind, entity_id FROM synthesis_substrate_manifest "
+            "WHERE synthesis_id = ?",
+            [sid],
+        ).fetchall()
+        counts = {
+            kind: sum(1 for row_kind, _ in manifest_rows if row_kind == kind)
+            for kind in MANIFEST_ENTITY_KINDS
+        }
+        replay_inputs = replace(
+            inputs,
+            synthesis_timestamp=stored[-1].replace(tzinfo=UTC),
+        )
+        _ensure_archive_events(
+            investigation_id=investigation_id,
+            synthesis_id=sid,
+            inputs=replay_inputs,
+            counts=counts,
+        )
+        return sid
+
+    # Exclude missing identities so immutable counts and telemetry cannot claim
+    # provenance that was never durably present.
+    real_document_ids: set[str] = set()
+    if inputs.document_ids:
+        ph = ",".join("?" for _ in inputs.document_ids)
+        rows = con.execute(
+            f"SELECT document_id FROM documents WHERE document_id IN ({ph})",
+            list(inputs.document_ids),
+        ).fetchall()
+        real_document_ids = {r[0] for r in rows}
+    real_chunk_ids: set[str] = set()
+    if inputs.chunk_ids:
+        ph = ",".join("?" for _ in inputs.chunk_ids)
+        rows = con.execute(
+            f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({ph})",
+            list(inputs.chunk_ids),
+        ).fetchall()
+        real_chunk_ids = {r[0] for r in rows}
+    real_edge_ids: set[str] = set()
+    if inputs.edge_ids:
+        ph = ",".join("?" for _ in inputs.edge_ids)
+        rows = con.execute(
+            f"SELECT edge_id FROM edges WHERE edge_id IN ({ph})",
+            list(inputs.edge_ids),
+        ).fetchall()
+        real_edge_ids = {r[0] for r in rows}
+
+    real_explicit_node_ids: set[str] = set()
+    if inputs.node_ids:
+        ph = ",".join("?" for _ in inputs.node_ids)
+        rows = con.execute(
+            f"SELECT node_id FROM nodes WHERE node_id IN ({ph})",
+            list(inputs.node_ids),
+        ).fetchall()
+        real_explicit_node_ids = {r[0] for r in rows}
+
+    # Resolve adjacency from stored relationships so callers cannot fabricate a
+    # node's participation by supplying an unrelated chunk or edge identifier.
+    effective_node_ids = set(real_explicit_node_ids)
+    if real_chunk_ids:
+        ph = ",".join("?" for _ in real_chunk_ids)
+        node_rows = con.execute(
+            "SELECT node_id FROM nodes "
+            "WHERE json_extract_string(try_cast(metadata AS JSON), '$.chunk_id') "
+            f"IN ({ph})",
+            sorted(real_chunk_ids),
+        ).fetchall()
+        effective_node_ids.update(r[0] for r in node_rows)
+        edge_rows = con.execute(
+            "SELECT source_node_id, target_node_id FROM edges "
+            f"WHERE chunk_id IN ({ph})",
+            sorted(real_chunk_ids),
+        ).fetchall()
+        effective_node_ids.update(
+            node_id for row in edge_rows for node_id in row if node_id
+        )
+    if real_edge_ids:
+        ph = ",".join("?" for _ in real_edge_ids)
+        edge_rows = con.execute(
+            "SELECT source_node_id, target_node_id FROM edges "
+            f"WHERE edge_id IN ({ph})",
+            sorted(real_edge_ids),
+        ).fetchall()
+        effective_node_ids.update(
+            node_id for row in edge_rows for node_id in row if node_id
+        )
+
+    manifest_groups = (
+        ("document", sorted(real_document_ids)),
+        ("chunk", sorted(real_chunk_ids)),
+        ("node", sorted(effective_node_ids)),
+        ("edge", sorted(real_edge_ids)),
     )
+    counts = compute_manifest_counts(
+        document_ids=real_document_ids,
+        chunk_ids=real_chunk_ids,
+        node_ids=effective_node_ids,
+        edge_ids=real_edge_ids,
+    )
+
+    desired_manifest = {
+        (kind, entity_id) for kind, ids in manifest_groups for entity_id in ids
+    }
+    if stored is not None:
+        current_manifest = {
+            (kind, entity_id)
+            for kind, entity_id in con.execute(
+                "SELECT entity_kind, entity_id FROM synthesis_substrate_manifest "
+                "WHERE synthesis_id = ?",
+                [sid],
+            ).fetchall()
+        }
+        if current_manifest != desired_manifest:
+            raise SynthesisArchiveConflict(
+                f"synthesis_id {sid!r} already identifies a different manifest"
+            )
+        con.execute(
+            "INSERT INTO synthesis_archive_requests "
+            "(synthesis_id, manifest_request_fingerprint) VALUES (?, ?)",
+            [sid, request_fingerprint],
+        )
+        stored_timestamp = stored[-1]
+        replay_inputs = replace(
+            inputs,
+            synthesis_timestamp=stored_timestamp.replace(tzinfo=UTC),
+        )
+        _ensure_archive_events(
+            investigation_id=investigation_id,
+            synthesis_id=sid,
+            inputs=replay_inputs,
+            counts=counts,
+        )
+        return sid
 
     con.execute("BEGIN TRANSACTION")
     try:
         con.execute(
-            "INSERT OR REPLACE INTO syntheses ("
+            "INSERT INTO syntheses ("
             " synthesis_id, investigation_id, target_question, "
             " synthesis_timestamp, status, implicit_recommendation,"
             " thesis_text, thesis_token_count, has_constraint_check_result,"
@@ -300,49 +546,25 @@ def archive_synthesis_via_db(
             " constraint_check_result"
             ") VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             [
-                sid, investigation_id, inputs.target_question,
-                _to_naive_utc(inputs.synthesis_timestamp), inputs.status,
+                sid,
+                investigation_id,
+                inputs.target_question,
+                _to_naive_utc(inputs.synthesis_timestamp),
+                inputs.status,
                 inputs.implicit_recommendation,
                 inputs.thesis_text,
                 _estimate_token_count(inputs.thesis_text or ""),
                 inputs.constraint_check_result is not None,
-                serialize_json_field(dict(inputs.model_versions)),
-                serialize_json_field(inputs.decomposition),
-                serialize_json_field(inputs.evidence),
-                serialize_json_field(inputs.parameters),
-                serialize_json_field(inputs.substrate),
-                serialize_json_field(inputs.thesis),
-                serialize_json_field(inputs.agent_trace),
-                serialize_json_field(inputs.constraint_history),
-                serialize_json_field(inputs.constraint_check_result),
+                *json_values,
             ],
         )
-        # Validate chunk entity_ids against the real chunks table before
-        # pinning. The DRW-tail/session-evidence-pack path fabricates chunk_ids
-        # for nodes lacking one (f"chunk-{node_id}", f"doc-gather-...") — those
-        # join to no chunks row, so pinning them creates dangling provenance
-        # (#199 vector 2). Only pin chunk_ids that actually exist; fabricated
-        # ids are skipped (the evidence they represent is still in the thesis;
-        # only the manifest provenance pin is withheld). Read-only existence
-        # check on this same write connection (§16-safe).
-        real_chunk_ids: set[str] = set()
-        if inputs.chunk_ids:
-            ph = ",".join("?" for _ in inputs.chunk_ids)
-            rows = con.execute(
-                f"SELECT chunk_id FROM chunks WHERE chunk_id IN ({ph})",
-                list(inputs.chunk_ids),
-            ).fetchall()
-            real_chunk_ids = {r[0] for r in rows}
-
-        for kind, ids in (
-            ("document", inputs.document_ids),
-            ("chunk", inputs.chunk_ids),
-            ("node", inputs.node_ids),
-            ("edge", inputs.edge_ids),
-        ):
+        con.execute(
+            "INSERT INTO synthesis_archive_requests "
+            "(synthesis_id, manifest_request_fingerprint) VALUES (?, ?)",
+            [sid, request_fingerprint],
+        )
+        for kind, ids in manifest_groups:
             for eid in ids:
-                if kind == "chunk" and eid not in real_chunk_ids:
-                    continue
                 con.execute(
                     "INSERT OR IGNORE INTO synthesis_substrate_manifest "
                     "(synthesis_id, entity_kind, entity_id) VALUES (?, ?, ?)",
@@ -353,17 +575,11 @@ def archive_synthesis_via_db(
         con.execute("ROLLBACK")
         raise
 
-    archive_event = emit_synthesis_archived(
+    _ensure_archive_events(
         investigation_id=investigation_id,
         synthesis_id=sid,
         inputs=inputs,
-    )
-    emit_substrate_manifest_written(
-        investigation_id=investigation_id,
-        synthesis_id=sid,
-        synthesis_timestamp=inputs.synthesis_timestamp,
-        counts_by_kind=counts,
-        parent_event_id=archive_event,
+        counts=counts,
     )
     return sid
 
