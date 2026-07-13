@@ -1,38 +1,74 @@
 import { describe, expect, it } from "vitest";
 
+import { MODE_TAXONOMY } from "../../shell/workflowTaxonomy";
 import {
   activityIdForPathname,
   getActivityForPathname,
   researchLensActivity,
 } from "./index";
 
+const concretePath = (route: string) => route.replace(/:[^/]+/g, "fixture");
+
+const KNOWLEDGE_WORK_ROUTES = MODE_TAXONOMY.filter(
+  (mode) =>
+    Boolean(mode.route) &&
+    (mode.workflow === "research" || mode.workflow === "read"),
+).map((mode) => concretePath(mode.route!));
+
+const NON_KNOWLEDGE_WORK_ROUTES = MODE_TAXONOMY.filter(
+  (mode) =>
+    Boolean(mode.route) &&
+    mode.workflow !== "research" &&
+    mode.workflow !== "read",
+).map((mode) => concretePath(mode.route!));
+
 describe("station activity route policy", () => {
+  it.each(KNOWLEDGE_WORK_ROUTES)(
+    "selects research-lens for taxonomy knowledge work: %s",
+    (pathname) => {
+      expect(activityIdForPathname(pathname)).toBe("research-lens");
+      expect(getActivityForPathname(pathname)).toBe(researchLensActivity);
+    },
+  );
+
   it.each([
-    "/",
     "/inv/inv-7",
-    "/deep-research",
-    "/deep-research/session-4",
-    "/my-research",
-    "/read/book-9",
-    "/read/meta-reading",
-    "/read/meta-reading/asset-2",
     "/readings",
     "/meta-readings/",
-  ])("selects research-lens for knowledge work: %s", (pathname) => {
+    "/read/meta-reading",
+    "/read/meta-reading/asset-2",
+  ])("selects research-lens for routed sub-surfaces: %s", (pathname) => {
     expect(activityIdForPathname(pathname)).toBe("research-lens");
     expect(getActivityForPathname(pathname)).toBe(researchLensActivity);
   });
 
+  it.each(NON_KNOWLEDGE_WORK_ROUTES)(
+    "keeps ice-fishing on taxonomy non-knowledge work: %s",
+    (pathname) => {
+      expect(activityIdForPathname(pathname)).toBe("ice-fishing");
+    },
+  );
+
+  it.each(["/home", "/deep-researcher", "/not-a-route"])(
+    "does not leak the lens onto unknown route lookalikes: %s",
+    (pathname) => {
+      expect(activityIdForPathname(pathname)).toBe("ice-fishing");
+    },
+  );
+
   it.each([
-    "/home",
-    "/write",
-    "/create/draft-3",
-    "/settings",
-    "/billing",
-    "/operator",
     "/library",
-    "/deep-researcher",
-  ])("keeps ice-fishing on non-knowledge routes: %s", (pathname) => {
-    expect(activityIdForPathname(pathname)).toBe("ice-fishing");
-  });
+    "/wrestle/document-4",
+    "/notebooks",
+    "/notebook/notebook-2",
+    "/brainstorm",
+    "/outcomes/synthesis-5",
+    "/replay/inv-3",
+    "/backtest/synthesis-8",
+  ])(
+    "keeps the lens across flagship Research + Read surfaces: %s",
+    (pathname) => {
+      expect(activityIdForPathname(pathname)).toBe("research-lens");
+    },
+  );
 });
