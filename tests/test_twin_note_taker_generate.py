@@ -530,6 +530,7 @@ def test_receipt_raw_claims_are_bounded_before_parsing() -> None:
         replace(valid, source_content_hash=" " * (MAX_IDENTIFIER_CHARS + 1)),
         replace(valid, signature=" " * (MAX_IDENTIFIER_CHARS + 1)),
         replace(valid, source_event_ids=("evt-" + ("x" * (MAX_IDENTIFIER_CHARS + 1)),)),
+        replace(valid, expires_at_unix=10**10_000),
     ]
     for receipt in hostile:
         with pytest.raises(TwinGenerationError):

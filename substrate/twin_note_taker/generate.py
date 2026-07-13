@@ -70,6 +70,7 @@ MAX_CONTENT_CLASS_CHARS = 64
 MAX_SOURCE_EVENTS = 100
 MAX_EVENT_ID_CHARS = 260
 MAX_SIGNATURE_CHARS = 128
+MAX_EXPIRY_UNIX = (1 << 63) - 1
 _SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
@@ -286,6 +287,8 @@ def _snapshot_receipt(receipt: TwinGenerationReceipt) -> TwinGenerationReceipt:
         raise TwinGenerationError("receipt source event exceeds its ceiling")
     if type(receipt.expires_at_unix) is not int:
         raise TwinGenerationError("receipt expiry must be an integer timestamp")
+    if not 0 < receipt.expires_at_unix <= MAX_EXPIRY_UNIX:
+        raise TwinGenerationError("receipt expiry exceeds its timestamp range")
     return TwinGenerationReceipt(
         receipt_id=receipt.receipt_id,
         account_id=receipt.account_id,
@@ -632,6 +635,7 @@ __all__ = [
     "MAX_CONTENT_CHARS",
     "MAX_CONTENT_CLASS_CHARS",
     "MAX_EVENT_ID_CHARS",
+    "MAX_EXPIRY_UNIX",
     "MAX_IDENTIFIER_CHARS",
     "MAX_SIGNATURE_CHARS",
     "MAX_SOURCE_EVENTS",
