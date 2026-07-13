@@ -10,6 +10,7 @@ normalized, imports cleanly with data + non-self-ref FK + CHECK intact.
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import duckdb
 import pytest
@@ -17,6 +18,8 @@ import pytest
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database_at_path, list_tables
 from tools.backup_normalize_schema import normalize_exported_schema_sql
+
+_ROOT = Path(__file__).resolve().parents[1]
 
 
 def _export(src_db: str, export_dir: str) -> None:
@@ -26,6 +29,18 @@ def _export(src_db: str, export_dir: str) -> None:
         con.execute(f"EXPORT DATABASE '{export_dir}' (FORMAT PARQUET)")
     finally:
         con.close()
+
+
+def test_deployed_backup_wires_normalizer_after_export() -> None:
+    """The normalized round-trip below is the path deployed by Ansible."""
+    template = (
+        _ROOT / "infrastructure" / "ansible" / "templates" / "backup.sh.j2"
+    ).read_text(encoding="utf-8")
+    export_at = template.index('con.execute("EXPORT DATABASE')
+    normalizer_at = template.index("normalize_exported_schema_sql(_raw)")
+    upload_at = template.index("rclone copyto")
+    assert export_at < normalizer_at < upload_at
+    assert "tools/backup_normalize_schema.py" in template
 
 
 # ---------------------------------------------------------------------------
