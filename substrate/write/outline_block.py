@@ -45,6 +45,7 @@ commits (mirrors ``substrate/graph/ops.py``).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import sys
@@ -54,16 +55,27 @@ from typing import Any, Literal
 
 try:
     from ...runtime.db_lock import LockedConnection
-    from ..event_log import emit_typed
+    from ..event_log import (
+        append_event_once,
+        emit_typed,
+        prepare_typed_event,
+        require_event_persistence,
+    )
     from ..graph.ops import new_random_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
+    from substrate.event_log import (  # type: ignore[no-redef]
+        append_event_once,
+        emit_typed,
+        prepare_typed_event,
+        require_event_persistence,
+    )
     from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
 
 from substrate.schemas.events import (
+    Event,
     OutlineBlockMovedPayload,
     OutlineBlockPlacedPayload,
     OutlineBlockRemovedPayload,
@@ -116,6 +128,85 @@ class OutlineBlockError(ValueError):
     """Raised when an OutlineBlock would violate a composition invariant
     (the no-orphan-prose / no-fabricated-citation rules, or an incoherent
     block_kind / provenance_kind pairing)."""
+
+
+class OutlineBlockCommandConflict(OutlineBlockError):
+    """A command id was reused for different mutation material."""
+
+
+_COMMANDS_SQL = """
+CREATE TABLE IF NOT EXISTS outline_block_commands (
+    command_id          TEXT PRIMARY KEY,
+    request_fingerprint TEXT NOT NULL,
+    operation           TEXT NOT NULL CHECK (operation IN ('move', 'remove')),
+    outline_block_id    TEXT NOT NULL,
+    investigation_id    TEXT NOT NULL,
+    event_id            TEXT NOT NULL UNIQUE,
+    event_json          TEXT NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_outline_block_commands_block
+    ON outline_block_commands(outline_block_id, created_at)
+"""
+
+
+def _validate_command_id(command_id: str) -> str:
+    if (
+        type(command_id) is not str
+        or not command_id.strip()
+        or len(command_id) > 512
+        or "\n" in command_id
+        or "\r" in command_id
+    ):
+        raise OutlineBlockError("command_id must be a bounded canonical string")
+    return command_id
+
+
+def _command_fingerprint(**material: Any) -> str:
+    encoded = json.dumps(material, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(encoded.encode()).hexdigest()
+
+
+def _command_event_id(command_id: str) -> str:
+    digest = hashlib.sha256(command_id.encode()).hexdigest()[:24]
+    return f"evt-outline-command-{digest}"
+
+
+def _load_command(con: LockedConnection, command_id: str) -> tuple[str, str] | None:
+    row = con.execute(
+        "SELECT request_fingerprint, event_json FROM outline_block_commands "
+        "WHERE command_id = ?",
+        [command_id],
+    ).fetchone()
+    return None if row is None else (row[0], row[1])
+
+
+def _repair_block_commands(con: LockedConnection, outline_block_id: str) -> None:
+    rows = con.execute(
+        "SELECT event_json FROM outline_block_commands "
+        "WHERE outline_block_id = ? ORDER BY created_at, command_id",
+        [outline_block_id],
+    ).fetchall()
+    for (event_json,) in rows:
+        append_event_once(Event.model_validate_json(event_json))
+
+
+def _replay_command(
+    con: LockedConnection,
+    *,
+    command_id: str,
+    fingerprint: str,
+) -> bool:
+    stored = _load_command(con, command_id)
+    if stored is None:
+        return False
+    stored_fingerprint, event_json = stored
+    if stored_fingerprint != fingerprint:
+        raise OutlineBlockCommandConflict(
+            f"command_id {command_id!r} was already used for another mutation"
+        )
+    append_event_once(Event.model_validate_json(event_json))
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -393,50 +484,88 @@ def move_block(
     outline_block_id: str,
     to_section_id: str,
     to_index: int,
+    command_id: str,
     investigation_id: str = "__operator__",
     parent_event_id: str | None = None,
 ) -> None:
     """Reorder a block within its section, or move it to another section
     (reparent). Emits ``OUTLINE_BLOCK_MOVED`` with both endpoints."""
     _assert_write_locked(con)
-    row = con.execute(
-        "SELECT section_id, block_index FROM outline_blocks "
-        "WHERE outline_block_id = ?",
-        [outline_block_id],
-    ).fetchone()
-    if row is None:
-        raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
-    from_section_id, from_index = row[0], int(row[1])
-    # Validate the target section exists (reparent target).
-    if to_section_id != from_section_id:
-        if con.execute(
+    cid = _validate_command_id(command_id)
+    require_event_persistence()
+    target_index = int(to_index)
+    fingerprint = _command_fingerprint(
+        operation="move",
+        outline_block_id=outline_block_id,
+        to_section_id=to_section_id,
+        to_index=target_index,
+        investigation_id=investigation_id,
+        parent_event_id=parent_event_id,
+    )
+    con.execute(_COMMANDS_SQL)
+    _repair_block_commands(con, outline_block_id)
+    if _replay_command(con, command_id=cid, fingerprint=fingerprint):
+        return
+
+    con.execute("BEGIN TRANSACTION")
+    try:
+        row = con.execute(
+            "SELECT section_id, block_index FROM outline_blocks "
+            "WHERE outline_block_id = ?",
+            [outline_block_id],
+        ).fetchone()
+        if row is None:
+            raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
+        from_section_id, from_index = row[0], int(row[1])
+        if to_section_id != from_section_id and con.execute(
             "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
             [to_section_id],
         ).fetchone() is None:
             raise OutlineBlockError(f"target section not found: {to_section_id!r}")
-    con.execute(
-        "UPDATE outline_blocks SET section_id = ?, block_index = ? "
-        "WHERE outline_block_id = ?",
-        [to_section_id, int(to_index), outline_block_id],
-    )
-    emit_typed(
-        investigation_id,
-        OutlineBlockMovedPayload(
-            outline_block_id=outline_block_id,
-            from_section_id=from_section_id,
-            to_section_id=to_section_id,
-            from_index=from_index,
-            to_index=int(to_index),
-        ),
-        parent_event_id=parent_event_id,
-        role="write_composition",
-    )
+        event = prepare_typed_event(
+            investigation_id,
+            OutlineBlockMovedPayload(
+                outline_block_id=outline_block_id,
+                from_section_id=from_section_id,
+                to_section_id=to_section_id,
+                from_index=from_index,
+                to_index=target_index,
+            ),
+            event_id=_command_event_id(cid),
+            parent_event_id=parent_event_id,
+            role="write_composition",
+        )
+        con.execute(
+            "UPDATE outline_blocks SET section_id = ?, block_index = ? "
+            "WHERE outline_block_id = ?",
+            [to_section_id, target_index, outline_block_id],
+        )
+        con.execute(
+            "INSERT INTO outline_block_commands "
+            "(command_id, request_fingerprint, operation, outline_block_id, "
+            " investigation_id, event_id, event_json) "
+            "VALUES (?, ?, 'move', ?, ?, ?, ?)",
+            [
+                cid,
+                fingerprint,
+                outline_block_id,
+                investigation_id,
+                event.event_id,
+                event.model_dump_json(),
+            ],
+        )
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    append_event_once(event)
 
 
 def remove_block(
     con: LockedConnection,
     *,
     outline_block_id: str,
+    command_id: str,
     investigation_id: str = "__operator__",
     parent_event_id: str | None = None,
 ) -> bool:
@@ -444,25 +573,62 @@ def remove_block(
     The underlying graph node is untouched — removal is a composition
     edit, not a graph deletion. Emits ``OUTLINE_BLOCK_REMOVED``."""
     _assert_write_locked(con)
-    row = con.execute(
-        "SELECT section_id FROM outline_blocks WHERE outline_block_id = ?",
-        [outline_block_id],
-    ).fetchone()
-    if row is None:
-        return False
-    section_id = row[0]
-    con.execute(
-        "DELETE FROM outline_blocks WHERE outline_block_id = ?",
-        [outline_block_id],
-    )
-    emit_typed(
-        investigation_id,
-        OutlineBlockRemovedPayload(
-            outline_block_id=outline_block_id, section_id=section_id,
-        ),
+    cid = _validate_command_id(command_id)
+    require_event_persistence()
+    fingerprint = _command_fingerprint(
+        operation="remove",
+        outline_block_id=outline_block_id,
+        investigation_id=investigation_id,
         parent_event_id=parent_event_id,
-        role="write_composition",
     )
+    con.execute(_COMMANDS_SQL)
+    _repair_block_commands(con, outline_block_id)
+    if _replay_command(con, command_id=cid, fingerprint=fingerprint):
+        return True
+
+    con.execute("BEGIN TRANSACTION")
+    try:
+        row = con.execute(
+            "SELECT section_id FROM outline_blocks WHERE outline_block_id = ?",
+            [outline_block_id],
+        ).fetchone()
+        if row is None:
+            con.execute("ROLLBACK")
+            return False
+        section_id = row[0]
+        event = prepare_typed_event(
+            investigation_id,
+            OutlineBlockRemovedPayload(
+                outline_block_id=outline_block_id,
+                section_id=section_id,
+            ),
+            event_id=_command_event_id(cid),
+            parent_event_id=parent_event_id,
+            role="write_composition",
+        )
+        con.execute(
+            "DELETE FROM outline_blocks WHERE outline_block_id = ?",
+            [outline_block_id],
+        )
+        con.execute(
+            "INSERT INTO outline_block_commands "
+            "(command_id, request_fingerprint, operation, outline_block_id, "
+            " investigation_id, event_id, event_json) "
+            "VALUES (?, ?, 'remove', ?, ?, ?, ?)",
+            [
+                cid,
+                fingerprint,
+                outline_block_id,
+                investigation_id,
+                event.event_id,
+                event.model_dump_json(),
+            ],
+        )
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
+    append_event_once(event)
     return True
 
 

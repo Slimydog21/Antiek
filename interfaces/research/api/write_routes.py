@@ -40,7 +40,7 @@ from contextlib import contextmanager
 from typing import Any, Literal
 
 import duckdb
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from roles.creative_writer.prompt import AdjacentSection
@@ -54,6 +54,7 @@ from substrate.write.draft_generation import build_creative_writer_context, gene
 from substrate.write.outline import OutlineError, OutlineNode, build_outline_tree
 from substrate.write.outline_block import (
     OutlineBlock,
+    OutlineBlockCommandConflict,
     OutlineBlockError,
     get_block,
     list_section_blocks,
@@ -77,6 +78,15 @@ def _db() -> str:
     path = default_db_path()
     ensure_initialized(path)
     return path
+
+
+def _validated_idempotency_key(value: str) -> str:
+    if not value.strip() or len(value) > 512 or "\n" in value or "\r" in value:
+        raise HTTPException(
+            status_code=422,
+            detail="Idempotency-Key must be a bounded canonical string",
+        )
+    return value
 
 
 @contextmanager
@@ -105,6 +115,8 @@ def _translate() -> Iterator[None]:
     bad-input → 400; missing entities → 404 (raised explicitly)."""
     try:
         yield
+    except OutlineBlockCommandConflict as e:
+        raise HTTPException(status_code=409, detail=str(e)) from e
     except (OutlineBlockError, OutlineError) as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
@@ -202,19 +214,33 @@ def place_outline_block(req: PlaceBlockRequest) -> dict[str, Any]:
 
 
 @write_router.post("/blocks/{outline_block_id}/move", status_code=202)
-def move_outline_block(outline_block_id: str, req: MoveBlockRequest) -> dict[str, Any]:
+def move_outline_block(
+    outline_block_id: str,
+    req: MoveBlockRequest,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    command_id = _validated_idempotency_key(idempotency_key)
     with _translate(), _write("write/move_block") as con:
         move_block(
             con, outline_block_id=outline_block_id,
             to_section_id=req.to_section_id, to_index=req.to_index,
+            command_id=command_id,
         )
     return {"status": "moved"}
 
 
 @write_router.delete("/blocks/{outline_block_id}", status_code=200)
-def delete_outline_block(outline_block_id: str) -> dict[str, Any]:
-    with _write("write/remove_block") as con:
-        removed = remove_block(con, outline_block_id=outline_block_id)
+def delete_outline_block(
+    outline_block_id: str,
+    idempotency_key: str = Header(alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    command_id = _validated_idempotency_key(idempotency_key)
+    with _translate(), _write("write/remove_block") as con:
+        removed = remove_block(
+            con,
+            outline_block_id=outline_block_id,
+            command_id=command_id,
+        )
     if not removed:
         raise HTTPException(status_code=404, detail="outline block not found")
     return {"status": "removed"}

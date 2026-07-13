@@ -62,8 +62,9 @@ Each event row carries:
 
 Failure handling
 ----------------
-Telemetry must never break a real synthesis. Every emit is wrapped in
-``_safe``; errors print to stderr and return None.
+Ordinary telemetry emits remain non-fatal through ``_safe``. Durable command
+paths use ``append_event_once`` instead: append failures propagate so their
+database receipt can drive an exact retry.
 
 Environment toggles
 -------------------
@@ -76,6 +77,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
 import os
 import sys
@@ -172,10 +174,41 @@ def _events_disabled() -> bool:
     return os.environ.get("ANTIEK_EVENTS_DISABLED", "").lower() in ("1", "true", "yes")
 
 
-def _append_jsonl(path: str, row: dict[str, Any]) -> None:
-    """Append a single JSON line. Open in 'a' mode — atomic at OS level for
-    single-line writes ≤ PIPE_BUF. We never write multi-line payloads."""
+def require_event_persistence() -> None:
+    """Fail before a durable command commits when its audit store is disabled."""
+    if _events_disabled():
+        raise RuntimeError("typed event persistence is disabled")
+
+
+@contextmanager
+def _event_file_lock(path: str) -> Iterator[None]:
+    """Serialize append and seal operations for one investigation stream."""
     os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(f"{path}.lock", "a", encoding="utf-8") as handle:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+
+def _append_jsonl_unlocked(path: str, row: dict[str, Any]) -> None:
+    if os.path.exists(path) and os.path.getsize(path) > 0:
+        with open(path, "r+b") as existing:
+            existing.seek(-1, os.SEEK_END)
+            if existing.read(1) != b"\n":
+                position = existing.tell() - 1
+                while position > 0:
+                    position -= 1
+                    existing.seek(position)
+                    if existing.read(1) == b"\n":
+                        position += 1
+                        break
+                else:
+                    position = 0
+                existing.truncate(position)
+                existing.flush()
+                os.fsync(existing.fileno())
     line = json.dumps(row, default=str, separators=(",", ":"))
     if "\n" in line:
         line = line.replace("\n", "\\n")
@@ -183,6 +216,12 @@ def _append_jsonl(path: str, row: dict[str, Any]) -> None:
         f.write(line + "\n")
         f.flush()
         os.fsync(f.fileno())
+
+
+def _append_jsonl(path: str, row: dict[str, Any]) -> None:
+    """Append one fsynced JSON line while excluding concurrent sealing."""
+    with _event_file_lock(path):
+        _append_jsonl_unlocked(path, row)
 
 
 def log_event(
@@ -269,13 +308,44 @@ def emit_typed(
     if _events_disabled():
         return None
 
-    event_id = _new_event_id()
-    # Construct the typed envelope; Pydantic validates the discriminator,
-    # the wrestling document_id requirement, and the payload field types.
-    # We intentionally do NOT _safe() this call — schema bugs should fail
-    # loudly.
-    event = Event(
-        event_id=event_id,
+    event = prepare_typed_event(
+        investigation_id,
+        payload,
+        parent_event_id=parent_event_id,
+        synthesis_id=synthesis_id,
+        phase=phase,
+        role=role,
+        policy_id=policy_id,
+        document_id=document_id,
+    )
+
+    row = event.model_dump(mode="json")
+    path = _jsonl_path(investigation_id, events_dir=events_dir)
+    _safe(_append_jsonl, path, row)
+    return event.event_id
+
+
+def prepare_typed_event(
+    investigation_id: str,
+    payload: Any,
+    *,
+    event_id: str | None = None,
+    parent_event_id: str | None = None,
+    synthesis_id: str | None = None,
+    phase: int | None = None,
+    role: str | None = None,
+    policy_id: str | None = None,
+    document_id: str | None = None,
+    emitted_at: datetime | None = None,
+) -> Event:
+    """Validate an exact typed envelope without writing it.
+
+    Durable command paths prepare the envelope inside their database
+    transaction, then append that same object after commit. This preserves the
+    original timestamp and payload across transport retries.
+    """
+    return Event(
+        event_id=event_id or _new_event_id(),
         investigation_id=investigation_id,
         synthesis_id=synthesis_id,
         phase=phase,
@@ -286,14 +356,35 @@ def emit_typed(
         policy_id=policy_id or DEFAULT_POLICY_ID,
         param_version=ANTIEK_PARAM_VERSION,
         schema_version=EVENT_SCHEMA_VERSION,
-        emitted_at=datetime.now(UTC),
+        emitted_at=emitted_at or datetime.now(UTC),
         document_id=document_id,
     )
 
-    row = event.model_dump(mode="json")
-    path = _jsonl_path(investigation_id, events_dir=events_dir)
-    _safe(_append_jsonl, path, row)
-    return event_id
+
+def append_event_once(event: Event, *, events_dir: str | None = None) -> str:
+    """Strictly append a prepared event unless its stable id already exists.
+
+    Unlike ordinary telemetry emission, storage failures propagate so a caller
+    can retry from its durable command receipt. An existing event id must carry
+    the same envelope; treating a collision as success would corrupt the audit
+    trail.
+    """
+    require_event_persistence()
+    desired = event.model_dump(mode="json")
+    path = _jsonl_path(event.investigation_id, events_dir=events_dir)
+    with _event_file_lock(path):
+        found = False
+        for row in _read_event_rows(event.investigation_id, events_dir=events_dir):
+            if row.get("event_id") != event.event_id:
+                continue
+            found = True
+            stored = Event.model_validate(row).model_dump(mode="json")
+            if stored != desired:
+                raise ValueError(f"event id collision: {event.event_id}")
+        if found:
+            return event.event_id
+        _append_jsonl_unlocked(path, desired)
+    return event.event_id
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +562,22 @@ def seal_investigation(
     events_dir: str | None = None,
     delete_jsonl: bool = True,
 ) -> str | None:
+    """Seal one stream without racing a concurrent append."""
+    path = _jsonl_path(investigation_id, events_dir=events_dir)
+    with _event_file_lock(path):
+        return _seal_investigation_unlocked(
+            investigation_id,
+            events_dir=events_dir,
+            delete_jsonl=delete_jsonl,
+        )
+
+
+def _seal_investigation_unlocked(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+    delete_jsonl: bool = True,
+) -> str | None:
     """Convert the live JSONL trajectory to its sealed Parquet form.
 
     Called by phase 9 (or by ``archive_synthesis`` if the user wires it there).
@@ -546,14 +653,11 @@ def seal_investigation(
 # ---------------------------------------------------------------------------
 
 
-def trajectory(
+def _read_event_rows(
     investigation_id: str,
     *,
     events_dir: str | None = None,
 ) -> list[dict[str, Any]]:
-    """Read all events for an investigation, ordered by emission time.
-    Reads sealed Parquet if present; falls back to live JSONL otherwise.
-    """
     pq = _parquet_path(investigation_id, events_dir=events_dir)
     jl = _jsonl_path(investigation_id, events_dir=events_dir)
 
@@ -580,14 +684,23 @@ def trajectory(
                 except json.JSONDecodeError:
                     continue
 
-    if len(rows) == 1 and not isinstance(rows[0].get("payload"), str):
-        return rows
-
     for r in rows:
         if isinstance(r.get("payload"), str):
             with contextlib.suppress(TypeError, ValueError):
                 r["payload"] = json.loads(r["payload"])
 
+    return rows
+
+
+def trajectory(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+) -> list[dict[str, Any]]:
+    """Read all events for an investigation, ordered by emission time.
+    Reads sealed Parquet if present; falls back to live JSONL otherwise.
+    """
+    rows = _read_event_rows(investigation_id, events_dir=events_dir)
     deduplicated: list[dict[str, Any]] = []
     seen_event_ids: set[str] = set()
     for row in rows:

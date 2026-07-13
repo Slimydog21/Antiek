@@ -362,7 +362,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "url_alias",
     "discovery_summary",
     "book_assets",
-    "outline_blocks",
+    "outline_blocks", "outline_block_commands",
     "monitors",
     "supersession_candidates",
     "embeddings_meta",
@@ -932,6 +932,20 @@ CREATE INDEX IF NOT EXISTS idx_outline_blocks_node
     ON outline_blocks(node_id);
 CREATE INDEX IF NOT EXISTS idx_outline_blocks_cluster
     ON outline_blocks(cluster_id);
+
+CREATE TABLE IF NOT EXISTS outline_block_commands (
+    command_id          TEXT PRIMARY KEY,
+    request_fingerprint TEXT NOT NULL,
+    operation           TEXT NOT NULL CHECK (operation IN ('move', 'remove')),
+    outline_block_id    TEXT NOT NULL,
+    investigation_id    TEXT NOT NULL,
+    event_id            TEXT NOT NULL UNIQUE,
+    event_json          TEXT NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_outline_block_commands_block
+    ON outline_block_commands(outline_block_id, created_at);
 """
 
 

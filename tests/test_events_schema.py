@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from datetime import UTC, datetime
 
 import pytest
@@ -30,7 +31,14 @@ _HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(_HERE))
 
 from substrate.constants import CONFIDENCE_LEVELS  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import events as events_mod  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    append_event_once,
+    emit_typed,
+    prepare_typed_event,
+    seal_investigation,
+    trajectory,
+)
 from substrate.schemas import (  # noqa: E402
     WRESTLING_ACTION_TYPES,
     ActionType,
@@ -366,6 +374,161 @@ def test_emit_typed_roundtrip_through_jsonl(tmp_path, monkeypatch):
         else:
             assert isinstance(rebuilt.payload, DocumentLoadedPayload)
             assert rebuilt.document_id == "doc-1"
+
+
+def test_append_event_once_reuses_stable_id_and_rejects_collision(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    payload = DispatchCallPayload(
+        provider="p", model="m", tier="flash", target_role="decomposer",
+        input_tokens=10, output_tokens=20, cost_usd=0.01, latency_ms=100,
+        prompt_hash="sha",
+    )
+    event = prepare_typed_event("once-1", payload, event_id="evt-stable")
+    assert append_event_once(event) == "evt-stable"
+    assert append_event_once(event) == "evt-stable"
+    assert [row["event_id"] for row in trajectory("once-1")] == ["evt-stable"]
+
+    collision = prepare_typed_event(
+        "once-1",
+        payload.model_copy(update={"prompt_hash": "different"}),
+        event_id="evt-stable",
+        emitted_at=event.emitted_at,
+    )
+    with pytest.raises(ValueError, match="event id collision"):
+        append_event_once(collision)
+
+
+def test_append_event_once_rejects_conflicting_duplicate_already_on_disk(
+    tmp_path, monkeypatch,
+):
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    payload = DispatchCallPayload(
+        provider="p", model="m", tier="flash", target_role="decomposer",
+        input_tokens=1, output_tokens=1, cost_usd=0.0, latency_ms=1,
+        prompt_hash="original",
+    )
+    event = prepare_typed_event("duplicate", payload, event_id="evt-duplicate")
+    append_event_once(event)
+    collision = prepare_typed_event(
+        "duplicate",
+        payload.model_copy(update={"prompt_hash": "corrupt"}),
+        event_id=event.event_id,
+        emitted_at=event.emitted_at,
+    )
+    events_mod._append_jsonl(
+        str(tmp_path / "events" / "duplicate.jsonl"),
+        collision.model_dump(mode="json"),
+    )
+
+    with pytest.raises(ValueError, match="event id collision"):
+        append_event_once(event)
+
+
+def test_append_event_once_discards_a_truncated_tail(tmp_path, monkeypatch):
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
+    (events_dir / "partial.jsonl").write_bytes(b'{"event_id":"torn"')
+    payload = DispatchCallPayload(
+        provider="p", model="m", tier="flash", target_role="decomposer",
+        input_tokens=1, output_tokens=1, cost_usd=0.0, latency_ms=1,
+        prompt_hash="sha",
+    )
+    event = prepare_typed_event("partial", payload, event_id="evt-repaired")
+
+    append_event_once(event)
+
+    assert [row["event_id"] for row in trajectory("partial")] == ["evt-repaired"]
+
+
+def test_append_event_once_recognizes_event_after_sealing(tmp_path, monkeypatch):
+    pytest.importorskip("pyarrow")
+    events_dir = tmp_path / "events"
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
+    payload = DispatchCallPayload(
+        provider="p", model="m", tier="flash", target_role="decomposer",
+        input_tokens=1, output_tokens=1, cost_usd=0.0, latency_ms=1,
+        prompt_hash="sha",
+    )
+    event = prepare_typed_event("sealed-once", payload, event_id="evt-sealed")
+    append_event_once(event)
+    assert seal_investigation("sealed-once") is not None
+
+    append_event_once(event)
+
+    assert [row["event_id"] for row in trajectory("sealed-once")] == ["evt-sealed"]
+    assert not (events_dir / "sealed-once.jsonl").exists()
+
+
+def test_append_event_once_accepts_exact_event_from_sealed_prefix(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    payload = DispatchCallPayload(
+        provider="p", model="m", tier="flash", target_role="decomposer",
+        input_tokens=1, output_tokens=1, cost_usd=0.0, latency_ms=1,
+        prompt_hash="sha",
+    )
+    event = prepare_typed_event("sealed-prefix", payload, event_id="evt-prefix")
+    monkeypatch.setattr(
+        events_mod,
+        "_read_event_rows",
+        lambda *_args, **_kwargs: [event.model_dump(mode="json")],
+    )
+    monkeypatch.setattr(
+        events_mod,
+        "_append_jsonl_unlocked",
+        lambda *_args, **_kwargs: pytest.fail("exact sealed event was appended again"),
+    )
+
+    assert append_event_once(event) == "evt-prefix"
+
+
+def test_seal_waits_for_inflight_append(tmp_path, monkeypatch):
+    events_dir = tmp_path / "events"
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(events_dir))
+    append_entered = threading.Event()
+    release_append = threading.Event()
+    seal_entered = threading.Event()
+    errors: list[BaseException] = []
+    original_append = events_mod._append_jsonl_unlocked
+
+    def blocking_append(path, row):
+        append_entered.set()
+        if not release_append.wait(timeout=5):
+            raise TimeoutError("test did not release append")
+        original_append(path, row)
+
+    def recording_seal(*_args, **_kwargs):
+        seal_entered.set()
+        return "sealed"
+
+    monkeypatch.setattr(events_mod, "_append_jsonl_unlocked", blocking_append)
+    monkeypatch.setattr(events_mod, "_seal_investigation_unlocked", recording_seal)
+    payload = DispatchCallPayload(
+        provider="p", model="m", tier="flash", target_role="decomposer",
+        input_tokens=1, output_tokens=1, cost_usd=0.0, latency_ms=1,
+        prompt_hash="sha",
+    )
+    event = prepare_typed_event("lock-test", payload, event_id="evt-lock")
+
+    def append_target():
+        try:
+            append_event_once(event)
+        except BaseException as exc:
+            errors.append(exc)
+
+    append_thread = threading.Thread(target=append_target)
+    seal_thread = threading.Thread(target=lambda: seal_investigation("lock-test"))
+    append_thread.start()
+    assert append_entered.wait(timeout=5)
+    seal_thread.start()
+    assert not seal_entered.wait(timeout=0.1)
+    release_append.set()
+    append_thread.join(timeout=5)
+    seal_thread.join(timeout=5)
+    assert not append_thread.is_alive()
+    assert not seal_thread.is_alive()
+    assert errors == []
+    assert seal_entered.is_set()
 
 
 def test_emit_typed_raises_when_wrestling_event_missing_document_id(tmp_path, monkeypatch):

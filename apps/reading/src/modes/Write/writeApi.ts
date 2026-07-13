@@ -158,19 +158,37 @@ export async function getSectionBlocks(
 }
 
 /** Move/reorder a placed block within or across sections (drag-to-reorder). */
+const pendingMoveCommands = new Map<string, string>();
+
 export async function moveBlock(
   outlineBlockId: string,
   toSectionId: string,
   toIndex: number,
 ): Promise<void> {
-  await _json<unknown>(
-    await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/move`, {
+  const logicalMove = JSON.stringify([outlineBlockId, toSectionId, toIndex]);
+  const commandId = pendingMoveCommands.get(logicalMove) ?? crypto.randomUUID();
+  pendingMoveCommands.set(logicalMove, commandId);
+  const send = () => apiFetch(
+    `${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/move`,
+    {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": commandId,
+      },
       body: JSON.stringify({ to_section_id: toSectionId, to_index: toIndex }),
-    }),
-    "POST /write/blocks/{id}/move",
+    },
   );
+  let response: Response;
+  try {
+    response = await send();
+  } catch {
+    response = await send();
+  }
+  if (response.status >= 500) response = await send();
+  if (!response.ok && response.status < 500) pendingMoveCommands.delete(logicalMove);
+  await _json<unknown>(response, "POST /write/blocks/{id}/move");
+  pendingMoveCommands.delete(logicalMove);
 }
 
 export interface TraceTarget {

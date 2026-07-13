@@ -116,6 +116,55 @@ def test_place_and_list_blocks(client, seed):
     assert blocks["blocks"][0]["node_id"] == seed["node"]
 
 
+def test_move_requires_command_identity_and_replays_without_mutation(client, seed):
+    obid = client.post("/write/blocks", json={
+        "section_id": seed["section_id"], "block_kind": "insight",
+        "provenance_kind": "graph_node", "node_id": seed["node"], "block_index": 0,
+    }).json()["outline_block_id"]
+    path = f"/write/blocks/{obid}/move"
+    assert client.post(path, json={
+        "to_section_id": seed["section_id"], "to_index": 2,
+    }).status_code == 422
+    assert client.post(path, headers={"Idempotency-Key": "   "}, json={
+        "to_section_id": seed["section_id"], "to_index": 2,
+    }).status_code == 422
+
+    headers = {"Idempotency-Key": "route-move-1"}
+    first = client.post(path, headers=headers, json={
+        "to_section_id": seed["section_id"], "to_index": 2,
+    })
+    assert first.status_code == 202
+    replay = client.post(path, headers=headers, json={
+        "to_section_id": seed["section_id"], "to_index": 2,
+    })
+    assert replay.status_code == 202
+    conflict = client.post(path, headers=headers, json={
+        "to_section_id": seed["section_id"], "to_index": 3,
+    })
+    assert conflict.status_code == 409
+
+    block = client.get(
+        f"/write/sections/{seed['section_id']}/blocks"
+    ).json()["blocks"][0]
+    assert block["block_index"] == 2
+
+
+def test_remove_command_retry_stays_successful_but_new_command_is_404(client, seed):
+    obid = client.post("/write/blocks", json={
+        "section_id": seed["section_id"], "block_kind": "insight",
+        "provenance_kind": "graph_node", "node_id": seed["node"], "block_index": 0,
+    }).json()["outline_block_id"]
+    path = f"/write/blocks/{obid}"
+    assert client.delete(path).status_code == 422
+
+    headers = {"Idempotency-Key": "route-remove-1"}
+    assert client.delete(path, headers=headers).status_code == 200
+    assert client.delete(path, headers=headers).status_code == 200
+    assert client.delete(
+        path, headers={"Idempotency-Key": "route-remove-2"},
+    ).status_code == 404
+
+
 def test_list_blocks_carries_node_label_for_id_free_render(client, seed):
     """The routed outline (Product Depth SPR-07) renders block TEXT, never an
     id. A graph-node block carries no `content` (its text is on the node), so
