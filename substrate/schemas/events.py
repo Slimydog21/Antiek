@@ -424,6 +424,8 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     #    carries no source_kind/grounding fields. SiteSee READS the resolved
     #    history; it emits nothing and opens no writer of its own.
     SOURCE_READ = "source.read"
+    READ_BOOK_ANSWERED = "read.book_answered"
+    READ_BOOK_ANSWER_JUDGED = "read.book_answer_judged"
 
     # ── Meta-reading deliverable (Living Roadmap SPR-08 M4). A one-shot,
     #    READ-ONLY, page-cited synthesis over the reader's OWNED corpus, saved
@@ -745,7 +747,16 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v31: Phase-8 operator reviews become immutable events linked to a prior
 #     skill.patch_gate_decided event. Calibration status can now compute
 #     operator-reviewed count and agreement without mutating old trajectory rows.
-EVENT_SCHEMA_VERSION: int = 31
+# v32: Talk-to-book outputs and their operator judgments become immutable,
+#     owner-scoped events. The answer event carries the actual dispatch receipt;
+#     the judgment links it without mutating the original output.
+# v33: NotDiamond Wave 1 SPR-02 — DISPATCH_CALL gains seven additive nd_*
+#     attribution fields so later advisory-routing hooks can join an ND
+#     recommendation to the dispatch outcome. No migration runner exists or is
+#     needed for the JSONL/Parquet event log: all fields are nullable/defaulted,
+#     and historical rows validate by schema-on-read defaults. ND remains
+#     advisory only; dispatch is still the authoritative router.
+EVENT_SCHEMA_VERSION: int = 33
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -815,6 +826,17 @@ class DispatchCallPayload(_PayloadBase):
     parent_run_id: str | None = None
     feature_label: str | None = None
     session_id: str | None = None
+    # ── NotDiamond advisory-routing attribution (ANT-ND Wave 1 SPR-02) ──
+    # Written by substrate.dispatch.nd_attribution staging when SPR-03's hook
+    # ships; read by observability/training waves. Optional/defaulted so pre-v32
+    # rows and non-ND dispatches validate unchanged. ND is never authoritative.
+    nd_session_id: str | None = None
+    nd_recommended_provider: str | None = None
+    nd_recommended_model: str | None = None
+    nd_tradeoff: str | None = None
+    nd_decision_latency_ms: int | None = Field(default=None, ge=0)
+    nd_bypassed: bool = False
+    nd_bypass_reason: str | None = None
 
 
 class WorkerIdentityPayload(_PayloadBase):
@@ -3728,6 +3750,67 @@ class BlockPositionPayload(_PayloadBase):
     region_label: str | None = None
 
 
+# ── Reader dogfood output + operator judgment ─────────────────────────
+
+
+class BookAnswerCitation(_PayloadBase):
+    chunk_id: str
+    document_id: str
+    page_index: int | None = Field(default=None, ge=0)
+    page_resolved: bool = False
+    snippet: str = Field(max_length=241)
+
+
+class ReadBookAnsweredPayload(_PayloadBase):
+    """One durable talk-to-book output, including the real dispatch receipt."""
+
+    action_type: Literal[ActionType.READ_BOOK_ANSWERED] = ActionType.READ_BOOK_ANSWERED
+    owner_id: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=2000)
+    answer: str = Field(min_length=1)
+    citations: list[BookAnswerCitation] = Field(default_factory=list)
+    grounded: bool
+    context_chunk_count: int = Field(ge=0)
+    research_tier: Literal["fast", "deep"]
+    provider: str | None = None
+    model: str | None = None
+    input_tokens: int | None = Field(default=None, ge=0)
+    output_tokens: int | None = Field(default=None, ge=0)
+    cached_input_tokens: int | None = Field(default=None, ge=0)
+    cache_creation_input_tokens: int | None = Field(default=None, ge=0)
+    cost_usd: float | None = Field(default=None, ge=0.0)
+    latency_ms: int | None = Field(default=None, ge=0)
+    dispatch_event_id: str | None = None
+
+    @model_validator(mode="after")
+    def _grounded_answer_has_dispatch_receipt(self) -> ReadBookAnsweredPayload:
+        receipt = (
+            self.provider,
+            self.model,
+            self.input_tokens,
+            self.output_tokens,
+            self.cost_usd,
+            self.latency_ms,
+        )
+        if self.grounded and any(value is None for value in receipt):
+            raise ValueError("a grounded book answer requires a dispatch receipt")
+        if not self.grounded and any(value is not None for value in receipt):
+            raise ValueError("an ungrounded no-model answer cannot claim dispatch telemetry")
+        return self
+
+
+class ReadBookAnswerJudgedPayload(_PayloadBase):
+    """The operator's append-only verdict on one captured book answer."""
+
+    action_type: Literal[ActionType.READ_BOOK_ANSWER_JUDGED] = (
+        ActionType.READ_BOOK_ANSWER_JUDGED
+    )
+    answer_id: str = Field(min_length=1)
+    owner_id: str = Field(min_length=1)
+    verdict: Literal["good", "bad"]
+    note: str | None = Field(default=None, max_length=2000)
+
+
 # ── Source read → SiteSee "read" tint (SPR-07 M4) ──────────────────────
 
 
@@ -3888,7 +3971,7 @@ class DocumentFiledIntoInvestigationPayload(_PayloadBase):
 
 
 TypedPayload = Annotated[
-    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
+    DispatchCallPayload | WorkerIdentityPayload | ContextPackAssembledPayload | KnowledgeReusedPayload | ReuseGatedPayload | DocumentLoadedPayload | DocumentRegionSelectedPayload | DistillationRequestedPayload | DistillationDeliveredPayload | ClaimChallengeRaisedPayload | ClaimGroundingCheckPassedPayload | ClaimGroundingCheckFailedPayload | NoteEmergedPayload | NoteRefinedPayload | NoteCompressedDocWrittenPayload | QuestionIdentifiedPayload | QuestionEscalatedToResearchPayload | QuestionResolvedByDocPayload | CrossDocQuestionAnsweredPayload | UserAcceptDistillationPayload | UserRejectDistillationPayload | UserEditDistillationPayload | ArtifactGeneratedPayload | ArtifactInteractedPayload | TierAssignedPayload | TierOverriddenPayload | TierRewriteBulkPayload | StalenessFlaggedPayload | StalenessResolvePayload | SynthesisArchivedPayload | SubstrateManifestWrittenPayload | SupersessionApplyPayload | SupersessionDismissPayload | SupersessionCoexistPayload | GraphNodeInsertedPayload | GraphEdgeInsertedPayload | ConstraintViolationFoundPayload | ConstraintRevisionTriggeredPayload | ConstraintLoopResolvedPayload | OutcomeRecordedPayload | RubricScoredPayload | GroundednessScoredPayload | GroundednessFailedPayload | PhaseEnterPayload | PhaseExitPayload | PhaseVerifyPayload | DecomposeQuestionRequestedPayload | DecomposeQuestionDeliveredPayload | DecomposerParaphraseFlaggedPayload | DecomposerRegeneratedPayload | MasterMdWrittenPayload | MasterMdSkippedPayload | SkillPatchGateDecidedPayload | SkillPatchGateReviewedPayload | AutoPatchAppliedPayload | AutoPatchSkippedPayload | EvidenceRetrieveRequestedPayload | EvidenceRetrieveDeliveredPayload | ParameterExtractRequestedPayload | ParameterExtractDeliveredPayload | ConnectorRequestedPayload | ConnectorDeliveredPayload | SynthesizeRequestedPayload | SynthesizeDeliveredPayload | AuditFindingPayload | InvestigationStartRequestedPayload | InvestigationCompletedPayload | InvestigationFailedPayload | InvestigationSpawnedFromPayload | InvestigationChaseHaltedPayload | ClaimAssertedByOperatorPayload | PageAttributionComputedPayload | RLMBridgeDecidedPayload | QualityGateEvaluatedPayload | CrossGraphCitationRecordedPayload | RevShareDecidedPayload | PreferenceObservationRecordedPayload | SkillRulePromotedPayload | DiscoveryProposedPayload | DiscoverySelectedPayload | FetchFallbackEscalatedPayload | VerifierLookupPayload | FederationPartnerRegisteredPayload | FederationPartnerTrustedPayload | FederationPartnerRevokedPayload | FederationOutboundCitationEmittedPayload | FederationInboundCitationAcceptedPayload | FederationInboundCitationRefusedPayload | VisualFrameIdentifiedPayload | VisualClaimsExtractedPayload | VisualRoleFailedPayload | AIActionAppliedPayload | AIActionUndonePayload | DPRoutedPayload | OutlineBlockPlacedPayload | OutlineBlockMovedPayload | OutlineBlockRemovedPayload | BookServabilityChangedPayload | BookTakenDownPayload | DocumentContentClassDefaultedPayload | EditCapturedPayload | SectionDraftGeneratedPayload | SeamResearchToReadPayload | SeamReadToResearchPayload | SeamReadToWritePayload | SeamWriteToReadPayload | SeamSpeakToWritePayload | SeamSpeakToReadPayload | SeamWriteToSpeakPayload | VoiceCapturedPayload | MarginaliaNotedPayload | BlockPositionPayload | SourceReadPayload | ReadBookAnsweredPayload | ReadBookAnswerJudgedPayload | ReadMetaReadingGeneratedPayload | DocumentFiledIntoInvestigationPayload,
     Field(discriminator="action_type"),
 ]
 
@@ -4027,6 +4110,8 @@ TYPED_PAYLOAD_ACTION_TYPES: frozenset[str] = frozenset({
     ActionType.BLOCK_POSITIONED.value,
     # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
     ActionType.SOURCE_READ.value,
+    ActionType.READ_BOOK_ANSWERED.value,
+    ActionType.READ_BOOK_ANSWER_JUDGED.value,
     # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
     ActionType.READ_META_READING_GENERATED.value,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.
@@ -4335,6 +4420,9 @@ __all__ = [
     "BlockPositionPayload",
     # Source read → SiteSee "read" tint SPR-07 (v20 schema bump)
     "SourceReadPayload",
+    "BookAnswerCitation",
+    "ReadBookAnsweredPayload",
+    "ReadBookAnswerJudgedPayload",
     # Meta-reading deliverable → re-openable Read asset SPR-08 (v21 schema bump)
     "MetaReadingCitation",
     "ReadMetaReadingGeneratedPayload",

@@ -46,10 +46,14 @@ owns the always-on trigger; this sprint only builds the path.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
-from collections.abc import Sequence
-from typing import Any
+from collections.abc import Callable, Sequence
+from contextlib import suppress
+from typing import Any, TypeVar
+
+T = TypeVar("T")
 
 try:
     from ...constants import (
@@ -110,14 +114,29 @@ def canonical_text(text: str) -> str:
     return " ".join(text.lower().split())
 
 
-def insight_node_id(text: str) -> str:
+def insight_node_id(text: str, *, identity_scope: str | None = None) -> str:
     """Deterministic node id for an insight with this (normalized) text."""
-    return content_addressed_id("insight", canonical_text(text))
+    identity = canonical_text(text)
+    if identity_scope is not None:
+        identity_scope = _identity_scope(identity_scope)
+        identity = f"{identity_scope}:{identity}"
+    return content_addressed_id("insight", identity)
 
 
-def question_node_id(text: str) -> str:
+def question_node_id(text: str, *, identity_scope: str | None = None) -> str:
     """Deterministic node id for a question with this (normalized) text."""
-    return content_addressed_id("question", canonical_text(text))
+    identity = canonical_text(text)
+    if identity_scope is not None:
+        identity_scope = _identity_scope(identity_scope)
+        identity = f"{identity_scope}:{identity}"
+    return content_addressed_id("question", identity)
+
+
+def _identity_scope(value: str) -> str:
+    encoded = value.encode("utf-8")
+    if not encoded or len(encoded) > 512 or any(byte < 32 or byte == 127 for byte in encoded):
+        raise ValueError("identity_scope is invalid")
+    return value
 
 
 def _node_type_of(con: LockedConnection, node_id: str) -> str | None:
@@ -125,6 +144,28 @@ def _node_type_of(con: LockedConnection, node_id: str) -> str | None:
         "SELECT node_type FROM nodes WHERE node_id = ? LIMIT 1", [node_id]
     ).fetchone()
     return row[0] if row else None
+
+
+def _verify_private_node(
+    con: LockedConnection,
+    *,
+    node_id: str,
+    label: str,
+    node_type: str,
+    metadata: dict[str, Any],
+    owner_user_id: str | None,
+) -> None:
+    if owner_user_id is None:
+        return
+    row = con.execute(
+        "SELECT canonical_label, node_type, graph_scope, metadata, owner_user_id "
+        "FROM nodes WHERE node_id=?",
+        [node_id],
+    ).fetchone()
+    expected = (label, node_type, _PROMOTION_GRAPH_SCOPE, metadata, owner_user_id)
+    actual = None if row is None else (row[0], row[1], row[2], json.loads(row[3]), row[4])
+    if actual != expected:
+        raise ValueError("private promoted graph node conflicts")
 
 
 def _coerce_confidence_float(confidence: str) -> float:
@@ -137,6 +178,8 @@ def _add_provenance_edges(
     source_node_id: str,
     relation: str,
     targets: Sequence[str],
+    emit_events: bool = True,
+    owner_user_id: str | None = None,
     investigation_id: str,
     source_tier: int,
     extraction_confidence: float,
@@ -154,6 +197,11 @@ def _add_provenance_edges(
         if ttype is None:
             dangling.append(target_id)
             continue
+        target_owner = con.execute(
+            "SELECT owner_user_id FROM nodes WHERE node_id=?", [target_id]
+        ).fetchone()[0]
+        if owner_user_id is not None and target_owner not in (None, owner_user_id):
+            raise ValueError("private graph edge target owner conflicts")
         # Loud failure if the caller wires an out-of-vocabulary edge.
         validate_insight_question_edge(relation, _node_type_of_source(relation), ttype)
         eid = insert_edge(
@@ -168,6 +216,7 @@ def _add_provenance_edges(
             source_document_id=source_document_id,
             chunk_id=chunk_id,
             on_conflict="ignore",
+            emit_event=emit_events,
         )
         written.append(eid)
     return written, dangling
@@ -183,7 +232,11 @@ def _node_type_of_source(relation: str) -> str:
     return spec.source_type
 
 
-def _with_connection(con: LockedConnection | None, purpose: str, fn):
+def _with_connection(  # noqa: UP047 - Python 3.11 support
+    con: LockedConnection | None,
+    purpose: str,
+    fn: Callable[[LockedConnection], T],
+) -> T:
     """Run ``fn(con)`` either on the caller's connection (caller owns the
     transaction) or on a fresh write-locked connection wrapped in an
     atomic BEGIN/COMMIT."""
@@ -197,10 +250,8 @@ def _with_connection(con: LockedConnection | None, purpose: str, fn):
             owned.execute("COMMIT")
             return result
         except Exception:
-            try:
+            with suppress(Exception):
                 owned.execute("ROLLBACK")
-            except Exception:  # pragma: no cover
-                pass
             raise
     finally:
         owned.close()
@@ -222,6 +273,9 @@ def promote_insight(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    identity_scope: str | None = None,
+    owner_user_id: str | None = None,
+    emit_graph_events: bool = True,
 ) -> str:
     """Promote an insight to a first-class ``insight`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -251,7 +305,7 @@ def promote_insight(
     block_search resolves the per-book document the same way it does for a
     distilled insight.
     """
-    nid = insight_node_id(text)
+    nid = insight_node_id(text, identity_scope=identity_scope)
     edge_conf = (
         extraction_confidence
         if extraction_confidence is not None
@@ -277,6 +331,8 @@ def promote_insight(
                 "investigation_id": investigation_id,
             }
         )
+        if identity_scope is not None:
+            node_meta["identity_scope"] = identity_scope
         # §9 provenance discriminator. Stamped only when the caller asserts
         # one (the user-authored marginalia path). A model-emerged insight
         # carries no source_kind — the absence IS "model", and we never
@@ -324,6 +380,16 @@ def promote_insight(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            owner_user_id=owner_user_id,
+            emit_event=emit_graph_events,
+        )
+        _verify_private_node(
+            c,
+            node_id=nid,
+            label=text,
+            node_type="insight",
+            metadata=node_meta,
+            owner_user_id=owner_user_id,
         )
         _written, dangling = _add_provenance_edges(
             c,
@@ -335,6 +401,8 @@ def promote_insight(
             extraction_confidence=edge_conf,
             source_document_id=source_document_id,
             chunk_id=chunk_id,
+            emit_events=emit_graph_events,
+            owner_user_id=owner_user_id,
         )
         if dangling:
             _record_dangling(c, nid, "supported_by", dangling)
@@ -359,6 +427,9 @@ def promote_question(
     con: LockedConnection | None = None,
     dedup: bool = False,
     dedup_rate: Any = None,
+    identity_scope: str | None = None,
+    owner_user_id: str | None = None,
+    emit_graph_events: bool = True,
 ) -> str:
     """Promote a question to a first-class ``question`` node. Returns the
     node id (stable, content-addressed — idempotent on re-promotion).
@@ -371,7 +442,7 @@ def promote_question(
     question node (a ``duplicate_of`` self-edge) instead of inserting a row.
     Questions dedup against questions only (never against insights).
     """
-    nid = question_node_id(text)
+    nid = question_node_id(text, identity_scope=identity_scope)
 
     def _do(c: LockedConnection) -> str:
         node_meta: dict[str, Any] = dict(metadata or {})
@@ -388,6 +459,8 @@ def promote_question(
                 "investigation_id": investigation_id,
             }
         )
+        if identity_scope is not None:
+            node_meta["identity_scope"] = identity_scope
         if anchor_region_id:
             node_meta["anchor_region_id"] = anchor_region_id
         if source_document_id:
@@ -429,18 +502,32 @@ def promote_question(
             metadata=node_meta,
             node_id=nid,
             on_conflict="ignore",
+            owner_user_id=owner_user_id,
+            emit_event=emit_graph_events,
+        )
+        _verify_private_node(
+            c,
+            node_id=nid,
+            label=text,
+            node_type="question",
+            metadata=node_meta,
+            owner_user_id=owner_user_id,
         )
         _w1, d1 = _add_provenance_edges(
             c, source_node_id=nid, relation="asks_about", targets=asks_about,
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            emit_events=emit_graph_events,
+            owner_user_id=owner_user_id,
         )
         _w2, d2 = _add_provenance_edges(
             c, source_node_id=nid, relation="resolved_by", targets=resolved_by,
             investigation_id=investigation_id, source_tier=source_tier,
             extraction_confidence=extraction_confidence,
             source_document_id=source_document_id, chunk_id=chunk_id,
+            emit_events=emit_graph_events,
+            owner_user_id=owner_user_id,
         )
         if d1:
             _record_dangling(c, nid, "asks_about", d1)

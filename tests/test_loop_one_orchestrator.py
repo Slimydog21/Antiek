@@ -428,7 +428,11 @@ async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
     we poll the trajectory rather than register another handler."""
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
-        await bus.wait_for_handlers(timeout=2.0)
+        remaining = deadline - asyncio.get_event_loop().time()
+        try:
+            await bus.wait_for_handlers(timeout=remaining)
+        except TimeoutError:
+            return None
         rows = trajectory(investigation_id)
         for r in rows:
             at = r.get("action_type")

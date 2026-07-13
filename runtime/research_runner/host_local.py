@@ -303,6 +303,20 @@ class HostLocalRunner:
     async def _run(self, st: _ResearchState) -> None:
         iid = st.plan.investigation_id
         async with self._semaphore:        # bounded concurrency
+            # A leaf may have waited behind the semaphore while siblings spent
+            # the aggregate budget. Recheck at the actual dispatch boundary so
+            # queued work cannot incur a provider call after the stop limit.
+            if not self.budget.can_launch(st.plan.budget.cost_usd):
+                reason = self.budget.launch_block_reason()
+                st.state = RunState.BUDGET_HALTED
+                st.error = reason
+                log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
+                          payload={"reason": "aggregate_budget", "detail": reason},
+                          role="user_agent", events_dir=self._events_dir)
+                await self._push(st, StepEvent(iid, 0, "status", text=reason,
+                                               state=RunState.BUDGET_HALTED))
+                await self._finish(st, None, None, halted=True)
+                return
             st.started = True
             ctx = LoopContext(st.plan, self.budget)
             st.ctx = ctx
