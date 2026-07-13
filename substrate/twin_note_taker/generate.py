@@ -85,7 +85,9 @@ class ProposedInsight:
     """One LLM-proposed insight (a claim worth keeping). Advisory — not grounded."""
 
     text: str
-    source_asset_id: str  # always the asset the twin was generated from
+    # Empty means "the input asset". A non-empty value is accepted only when it
+    # exactly matches that asset; the untrusted proposer cannot mint provenance.
+    source_asset_id: str
 
 
 @dataclass(frozen=True)
@@ -112,9 +114,7 @@ class TwinProposal:
 class TwinProposer(Protocol):
     """The single dispatch seam. Implementations reach a real model; tests fake it."""
 
-    def __call__(
-        self, asset: AssetContent, *, model_id: str
-    ) -> TwinProposal: ...
+    def __call__(self, asset: AssetContent, *, model_id: str) -> TwinProposal: ...
 
 
 @dataclass(frozen=True)
@@ -135,9 +135,7 @@ def _content_hash(text: str) -> str:
     return hashlib.sha256(text.strip().lower().encode("utf-8")).hexdigest()[:12]
 
 
-def _canonical_proposal_hash(
-    asset: AssetContent, proposal: TwinProposal
-) -> str:
+def _canonical_proposal_hash(asset: AssetContent, proposal: TwinProposal) -> str:
     payload = {
         "asset_id": asset.asset_id,
         "insights": [i.text for i in proposal.insights],
@@ -168,15 +166,22 @@ def _build_body(
         clean = ins.text.strip()
         if not clean:
             continue
+        claimed_source = ins.source_asset_id.strip()
+        if claimed_source and claimed_source != asset.asset_id:
+            raise TwinGenerationError("proposed insight source_asset_id must match the input asset")
         node_id = f"twin-insight-{_content_hash(clean)}"
         if node_id in seen_insights:
             continue
         seen_insights.add(node_id)
-        # source_document_id is ALWAYS the source asset — provenance is real,
-        # never fabricated. (A proposal does not create new provenance.)
-        source = ins.source_asset_id or asset.asset_id
+        # source_document_id is ALWAYS the input asset. The proposer can extract
+        # a claim from supplied content, but it cannot create a new provenance
+        # edge merely by returning another identifier.
         insights.append(
-            ArtifactInsight(node_id=node_id, text=clean, source_document_id=source)
+            ArtifactInsight(
+                node_id=node_id,
+                text=clean,
+                source_document_id=asset.asset_id,
+            )
         )
 
     seen_q: set[str] = set()

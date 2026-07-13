@@ -83,9 +83,7 @@ class _RecordingProposer:
 
 def test_empty_asset_id_rejected() -> None:
     with pytest.raises(TwinGenerationError, match="asset_id"):
-        generate_twin(
-            _asset(asset_id="  "), caller=_RecordingProposer(), model_id="m"
-        )
+        generate_twin(_asset(asset_id="  "), caller=_RecordingProposer(), model_id="m")
 
 
 def test_empty_model_id_rejected() -> None:
@@ -144,9 +142,7 @@ def test_acked_generation_produces_advisory_twin() -> None:
 
 
 def test_empty_proposal_withheld_honestly() -> None:
-    caller = _RecordingProposer(
-        insights=(), questions=(), synthesis="   ", model_id="m"
-    )
+    caller = _RecordingProposer(insights=(), questions=(), synthesis="   ", model_id="m")
     result = generate_twin(_asset(), caller=caller, model_id="m", operator_ack=True)
 
     assert caller.calls == 1  # dispatched (acked) but proposed nothing
@@ -169,22 +165,42 @@ def test_insight_source_attributed_to_source_asset() -> None:
     caller = _RecordingProposer(
         insights=(ProposedInsight(text="A real claim.", source_asset_id=""),)
     )
-    result = generate_twin(_asset(asset_id="book-42"), caller=caller, model_id="m", operator_ack=True)
+    result = generate_twin(
+        _asset(asset_id="book-42"), caller=caller, model_id="m", operator_ack=True
+    )
 
     assert result.body.insights[0].source_document_id == "book-42"
 
 
-def test_insight_explicit_source_used_when_present() -> None:
+def test_matching_explicit_source_is_accepted() -> None:
+    caller = _RecordingProposer(
+        insights=(ProposedInsight(text="A real claim.", source_asset_id="book-42"),)
+    )
+    result = generate_twin(
+        _asset(asset_id="book-42"), caller=caller, model_id="m", operator_ack=True
+    )
+
+    assert result.body.insights[0].source_document_id == "book-42"
+
+
+def test_mismatched_explicit_source_is_rejected() -> None:
     caller = _RecordingProposer(
         insights=(ProposedInsight(text="A real claim.", source_asset_id="other-asset"),)
     )
-    result = generate_twin(_asset(asset_id="book-42"), caller=caller, model_id="m", operator_ack=True)
 
-    assert result.body.insights[0].source_document_id == "other-asset"
+    with pytest.raises(TwinGenerationError, match="source_asset_id"):
+        generate_twin(
+            _asset(asset_id="book-42"),
+            caller=caller,
+            model_id="m",
+            operator_ack=True,
+        )
 
 
 def test_twin_traces_to_source_asset() -> None:
-    result = generate_twin(_asset(asset_id="book-42"), caller=_RecordingProposer(), model_id="m", operator_ack=True)
+    result = generate_twin(
+        _asset(asset_id="book-42"), caller=_RecordingProposer(), model_id="m", operator_ack=True
+    )
 
     assert result.body.source_event_ids == ["book-42"]
     assert result.twin_investigation_id == "twin-book-42"
