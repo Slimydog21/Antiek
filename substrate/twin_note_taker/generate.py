@@ -13,16 +13,12 @@ chasing) — linked to the source asset. That twin is a first-class information
 asset: it joins the graph, feeds the collective synthesizer (#1835), and is
 itself searchable ("infinite information platform").
 
-**Pure except ONE injected seam: the ``TwinProposer``.** The module does no
-networking, no credentials, no dispatch. The authorized layer (owns the budget
-gate + operator consent) injects the real caller; tests inject a deterministic
-fake. This mirrors #1835's ``SynthesisCaller`` and the bench runner's
-``ModelCaller``: the boundary is the only place a real model is reached.
-
-**Authority-gated on ``operator_ack``.** Without ack the twin is **withheld**
-and the caller is NEVER invoked — this module is the single twin-generation
-authority (matches #884 intent / #1000 Midnight Oil). Withholding is honest
-(``synthesis_withheld=True``), never silent.
+**Pure except two injected seams.** ``TwinProposer`` is the only model boundary;
+``TwinAuthorizationVerifier`` validates the opaque operator receipt minted by
+the authenticated budget boundary. The module does no networking or credential
+handling. Without a verified receipt the twin is **withheld** and the proposer
+is never invoked. Withholding is honest (``synthesis_withheld=True``), never
+silent.
 
 **The twin is advisory, not assertive.** Insights/questions are *proposed* by
 the model (``authority="twin_note_taker_advisory"``); they are not asserted as
@@ -43,8 +39,9 @@ import json
 from dataclasses import dataclass
 from typing import Protocol
 
+from substrate.graph.insight_question import canonical_text
+from substrate.graph.ops import content_addressed_id
 from substrate.research_artifact.schema import (
-    ArtifactInsight,
     ArtifactQuestion,
     ResearchArtifactBody,
 )
@@ -58,6 +55,11 @@ MIN_CONTENT_CHARS = 24
 # A ceiling so the caller doesn't receive a runaway transcript (the caller may
 # budget its own context window; this is the generation-core's backstop).
 MAX_CONTENT_CHARS = 200_000
+MAX_INSIGHTS = 100
+MAX_QUESTIONS = 100
+MAX_PROPOSAL_ITEM_CHARS = 10_000
+MAX_SYNTHESIS_CHARS = 50_000
+MAX_TOTAL_PROPOSAL_CHARS = 200_000
 
 
 class TwinGenerationError(ValueError):
@@ -108,7 +110,27 @@ class TwinProposal:
     insights: tuple[ProposedInsight, ...]
     questions: tuple[ProposedQuestion, ...]
     synthesis_excerpt: str  # a one-paragraph "what this asset is about" summary
+
+
+@dataclass(frozen=True)
+class TwinAuthorization:
+    """Operator-bound authority minted and verified outside the pure core.
+
+    ``budget_authority_id`` identifies the approved paid hold or an explicit
+    free/local execution grant. It is evidence, not a caller-supplied boolean.
+    """
+
+    authorization_id: str
+    account_id: str
+    asset_id: str
     model_id: str
+    budget_authority_id: str
+
+
+class TwinAuthorizationVerifier(Protocol):
+    """Trusted boundary that validates an opaque operator authorization."""
+
+    def __call__(self, authorization: TwinAuthorization) -> bool: ...
 
 
 class TwinProposer(Protocol):
@@ -124,89 +146,159 @@ class TwinDocument:
     asset_id: str
     twin_investigation_id: str
     body: ResearchArtifactBody  # the canonical data model (renders HTML-native)
+    proposed_insights: tuple[str, ...]
+    proposed_questions: tuple[str, ...]
     authority: str
     withheld: bool
     model_id: str
-    operator_ack: bool
+    authorization_id: str | None
+    budget_authority_id: str | None
+    source_content_hash: str
     proposal_hash: str  # sha256 over canonical proposals (idempotency)
 
 
-def _content_hash(text: str) -> str:
-    return hashlib.sha256(text.strip().lower().encode("utf-8")).hexdigest()[:12]
+@dataclass(frozen=True)
+class _NormalizedProposal:
+    insights: tuple[str, ...]
+    questions: tuple[str, ...]
+    synthesis_excerpt: str
 
 
-def _canonical_proposal_hash(asset: AssetContent, proposal: TwinProposal) -> str:
+def _source_content_hash(asset: AssetContent) -> str:
+    return hashlib.sha256(asset.content_text.strip().encode("utf-8")).hexdigest()
+
+
+def _canonical_proposal_hash(
+    asset: AssetContent,
+    proposal: _NormalizedProposal,
+    *,
+    model_id: str,
+) -> str:
     payload = {
         "asset_id": asset.asset_id,
-        "insights": [i.text for i in proposal.insights],
-        "questions": [q.text for q in proposal.questions],
+        "content_class": asset.content_class,
+        "source_content_hash": _source_content_hash(asset),
+        "title": asset.title,
+        "model_id": model_id,
+        "insights": list(proposal.insights),
+        "questions": list(proposal.questions),
         "synthesis_excerpt": proposal.synthesis_excerpt,
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
+def _normalize_proposal(asset: AssetContent, proposal: TwinProposal) -> _NormalizedProposal:
+    """Validate and canonicalize untrusted model output before materialization."""
+    if not isinstance(proposal, TwinProposal):
+        raise TwinGenerationError("proposer must return TwinProposal")
+    if not isinstance(proposal.synthesis_excerpt, str):
+        raise TwinGenerationError("synthesis excerpt must be text")
+    if not isinstance(proposal.insights, tuple) or not isinstance(proposal.questions, tuple):
+        raise TwinGenerationError("proposal collections must be tuples")
+    if len(proposal.insights) > MAX_INSIGHTS:
+        raise TwinGenerationError(f"proposal exceeds {MAX_INSIGHTS} insights")
+    if len(proposal.questions) > MAX_QUESTIONS:
+        raise TwinGenerationError(f"proposal exceeds {MAX_QUESTIONS} questions")
+
+    total_chars = 0
+    seen_insights: set[str] = set()
+    insights: list[str] = []
+    for insight in proposal.insights:
+        if not isinstance(insight, ProposedInsight):
+            raise TwinGenerationError("proposal insights must be ProposedInsight values")
+        if not isinstance(insight.text, str) or not isinstance(insight.source_asset_id, str):
+            raise TwinGenerationError("proposed insight fields must be text")
+        clean = insight.text.strip()
+        if not clean:
+            continue
+        if len(clean) > MAX_PROPOSAL_ITEM_CHARS:
+            raise TwinGenerationError("proposed insight exceeds the per-item ceiling")
+        claimed_source = insight.source_asset_id.strip()
+        if claimed_source and claimed_source != asset.asset_id:
+            raise TwinGenerationError("proposed insight source_asset_id must match the input asset")
+        identity = canonical_text(clean)
+        if identity in seen_insights:
+            continue
+        seen_insights.add(identity)
+        insights.append(clean)
+        total_chars += len(clean)
+
+    seen_questions: set[str] = set()
+    questions: list[str] = []
+    for question in proposal.questions:
+        if not isinstance(question, ProposedQuestion):
+            raise TwinGenerationError("proposal questions must be ProposedQuestion values")
+        if not isinstance(question.text, str):
+            raise TwinGenerationError("proposed question text must be text")
+        clean = question.text.strip()
+        if not clean:
+            continue
+        if len(clean) > MAX_PROPOSAL_ITEM_CHARS:
+            raise TwinGenerationError("proposed question exceeds the per-item ceiling")
+        identity = canonical_text(clean)
+        if identity in seen_questions:
+            continue
+        seen_questions.add(identity)
+        questions.append(clean)
+        total_chars += len(clean)
+
+    synthesis = proposal.synthesis_excerpt.strip()
+    if len(synthesis) > MAX_SYNTHESIS_CHARS:
+        raise TwinGenerationError("synthesis excerpt exceeds its ceiling")
+    total_chars += len(synthesis)
+    if total_chars > MAX_TOTAL_PROPOSAL_CHARS:
+        raise TwinGenerationError("proposal exceeds the aggregate output ceiling")
+
+    return _NormalizedProposal(
+        insights=tuple(insights),
+        questions=tuple(questions),
+        synthesis_excerpt=synthesis,
+    )
+
+
 def _build_body(
     asset: AssetContent,
-    proposal: TwinProposal,
+    proposal: _NormalizedProposal,
     *,
     withheld: bool,
 ) -> ResearchArtifactBody:
     """Assemble the twin ResearchArtifactBody from structured proposals.
 
-    Insight/question node ids are content-addressed (dedup by text). Every
-    proposed insight is re-attributed to the SOURCE asset via
-    ``source_document_id`` — so the twin never loses where each proposal came
-    from, even after it joins the graph. ``synthesis_withheld`` carries the
-    honest withhold flag (render_html shows the §9.0 guard).
+    Model-proposed insights stay in explicitly advisory ``agent_notes`` rather
+    than canonical grounded ``insights``. Questions remain questions, with
+    proposal-prefixed display text and canonical 64-bit content identities.
     """
-    seen_insights: set[str] = set()
-    insights: list[ArtifactInsight] = []
-    for ins in proposal.insights:
-        clean = ins.text.strip()
-        if not clean:
-            continue
-        claimed_source = ins.source_asset_id.strip()
-        if claimed_source and claimed_source != asset.asset_id:
-            raise TwinGenerationError("proposed insight source_asset_id must match the input asset")
-        node_id = f"twin-insight-{_content_hash(clean)}"
-        if node_id in seen_insights:
-            continue
-        seen_insights.add(node_id)
-        # source_document_id is ALWAYS the input asset. The proposer can extract
-        # a claim from supplied content, but it cannot create a new provenance
-        # edge merely by returning another identifier.
-        insights.append(
-            ArtifactInsight(
-                node_id=node_id,
-                text=clean,
-                source_document_id=asset.asset_id,
-            )
-        )
-
-    seen_q: set[str] = set()
     questions: list[ArtifactQuestion] = []
-    for q in proposal.questions:
-        clean = q.text.strip()
-        if not clean:
-            continue
-        node_id = f"twin-question-{_content_hash(clean)}"
-        if node_id in seen_q:
-            continue
-        seen_q.add(node_id)
-        questions.append(ArtifactQuestion(node_id=node_id, text=clean))
+    for question in proposal.questions:
+        node_id = content_addressed_id(
+            "twin-proposed-question",
+            canonical_text(question),
+        )
+        questions.append(ArtifactQuestion(node_id=node_id, text=f"Proposed question: {question}"))
 
-    excerpt = None if withheld else (proposal.synthesis_excerpt.strip() or None)
+    agent_notes: list[str] = []
+    if not withheld:
+        agent_notes.append(
+            f"Authority: {TWIN_AUTHORITY}. Proposals are ungrounded until evidence-backed promotion."
+        )
+        agent_notes.extend(f"Proposed insight: {insight}" for insight in proposal.insights)
+
+    excerpt = (
+        None
+        if withheld or not proposal.synthesis_excerpt
+        else f"Advisory model summary: {proposal.synthesis_excerpt}"
+    )
 
     return ResearchArtifactBody(
         investigation_id=f"twin-{asset.asset_id}",
-        problem_question=asset.title or f"Twin notes for {asset.asset_id}",
-        insights=insights,
+        problem_question=f"Advisory twin notes: {asset.title or asset.asset_id}",
+        insights=[],
         open_questions=questions,
         synthesis_excerpt=excerpt,
         synthesis_withheld=withheld,
-        source_event_ids=[asset.asset_id],  # the twin traces to its source asset
-        agent_notes=[],
+        source_event_ids=[asset.asset_id],
+        agent_notes=agent_notes,
     )
 
 
@@ -215,14 +307,14 @@ def generate_twin(
     *,
     caller: TwinProposer,
     model_id: str,
-    operator_ack: bool = False,
+    authorization: TwinAuthorization | None = None,
+    verify_authorization: TwinAuthorizationVerifier | None = None,
 ) -> TwinDocument:
     """Generate the twin note document for an information asset.
 
-    Authority-gated: without ``operator_ack`` the twin is withheld and the
-    caller is NEVER invoked (zero dispatch). With ack, the injected caller
-    proposes insights + questions; an empty proposal is withheld honestly
-    (never invented). The twin is advisory — it proposes, it does not assert.
+    Authority-gated: without a verified authorization the twin is withheld and
+    the caller is NEVER invoked. A receipt is bound to account, asset, model,
+    and budget authority; a caller-controlled boolean cannot trigger dispatch.
     """
     if not asset.asset_id.strip():
         raise TwinGenerationError("asset_id must be non-empty")
@@ -241,48 +333,71 @@ def generate_twin(
             f"{MAX_CONTENT_CHARS} chars) — caller must pre-budget the context window"
         )
 
-    withheld = True
-    proposal: TwinProposal | None = None
-    used_model = model_id
+    normalized = _NormalizedProposal(insights=(), questions=(), synthesis_excerpt="")
+    authorization_id: str | None = None
+    budget_authority_id: str | None = None
 
-    if operator_ack:
-        proposal = caller(asset, model_id=model_id)
-        used_model = proposal.model_id or model_id
-        has_content = bool(proposal.insights or proposal.questions) or bool(
-            proposal.synthesis_excerpt.strip()
-        )
-        if has_content:
-            withheld = False
+    if authorization is not None:
+        if verify_authorization is None:
+            raise TwinGenerationError("authorization verifier is required")
+        if not all(
+            value.strip()
+            for value in (
+                authorization.authorization_id,
+                authorization.account_id,
+                authorization.asset_id,
+                authorization.model_id,
+                authorization.budget_authority_id,
+            )
+        ):
+            raise TwinGenerationError("authorization fields must be non-empty")
+        if authorization.asset_id != asset.asset_id:
+            raise TwinGenerationError("authorization is bound to a different asset")
+        if authorization.model_id != model_id:
+            raise TwinGenerationError("authorization is bound to a different model")
+        if not verify_authorization(authorization):
+            raise TwinGenerationError("authorization verification failed")
+        authorization_id = authorization.authorization_id
+        budget_authority_id = authorization.budget_authority_id
+        normalized = _normalize_proposal(asset, caller(asset, model_id=model_id))
+    elif verify_authorization is not None:
+        raise TwinGenerationError("authorization receipt is required")
 
-    if proposal is None:
-        # Withheld path: an empty proposal so _build_body produces an honest
-        # "no synthesis" body without inventing anything.
-        proposal = TwinProposal(
-            insights=(), questions=(), synthesis_excerpt="", model_id=used_model
-        )
-
-    body = _build_body(asset, proposal, withheld=withheld)
-    proposal_hash = _canonical_proposal_hash(asset, proposal)
+    withheld = not bool(normalized.insights or normalized.questions or normalized.synthesis_excerpt)
+    body = _build_body(asset, normalized, withheld=withheld)
+    source_content_hash = _source_content_hash(asset)
+    proposal_hash = _canonical_proposal_hash(asset, normalized, model_id=model_id)
 
     return TwinDocument(
         asset_id=asset.asset_id,
         twin_investigation_id=body.investigation_id,
         body=body,
+        proposed_insights=normalized.insights,
+        proposed_questions=normalized.questions,
         authority=TWIN_AUTHORITY,
         withheld=withheld,
-        model_id=used_model,
-        operator_ack=operator_ack,
+        model_id=model_id,
+        authorization_id=authorization_id,
+        budget_authority_id=budget_authority_id,
+        source_content_hash=source_content_hash,
         proposal_hash=proposal_hash,
     )
 
 
 __all__ = [
     "AssetContent",
+    "MAX_INSIGHTS",
+    "MAX_PROPOSAL_ITEM_CHARS",
+    "MAX_QUESTIONS",
+    "MAX_SYNTHESIS_CHARS",
+    "MAX_TOTAL_PROPOSAL_CHARS",
     "MAX_CONTENT_CHARS",
     "MIN_CONTENT_CHARS",
     "ProposedInsight",
     "ProposedQuestion",
     "TWIN_AUTHORITY",
+    "TwinAuthorization",
+    "TwinAuthorizationVerifier",
     "TwinDocument",
     "TwinGenerationError",
     "TwinProposer",
