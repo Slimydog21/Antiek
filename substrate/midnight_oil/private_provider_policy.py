@@ -15,6 +15,11 @@ from collections.abc import Iterable, Mapping, Sequence
 from typing import Literal
 from urllib.parse import urlsplit
 
+from cryptography.exceptions import InvalidSignature
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .stages import StageOutputSchema
@@ -163,8 +168,12 @@ class PrivateProviderProcessingCapabilityV1(_Closed):
     not_before_ms: int = Field(ge=0)
     expires_at_ms: int = Field(gt=0)
     key_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,128}$")
+    issuer_role: Literal["private_provider_capability_issuer"] = (
+        "private_provider_capability_issuer"
+    )
+    signature_scheme: Literal["ed25519"] = "ed25519"
     capability_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    signature_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    signature_ed25519: str = Field(pattern=r"^[0-9a-f]{128}$")
     confers_execution_authority: Literal[False] = False
     live_reverification_required: Literal[True] = True
 
@@ -229,8 +238,12 @@ class PrivateProviderRevocationSnapshotV1(_Closed):
         max_length=MAX_PRIVATE_PROVIDER_REVOCATIONS
     )
     key_id: str = Field(pattern=r"^[A-Za-z0-9._-]{1,128}$")
+    issuer_role: Literal["private_provider_revocation_issuer"] = (
+        "private_provider_revocation_issuer"
+    )
+    signature_scheme: Literal["ed25519"] = "ed25519"
     snapshot_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    signature_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    signature_ed25519: str = Field(pattern=r"^[0-9a-f]{128}$")
 
     @model_validator(mode="after")
     def _canonical(self) -> PrivateProviderRevocationSnapshotV1:
@@ -319,7 +332,7 @@ def private_provider_capability_sha256(
     return hashlib.sha256(
         _CAPABILITY_DOMAIN
         + _canonical_material(
-            capability, {"capability_id", "capability_sha256", "signature_sha256"}
+            capability, {"capability_id", "capability_sha256", "signature_ed25519"}
         )
     ).hexdigest()
 
@@ -327,10 +340,10 @@ def private_provider_capability_sha256(
 def private_provider_capability_signature(
     capability_sha256: str, *, signing_key: bytes
 ) -> str:
-    if len(signing_key) < 32:
-        raise ValueError("private provider signing key must be at least 256 bits")
-    return hmac.digest(
-        signing_key, _SIGNATURE_DOMAIN + capability_sha256.encode("ascii"), "sha256"
+    if len(signing_key) != 32:
+        raise ValueError("private provider Ed25519 signing key must be 32 bytes")
+    return Ed25519PrivateKey.from_private_bytes(signing_key).sign(
+        _SIGNATURE_DOMAIN + capability_sha256.encode("ascii")
     ).hex()
 
 
@@ -339,19 +352,17 @@ def private_provider_revocation_snapshot_sha256(
 ) -> str:
     return hashlib.sha256(
         _REVOCATION_DOMAIN
-        + _canonical_material(snapshot, {"snapshot_sha256", "signature_sha256"})
+        + _canonical_material(snapshot, {"snapshot_sha256", "signature_ed25519"})
     ).hexdigest()
 
 
 def private_provider_revocation_snapshot_signature(
     snapshot_sha256: str, *, signing_key: bytes
 ) -> str:
-    if len(signing_key) < 32:
-        raise ValueError("private provider revocation signing key must be at least 256 bits")
-    return hmac.digest(
-        signing_key,
-        _REVOCATION_SIGNATURE_DOMAIN + snapshot_sha256.encode("ascii"),
-        "sha256",
+    if len(signing_key) != 32:
+        raise ValueError("private provider revocation Ed25519 signing key must be 32 bytes")
+    return Ed25519PrivateKey.from_private_bytes(signing_key).sign(
+        _REVOCATION_SIGNATURE_DOMAIN + snapshot_sha256.encode("ascii")
     ).hex()
 
 
@@ -370,13 +381,15 @@ def signed_private_provider_revocation_snapshot(
         "issued_at_ms": issued_at_ms,
         "revoked_capability_sha256s": tuple(sorted(revoked_capability_sha256s)),
         "key_id": key_id,
+        "issuer_role": "private_provider_revocation_issuer",
+        "signature_scheme": "ed25519",
     }
     digest = private_provider_revocation_snapshot_sha256(material)
     return PrivateProviderRevocationSnapshotV1.model_validate(
         {
             **material,
             "snapshot_sha256": digest,
-            "signature_sha256": private_provider_revocation_snapshot_signature(
+            "signature_ed25519": private_provider_revocation_snapshot_signature(
                 digest, signing_key=signing_key
             ),
         }
@@ -391,14 +404,16 @@ def verify_private_provider_revocation_snapshot(
     digest = private_provider_revocation_snapshot_sha256(snapshot)
     if not hmac.compare_digest(digest, snapshot.snapshot_sha256):
         raise ValueError("private provider revocation snapshot is unavailable")
-    key = verification_keys.get(snapshot.key_id)
-    if key is None:
+    public_key = verification_keys.get(snapshot.key_id)
+    if public_key is None or len(public_key) != 32:
         raise ValueError("private provider revocation snapshot is unavailable")
-    expected = private_provider_revocation_snapshot_signature(
-        snapshot.snapshot_sha256, signing_key=key
-    )
-    if not hmac.compare_digest(expected, snapshot.signature_sha256):
-        raise ValueError("private provider revocation snapshot is unavailable")
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            bytes.fromhex(snapshot.signature_ed25519),
+            _REVOCATION_SIGNATURE_DOMAIN + snapshot.snapshot_sha256.encode("ascii"),
+        )
+    except (InvalidSignature, ValueError):
+        raise ValueError("private provider revocation snapshot is unavailable") from None
 
 
 def signed_private_provider_capability(
@@ -424,6 +439,8 @@ def signed_private_provider_capability(
         "revocation_registry_id": "antiek-private-provider-revocations-v1",
         "confers_execution_authority": False,
         "live_reverification_required": True,
+        "issuer_role": "private_provider_capability_issuer",
+        "signature_scheme": "ed25519",
         **material,
         "key_id": key_id,
     }
@@ -433,7 +450,7 @@ def signed_private_provider_capability(
             **raw,
             "capability_id": "ppcap_" + digest[:24],
             "capability_sha256": digest,
-            "signature_sha256": private_provider_capability_signature(
+            "signature_ed25519": private_provider_capability_signature(
                 digest, signing_key=signing_key
             ),
         }
@@ -451,14 +468,16 @@ def verify_private_provider_capability(
         or capability.capability_id != "ppcap_" + digest[:24]
     ):
         raise ValueError("private provider capability is unavailable")
-    key = verification_keys.get(capability.key_id)
-    if key is None:
+    public_key = verification_keys.get(capability.key_id)
+    if public_key is None or len(public_key) != 32:
         raise ValueError("private provider capability is unavailable")
-    expected = private_provider_capability_signature(
-        capability.capability_sha256, signing_key=key
-    )
-    if not hmac.compare_digest(expected, capability.signature_sha256):
-        raise ValueError("private provider capability is unavailable")
+    try:
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            bytes.fromhex(capability.signature_ed25519),
+            _SIGNATURE_DOMAIN + capability.capability_sha256.encode("ascii"),
+        )
+    except (InvalidSignature, ValueError):
+        raise ValueError("private provider capability is unavailable") from None
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -491,18 +510,21 @@ class PrivateProviderCapabilityReferenceRegistry:
         self,
         capabilities: Iterable[PrivateProviderProcessingCapabilityV1],
         *,
-        verification_keys: Mapping[str, bytes],
+        capability_verification_keys: Mapping[str, bytes],
+        revocation_verification_keys: Mapping[str, bytes],
         revocation_snapshot: PrivateProviderRevocationSnapshotV1,
     ) -> None:
         rows = tuple(capabilities)
         if len(rows) > MAX_PRIVATE_PROVIDER_CAPABILITIES:
             raise ValueError("private provider capability registry exceeds bound")
         verify_private_provider_revocation_snapshot(
-            revocation_snapshot, verification_keys=verification_keys
+            revocation_snapshot, verification_keys=revocation_verification_keys
         )
         by_hash: dict[str, PrivateProviderProcessingCapabilityV1] = {}
         for row in rows:
-            verify_private_provider_capability(row, verification_keys=verification_keys)
+            verify_private_provider_capability(
+                row, verification_keys=capability_verification_keys
+            )
             if row.revocation_registry_id != revocation_snapshot.registry_id:
                 raise ValueError("private provider revocation registry conflicts")
             if row.revocation_epoch > revocation_snapshot.epoch:

@@ -1,14 +1,14 @@
 {
-  "cycle": 22,
+  "cycle": 23,
   "phase": "RE_DERIVE",
-  "subgoal": "Specify the private-provider capability and output-taint boundary before manifest-v2 execution propagation",
+  "subgoal": "Prove rollback-resistant private-provider revocation-head composition and API/worker parity before authority propagation",
   "lanes": [],
   "engineHealth": {
     "grok": "degraded: Cycle 22 Grok 4.5 planning invocation failed HTTP 402 due exhausted balance",
-    "mimo": "ok: Cycle 22 produced useful private-output repository archaeology",
+    "mimo": "degraded: Cycle 23 goal run wandered without a decision-ready final report",
     "claude": "ok",
-    "codex": "ok: Cycle 22 GPT-5.6 produced substantive private-provider architecture tracing",
-    "glm-cc": "degraded: Cycle 22 ultracode returned hallucinated non-repository TypeScript architecture and was rejected",
+    "codex": "ok: Cycle 23 GPT-5.6-sol produced substantive repository architecture tracing",
+    "glm-cc": "degraded: Cycle 23 ultracode falsely reported an empty repository and was rejected",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -25,7 +25,8 @@
     {"cycle": 19, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 20, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12},
     {"cycle": 21, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12},
-    {"cycle": 22, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12}
+    {"cycle": 22, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12},
+    {"cycle": 23, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13}
   ],
-  "updatedAt": "2026-07-13T10:12:36Z"
+  "updatedAt": "2026-07-13T10:57:14Z"
 }

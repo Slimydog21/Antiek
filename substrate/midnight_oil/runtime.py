@@ -345,6 +345,18 @@ def install_attested_providers(
     return tuple(admitted)
 
 
+def provider_api_key_inventory(
+    config: MidnightOilRuntimeConfig, environ: Mapping[str, str]
+) -> tuple[frozenset[str], tuple[str, ...]]:
+    """Return provider-secret aliases/material for authority separation checks."""
+
+    envs = frozenset(
+        ProviderIdempotencyAttestation.from_file(path).api_key_env
+        for path in config.provider_attestation_paths
+    )
+    return envs, tuple(environ.get(name, "").strip() for name in sorted(envs))
+
+
 __all__ = [
     "MidnightOilRuntimeConfig",
     "MidnightOilRuntimeConfigError",
@@ -353,5 +365,6 @@ __all__ = [
     "build_runtime_stores",
     "install_attested_providers",
     "load_consent_keyring",
+    "provider_api_key_inventory",
     "provider_endpoint_sha256",
 ]

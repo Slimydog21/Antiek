@@ -3,14 +3,19 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import sqlite3
+import time
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
 from html.parser import HTMLParser
+from multiprocessing import get_context
 from pathlib import Path
 from typing import Any
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
@@ -34,6 +39,23 @@ from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.midnight_oil.job import create_job, put_job_state
 from substrate.midnight_oil.job_store import OperationState, OwnerJob
+from substrate.midnight_oil.private_provider_composition import (
+    PRIVATE_PROVIDER_CAPABILITY_KEYRING_ENVS_ENV,
+    PRIVATE_PROVIDER_CAPABILITY_PATHS_ENV,
+    PRIVATE_PROVIDER_EXPECTED_COMPOSITION_SHA256_ENV,
+    PRIVATE_PROVIDER_EXPECTED_CURRENT_PATH_ENV,
+    PRIVATE_PROVIDER_EXPECTED_CURRENT_SHA256_ENV,
+    PRIVATE_PROVIDER_REVOCATION_KEYRING_ENVS_ENV,
+    PRIVATE_PROVIDER_TRUSTED_FLOOR_PATH_ENV,
+    PRIVATE_PROVIDER_TRUSTED_FLOOR_SHA256_ENV,
+    private_provider_composition_sha256,
+    signed_private_provider_revocation_head,
+)
+from substrate.midnight_oil.private_provider_policy import (
+    OWNER_PRIVATE_OUTPUT_SINK_POLICY_SHA256,
+    signed_private_provider_capability,
+    signed_private_provider_revocation_snapshot,
+)
 from substrate.midnight_oil.publication_capability import (
     ARXIV_ABSTRACT_ADAPTER_CONTRACT_SHA256,
     PUBLICATION_RIGHTS_POLICY_SHA256,
@@ -46,6 +68,9 @@ from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfigError,
     ProviderIdempotencyAttestation,
     provider_endpoint_sha256,
+)
+from substrate.midnight_oil.substack_authorization import (
+    SUBSTACK_PROVIDER_CONSTRAINTS_SHA256,
 )
 from substrate.midnight_oil.worker_cli import build_worker_runtime, run_worker_once
 
@@ -201,6 +226,116 @@ role_tiers:
     return runtime, environment, attestation
 
 
+def _install_private_provider_fixture(
+    tmp_path: Path, environment: dict[str, str]
+) -> None:
+    capability_private = bytes(range(32))
+    revocation_private = bytes(range(32, 64))
+
+    def public(private: bytes) -> bytes:
+        return Ed25519PrivateKey.from_private_bytes(private).public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+
+    now_ms = time.time_ns() // 1_000_000
+    capability = signed_private_provider_capability(
+        {
+            "schema_version": 1,
+            "purpose": "midnight_oil_owner_private_substack_research",
+            "provider_id": "private-provider",
+            "model_id": "private-model",
+            "route_key": "private-provider/private-model",
+            "api_mode": "responses_no_store",
+            "processing_region": "us",
+            "endpoint_origin_sha256": "1" * 64,
+            "account_project_scope_sha256": "2" * 64,
+            "adapter_contract_sha256": "3" * 64,
+            "dispatch_config_sha256": "4" * 64,
+            "allowed_router_roles": ("gatherer", "synthesizer", "verifier"),
+            "max_private_input_bytes": 8_192,
+            "max_output_bytes": 1_000_000,
+            "provider_constraints_sha256": SUBSTACK_PROVIDER_CONSTRAINTS_SHA256,
+            "evidence_ref": "urn:test:runtime-private-provider",
+            "evidence_sha256": "5" * 64,
+            "evidence_observed_at_ms": now_ms,
+            "output_policy_sha256": OWNER_PRIVATE_OUTPUT_SINK_POLICY_SHA256,
+            "revocation_epoch": 0,
+            "issued_at_ms": now_ms,
+            "not_before_ms": now_ms,
+            "expires_at_ms": now_ms + 600_000,
+        },
+        key_id="private-capability-issuer",
+        signing_key=capability_private,
+    )
+    snapshot = signed_private_provider_revocation_snapshot(
+        epoch=0,
+        issued_at_ms=now_ms,
+        key_id="private-revocation-issuer",
+        signing_key=revocation_private,
+    )
+    floor = signed_private_provider_revocation_head(
+        snapshot=snapshot,
+        previous_head_sha256="0" * 64,
+        key_id="private-revocation-issuer",
+        signing_key=revocation_private,
+    )
+    capability_path = tmp_path / "private-provider-capability.json"
+    floor_path = tmp_path / "private-provider-floor.json"
+    capability_path.write_text(capability.model_dump_json(), encoding="utf-8")
+    floor_path.write_text(floor.model_dump_json(), encoding="utf-8")
+    environment.update(
+        {
+            PRIVATE_PROVIDER_CAPABILITY_KEYRING_ENVS_ENV: json.dumps(
+                {"private-capability-issuer": "PRIVATE_CAPABILITY_PUBLIC_KEY"}
+            ),
+            PRIVATE_PROVIDER_REVOCATION_KEYRING_ENVS_ENV: json.dumps(
+                {"private-revocation-issuer": "PRIVATE_REVOCATION_PUBLIC_KEY"}
+            ),
+            PRIVATE_PROVIDER_CAPABILITY_PATHS_ENV: json.dumps([str(capability_path)]),
+            PRIVATE_PROVIDER_TRUSTED_FLOOR_PATH_ENV: str(floor_path),
+            PRIVATE_PROVIDER_TRUSTED_FLOOR_SHA256_ENV: floor.head_sha256,
+            PRIVATE_PROVIDER_EXPECTED_CURRENT_PATH_ENV: str(floor_path),
+            PRIVATE_PROVIDER_EXPECTED_CURRENT_SHA256_ENV: floor.head_sha256,
+            "PRIVATE_CAPABILITY_PUBLIC_KEY": base64.urlsafe_b64encode(
+                public(capability_private)
+            )
+            .decode()
+            .rstrip("="),
+            "PRIVATE_REVOCATION_PUBLIC_KEY": base64.urlsafe_b64encode(
+                public(revocation_private)
+            )
+            .decode()
+            .rstrip("="),
+        }
+    )
+    environment[PRIVATE_PROVIDER_EXPECTED_COMPOSITION_SHA256_ENV] = (
+        private_provider_composition_sha256(
+            capabilities=(capability,),
+            capability_keys={"private-capability-issuer": public(capability_private)},
+            revocation_keys={"private-revocation-issuer": public(revocation_private)},
+            floor=floor,
+            current=floor,
+            state_path=tmp_path / "state" / "private-provider-revocations.sqlite3",
+        )
+    )
+
+
+def _runtime_composition_process(
+    kind: str, config_path: str, environment: dict[str, str], results: Any
+) -> None:
+    reset_provider_registry()
+    if kind == "api":
+        composition = build_midnight_oil_api_runtime(
+            config_path, environ=environment
+        ).private_provider_composition
+    else:
+        composition = build_worker_runtime(
+            config_path, environ=environment
+        ).private_provider_composition
+    results.put(None if composition is None else composition.composition_sha256)
+
+
 def test_runtime_builds_same_durable_api_and_worker_composition(tmp_path: Path) -> None:
     path, environment, _ = _runtime_files(tmp_path)
     api = build_midnight_oil_api_runtime(path, environ=environment)
@@ -227,6 +362,147 @@ def test_runtime_loads_identical_signed_publication_capability_in_api_and_worker
         == worker.publication_capabilities.hashes
         == tuple(sorted(worker.publication_acquirers))
     )
+
+
+def test_runtime_composes_identical_inert_private_provider_reference(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    _install_private_provider_fixture(tmp_path, environment)
+    api = build_midnight_oil_api_runtime(path, environ=environment)
+    worker = build_worker_runtime(path, environ=environment)
+    api_private = api.private_provider_composition
+    worker_private = worker.private_provider_composition
+    assert api_private is not None and worker_private is not None
+    assert api_private.composition_sha256 == worker_private.composition_sha256
+    assert api_private.capability_hashes == worker_private.capability_hashes
+    assert api_private.current_head.head_sha256 == worker_private.current_head.head_sha256
+    assert api_private.confers_execution_authority is False
+    assert not hasattr(api.dependencies, "private_provider_composition")
+    assert worker.publication_acquirers == {}
+
+
+def test_api_and_worker_processes_converge_on_exact_pinned_composition(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    _install_private_provider_fixture(tmp_path, environment)
+    expected = environment[PRIVATE_PROVIDER_EXPECTED_COMPOSITION_SHA256_ENV]
+    context = get_context("spawn")
+    results = context.Queue()
+    processes = tuple(
+        context.Process(
+            target=_runtime_composition_process,
+            args=(kind, str(path), environment, results),
+        )
+        for kind in ("api", "worker")
+    )
+    for process in processes:
+        process.start()
+    for process in processes:
+        process.join(timeout=30)
+        assert process.exitcode == 0
+    assert {results.get(timeout=2), results.get(timeout=2)} == {expected}
+
+
+def test_runtime_private_provider_composition_is_optional_and_partial_is_fatal(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    assert build_midnight_oil_api_runtime(
+        path, environ=environment
+    ).private_provider_composition is None
+    reset_provider_registry()
+    _install_private_provider_fixture(tmp_path, environment)
+    environment.pop(PRIVATE_PROVIDER_TRUSTED_FLOOR_SHA256_ENV)
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        build_worker_runtime(path, environ=environment)
+    with pytest.raises(KeyError):
+        get_provider("verified-provider")
+
+
+def test_runtime_private_provider_keys_cannot_reuse_consent_or_substack(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    _install_private_provider_fixture(tmp_path, environment)
+    environment[PRIVATE_PROVIDER_CAPABILITY_KEYRING_ENVS_ENV] = json.dumps(
+        {"private-capability-issuer": "MO_PRIMARY_KEY"}
+    )
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        build_midnight_oil_api_runtime(path, environ=environment)
+
+    environment[PRIVATE_PROVIDER_CAPABILITY_KEYRING_ENVS_ENV] = json.dumps(
+        {"private-capability-issuer": "VERIFIED_PROVIDER_KEY"}
+    )
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        build_midnight_oil_api_runtime(path, environ=environment)
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        build_worker_runtime(path, environ=environment)
+
+    provider_material_path = tmp_path / "provider-material"
+    provider_material_path.mkdir()
+    path, environment, _ = _runtime_files(provider_material_path)
+    _install_private_provider_fixture(provider_material_path, environment)
+    environment["VERIFIED_PROVIDER_KEY"] = environment[
+        "PRIVATE_CAPABILITY_PUBLIC_KEY"
+    ]
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        build_midnight_oil_api_runtime(path, environ=environment)
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        build_worker_runtime(path, environ=environment)
+
+    substack_path = tmp_path / "substack"
+    substack_path.mkdir()
+    path, environment, _ = _runtime_files(substack_path)
+    _install_private_provider_fixture(substack_path, environment)
+    environment.update(
+        {
+            "ANTIEK_SUBSTACK_AUTH_ACTIVE_KEY_ID": "substack-key",
+            "ANTIEK_SUBSTACK_AUTH_SIGNING_KEY_ENV": "PRIVATE_CAPABILITY_PUBLIC_KEY",
+            "ANTIEK_SUBSTACK_AUTH_VERIFICATION_KEY_ENVS_JSON": json.dumps(
+                {"substack-key": "PRIVATE_CAPABILITY_PUBLIC_KEY"}
+            ),
+        }
+    )
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        create_midnight_oil_production_app(path, environ=environment)
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        build_worker_runtime(path, environ=environment)
+
+
+def test_private_provider_runtime_repr_redacts_capability_evidence(tmp_path: Path) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    _install_private_provider_fixture(tmp_path, environment)
+    api = build_midnight_oil_api_runtime(path, environ=environment)
+    worker = build_worker_runtime(path, environ=environment)
+    evidence = "urn:test:runtime-private-provider"
+    assert evidence not in repr(api.private_provider_composition)
+    assert evidence not in repr(worker.private_provider_composition)
+    assert evidence not in repr(api)
+    assert evidence not in repr(worker)
+
+
+def test_private_provider_store_failure_is_generic_and_context_suppressed(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    _install_private_provider_fixture(tmp_path, environment)
+    assert build_midnight_oil_api_runtime(path, environ=environment) is not None
+    database = tmp_path / "state" / "private-provider-revocations.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.execute(
+        "UPDATE private_provider_revocation_heads SET document_json = ?",
+        [json.dumps({"evidence_ref": "urn:private:must-not-leak"})],
+    )
+    connection.commit()
+    connection.close()
+    with pytest.raises(
+        MidnightOilRuntimeConfigError, match="Private provider composition is invalid"
+    ) as captured:
+        build_worker_runtime(path, environ=environment)
+    assert captured.value.__suppress_context__ is True
+    assert "must-not-leak" not in str(captured.value)
 
 
 def test_production_app_does_not_overwrite_attested_provider(tmp_path: Path) -> None:

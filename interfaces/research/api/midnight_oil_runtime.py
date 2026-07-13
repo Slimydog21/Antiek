@@ -9,6 +9,8 @@ attestations, or the dispatch plan are incomplete.
 from __future__ import annotations
 
 import os
+import sqlite3
+import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +21,11 @@ from substrate.dispatch import DispatchConfig
 from substrate.midnight_oil.consent_stage_coordinator import ConsentStagePlanCoordinator
 from substrate.midnight_oil.job import MidnightOilJob
 from substrate.midnight_oil.live import LiveExecutionPlan, build_router_live_plan
+from substrate.midnight_oil.private_provider_composition import (
+    InvalidPrivateProviderRevocationStore,
+    PrivateProviderComposition,
+    build_private_provider_composition,
+)
 from substrate.midnight_oil.publication_capability import PublicationCapabilityRegistry
 from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfig,
@@ -27,6 +34,7 @@ from substrate.midnight_oil.runtime import (
     build_runtime_stores,
     install_attested_providers,
     load_consent_keyring,
+    provider_api_key_inventory,
 )
 from substrate.midnight_oil.swarm_plan import SwarmLivePlan, build_swarm_live_plan
 
@@ -42,6 +50,7 @@ class MidnightOilApiRuntime:
     stores: MidnightOilRuntimeStores
     dependencies: MidnightOilDependencies
     dispatch_config: DispatchConfig
+    private_provider_composition: PrivateProviderComposition | None = None
 
 
 def build_midnight_oil_api_runtime(
@@ -56,9 +65,28 @@ def build_midnight_oil_api_runtime(
         config.publication_capability_paths,
         verification_keys=verification_keys,
     )
-    install_attested_providers(config, environment)
     dispatch_config = DispatchConfig.from_yaml(config.dispatch_config_path)
     stores = build_runtime_stores(config)
+    provider_key_envs, provider_key_values = provider_api_key_inventory(
+        config, environment
+    )
+    try:
+        private_provider_composition = build_private_provider_composition(
+            state_dir=config.state_dir,
+            environ=environment,
+            now_ms=time.time_ns() // 1_000_000,
+            forbidden_key_envs=frozenset(
+                config.consent_verification_key_envs.values()
+            )
+            | provider_key_envs,
+            forbidden_keys=tuple(verification_keys.values()),
+            forbidden_key_values=provider_key_values,
+        )
+    except (ValueError, InvalidPrivateProviderRevocationStore, sqlite3.Error, OSError):
+        raise MidnightOilRuntimeConfigError(
+            "Private provider composition is invalid"
+        ) from None
+    install_attested_providers(config, environment)
 
     def resolve_live_plan(job: MidnightOilJob) -> LiveExecutionPlan | SwarmLivePlan:
         required_roles = {"planner", "gatherer", "verifier", "synthesizer"}
@@ -87,6 +115,7 @@ def build_midnight_oil_api_runtime(
         stores=stores,
         dependencies=dependencies,
         dispatch_config=dispatch_config,
+        private_provider_composition=private_provider_composition,
     )
 
 
@@ -107,12 +136,17 @@ def create_midnight_oil_production_app(
         engagement_store=runtime.stores.engagement_store,
         session_store=runtime.stores.session_store,
     )
+    private = runtime.private_provider_composition
     try:
         substack_authorization_dependencies = build_substack_authorization_dependencies(
             engagement_store=runtime.stores.engagement_store,
             environ=environment,
-            forbidden_key_envs=frozenset(runtime.config.consent_verification_key_envs.values()),
-            forbidden_keys=tuple(runtime.dependencies.verification_keys.values()),
+            forbidden_key_envs=frozenset(
+                runtime.config.consent_verification_key_envs.values()
+            )
+            | (private.verification_key_envs if private is not None else frozenset()),
+            forbidden_keys=tuple(runtime.dependencies.verification_keys.values())
+            + (private.public_verification_keys if private is not None else ()),
         )
     except ValueError as exc:
         raise MidnightOilRuntimeConfigError(
@@ -126,6 +160,7 @@ def create_midnight_oil_production_app(
         operator_auth_environ=environment,
     )
     app.state.midnight_oil_runtime = runtime
+    app.state.private_provider_composition = private
     return app
 
 

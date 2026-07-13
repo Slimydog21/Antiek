@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 
 import pytest
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import ValidationError
 
 from substrate.midnight_oil.private_provider_policy import (
@@ -24,7 +26,19 @@ from substrate.midnight_oil.substack_authorization import (
     SUBSTACK_PROVIDER_CONSTRAINTS_SHA256,
 )
 
-_KEY = b"private-provider-policy-test-key!"
+_CAPABILITY_SIGNING_KEY = bytes(range(32))
+_REVOCATION_SIGNING_KEY = bytes(range(32, 64))
+
+
+def _public_key(private_key: bytes) -> bytes:
+    return Ed25519PrivateKey.from_private_bytes(private_key).public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+
+
+_CAPABILITY_PUBLIC_KEY = _public_key(_CAPABILITY_SIGNING_KEY)
+_REVOCATION_PUBLIC_KEY = _public_key(_REVOCATION_SIGNING_KEY)
 _OWNER = "1" * 64
 _UNIT = "cunit_" + "2" * 24
 _PREVIEW = "3" * 64
@@ -82,7 +96,9 @@ def _material(**changes: object) -> dict[str, object]:
 
 def _capability(**changes: object) -> PrivateProviderProcessingCapabilityV1:
     return signed_private_provider_capability(
-        _material(**changes), key_id="private-provider-2026-07", signing_key=_KEY
+        _material(**changes),
+        key_id="private-provider-capability-2026-07",
+        signing_key=_CAPABILITY_SIGNING_KEY,
     )
 
 
@@ -110,8 +126,8 @@ def _revocations(
         epoch=epoch,
         issued_at_ms=1_000,
         revoked_capability_sha256s=revoked,
-        key_id="private-provider-2026-07",
-        signing_key=_KEY,
+        key_id="private-provider-revocation-2026-07",
+        signing_key=_REVOCATION_SIGNING_KEY,
     )
 
 
@@ -125,7 +141,10 @@ def test_capability_is_canonical_signed_bounded_and_nonconferring() -> None:
     assert capability.provider_logging_allowed is False
     assert capability.router_fallback_allowed is False
     verify_private_provider_capability(
-        capability, verification_keys={"private-provider-2026-07": _KEY}
+        capability,
+        verification_keys={
+            "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+        },
     )
     parsed = parse_private_provider_capability_json(capability.model_dump_json())
     assert parsed == capability
@@ -151,16 +170,16 @@ def test_private_policy_domains_have_literal_golden_vectors() -> None:
         "0c06cace74dd11fc23e081358739ae879955ecc6f1da3688d5820673a83689b1"
     )
     assert capability.capability_sha256 == (
-        "ddbea7ed5f9a51c4b04665f4c74e95421c9ff8b4ba471b0cfde1a68046d7c629"
+        "0457ba8c0379ffc7497bfdb765c64a05afe136d7c243e67077382912a0bb9585"
     )
     assert snapshot.snapshot_sha256 == (
-        "aa7f006f5f686b8e852313ea3913b9b25a79a4461467c595fdba03fbc2d1cdb4"
+        "c5c79e08eb1c8994bd1be59f5c8a2c86fa9f9fe5c5c26602c1c3697edbc15c01"
     )
     assert root.taint_sha256 == (
-        "008117f5b13876d2a0389dba2ea2d1764ad8886b971c5d996037b672fbc00598"
+        "472cc50df9afe1013f3f2215114d8aa3c98ed88ce5dc34b8a2daefe9af39979b"
     )
     assert child.taint_sha256 == (
-        "8f5c016b5c13af4530cb14db9f5b15f60f754b3e7728b323c233ebdd5fd94254"
+        "51a9e5fe5b75f4bf132c03dcaad253387a41b2b85fff1cf6445fae755367f5b3"
     )
 
 
@@ -178,8 +197,8 @@ def test_capability_rejects_duplicate_unknown_and_tampered_material() -> None:
     with pytest.raises(ValidationError, match="constraints conflict"):
         signed_private_provider_capability(
             _material(provider_constraints_sha256="0" * 64),
-            key_id="private-provider-2026-07",
-            signing_key=_KEY,
+            key_id="private-provider-capability-2026-07",
+            signing_key=_CAPABILITY_SIGNING_KEY,
         )
     raw = capability.model_dump(mode="json")
     raw["evidence_sha256"] = "0" * 64
@@ -194,7 +213,10 @@ def test_capability_rejects_duplicate_unknown_and_tampered_material() -> None:
     )
     with pytest.raises(ValueError, match="unavailable"):
         verify_private_provider_capability(
-            forged, verification_keys={"private-provider-2026-07": _KEY}
+            forged,
+            verification_keys={
+                "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+            },
         )
 
 
@@ -203,7 +225,10 @@ def test_verifier_recomputes_material_after_validation_bypass() -> None:
     bypassed = capability.model_copy(update={"provider_id": "evil"})
     with pytest.raises(ValueError, match="unavailable"):
         verify_private_provider_capability(
-            bypassed, verification_keys={"private-provider-2026-07": _KEY}
+            bypassed,
+            verification_keys={
+                "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+            },
         )
 
 
@@ -236,9 +261,13 @@ def test_omitted_and_explicit_defaults_have_one_capability_identity() -> None:
         }
     }
     assert signed_private_provider_capability(
-        explicit, key_id="private-provider-2026-07", signing_key=_KEY
+        explicit,
+        key_id="private-provider-capability-2026-07",
+        signing_key=_CAPABILITY_SIGNING_KEY,
     ).capability_sha256 == signed_private_provider_capability(
-        omitted, key_id="private-provider-2026-07", signing_key=_KEY
+        omitted,
+        key_id="private-provider-capability-2026-07",
+        signing_key=_CAPABILITY_SIGNING_KEY,
     ).capability_sha256
 
 
@@ -299,7 +328,12 @@ def test_exact_registry_has_no_selection_or_fallback_and_uses_exclusive_horizon(
     )
     registry = PrivateProviderCapabilityReferenceRegistry(
         (first, second),
-        verification_keys={"private-provider-2026-07": _KEY},
+        capability_verification_keys={
+            "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+        },
+        revocation_verification_keys={
+            "private-provider-revocation-2026-07": _REVOCATION_PUBLIC_KEY
+        },
         revocation_snapshot=_revocations(),
     )
     assert (
@@ -337,7 +371,12 @@ def test_exact_registry_has_no_selection_or_fallback_and_uses_exclusive_horizon(
             registry.require_reference_match(**args)  # type: ignore[arg-type]
     revoked = PrivateProviderCapabilityReferenceRegistry(
         (first,),
-        verification_keys={"private-provider-2026-07": _KEY},
+        capability_verification_keys={
+            "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+        },
+        revocation_verification_keys={
+            "private-provider-revocation-2026-07": _REVOCATION_PUBLIC_KEY
+        },
         revocation_snapshot=_revocations(first.capability_sha256),
     )
     with pytest.raises(ValueError, match="unavailable"):
@@ -361,14 +400,24 @@ def test_revocation_snapshot_is_signed_bounded_and_recomputed() -> None:
     with pytest.raises(ValueError, match="snapshot is unavailable"):
         PrivateProviderCapabilityReferenceRegistry(
             (first,),
-            verification_keys={"private-provider-2026-07": _KEY},
+            capability_verification_keys={
+                "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+            },
+            revocation_verification_keys={
+                "private-provider-revocation-2026-07": _REVOCATION_PUBLIC_KEY
+            },
             revocation_snapshot=bypassed,
         )
     future_capability = _capability(revocation_epoch=3)
     with pytest.raises(ValueError, match="registry is stale"):
         PrivateProviderCapabilityReferenceRegistry(
             (future_capability,),
-            verification_keys={"private-provider-2026-07": _KEY},
+            capability_verification_keys={
+                "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+            },
+            revocation_verification_keys={
+                "private-provider-revocation-2026-07": _REVOCATION_PUBLIC_KEY
+            },
             revocation_snapshot=snapshot,
         )
 
@@ -377,7 +426,12 @@ def test_reference_match_rejects_future_or_stale_snapshot() -> None:
     capability = _capability(expires_at_ms=1_000_000)
     registry = PrivateProviderCapabilityReferenceRegistry(
         (capability,),
-        verification_keys={"private-provider-2026-07": _KEY},
+        capability_verification_keys={
+            "private-provider-capability-2026-07": _CAPABILITY_PUBLIC_KEY
+        },
+        revocation_verification_keys={
+            "private-provider-revocation-2026-07": _REVOCATION_PUBLIC_KEY
+        },
         revocation_snapshot=_revocations(),
     )
     base = {
@@ -464,7 +518,7 @@ def test_taint_requires_private_lineage_and_never_serializes_content() -> None:
         "selection_text",
         "excerpt_text",
         "output_text",
-        "signature_sha256",
+        "signature_ed25519",
         "authorization_id",
         "receipt_sha256",
         "canonical_url",

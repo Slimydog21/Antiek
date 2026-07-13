@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import signal
+import sqlite3
 import sys
 import threading
 import time
@@ -37,6 +38,11 @@ from .live_roles import (
     publication_source_receipt_id,
 )
 from .live_stage_engine import LiveSwarmStageEngine, RouterStageDispatch
+from .private_provider_composition import (
+    InvalidPrivateProviderRevocationStore,
+    PrivateProviderComposition,
+    build_private_provider_composition,
+)
 from .publication_capability import (
     PublicationCapabilityRegistry,
     require_pinned_publication_capability,
@@ -55,6 +61,7 @@ from .runtime import (
     build_runtime_stores,
     install_attested_providers,
     load_consent_keyring,
+    provider_api_key_inventory,
 )
 from .session_flywheel import finalize_bound_session, validate_context_binding
 from .spend_consent import JobConsentConfig
@@ -119,6 +126,7 @@ class MidnightOilWorkerRuntime:
         default_factory=PublicationCapabilityRegistry
     )
     publication_acquirers: Mapping[str, PublicationAcquirer] = field(default_factory=dict)
+    private_provider_composition: PrivateProviderComposition | None = None
 
 
 _SWARM_VALIDATOR_SHA256 = hashlib.sha256(b"antiek.midnight-oil.live-swarm-validator.v1").hexdigest()
@@ -460,8 +468,28 @@ def build_worker_runtime(
 ) -> MidnightOilWorkerRuntime:
     environment = os.environ if environ is None else environ
     config = MidnightOilRuntimeConfig.from_file(config_path)
-    install_attested_providers(config, environment)
     _, verification_keys = load_consent_keyring(config, environment)
+    stores = build_runtime_stores(config)
+    provider_key_envs, provider_key_values = provider_api_key_inventory(
+        config, environment
+    )
+    try:
+        private_provider_composition = build_private_provider_composition(
+            state_dir=config.state_dir,
+            environ=environment,
+            now_ms=time.time_ns() // 1_000_000,
+            forbidden_key_envs=frozenset(
+                config.consent_verification_key_envs.values()
+            )
+            | provider_key_envs,
+            forbidden_keys=tuple(verification_keys.values()),
+            forbidden_key_values=provider_key_values,
+        )
+    except (ValueError, InvalidPrivateProviderRevocationStore, sqlite3.Error, OSError):
+        raise MidnightOilRuntimeConfigError(
+            "Private provider composition is invalid"
+        ) from None
+    install_attested_providers(config, environment)
     publication_capabilities = PublicationCapabilityRegistry.from_paths(
         config.publication_capability_paths,
         verification_keys=verification_keys,
@@ -481,10 +509,11 @@ def build_worker_runtime(
     }
     return MidnightOilWorkerRuntime(
         config=config,
-        stores=build_runtime_stores(config),
+        stores=stores,
         dispatch_config=DispatchConfig.from_yaml(config.dispatch_config_path),
         publication_capabilities=publication_capabilities,
         publication_acquirers=publication_acquirers,
+        private_provider_composition=private_provider_composition,
     )
 
 

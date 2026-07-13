@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FSW-SPR-11B-B — Private provider live composition</title>
+<style>body{margin:0;background:#eef1ec;color:#182019;font:16px/1.55 system-ui,sans-serif}main{max-width:1080px;margin:auto;padding:40px 24px 80px}h1,h2,h3{font-family:Georgia,serif;line-height:1.15}h2{margin-top:2.3rem;border-bottom:1px solid #7d8d7c;padding-bottom:.35rem}.meta,.card,.decision{border:1px solid #93a093;background:#fbfff9;padding:16px;margin:14px 0}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:14px}table{width:100%;border-collapse:collapse;background:#fbfff9}th,td{border:1px solid #93a093;padding:9px;text-align:left;vertical-align:top}code{background:#dfe8dc;padding:.1em .3em}.deny{color:#8c2119}.small{font-size:.9rem;color:#536153}</style></head>
+<body><main><p><a href="sprint-11b-private-provider-output-taint.html">← FSW-SPR-11B</a></p>
+<h1>Rollback-floored private-provider composition</h1>
+<div class="meta"><strong>ID:</strong> FSW-SPR-11B-B · <strong>Status:</strong> accepted 2026-07-13 · <strong>Parent:</strong> FSW-SPR-11B sprint 11B-B · <strong>Cycle:</strong> 23 · <strong>Boundary:</strong> authenticated composition only; no execution consumer.</div>
+
+<section><h2>1. Falsifiable objective</h2><p>API and worker must independently load the same exact private-provider capabilities and latest locally durable revocation head, prove that head descends from an externally pinned signed floor through an unbroken cumulative chain, and derive one identical non-conferring composition fingerprint. Missing, partial, stale, forked, rolled-back, corrupt, key-colliding, or divergent state fails before provider registration or worker polling.</p><div class="decision"><strong>Non-goal:</strong> this sprint does not change mixed readiness, prepare, context, consent, queue payloads, acquisition, model selection, dispatch, receipts, deposit, twins, retrieval, graph, HTML serving, sharing, export, ads, evaluation, or training.</div></section>
+
+<section><h2>2. Trust model</h2><div class="grid">
+<article class="card"><h3>Offline issuers</h3><p>Capability and revocation artifacts use Ed25519. Online API/worker environments receive only 32-byte public keys and cannot mint accepted artifacts.</p></article>
+<article class="card"><h3>Separate roles</h3><p>Capability-issuer and revocation-issuer key ids, environment names, and public-key bytes are disjoint and must also not reuse consent or Substack authority material.</p></article>
+<article class="card"><h3>External floor and current pin</h3><p>An exact signed floor and an exact expected-current head each have a SHA-256 and artifact path outside the state database. Current state must descend from the immutable floor and equal the deployment current pin. Restoring the database, floor, and deployment pin together is explicitly outside this local proof.</p></article>
+<article class="card"><h3>Single shared state</h3><p>SQLite locking is authoritative only when API and worker share the same canonical local persistent filesystem. This is not distributed consensus and does not claim unsafe NFS semantics.</p></article>
+</div></section>
+
+<section><h2>3. Signed contracts</h2><table><thead><tr><th>Contract</th><th>Closed material</th><th>Verification</th></tr></thead><tbody>
+<tr><td>Capability v1</td><td>Existing exact provider/model/route/handling/evidence/policy/time material; Ed25519 signature under the capability-issuer role.</td><td>Recompute content hash/id after parsing, then verify the detached signature with an online public key.</td></tr>
+<tr><td>Snapshot v1</td><td>Registry, epoch, issuance, sorted cumulative revoked-capability hashes; Ed25519 revocation-issuer signature.</td><td>Recompute snapshot hash and verify with the revocation public-key role.</td></tr>
+<tr><td>RevocationHeadV1</td><td>Exact nested snapshot, predecessor head SHA, epoch/time, key id, head hash, Ed25519 signature, <code>confers_execution_authority=false</code>.</td><td>Head and nested snapshot are independently recomputed and verified. Epoch zero alone uses the all-zero predecessor sentinel.</td></tr>
+<tr><td>Composition fingerprint</td><td>Sorted capability hashes, public-key fingerprints, trusted floor, current head/epoch/snapshot, canonical state-path hash, reference-only/non-conferral literals.</td><td>API and worker independently derive the SHA-256 and must exact-match the same external deployment pin before availability.</td></tr>
+</tbody></table></section>
+
+<section><h2>4. Durable current-head transaction</h2><ol>
+<li>A fresh database is schema-created but remains unusable until the exact externally pinned, signed floor is explicitly admitted.</li>
+<li>Every read uses one SQLite transaction and walks predecessor rows from current to the trusted floor, bounding and cycle-checking the chain while recomputing every nested and wrapper signature/hash and matching each signed document to its persisted primary key, epoch, predecessor, and issuance columns.</li>
+<li>A writer uses <code>BEGIN IMMEDIATE</code>, re-reads current, requires the exact expected predecessor, exact next epoch, strictly later issuance, and a cumulative revoked-hash superset. At 1,024 retained rows it rejects before insert and requires re-anchor, so row 1,025 can never commit.</li>
+<li>History insert and singleton current-pointer update commit atomically. Exact replay is idempotent; a competing child loses without insertion or pointer change.</li>
+<li>At composition, the externally pinned expected current may be the persisted current or its exact one-step signed successor. The latter is admitted by the same CAS; any rollback, skip, alternate child, or older deployment pin is fatal.</li>
+<li>Before the 1,024-row audit bound, an operator advances the external trusted floor to an already-current signed head. Admission proves that exact head is in the one linear current history, then atomically prunes only older ancestors. Reverting to the pruned floor is rejected. This rollback-safe re-anchor makes the bound operational rather than self-expiring.</li>
+<li>SQLite uses WAL, foreign keys, full synchronous durability, busy timeout, a canonical non-symlink database path, restrictive file mode, and exact schema checks.</li>
+</ol></section>
+
+<section><h2>5. Closed optional environment group</h2><table><thead><tr><th>Name</th><th>Meaning</th></tr></thead><tbody>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_CAPABILITY_PUBLIC_KEY_ENVS_JSON</code></td><td>1–16 capability issuer key ids mapped to public-key environment names.</td></tr>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_REVOCATION_PUBLIC_KEY_ENVS_JSON</code></td><td>1–16 disjoint revocation issuer key ids mapped to public-key environment names.</td></tr>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_CAPABILITY_PATHS_JSON</code></td><td>1–8 exact absolute regular capability files; no glob or directory discovery.</td></tr>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_TRUSTED_FLOOR_PATH</code></td><td>Exact absolute signed floor-head file.</td></tr>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_TRUSTED_FLOOR_SHA256</code></td><td>External exact floor anchor.</td></tr>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_EXPECTED_CURRENT_HEAD_PATH</code></td><td>Exact absolute signed deployment current-head file; initially it may equal the floor.</td></tr>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_EXPECTED_CURRENT_HEAD_SHA256</code></td><td>External exact deployment current pin and one-step rotation candidate.</td></tr>
+<tr><td><code>ANTIEK_PRIVATE_PROVIDER_EXPECTED_COMPOSITION_SHA256</code></td><td>External exact fingerprint pin over capabilities, both keyrings, floor/current, and canonical shared state path.</td></tr>
+</tbody></table><p>All absent means composition disabled and creates no private database. Any partial group is fatal. JSON is byte-bounded and duplicate-key rejecting; paths are canonicalized and duplicate aliases reject; keys are strict base64url Ed25519 public bytes.</p></section>
+
+<section><h2>6. Runtime isolation</h2><p>The shared builder runs independently in <code>build_midnight_oil_api_runtime</code> and <code>build_worker_runtime</code>. Both roots independently inventory consent, attested-provider API-key, and Substack key aliases/material and reject same-alias, exact-raw, or normalized 32-byte reuse before composing. Each preflights the externally pinned composition fingerprint from parsed signed artifacts and the canonical state path before constructing or mutating the store, then rechecks after admission. The result exists only on their outer runtime records and on private app state for internal diagnostics; capability and registry fields are repr-redacted. Runtime-facing validation/store/filesystem failures are generic and suppress nested raw values. The composition is forbidden from <code>MidnightOilDependencies</code>, publication capability selection, acquirers, route registration, readiness-green logic, stage execution, or any outward sink. Substack key loading receives the private key environment/material set as a forbidden purpose.</p></section>
+
+<section><h2>7. Adversarial acceptance</h2><div class="grid">
+<article class="card"><h3>Cryptography</h3><p>Reject unknown key, wrong role, public-bytes-as-private forgery, signature/hash substitution, validation-bypassed mutation, duplicate JSON, and oversized artifacts.</p></article>
+<article class="card"><h3>Chain</h3><p>Reject wrong/missing predecessor, epoch reuse/skip/regression, time regression/future/staleness, revocation omission, cycle, missing floor, fork, pointer corruption, valid signed row substitution, schema lookalikes without constraints, and altered stored JSON.</p></article>
+<article class="card"><h3>Transactions</h3><p>Restart observes old or complete new state. Concurrent API/worker composition of one pinned successor converges on one row; exact replay is idempotent; no orphan losing child remains.</p></article>
+<article class="card"><h3>Composition</h3><p>Reject partial env, duplicate key/path, role/cross-purpose alias or material reuse, head/composition pin mismatch, capability/keyring/path divergence, and stale restart.</p></article>
+<article class="card"><h3>Leakage</h3><p>No private key, API key, excerpt, prompt, output, source identity, evidence URL, raw filesystem path, or content-derived private hash enters errors, logs, routes, readiness, or public receipts.</p></article>
+<article class="card"><h3>Legacy</h3><p>All-private-env-absent preserves runtime JSON, route surface, manifest v1/v2, consent v1–v5, Substack rejection, queue, worker, deposit, graph, and output policy vectors.</p></article>
+</div></section>
+
+<section><h2>8. Deferred operating requirements</h2><p>The deployment now has an exact one-step signed rotation seam and rollback-safe floor re-anchor/pruning procedure. Operators must re-anchor before 1,024 retained heads. The five-minute freshness policy still requires a real issuer/distribution operating model before execution: either a tightly scoped online revocation signer or a deliberately revised signed freshness contract. Production provider evidence and keys do not yet exist, so production remains unconfigured. Future 11B-D must reload current state immediately before dispatch; a startup composition is never lasting authority.</p></section>
+
+<section><h2>9. Verification gates</h2><pre><code>uv run --python 3.14 --with pytest python -m pytest -q \
+  tests/test_midnight_oil_private_provider_policy.py \
+  tests/test_midnight_oil_private_provider_composition.py \
+  tests/test_midnight_oil_runtime.py
+uv run --python 3.14 --with mypy --with pytest mypy --strict &lt;changed Python&gt;
+uv run ruff check &lt;changed Python&gt;
+git diff --check
+hardenx --strict --json .</code></pre><p>Three independent reviewers must ACCEPT. A narrow green suite cannot prove runtime isolation; broad Midnight Oil regression and static import/search evidence are also required.</p></section>
+
+<section><h2>10. Accepted execution evidence</h2><p>Cycle 23 closed after four adversarial sharpen rounds. Final evidence: 539 broad Midnight Oil tests passed; strict mypy passed across all five changed production modules; Ruff and <code>git diff --check</code> passed; spawned-process API/worker and competing-child proofs passed; the literal 1,024-row boundary rejected pre-insert and recovered by signed re-anchor; hardenx reported LOW with 0 real findings and 13 advisory-only findings. Gibbs, Hume, and Confucius independently ACCEPTED the final snapshot.</p></section>
+
+<section><h2>11. Rejected shortcuts</h2><p>HMAC “verification-only” keys; one key for capability and revocation roles; a self-asserted epoch without exact hash; a chain stored without an external floor; auto-genesis; blind current-pointer overwrite; mutable/delete repair; directory globbing; API-only composition; worker fallback; raw DuckDB access; reuse of the shared stale-lock-unlink flock; cached startup state as dispatch authority; putting the composition into route dependencies; or enabling any sink.</p></section>
+</main></body></html>
