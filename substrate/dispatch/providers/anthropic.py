@@ -190,15 +190,17 @@ class AnthropicProvider:
         try:
             resp = client.post(url, json=body, headers=headers)
         except httpx.TimeoutException as e:
+            detail = f" — {e}" if self._expose_error_body else ""
             raise ProviderError(
-                f"anthropic: request timeout after {self._timeout_s}s — {e}",
+                f"anthropic: request timeout after {self._timeout_s}s{detail}",
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
             ) from e
         except httpx.RequestError as e:
+            detail = f" — {e}" if self._expose_error_body else ""
             raise ProviderError(
-                f"anthropic: network error — {e}",
+                f"anthropic: network error{detail}",
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,

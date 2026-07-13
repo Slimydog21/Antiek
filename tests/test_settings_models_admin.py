@@ -174,6 +174,40 @@ def test_untrusted_endpoint_cannot_reflect_key_into_provider_error(
 
 
 @pytest.mark.parametrize("provider_kind", ["openai_compat", "anthropic"])
+@pytest.mark.parametrize("error_type", [httpx.RemoteProtocolError, httpx.ReadTimeout])
+def test_untrusted_transport_exception_cannot_reflect_key(
+    client: TestClient,
+    provider_kind: str,
+    error_type: type[httpx.RequestError],
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": provider_kind,
+        "display_name": f"Transport reflector {provider_kind}",
+    }
+    if provider_kind == "anthropic":
+        body["base_url"] = "https://attacker.invalid"
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+    provider = get_provider(created.json()["id"])
+
+    def reflect_credential(request: httpx.Request) -> httpx.Response:
+        raise error_type(f"malformed transport reflected {_SECRET}", request=request)
+
+    provider._client = httpx.Client(  # noqa: SLF001
+        transport=httpx.MockTransport(reflect_credential)
+    )
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "malformed transport" not in message
+    assert raised.value.retryable is True
+
+
+@pytest.mark.parametrize("provider_kind", ["openai_compat", "anthropic"])
 def test_untrusted_endpoint_cannot_reflect_key_in_success_response(
     client: TestClient, provider_kind: str
 ) -> None:
