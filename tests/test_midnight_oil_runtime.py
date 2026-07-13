@@ -34,6 +34,11 @@ from substrate.graph import ensure_initialized
 from substrate.graph.ops import insert_chunk, insert_document
 from substrate.midnight_oil.job import create_job, put_job_state
 from substrate.midnight_oil.job_store import OperationState, OwnerJob
+from substrate.midnight_oil.publication_capability import (
+    ARXIV_ABSTRACT_ADAPTER_CONTRACT_SHA256,
+    PUBLICATION_RIGHTS_POLICY_SHA256,
+    signed_publication_capability,
+)
 from substrate.midnight_oil.readiness import build_readiness_receipt
 from substrate.midnight_oil.readiness import main as readiness_main
 from substrate.midnight_oil.runtime import (
@@ -79,7 +84,9 @@ def _providers() -> Iterator[None]:
     reset_provider_registry()
 
 
-def _runtime_files(tmp_path: Path, *, swarm: bool = False) -> tuple[Path, dict[str, str], Path]:
+def _runtime_files(
+    tmp_path: Path, *, swarm: bool = False, publication_capability: bool = False
+) -> tuple[Path, dict[str, str], Path]:
     dispatch = tmp_path / "dispatch.yaml"
     dispatch.write_text(
         """
@@ -125,6 +132,46 @@ role_tiers:
         ),
         encoding="utf-8",
     )
+    publication_paths: list[str] = []
+    if publication_capability:
+        for index, expires_at_ms in enumerate((4_000_000, 5_000_000), start=1):
+            capability = signed_publication_capability(
+                {
+                    "schema_version": 1,
+                    "capability_id": "midnight-oil-arxiv-abstract-v1",
+                    "connector_id": "acquisition.arxiv.atom",
+                    "connector_version": "midnight-oil-arxiv-abstract-v1",
+                    "adapter_contract_sha256": ARXIV_ABSTRACT_ADAPTER_CONTRACT_SHA256,
+                    "source_kind": "arxiv",
+                    "acquisition_mode": "arxiv_abstract",
+                    "extraction_mode": "metadata_abstract",
+                    "rights_policy_id": "antiek-publication-research-v1",
+                    "rights_policy_sha256": PUBLICATION_RIGHTS_POLICY_SHA256,
+                    "allowed_rights_tiers": ("T1",),
+                    "scheme": "https",
+                    "host": "export.arxiv.org",
+                    "port": 443,
+                    "path": "/api/query",
+                    "request_mode": "id_list_single",
+                    "redirect_policy": "deny",
+                    "proxy_policy": "deny",
+                    "dns_policy": "resolve-on-connect-public-only-v1",
+                    "tls_policy": "system-ca-hostname-tls12-v1",
+                    "rate_governor_id": "arxiv-host-global-v1",
+                    "max_response_bytes": 256_000,
+                    "max_excerpt_bytes": 32_000,
+                    "timeout_ms": 15_000,
+                    "issued_at_ms": 0,
+                    "not_before_ms": 0,
+                    "expires_at_ms": expires_at_ms,
+                    "evidence_ref": f"urn:test:runtime-publication-capability:{index}",
+                },
+                key_id="primary",
+                signing_key=b"k" * 32,
+            )
+            capability_path = tmp_path / f"publication-capability-{index}.json"
+            capability_path.write_text(capability.model_dump_json(), encoding="utf-8")
+            publication_paths.append(str(capability_path))
     runtime = tmp_path / "runtime.json"
     runtime.write_text(
         json.dumps(
@@ -139,6 +186,7 @@ role_tiers:
                 "consent_signing_key_env": "MO_PRIMARY_KEY",
                 "consent_verification_key_envs": {"primary": "MO_PRIMARY_KEY"},
                 "provider_attestation_paths": [str(attestation)],
+                "publication_capability_paths": publication_paths,
                 "worker_lease_ms": 60_000,
                 "worker_poll_ms": 1_000,
             }
@@ -164,6 +212,21 @@ def test_runtime_builds_same_durable_api_and_worker_composition(tmp_path: Path) 
     assert api.dependencies.live_plan_resolver is not None
     provider = get_provider("verified-provider")
     assert provider.idempotency_guaranteed is True  # type: ignore[attr-defined]
+
+
+def test_runtime_loads_identical_signed_publication_capability_in_api_and_worker(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path, publication_capability=True)
+    api = build_midnight_oil_api_runtime(path, environ=environment)
+    worker = build_worker_runtime(path, environ=environment)
+    assert api.dependencies.publication_capabilities.hashes
+    assert len(api.dependencies.publication_capabilities.hashes) == 2
+    assert (
+        api.dependencies.publication_capabilities.hashes
+        == worker.publication_capabilities.hashes
+        == tuple(sorted(worker.publication_acquirers))
+    )
 
 
 def test_production_app_does_not_overwrite_attested_provider(tmp_path: Path) -> None:

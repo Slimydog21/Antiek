@@ -16,15 +16,19 @@ from interfaces.research.api.engagement_routes import (
     reset_engagement_stores,
 )
 from interfaces.research.api.midnight_oil_routes import (
+    CreateJobBody,
     MidnightOilDependencies,
+    create_job_authority,
     register_midnight_oil_routes,
 )
+from substrate.engagement_spine.source_refs import parse_source_reference
 from substrate.engagement_spine.store import FileEngagementStore
 from substrate.midnight_oil.budget_ledger import (
     BudgetLedger,
     UnknownCallOutcome,
     UnknownOutcomePersistenceError,
 )
+from substrate.midnight_oil.consent_stage_coordinator import ConsentStagePlanCoordinator
 from substrate.midnight_oil.durable_job import DurableJobStore
 from substrate.midnight_oil.job import InMemoryJobStore
 from substrate.midnight_oil.job_store import (
@@ -36,7 +40,23 @@ from substrate.midnight_oil.job_store import (
 )
 from substrate.midnight_oil.live import LiveExecutionPlan
 from substrate.midnight_oil.operation_queue import DurableOperationQueue
+from substrate.midnight_oil.publication_capability import (
+    ARXIV_ABSTRACT_ADAPTER_CONTRACT_SHA256,
+    PUBLICATION_RIGHTS_POLICY_SHA256,
+    PublicationCapabilityRegistry,
+    PublicationConnectorCapability,
+    signed_publication_capability,
+)
+from substrate.midnight_oil.publication_sources import (
+    build_reviewed_publication_manifest,
+)
 from substrate.midnight_oil.spend_consent import SpendConsentStore
+from substrate.midnight_oil.swarm_plan import (
+    RoleDispatchPlan,
+    SwarmLivePlan,
+    role_dispatch_plan_hash,
+    swarm_live_plan_hash,
+)
 from substrate.midnight_oil.worker import (
     FakeClock,
     WorkerStepResult,
@@ -80,6 +100,103 @@ def _client(deps: MidnightOilDependencies) -> TestClient:
     register_midnight_oil_routes(app, dependencies=deps)
     register_engagement_routes(app)
     return TestClient(app)
+
+
+def _publication_capability(*, expires_at_ms: int) -> PublicationConnectorCapability:
+    return signed_publication_capability(
+        {
+            "schema_version": 1,
+            "capability_id": "midnight-oil-arxiv-abstract-v1",
+            "connector_id": "acquisition.arxiv.atom",
+            "connector_version": "midnight-oil-arxiv-abstract-v1",
+            "adapter_contract_sha256": ARXIV_ABSTRACT_ADAPTER_CONTRACT_SHA256,
+            "source_kind": "arxiv",
+            "acquisition_mode": "arxiv_abstract",
+            "extraction_mode": "metadata_abstract",
+            "rights_policy_id": "antiek-publication-research-v1",
+            "rights_policy_sha256": PUBLICATION_RIGHTS_POLICY_SHA256,
+            "allowed_rights_tiers": ("T1",),
+            "scheme": "https",
+            "host": "export.arxiv.org",
+            "port": 443,
+            "path": "/api/query",
+            "request_mode": "id_list_single",
+            "redirect_policy": "deny",
+            "proxy_policy": "deny",
+            "dns_policy": "resolve-on-connect-public-only-v1",
+            "tls_policy": "system-ca-hostname-tls12-v1",
+            "rate_governor_id": "arxiv-host-global-v1",
+            "max_response_bytes": 256_000,
+            "max_excerpt_bytes": 32_000,
+            "timeout_ms": 15_000,
+            "issued_at_ms": 0,
+            "not_before_ms": 0,
+            "expires_at_ms": expires_at_ms,
+            "evidence_ref": "urn:test:authorized-publication-egress",
+        },
+        key_id="integration-key",
+        signing_key=b"integration-signing-key-material!!",
+    )
+
+
+def _create_publication_job(
+    deps: MidnightOilDependencies, *, capability: PublicationConnectorCapability
+) -> str:
+    manifest = build_reviewed_publication_manifest(
+        [parse_source_reference("arxiv:1706.03762").to_dict()]
+    )
+    result = create_job_authority(
+        deps=deps,
+        owner="alice",
+        body=CreateJobBody(
+            goals=["Ground this analysis"], duration_minutes=1, live=True
+        ),
+        job_id="moil_publication_expiry",
+        asset_id="asset_publication_expiry",
+        context_binding={
+            "context_binding_sha256": "c" * 64,
+            "publication_manifest_sha256": manifest.manifest_sha256,
+            "publication_manifest_json": manifest.model_dump_json(),
+            "publication_preflight_ready": "true",
+            "publication_capability_sha256": capability.capability_sha256,
+            "publication_capability_id": capability.capability_id,
+            "publication_capability_expires_at_ms": str(capability.expires_at_ms),
+        },
+    )
+    return result.job.job_id
+
+
+def _publication_swarm_plan() -> SwarmLivePlan:
+    roles: list[RoleDispatchPlan] = []
+    for role in ("planner", "gatherer", "verifier", "synthesizer"):
+        fields = {
+            "role": role,
+            "allowed_routes": ("test-provider/test-model",),
+            "projected_max_cents": 1,
+            "dispatch_config_sha256": "1" * 64,
+            "max_input_tokens": 1_024,
+            "max_prompt_bytes": 4_096,
+            "max_output_tokens": 256,
+        }
+        roles.append(
+            RoleDispatchPlan(
+                **fields,  # type: ignore[arg-type]
+                plan_hash=role_dispatch_plan_hash(**fields),
+            )
+        )
+    role_tuple = tuple(roles)
+    total = 6
+    fields = {
+        "goals_count": 1,
+        "gather_per_goal": 3,
+        "source_policy": ("operator_corpus",),
+        "roles": role_tuple,
+        "projected_total_cents": total,
+    }
+    return SwarmLivePlan(
+        **fields,  # type: ignore[arg-type]
+        plan_hash=swarm_live_plan_hash(**fields),
+    )
 
 
 def test_confirmed_collective_prepares_one_context_signed_live_job(tmp_path: Path) -> None:
@@ -674,3 +791,88 @@ def test_altered_operation_and_ceiling_cannot_cross_signed_authority(tmp_path: P
         json={"job_id": first_job},
     )
     assert wrong_ceiling.status_code == 403
+
+
+def test_expired_publication_capability_prevents_queue_delivery(tmp_path: Path) -> None:
+    now = [1_000_000]
+    capability = _publication_capability(expires_at_ms=2_000_000)
+    deps = replace(
+        _dependencies(tmp_path),
+        clock_ms=lambda: now[0],
+        live_plan_resolver=lambda _job: _publication_swarm_plan(),
+        consent_stage_coordinator=ConsentStagePlanCoordinator(tmp_path / "stage-locks"),
+        publication_capabilities=PublicationCapabilityRegistry((capability,)),
+    )
+    job_id = _create_publication_job(deps, capability=capability)
+    client = _client(deps)
+    headers = {"x-test-user": "alice"}
+
+    issued = client.post(
+        f"/midnight-oil/jobs/{job_id}/spend-consent",
+        headers=headers,
+        json={"use_recommended": True},
+    )
+    assert issued.status_code == 200, issued.text
+    operation_id = issued.json()["operation_id"]
+
+    now[0] = capability.expires_at_ms
+    rejected = client.post(
+        "/midnight-oil/run",
+        headers={**headers, "X-Midnight-Oil-Spend-Consent": issued.json()["token"]},
+        json={"job_id": job_id},
+    )
+    assert rejected.status_code == 409, rejected.text
+    assert deps.operation_queue is not None
+    assert deps.operation_queue.get(operation_id) is None
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id=job_id)
+    assert authority is not None
+    assert authority.operation_state is OperationState.CONSENT_ISSUED
+    assert authority.dispatch_started_at_ms is None
+
+
+def test_expired_publication_capability_prevents_consent_issue(tmp_path: Path) -> None:
+    now = [2_000_000]
+    capability = _publication_capability(expires_at_ms=2_000_000)
+    deps = replace(
+        _dependencies(tmp_path),
+        clock_ms=lambda: now[0],
+        live_plan_resolver=lambda _job: _publication_swarm_plan(),
+        consent_stage_coordinator=ConsentStagePlanCoordinator(tmp_path / "stage-locks"),
+        publication_capabilities=PublicationCapabilityRegistry((capability,)),
+    )
+    job_id = _create_publication_job(deps, capability=capability)
+    rejected = _client(deps).post(
+        f"/midnight-oil/jobs/{job_id}/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    )
+    assert rejected.status_code == 409, rejected.text
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id=job_id)
+    assert authority is not None
+    assert authority.operation_state is OperationState.NONE
+    assert authority.operation_id is None
+
+
+def test_publication_job_rejects_legacy_live_plan_before_persisting_authority(
+    tmp_path: Path,
+) -> None:
+    capability = _publication_capability(expires_at_ms=2_000_000)
+
+    def legacy_plan(_job):  # type: ignore[no-untyped-def]
+        return LiveExecutionPlan(
+            allowed_routes=("test-provider/test-model",),
+            projected_max_cents=25,
+            dispatch_config_hash="1" * 64,
+            max_input_bytes=32_000,
+        )
+
+    deps = replace(
+        _dependencies(tmp_path),
+        live_plan_resolver=legacy_plan,
+        publication_capabilities=PublicationCapabilityRegistry((capability,)),
+    )
+    with pytest.raises(ValueError, match="signed swarm authority"):
+        _create_publication_job(deps, capability=capability)
+    assert deps.owner_jobs.get_job(
+        owner_user_id="alice", job_id="moil_publication_expiry"
+    ) is None

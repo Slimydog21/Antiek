@@ -207,6 +207,9 @@ export function CollectiveExecutionPanel(props: {
             className="space-y-1 rounded border border-black/15 p-2 font-sans dark:border-white/15"
             data-testid="collective-execution-source-scope"
             data-source-manifest-sha256={prepared.source_scope.manifest_sha256}
+            data-publication-capability-sha256={
+              prepared.source_scope.capability_sha256 ?? "corpus-only"
+            }
           >
             <p className="font-semibold">
               Reviewed publication scope ({prepared.source_scope.required_count})
@@ -229,6 +232,12 @@ export function CollectiveExecutionPanel(props: {
               outside this signed scope. Connector and rights checks run before publication bytes
               may reach a model.
             </p>
+            {prepared.source_scope.capability_sha256 ? (
+              <p className="opacity-75" data-testid="collective-execution-source-attestation">
+                Egress attestation: {prepared.source_scope.capability_sha256.slice(0, 12)}… · valid
+                through {new Date(prepared.source_scope.capability_expires_at_ms ?? 0).toISOString()}
+              </p>
+            ) : null}
           </div>
           {shownState === "consent_required" ? (
             <div className="flex items-end gap-2">

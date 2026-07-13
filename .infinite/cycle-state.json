@@ -1,14 +1,14 @@
 {
   "cycle": 17,
-  "phase": "INVESTIGATE",
+  "phase": "PUBLISH",
   "subgoal": "Build an attested fixed-egress publication connector capability without weakening signed source scope",
   "lanes": [],
   "engineHealth": {
-    "grok": "ok",
-    "mimo": "ok",
+    "grok": "degraded: HTTP 402 balance exhausted during Cycle 17 review",
+    "mimo": "degraded: review exceeded bounded orchestration window",
     "claude": "ok",
-    "codex": "ok",
-    "glm-cc": "ok",
+    "codex": "degraded: review interrupted after useful archaeology without final report",
+    "glm-cc": "degraded: ultracode invocation returned no retrievable report",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -19,7 +19,8 @@
     {"cycle": 13, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 14, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 15, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
-    {"cycle": 16, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
+    {"cycle": 16, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
+    {"cycle": 17, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11}
   ],
-  "updatedAt": "2026-07-12T20:12:00Z"
+  "updatedAt": "2026-07-13T07:25:00Z"
 }

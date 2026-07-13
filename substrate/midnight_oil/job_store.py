@@ -338,6 +338,9 @@ _PAYLOAD_FIELDS: Final = frozenset(
         "publication_manifest_sha256",
         "publication_manifest_json",
         "publication_preflight_ready",
+        "publication_capability_sha256",
+        "publication_capability_id",
+        "publication_capability_expires_at_ms",
     }
 )
 

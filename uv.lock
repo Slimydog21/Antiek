@@ -191,6 +191,7 @@ name = "antiek"
 version = "0.0.1"
 source = { editable = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "cryptography" },
     { name = "duckdb" },
     { name = "fastapi" },
@@ -264,6 +265,7 @@ requires-dist = [
     { name = "arxiv", marker = "extra == 'arxiv'", specifier = ">=2.1" },
     { name = "beautifulsoup4", marker = "extra == 'urls'", specifier = ">=4.12" },
     { name = "browserbase", marker = "extra == 'browserbase'", specifier = ">=0.4" },
+    { name = "certifi", specifier = ">=2024.7.4" },
     { name = "cryptography", specifier = ">=42.0" },
     { name = "daytona-sdk", marker = "extra == 'remote-exec'", specifier = ">=0.10" },
     { name = "duckdb", specifier = ">=1.1.0" },

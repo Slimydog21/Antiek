@@ -45,6 +45,7 @@ def context_binding_sha256(
     research_tier: str,
     fanout_depth: int,
     publication_manifest_sha256: str | None = None,
+    publication_capability_sha256: str | None = None,
 ) -> str:
     """Commit consent to the complete immutable product/execution tuple."""
     material: dict[str, object] = {
@@ -65,6 +66,12 @@ def context_binding_sha256(
         if len(publication_manifest_sha256) != 64:
             raise ValueError("publication manifest hash is invalid")
         material["publication_manifest_sha256"] = publication_manifest_sha256
+    if publication_capability_sha256 is not None:
+        if len(publication_capability_sha256) != 64:
+            raise ValueError("publication capability hash is invalid")
+        if publication_manifest_sha256 is None:
+            raise ValueError("publication capability requires a publication manifest")
+        material["publication_capability_sha256"] = publication_capability_sha256
     return hashlib.sha256(
         b"antiek:midnight-oil-context-binding:v1\0"
         + json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
@@ -110,6 +117,11 @@ def validate_context_binding(authority: OwnerJob, job: MidnightOilJob) -> None:
         publication_manifest_sha256=(
             publication_manifest.manifest_sha256
             if publication_manifest is not None
+            else None
+        ),
+        publication_capability_sha256=(
+            str(payload["publication_capability_sha256"])
+            if payload.get("publication_capability_sha256") is not None
             else None
         ),
     )

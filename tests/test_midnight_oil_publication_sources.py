@@ -153,7 +153,14 @@ def test_durable_acquisition_replays_bytes_without_connector_recall() -> None:
         manifest, owner_id="alice", job_id="moil_job_1", store=store, acquire=acquire
     )
     second = acquire_reviewed_publications_durably(
-        manifest, owner_id="alice", job_id="moil_job_1", store=store, acquire=acquire
+        manifest,
+        owner_id="alice",
+        job_id="moil_job_1",
+        store=store,
+        acquire=acquire,
+        before_transport=lambda: (_ for _ in ()).throw(
+            AssertionError("applied replay after expiry must not revalidate for egress")
+        ),
     )
     assert first == second
     assert calls == 1
@@ -189,7 +196,8 @@ def test_publication_receipt_recomputes_execution_scope() -> None:
         "router_role": "gatherer",
         "route_plan_sha256": "2" * 64,
         "question_id": "q-1",
-        "publication_manifest_sha256": "3" * 64,
+            "publication_manifest_sha256": "3" * 64,
+            "publication_capability_sha256": "5" * 64,
         "reviewed_ref_id": "sref_1111111111111111",
         "excerpt_sha256": "4" * 64,
     }
@@ -233,7 +241,8 @@ def test_applied_checkpoint_revalidates_rights_policy() -> None:
         ),
     )
     logical_id = "psacq_" + hashlib.sha256(
-        f"antiek:publication-acquisition:v1\0alice\0moil_job_3\0{manifest.manifest_sha256}".encode()
+        f"antiek:publication-acquisition:v2\0alice\0moil_job_3\0{manifest.manifest_sha256}"
+        f"\0{'0' * 64}".encode()
     ).hexdigest()[:24]
 
     def corrupt(current):  # type: ignore[no-untyped-def]
@@ -252,4 +261,47 @@ def test_applied_checkpoint_revalidates_rights_policy() -> None:
             acquire=lambda _source: (_ for _ in ()).throw(
                 AssertionError("applied replay must not call connector")
             ),
+        )
+
+
+def test_applied_checkpoint_revalidates_capability_connector_version() -> None:
+    manifest = build_reviewed_publication_manifest([_row("arxiv:1706.03762")])
+    store = InMemoryEngagementStore()
+    acquire_reviewed_publications_durably(
+        manifest,
+        owner_id="alice",
+        job_id="moil_job_version",
+        store=store,
+        acquire=lambda source: acquired_excerpt(
+            source,
+            text="Pinned abstract",
+            connector="acquisition.arxiv",
+            rights_tier="T1",
+            truncated=False,
+            connector_version="midnight-oil-arxiv-abstract-v1",
+        ),
+        expected_connector_version="midnight-oil-arxiv-abstract-v1",
+    )
+    logical_id = "psacq_" + hashlib.sha256(
+        f"antiek:publication-acquisition:v2\0alice\0moil_job_version\0"
+        f"{manifest.manifest_sha256}\0{'0' * 64}".encode()
+    ).hexdigest()[:24]
+
+    def corrupt(current):  # type: ignore[no-untyped-def]
+        assert current is not None
+        rows = [dict(row) for row in current["results"]]
+        rows[0]["connector_version"] = "substituted-v9"
+        return {**current, "results": rows}
+
+    store.mutate_owned_document(logical_id, "alice", corrupt)
+    with pytest.raises(ValueError, match="escaped signed source authority"):
+        acquire_reviewed_publications_durably(
+            manifest,
+            owner_id="alice",
+            job_id="moil_job_version",
+            store=store,
+            acquire=lambda _source: (_ for _ in ()).throw(
+                AssertionError("applied replay must not call connector")
+            ),
+            expected_connector_version="midnight-oil-arxiv-abstract-v1",
         )

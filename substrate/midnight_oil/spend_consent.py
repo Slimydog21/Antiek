@@ -61,9 +61,15 @@ class JobConsentConfig:
     stage_plan_hash: str | None = None
     context_binding_sha256: str | None = None
     publication_manifest_sha256: str | None = None
+    publication_capability_sha256: str | None = None
 
     def canonical_hash(self) -> str:
         material = asdict(self)
+        if self.publication_capability_sha256 is not None:
+            return hashlib.sha256(
+                b"antiek.midnight-oil.job-config.v5\x00" + _canonical_json(material)
+            ).hexdigest()
+        material.pop("publication_capability_sha256")
         if self.publication_manifest_sha256 is not None:
             domain = b"antiek.midnight-oil.job-config.v4\x00"
         else:
@@ -181,6 +187,16 @@ def _validate_config(config: JobConsentConfig) -> None:
             raise ValueError("publication manifest must be SHA-256 hex") from exc
         if config.context_binding_sha256 is None:
             raise ValueError("publication manifest requires a context binding")
+    if config.publication_capability_sha256 is not None:
+        _validate_text(config.publication_capability_sha256, maximum=64)
+        if len(config.publication_capability_sha256) != 64:
+            raise ValueError("publication capability must be SHA-256 hex")
+        try:
+            bytes.fromhex(config.publication_capability_sha256)
+        except ValueError as exc:
+            raise ValueError("publication capability must be SHA-256 hex") from exc
+        if config.publication_manifest_sha256 is None:
+            raise ValueError("publication capability requires a publication manifest")
     if type(config.duration_minutes) is not int or not 1 <= config.duration_minutes <= 10_080:
         raise ValueError("duration is outside consent bounds")
     if type(config.fanout_depth) is not int or not 1 <= config.fanout_depth <= 64:

@@ -178,6 +178,8 @@ export type CollectiveExecutionPreparation = {
     collective_preview_sha256: string;
     rights_policy_id: string;
     connector_capability_id: string;
+    capability_sha256: string | null;
+    capability_expires_at_ms: number | null;
     entries: Array<{
       ref_id: string;
       kind: "arxiv" | "substack";

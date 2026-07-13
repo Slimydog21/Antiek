@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from typing import Any, Literal, Protocol
 from urllib.parse import urlparse
 
@@ -111,6 +111,7 @@ class AcquiredPublicationExcerpt(_Closed):
     external_id: str = Field(min_length=1, max_length=1_024)
     connector: Literal["acquisition.arxiv", "acquisition.substack"]
     connector_version: str = Field(min_length=1, max_length=128)
+    publication_capability_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     extraction_mode: Literal["metadata_abstract", "bounded_excerpt"]
     truncation_reason: Literal["not_applicable", "explicit_range", "source_truncated"]
     source_length: int | None = Field(default=None, ge=1, le=100_000_000)
@@ -230,16 +231,24 @@ def acquire_reviewed_publications(
     manifest: ReviewedPublicationManifest,
     *,
     acquire: PublicationAcquirer,
+    publication_capability_sha256: str | None = None,
+    expected_connector_version: str | None = None,
 ) -> tuple[AcquiredPublicationExcerpt, ...]:
     """Acquire exactly the signed manifest; connector identity drift fails closed."""
     return _validate_acquired_results(
-        manifest, tuple(acquire(source) for source in manifest.sources)
+        manifest,
+        tuple(acquire(source) for source in manifest.sources),
+        publication_capability_sha256=publication_capability_sha256,
+        expected_connector_version=expected_connector_version,
     )
 
 
 def _validate_acquired_results(
     manifest: ReviewedPublicationManifest,
     results: Sequence[AcquiredPublicationExcerpt],
+    *,
+    publication_capability_sha256: str | None = None,
+    expected_connector_version: str | None = None,
 ) -> tuple[AcquiredPublicationExcerpt, ...]:
     if len(results) != len(manifest.sources):
         raise ValueError("publication connector results do not cover the signed manifest")
@@ -253,11 +262,22 @@ def _validate_acquired_results(
             or result.acquisition_mode != source.acquisition_mode
             or result.rights_use != source.rights_use
             or result.excerpt_bytes > source.max_excerpt_bytes
+            or (
+                expected_connector_version is not None
+                and result.connector_version != expected_connector_version
+            )
+            or (
+                publication_capability_sha256 is not None
+                and result.publication_capability_sha256
+                != publication_capability_sha256
+            )
         ):
             raise ValueError("publication connector result escaped signed source authority")
+        if source.kind == "arxiv" and result.truncated:
+            raise ValueError("arXiv abstract connector cannot report truncated evidence")
         if source.kind == "substack" and not result.truncated:
             raise ValueError("Substack connector must return an explicitly bounded excerpt")
-        if result.rights_tier in {"T3", "not_applicable"}:
+        if result.rights_tier != "T1":
             raise ValueError("publication rights are insufficient for paid model evidence")
         out.append(result)
     return tuple(out)
@@ -284,14 +304,24 @@ def acquire_reviewed_publications_durably(
     job_id: str,
     store: EngagementStore,
     acquire: PublicationAcquirer,
+    publication_capability_sha256: str = "0" * 64,
+    expected_connector_version: str | None = None,
+    before_transport: Callable[[], None] | None = None,
 ) -> tuple[AcquiredPublicationExcerpt, ...]:
     """Persist connector bytes once before any provider; ambiguous claims never refetch."""
+    if (
+        type(publication_capability_sha256) is not str
+        or len(publication_capability_sha256) != 64
+        or any(char not in "0123456789abcdef" for char in publication_capability_sha256)
+    ):
+        raise ValueError("publication acquisition capability hash is invalid")
     logical_id = "psacq_" + hashlib.sha256(
-        f"antiek:publication-acquisition:v1\0{owner_id}\0{job_id}\0{manifest.manifest_sha256}".encode()
+        f"antiek:publication-acquisition:v2\0{owner_id}\0{job_id}\0{manifest.manifest_sha256}"
+        f"\0{publication_capability_sha256}".encode()
     ).hexdigest()[:24]
     request_sha = hashlib.sha256(
-        b"antiek:publication-acquisition-request:v1\x00"
-        + f"{job_id}\0{manifest.manifest_sha256}".encode()
+        b"antiek:publication-acquisition-request:v2\x00"
+        + f"{job_id}\0{manifest.manifest_sha256}\0{publication_capability_sha256}".encode()
     ).hexdigest()
 
     def claim(current: dict[str, Any] | None) -> dict[str, Any]:
@@ -303,6 +333,7 @@ def acquire_reviewed_publications_durably(
             "document_type": "midnight_oil_publication_acquisition",
             "job_id": job_id,
             "publication_manifest_sha256": manifest.manifest_sha256,
+            "publication_capability_sha256": publication_capability_sha256,
             "request_sha256": request_sha,
             "state": "claimed",
         }
@@ -313,7 +344,12 @@ def acquire_reviewed_publications_durably(
         if not isinstance(results, list):
             raise ValueError("publication acquisition checkpoint requires reconciliation")
         parsed = tuple(AcquiredPublicationExcerpt.model_validate(item) for item in results)
-        return _validate_acquired_results(manifest, parsed)
+        return _validate_acquired_results(
+            manifest,
+            parsed,
+            publication_capability_sha256=publication_capability_sha256,
+            expected_connector_version=expected_connector_version,
+        )
     if row.get("state") != "claimed" or row.get("claimed_once") is True:
         raise ValueError("publication acquisition claim requires reconciliation")
 
@@ -328,8 +364,15 @@ def acquire_reviewed_publications_durably(
             raise ValueError("publication acquisition transport was already crossed")
         return {**current, "claimed_once": True}
 
+    if before_transport is not None:
+        before_transport()
     store.mutate_owned_document(logical_id, owner_id, mark_crossing)
-    results = acquire_reviewed_publications(manifest, acquire=acquire)
+    results = acquire_reviewed_publications(
+        manifest,
+        acquire=acquire,
+        publication_capability_sha256=publication_capability_sha256,
+        expected_connector_version=expected_connector_version,
+    )
     result_rows = [item.model_dump(mode="json") for item in results]
     result_sha = hashlib.sha256(
         json.dumps(result_rows, sort_keys=True, separators=(",", ":")).encode()
@@ -379,6 +422,7 @@ def acquired_excerpt(
     truncated: bool,
     connector_version: str = "test-injected-v1",
     source_length: int | None = None,
+    publication_capability_sha256: str = "0" * 64,
 ) -> AcquiredPublicationExcerpt:
     encoded = text.encode("utf-8")
     return AcquiredPublicationExcerpt(
@@ -388,6 +432,7 @@ def acquired_excerpt(
         external_id=source.external_id,
         connector=connector,
         connector_version=connector_version,
+        publication_capability_sha256=publication_capability_sha256,
         extraction_mode=(
             "metadata_abstract" if source.kind == "arxiv" else "bounded_excerpt"
         ),

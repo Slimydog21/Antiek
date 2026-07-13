@@ -282,10 +282,22 @@ describe("DeepResearchSessionHost", () => {
         collective_preview_sha256: "a".repeat(64),
         rights_policy_id: "antiek-publication-research-v1",
         connector_capability_id: "reviewed-publications-v1",
-        entries: [],
-        required_count: 0,
-        acquirable_count: 0,
-        readiness: "connector_attestation_required",
+        capability_sha256: "d".repeat(64),
+        capability_expires_at_ms: 2_000_000_000_000,
+        entries: [
+          {
+            ref_id: "sref_1111111111111111",
+            kind: "arxiv",
+            canonical_url: "https://arxiv.org/abs/1706.03762",
+            external_id: "1706.03762",
+            acquisition_mode: "arxiv_abstract",
+            rights_use: "metadata_abstract_research",
+            max_excerpt_bytes: 32_000,
+          },
+        ],
+        required_count: 1,
+        acquirable_count: 1,
+        readiness: "ready",
         exclusions: [],
       },
       receipt_id: "receipt",
@@ -309,6 +321,9 @@ describe("DeepResearchSessionHost", () => {
     );
     fireEvent.click(screen.getByText("Review execution budget"));
     await screen.findByText("Reconcile unqueued consent");
+    expect(screen.getByTestId("collective-execution-source-attestation").textContent).toContain(
+      "dddddddddddd…",
+    );
     fireEvent.click(screen.getByText("Reconcile unqueued consent"));
     await waitFor(() => expect(resetMidnightOilSpendConsent).toHaveBeenCalledWith(
       "moil_111111111111111111111111",

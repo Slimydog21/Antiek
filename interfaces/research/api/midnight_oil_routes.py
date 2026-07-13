@@ -12,7 +12,7 @@ import secrets
 import time
 from collections.abc import Callable, Mapping
 from contextlib import nullcontext
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from decimal import ROUND_FLOOR, Decimal
 from pathlib import Path
 from typing import Any
@@ -53,6 +53,10 @@ from substrate.midnight_oil.job_store import (
     OwnerJobStore,
 )
 from substrate.midnight_oil.operation_queue import DurableOperationQueue, OperationQueue
+from substrate.midnight_oil.publication_capability import (
+    PublicationCapabilityRegistry,
+    require_pinned_publication_capability,
+)
 from substrate.midnight_oil.spend_consent import (
     MAX_CEILING_CENTS,
     ConsentReceipt,
@@ -103,6 +107,10 @@ class MidnightOilDependencies:
     engagement_store: EngagementStore | None = None
     live_plan_resolver: Callable[[MidnightOilJob], LiveExecutionPlan | SwarmLivePlan] | None = None
     consent_stage_coordinator: ConsentStagePlanCoordinator | None = None
+    publication_capabilities: PublicationCapabilityRegistry = field(
+        default_factory=PublicationCapabilityRegistry
+    )
+    publication_completion_margin_ms: int = 0
     clock_ms: Callable[[], int] = _system_clock_ms
     random_token: Callable[[int], str] = secrets.token_urlsafe
     test_mode: bool = False
@@ -128,6 +136,11 @@ class MidnightOilDependencies:
                 raise ValueError("verification keys must be at least 256 bits")
         if self.verification_keys.get(self.active_key_id) != self.signing_key:
             raise ValueError("the active signing key must be in the verification keyring")
+        if (
+            type(self.publication_completion_margin_ms) is not int
+            or not 0 <= self.publication_completion_margin_ms <= 3_600_000
+        ):
+            raise ValueError("publication completion margin is invalid")
         if not self.test_mode:
             if (
                 type(self.owner_jobs) is not DurableOwnerJobStore
@@ -272,6 +285,13 @@ def _owner_payload(
         "publication_manifest_sha256": binding.get("publication_manifest_sha256"),
         "publication_manifest_json": binding.get("publication_manifest_json"),
         "publication_preflight_ready": binding.get("publication_preflight_ready"),
+        "publication_capability_sha256": binding.get(
+            "publication_capability_sha256"
+        ),
+        "publication_capability_id": binding.get("publication_capability_id"),
+        "publication_capability_expires_at_ms": binding.get(
+            "publication_capability_expires_at_ms"
+        ),
     }
 
 
@@ -291,8 +311,11 @@ def create_job_authority(
         asset_id = deps.random_token(28)
     existing = deps.owner_jobs.get_job(owner_user_id=owner, job_id=job_id)
     if existing is not None:
+        _require_publication_swarm_authority(existing)
         config = _config(existing)
-        expected_binding = dict(context_binding or {})
+        expected_binding = {
+            key: value for key, value in dict(context_binding or {}).items() if value is not None
+        }
         binding_keys = (
             "execution_id",
             "collective_unit_id",
@@ -304,6 +327,9 @@ def create_job_authority(
             "publication_manifest_sha256",
             "publication_manifest_json",
             "publication_preflight_ready",
+            "publication_capability_sha256",
+            "publication_capability_id",
+            "publication_capability_expires_at_ms",
         )
         stored_binding = {
             key: existing.payload[key]
@@ -401,6 +427,7 @@ def create_job_authority(
                 context_binding=context_binding,
             ),
         )
+        _require_publication_swarm_authority(authority)
         try:
             deps.owner_jobs.put_job(authority)
         except ValueError:
@@ -545,6 +572,11 @@ def _config(row: OwnerJob) -> JobConsentConfig:
             if publication_manifest is not None
             else None
         ),
+        publication_capability_sha256=(
+            str(payload["publication_capability_sha256"])
+            if payload.get("publication_capability_sha256") is not None
+            else None
+        ),
     )
 
 
@@ -561,6 +593,41 @@ def _swarm_plan_from_payload(payload: Mapping[str, object]) -> SwarmLivePlan | N
     if plan.plan_hash != plan_hash:
         raise ValueError("stored swarm authority hash conflicts with its plan")
     return plan
+
+
+def _require_publication_capability(
+    deps: MidnightOilDependencies,
+    row: OwnerJob,
+    *,
+    now_ms: int,
+    required_until_ms: int,
+) -> None:
+    manifest = _require_publication_swarm_authority(row)
+    if manifest is None or not manifest.sources:
+        return
+    capability_hash = row.payload.get("publication_capability_sha256")
+    if type(capability_hash) is not str:
+        raise ValueError("reviewed publication capability is not pinned")
+    require_pinned_publication_capability(
+        deps.publication_capabilities,
+        capability_sha256=capability_hash,
+        manifest=manifest,
+        now_ms=now_ms,
+        required_until_ms=required_until_ms,
+    )
+
+
+def _require_publication_swarm_authority(row: OwnerJob) -> Any:
+    from substrate.midnight_oil.publication_sources import manifest_from_authority
+
+    manifest = manifest_from_authority(row.payload)
+    if manifest is not None and manifest.sources and _swarm_plan_from_payload(row.payload) is None:
+        raise ValueError("reviewed publication execution requires signed swarm authority")
+    return manifest
+
+
+class _PublicationCapabilityUnavailable(ValueError):
+    """The pinned reviewed-publication authority cannot cover this transition."""
 
 
 def _recommended_cents(row: OwnerJob) -> int:
@@ -601,14 +668,6 @@ def post_spend_consent(
         raise HTTPException(status_code=404, detail="job not found")
     if not _legacy_matches_authority(legacy_job, config):
         raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
-    if (
-        config.publication_manifest_sha256 is not None
-        and row.payload.get("publication_preflight_ready") != "true"
-    ):
-        raise HTTPException(
-            status_code=409,
-            detail="reviewed publication connectors are not ready for consent",
-        )
     if body.use_recommended:
         if body.ceiling_cents is not None:
             raise HTTPException(status_code=400, detail="choose ceiling_cents or use_recommended")
@@ -632,11 +691,8 @@ def post_spend_consent(
         )
 
     try:
-        now = deps.clock_ms()
         operation_id = deps.random_token(24)
         nonce = deps.random_token(32)
-        if type(now) is not int or now < 0:
-            raise ValueError("invalid clock")
         if (
             type(operation_id) is not str
             or not 16 <= len(operation_id) <= 512
@@ -656,6 +712,23 @@ def post_spend_consent(
             current = deps.owner_jobs.get_job(owner_user_id=owner, job_id=job_id)
             if current is None or current.state_version != row.state_version:
                 raise ValueError("job changed before consent preparation")
+            now = deps.clock_ms()
+            if type(now) is not int or now < 0:
+                raise ValueError("invalid clock")
+            try:
+                _require_publication_capability(
+                    deps,
+                    current,
+                    now_ms=now,
+                    required_until_ms=(
+                        now
+                        + CONSENT_TTL_MS
+                        + config.duration_minutes * 60_000
+                        + deps.publication_completion_margin_ms
+                    ),
+                )
+            except ValueError as exc:
+                raise _PublicationCapabilityUnavailable from exc
             stage_plan = (
                 None
                 if swarm_plan is None
@@ -700,6 +773,12 @@ def post_spend_consent(
                 consent_expires_at_ms=receipt.expires_at_ms,
                 consent_stage_plan_hash=(None if stage_plan is None else stage_plan.plan_hash),
             )
+    except _PublicationCapabilityUnavailable:
+        raise HTTPException(
+            status_code=409,
+            detail="reviewed publication capability is unavailable for consent",
+            headers={"Cache-Control": "no-store"},
+        ) from None
     except Exception:
         raise HTTPException(
             status_code=503,
@@ -983,6 +1062,9 @@ def post_run(
             or config.canonical_hash() != authority.consent_config_hash
         ):
             raise _run_error(409, "job configuration requires reconciliation")
+        _require_publication_capability(
+            deps, authority, now_ms=now, required_until_ms=now
+        )
         claim = deps.consents.claim(
             spend_consent,
             expected_operator_id=owner,
@@ -1068,6 +1150,13 @@ def post_run(
                 or latest_for_delivery.consent_receipt_id != expected_receipt_id
             ):
                 raise ValueError("operation authority changed before delivery")
+            delivery_now = deps.clock_ms()
+            _require_publication_capability(
+                deps,
+                latest_for_delivery,
+                now_ms=delivery_now,
+                required_until_ms=delivery_now,
+            )
 
         try:
             queued, _ = deps.operation_queue.enqueue_once_guarded(

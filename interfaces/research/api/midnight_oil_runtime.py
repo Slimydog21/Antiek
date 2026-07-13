@@ -19,6 +19,7 @@ from substrate.dispatch import DispatchConfig
 from substrate.midnight_oil.consent_stage_coordinator import ConsentStagePlanCoordinator
 from substrate.midnight_oil.job import MidnightOilJob
 from substrate.midnight_oil.live import LiveExecutionPlan, build_router_live_plan
+from substrate.midnight_oil.publication_capability import PublicationCapabilityRegistry
 from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfig,
     MidnightOilRuntimeStores,
@@ -47,6 +48,10 @@ def build_midnight_oil_api_runtime(
     environment = os.environ if environ is None else environ
     config = MidnightOilRuntimeConfig.from_file(config_path)
     signing_key, verification_keys = load_consent_keyring(config, environment)
+    publication_capabilities = PublicationCapabilityRegistry.from_paths(
+        config.publication_capability_paths,
+        verification_keys=verification_keys,
+    )
     install_attested_providers(config, environment)
     dispatch_config = DispatchConfig.from_yaml(config.dispatch_config_path)
     stores = build_runtime_stores(config)
@@ -70,6 +75,8 @@ def build_midnight_oil_api_runtime(
         consent_stage_coordinator=ConsentStagePlanCoordinator(
             config.state_dir / "consent-stage-locks"
         ),
+        publication_capabilities=publication_capabilities,
+        publication_completion_margin_ms=config.worker_lease_ms,
     )
     return MidnightOilApiRuntime(
         config=config,

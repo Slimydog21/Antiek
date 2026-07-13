@@ -33,6 +33,9 @@ class CanonicalSourceReceipt(_Closed):
     excerpt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     source_type: Literal["corpus", "publication"] = "corpus"
     publication_manifest_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    publication_capability_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
     reviewed_ref_id: str | None = Field(default=None, pattern=r"^sref_[0-9a-f]{16}$")
     connector: str | None = Field(default=None, min_length=1, max_length=256)
     canonical_url: str | None = Field(default=None, min_length=1, max_length=2_048)
@@ -56,6 +59,7 @@ class CanonicalSourceReceipt(_Closed):
     def _publication_fields(self) -> CanonicalSourceReceipt:
         external = (
             self.publication_manifest_sha256,
+            self.publication_capability_sha256,
             self.reviewed_ref_id,
             self.connector,
             self.canonical_url,
@@ -89,6 +93,7 @@ class CanonicalSourceReceipt(_Closed):
             route_plan_sha256=str(self.route_plan_sha256),
             question_id=self.question_id,
             publication_manifest_sha256=str(self.publication_manifest_sha256),
+            publication_capability_sha256=str(self.publication_capability_sha256),
             reviewed_ref_id=str(self.reviewed_ref_id),
             excerpt_sha256=self.excerpt_sha256,
         ):
@@ -106,6 +111,7 @@ def publication_source_receipt_id(
     route_plan_sha256: str,
     question_id: str,
     publication_manifest_sha256: str,
+    publication_capability_sha256: str,
     reviewed_ref_id: str,
     excerpt_sha256: str,
 ) -> str:
@@ -119,13 +125,14 @@ def publication_source_receipt_id(
             "route_plan_sha256": route_plan_sha256,
             "question_id": question_id,
             "publication_manifest_sha256": publication_manifest_sha256,
+            "publication_capability_sha256": publication_capability_sha256,
             "reviewed_ref_id": reviewed_ref_id,
             "excerpt_sha256": excerpt_sha256,
         },
         sort_keys=True,
         separators=(",", ":"),
     ).encode()
-    return hashlib.sha256(b"antiek.midnight-oil.publication-receipt.v2\x00" + material).hexdigest()
+    return hashlib.sha256(b"antiek.midnight-oil.publication-receipt.v3\x00" + material).hexdigest()
 
 
 class CanonicalPropositionReceipt(_Closed):

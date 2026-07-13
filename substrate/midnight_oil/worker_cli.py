@@ -11,7 +11,7 @@ import sys
 import threading
 import time
 from collections.abc import Callable, Mapping
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
@@ -37,9 +37,14 @@ from .live_roles import (
     publication_source_receipt_id,
 )
 from .live_stage_engine import LiveSwarmStageEngine, RouterStageDispatch
+from .publication_capability import (
+    PublicationCapabilityRegistry,
+    require_pinned_publication_capability,
+)
 from .publication_sources import (
     AcquiredPublicationExcerpt,
     PublicationAcquirer,
+    ReviewedPublicationSource,
     acquire_reviewed_publications_durably,
     manifest_from_authority,
 )
@@ -49,6 +54,7 @@ from .runtime import (
     MidnightOilRuntimeStores,
     build_runtime_stores,
     install_attested_providers,
+    load_consent_keyring,
 )
 from .session_flywheel import finalize_bound_session, validate_context_binding
 from .spend_consent import JobConsentConfig
@@ -109,6 +115,10 @@ class MidnightOilWorkerRuntime:
     stores: MidnightOilRuntimeStores
     dispatch_config: DispatchConfig
     publication_acquirer: PublicationAcquirer | None = None
+    publication_capabilities: PublicationCapabilityRegistry = field(
+        default_factory=PublicationCapabilityRegistry
+    )
+    publication_acquirers: Mapping[str, PublicationAcquirer] = field(default_factory=dict)
 
 
 _SWARM_VALIDATOR_SHA256 = hashlib.sha256(b"antiek.midnight-oil.live-swarm-validator.v1").hexdigest()
@@ -161,6 +171,11 @@ def _validated_swarm_runtime(
         publication_manifest_sha256=(
             str(authority.payload["publication_manifest_sha256"])
             if authority.payload.get("publication_manifest_sha256") is not None
+            else None
+        ),
+        publication_capability_sha256=(
+            str(authority.payload["publication_capability_sha256"])
+            if authority.payload.get("publication_capability_sha256") is not None
             else None
         ),
     )
@@ -243,8 +258,11 @@ def _gather_input(
     manifest = manifest_from_authority(authority.payload)
     allowed_refs = set() if manifest is None else {source.ref_id for source in manifest.sources}
     execution_id = authority.payload.get("execution_id")
+    capability_hash = authority.payload.get("publication_capability_sha256")
     if publication_excerpts and (type(execution_id) is not str or not execution_id):
         raise ValueError("publication gather lacks execution scope")
+    if publication_excerpts and type(capability_hash) is not str:
+        raise ValueError("publication gather lacks connector capability scope")
     owner_scope_sha256 = hashlib.sha256(
         b"antiek.midnight-oil.owner-scope.v1\x00" + lease.owner_user_id.encode()
     ).hexdigest()
@@ -260,6 +278,7 @@ def _gather_input(
             route_plan_sha256=item.route_plan_sha256,
             question_id=question.question_id,
             publication_manifest_sha256=manifest.manifest_sha256,
+            publication_capability_sha256=str(capability_hash),
             reviewed_ref_id=publication.ref_id,
             excerpt_sha256=publication.excerpt_sha256,
         )
@@ -272,6 +291,7 @@ def _gather_input(
                 excerpt_sha256=publication.excerpt_sha256,
                 source_type="publication",
                 publication_manifest_sha256=manifest.manifest_sha256,
+                publication_capability_sha256=str(capability_hash),
                 reviewed_ref_id=publication.ref_id,
                 connector=publication.connector,
                 canonical_url=publication.canonical_url,
@@ -312,14 +332,47 @@ def _run_swarm_operation(
     manifest = manifest_from_authority(authority.payload)
     publication_excerpts: tuple[AcquiredPublicationExcerpt, ...] = ()
     if manifest is not None and manifest.sources:
-        if runtime.publication_acquirer is None:
+        capability_hash = authority.payload.get("publication_capability_sha256")
+        if type(capability_hash) is not str:
+            raise ValueError("reviewed publication capability is not pinned")
+        capability = runtime.publication_capabilities.get(capability_hash)
+        if capability is None:
+            raise ValueError("reviewed publication capability is not configured")
+        acquirer = runtime.publication_acquirers.get(capability_hash)
+        if acquirer is None:
+            acquirer = runtime.publication_acquirer
+        if acquirer is None:
             raise ValueError("reviewed publication connector is not configured")
+
+        def revalidate_before_transport() -> None:
+            now = clock_ms()
+            require_pinned_publication_capability(
+                runtime.publication_capabilities,
+                capability_sha256=capability_hash,
+                manifest=manifest,
+                now_ms=now,
+                required_until_ms=now,
+            )
+
+        def acquire_with_current_capability(
+            source: ReviewedPublicationSource,
+        ) -> AcquiredPublicationExcerpt:
+            revalidate_before_transport()
+            from acquisition.arxiv.midnight_oil import ArxivAbstractPublicationAcquirer
+
+            if isinstance(acquirer, ArxivAbstractPublicationAcquirer):
+                return acquirer(source, before_transport=revalidate_before_transport)
+            return acquirer(source)
+
         publication_excerpts = acquire_reviewed_publications_durably(
             manifest,
             owner_id=lease.owner_user_id,
             job_id=lease.job_id,
             store=runtime.stores.engagement_store,
-            acquire=runtime.publication_acquirer,
+            acquire=acquire_with_current_capability,
+            publication_capability_sha256=capability_hash,
+            expected_connector_version=capability.connector_version,
+            before_transport=revalidate_before_transport,
         )
     plan = runtime.stores.jobs.get_stage_plan(lease.job_id)
     engine = LiveSwarmStageEngine(
@@ -408,10 +461,30 @@ def build_worker_runtime(
     environment = os.environ if environ is None else environ
     config = MidnightOilRuntimeConfig.from_file(config_path)
     install_attested_providers(config, environment)
+    _, verification_keys = load_consent_keyring(config, environment)
+    publication_capabilities = PublicationCapabilityRegistry.from_paths(
+        config.publication_capability_paths,
+        verification_keys=verification_keys,
+    )
+    from acquisition.arxiv.midnight_oil import (
+        ArxivAbstractPublicationAcquirer,
+        FileDestinationAudit,
+    )
+
+    publication_acquirers: dict[str, PublicationAcquirer] = {
+        capability_hash: ArxivAbstractPublicationAcquirer(
+            capability,
+            audit=FileDestinationAudit(config.state_dir / "publication-destinations.jsonl"),
+        )
+        for capability_hash in publication_capabilities.hashes
+        if (capability := publication_capabilities.get(capability_hash)) is not None
+    }
     return MidnightOilWorkerRuntime(
         config=config,
         stores=build_runtime_stores(config),
         dispatch_config=DispatchConfig.from_yaml(config.dispatch_config_path),
+        publication_capabilities=publication_capabilities,
+        publication_acquirers=publication_acquirers,
     )
 
 
@@ -712,6 +785,9 @@ def run_worker_once(
         raise RuntimeError("leased operation lost owner authority")
     try:
         is_swarm = running_authority.payload.get("swarm_live_plan_hash") is not None
+        running_manifest = manifest_from_authority(running_authority.payload)
+        if running_manifest is not None and running_manifest.sources and not is_swarm:
+            raise ValueError("reviewed publication execution requires signed swarm authority")
         if is_swarm:
             # Verify every owner/consent/plan/router seam before constructing
             # a retrieval substrate or allowing a provider transport.

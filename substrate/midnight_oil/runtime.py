@@ -47,6 +47,7 @@ _CONFIG_FIELDS = {
     "consent_signing_key_env",
     "consent_verification_key_envs",
     "provider_attestation_paths",
+    "publication_capability_paths",
     "worker_lease_ms",
     "worker_poll_ms",
 }
@@ -186,6 +187,7 @@ class MidnightOilRuntimeConfig:
     consent_signing_key_env: str
     consent_verification_key_envs: dict[str, str]
     provider_attestation_paths: tuple[Path, ...]
+    publication_capability_paths: tuple[Path, ...]
     worker_lease_ms: int
     worker_poll_ms: int
 
@@ -197,10 +199,15 @@ class MidnightOilRuntimeConfig:
             raise MidnightOilRuntimeConfigError("runtime config has unknown or missing fields")
         verification = raw.get("consent_verification_key_envs")
         attestations = raw.get("provider_attestation_paths")
+        publication_capabilities = raw.get("publication_capability_paths")
         if not isinstance(verification, dict) or not 1 <= len(verification) <= 16:
             raise MidnightOilRuntimeConfigError("consent verification keyring is required")
         if not isinstance(attestations, list) or not 1 <= len(attestations) <= 16:
             raise MidnightOilRuntimeConfigError("at least one provider attestation is required")
+        if not isinstance(publication_capabilities, list) or len(publication_capabilities) > 8:
+            raise MidnightOilRuntimeConfigError(
+                "publication capability paths must be a bounded list"
+            )
         keyring = {
             _text(key, "verification_key_id", 128): _text(value, "verification_key_env", 128)
             for key, value in verification.items()
@@ -235,6 +242,10 @@ class MidnightOilRuntimeConfig:
             provider_attestation_paths=tuple(
                 _absolute_path(value, "provider_attestation", must_exist=True)
                 for value in attestations
+            ),
+            publication_capability_paths=tuple(
+                _absolute_path(value, "publication_capability", must_exist=True)
+                for value in publication_capabilities
             ),
             worker_lease_ms=lease,
             worker_poll_ms=poll,

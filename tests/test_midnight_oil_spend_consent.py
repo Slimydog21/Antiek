@@ -99,7 +99,8 @@ def test_stage_plan_uses_v2_config_hash_without_changing_legacy_v1() -> None:
         not in {
             "stage_plan_hash",
             "context_binding_sha256",
-            "publication_manifest_sha256",
+                "publication_manifest_sha256",
+                "publication_capability_sha256",
         }
     }
     encoded = json.dumps(
@@ -133,6 +134,25 @@ def test_publication_manifest_uses_v4_and_changes_signed_configuration() -> None
     first = replace(bound, publication_manifest_sha256="a" * 64)
     second = replace(bound, publication_manifest_sha256="b" * 64)
     assert first.canonical_hash() != bound.canonical_hash()
+    assert first.canonical_hash() != second.canonical_hash()
+
+
+def test_publication_capability_uses_v5_and_changes_signed_configuration() -> None:
+    v4 = replace(
+        config(),
+        context_binding_sha256="1" * 64,
+        publication_manifest_sha256="a" * 64,
+    )
+    first = replace(v4, publication_capability_sha256="b" * 64)
+    second = replace(v4, publication_capability_sha256="c" * 64)
+    material = json.dumps(
+        first.__dict__, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    expected = hashlib.sha256(
+        b"antiek.midnight-oil.job-config.v5\x00" + material
+    ).hexdigest()
+    assert first.canonical_hash() == expected
+    assert first.canonical_hash() != v4.canonical_hash()
     assert first.canonical_hash() != second.canonical_hash()
 
 

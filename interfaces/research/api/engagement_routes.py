@@ -2358,6 +2358,7 @@ def post_collective_execution_prepare(
 ) -> dict[str, Any]:
     """Bind one confirmed unit/session to one non-spending Midnight Oil job."""
     from interfaces.research.api.midnight_oil_routes import (
+        CONSENT_TTL_MS,
         CreateJobBody,
         create_job_authority,
     )
@@ -2396,9 +2397,30 @@ def post_collective_execution_prepare(
         raise HTTPException(status_code=409, detail="session anchor requires reconciliation")
     if session.status not in {"reserved", "running"}:
         raise HTTPException(status_code=409, detail="session is not execution-ready")
-    # Production egress remains fail-closed until a versioned capability
-    # attestation is injected into both API and worker composition roots.
-    acquirable_count = 0
+    try:
+        deps = midnight_oil_dependencies(request)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503, detail="Midnight Oil execution is unavailable"
+        ) from exc
+    capability_now = deps.clock_ms()
+    publication_capability = (
+        None
+        if not publication_manifest.sources
+        else deps.publication_capabilities.select(
+            publication_manifest,
+            now_ms=capability_now,
+            required_until_ms=(
+                capability_now
+                + CONSENT_TTL_MS
+                + body.duration_minutes * 60_000
+                + deps.publication_completion_margin_ms
+            ),
+        )
+    )
+    acquirable_count = (
+        len(publication_manifest.sources) if publication_capability is not None else 0
+    )
     source_scope_ready = acquirable_count == len(publication_manifest.sources)
 
     prepare_material = {
@@ -2413,6 +2435,11 @@ def post_collective_execution_prepare(
         "fanout_depth": body.fanout_depth,
         "live": True,
         "publication_manifest_sha256": publication_manifest.manifest_sha256,
+        "publication_capability_sha256": (
+            None
+            if publication_capability is None
+            else publication_capability.capability_sha256
+        ),
     }
     try:
         receipt = claim_collective_action(
@@ -2444,6 +2471,11 @@ def post_collective_execution_prepare(
         research_tier=body.research_tier or session.research_tier,
         fanout_depth=body.fanout_depth,
         publication_manifest_sha256=publication_manifest.manifest_sha256,
+        publication_capability_sha256=(
+            None
+            if publication_capability is None
+            else publication_capability.capability_sha256
+        ),
     )
     binding = {
         "execution_id": execution_id,
@@ -2456,6 +2488,21 @@ def post_collective_execution_prepare(
         "publication_manifest_sha256": publication_manifest.manifest_sha256,
         "publication_manifest_json": publication_manifest.model_dump_json(),
         "publication_preflight_ready": "true" if source_scope_ready else "false",
+        "publication_capability_sha256": (
+            None
+            if publication_capability is None
+            else publication_capability.capability_sha256
+        ),
+        "publication_capability_id": (
+            None
+            if publication_capability is None
+            else publication_capability.capability_id
+        ),
+        "publication_capability_expires_at_ms": (
+            None
+            if publication_capability is None
+            else str(publication_capability.expires_at_ms)
+        ),
     }
     identity_digest = hashlib.sha256(
         f"antiek:collective-execution-job:v1\0{owner_id}\0{execution_id}".encode()
@@ -2467,7 +2514,6 @@ def post_collective_execution_prepare(
     if not goal.strip():
         raise HTTPException(status_code=409, detail="collective prompt requires reconciliation")
     try:
-        deps = midnight_oil_dependencies(request)
         result = create_job_authority(
             deps=deps,
             owner=owner_id,
@@ -2495,6 +2541,11 @@ def post_collective_execution_prepare(
                 "spawn_id": session.spawn_id,
                 "context_binding_sha256": binding_hash,
                 "publication_manifest_sha256": publication_manifest.manifest_sha256,
+                "publication_capability_sha256": (
+                    None
+                    if publication_capability is None
+                    else publication_capability.capability_sha256
+                ),
             },
         )
         authority = deps.owner_jobs.get_job(owner_user_id=owner_id, job_id=job_id)
@@ -2534,6 +2585,16 @@ def post_collective_execution_prepare(
             "collective_preview_sha256": durable_preview,
             "rights_policy_id": publication_manifest.rights_policy_id,
             "connector_capability_id": publication_manifest.connector_capability_id,
+            "capability_sha256": (
+                None
+                if publication_capability is None
+                else publication_capability.capability_sha256
+            ),
+            "capability_expires_at_ms": (
+                None
+                if publication_capability is None
+                else publication_capability.expires_at_ms
+            ),
             "entries": [row.model_dump(mode="json") for row in publication_manifest.sources],
             "required_count": len(publication_manifest.sources),
             "acquirable_count": acquirable_count,
