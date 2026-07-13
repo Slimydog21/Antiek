@@ -1294,6 +1294,52 @@ class ResearchSpendLedger:
         finally:
             connection.close()
 
+    def balance_for_session(self, owner_id: str, session_id: str) -> RunSnapshot | None:
+        """Return the hard-ceiling run visible to one owner and session.
+
+        Session status and recovery APIs must not accept a caller-supplied run id: doing
+        so would turn the opaque ledger identity into a cross-owner lookup capability.
+        The binding is unique by construction, but fail closed if corrupted state ever
+        contains more than one match.
+        """
+        _required_text("owner_id", owner_id)
+        _required_text("session_id", session_id)
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                "SELECT run_id FROM research_spend_runs "
+                "WHERE owner_id = ? AND session_id = ? ORDER BY run_id",
+                (owner_id, session_id),
+            ).fetchall()
+            if not rows:
+                return None
+            if len(rows) != 1:
+                raise LedgerIntegrityError(
+                    "multiple hard-ceiling runs share an owner/session binding"
+                )
+            return self._load_run(connection, str(rows[0]["run_id"]))
+        finally:
+            connection.close()
+
+    def owner_for_session(self, session_id: str) -> str | None:
+        """Resolve a hard-ceiling session owner for route-level access control."""
+        _required_text("session_id", session_id)
+        connection = self._connect()
+        try:
+            rows = connection.execute(
+                "SELECT DISTINCT owner_id FROM research_spend_runs WHERE session_id = ?",
+                (session_id,),
+            ).fetchall()
+            if not rows:
+                return None
+            if len(rows) != 1:
+                raise LedgerIntegrityError(
+                    "hard-ceiling session is bound to multiple owners"
+                )
+            return str(rows[0]["owner_id"])
+        finally:
+            connection.close()
+
     def hold(self, hold_id: str) -> PaidHoldSnapshot:
         connection = self._connect()
         try:
