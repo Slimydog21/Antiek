@@ -47,7 +47,7 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 1
+SCHEMA_VERSION: Final = 2
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
@@ -139,6 +139,7 @@ class RunBinding:
     plan_digest: str
     approval_revision: int
     currency: str = "USD"
+    mode: str = "hard_ceiling"
 
     def __post_init__(self) -> None:
         for name in ("run_id", "owner_id", "session_id", "plan_digest"):
@@ -151,6 +152,8 @@ class RunBinding:
         )
         if self.currency != "USD":
             raise ValueError("research hard-ceiling runs are USD-only")
+        if self.mode != "hard_ceiling":
+            raise ValueError("research spend ledger only accepts hard_ceiling mode")
 
 
 @dataclass(frozen=True)
@@ -266,6 +269,7 @@ _DDL: Final[tuple[str, ...]] = (
         plan_digest TEXT NOT NULL,
         approval_revision INTEGER NOT NULL CHECK (approval_revision >= 0),
         currency TEXT NOT NULL CHECK (currency = 'USD'),
+        mode TEXT NOT NULL CHECK (mode = 'hard_ceiling'),
         ceiling_cents INTEGER NOT NULL
             CHECK (ceiling_cents BETWEEN 1 AND 4611686018427387903),
         authorized_spent_cents INTEGER NOT NULL DEFAULT 0
@@ -463,6 +467,13 @@ _DDL: Final[tuple[str, ...]] = (
     """,
 )
 
+_MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
+    1: (
+        "ALTER TABLE research_spend_runs ADD COLUMN mode TEXT NOT NULL "
+        "DEFAULT 'hard_ceiling' CHECK (mode = 'hard_ceiling')",
+    ),
+}
+
 
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="microseconds").replace("+00:00", "Z")
@@ -483,6 +494,9 @@ def _sha256(value: str) -> str:
 
 
 def _binding_payload(binding: RunBinding) -> dict[str, JsonScalar]:
+    # Mode is enforced by RunBinding and the run-row CHECK. Keep it out of
+    # command/hold intent JSON so implicit-hard-mode schema-v1 records replay
+    # byte-for-byte after the v2 mode-column migration.
     return {
         "approval_revision": binding.approval_revision,
         "currency": binding.currency,
@@ -562,6 +576,18 @@ class ResearchSpendLedger:
                     connection.execute(statement)
                     self._checkpoint(f"schema:after_statement:{index}")
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
+            else:
+                while version < SCHEMA_VERSION:
+                    migration = _MIGRATIONS.get(version)
+                    if migration is None:
+                        raise LedgerIntegrityError(
+                            f"no migration from research spend schema {version}"
+                        )
+                    for index, statement in enumerate(migration, start=1):
+                        connection.execute(statement)
+                        self._checkpoint(f"schema:{version}:after_migration:{index}")
+                    version += 1
+                    connection.execute(f"PRAGMA user_version = {version}")
             self._checkpoint("schema:before_commit")
             connection.execute("COMMIT")
             committed = True
@@ -601,8 +627,8 @@ class ResearchSpendLedger:
                 connection.execute(
                     "INSERT INTO research_spend_runs "
                     "(run_id, owner_id, session_id, plan_digest, approval_revision, "
-                    "currency, ceiling_cents, status, created_at, updated_at) "
-                    "VALUES (?, ?, ?, ?, ?, 'USD', ?, 'active', ?, ?)",
+                    "currency, mode, ceiling_cents, status, created_at, updated_at) "
+                    "VALUES (?, ?, ?, ?, ?, 'USD', 'hard_ceiling', ?, 'active', ?, ?)",
                     (
                         binding.run_id,
                         binding.owner_id,
@@ -1282,6 +1308,25 @@ class ResearchSpendLedger:
         finally:
             connection.close()
 
+    def zero_attempt_for_key(
+        self, run_id: str, attempt_key: str
+    ) -> ZeroCostAttemptSnapshot | None:
+        """Return the durable receipt for one logical zero-cost operation."""
+        _required_text("run_id", run_id)
+        _required_text("attempt_key", attempt_key)
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT attempt_id FROM research_spend_zero_attempts "
+                "WHERE run_id = ? AND attempt_key = ?",
+                (run_id, attempt_key),
+            ).fetchone()
+            if row is None:
+                return None
+            return self._load_zero(connection, str(row["attempt_id"]))
+        finally:
+            connection.close()
+
     def events(self, run_id: str) -> tuple[SpendEvent, ...]:
         connection = self._connect()
         try:
@@ -1357,7 +1402,7 @@ class ResearchSpendLedger:
     ) -> RunSnapshot:
         run = self._load_run(connection, binding.run_id)
         if run.binding != binding:
-            raise BindingConflict("owner, session, plan, revision, or currency changed")
+            raise BindingConflict("owner, session, plan, revision, mode, or currency changed")
         return run
 
     def _load_run(self, connection: sqlite3.Connection, run_id: str) -> RunSnapshot:
@@ -1391,6 +1436,7 @@ class ResearchSpendLedger:
                 plan_digest=str(row["plan_digest"]),
                 approval_revision=int(row["approval_revision"]),
                 currency=str(row["currency"]),
+                mode=str(row["mode"]),
             ),
             ceiling_cents=int(row["ceiling_cents"]),
             authorized_spent_cents=int(row["authorized_spent_cents"]),
@@ -1626,6 +1672,7 @@ class ResearchSpendLedger:
                 "closed_at": run.closed_at,
                 "created_at": run.created_at,
                 "currency": run.binding.currency,
+                "mode": run.binding.mode,
                 "held": run.held_cents,
                 "observed": str(run.observed_provider_spend_cents),
                 "owner_id": run.binding.owner_id,
@@ -1644,12 +1691,13 @@ class ResearchSpendLedger:
         value = cast(dict[str, object], json.loads(result_json))
         return RunSnapshot(
             binding=RunBinding(
-                str(value["run_id"]),
-                str(value["owner_id"]),
-                str(value["session_id"]),
-                str(value["plan_digest"]),
-                int(cast(int, value["approval_revision"])),
-                str(value["currency"]),
+                run_id=str(value["run_id"]),
+                owner_id=str(value["owner_id"]),
+                session_id=str(value["session_id"]),
+                plan_digest=str(value["plan_digest"]),
+                approval_revision=int(cast(int, value["approval_revision"])),
+                currency=str(value["currency"]),
+                mode=str(value.get("mode", "hard_ceiling")),
             ),
             ceiling_cents=int(cast(int, value["ceiling"])),
             authorized_spent_cents=int(cast(int, value["authorized"])),
