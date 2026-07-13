@@ -562,20 +562,32 @@ def get_settings_models(request: Request) -> ModelsResponse:
     all_ids = sorted(set(ready_set) | set(bindings.keys()))
     rows: list[ModelRow] = []
     for pid in all_ids:
-        is_ready = pid in ready_set
+        provider_registered = pid in ready_set
+        provider_bindings = sorted(bindings.get(pid, []))
+        # "ready" means reachable through an active dispatch tier, not merely
+        # present in the low-level registry. User-added providers intentionally
+        # remain unbound until a model-selection vertical grants explicit route
+        # authority; reporting them ready here would be product theater.
+        is_ready = provider_registered and bool(provider_bindings)
+        if is_ready:
+            notes = None
+        elif provider_registered:
+            notes = "registered, but not bound to an active dispatch tier"
+        else:
+            notes = "configured in dispatch config but not registered at boot"
         rows.append(
             ModelRow(
                 provider_id=pid,
                 ready=is_ready,
-                tier_bindings=sorted(bindings.get(pid, [])),
+                tier_bindings=provider_bindings,
                 primary_model=_primary_model_for_provider(cfg, pid),
-                notes=None if is_ready else "configured in dispatch config but not registered at boot",
+                notes=notes,
             )
         )
     return ModelsResponse(
         models=rows,
         count=len(rows),
-        providers_ready=bool(ready_set),
+        providers_ready=any(row.ready for row in rows),
     )
 
 

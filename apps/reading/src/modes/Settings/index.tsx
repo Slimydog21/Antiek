@@ -27,8 +27,8 @@ import AddModelPanel from "./AddModelPanel";
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset. Full "add model" + decision-tree override
- * land in later sprints.
+ * ledger or rate table is unset. Add-model securely registers BYOK providers;
+ * granting one dispatch-route authority remains a separate, explicit sprint.
  */
 export default function Settings() {
   const tier = useViewportTier();

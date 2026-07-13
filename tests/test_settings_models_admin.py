@@ -88,13 +88,16 @@ def test_add_appears_with_key_present_and_registers(client: TestClient) -> None:
 
     # Registration proof through the SAME seam register_default_providers
     # populates: the existing inventory endpoint reads
-    # app.state.registered_providers and must show the user provider ready.
+    # app.state.registered_providers. The generic inventory must NOT call the
+    # provider route-ready until an explicit dispatch tier binds it.
     models = client.get("/settings/models")
     assert models.status_code == 200
     row = next(
         m for m in models.json()["models"] if m["provider_id"] == "user-my-deepseek"
     )
-    assert row["ready"] is True
+    assert row["ready"] is False
+    assert row["tier_bindings"] == []
+    assert row["notes"] == "registered, but not bound to an active dispatch tier"
 
     # ... and the dispatch registry itself resolves the provider, with the
     # key decrypting from the byok store at call time (test-only private
@@ -186,7 +189,15 @@ def test_remove_takes_effect_immediately(client: TestClient) -> None:
     with pytest.raises(ProviderError):
         provider._resolve_api_key()  # noqa: SLF001
 
-    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 404
+    # Re-adding the same display name mints a new credential reference. A
+    # retained reference to the deleted provider must stay inert rather than
+    # decrypting its orphaned old ciphertext merely because the id exists again.
+    replacement = {**_ADD_BODY, "api_key": "sk-replacement-secret-123456789"}
+    assert client.post("/settings/models/user", json=replacement).status_code == 201
+    with pytest.raises(ProviderError):
+        provider._resolve_api_key()  # noqa: SLF001
+
+    assert client.delete("/settings/models/user/user-my-deepseek").status_code == 200
 
 
 @pytest.mark.parametrize(
@@ -248,7 +259,7 @@ def test_boot_time_reload_of_user_providers(env: Path) -> None:
     with TestClient(_fresh_app()) as reborn:
         models = reborn.get("/settings/models").json()["models"]
         row = next(m for m in models if m["provider_id"] == "user-my-deepseek")
-        assert row["ready"] is True
+        assert row["ready"] is False
         assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
     reset_provider_registry()
 
@@ -280,6 +291,32 @@ def test_boot_reload_cannot_shadow_default_provider_from_corrupt_registry(
         assert get_provider("openrouter") is sentinel
         assert reborn.get("/settings/models/user").json()["count"] == 0
         assert app.state.registered_providers == {"openrouter"}
+    reset_provider_registry()
+
+
+def test_boot_reload_rejects_credential_owned_by_another_pipeline(
+    env: Path,
+) -> None:
+    with TestClient(_fresh_app()) as first:
+        assert first.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+
+    # Keep a real decryptable credential id but corrupt its non-secret owner
+    # metadata to simulate a restored sidecar pointing at another BYOK lane.
+    artifact_path = env / "byok" / "credentials.enc"
+    artifact = json.loads(artifact_path.read_text(encoding="utf-8"))
+    cred_ref = registry["user-my-deepseek"]["cred_ref"]
+    artifact[cred_ref]["pipeline_kind"] = "x_ingest"
+    artifact[cred_ref]["account_handle"] = "unrelated-account"
+    artifact_path.write_text(json.dumps(artifact), encoding="utf-8")
+
+    reset_provider_registry()
+    with TestClient(_fresh_app()) as reborn:
+        rows = reborn.get("/settings/models/user").json()["models"]
+        assert rows[0]["key_present"] is False
+        assert rows[0]["registered"] is False
+        assert reborn.app.state.registered_providers == set()
     reset_provider_registry()
 
 
@@ -400,7 +437,7 @@ def test_boot_reload_lands_after_create_app_state_assignment(env: Path) -> None:
             for m in c.get("/settings/models").json()["models"]
             if m["provider_id"] == "user-my-deepseek"
         )
-        assert row["ready"] is True
+        assert row["ready"] is False
     reset_provider_registry()
 
 

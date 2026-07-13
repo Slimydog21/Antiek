@@ -41,7 +41,7 @@ describe("AddModelPanel", () => {
     render(<AddModelPanel />);
     await waitFor(() => expect(screen.getByText("My DeepSeek")).toBeTruthy());
     expect(screen.getByText("key stored")).toBeTruthy();
-    expect(screen.getByText("ready")).toBeTruthy();
+    expect(screen.getByText("registered")).toBeTruthy();
     // Inventory rows carry no key field; nothing key-shaped may render.
     expect(document.body.textContent).not.toContain("sk-");
   });

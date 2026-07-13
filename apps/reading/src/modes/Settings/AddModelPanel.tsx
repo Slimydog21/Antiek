@@ -159,7 +159,7 @@ export default function AddModelPanel() {
                         : "text-amber-700 dark:text-amber-300"
                     }
                   >
-                    {m.registered ? "ready" : "not registered"}
+                    {m.registered ? "registered" : "not registered"}
                   </span>
                   <button
                     type="button"

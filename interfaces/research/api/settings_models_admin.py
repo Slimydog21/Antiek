@@ -3,10 +3,13 @@
 Settings SPR-01 shipped the read-only model inventory and deferred "add
 model" to a later sprint. This module is that vertical: the operator
 registers their own provider endpoint + model (BYOK — bring your own key)
-from Settings, and the provider becomes GENUINELY dispatchable through the
-same seam ``register_default_providers`` populates — ``register_provider``
-in the dispatch registry plus the ``app.state.registered_providers`` name
-set that ``GET /settings/models`` and ``/health`` read. No display theater.
+from Settings through the same low-level seam ``register_default_providers``
+populates: ``register_provider`` plus the
+``app.state.registered_providers`` name set. Registration is deliberately
+distinct from route authority: this vertical does not silently bind a new
+provider to an active tier. ``GET /settings/models`` therefore reports it as
+registered but not route-ready until the model-selection vertical explicitly
+chooses where it may drive a prompt.
 
 SECRET HANDLING — reuses the house BYOK mechanism, decision (a)
 ────────────────────────────────────────────────────────────────
@@ -69,8 +72,9 @@ event handler because ``create_app`` assigns
 ``app.state.registered_providers`` AFTER the settings routes are mounted;
 startup events fire later still, so the union lands on the real set.
 
-Non-goals honored: no dispatch-time model picker, no per-key usage
-ledger, no budget writes, no live provider validation calls.
+Non-goals honored: no implicit dispatch-tier mutation, no per-key usage ledger,
+no budget writes, no live provider validation calls. A dispatch-time picker is
+the explicit follow-up that grants these registered providers route authority.
 """
 
 from __future__ import annotations
@@ -86,7 +90,12 @@ from urllib.parse import urlsplit
 from fastapi import APIRouter, FastAPI, HTTPException, Request
 from pydantic import BaseModel, Field, ValidationError
 
-from runtime.byok.store import list_credentials, load_credential, store_credential
+from runtime.byok.store import (
+    CredentialMetadata,
+    list_credentials,
+    load_credential,
+    store_credential,
+)
 from substrate.dispatch.base import Provider, ProviderError
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
@@ -202,10 +211,15 @@ class _ByokResolvedKeyMixin:
 
     def _resolve_api_key(self) -> str:
         record = _load_registry().get(self._user_model_id)
-        if record is None or not record.enabled:
+        if (
+            record is None
+            or not record.enabled
+            or record.cred_ref != self._cred_ref
+            or not _credential_matches_record(record, _credential_metadata())
+        ):
             raise ProviderError(
-                f"{self.name}: user-added provider was removed or disabled "
-                "in Settings; refusing to resolve its credential.",
+                f"{self.name}: user-added provider was removed, disabled, or "
+                "its credential binding changed; refusing credential resolution.",
                 provider=self.name, model="<unknown>", latency_ms=0,
             )
         try:
@@ -217,6 +231,28 @@ class _ByokResolvedKeyMixin:
                 provider=self.name, model="<unknown>", latency_ms=0,
             ) from exc
         return secret.reveal()
+
+
+def _credential_metadata() -> dict[str, CredentialMetadata]:
+    """Index only non-secret BYOK metadata; this never decrypts a key."""
+    return {item.cred_id: item for item in list_credentials()}
+
+
+def _credential_matches_record(
+    record: UserModelRecord,
+    metadata: dict[str, CredentialMetadata],
+) -> bool:
+    """Bind a registry row to the credential CREATE minted for that row.
+
+    A restored or hand-edited sidecar must not be able to point an arbitrary
+    model endpoint at an unrelated X or other BYOK credential.
+    """
+    item = metadata.get(record.cred_ref)
+    return bool(
+        item is not None
+        and item.pipeline_kind == _PIPELINE_KIND
+        and item.account_handle == record.id
+    )
 
 
 class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
@@ -290,7 +326,7 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     touched (prefix-guarded).
     """
     registry = _load_registry()
-    present = {m.cred_id for m in list_credentials()}
+    metadata = _credential_metadata()
     registered: set[str] = set()
     for record_id, record in registry.items():
         # Defense in depth at the authority boundary: even if a future registry
@@ -298,7 +334,7 @@ def reload_user_providers(app: FastAPI) -> set[str]:
         # that CREATE could have minted.
         if record_id != record.id or not record.id.startswith(_ID_PREFIX):
             continue
-        if not record.enabled or record.cred_ref not in present:
+        if not record.enabled or not _credential_matches_record(record, metadata):
             continue
         register_provider(_make_provider(record))
         registered.add(record.id)
@@ -482,7 +518,12 @@ user_models_router = APIRouter(prefix="/settings/models/user", tags=["settings"]
 @user_models_router.get("", response_model=UserModelsResponse)
 def get_user_models(request: Request) -> UserModelsResponse:
     registry = _load_registry()
-    present = {m.cred_id for m in list_credentials()}
+    metadata = _credential_metadata()
+    present = {
+        record.cred_ref
+        for record in registry.values()
+        if _credential_matches_record(record, metadata)
+    }
     seam = _seam_names(request.app)
     rows = [
         _row(rec, present=present, seam=seam)
@@ -539,7 +580,10 @@ async def post_user_model(request: Request) -> UserModelRow:
     seam = _seam_names(request.app)
     seam.add(record_id)
 
-    present = {m.cred_id for m in list_credentials()}
+    metadata = _credential_metadata()
+    present = (
+        {record.cred_ref} if _credential_matches_record(record, metadata) else set()
+    )
     return _row(record, present=present, seam=seam)
 
 
