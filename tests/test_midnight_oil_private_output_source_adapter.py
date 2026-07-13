@@ -36,7 +36,84 @@ from tests.support.owner_private_v2 import (
 ROOT = Path(__file__).resolve().parents[1]
 _ADAPTER_MODULE = "substrate.midnight_oil.private_output_source_adapter_v1"
 _CHECKER_MODULE = "substrate.midnight_oil.private_output_checker_v2"
-_ISOLATED_MODULES = {_ADAPTER_MODULE, _CHECKER_MODULE}
+_POLICY_V3_MODULE = "substrate.midnight_oil.private_output_policy_v3"
+_CAPABILITY_V3_MODULE = "substrate.midnight_oil.private_provider_capability_v3"
+_ISOLATED_MODULES = {
+    _ADAPTER_MODULE,
+    _CHECKER_MODULE,
+    _POLICY_V3_MODULE,
+    _CAPABILITY_V3_MODULE,
+}
+_ALLOWED_IMPORT_DAG = {
+    "substrate/midnight_oil/private_output_source_adapter_v1.py": {
+        _CHECKER_MODULE: frozenset(
+            {
+                "PRIVATE_OUTPUT_ATTRIBUTED_NORMALIZER_V2_SHA256",
+                "PRIVATE_OUTPUT_CHECKER_CONTRACT_V2_SHA256",
+                "PRIVATE_OUTPUT_CHECKER_V2_SHA256",
+                "PRIVATE_OUTPUT_EXECUTABLE_CORPUS_V2_SHA256",
+                "PRIVATE_OUTPUT_LEDGER_V2_SHA256",
+                "OwnerPrivateOverlapNotApplicableV2",
+                "OwnerPrivateOverlapPassV2",
+                "OwnerPrivateOverlapSourceV2",
+                "check_owner_private_overlap_v2",
+            }
+        ),
+    },
+    "substrate/midnight_oil/private_output_policy_v3.py": {
+        _CHECKER_MODULE: frozenset(
+            {
+                "PRIVATE_OUTPUT_ATTRIBUTED_NORMALIZER_V2_SHA256",
+                "PRIVATE_OUTPUT_CHECKER_CONTRACT_V2_SHA256",
+                "PRIVATE_OUTPUT_CHECKER_V2_SHA256",
+                "PRIVATE_OUTPUT_EXECUTABLE_CORPUS_V2_SHA256",
+                "PRIVATE_OUTPUT_LEDGER_V2_SHA256",
+                "PRIVATE_OUTPUT_MODULE_SOURCE_V2_SHA256",
+            }
+        ),
+        _ADAPTER_MODULE: frozenset(
+            {
+                "PRIVATE_OUTPUT_SOURCE_ADAPTER_V1_CONTRACT_SHA256",
+                "PRIVATE_OUTPUT_SOURCE_ADAPTER_V1_IMPLEMENTATION_SHA256",
+                "PRIVATE_OUTPUT_SOURCE_ADAPTER_V1_SOURCE_SET_SHA256",
+            }
+        ),
+    },
+    "substrate/midnight_oil/private_provider_capability_v3.py": {
+        _CHECKER_MODULE: frozenset(
+            {
+                "PRIVATE_OUTPUT_CHECKER_CONTRACT_V2_SHA256",
+                "PRIVATE_OUTPUT_CHECKER_V2_SHA256",
+                "PRIVATE_OUTPUT_EXECUTABLE_CORPUS_V2_SHA256",
+            }
+        ),
+        _ADAPTER_MODULE: frozenset(
+            {
+                "PRIVATE_OUTPUT_SOURCE_ADAPTER_V1_CONTRACT_SHA256",
+                "PRIVATE_OUTPUT_SOURCE_ADAPTER_V1_IMPLEMENTATION_SHA256",
+                "PRIVATE_OUTPUT_SOURCE_ADAPTER_V1_SOURCE_SET_SHA256",
+            }
+        ),
+        _POLICY_V3_MODULE: frozenset({"OWNER_PRIVATE_OUTPUT_POLICY_V3_SHA256"}),
+        "substrate.midnight_oil.private_provider_capability_v2": frozenset(
+            {
+                "PrivateProviderProcessingCapabilityV2",
+                "private_provider_capability_v2_sha256",
+                "verify_private_provider_capability_v2",
+            }
+        ),
+        "substrate.midnight_oil.private_provider_composition": frozenset(
+            {"DurablePrivateProviderRevocationHeadStore"}
+        ),
+        "substrate.midnight_oil.private_provider_policy": frozenset(
+            {
+                "MAX_PRIVATE_PROVIDER_CAPABILITIES",
+                "MAX_PRIVATE_PROVIDER_REVOCATION_REFERENCE_AGE_MS",
+                "private_provider_capability_sha256",
+            }
+        ),
+    },
+}
 _FORBIDDEN_PUBLIC_NAMES = {
     "continuation",
     "envelope_sha256",
@@ -440,7 +517,11 @@ def test_real_production_import_roots_do_not_reach_adapter_or_checker(module: st
         "import importlib,sys; importlib.import_module(" + repr(module) + "); "
         "forbidden={"
         + repr(_ADAPTER_MODULE)
-        + ", 'substrate.midnight_oil.private_output_checker_v2'}; "
+        + ", 'substrate.midnight_oil.private_output_checker_v2', "
+        + repr(_POLICY_V3_MODULE)
+        + ", "
+        + repr(_CAPABILITY_V3_MODULE)
+        + "}; "
         "assert forbidden.isdisjoint(sys.modules), forbidden.intersection(sys.modules)"
     )
     subprocess.run(
@@ -454,39 +535,55 @@ def test_real_production_import_roots_do_not_reach_adapter_or_checker(module: st
 
 
 def _forbidden_imports(source: str, *, path: str) -> tuple[str, ...]:
-    if path == "substrate/midnight_oil/private_output_source_adapter_v1.py":
-        return ()
     tree = ast.parse(source, filename=path)
     found: list[str] = []
+    allowed = _ALLOWED_IMPORT_DAG.get(path, {})
+    controlled = _ISOLATED_MODULES | set(allowed)
     importlib_aliases = {"importlib"}
     import_module_aliases: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             importlib_aliases.update(
-                alias.asname or alias.name
-                for alias in node.names
-                if alias.name == "importlib"
+                alias.asname or alias.name for alias in node.names if alias.name == "importlib"
             )
         elif isinstance(node, ast.ImportFrom) and node.module == "importlib":
             import_module_aliases.update(
-                alias.asname or alias.name
-                for alias in node.names
-                if alias.name == "import_module"
+                alias.asname or alias.name for alias in node.names if alias.name == "import_module"
             )
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            found.extend(alias.name for alias in node.names if alias.name in _ISOLATED_MODULES)
+            for alias in node.names:
+                if alias.name in _ISOLATED_MODULES:
+                    found.append(alias.name)
         elif isinstance(node, ast.ImportFrom):
-            absolute = node.module or ""
-            if absolute in _ISOLATED_MODULES or any(
-                absolute.endswith("." + module.rsplit(".", 1)[1]) for module in _ISOLATED_MODULES
-            ):
-                found.append(absolute)
-            elif node.level and any(
-                alias.name in {module.rsplit(".", 1)[1] for module in _ISOLATED_MODULES}
-                for alias in node.names
-            ):
-                found.extend(alias.name for alias in node.names)
+            raw_module = node.module or ""
+            target = next(
+                (
+                    module
+                    for module in controlled
+                    if raw_module == module
+                    or raw_module == module.rsplit(".", 1)[1]
+                    or raw_module.endswith("." + module.rsplit(".", 1)[1])
+                ),
+                None,
+            )
+            if target is not None:
+                names = frozenset(alias.name for alias in node.names)
+                permitted = allowed.get(target)
+                if permitted is None or not names.issubset(permitted):
+                    found.append(target)
+            elif node.level:
+                for alias in node.names:
+                    target = next(
+                        (
+                            module
+                            for module in _ISOLATED_MODULES
+                            if alias.name == module.rsplit(".", 1)[1]
+                        ),
+                        None,
+                    )
+                    if target is not None:
+                        found.append(target)
         elif isinstance(node, ast.Call) and node.args:
             function = node.func
             dynamic_import = (
@@ -534,7 +631,7 @@ def test_production_ast_import_allowlist_has_teeth() -> None:
     assert _forbidden_imports(
         "from . import private_output_source_adapter_v1\n",
         path="substrate/midnight_oil/live.py",
-    ) == ("private_output_source_adapter_v1",)
+    ) == (_ADAPTER_MODULE,)
     assert _forbidden_imports(
         "import importlib\nimportlib.import_module(" + repr(_ADAPTER_MODULE) + ")\n",
         path="services/html_projection/worker.py",
@@ -548,11 +645,23 @@ def test_production_ast_import_allowlist_has_teeth() -> None:
         path="runtime/worker.py",
     ) == (_ADAPTER_MODULE,)
     assert _forbidden_imports(
-        "from importlib import import_module as load\nload("
-        + repr(_CHECKER_MODULE)
-        + ")\n",
+        "from importlib import import_module as load\nload(" + repr(_CHECKER_MODULE) + ")\n",
         path="orchestration/worker.py",
     ) == (_CHECKER_MODULE,)
+    assert _forbidden_imports(
+        "from .private_output_source_adapter_v1 import "
+        "evaluate_owner_private_output_source_adapter_v1\n",
+        path="substrate/midnight_oil/private_output_policy_v3.py",
+    ) == (_ADAPTER_MODULE,)
+    assert _forbidden_imports(
+        "from .private_provider_capability_v2 import signed_private_provider_capability_v2\n",
+        path="substrate/midnight_oil/private_provider_capability_v3.py",
+    ) == ("substrate.midnight_oil.private_provider_capability_v2",)
+    assert _forbidden_imports(
+        "from substrate.midnight_oil.private_output_policy_v3 import "
+        "OWNER_PRIVATE_OUTPUT_POLICY_V3_SHA256\n",
+        path="interfaces/research/api/app.py",
+    ) == (_POLICY_V3_MODULE,)
 
 
 def test_package_exports_and_application_routes_do_not_publish_adapter() -> None:
@@ -560,8 +669,17 @@ def test_package_exports_and_application_routes_do_not_publish_adapter() -> None
     from interfaces.research.api.app import create_app
 
     assert not hasattr(package, "evaluate_owner_private_output_source_adapter_v1")
+    assert not hasattr(package, "OwnerPrivateOutputPolicyV3")
+    assert not hasattr(package, "PrivateProviderProcessingCapabilityV3")
+    assert not hasattr(package, "PrivateProviderCapabilityV3CurrentResolver")
     paths = {route.path for route in create_app().routes if hasattr(route, "path")}
-    assert not any("private-output" in path or "source-adapter" in path for path in paths)
+    assert not any(
+        "private-output" in path
+        or "source-adapter" in path
+        or "capability-v3" in path
+        or "policy-v3" in path
+        for path in paths
+    )
 
 
 def test_contract_and_source_identity_drift_rejects(
