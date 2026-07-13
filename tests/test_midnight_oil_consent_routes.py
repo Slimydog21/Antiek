@@ -12,6 +12,7 @@ from interfaces.research.api.midnight_oil_routes import (
     MidnightOilDependencies,
     register_midnight_oil_routes,
 )
+from substrate.midnight_oil.contracts import research_acceptance_policy_from_payload
 from substrate.midnight_oil.job import InMemoryJobStore
 from substrate.midnight_oil.job_store import (
     CompareAndSetResult,
@@ -397,6 +398,9 @@ def test_receipt_rejects_each_bound_config_mutation_and_key_time_failures(
         research_tier=row.payload["research_tier"],
         fanout_depth=row.payload["fanout_depth"],
         asset_id=row.payload["asset_id"],
+        acceptance_policy=research_acceptance_policy_from_payload(
+            {"policy_version": row.payload["acceptance_policy_version"]}
+        ),
     )
     receipt = decode_and_verify(token, verification_keys={"test-key": KEY})
     deps.consents.claim(
@@ -416,6 +420,7 @@ def test_receipt_rejects_each_bound_config_mutation_and_key_time_failures(
         replace(config, research_tier="fast"),
         replace(config, fanout_depth=4),
         replace(config, asset_id="other"),
+        replace(config, acceptance_policy=None),
     )
     for mutated in mutations:
         with pytest.raises(ConsentRejected):

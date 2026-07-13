@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import hmac
 import json
 from concurrent.futures import ThreadPoolExecutor
@@ -9,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from substrate.midnight_oil.contracts import ResearchAcceptancePolicy
 from substrate.midnight_oil.spend_consent import (
     ConsentRejected,
     ConsentRejection,
@@ -30,6 +32,7 @@ def config() -> JobConsentConfig:
         research_tier="wrestle",
         fanout_depth=3,
         asset_id="moil_asset_123",
+        acceptance_policy=ResearchAcceptancePolicy(),
     )
 
 
@@ -223,3 +226,85 @@ def test_claim_rejects_boolean_money_and_time(tmp_path: Path) -> None:
         lambda: claim(store, token, expected_ceiling_cents=True),
     )
     rejected(ConsentRejection.MALFORMED, lambda: claim(store, token, now_ms=True))
+
+
+def test_policy_is_part_of_canonical_consent_identity() -> None:
+    approved = config()
+    legacy = replace(approved, acceptance_policy=None)
+    invalid_future = replace(
+        approved,
+        acceptance_policy=ResearchAcceptancePolicy.model_construct(policy_version=2),
+    )
+
+    assert approved.canonical_hash() == approved.canonical_hash()
+    assert approved.canonical_hash() != legacy.canonical_hash()
+    assert approved.canonical_hash() != invalid_future.canonical_hash()
+
+
+@pytest.mark.parametrize(  # type: ignore[untyped-decorator]
+    ("field", "changed_value"),
+    [
+        ("policy_version", 2),
+        ("required_coverage", "insights_only"),
+        ("exploratory_questions", "admit_to_graph"),
+        ("external_receipts", "external_receipt_sufficient"),
+        ("unsupported_output", "discard"),
+        ("legacy_rows", "assume_v1"),
+    ],
+)
+def test_every_policy_field_changes_canonical_consent_identity(
+    field: str, changed_value: object
+) -> None:
+    approved = config()
+    assert approved.acceptance_policy is not None
+    changed_policy = approved.acceptance_policy.model_copy(
+        update={field: changed_value}
+    )
+    changed = replace(approved, acceptance_policy=changed_policy)
+
+    assert changed.canonical_hash() != approved.canonical_hash()
+
+
+def test_policy_absent_config_preserves_the_legacy_hash_shape() -> None:
+    legacy = replace(config(), acceptance_policy=None)
+    payload = {
+        "job_id": legacy.job_id,
+        "goals": list(legacy.goals),
+        "duration_minutes": legacy.duration_minutes,
+        "model_id": legacy.model_id,
+        "research_tier": legacy.research_tier,
+        "fanout_depth": legacy.fanout_depth,
+        "asset_id": legacy.asset_id,
+        "live_execution_plan_hash": legacy.live_execution_plan_hash,
+    }
+    canonical = json.dumps(
+        payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode()
+    expected = hashlib.sha256(
+        b"antiek.midnight-oil.job-config.v1\x00" + canonical
+    ).hexdigest()
+    assert legacy.canonical_hash() == expected
+
+
+def test_new_consent_rejects_policy_absent_or_unknown_config(tmp_path: Path) -> None:
+    store = SpendConsentStore(tmp_path / "consent.sqlite3")
+    with pytest.raises(ValueError, match="policy is required"):
+        issue(store, config=replace(config(), acceptance_policy=None))
+    with pytest.raises(ValueError):
+        issue(
+            store,
+            config=replace(
+                config(),
+                acceptance_policy=ResearchAcceptancePolicy.model_construct(policy_version=2),
+            ),
+        )
+
+
+def test_policy_drift_rejects_claim(tmp_path: Path) -> None:
+    store = SpendConsentStore(tmp_path / "consent.sqlite3")
+    token = issue(store)
+    legacy = replace(config(), acceptance_policy=None)
+    rejected(
+        ConsentRejection.CONFIG_DRIFT,
+        lambda: claim(store, token, expected_config=legacy),
+    )

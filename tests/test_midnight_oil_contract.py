@@ -2,9 +2,21 @@
 
 from __future__ import annotations
 
-from fastapi.testclient import TestClient
+import hashlib
+import json
 
-from substrate.midnight_oil import MidnightOilRequest, preflight_midnight_oil
+import pytest
+from fastapi.testclient import TestClient
+from pydantic import ValidationError
+
+from substrate.midnight_oil import (
+    MidnightOilRequest,
+    ResearchAcceptancePolicy,
+    canonical_research_claim_id,
+    canonical_source_receipt_id,
+    normalize_research_paragraphs,
+    preflight_midnight_oil,
+)
 
 
 def test_no_ack_request_is_denied_before_dispatch() -> None:
@@ -312,3 +324,140 @@ def test_midnight_oil_preflight_api_contract() -> None:
     assert body["applied_run_receipt"]["final_artifact_created"] is False
     assert body["artifact_contract"]["final_format"] == "html"
     assert len(body["role_plans"]) == 4
+
+
+def test_acceptance_policy_survives_the_entire_preflight_chain() -> None:
+    policy = ResearchAcceptancePolicy()
+    result = preflight_midnight_oil(
+        MidnightOilRequest(
+            goal="Trace claims to canonical evidence.",
+            work_minutes=60,
+            price_ceiling_usd=5.0,
+            source_policy=["operator_corpus"],
+            acceptance_policy=policy,
+            operator_acknowledged_spend=True,
+        )
+    )
+
+    assert result.acceptance_policy == policy
+    assert result.launch_packet is not None
+    assert result.approval_receipt is not None
+    assert result.runner_handoff is not None
+    assert result.applied_run_receipt is not None
+    assert result.launch_packet.acceptance_policy == policy
+    assert result.approval_receipt.approved_acceptance_policy == policy
+    assert result.runner_handoff.acceptance_policy == policy
+    assert result.applied_run_receipt.acceptance_policy == policy
+
+    policy_bearers = (
+        MidnightOilRequest(
+            goal="Trace claims to canonical evidence.",
+            work_minutes=60,
+            price_ceiling_usd=5.0,
+            source_policy=["operator_corpus"],
+            acceptance_policy=policy,
+            operator_acknowledged_spend=True,
+        ),
+        result,
+        result.launch_packet,
+        result.approval_receipt,
+        result.runner_handoff,
+        result.applied_run_receipt,
+    )
+    for contract in policy_bearers:
+        assert contract is not None
+        round_tripped = type(contract).model_validate(contract.model_dump(mode="json"))
+        assert round_tripped == contract
+
+
+def test_unknown_acceptance_policy_version_fails_closed() -> None:
+    with pytest.raises(ValidationError):
+        MidnightOilRequest.model_validate(
+            {
+                "goal": "Reject unknown policy semantics.",
+                "work_minutes": 60,
+                "price_ceiling_usd": 5.0,
+                "source_policy": ["operator_corpus"],
+                "acceptance_policy": {"policy_version": 2},
+            }
+        )
+
+
+def test_paragraph_normalization_is_platform_stable() -> None:
+    assert normalize_research_paragraphs("  first\r\n\r\n second\n \n\nthird  ") == (
+        "first",
+        "second",
+        "third",
+    )
+    assert normalize_research_paragraphs(" \r\n ") == ()
+
+
+def test_claim_identity_is_domain_separated_and_delimiter_safe() -> None:
+    base = canonical_research_claim_id(
+        job_id="job|a",
+        step_key="step",
+        claim_class="insight",
+        ordinal=0,
+        normalized_text="claim",
+    )
+    shifted = canonical_research_claim_id(
+        job_id="job",
+        step_key="a|step",
+        claim_class="insight",
+        ordinal=0,
+        normalized_text="claim",
+    )
+    assert base != shifted
+    assert len(base) == 64
+
+
+def _independent_identity_digest(domain: str, fields: dict[str, object]) -> str:
+    canonical = json.dumps(
+        {"domain": domain, "schema_version": 1, **fields},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def test_claim_identity_matches_independent_canonical_unicode_vector() -> None:
+    fields: dict[str, object] = {
+        "job_id": "عمل|job",
+        "step_key": "step:α",
+        "claim_class": "output_paragraph",
+        "ordinal": 7,
+        "normalized_text": "Evidence | الدليل | café",
+    }
+    actual = canonical_research_claim_id(**fields)  # type: ignore[arg-type]
+    expected = _independent_identity_digest("antiek.midnight_oil.claim", fields)
+    wrong_domain = _independent_identity_digest(
+        "antiek.midnight_oil.source_receipt", fields
+    )
+
+    assert actual == expected
+    assert actual != wrong_domain
+
+
+def test_source_receipt_identity_uses_only_authoritative_fields() -> None:
+    fields = {
+        "document_id": "document-1",
+        "chunk_id": "chunk-1",
+        "hash_scope": "retrieval_excerpt",
+        "content_hash": "a" * 64,
+        "canonical_url": "antiek://document/document-1#chunk=chunk-1",
+    }
+    actual = canonical_source_receipt_id(**fields)
+    reordered = canonical_source_receipt_id(**dict(reversed(tuple(fields.items()))))
+    expected = _independent_identity_digest(
+        "antiek.midnight_oil.source_receipt", fields
+    )
+    with_display_metadata = _independent_identity_digest(
+        "antiek.midnight_oil.source_receipt",
+        {**fields, "title": "Display-only title"},
+    )
+    wrong_domain = _independent_identity_digest("antiek.midnight_oil.claim", fields)
+
+    assert actual == reordered == expected
+    assert actual != with_display_metadata
+    assert actual != wrong_domain

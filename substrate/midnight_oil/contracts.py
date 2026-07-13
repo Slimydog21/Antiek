@@ -8,8 +8,12 @@ agents, calls model providers, reserves budget, or performs retrieval.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import math
+import re
 import uuid
+from collections.abc import Mapping
 from decimal import ROUND_FLOOR, Decimal
 from typing import Literal
 
@@ -127,10 +131,106 @@ def validate_receipt_chain(receipts: list[GateReceipt]) -> None:
         seen_receipts.add(receipt.receipt_id)
         seen_adapters[receipt.adapter_key] = receipt.receipt_id
 
+
 RouteMode = Literal["auto_quality", "auto_balanced", "auto_cost", "auto_latency", "manual"]
 SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
 DeliverableKind = Literal["html_research_asset"]
 MidnightOilRole = Literal["planner", "gatherer", "verifier", "synthesizer"]
+ResearchClaimClass = Literal["insight", "output_paragraph", "exploratory_question"]
+
+
+class ResearchAcceptancePolicy(_ContractModel):
+    """Closed v1 epistemic floor carried by operator-bound run authority."""
+
+    model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
+
+    policy_version: Literal[1] = 1
+    required_coverage: Literal["insights_and_output_paragraphs"] = "insights_and_output_paragraphs"
+    exploratory_questions: Literal["operational_only"] = "operational_only"
+    external_receipts: Literal["local_canonical_chunk_required"] = "local_canonical_chunk_required"
+    unsupported_output: Literal["retain_operational_only"] = "retain_operational_only"
+    legacy_rows: Literal["legacy_unverified"] = "legacy_unverified"
+
+
+def research_acceptance_policy_from_payload(
+    value: object,
+) -> ResearchAcceptancePolicy | None:
+    if value is None:
+        return None
+    return ResearchAcceptancePolicy.model_validate(value)
+
+
+def _identity_hash(domain: str, fields: Mapping[str, object]) -> str:
+    payload = json.dumps(
+        {"domain": domain, "schema_version": 1, **fields},
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+def canonical_research_claim_id(
+    *,
+    job_id: str,
+    step_key: str,
+    claim_class: ResearchClaimClass,
+    ordinal: int,
+    normalized_text: str,
+) -> str:
+    if type(ordinal) is not int or ordinal < 0:
+        raise ValueError("claim ordinal must be a non-negative integer")
+    for name, value in (
+        ("job_id", job_id),
+        ("step_key", step_key),
+        ("normalized_text", normalized_text),
+    ):
+        if type(value) is not str or not value:
+            raise ValueError(f"{name} must be a non-empty string")
+    if claim_class not in {"insight", "output_paragraph", "exploratory_question"}:
+        raise ValueError("claim class is unsupported")
+    return _identity_hash(
+        "antiek.midnight_oil.claim",
+        {
+            "job_id": job_id,
+            "step_key": step_key,
+            "claim_class": claim_class,
+            "ordinal": ordinal,
+            "normalized_text": normalized_text,
+        },
+    )
+
+
+def normalize_research_paragraphs(value: str) -> tuple[str, ...]:
+    if type(value) is not str:
+        raise TypeError("research prose must be a string")
+    normalized = value.replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not normalized:
+        return ()
+    return tuple(
+        paragraph.strip() for paragraph in re.split(r"\n[ \t]*\n+", normalized) if paragraph.strip()
+    )
+
+
+def canonical_source_receipt_id(
+    *,
+    document_id: str,
+    chunk_id: str,
+    hash_scope: str,
+    content_hash: str,
+    canonical_url: str,
+) -> str:
+    fields = {
+        "document_id": document_id,
+        "chunk_id": chunk_id,
+        "hash_scope": hash_scope,
+        "content_hash": content_hash,
+        "canonical_url": canonical_url,
+    }
+    if any(type(value) is not str or not value for value in fields.values()):
+        raise ValueError("source receipt identity fields must be non-empty strings")
+    return _identity_hash("antiek.midnight_oil.source_receipt", fields)
+
 
 _ROLE_ORDER: tuple[MidnightOilRole, ...] = ("planner", "gatherer", "verifier", "synthesizer")
 _BUDGET_WEIGHTS: dict[MidnightOilRole, int] = {
@@ -154,6 +254,7 @@ class MidnightOilRequest(_ContractModel):
     route_mode: RouteMode = "auto_balanced"
     source_policy: list[SourcePolicy] = Field(min_length=1)
     deliverable: DeliverableKind = "html_research_asset"
+    acceptance_policy: ResearchAcceptancePolicy = Field(default_factory=ResearchAcceptancePolicy)
     operator_acknowledged_spend: bool = False
 
     @model_validator(mode="after")
@@ -193,6 +294,7 @@ class MidnightOilLaunchPacket(_ContractModel):
     route_mode: RouteMode
     source_policy: list[SourcePolicy]
     deliverable: DeliverableKind
+    acceptance_policy: ResearchAcceptancePolicy
     artifact_contract: MidnightOilArtifactContract
     role_count: int = Field(ge=0)
     role_route_receipt_ids: list[str]
@@ -214,6 +316,7 @@ class MidnightOilApprovalReceipt(_ContractModel):
     approved_route_mode: RouteMode
     approved_source_policy: list[SourcePolicy]
     approved_deliverable: DeliverableKind
+    approved_acceptance_policy: ResearchAcceptancePolicy
     planned_budget_usd: float = Field(ge=0.0)
     unallocated_budget_usd: float = Field(ge=0.0)
     approval_scope: Literal["preflight_launch_packet_only"] = "preflight_launch_packet_only"
@@ -229,6 +332,7 @@ class MidnightOilRunnerHandoff(_ContractModel):
     approval_receipt_id: str
     launch_packet_id: str
     run_id: str
+    acceptance_policy: ResearchAcceptancePolicy
     status: Literal["ready_for_runner_apply"] = "ready_for_runner_apply"
     approved_price_ceiling_usd: float = Field(ge=0.0)
     planned_budget_usd: float = Field(ge=0.0)
@@ -249,6 +353,7 @@ class MidnightOilAppliedRunReceipt(_ContractModel):
     approval_receipt_id: str
     launch_packet_id: str
     run_id: str
+    acceptance_policy: ResearchAcceptancePolicy
     status: Literal["planned_not_dispatched"] = "planned_not_dispatched"
     planned_role_count: int = Field(ge=0)
     planned_budget_usd: float = Field(ge=0.0)
@@ -273,6 +378,7 @@ class MidnightOilPreflight(_ContractModel):
     route_mode: RouteMode
     source_policy: list[SourcePolicy]
     deliverable: DeliverableKind
+    acceptance_policy: ResearchAcceptancePolicy
     planned_budget_usd: float = Field(default=0.0, ge=0.0)
     unallocated_budget_usd: float = Field(default=0.0, ge=0.0)
     role_plans: list[MidnightOilRolePlan] = Field(default_factory=list)
@@ -298,6 +404,7 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
             route_mode=req.route_mode,
             source_policy=req.source_policy,
             deliverable=req.deliverable,
+            acceptance_policy=req.acceptance_policy,
             planned_budget_usd=0.0,
             unallocated_budget_usd=price_ceiling_usd,
             notes=[
@@ -339,6 +446,7 @@ def preflight_midnight_oil(req: MidnightOilRequest) -> MidnightOilPreflight:
         route_mode=req.route_mode,
         source_policy=req.source_policy,
         deliverable=req.deliverable,
+        acceptance_policy=req.acceptance_policy,
         planned_budget_usd=planned_budget_usd,
         unallocated_budget_usd=unallocated_budget_usd,
         role_plans=role_plans,
@@ -369,6 +477,7 @@ def _applied_run_receipt(
         approval_receipt_id=approval_receipt.receipt_id,
         launch_packet_id=launch_packet.packet_id,
         run_id=launch_packet.run_id,
+        acceptance_policy=launch_packet.acceptance_policy,
         planned_role_count=launch_packet.role_count,
         planned_budget_usd=approval_receipt.planned_budget_usd,
         unallocated_budget_usd=approval_receipt.unallocated_budget_usd,
@@ -397,6 +506,7 @@ def _runner_handoff(
         approval_receipt_id=approval_receipt.receipt_id,
         launch_packet_id=launch_packet.packet_id,
         run_id=launch_packet.run_id,
+        acceptance_policy=launch_packet.acceptance_policy,
         approved_price_ceiling_usd=approval_receipt.approved_price_ceiling_usd,
         planned_budget_usd=approval_receipt.planned_budget_usd,
         unallocated_budget_usd=approval_receipt.unallocated_budget_usd,
@@ -430,6 +540,7 @@ def _approval_receipt(
         approved_route_mode=launch_packet.route_mode,
         approved_source_policy=launch_packet.source_policy,
         approved_deliverable=launch_packet.deliverable,
+        approved_acceptance_policy=launch_packet.acceptance_policy,
         planned_budget_usd=launch_packet.planned_budget_usd,
         unallocated_budget_usd=launch_packet.unallocated_budget_usd,
         dispatch_allowed=launch_packet.dispatch_allowed,
@@ -497,6 +608,7 @@ def _launch_packet(
         route_mode=req.route_mode,
         source_policy=req.source_policy,
         deliverable=req.deliverable,
+        acceptance_policy=req.acceptance_policy,
         artifact_contract=artifact_contract,
         role_count=len(role_plans),
         role_route_receipt_ids=[plan.planned_route_receipt_id for plan in role_plans],

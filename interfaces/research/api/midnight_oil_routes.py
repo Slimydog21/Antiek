@@ -23,6 +23,7 @@ from substrate.midnight_oil import (
     MidnightOilExecutionRequest,
     MidnightOilPreflight,
     MidnightOilRequest,
+    ResearchAcceptancePolicy,
     create_with_recommended_ceiling,
     deposit_job_results,
     execute_midnight_oil,
@@ -30,6 +31,7 @@ from substrate.midnight_oil import (
     job_summary_html,
     preflight_midnight_oil,
     product_result_html,
+    research_acceptance_policy_from_payload,
 )
 from substrate.midnight_oil.durable_job import DurableJobStore
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
@@ -234,6 +236,7 @@ def _owner_payload(job: Any, *, live_plan: LiveExecutionPlan | None = None) -> d
             None if live_plan is None else live_plan.dispatch_config_hash
         ),
         "live_max_input_bytes": (None if live_plan is None else live_plan.max_input_bytes),
+        "acceptance_policy_version": ResearchAcceptancePolicy().policy_version,
     }
 
 
@@ -369,6 +372,11 @@ def _config(row: OwnerJob) -> JobConsentConfig:
         fanout_depth=fanout,
         asset_id=asset_id,
         live_execution_plan_hash=(None if live_plan is None else live_plan.plan_hash),
+        acceptance_policy=research_acceptance_policy_from_payload(
+            None
+            if payload.get("acceptance_policy_version") is None
+            else {"policy_version": payload["acceptance_policy_version"]}
+        ),
     )
 
 

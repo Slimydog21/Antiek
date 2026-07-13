@@ -19,6 +19,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final
 
+from .contracts import ResearchAcceptancePolicy
+
 _DOMAIN: Final = b"antiek.midnight-oil.spend-consent.v1\x00"
 _SCHEMA_VERSION: Final = 1
 MAX_CONSENT_TTL_MS: Final = 86_400_000
@@ -58,9 +60,15 @@ class JobConsentConfig:
     fanout_depth: int
     asset_id: str | None
     live_execution_plan_hash: str | None = None
+    acceptance_policy: ResearchAcceptancePolicy | None = None
 
     def canonical_hash(self) -> str:
-        payload = _canonical_json(asdict(self))
+        fields = asdict(self)
+        if self.acceptance_policy is None:
+            fields.pop("acceptance_policy")
+        else:
+            fields["acceptance_policy"] = self.acceptance_policy.model_dump(mode="json")
+        payload = _canonical_json(fields)
         return hashlib.sha256(b"antiek.midnight-oil.job-config.v1\x00" + payload).hexdigest()
 
 
@@ -112,7 +120,7 @@ def _validate_text(value: object, *, maximum: int = 256) -> str:
     return cleaned
 
 
-def _validate_config(config: JobConsentConfig) -> None:
+def _validate_config(config: JobConsentConfig, *, require_acceptance_policy: bool = False) -> None:
     _validate_text(config.job_id)
     _validate_text(config.research_tier, maximum=32)
     if not isinstance(config.goals, tuple) or not 1 <= len(config.goals) <= 64:
@@ -136,6 +144,14 @@ def _validate_config(config: JobConsentConfig) -> None:
             bytes.fromhex(config.live_execution_plan_hash)
         except ValueError as exc:
             raise ValueError("live execution plan hash must be SHA-256 hex") from exc
+    if config.acceptance_policy is not None and not isinstance(
+        config.acceptance_policy, ResearchAcceptancePolicy
+    ):
+        raise ValueError("research acceptance policy is invalid")
+    if config.acceptance_policy is not None:
+        ResearchAcceptancePolicy.model_validate(config.acceptance_policy.model_dump(mode="python"))
+    if require_acceptance_policy and config.acceptance_policy is None:
+        raise ValueError("research acceptance policy is required for new consent")
     if type(config.duration_minutes) is not int or not 1 <= config.duration_minutes <= 10_080:
         raise ValueError("duration is outside consent bounds")
     if type(config.fanout_depth) is not int or not 1 <= config.fanout_depth <= 64:
@@ -239,7 +255,7 @@ class SpendConsentStore:
         operation = _validate_text(operation_id)
         nonce_value = _validate_text(nonce)
         kid = _validate_text(key_id, maximum=64)
-        _validate_config(config)
+        _validate_config(config, require_acceptance_policy=True)
         if type(ceiling_cents) is not int or not 1 <= ceiling_cents <= MAX_CEILING_CENTS:
             raise ValueError("ceiling_cents is outside consent bounds")
         if type(issued_at_ms) is not int or type(expires_at_ms) is not int:

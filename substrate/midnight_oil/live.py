@@ -37,6 +37,7 @@ from .budget_ledger import (
     UnknownCallOutcome,
     UnknownOutcomePersistenceError,
 )
+from .contracts import research_acceptance_policy_from_payload
 from .deposit import DepositResult, deposit_job_results
 from .graph_projection import (
     GraphProjectionResult,
@@ -485,6 +486,13 @@ class LiveOperatorCorpusStep:
             fanout_depth=job.fanout_depth,
             asset_id=job.asset_id,
             live_execution_plan_hash=plan.plan_hash,
+            acceptance_policy=research_acceptance_policy_from_payload(
+                None
+                if authority.payload.get("acceptance_policy_version") is None
+                else {
+                    "policy_version": authority.payload["acceptance_policy_version"]
+                }
+            ),
         )
         if not hmac.compare_digest(
             signed_config.canonical_hash(), authority.consent_config_hash
