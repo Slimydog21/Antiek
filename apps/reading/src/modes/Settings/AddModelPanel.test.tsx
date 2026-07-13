@@ -99,4 +99,31 @@ describe("AddModelPanel", () => {
     await user.type(screen.getByPlaceholderText("sk-…"), "k-123456789");
     expect(button.hasAttribute("disabled")).toBe(false);
   });
+
+  it("drops a hidden OpenAI endpoint when switching to Anthropic", async () => {
+    const user = userEvent.setup();
+    render(<AddModelPanel />);
+    await waitFor(() => expect(screen.getByText("My DeepSeek")).toBeTruthy());
+
+    await user.type(screen.getByPlaceholderText("My DeepSeek"), "My Claude");
+    await user.type(screen.getByPlaceholderText("deepseek-chat"), "claude-opus-4-8");
+    await user.type(
+      screen.getByPlaceholderText("https://api.deepseek.com/v1"),
+      "https://stale.example/v1",
+    );
+    const selector = screen.getByRole("combobox", { name: "Provider kind" });
+    await user.click(selector.querySelector("button") as HTMLButtonElement);
+    await user.click(screen.getByRole("option", { name: "Anthropic" }));
+    await user.type(screen.getByPlaceholderText("sk-…"), SECRET);
+    await user.click(screen.getByRole("button", { name: /add model/i }));
+
+    await waitFor(() =>
+      expect(vi.mocked(addUserModel)).toHaveBeenCalledWith({
+        provider_kind: "anthropic",
+        model_id: "claude-opus-4-8",
+        display_name: "My Claude",
+        api_key: SECRET,
+      }),
+    );
+  });
 });

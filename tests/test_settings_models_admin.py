@@ -1,9 +1,9 @@
 """Add-model vertical — user-added BYOK providers in Settings.
 
 All offline + deterministic: byok artifact/key-file + user-model registry
-redirected to tmp via env, zero network (no provider ``call()`` is ever
-made), providers registered via the REAL dispatch seam and reset around
-each test. The key-absent invariant mirrors ``test_byok_store.py``'s
+redirected to tmp via env, zero real network (the credential-reflection test
+uses ``httpx.MockTransport``), providers registered via the REAL dispatch seam
+and reset around each test. The key-absent invariant mirrors ``test_byok_store.py``'s
 byte-level absence assertion: responses, durable artifacts, and captured
 logs/stdio must never contain the plaintext key.
 """

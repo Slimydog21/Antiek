@@ -71,7 +71,7 @@ export default function AddModelPanel() {
         model_id: modelId,
         display_name: displayName.trim(),
         api_key: key,
-        ...(baseUrl ? { base_url: baseUrl } : {}),
+        ...(needsBaseUrl && baseUrl ? { base_url: baseUrl } : {}),
       });
       setDisplayName("");
       setModelId("");
@@ -182,7 +182,13 @@ export default function AddModelPanel() {
             </span>
             <LemonSelect<ProviderKind>
               value={kind}
-              onChange={setKind}
+              onChange={(nextKind) => {
+                setKind(nextKind);
+                // Anthropic uses its trusted default endpoint in this UI.
+                // Clear the now-hidden custom endpoint so a stale OpenAI URL
+                // can never receive the newly entered Anthropic credential.
+                if (nextKind === "anthropic") setBaseUrl("");
+              }}
               options={KIND_OPTIONS}
               aria-label="Provider kind"
               fullWidth
