@@ -1,100 +1,715 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Werner Station Activity System — Master Spec</title>
-<style>
-:root{--black:#151515;--ink:#2c2c2c;--muted:#6b6b6b;--line:#cfcfcf;--paper:#fafaf7;--card:#fff;--soft:#f3f1ea;--blue:#1d4aff;--blue-dark:#1330b0;--yellow:#f9bd2b;--green:#1a7f4f;--orange:#c47a00;--red:#c63d24;--radius:6px;--border:2px solid var(--black);--shadow:4px 4px 0 var(--black)}
-*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.55 -apple-system,BlinkMacSystemFont,"Inter","Helvetica Neue",Arial,sans-serif}.page{max-width:1240px;margin:auto;padding:32px 28px 80px}.hero,.block{background:var(--card);border:var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:24px;margin:0 0 22px}.eyebrow,.id{font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}.hero h1{margin:4px 0 6px;font-size:34px;line-height:1.12;color:var(--black)}.tagline,.lede{color:var(--muted)}.meta,.footer{display:flex;gap:7px;flex-wrap:wrap}.tag{display:inline-flex;align-items:center;border:1px solid var(--black);border-radius:999px;padding:3px 9px;font-size:12px;font-weight:700;background:#ebebe6}.blue{background:#e5ecff}.yellow{background:#fdf1cf}.green{background:#d9efe2}.orange{background:#fce3cd}.block h2{margin:0 0 5px;color:var(--black);font-size:22px}.block h3{margin:20px 0 7px;font-size:14px;text-transform:uppercase;letter-spacing:.04em}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}.card{display:flex;flex-direction:column;gap:8px;color:var(--ink);text-decoration:none;border:var(--border);border-radius:var(--radius);box-shadow:2px 2px 0 var(--black);padding:17px;background:var(--card)}.card:hover{transform:translate(-1px,-1px);box-shadow:var(--shadow)}.card strong{font-size:17px;color:var(--black)}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;padding:9px 10px;border-bottom:1px solid var(--line)}th{background:var(--soft);border-bottom:2px solid var(--black);font-size:12px;text-transform:uppercase}.dep,pre{white-space:pre-wrap;background:#1c1c1c;color:#e8e8e0;border:var(--border);border-radius:var(--radius);padding:14px 16px;font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;overflow:auto}code{background:var(--soft);border:1px solid var(--line);border-radius:4px;padding:1px 5px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}.callout{border-left:4px solid var(--blue);background:#e5ecff;padding:12px 14px;border-radius:4px}.warn{border-left-color:var(--orange);background:#fff5dd}.wave{display:inline-block;margin:17px 0 7px;background:var(--black);color:var(--paper);border-radius:4px;padding:6px 10px;font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase}a{color:var(--blue)}footer{margin-top:30px;border-top:1px solid var(--line);padding-top:15px;color:var(--muted);font-size:12px}@media(max-width:720px){.page{padding:16px 10px}.hero,.block{padding:18px}.hero h1{font-size:28px}}
-</style>
-</head>
-<body><main class="page">
-<header class="hero">
-  <p class="eyebrow">Master spec · WERNER-ACT</p>
-  <h1>Werner Station Activity System</h1>
-  <p class="tagline">Make Werner a fixed, living character whose current activity turns the cursor into an instrument—without giving any activity permission to move him.</p>
-  <div class="meta"><span class="tag green">SPR-01 implemented</span><span class="tag green">SPR-02 implemented</span><span class="tag green">SPR-03 implemented</span><span class="tag green">SPR-04 implemented</span><span class="tag green">SPR-05 implemented</span><span class="tag green">SPR-06 implemented</span><span class="tag green">SPR-07 implemented</span><span class="tag yellow">Owner: Antiek design goal</span><span class="tag blue">HTML-native</span><span class="tag">Updated 2026-07-14</span></div>
-</header>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Werner Station Activity System — Master Spec</title>
+    <style>
+      :root {
+        --black: #151515;
+        --ink: #2c2c2c;
+        --muted: #6b6b6b;
+        --line: #cfcfcf;
+        --paper: #fafaf7;
+        --card: #fff;
+        --soft: #f3f1ea;
+        --blue: #1d4aff;
+        --blue-dark: #1330b0;
+        --yellow: #f9bd2b;
+        --green: #1a7f4f;
+        --orange: #c47a00;
+        --red: #c63d24;
+        --radius: 6px;
+        --border: 2px solid var(--black);
+        --shadow: 4px 4px 0 var(--black);
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: var(--paper);
+        color: var(--ink);
+        font:
+          15px/1.55 -apple-system,
+          BlinkMacSystemFont,
+          "Inter",
+          "Helvetica Neue",
+          Arial,
+          sans-serif;
+      }
+      .page {
+        max-width: 1240px;
+        margin: auto;
+        padding: 32px 28px 80px;
+      }
+      .hero,
+      .block {
+        background: var(--card);
+        border: var(--border);
+        border-radius: var(--radius);
+        box-shadow: var(--shadow);
+        padding: 24px;
+        margin: 0 0 22px;
+      }
+      .eyebrow,
+      .id {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        color: var(--muted);
+        font-weight: 700;
+      }
+      .hero h1 {
+        margin: 4px 0 6px;
+        font-size: 34px;
+        line-height: 1.12;
+        color: var(--black);
+      }
+      .tagline,
+      .lede {
+        color: var(--muted);
+      }
+      .meta,
+      .footer {
+        display: flex;
+        gap: 7px;
+        flex-wrap: wrap;
+      }
+      .tag {
+        display: inline-flex;
+        align-items: center;
+        border: 1px solid var(--black);
+        border-radius: 999px;
+        padding: 3px 9px;
+        font-size: 12px;
+        font-weight: 700;
+        background: #ebebe6;
+      }
+      .blue {
+        background: #e5ecff;
+      }
+      .yellow {
+        background: #fdf1cf;
+      }
+      .green {
+        background: #d9efe2;
+      }
+      .orange {
+        background: #fce3cd;
+      }
+      .block h2 {
+        margin: 0 0 5px;
+        color: var(--black);
+        font-size: 22px;
+      }
+      .block h3 {
+        margin: 20px 0 7px;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 16px;
+      }
+      .card {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        color: var(--ink);
+        text-decoration: none;
+        border: var(--border);
+        border-radius: var(--radius);
+        box-shadow: 2px 2px 0 var(--black);
+        padding: 17px;
+        background: var(--card);
+      }
+      .card:hover {
+        transform: translate(-1px, -1px);
+        box-shadow: var(--shadow);
+      }
+      .card strong {
+        font-size: 17px;
+        color: var(--black);
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 9px 10px;
+        border-bottom: 1px solid var(--line);
+      }
+      th {
+        background: var(--soft);
+        border-bottom: 2px solid var(--black);
+        font-size: 12px;
+        text-transform: uppercase;
+      }
+      .dep,
+      pre {
+        white-space: pre-wrap;
+        background: #1c1c1c;
+        color: #e8e8e0;
+        border: var(--border);
+        border-radius: var(--radius);
+        padding: 14px 16px;
+        font:
+          13px/1.55 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+        overflow: auto;
+      }
+      code {
+        background: var(--soft);
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 1px 5px;
+        font:
+          13px ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      .callout {
+        border-left: 4px solid var(--blue);
+        background: #e5ecff;
+        padding: 12px 14px;
+        border-radius: 4px;
+      }
+      .warn {
+        border-left-color: var(--orange);
+        background: #fff5dd;
+      }
+      .wave {
+        display: inline-block;
+        margin: 17px 0 7px;
+        background: var(--black);
+        color: var(--paper);
+        border-radius: 4px;
+        padding: 6px 10px;
+        font-size: 12px;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+      }
+      a {
+        color: var(--blue);
+      }
+      footer {
+        margin-top: 30px;
+        border-top: 1px solid var(--line);
+        padding-top: 15px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      @media (max-width: 720px) {
+        .page {
+          padding: 16px 10px;
+        }
+        .hero,
+        .block {
+          padding: 18px;
+        }
+        .hero h1 {
+          font-size: 28px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="page">
+      <header class="hero">
+        <p class="eyebrow">Master spec · WERNER-ACT</p>
+        <h1>Werner Station Activity System</h1>
+        <p class="tagline">
+          Make Werner a fixed, living character whose current activity turns the
+          cursor into an instrument—without giving any activity permission to
+          move him.
+        </p>
+        <div class="meta">
+          <span class="tag green">SPR-01 implemented</span
+          ><span class="tag green">SPR-02 implemented</span
+          ><span class="tag green">SPR-03 implemented</span
+          ><span class="tag green">SPR-04 implemented</span
+          ><span class="tag green">SPR-05 implemented</span
+          ><span class="tag green">SPR-06 implemented</span
+          ><span class="tag green">SPR-07 implemented</span
+          ><span class="tag green">SPR-08 implemented</span
+          ><span class="tag green">SPR-09 implemented</span
+          ><span class="tag yellow">Owner: Antiek design goal</span
+          ><span class="tag blue">HTML-native</span
+          ><span class="tag">Updated 2026-07-14</span>
+        </div>
+      </header>
 
-<section class="block" id="spec-lineage" data-spec-depth="0" data-parent-spec="">
-  <h2>Spec lineage</h2><p class="lede">Focused root spec derived from the operator's Antiek branding/UI goal and the ratified fixed-station design.</p>
-  <p>Parent product canon: <a href="../werner-fixed-station/DESIGN.md">Werner fixed-station decision</a>. Child specs hatch only when switching, a new activity, or the arcade host has a freshness-verified unowned seam.</p>
-  <ul class="child-specs"><li><a href="sprint-06-product-reaction-bus.html">SPR-06 product reaction bus</a> closes semantic mascot reactions.</li><li><a href="sprint-07-arcade-core.html">SPR-07 arcade core</a> recovers only the deterministic engine and two cartridges; cabinet, wait-host, hotspots, and session images remain separate.</li></ul>
-</section>
+      <section
+        class="block"
+        id="spec-lineage"
+        data-spec-depth="0"
+        data-parent-spec=""
+      >
+        <h2>Spec lineage</h2>
+        <p class="lede">
+          Focused root spec derived from the operator's Antiek branding/UI goal
+          and the ratified fixed-station design.
+        </p>
+        <p>
+          Parent product canon:
+          <a href="../werner-fixed-station/DESIGN.md"
+            >Werner fixed-station decision</a
+          >. Child specs hatch only when switching, a new activity, or the
+          arcade host has a freshness-verified unowned seam.
+        </p>
+        <ul class="child-specs">
+          <li>
+            <a href="sprint-06-product-reaction-bus.html"
+              >SPR-06 product reaction bus</a
+            >
+            closes semantic mascot reactions.
+          </li>
+          <li>
+            <a href="sprint-07-arcade-core.html">SPR-07 arcade core</a> recovers
+            the deterministic engine and two cartridges.
+          </li>
+          <li>
+            <a href="sprint-08-research-wait-arcade.html"
+              >SPR-08 research wait arcade</a
+            >
+            mounts Zombies only after explicit opt-in during a durable research
+            wait.
+          </li>
+          <li>
+            <a href="sprint-09-zombies-field-station.html"
+              >SPR-09 Zombies field station</a
+            >
+            replaces the prototype renderer without changing game authority.
+          </li>
+        </ul>
+      </section>
 
-<section class="block"><h2>Goal</h2>
-  <p>Replace the one-off ice-fishing coupling with a typed activity boundary. An activity may declare ambient classes, a cursor instrument, and an unlock rule. The contract grants no Werner-position authority, and a focused source-boundary test rejects direct movement, navigation, and network dependencies. Ice fishing remains behavior-identical as the default.</p>
-  <h3>Success criteria</h3><ul>
-    <li><code>StationActivity</code> contains no position, movement, mascot ref, or stage-controller capability.</li>
-    <li>The production shell mounts the default activity's instrument; the mascot reads its idle class; current fishing tests remain green.</li>
-    <li>Future page activities and games register through one boundary instead of editing <code>PenguinMascot.tsx</code>.</li>
-  </ul>
-  <h3>Failure mode to avoid</h3><p>A superficially extensible registry that quietly lets an activity chase the cursor, forks a second Werner, or changes reduced-motion behavior.</p>
-</section>
+      <section class="block">
+        <h2>Goal</h2>
+        <p>
+          Replace the one-off ice-fishing coupling with a typed activity
+          boundary. An activity may declare ambient classes, a cursor
+          instrument, and an unlock rule. The contract grants no Werner-position
+          authority, and a focused source-boundary test rejects direct movement,
+          navigation, and network dependencies. Ice fishing remains
+          behavior-identical as the default.
+        </p>
+        <h3>Success criteria</h3>
+        <ul>
+          <li>
+            <code>StationActivity</code> contains no position, movement, mascot
+            ref, or stage-controller capability.
+          </li>
+          <li>
+            The production shell mounts the default activity's instrument; the
+            mascot reads its idle class; current fishing tests remain green.
+          </li>
+          <li>
+            Future page activities and games register through one boundary
+            instead of editing <code>PenguinMascot.tsx</code>.
+          </li>
+        </ul>
+        <h3>Failure mode to avoid</h3>
+        <p>
+          A superficially extensible registry that quietly lets an activity
+          chase the cursor, forks a second Werner, or changes reduced-motion
+          behavior.
+        </p>
+      </section>
 
-<section class="block"><h2>Distinctive design direction</h2>
-  <p class="lede">Antiek is a researcher's illustrated alpine observatory, not a mascot-skinned SaaS dashboard.</p>
-  <table><thead><tr><th>Axis</th><th>Decision</th><th>Reason</th></tr></thead><tbody>
-    <tr><td>Palette</td><td>Ice <code>#FFFFFF</code>, rule <code>#788596</code>, ink <code>#0F1419</code>, sun <code>#F5DF24</code>, aurora <code>#16C2C2</code>, emperor <code>#CE3623</code></td><td>All are existing Antiek roles: paper, accessible chrome, prose, Werner's bill/feet, AI thought, and danger.</td></tr>
-    <tr><td>Type</td><td>Charter for research prose; Inter for controls; JetBrains Mono for evidence and activity state.</td><td>The product alternates between reading, operating, and inspecting provenance.</td></tr>
-    <tr><td>Signature</td><td>Werner stays home; the cursor changes jobs.</td><td>Fishing makes it bait. A future telescope makes it a lens. A game makes it the player control. Identity comes from the relation, not decoration.</td></tr>
-  </tbody></table>
-  <div class="dep">┌──────── living alpine scene ──────────────────────────────────────────┐
-│ floating HTML research windows                                      │
-│                                                                     │
-│  Werner station ●──────── cursor instrument ◎                       │
-│  (fixed; draggable home)  (bait / lens / tool / game control)       │
-└──── bottom workflow rail: Research · Read · Write · Speak ──────────┘</div>
-  <div class="callout"><strong>Genericity self-critique:</strong> chunky borders and a penguin alone would be a theme. The hard-to-vary move is the fixed-station/cursor-instrument grammar: it connects Werner's behavior to the user's current work and forbids arbitrary mascot wandering.</div>
-</section>
+      <section class="block">
+        <h2>Distinctive design direction</h2>
+        <p class="lede">
+          Antiek is a researcher's illustrated alpine observatory, not a
+          mascot-skinned SaaS dashboard.
+        </p>
+        <table>
+          <thead>
+            <tr>
+              <th>Axis</th>
+              <th>Decision</th>
+              <th>Reason</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Palette</td>
+              <td>
+                Ice <code>#FFFFFF</code>, rule <code>#788596</code>, ink
+                <code>#0F1419</code>, sun <code>#F5DF24</code>, aurora
+                <code>#16C2C2</code>, emperor <code>#CE3623</code>
+              </td>
+              <td>
+                All are existing Antiek roles: paper, accessible chrome, prose,
+                Werner's bill/feet, AI thought, and danger.
+              </td>
+            </tr>
+            <tr>
+              <td>Type</td>
+              <td>
+                Charter for research prose; Inter for controls; JetBrains Mono
+                for evidence and activity state.
+              </td>
+              <td>
+                The product alternates between reading, operating, and
+                inspecting provenance.
+              </td>
+            </tr>
+            <tr>
+              <td>Signature</td>
+              <td>Werner stays home; the cursor changes jobs.</td>
+              <td>
+                Fishing makes it bait. A future telescope makes it a lens. A
+                game makes it the player control. Identity comes from the
+                relation, not decoration.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <div class="dep">
+          ┌──────── living alpine scene
+          ──────────────────────────────────────────┐ │ floating HTML research
+          windows │ │ │ │ Werner station ●──────── cursor instrument ◎ │ │
+          (fixed; draggable home) (bait / lens / tool / game control) │ └────
+          bottom workflow rail: Research · Read · Write · Speak ──────────┘
+        </div>
+        <div class="callout">
+          <strong>Genericity self-critique:</strong> chunky borders and a
+          penguin alone would be a theme. The hard-to-vary move is the
+          fixed-station/cursor-instrument grammar: it connects Werner's behavior
+          to the user's current work and forbids arbitrary mascot wandering.
+        </div>
+      </section>
 
-<section class="block"><h2>Architecture</h2><div class="dep">StationActivity registry
-  ├── activity metadata: id · label · unlock
-  ├── ambient: activeClass · idleClass
-  └── cursor instrument: React component · declared read seam
-              │
-        ┌─────┴──────────────────┐
-        ▼                        ▼
-PenguinMascot               WernerIceCursorShell
-toggles ambient class       mounts active instrument
-        │                        │
-        └──── no position capability ────┘</div>
-  <h3>Invariants</h3><ul><li>Exactly one interactive Werner exists at shell level.</li><li>Reduced motion disables involuntary activity motion and custom cursor layers.</li><li>The activity contract grants no product authority, spend, network, navigation, or mascot-position capability; the source gate catches direct violations but is not presented as a JavaScript sandbox.</li><li>Every generated image is presentation evidence, never interaction or research evidence.</li></ul>
-</section>
+      <section class="block">
+        <h2>Architecture</h2>
+        <div class="dep">
+          StationActivity registry ├── activity metadata: id · label · unlock
+          ├── ambient: activeClass · idleClass └── cursor instrument: React
+          component · declared read seam │ ┌─────┴──────────────────┐ ▼ ▼
+          PenguinMascot WernerIceCursorShell toggles ambient class mounts active
+          instrument │ │ └──── no position capability ────┘
+        </div>
+        <h3>Invariants</h3>
+        <ul>
+          <li>Exactly one interactive Werner exists at shell level.</li>
+          <li>
+            Reduced motion disables involuntary activity motion and custom
+            cursor layers.
+          </li>
+          <li>
+            The activity contract grants no product authority, spend, network,
+            navigation, or mascot-position capability; the source gate catches
+            direct violations but is not presented as a JavaScript sandbox.
+          </li>
+          <li>
+            Every generated image is presentation evidence, never interaction or
+            research evidence.
+          </li>
+        </ul>
+      </section>
 
-<section class="block"><h2>Sprint roster</h2><div class="wave">Wave 1 · revived on current main</div>
-  <div class="grid">
-    <a class="card" href="sprint-01-activity-spine.html"><span class="id">SPR-01</span><strong>Typed station-activity spine</strong><span>Extract ice fishing into a behavior-preserving registry and withhold movement authority by contract plus a focused source gate.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Inline</span></div></a>
-    <a class="card" href="sprint-02-research-lens.html"><span class="id">SPR-02</span><strong>Route-derived research lens</strong><span>Turn the cursor into an HTML observatory lens on reading and research routes while Werner remains at home.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-01</span></div></a>
-    <a class="card" href="sprint-03-writing-nib.html"><span class="id">SPR-03</span><strong>Route-derived writing nib</strong><span>Turn the cursor into a brass HTML drafting instrument on Write and Create while Werner remains at home.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-02</span></div></a>
-    <a class="card" href="sprint-04-speaking-resonance.html"><span class="id">SPR-04</span><strong>Route-derived speaking resonance</strong><span>Turn the cursor into an inert brass listening microphone on Speak while Werner remains at home.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-03</span></div></a>
-    <a class="card" href="sprint-05-instrument-atlas.html"><span class="id">SPR-05</span><strong>Cross-workflow instrument atlas</strong><span>Expose the complete four-instrument grammar in one selectable HTML review surface and prove route-transition cleanup in one mounted shell.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-04</span></div></a>
-    <a class="card" href="sprint-06-product-reaction-bus.html"><span class="id">SPR-06</span><strong>Product reaction bus</strong><span>Translate real selection, research, failure, and pointer-idle edges into the existing single Werner stage without granting product surfaces mascot authority.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on stage spine</span></div></a>
-    <a class="card" href="sprint-07-arcade-core.html"><span class="id">SPR-07</span><strong>Deterministic arcade core</strong><span>Recover a focus-scoped, reduced-motion-safe fixed-step engine plus Ice Fishing and Paperclip Zombies cartridges without exposing them in product.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-06 stack only</span></div></a>
-  </div>
-  <h3>Freshness-gated next candidates</h3><table><thead><tr><th>Candidate</th><th>Start only when</th><th>Current collision</th></tr></thead><tbody>
-    <tr><td>Explicit temporary activity override</td><td>SPR-02 route policy is merged and a real user need defeats deterministic route selection.</td><td>Do not create another settings store before that need exists.</td></tr>
-    <tr><td>Additional page instruments</td><td>Each next instrument has one page job with no overlap with the implemented product-reaction event vocabulary.</td><td>Keep visual instrument selection separate from reaction choreography.</td></tr>
-    <tr><td>Arcade cabinet and wait host</td><td>SPR-07 is independently accepted, then product opt-in, readiness teardown, visual craft, and live-browser behavior receive their own gates.</td><td>Dirty cabinet, host, route, feature flag, and generated images remain excluded.</td></tr>
-    <tr><td>ChatGPT Image activity sessions</td><td>A canonical Werner reference and asset provenance contract are selected.</td><td>Dirty checkout already contains four generated session PNGs and <code>sessionAssets.ts</code>.</td></tr>
-  </tbody></table>
-</section>
+      <section class="block">
+        <h2>Sprint roster</h2>
+        <div class="wave">Wave 1 · revived on current main</div>
+        <div class="grid">
+          <a class="card" href="sprint-01-activity-spine.html"
+            ><span class="id">SPR-01</span
+            ><strong>Typed station-activity spine</strong
+            ><span
+              >Extract ice fishing into a behavior-preserving registry and
+              withhold movement authority by contract plus a focused source
+              gate.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Inline</span>
+            </div></a
+          >
+          <a class="card" href="sprint-02-research-lens.html"
+            ><span class="id">SPR-02</span
+            ><strong>Route-derived research lens</strong
+            ><span
+              >Turn the cursor into an HTML observatory lens on reading and
+              research routes while Werner remains at home.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-01</span>
+            </div></a
+          >
+          <a class="card" href="sprint-03-writing-nib.html"
+            ><span class="id">SPR-03</span
+            ><strong>Route-derived writing nib</strong
+            ><span
+              >Turn the cursor into a brass HTML drafting instrument on Write
+              and Create while Werner remains at home.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-02</span>
+            </div></a
+          >
+          <a class="card" href="sprint-04-speaking-resonance.html"
+            ><span class="id">SPR-04</span
+            ><strong>Route-derived speaking resonance</strong
+            ><span
+              >Turn the cursor into an inert brass listening microphone on Speak
+              while Werner remains at home.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-03</span>
+            </div></a
+          >
+          <a class="card" href="sprint-05-instrument-atlas.html"
+            ><span class="id">SPR-05</span
+            ><strong>Cross-workflow instrument atlas</strong
+            ><span
+              >Expose the complete four-instrument grammar in one selectable
+              HTML review surface and prove route-transition cleanup in one
+              mounted shell.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-04</span>
+            </div></a
+          >
+          <a class="card" href="sprint-06-product-reaction-bus.html"
+            ><span class="id">SPR-06</span><strong>Product reaction bus</strong
+            ><span
+              >Translate real selection, research, failure, and pointer-idle
+              edges into the existing single Werner stage without granting
+              product surfaces mascot authority.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on stage spine</span>
+            </div></a
+          >
+          <a class="card" href="sprint-07-arcade-core.html"
+            ><span class="id">SPR-07</span
+            ><strong>Deterministic arcade core</strong
+            ><span
+              >Recover a focus-scoped, reduced-motion-safe fixed-step engine
+              plus Ice Fishing and Paperclip Zombies cartridges without exposing
+              them in product.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-06 stack only</span>
+            </div></a
+          >
+          <a class="card" href="sprint-08-research-wait-arcade.html"
+            ><span class="id">SPR-08</span><strong>Research wait arcade</strong
+            ><span
+              >Offer Paperclip Zombies inside a valid live research wait without
+              replacing research truth or loading the game before Play.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-07</span>
+            </div></a
+          >
+          <a class="card" href="sprint-09-zombies-field-station.html"
+            ><span class="id">SPR-09</span
+            ><strong>Zombies field-station renderer</strong
+            ><span
+              >Turn the primitive board into an archival alpine seismograph
+              while preserving every deterministic rule and authority
+              boundary.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-08</span>
+            </div></a
+          >
+        </div>
+        <h3>Freshness-gated next candidates</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Candidate</th>
+              <th>Start only when</th>
+              <th>Current collision</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Explicit temporary activity override</td>
+              <td>
+                SPR-02 route policy is merged and a real user need defeats
+                deterministic route selection.
+              </td>
+              <td>
+                Do not create another settings store before that need exists.
+              </td>
+            </tr>
+            <tr>
+              <td>Additional page instruments</td>
+              <td>
+                Each next instrument has one page job with no overlap with the
+                implemented product-reaction event vocabulary.
+              </td>
+              <td>
+                Keep visual instrument selection separate from reaction
+                choreography.
+              </td>
+            </tr>
+            <tr>
+              <td>Arcade cabinet and wait host</td>
+              <td>
+                SPR-07 is independently accepted, then product opt-in, readiness
+                teardown, visual craft, and live-browser behavior receive their
+                own gates.
+              </td>
+              <td>
+                Dirty cabinet, host, route, feature flag, and generated images
+                remain excluded.
+              </td>
+            </tr>
+            <tr>
+              <td>ChatGPT Image activity sessions</td>
+              <td>
+                A canonical Werner reference and asset provenance contract are
+                selected.
+              </td>
+              <td>
+                Dirty checkout already contains four generated session PNGs and
+                <code>sessionAssets.ts</code>.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
-<section class="block"><h2>Decision log and rejected alternatives</h2><table><thead><tr><th>Decision / alternative</th><th>Verdict</th><th>Reconsider if</th></tr></thead><tbody>
-  <tr><td>Typed registry; ice fishing remains default</td><td>Chosen. Smallest behavior-preserving hinge for future activities.</td><td>A future activity cannot be represented without weakening the fixed-station invariant.</td></tr>
-  <tr><td>Continue hard-coding fishing in shell + mascot</td><td>Rejected. Every new activity would reopen both owners and invite divergent state.</td><td>Antiek permanently abandons all non-fishing activities.</td></tr>
-  <tr><td>Full Flipbook pure-pixel stream</td><td>Rejected for the pass bar: measured generation is far below 24 fps and cost is not defensible.</td><td>Measured sub-second frames under a hard spend ceiling support a dual HTML/pixel path.</td></tr>
-  <tr><td>Activity may move Werner</td><td>Rejected. It reintroduces the cursor-chasing behavior the operator explicitly reversed.</td><td>Only an explicit operator re-ratification can reopen it.</td></tr>
-  <tr><td>Random or timer-based activity switching</td><td>Rejected. It makes cursor semantics unpredictable during professional reading and research.</td><td>An opt-in entertainment mode has its own visible state and never leaks into knowledge work.</td></tr>
-  <tr><td>Use the generated observatory PNG as the interactive UI</td><td>Rejected. Its apparent text and graph are pixels, not selectable HTML, accessible controls, or product evidence.</td><td>Never for core work; it remains design evidence and may inform decomposed assets.</td></tr>
-</tbody></table></section>
+      <section class="block">
+        <h2>Decision log and rejected alternatives</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Decision / alternative</th>
+              <th>Verdict</th>
+              <th>Reconsider if</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Typed registry; ice fishing remains default</td>
+              <td>
+                Chosen. Smallest behavior-preserving hinge for future
+                activities.
+              </td>
+              <td>
+                A future activity cannot be represented without weakening the
+                fixed-station invariant.
+              </td>
+            </tr>
+            <tr>
+              <td>Continue hard-coding fishing in shell + mascot</td>
+              <td>
+                Rejected. Every new activity would reopen both owners and invite
+                divergent state.
+              </td>
+              <td>Antiek permanently abandons all non-fishing activities.</td>
+            </tr>
+            <tr>
+              <td>Full Flipbook pure-pixel stream</td>
+              <td>
+                Rejected for the pass bar: measured generation is far below 24
+                fps and cost is not defensible.
+              </td>
+              <td>
+                Measured sub-second frames under a hard spend ceiling support a
+                dual HTML/pixel path.
+              </td>
+            </tr>
+            <tr>
+              <td>Activity may move Werner</td>
+              <td>
+                Rejected. It reintroduces the cursor-chasing behavior the
+                operator explicitly reversed.
+              </td>
+              <td>Only an explicit operator re-ratification can reopen it.</td>
+            </tr>
+            <tr>
+              <td>Random or timer-based activity switching</td>
+              <td>
+                Rejected. It makes cursor semantics unpredictable during
+                professional reading and research.
+              </td>
+              <td>
+                An opt-in entertainment mode has its own visible state and never
+                leaks into knowledge work.
+              </td>
+            </tr>
+            <tr>
+              <td>Use the generated observatory PNG as the interactive UI</td>
+              <td>
+                Rejected. Its apparent text and graph are pixels, not selectable
+                HTML, accessible controls, or product evidence.
+              </td>
+              <td>
+                Never for core work; it remains design evidence and may inform
+                decomposed assets.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
 
-<section class="block" id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07">
-  <h2>Execution harness hint</h2><p>All seven sprints are file-coupled and run inline. Verification must be heterogeneous and try to prove behavioral drift: route determinism, transition cleanup, exactly-one-instrument mounting, custom-cursor visibility, edge-only product reactions, fixed-step input cardinality, focus leakage, responsive pointer drift, reduced-motion stillness, HTML authority, and illicit position or product capability.</p>
-</section>
+      <section
+        class="block"
+        id="harness-hint-run"
+        data-harness-default-pattern="adversarial-verification"
+        data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07,SPR-08,SPR-09"
+      >
+        <h2>Execution harness hint</h2>
+        <p>
+          All nine sprints are file-coupled and run inline. Verification must be
+          heterogeneous and try to prove behavioral drift: route determinism,
+          transition cleanup, exactly-one-instrument mounting, custom-cursor
+          visibility, edge-only product reactions, fixed-step input cardinality,
+          focus leakage, responsive pointer drift, reduced-motion stillness,
+          opt-in lazy boundaries, renderer mutation, HTML authority, and illicit
+          position or product capability.
+        </p>
+      </section>
 
-<section class="block"><h2>Open questions</h2><ul><li>Does a later workflow require a temporary operator override of route-derived activity? Default assumption: no persistent override until real use proves route policy insufficient.</li><li>Which generated Werner session image becomes canonical? Default assumption: none until visual QA and provenance pass.</li><li>Should games replace the station activity or open an isolated modal/cabinet? Default assumption: cabinet host; Werner remains singular and visible only when the game composition warrants it.</li></ul></section>
+      <section class="block">
+        <h2>Open questions</h2>
+        <ul>
+          <li>
+            Does a later workflow require a temporary operator override of
+            route-derived activity? Default assumption: no persistent override
+            until real use proves route policy insufficient.
+          </li>
+          <li>
+            Which generated Werner session image becomes canonical? Default
+            assumption: none until visual QA and provenance pass.
+          </li>
+          <li>
+            Should games replace the station activity or open an isolated
+            modal/cabinet? Default assumption: cabinet host; Werner remains
+            singular and visible only when the game composition warrants it.
+          </li>
+        </ul>
+      </section>
 
-<footer>Generated by htmlspec · Source: operator goal attachment + clean <code>origin/main</code> audit · 2026-07-13</footer>
-</main></body></html>
+      <footer>
+        Generated by htmlspec · Source: operator goal attachment + clean
+        <code>origin/main</code> audit · 2026-07-13
+      </footer>
+    </main>
+  </body>
+</html>
