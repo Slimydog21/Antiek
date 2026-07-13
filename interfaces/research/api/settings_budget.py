@@ -1,8 +1,8 @@
 """Operator Settings — model inventory + budget readout + prompt cost projection.
 
 SPR-01 (C288): honest Settings substrate for the operator's model-choice and
-budget-awareness needs. Does NOT add models, store API keys, or route via
-NotDiamond. Advisory/read surfaces only.
+budget-awareness needs. The adjacent admin router securely registers BYOK
+providers but does not grant route authority or route via NotDiamond.
 
 Honesty rules (load-bearing):
   * Spent is ``null`` when no ledger is wired — never invent ``$0 spent``.
@@ -50,6 +50,7 @@ _MAX_FALLBACK_DEPTH = 16
 
 class ModelRow(BaseModel):
     provider_id: str
+    registered: bool
     ready: bool
     tier_bindings: list[str] = Field(default_factory=list)
     primary_model: str | None = None
@@ -167,7 +168,7 @@ def _load_dispatch_config() -> dict[str, Any]:
 
 
 def _tier_bindings(cfg: dict[str, Any]) -> dict[str, list[str]]:
-    """provider_id → list of tier names where it is primary."""
+    """provider_id → tiers where it is reachable as primary or fallback."""
     out: dict[str, list[str]] = {}
     tiers = cfg.get("tiers") or {}
     if not isinstance(tiers, dict):
@@ -175,10 +176,29 @@ def _tier_bindings(cfg: dict[str, Any]) -> dict[str, list[str]]:
     for tier_name, body in tiers.items():
         if not isinstance(body, dict):
             continue
-        provider = body.get("provider")
-        if isinstance(provider, str) and provider:
-            out.setdefault(provider, []).append(str(tier_name))
+        current: dict[str, Any] | None = body
+        seen: set[int] = set()
+        depth = 0
+        while current is not None and depth < _MAX_FALLBACK_DEPTH:
+            identity = id(current)
+            if identity in seen:
+                break
+            seen.add(identity)
+            provider = current.get("provider")
+            if isinstance(provider, str) and provider:
+                names = out.setdefault(provider, [])
+                if str(tier_name) not in names:
+                    names.append(str(tier_name))
+            fallback = current.get("fallback")
+            current = fallback if isinstance(fallback, dict) else None
+            depth += 1
     return out
+
+
+def route_ready_provider_ids(registered: set[str]) -> set[str]:
+    """Registered providers reachable through a configured dispatch tier."""
+    bindings = _tier_bindings(_load_dispatch_config())
+    return registered.intersection(bindings)
 
 
 def _primary_model_for_provider(cfg: dict[str, Any], provider_id: str) -> str | None:
@@ -551,31 +571,44 @@ def build_model_decision(
 def get_settings_models(request: Request) -> ModelsResponse:
     raw_providers = getattr(request.app.state, "registered_providers", None)
     if isinstance(raw_providers, (set, list, tuple, frozenset)):
-        ready_set: set[str] = {str(p) for p in raw_providers}
+        registered_set: set[str] = {str(p) for p in raw_providers}
     else:
-        ready_set = set()
+        registered_set = set()
     cfg = _load_dispatch_config()
     bindings = _tier_bindings(cfg)
 
     # Union of registered + config-known providers so Settings can show
     # configured-but-not-ready rows honestly.
-    all_ids = sorted(set(ready_set) | set(bindings.keys()))
+    all_ids = sorted(registered_set | set(bindings.keys()))
     rows: list[ModelRow] = []
     for pid in all_ids:
-        is_ready = pid in ready_set
+        provider_registered = pid in registered_set
+        provider_bindings = sorted(bindings.get(pid, []))
+        # "ready" means reachable through an active dispatch tier, not merely
+        # present in the low-level registry. User-added providers intentionally
+        # remain unbound until a model-selection vertical grants explicit route
+        # authority; reporting them ready here would be product theater.
+        is_ready = provider_registered and bool(provider_bindings)
+        if is_ready:
+            notes = None
+        elif provider_registered:
+            notes = "registered, but not bound to an active dispatch tier"
+        else:
+            notes = "configured in dispatch config but not registered at boot"
         rows.append(
             ModelRow(
                 provider_id=pid,
+                registered=provider_registered,
                 ready=is_ready,
-                tier_bindings=sorted(bindings.get(pid, [])),
+                tier_bindings=provider_bindings,
                 primary_model=_primary_model_for_provider(cfg, pid),
-                notes=None if is_ready else "configured in dispatch config but not registered at boot",
+                notes=notes,
             )
         )
     return ModelsResponse(
         models=rows,
         count=len(rows),
-        providers_ready=bool(ready_set),
+        providers_ready=any(row.ready for row in rows),
     )
 
 
@@ -597,6 +630,13 @@ def post_model_decision(request: Request, req: ModelDecisionRequest) -> ModelDec
 
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
+    # Add-model admin (user-added BYOK providers) mounts through the same
+    # settings-local seam; see settings_models_admin.py. Local import keeps
+    # this file's module surface unchanged for the other open PRs that
+    # touch its cost/spend regions.
+    from .settings_models_admin import register_settings_models_admin_routes
+
+    register_settings_models_admin_routes(app)
 
 
 __all__ = [
