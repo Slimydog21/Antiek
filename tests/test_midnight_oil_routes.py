@@ -36,6 +36,22 @@ def test_create_consent_flow(client):
     assert body["status"] == "awaiting_approval"
     assert body["view_format"] == "html"
     assert body["runnable"] is False
+    assert body["acceptance_policy_version"] == 1
+    assert body["acceptance_policy"] == {
+        "policy_version": 1,
+        "required_coverage": "insights_and_output_paragraphs",
+        "exploratory_questions": "operational_only",
+        "external_receipts": "local_canonical_chunk_required",
+        "unsupported_output": "retain_operational_only",
+        "legacy_rows": "legacy_unverified",
+    }
+    assert body["research_brief_state"] == "proposed"
+    assert len(body["research_brief_hash"]) == 64
+    assert body["approved_research_brief_hash"] is None
+    assert body["research_result_state"] == "none"
+    assert body["deposit_state"] == "pending"
+    assert body["graph_projection_state"] == "pending"
+    assert body["graph_projection_reason"] is None
     assert "html" in body
     job_id = body["job_id"]
 
@@ -50,20 +66,38 @@ def test_create_consent_flow(client):
     )
     assert bad.status_code == 422
 
-    ok = client.post(
+    missing_ack = client.post(
         f"/midnight-oil/jobs/{job_id}/spend-consent",
         headers=headers,
         json={"use_recommended": True},
     )
+    assert missing_ack.status_code == 400
+    assert "acknowledgement is required" in missing_ack.text
+    assert "token" not in missing_ack.text.lower()
+
+    ok = client.post(
+        f"/midnight-oil/jobs/{job_id}/spend-consent",
+        headers=headers,
+        json={"use_recommended": True, "acceptance_policy_version": 1},
+    )
     assert ok.status_code == 200
     approved = ok.json()
     assert approved["ceiling_cents"] > 0
+    assert approved["acceptance_policy_version"] == 1
+    assert approved["research_brief_state"] == "approved"
+    assert approved["research_brief_hash"] == body["research_brief_hash"]
+    assert approved["approved_research_brief_hash"] == body["research_brief_hash"]
+    assert approved["graph_projection_state"] == "pending"
+    assert approved["graph_projection_reason"] is None
     assert ok.headers["cache-control"] == "no-store"
 
     got = client.get(f"/midnight-oil/jobs/{job_id}", headers=headers)
     assert got.status_code == 200
     assert got.json()["runnable"] is False
     assert got.json()["view_format"] == "html"
+    assert got.json()["research_brief_state"] == "approved"
+    assert got.json()["research_brief_hash"] == body["research_brief_hash"]
+    assert got.json()["approved_research_brief_hash"] == body["research_brief_hash"]
 
 
 def test_force_below_api(client):
@@ -77,7 +111,7 @@ def test_force_below_api(client):
     r2 = client.post(
         f"/midnight-oil/jobs/{job_id}/spend-consent",
         headers=headers,
-        json={"ceiling_cents": 1, "force_below": True},
+        json={"ceiling_cents": 1, "force_below": True, "acceptance_policy_version": 1},
     )
     assert r2.status_code == 200
     assert r2.json()["ceiling_cents"] == 1
@@ -112,9 +146,7 @@ def test_job_status_exposes_only_safe_graph_projection_navigation(tmp_path):
     }
     deps.jobs.put_job(raw)
 
-    response = client.get(
-        f"/midnight-oil/jobs/{created['job_id']}", headers=headers
-    )
+    response = client.get(f"/midnight-oil/jobs/{created['job_id']}", headers=headers)
     assert response.headers["cache-control"] == "no-store"
     body = response.json()
     assert body["graph_projection_state"] == "complete"
@@ -138,9 +170,7 @@ def test_job_status_exposes_closed_graph_projection_reason(tmp_path):
     raw["graph_projection_reason"] = "claim_coverage_missing"
     deps.jobs.put_job(raw)
 
-    body = client.get(
-        f"/midnight-oil/jobs/{created['job_id']}", headers=headers
-    ).json()
+    body = client.get(f"/midnight-oil/jobs/{created['job_id']}", headers=headers).json()
     assert body["graph_projection_state"] == "refused"
     assert body["graph_projection_reason"] == "claim_coverage_missing"
 

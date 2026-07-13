@@ -100,7 +100,7 @@ def test_restart_safe_authorized_path_produces_html_twins_without_token_retentio
     issued = client.post(
         f"/midnight-oil/jobs/{job_id}/spend-consent",
         headers=headers,
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert issued.status_code == 200, issued.text
     token = issued.json()["token"]
@@ -114,7 +114,12 @@ def test_restart_safe_authorized_path_produces_html_twins_without_token_retentio
         json={"job_id": job_id},
     )
     assert queued.status_code == 200, queued.text
-    operation_id = queued.json()["operation_id"]
+    queued_body = queued.json()
+    operation_id = queued_body["operation_id"]
+    assert queued_body["acceptance_policy_version"] == 1
+    assert queued_body["research_brief_state"] == "approved"
+    assert queued_body["research_brief_hash"] == issued.json()["research_brief_hash"]
+    assert queued_body["approved_research_brief_hash"] == queued_body["research_brief_hash"]
 
     # Restart after enqueue and lease one fake paid provider step.
     deps = _dependencies(tmp_path)
@@ -166,6 +171,12 @@ def test_restart_safe_authorized_path_produces_html_twins_without_token_retentio
     assert deposited.status_code == 200, deposited.text
     body = deposited.json()
     assert body["view_format"] == "html"
+    assert body["acceptance_policy_version"] == 1
+    assert body["research_brief_state"] == "approved"
+    assert body["research_brief_hash"] == queued_body["research_brief_hash"]
+    assert body["approved_research_brief_hash"] == body["research_brief_hash"]
+    assert body["deposit_state"] == "complete"
+    assert body["graph_projection_state"] == "pending"
     assert "<" in body["html"] and "pdf" not in body["html"].lower()
     assert body["twin_count"] >= 2
     reset_engagement_stores(root=engagement_root)
@@ -247,7 +258,7 @@ def test_hostile_controls_fail_independently_and_unknown_spend_reconciles(
     issued = client.post(
         f"/midnight-oil/jobs/{job_id}/spend-consent",
         headers=headers,
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     ).json()
     token = issued["token"]
 
@@ -432,7 +443,7 @@ def test_failure_canary_absent_from_logs_errors_schema_html_and_storage(
     issued = client.post(
         f"/midnight-oil/jobs/{job_id}/spend-consent",
         headers=headers,
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert issued.status_code == 200
     canary = "CANARY-RAW-SPEND-TOKEN-DO-NOT-RETAIN.abcdef"
@@ -473,7 +484,7 @@ def test_altered_operation_and_ceiling_cannot_cross_signed_authority(tmp_path: P
         issued = client.post(
             f"/midnight-oil/jobs/{created['job_id']}/spend-consent",
             headers=headers,
-            json={"use_recommended": True},
+            json={"use_recommended": True, "acceptance_policy_version": 1},
         ).json()
         return created["job_id"], issued["token"]
 

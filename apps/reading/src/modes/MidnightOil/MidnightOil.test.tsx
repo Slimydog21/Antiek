@@ -2,6 +2,15 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import MidnightOil from "./index";
 
+const V1_POLICY = {
+  policy_version: 1 as const,
+  required_coverage: "insights_and_output_paragraphs" as const,
+  exploratory_questions: "operational_only" as const,
+  external_receipts: "local_canonical_chunk_required" as const,
+  unsupported_output: "retain_operational_only" as const,
+  legacy_rows: "legacy_unverified" as const,
+};
+
 const {
   createMidnightOilJob,
   approveMidnightOilCeiling,
@@ -91,15 +100,19 @@ const {
   }),
 }));
 
-vi.mock("../../api/midnightOil", () => ({
-  MidnightOilConsentExpiredError: class MidnightOilConsentExpiredError extends Error {},
-  createMidnightOilJob,
-  approveMidnightOilCeiling,
-  depositMidnightOilJob,
-  runMidnightOilJob,
-  getMidnightOilJob,
-  fetchMidnightOilLiveStepStatus,
-}));
+vi.mock("../../api/midnightOil", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/midnightOil")>();
+  return {
+    ...actual,
+    MidnightOilConsentExpiredError: class MidnightOilConsentExpiredError extends Error {},
+    createMidnightOilJob,
+    approveMidnightOilCeiling,
+    depositMidnightOilJob,
+    runMidnightOilJob,
+    getMidnightOilJob,
+    fetchMidnightOilLiveStepStatus,
+  };
+});
 
 vi.mock("../../api/engagement", () => ({
   seedTwinNotes: (...args: unknown[]) => seedTwinNotes(...(args as Parameters<typeof seedTwinNotes>)),
@@ -531,6 +544,8 @@ describe("MidnightOil mode", () => {
       research_tier: "deep",
       fanout_depth: 3,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 3.6,
       view_format: "html",
       runnable: false,
@@ -633,6 +648,21 @@ describe("MidnightOil mode", () => {
       goals: ["Match preview"],
       duration_minutes: 60,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: {
+        policy_version: 1,
+        required_coverage: "insights_and_output_paragraphs",
+        exploratory_questions: "operational_only",
+        external_receipts: "local_canonical_chunk_required",
+        unsupported_output: "retain_operational_only",
+        legacy_rows: "legacy_unverified",
+      },
+      research_brief_hash: "a".repeat(64),
+      approved_research_brief_hash: null,
+      research_brief_state: "proposed",
+      research_result_state: "none",
+      deposit_state: "pending",
+      graph_projection_state: "pending",
       research_tier: "deep",
       fanout_depth: 3,
       recommended_price_ceiling_usd: 3.6,
@@ -718,6 +748,8 @@ describe("MidnightOil mode", () => {
       goals: ["Long-horizon synthesis"],
       duration_minutes: 90,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       research_tier: "wrestle",
       recommended_price_ceiling_usd: 5.0,
       view_format: "html",
@@ -764,6 +796,21 @@ describe("MidnightOil mode", () => {
       goals: ["Map residual risks"],
       duration_minutes: 60,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: {
+        policy_version: 1,
+        required_coverage: "insights_and_output_paragraphs",
+        exploratory_questions: "operational_only",
+        external_receipts: "local_canonical_chunk_required",
+        unsupported_output: "retain_operational_only",
+        legacy_rows: "legacy_unverified",
+      },
+      research_brief_hash: "a".repeat(64),
+      approved_research_brief_hash: null,
+      research_brief_state: "proposed",
+      research_result_state: "none",
+      deposit_state: "pending",
+      graph_projection_state: "pending",
       research_tier: "deep",
       recommended_price_ceiling_usd: 3.6,
       view_format: "html",
@@ -775,6 +822,21 @@ describe("MidnightOil mode", () => {
       goals: ["Map residual risks"],
       duration_minutes: 60,
       status: "approved",
+      acceptance_policy_version: 1,
+      acceptance_policy: {
+        policy_version: 1,
+        required_coverage: "insights_and_output_paragraphs",
+        exploratory_questions: "operational_only",
+        external_receipts: "local_canonical_chunk_required",
+        unsupported_output: "retain_operational_only",
+        legacy_rows: "legacy_unverified",
+      },
+      research_brief_hash: "a".repeat(64),
+      approved_research_brief_hash: "a".repeat(64),
+      research_brief_state: "approved",
+      research_result_state: "none",
+      deposit_state: "pending",
+      graph_projection_state: "pending",
       research_tier: "deep",
       recommended_price_ceiling_usd: 3.6,
       approved_ceiling_usd: 3.6,
@@ -800,6 +862,14 @@ describe("MidnightOil mode", () => {
         "3.60",
       );
     });
+    const proposedBrief = screen.getByTestId("moil-research-acceptance-brief");
+    expect(proposedBrief.getAttribute("data-policy-version")).toBe("1");
+    expect(proposedBrief.getAttribute("data-brief-state")).toBe("proposed");
+    expect(proposedBrief.getAttribute("data-read-only")).toBe("false");
+    expect(proposedBrief.textContent).toMatch(/review this rule before approving/i);
+    expect(
+      screen.getByTestId("moil-graph-admission-status").getAttribute("data-admission-state"),
+    ).toBe("not_started");
     expect(createMidnightOilJob).toHaveBeenCalledWith(
       expect.objectContaining({
         fanout_depth: 5,
@@ -882,10 +952,115 @@ describe("MidnightOil mode", () => {
         "3.60",
       );
     });
+    const approvedBrief = screen.getByTestId("moil-research-acceptance-brief");
+    expect(approvedBrief.getAttribute("data-brief-state")).toBe("approved");
+    expect(approvedBrief.getAttribute("data-read-only")).toBe("true");
+    expect(approvedBrief.getAttribute("data-approved-hash")).toBe("a".repeat(64));
     expect(approveMidnightOilCeiling).toHaveBeenCalledWith({
       job_id: "moil_test",
       use_recommended: true,
     });
+  });
+
+  it("preserves refused operational HTML across status recovery", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_refused",
+      goals: ["Audit unsupported claims"],
+      duration_minutes: 60,
+      status: "queued",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
+      research_brief_hash: "b".repeat(64),
+      approved_research_brief_hash: "b".repeat(64),
+      research_brief_state: "approved",
+      research_result_state: "none",
+      deposit_state: "pending",
+      graph_projection_state: "pending",
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+    });
+    getMidnightOilJob.mockResolvedValue({
+      job_id: "moil_refused",
+      goals: ["Audit unsupported claims"],
+      duration_minutes: 60,
+      status: "complete",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
+      research_brief_hash: "b".repeat(64),
+      approved_research_brief_hash: "b".repeat(64),
+      research_brief_state: "approved",
+      research_result_state: "returned",
+      deposit_state: "complete",
+      deposit_document_id: "doc-refused-html",
+      graph_projection_state: "refused",
+      graph_projection_reason: "claim_coverage_missing",
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+    });
+
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Audit unsupported claims" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+
+    await screen.findByTestId("moil-refresh-status");
+    fireEvent.click(screen.getByTestId("moil-refresh-status"));
+    const admission = await screen.findByTestId("moil-graph-admission-status");
+    await waitFor(() => {
+      expect(admission.getAttribute("data-admission-state")).toBe("refused");
+    });
+    expect(getMidnightOilJob).toHaveBeenCalledWith("moil_refused");
+    expect(admission.getAttribute("data-admission-reason")).toBe(
+      "claim_coverage_missing",
+    );
+    expect(admission.getAttribute("data-verified")).toBe("false");
+    expect(admission.textContent).toMatch(/operational HTML retained/i);
+    expect(admission.textContent).not.toMatch(/admitted to the knowledge graph/i);
+
+    fireEvent.click(screen.getByTestId("moil-reopen-operational-html"));
+    expect(openWindow).toHaveBeenCalledWith(
+      "hosted_html_document",
+      expect.objectContaining({ document_id: "doc-refused-html" }),
+      expect.objectContaining({ mode: "floating" }),
+    );
+  });
+
+  it("hides graph navigation for a contradictory complete response", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_unknown_complete",
+      goals: ["Inspect contradictory admission"],
+      duration_minutes: 60,
+      status: "complete",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
+      research_brief_state: "approved",
+      research_result_state: "returned",
+      deposit_state: "complete",
+      graph_projection_state: "complete",
+      graph_projection_reason: "claim_coverage_missing",
+      graph_node_ids: ["node-must-not-open"],
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+    });
+
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Inspect contradictory admission" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+
+    const admission = await screen.findByTestId("moil-graph-admission-status");
+    expect(admission.getAttribute("data-admission-state")).toBe("unknown");
+    expect(admission.getAttribute("data-verified")).toBe("false");
+    expect(screen.queryByTestId("moil-graph-projection-nav")).toBeNull();
   });
 
   it("soft-gates approve when ceiling may exceed remaining budget (me)", async () => {
@@ -898,6 +1073,8 @@ describe("MidnightOil mode", () => {
       goals: ["Huge wrestle"],
       duration_minutes: 600,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       research_tier: "wrestle",
       recommended_price_ceiling_usd: 50,
       view_format: "html",
@@ -909,6 +1086,8 @@ describe("MidnightOil mode", () => {
       goals: ["Huge wrestle"],
       duration_minutes: 600,
       status: "approved",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       research_tier: "wrestle",
       recommended_price_ceiling_usd: 50,
       approved_ceiling_usd: 50,
@@ -966,6 +1145,8 @@ describe("MidnightOil mode", () => {
       goals: ["Job fanout wins"],
       duration_minutes: 30,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       research_tier: "deep",
       fanout_depth: 7,
       recommended_price_ceiling_usd: 2.5,
@@ -1008,6 +1189,8 @@ describe("MidnightOil mode", () => {
       goals: ["Wrestle with twin notes"],
       duration_minutes: 30,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 2.0,
       view_format: "html",
       runnable: false,
@@ -1018,6 +1201,8 @@ describe("MidnightOil mode", () => {
       goals: ["Wrestle with twin notes"],
       duration_minutes: 30,
       status: "approved",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 2.0,
       approved_ceiling_usd: 2.0,
       view_format: "html",
@@ -1048,6 +1233,11 @@ describe("MidnightOil mode", () => {
       duration_minutes: 30,
       status: "complete",
       operation_state: "complete",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
+      research_brief_state: "approved",
+      research_brief_hash: "c".repeat(64),
+      approved_research_brief_hash: "c".repeat(64),
       recommended_price_ceiling_usd: 2.0,
       approved_ceiling_usd: 2.0,
       graph_projection_state: "complete",
@@ -1355,6 +1545,8 @@ describe("MidnightOil mode", () => {
       goals: ["Goal A"],
       duration_minutes: 30,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 1.5,
       view_format: "html",
       runnable: false,
@@ -1365,6 +1557,8 @@ describe("MidnightOil mode", () => {
       goals: ["Goal A"],
       duration_minutes: 30,
       status: "approved",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 1.5,
       approved_ceiling_usd: 1.5,
       view_format: "html",
@@ -1624,6 +1818,8 @@ describe("MidnightOil mode", () => {
       ],
       duration_minutes: 30,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 2.0,
       view_format: "html",
       runnable: false,
@@ -1685,6 +1881,8 @@ describe("MidnightOil mode", () => {
       goals: ["Goal alone"],
       duration_minutes: 30,
       status: "awaiting_approval",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 1.0,
       view_format: "html",
       runnable: false,
@@ -1695,6 +1893,8 @@ describe("MidnightOil mode", () => {
       goals: ["Goal alone"],
       duration_minutes: 30,
       status: "approved",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
       recommended_price_ceiling_usd: 1.0,
       approved_ceiling_usd: 1.0,
       view_format: "html",

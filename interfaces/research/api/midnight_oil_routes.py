@@ -12,7 +12,7 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
@@ -185,6 +185,7 @@ class ConsentBody(BaseModel):
     ceiling_cents: StrictInt | None = Field(default=None, ge=1, le=MAX_CEILING_CENTS)
     use_recommended: StrictBool = False
     force_below: StrictBool = False
+    acceptance_policy_version: Literal[1] | None = None
 
 
 class LegacyApproveBody(BaseModel):
@@ -276,25 +277,24 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
                 raise RuntimeError("live execution plan resolver returned invalid data")
         else:
             live_plan = None
-        deps.owner_jobs.put_job(
-            OwnerJob(
-                owner_user_id=owner,
-                job_id=result.job.job_id,
-                state_version=0,
-                approved_ceiling_cents=None,
-                consent_receipt_id=None,
-                consent_config_hash=None,
-                consent_issued_at_ms=None,
-                consent_expires_at_ms=None,
-                consent_claimed_at_ms=None,
-                operation_id=None,
-                operation_state=OperationState.NONE,
-                dispatch_started_at_ms=None,
-                dispatched_at_ms=None,
-                completed_at_ms=None,
-                payload=_owner_payload(result.job, live_plan=live_plan),
-            )
+        authority = OwnerJob(
+            owner_user_id=owner,
+            job_id=result.job.job_id,
+            state_version=0,
+            approved_ceiling_cents=None,
+            consent_receipt_id=None,
+            consent_config_hash=None,
+            consent_issued_at_ms=None,
+            consent_expires_at_ms=None,
+            consent_claimed_at_ms=None,
+            operation_id=None,
+            operation_state=OperationState.NONE,
+            dispatch_started_at_ms=None,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload=_owner_payload(result.job, live_plan=live_plan),
         )
+        deps.owner_jobs.put_job(authority)
         legacy_row = staging.get_job(result.job.job_id)
         if legacy_row is None:
             raise RuntimeError("staged Midnight Oil job disappeared")
@@ -319,6 +319,7 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
     except RuntimeError:
         raise HTTPException(status_code=503, detail="job creation unavailable") from None
     out = result.to_dict()
+    out.update(_launch_contract(authority, job=result.job))
     out["html"] = product_result_html(result)
     return out
 
@@ -385,6 +386,53 @@ def _recommended_cents(row: OwnerJob) -> int:
     return value
 
 
+def _launch_contract(row: OwnerJob, *, job: MidnightOilJob | None = None) -> dict[str, object]:
+    config = _config(row)
+    policy = config.acceptance_policy
+    canonical_hash = config.canonical_hash()
+    if policy is None:
+        brief_state = "legacy_unverified"
+    elif row.operation_state is OperationState.NONE:
+        brief_state = "proposed"
+    elif row.consent_config_hash != canonical_hash:
+        brief_state = "authority_drift"
+    else:
+        brief_state = "approved"
+    if job is None:
+        research_result_state = None
+    elif any(evidence.output_text.strip() or evidence.insights for evidence in job.step_evidence):
+        research_result_state = "returned"
+    elif any(
+        evidence.route_receipt is not None or evidence.source_receipts
+        for evidence in job.step_evidence
+    ):
+        research_result_state = "receipt_only"
+    else:
+        research_result_state = "none"
+    return {
+        "acceptance_policy": None if policy is None else policy.model_dump(mode="json"),
+        "acceptance_policy_version": None if policy is None else policy.policy_version,
+        "research_brief_hash": canonical_hash,
+        "approved_research_brief_hash": row.consent_config_hash,
+        "research_brief_state": brief_state,
+        "research_result_state": research_result_state,
+        "deposit_state": None if job is None else job.deposit_state,
+        "deposit_document_id": None if job is None else job.deposit_document_id,
+        "graph_projection_state": None if job is None else job.graph_projection_state,
+        "graph_projection_reason": None if job is None else job.graph_projection_reason,
+        "graph_node_ids": (
+            []
+            if job is None or job.graph_effect_receipt is None
+            else list(job.graph_effect_receipt.node_ids)
+        ),
+        "graph_deliverable_id": (
+            None
+            if job is None or job.graph_effect_receipt is None
+            else job.graph_effect_receipt.deliverable_id
+        ),
+    }
+
+
 def _legacy_matches_authority(legacy: MidnightOilJob, config: JobConsentConfig) -> bool:
     """Require the ownerless detail projection to match signed authority exactly."""
     return (
@@ -414,6 +462,11 @@ def post_spend_consent(
         raise HTTPException(status_code=404, detail="job not found")
     if not _legacy_matches_authority(legacy_job, config):
         raise HTTPException(status_code=409, detail="job configuration requires reconciliation")
+    if body.acceptance_policy_version is None:
+        raise HTTPException(
+            status_code=400,
+            detail="acceptance_policy_version=1 acknowledgement is required",
+        )
     if body.use_recommended:
         if body.ceiling_cents is not None:
             raise HTTPException(status_code=400, detail="choose ceiling_cents or use_recommended")
@@ -464,6 +517,7 @@ def post_spend_consent(
                 "issued_at_ms": recovered_receipt.issued_at_ms,
                 "expires_at_ms": recovered_receipt.expires_at_ms,
                 "recovered": True,
+                **_launch_contract(row, job=legacy_job),
             }
     if row.operation_state is not OperationState.NONE and not renewing_expired:
         raise HTTPException(status_code=409, detail="job already has spend consent")
@@ -533,6 +587,7 @@ def post_spend_consent(
         "issued_at_ms": receipt.issued_at_ms,
         "expires_at_ms": receipt.expires_at_ms,
         "renewed": renewing_expired,
+        **_launch_contract(published.job or row, job=legacy_job),
     }
 
 
@@ -568,15 +623,12 @@ def get_job_route(request: Request, response: Response, job_id: str) -> dict[str
         "graph_projection_state": job.graph_projection_state,
         "graph_projection_reason": job.graph_projection_reason,
         "graph_node_ids": (
-            []
-            if job.graph_effect_receipt is None
-            else list(job.graph_effect_receipt.node_ids)
+            [] if job.graph_effect_receipt is None else list(job.graph_effect_receipt.node_ids)
         ),
         "graph_deliverable_id": (
-            None
-            if job.graph_effect_receipt is None
-            else job.graph_effect_receipt.deliverable_id
+            None if job.graph_effect_receipt is None else job.graph_effect_receipt.deliverable_id
         ),
+        **_launch_contract(authority, job=job),
         "notes": job.notes,
         "view_format": "html",
         "runnable": False,
@@ -756,6 +808,9 @@ def post_run(
         "job_id": body.job_id,
         "operation_id": claim.receipt.operation_id,
         "state": current.operation_state.value,
+        "graph_projection_state": legacy.graph_projection_state,
+        "graph_projection_reason": legacy.graph_projection_reason,
+        **_launch_contract(current, job=legacy),
     }
 
 
@@ -811,6 +866,7 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
             )
         except (KeyError, ValueError):
             progress = None
+    current_job = get_job(body.job_id, store=deps.jobs) or job
     return {
         "job_id": deposit.job_id,
         "asset_id": deposit.asset_id,
@@ -822,7 +878,10 @@ def post_deposit(request: Request, body: DepositBody) -> dict[str, Any]:
         "usage_event": deposit.usage_event,
         "progress_seeded": deposit.progress_seeded,
         "progress": progress,
-        "job_status": (get_job(body.job_id, store=deps.jobs) or job).status,
+        "job_status": current_job.status,
+        "graph_projection_state": current_job.graph_projection_state,
+        "graph_projection_reason": current_job.graph_projection_reason,
+        **_launch_contract(authority, job=current_job),
         "view_format": "html",
         "html": deposit.html,
         "product_panel": "midnight_oil_deposit",

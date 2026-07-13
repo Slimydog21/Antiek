@@ -82,6 +82,8 @@ import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
   depositMidnightOilJob,
+  describeMidnightOilAdmission,
+  isMidnightOilAcceptancePolicy,
   fetchMidnightOilLiveStepStatus,
   getMidnightOilJob,
   MidnightOilConsentExpiredError,
@@ -260,6 +262,10 @@ export default function MidnightOil() {
   const [recentTick, setRecentTick] = useState(0);
   // Residual (oo): remount twin panel after promote / collective merge.
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
+  const admission = useMemo(
+    () => (job ? describeMidnightOilAdmission(job) : null),
+    [job],
+  );
   const onContextNeedsRefresh = useCallback(() => {
     setContextRefreshKey((n) => n + 1);
   }, []);
@@ -668,6 +674,18 @@ export default function MidnightOil() {
         status: result.job_status || "complete",
         asset_id: result.asset_id,
         runnable: false,
+        acceptance_policy: result.acceptance_policy,
+        acceptance_policy_version: result.acceptance_policy_version,
+        research_brief_hash: result.research_brief_hash,
+        approved_research_brief_hash: result.approved_research_brief_hash,
+        research_brief_state: result.research_brief_state,
+        research_result_state: result.research_result_state,
+        deposit_state: result.deposit_state || "complete",
+        deposit_document_id: result.deposit_document_id || result.document_id,
+        graph_projection_state: result.graph_projection_state,
+        graph_projection_reason: result.graph_projection_reason,
+        graph_node_ids: result.graph_node_ids,
+        graph_deliverable_id: result.graph_deliverable_id,
       });
       // Residual (gk): reinforce twin substrate after deposit.
       await reseedDepositTwins(result);
@@ -698,6 +716,18 @@ export default function MidnightOil() {
         ...job,
         status: result.status,
         runnable: result.runnable,
+        acceptance_policy: result.acceptance_policy,
+        acceptance_policy_version: result.acceptance_policy_version,
+        research_brief_hash: result.research_brief_hash,
+        approved_research_brief_hash: result.approved_research_brief_hash,
+        research_brief_state: result.research_brief_state,
+        research_result_state: result.research_result_state,
+        deposit_state: result.deposit_state,
+        deposit_document_id: result.deposit_document_id,
+        graph_projection_state: result.graph_projection_state,
+        graph_projection_reason: result.graph_projection_reason,
+        graph_node_ids: result.graph_node_ids,
+        graph_deliverable_id: result.graph_deliverable_id,
       });
       // Residual (oq): remember offline swarm spawns even if auto_deposit is off.
       rememberSpawnIds(result.spawn_ids);
@@ -1478,7 +1508,107 @@ export default function MidnightOil() {
             Status: <strong>{job.status}</strong>
             {job.runnable ? " · runnable" : ""}
           </p>
-          {job.graph_projection_state === "complete" &&
+          <div
+            className="grid gap-3 rounded border-2 border-ink/80 bg-paper p-3 text-sm dark:border-bright/70 dark:bg-ink md:grid-cols-[1.1fr_1fr]"
+            data-testid="moil-research-acceptance-brief"
+            data-policy-version={String(job.acceptance_policy_version ?? "unknown")}
+            data-brief-state={job.research_brief_state || "unknown"}
+            data-brief-hash={job.research_brief_hash || ""}
+            data-approved-hash={job.approved_research_brief_hash || ""}
+            data-read-only={String(job.research_brief_state === "approved")}
+          >
+            <div className="space-y-1 border-l-4 border-sun pl-3">
+              <p className="font-mono text-[11px] uppercase tracking-wide opacity-70">
+                Research acceptance brief
+              </p>
+              <p className="font-medium">
+                {job.acceptance_policy_version === 1 &&
+                isMidnightOilAcceptancePolicy(job.acceptance_policy)
+                  ? "V1 · exact evidence before knowledge promotion"
+                  : "Policy unavailable · approval is not safe"}
+              </p>
+              <p className="text-xs opacity-80">
+                Insights and output paragraphs require exact local chunk evidence.
+                Questions, unsupported output, and external-only receipts remain
+                operational HTML only; legacy runs stay unverified.
+              </p>
+            </div>
+            <div className="space-y-1 font-mono text-[11px] md:border-l md:border-ink/20 md:pl-3 dark:md:border-bright/20">
+              <p>
+                {job.research_brief_state === "proposed"
+                  ? "Review this rule before approving spend."
+                  : job.research_brief_state === "approved"
+                    ? "Approved brief · read-only"
+                    : job.research_brief_state === "authority_drift"
+                      ? "Approved brief mismatch · reconcile"
+                      : "Legacy policy unavailable · unverified"}
+              </p>
+              <p className="break-all opacity-70">
+                brief_sha256={job.research_brief_hash || "unavailable"}
+              </p>
+            </div>
+          </div>
+          {admission ? (
+            <div
+              className="grid gap-3 rounded border border-ink/20 p-3 text-sm dark:border-bright/20 md:grid-cols-2"
+              data-testid="moil-graph-admission-status"
+              data-admission-state={admission.state}
+              data-admission-reason={admission.reason || "none"}
+              data-verified={String(admission.verified)}
+              data-operational-artifact={
+                job.deposit_state === "complete" ? "retained" : "not_deposited"
+              }
+              role="status"
+            >
+              <div className="space-y-1 border-l-4 border-aurora pl-3">
+                <p className="font-mono text-[11px] uppercase tracking-wide opacity-70">
+                  Operational artifact
+                </p>
+                <p className="font-medium">
+                  {job.deposit_state === "complete"
+                    ? "HTML retained and reopenable"
+                    : "No deposited HTML yet"}
+                </p>
+                <p className="text-xs opacity-75">
+                  Retention preserves work; it does not verify its claims.
+                </p>
+                {job.deposit_state === "complete" && job.deposit_document_id ? (
+                  <button
+                    type="button"
+                    className="font-mono text-[11px] underline decoration-aurora decoration-2 underline-offset-4"
+                    data-testid="moil-reopen-operational-html"
+                    onClick={() => {
+                      const windowId = openWindow(
+                        "hosted_html_document",
+                        {
+                          document_id: job.deposit_document_id,
+                          title: `Midnight Oil · ${job.job_id}`,
+                          view_format: "html",
+                          source: "midnight_oil_deposit",
+                        },
+                        {
+                          id: `win:moil-deposit:${job.deposit_document_id}`,
+                          title: `Midnight Oil · ${job.job_id}`,
+                          mode: "floating",
+                        },
+                      );
+                      setDepositWindowId(windowId);
+                    }}
+                  >
+                    Reopen operational HTML / export
+                  </button>
+                ) : null}
+              </div>
+              <div className="space-y-1 border-l-4 border-sun pl-3">
+                <p className="font-mono text-[11px] uppercase tracking-wide opacity-70">
+                  Knowledge admission
+                </p>
+                <p className="font-medium">{admission.heading}</p>
+                <p className="text-xs opacity-75">{admission.detail}</p>
+              </div>
+            </div>
+          ) : null}
+          {admission?.verified === true &&
           (job.graph_node_ids || []).length > 0 ? (
             <nav
               className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]"
@@ -1817,14 +1947,20 @@ export default function MidnightOil() {
                 const recMayExceed =
                   recValid && ceilingMayExceedRemaining(rec);
                 const recApproveReady =
-                  recValid && (!recMayExceed || forceCeilingOverBudget);
+                  recValid &&
+                  job.acceptance_policy_version === 1 &&
+                  isMidnightOilAcceptancePolicy(job.acceptance_policy) &&
+                  (!recMayExceed || forceCeilingOverBudget);
                 const customAmount = Number(ceilingInput);
                 const customValid =
                   Number.isFinite(customAmount) && customAmount > 0;
                 const customMayExceed =
                   customValid && ceilingMayExceedRemaining(customAmount);
                 const customApproveReady =
-                  customValid && (!customMayExceed || forceCeilingOverBudget);
+                  customValid &&
+                  job.acceptance_policy_version === 1 &&
+                  isMidnightOilAcceptancePolicy(job.acceptance_policy) &&
+                  (!customMayExceed || forceCeilingOverBudget);
                 return (
                   <>
               <label

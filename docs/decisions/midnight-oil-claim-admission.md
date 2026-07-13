@@ -60,6 +60,27 @@ Rows without `claim_evidence_schema_version` remain reconstructable legacy evide
 - Defaulting legacy rows to v1 invents consent that was never recorded.
 - Rejecting the entire operational deposit destroys useful partial work.
 
+## Operator-visible launch and admission contract
+
+The launch surface displays the complete v1 acceptance summary beside the price ceiling before spend approval. The browser enables approval only after validating the exact closed six-field object, then sends `acceptance_policy_version = 1` as an explicit acknowledgement. Omission is rejected; the server never supplies a default acknowledgement. The canonical `JobConsentConfig` hash is exposed as `research_brief_hash`; after approval, `approved_research_brief_hash` must match it and the policy panel becomes read-only.
+
+Operational retention and graph admission remain two separate lanes in the interface:
+
+| Machine state | Operator copy | Verified knowledge? |
+| --- | --- | --- |
+| `pending` + pre-terminal job state | Research has not finished | No |
+| `pending` + terminal `none` | No research result returned | No |
+| `pending` + `receipt_only` | Operational receipts retained; no research result returned | No |
+| `pending` + returned output | Operational output retained; graph admission pending | No |
+| `complete` | Admitted to the knowledge graph | Yes |
+| `refused` | Operational HTML retained; graph admission refused | No |
+| `failed_reconcile`, policy drift, or deterministic conflict | Reconciliation required | No |
+| Unknown policy, state, reason, or contradictory `complete` combination | Admission status unavailable; do not treat as verified | No |
+
+Refusal never removes the deposited HTML or its reopen path. Retryable reasons tell the operator to retry admission without redispatching research. Permanent evidence failures keep the artifact operational-only. Unknown backend values deliberately render an unverified fallback instead of inheriting success styling or copy.
+
+The browser validates state/reason pairs as a closed relationship: `pending` accepts only no reason or a retryable reason, `refused` requires a permanent refusal reason, and `complete` requires no reason plus an approved brief with matching canonical and approved SHA-256 hashes. Graph navigation uses that verified presentation instead of the raw state literal. Create, consent/recovery, run, status, and deposit responses all carry the same launch and graph-admission projection.
+
 ## Reverser
 
 V2 requires a new explicit operator-visible policy version, migration posture, hash-sensitivity proofs, and graph-admission tests. Signed external receipts may become admissible only after their issuer, schema, integrity verification, revocation, and local attribution semantics are separately ratified. Existing v1 or legacy authority must never silently acquire v2 semantics.

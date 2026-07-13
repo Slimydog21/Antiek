@@ -169,7 +169,7 @@ def _lease(
     issued = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert issued.status_code == 200, issued.text
     queued = client.post(

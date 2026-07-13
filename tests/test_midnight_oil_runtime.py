@@ -824,9 +824,9 @@ def test_api_to_worker_executes_deposits_projects_and_archives_once(
     consent = client.post(
         f"/midnight-oil/jobs/{job_id}/spend-consent",
         json=(
-            {"ceiling_cents": 1, "force_below": True}
+            {"ceiling_cents": 1, "force_below": True, "acceptance_policy_version": 1}
             if mode == "budget_halt"
-            else {"use_recommended": True}
+            else {"use_recommended": True, "acceptance_policy_version": 1}
         ),
     )
     assert consent.status_code == 200, consent.text

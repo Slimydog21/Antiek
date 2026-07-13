@@ -2,11 +2,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
+  describeMidnightOilAdmission,
   getMidnightOilJob,
   runMidnightOilJob,
 } from "./midnightOil";
 
 const mockFetch = vi.fn();
+
+const V1_POLICY = {
+  policy_version: 1 as const,
+  required_coverage: "insights_and_output_paragraphs" as const,
+  exploratory_questions: "operational_only" as const,
+  external_receipts: "local_canonical_chunk_required" as const,
+  unsupported_output: "retain_operational_only" as const,
+  legacy_rows: "legacy_unverified" as const,
+};
+
+const V1_LAUNCH = {
+  acceptance_policy_version: 1 as const,
+  acceptance_policy: V1_POLICY,
+  research_brief_state: "approved" as const,
+  research_brief_hash: "a".repeat(64),
+  approved_research_brief_hash: "a".repeat(64),
+};
 
 vi.mock("../lib/api", () => ({
   API_BASE: "",
@@ -24,7 +42,11 @@ describe("midnightOil API client", () => {
         goals: ["g"],
         duration_minutes: 60,
         status: "awaiting_approval",
+        acceptance_policy_version: 1,
+        acceptance_policy: V1_POLICY,
         recommended_price_ceiling_usd: 3.6,
+        graph_node_ids: ["node-ok", ""],
+        graph_deliverable_id: 42,
         view_format: "html",
         runnable: false,
       }),
@@ -35,6 +57,8 @@ describe("midnightOil API client", () => {
     });
     expect(out.recommended_price_ceiling_usd).toBe(3.6);
     expect(out.view_format).toBe("html");
+    expect(out.graph_node_ids).toEqual([]);
+    expect(out.graph_deliverable_id).toBeNull();
     expect(mockFetch).toHaveBeenCalledWith(
       "/midnight-oil/create",
       expect.objectContaining({ method: "POST" }),
@@ -49,6 +73,8 @@ describe("midnightOil API client", () => {
         goals: ["g"],
         duration_minutes: 60,
         status: "awaiting_approval",
+        acceptance_policy_version: 1,
+        acceptance_policy: V1_POLICY,
         recommended_price_ceiling_usd: 3.6,
         view_format: "html",
         runnable: false,
@@ -77,7 +103,111 @@ describe("midnightOil API client", () => {
       ceiling_cents: null,
       use_recommended: true,
       force_below: false,
+      acceptance_policy_version: 1,
     });
+  });
+
+  it.each([
+    [
+      "no_result",
+      { graph_projection_state: "pending", research_result_state: "none" },
+    ],
+    [
+      "receipt_only",
+      { graph_projection_state: "pending", research_result_state: "receipt_only" },
+    ],
+    ["admitted", { graph_projection_state: "complete" }],
+    [
+      "refused",
+      {
+        graph_projection_state: "refused",
+        graph_projection_reason: "legacy_unverified",
+      },
+    ],
+    [
+      "reconciliation_required",
+      {
+        graph_projection_state: "refused",
+        graph_projection_reason: "policy_authority_drift",
+      },
+    ],
+    ["unknown", { graph_projection_state: "future_state" }],
+    [
+      "unknown",
+      {
+        graph_projection_state: "future_state",
+        graph_projection_reason: "policy_authority_drift",
+      },
+    ],
+    ["unknown", { graph_projection_state: "refused" }],
+    [
+      "unknown",
+      {
+        graph_projection_state: "refused",
+        graph_projection_reason: "graph_lock_unavailable",
+      },
+    ],
+    [
+      "unknown",
+      {
+        graph_projection_state: "pending",
+        graph_projection_reason: "claim_coverage_missing",
+      },
+    ],
+    [
+      "not_started",
+      {
+        status: "consent_issued",
+        graph_projection_state: "pending",
+        research_result_state: "none",
+      },
+    ],
+    [
+      "unknown",
+      {
+        graph_projection_state: "complete",
+        graph_projection_reason: "future_reason",
+      },
+    ],
+    [
+      "reconciliation_required",
+      {
+        graph_projection_state: "complete",
+        research_brief_hash: "a".repeat(64),
+        approved_research_brief_hash: "b".repeat(64),
+      },
+    ],
+    [
+      "unknown",
+      {
+        graph_projection_state: "complete",
+        graph_projection_reason: "claim_coverage_missing",
+      },
+    ],
+  ])("maps graph admission to honest %s copy", (expected, job) => {
+    const presentation = describeMidnightOilAdmission({ ...V1_LAUNCH, ...job });
+    expect(presentation.state).toBe(expected);
+    expect(presentation.verified).toBe(expected === "admitted");
+  });
+
+  it("fails closed when version 1 is paired with an incomplete policy", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        job_id: "moil_policy_drift",
+        status: "awaiting_approval",
+        acceptance_policy_version: 1,
+        acceptance_policy: { policy_version: 1 },
+      }),
+    });
+
+    await expect(
+      approveMidnightOilCeiling({
+        job_id: "moil_policy_drift",
+        use_recommended: true,
+      }),
+    ).rejects.toThrow(/exact v1 research acceptance policy/i);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
   });
 
   it("converts custom USD to integer cents and queues with in-memory consent", async () => {
@@ -89,6 +219,8 @@ describe("midnightOil API client", () => {
           goals: ["g1", "g2"],
           duration_minutes: 60,
           status: "awaiting_approval",
+          acceptance_policy_version: 1,
+          acceptance_policy: V1_POLICY,
           recommended_price_ceiling_usd: 3.6,
           view_format: "html",
           runnable: false,
@@ -110,6 +242,8 @@ describe("midnightOil API client", () => {
           job_id: "moil_custom",
           operation_id: "operation-custom",
           state: "queued",
+          graph_node_ids: ["node-live"],
+          graph_deliverable_id: "deliverable-live",
         }),
       });
 
@@ -127,6 +261,7 @@ describe("midnightOil API client", () => {
       ceiling_cents: 425,
       use_recommended: false,
       force_below: true,
+      acceptance_policy_version: 1,
     });
     expect(mockFetch.mock.calls[2][1].headers).toEqual(
       expect.objectContaining({
@@ -148,6 +283,8 @@ describe("midnightOil API client", () => {
         status: "queued",
         spent_usd: 0,
         spawn_ids: [],
+        graph_node_ids: ["node-live"],
+        graph_deliverable_id: "deliverable-live",
       }),
     );
     expect(JSON.stringify(queued)).not.toContain("secret-consent");
@@ -167,6 +304,8 @@ describe("midnightOil API client", () => {
         goals: ["g"],
         duration_minutes: 60,
         status: "awaiting_approval",
+        acceptance_policy_version: 1,
+        acceptance_policy: V1_POLICY,
         recommended_price_ceiling_usd: 3.6,
         view_format: "html",
         runnable: false,
@@ -189,6 +328,8 @@ describe("midnightOil API client", () => {
         goals: ["g"],
         duration_minutes: 60,
         status: "awaiting_approval",
+        acceptance_policy_version: 1,
+        acceptance_policy: V1_POLICY,
         recommended_price_ceiling_usd: 3.6,
         view_format: "html",
         runnable: false,
@@ -212,6 +353,8 @@ describe("midnightOil API client", () => {
           goals: ["g"],
           duration_minutes: 60,
           status: "awaiting_approval",
+          acceptance_policy_version: 1,
+          acceptance_policy: V1_POLICY,
           recommended_price_ceiling_usd: 3.6,
           view_format: "html",
           runnable: false,
@@ -250,6 +393,8 @@ describe("midnightOil API client", () => {
           goals: ["g"],
           duration_minutes: 60,
           status: "awaiting_approval",
+          acceptance_policy_version: 1,
+          acceptance_policy: V1_POLICY,
           recommended_price_ceiling_usd: 3.6,
           view_format: "html",
           runnable: false,
@@ -298,6 +443,8 @@ describe("midnightOil API client", () => {
     });
     const out = await getMidnightOilJob("moil_1");
     expect(out.job_id).toBe("moil_1");
+    expect(out.graph_node_ids).toEqual([]);
+    expect(out.graph_deliverable_id).toBeNull();
     expect(mockFetch.mock.calls[0][0]).toBe("/midnight-oil/jobs/moil_1");
   });
 });

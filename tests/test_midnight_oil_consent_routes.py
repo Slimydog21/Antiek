@@ -239,7 +239,7 @@ def test_failed_legacy_persistence_cannot_mint_spend_authority(tmp_path: Path) -
     response = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert response.status_code == 404
     assert "token" not in response.text.lower()
@@ -311,7 +311,7 @@ def test_consent_is_bound_published_and_recoverable_without_raw_storage(
     response = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert response.status_code == 200, response.text
     assert response.headers["cache-control"] == "no-store"
@@ -330,7 +330,7 @@ def test_consent_is_bound_published_and_recoverable_without_raw_storage(
     recovered = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert recovered.status_code == 200
     assert recovered.headers["cache-control"] == "no-store"
@@ -342,7 +342,10 @@ def test_consent_is_bound_published_and_recoverable_without_raw_storage(
     wrong_ceiling = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"ceiling_cents": body["ceiling_cents"] + 1},
+        json={
+            "ceiling_cents": body["ceiling_cents"] + 1,
+            "acceptance_policy_version": 1,
+        },
     )
     assert wrong_ceiling.status_code == 409
     assert token not in wrong_ceiling.text
@@ -356,13 +359,13 @@ def test_expired_unclaimed_consent_is_replaced_by_fresh_exact_authority(
     first = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     ).json()
     object.__setattr__(deps, "clock_ms", lambda: first["expires_at_ms"])
     renewed = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert renewed.status_code == 200, renewed.text
     body = renewed.json()
@@ -384,7 +387,7 @@ def test_receipt_rejects_each_bound_config_mutation_and_key_time_failures(
     response = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     body = response.json()
     token = body["token"]
@@ -499,7 +502,7 @@ def test_cas_failure_returns_no_token_and_only_orphan_receipt(tmp_path: Path) ->
     response = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
-        json={"use_recommended": True},
+        json={"use_recommended": True, "acceptance_policy_version": 1},
     )
     assert response.status_code == 409
     assert response.headers["cache-control"] == "no-store"

@@ -67,6 +67,333 @@ export async function executeMidnightOil(
   return readJson<MidnightOilExecutionReceipt>(res);
 }
 
+export type MidnightOilAcceptancePolicy = {
+  policy_version: 1;
+  required_coverage: "insights_and_output_paragraphs";
+  exploratory_questions: "operational_only";
+  external_receipts: "local_canonical_chunk_required";
+  unsupported_output: "retain_operational_only";
+  legacy_rows: "legacy_unverified";
+};
+
+export type MidnightOilGraphProjectionState = "pending" | "complete" | "refused";
+
+export type MidnightOilGraphAdmissionReason =
+  | "internal_local_chunk_temporarily_missing"
+  | "operational_artifact_pending"
+  | "graph_lock_unavailable"
+  | "policy_authority_drift"
+  | "legacy_unverified"
+  | "claim_coverage_missing"
+  | "receipt_malformed_or_forged"
+  | "external_receipt_not_admissible_v1"
+  | "deterministic_row_conflict";
+
+export type MidnightOilLaunchContract = {
+  acceptance_policy?: MidnightOilAcceptancePolicy | null;
+  acceptance_policy_version?: 1 | null;
+  research_brief_hash?: string | null;
+  approved_research_brief_hash?: string | null;
+  research_brief_state?:
+    | "proposed"
+    | "approved"
+    | "authority_drift"
+    | "legacy_unverified";
+  research_result_state?: "none" | "receipt_only" | "returned" | null;
+  deposit_state?: "pending" | "complete" | null;
+  deposit_document_id?: string | null;
+  graph_node_ids?: string[];
+  graph_deliverable_id?: string | null;
+  graph_projection_state?: MidnightOilGraphProjectionState | null;
+  graph_projection_reason?: MidnightOilGraphAdmissionReason | null;
+};
+
+function normalizeGraphNavigation<T extends MidnightOilLaunchContract>(value: T): T {
+  const rawNodeIds = value.graph_node_ids as unknown;
+  const graphNodeIds =
+    Array.isArray(rawNodeIds) &&
+    rawNodeIds.every(
+      (nodeId) =>
+        typeof nodeId === "string" &&
+        nodeId.length > 0 &&
+        nodeId === nodeId.trim(),
+    )
+      ? [...rawNodeIds]
+      : [];
+  const rawDeliverableId = value.graph_deliverable_id as unknown;
+  const graphDeliverableId =
+    typeof rawDeliverableId === "string" &&
+    rawDeliverableId.length > 0 &&
+    rawDeliverableId === rawDeliverableId.trim()
+      ? rawDeliverableId
+      : null;
+  return {
+    ...value,
+    graph_node_ids: graphNodeIds,
+    graph_deliverable_id: graphDeliverableId,
+  };
+}
+
+export type MidnightOilAdmissionPresentation = {
+  state:
+    | "not_started"
+    | "no_result"
+    | "receipt_only"
+    | "operational_pending"
+    | "admitted"
+    | "refused"
+    | "reconciliation_required"
+    | "unknown";
+  reason: MidnightOilGraphAdmissionReason | "unknown" | null;
+  heading: string;
+  detail: string;
+  verified: boolean;
+};
+
+const GRAPH_REASON_COPY: Record<MidnightOilGraphAdmissionReason, string> = {
+  internal_local_chunk_temporarily_missing:
+    "A cited local source is temporarily unavailable. Retry graph admission without rerunning research.",
+  operational_artifact_pending:
+    "The operational HTML is not ready for graph admission yet. Keep the artifact and retry admission later.",
+  graph_lock_unavailable:
+    "The knowledge graph is busy. Retry admission without rerunning research.",
+  policy_authority_drift:
+    "The approved research brief no longer matches durable authority. Reconciliation is required.",
+  legacy_unverified:
+    "This run predates the approved evidence policy. Its HTML remains operational, not verified knowledge.",
+  claim_coverage_missing:
+    "At least one returned claim lacks exact local evidence coverage. The HTML remains operational only.",
+  receipt_malformed_or_forged:
+    "A source receipt failed integrity checks. The HTML remains operational only.",
+  external_receipt_not_admissible_v1:
+    "V1 requires a locally canonical source chunk. External-only evidence remains operational only.",
+  deterministic_row_conflict:
+    "Durable graph data conflicts with this projection. Reconciliation is required before admission.",
+};
+
+const GRAPH_STATES = new Set<MidnightOilGraphProjectionState>([
+  "pending",
+  "complete",
+  "refused",
+]);
+const GRAPH_REASONS = new Set<MidnightOilGraphAdmissionReason>(
+  Object.keys(GRAPH_REASON_COPY) as MidnightOilGraphAdmissionReason[],
+);
+const RETRYABLE_GRAPH_REASONS = new Set<MidnightOilGraphAdmissionReason>([
+  "internal_local_chunk_temporarily_missing",
+  "operational_artifact_pending",
+  "graph_lock_unavailable",
+]);
+const REFUSED_GRAPH_REASONS = new Set<MidnightOilGraphAdmissionReason>([
+  "policy_authority_drift",
+  "legacy_unverified",
+  "claim_coverage_missing",
+  "receipt_malformed_or_forged",
+  "external_receipt_not_admissible_v1",
+  "deterministic_row_conflict",
+]);
+
+export function isMidnightOilAcceptancePolicy(
+  value: unknown,
+): value is MidnightOilAcceptancePolicy {
+  if (typeof value !== "object" || value === null) return false;
+  const policy = value as Record<string, unknown>;
+  return (
+    Object.keys(policy).length === 6 &&
+    policy.policy_version === 1 &&
+    policy.required_coverage === "insights_and_output_paragraphs" &&
+    policy.exploratory_questions === "operational_only" &&
+    policy.external_receipts === "local_canonical_chunk_required" &&
+    policy.unsupported_output === "retain_operational_only" &&
+    policy.legacy_rows === "legacy_unverified"
+  );
+}
+
+export function describeMidnightOilAdmission(job: {
+  status?: unknown;
+  graph_projection_state?: unknown;
+  graph_projection_reason?: unknown;
+  research_brief_state?: unknown;
+  research_result_state?: unknown;
+  deposit_state?: unknown;
+  acceptance_policy?: unknown;
+  acceptance_policy_version?: unknown;
+  research_brief_hash?: unknown;
+  approved_research_brief_hash?: unknown;
+}): MidnightOilAdmissionPresentation {
+  const rawState = job.graph_projection_state;
+  const state = GRAPH_STATES.has(rawState as MidnightOilGraphProjectionState)
+    ? (rawState as MidnightOilGraphProjectionState)
+    : null;
+  const rawReason = job.graph_projection_reason;
+  const reason =
+    rawReason == null
+      ? null
+      : GRAPH_REASONS.has(rawReason as MidnightOilGraphAdmissionReason)
+        ? (rawReason as MidnightOilGraphAdmissionReason)
+        : "unknown";
+  const briefHash = job.research_brief_hash;
+  const approvedBriefHash = job.approved_research_brief_hash;
+  const validBriefHashes =
+    typeof briefHash === "string" &&
+    /^[0-9a-f]{64}$/.test(briefHash) &&
+    typeof approvedBriefHash === "string" &&
+    /^[0-9a-f]{64}$/.test(approvedBriefHash);
+  const briefHashMismatch = validBriefHashes && briefHash !== approvedBriefHash;
+  if (
+    job.acceptance_policy_version !== 1 ||
+    !isMidnightOilAcceptancePolicy(job.acceptance_policy)
+  ) {
+    return {
+      state: "unknown",
+      reason,
+      heading: "Research acceptance policy is unknown",
+      detail:
+        "The server did not return the exact V1 evidence policy. Approval and verified knowledge presentation are disabled.",
+      verified: false,
+    };
+  }
+  const contradictoryGraphContract =
+    (state === null && reason !== null) ||
+    (state === "complete" && reason !== null) ||
+    (state === "refused" &&
+      (reason === null ||
+        reason === "unknown" ||
+        !REFUSED_GRAPH_REASONS.has(reason))) ||
+    (state === "pending" &&
+      reason !== null &&
+      (reason === "unknown" || !RETRYABLE_GRAPH_REASONS.has(reason)));
+  if (contradictoryGraphContract) {
+    return {
+      state: "unknown",
+      reason,
+      heading: "Knowledge admission state is contradictory",
+      detail:
+        "The graph state and reason violate the closed admission contract. Keep the HTML operational and do not expose graph navigation.",
+      verified: false,
+    };
+  }
+  if (
+    job.research_brief_state === "authority_drift" ||
+    job.status === "failed_reconcile" ||
+    reason === "policy_authority_drift" ||
+    reason === "deterministic_row_conflict" ||
+    briefHashMismatch
+  ) {
+    return {
+      state: "reconciliation_required",
+      reason,
+      heading: "Reconciliation required",
+      detail:
+        reason && reason !== "unknown"
+          ? GRAPH_REASON_COPY[reason]
+          : "Durable authority or graph state is inconsistent. Do not treat this output as verified knowledge.",
+      verified: false,
+    };
+  }
+  if (
+    state === "complete" &&
+    (job.research_brief_state !== "approved" || !validBriefHashes)
+  ) {
+    return {
+      state: "unknown",
+      reason,
+      heading: "Approved research brief is unavailable",
+      detail:
+        "Verified knowledge requires matching canonical and approved research brief hashes. Keep the HTML operational until authority is reconciled.",
+      verified: false,
+    };
+  }
+  if (reason === "unknown") {
+    return {
+      state: "unknown",
+      reason,
+      heading: "Knowledge admission state is unknown",
+      detail:
+        "The server returned an admission combination this client does not recognize. Keep the HTML operational and do not treat it as verified knowledge.",
+      verified: false,
+    };
+  }
+  if (state === "complete") {
+    return {
+      state: "admitted",
+      reason: null,
+      heading: "Admitted to the knowledge graph",
+      detail: "Every policy-covered claim passed exact local evidence checks.",
+      verified: true,
+    };
+  }
+  if (state === "refused") {
+    return {
+      state: "refused",
+      reason,
+      heading: "Operational HTML retained; graph admission refused",
+      detail:
+        reason
+          ? GRAPH_REASON_COPY[reason]
+          : "The refusal reason is unknown. Keep the HTML operational and do not treat it as verified knowledge.",
+      verified: false,
+    };
+  }
+  if (
+    state === "pending" &&
+    (job.status === "awaiting_approval" ||
+      job.status === "approved" ||
+      job.status === "consent_issued" ||
+      job.status === "queued" ||
+      job.status === "running")
+  ) {
+    return {
+      state: "not_started",
+      reason,
+      heading: job.status === "running" ? "Research is running" : "Research has not finished",
+      detail:
+        "No terminal research result exists yet, so nothing has been evaluated for knowledge admission.",
+      verified: false,
+    };
+  }
+  if (state === "pending" && job.research_result_state === "receipt_only") {
+    return {
+      state: "receipt_only",
+      reason,
+      heading: "Operational receipts retained; no research result returned",
+      detail: "Receipts are audit evidence, not a supported finding. Nothing has been admitted to the graph.",
+      verified: false,
+    };
+  }
+  if (state === "pending" && job.research_result_state === "none") {
+    return {
+      state: "no_result",
+      reason,
+      heading: "No research result returned",
+      detail:
+        job.deposit_state === "complete"
+          ? "The honest operational HTML remains available, but it contains no verified finding."
+          : "No operational HTML has been deposited and nothing has been admitted to the graph.",
+      verified: false,
+    };
+  }
+  if (state === "pending") {
+    return {
+      state: "operational_pending",
+      reason,
+      heading: "Operational output retained; graph admission pending",
+      detail:
+        reason
+          ? GRAPH_REASON_COPY[reason]
+          : "The HTML may be reopened, but its claims are not verified knowledge yet.",
+      verified: false,
+    };
+  }
+  return {
+    state: "unknown",
+    reason,
+    heading: "Graph admission status unavailable",
+    detail: "Keep the output operational and do not treat it as verified knowledge.",
+    verified: false,
+  };
+}
+
 export type MidnightOilJobResponse = {
   job_id: string;
   goals: string[];
@@ -82,16 +409,17 @@ export type MidnightOilJobResponse = {
   approved_ceiling_usd?: number | null;
   force_below_recommended?: boolean;
   asset_id?: string | null;
-  graph_projection_state?: "pending" | "complete" | string;
+  graph_projection_state?: MidnightOilGraphProjectionState | null;
+  graph_projection_reason?: MidnightOilGraphAdmissionReason | null;
   graph_node_ids?: string[];
   graph_deliverable_id?: string | null;
   notes?: string;
   view_format: "html";
   runnable: boolean;
   html?: string;
-};
+} & MidnightOilLaunchContract;
 
-type SpendConsentResponse = {
+type SpendConsentResponse = MidnightOilLaunchContract & {
   token: string;
   operation_id: string;
   ceiling_cents: number;
@@ -158,7 +486,7 @@ export async function createMidnightOilJob(body: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  return readJson<MidnightOilJobResponse>(res);
+  return normalizeGraphNavigation(await readJson<MidnightOilJobResponse>(res));
 }
 
 export async function approveMidnightOilCeiling(body: {
@@ -168,6 +496,12 @@ export async function approveMidnightOilCeiling(body: {
   force_below?: boolean;
 }): Promise<MidnightOilJobResponse> {
   const job = await getMidnightOilJob(body.job_id);
+  if (
+    job.acceptance_policy_version !== 1 ||
+    !isMidnightOilAcceptancePolicy(job.acceptance_policy)
+  ) {
+    throw new Error("Midnight Oil approval requires the exact v1 research acceptance policy");
+  }
   let ceilingCents: number | null = null;
   if (!body.use_recommended) {
     const usd = body.ceiling_usd;
@@ -189,10 +523,11 @@ export async function approveMidnightOilCeiling(body: {
         ceiling_cents: ceilingCents,
         use_recommended: Boolean(body.use_recommended),
         force_below: Boolean(body.force_below),
+        acceptance_policy_version: job.acceptance_policy_version,
       }),
     },
   );
-  const consent = await readJson<SpendConsentResponse>(res);
+  const consent = normalizeGraphNavigation(await readJson<SpendConsentResponse>(res));
   pendingConsentByJob.set(body.job_id, {
     token: consent.token,
     ceilingCents: consent.ceiling_cents,
@@ -205,6 +540,18 @@ export async function approveMidnightOilCeiling(body: {
     status: "approved",
     approved_ceiling_usd: consent.ceiling_cents / 100,
     runnable: true,
+    acceptance_policy: consent.acceptance_policy,
+    acceptance_policy_version: consent.acceptance_policy_version,
+    research_brief_hash: consent.research_brief_hash,
+    approved_research_brief_hash: consent.approved_research_brief_hash,
+    research_brief_state: consent.research_brief_state,
+    research_result_state: consent.research_result_state,
+    deposit_state: consent.deposit_state,
+    deposit_document_id: consent.deposit_document_id,
+    graph_projection_state: consent.graph_projection_state,
+    graph_projection_reason: consent.graph_projection_reason,
+    graph_node_ids: consent.graph_node_ids,
+    graph_deliverable_id: consent.graph_deliverable_id,
   };
 }
 
@@ -212,11 +559,11 @@ export async function getMidnightOilJob(
   jobId: string,
 ): Promise<MidnightOilJobResponse> {
   const res = await apiFetch(`${API_BASE}/midnight-oil/jobs/${encodeURIComponent(jobId)}`);
-  return readJson<MidnightOilJobResponse>(res);
+  return normalizeGraphNavigation(await readJson<MidnightOilJobResponse>(res));
 }
 
 /** Deposit job results: HTML asset + twins + optional progress/usage. */
-export type MidnightOilDepositResponse = {
+export type MidnightOilDepositResponse = MidnightOilLaunchContract & {
   job_id: string;
   asset_id: string;
   document_id: string;
@@ -241,6 +588,8 @@ export type MidnightOilDepositResponse = {
   product_panel?: string;
   source?: string;
   notes?: string[];
+  graph_projection_state?: MidnightOilGraphProjectionState | null;
+  graph_projection_reason?: MidnightOilGraphAdmissionReason | null;
 };
 
 export async function depositMidnightOilJob(body: {
@@ -261,11 +610,11 @@ export async function depositMidnightOilJob(body: {
       include_progress_html: body.include_progress_html ?? true,
     }),
   });
-  return readJson<MidnightOilDepositResponse>(res);
+  return normalizeGraphNavigation(await readJson<MidnightOilDepositResponse>(res));
 }
 
 /** Offline worker run (no live multi-provider calls). */
-export type MidnightOilRunResponse = {
+export type MidnightOilRunResponse = MidnightOilLaunchContract & {
   job_id: string;
   status: string;
   spent_usd: number;
@@ -291,6 +640,8 @@ export type MidnightOilRunResponse = {
   queued?: boolean;
   operation_id?: string;
   queue_state?: string;
+  graph_projection_state?: MidnightOilGraphProjectionState | null;
+  graph_projection_reason?: MidnightOilGraphAdmissionReason | null;
 };
 
 export async function runMidnightOilJob(body: {
@@ -334,11 +685,15 @@ export async function runMidnightOilJob(body: {
       throw new MidnightOilConsentExpiredError();
     }
   }
-  const queued = await readJson<{
-    job_id: string;
-    operation_id: string;
-    state: string;
-  }>(res);
+  const queued = normalizeGraphNavigation(
+    await readJson<
+      {
+        job_id: string;
+        operation_id: string;
+        state: string;
+      } & MidnightOilLaunchContract
+    >(res),
+  );
   pendingConsentByJob.delete(body.job_id);
   const state = queued.state;
   const isQueued = state === "queued";
@@ -370,5 +725,17 @@ export async function runMidnightOilJob(body: {
     queued: isQueued,
     operation_id: queued.operation_id,
     queue_state: queued.state,
+    graph_projection_state: queued.graph_projection_state,
+    graph_projection_reason: queued.graph_projection_reason,
+    acceptance_policy: queued.acceptance_policy,
+    acceptance_policy_version: queued.acceptance_policy_version,
+    research_brief_hash: queued.research_brief_hash,
+    approved_research_brief_hash: queued.approved_research_brief_hash,
+    research_brief_state: queued.research_brief_state,
+    research_result_state: queued.research_result_state,
+    deposit_state: queued.deposit_state,
+    deposit_document_id: queued.deposit_document_id,
+    graph_node_ids: queued.graph_node_ids,
+    graph_deliverable_id: queued.graph_deliverable_id,
   };
 }
