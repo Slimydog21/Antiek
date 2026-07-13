@@ -353,6 +353,8 @@ async def test_end_to_end_post_drives_orchestrator(
     (which subscribes to investigation.start_requested via the
     broadcast that POST fires). The 9-phase chain runs against stub
     providers; GET returns completed with the verdict."""
+    _, bus = app_and_bus
+
     # The transport (KDL ref-validation) makes the evidence/parameter/synthesizer
     # parsers validate chunk_ids against the retrieved chunks block. With real
     # retrieval, the stub's "chunk-1" is not canonical → stripped → "chunk_ids
@@ -408,6 +410,11 @@ async def test_end_to_end_post_drives_orchestrator(
 
     body = status_resp.json()
     assert body["status"] == "completed", body
+    # Completion is the public terminal contract, but later-phase subscribers
+    # can still be unwinding. Drain them before fixture teardown removes this
+    # test's provider/retrieval stubs; otherwise those tasks can consume the
+    # next test's global provider registry and make the suite order-dependent.
+    await bus.wait_for_handlers(timeout=30.0)
     assert body["current_phase"] == 8  # last entered phase
     assert body["terminal_payload"]["thesis_summary"].startswith("PsiQuantum")
     assert Path(body["terminal_payload"]["master_md_path"]).exists()
