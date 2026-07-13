@@ -1,7 +1,9 @@
 # BYOK model route authority
 
-Status: executable follow-up to the Settings add-model foundation  
-Owner surface: Research, Reading, and Writing prompt composers  
+Status: executable follow-up to the Settings add-model foundation
+
+Owner surface: Research, Reading, and Writing prompt composers
+
 Security boundary: server-owned provider registry and budget policy
 
 ## Problem
