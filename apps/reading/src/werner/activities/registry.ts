@@ -9,8 +9,9 @@ import type { ActivityId, StationActivity } from "./types";
  * the single-entry moment:
  *   1. It is where the no-move invariant of `StationActivity` (types.ts) is
  *      given a home: activities enter Werner's world ONLY as a StationActivity,
- *      so the "an activity cannot steer the penguin" guarantee the fixed-station
- *      rework fought for is enforced at the one door, not per call-site.
+ *      so the "an activity is granted no steering authority" guarantee the
+ *      fixed-station rework fought for is checked at one door and by the
+ *      companion source-boundary test, not left to every call-site.
  *   2. SPR-03 (switching), SPR-04 (easter egg) and SPR-05 (the arcade) add
  *      their activities as REGISTRATIONS against this surface — not by editing
  *      PenguinMascot. This sprint builds the spine those three hang from.
@@ -32,14 +33,21 @@ const catalog = new Map<ActivityId, StationActivity>();
 let defaultId: ActivityId | null = null;
 
 /**
- * Register (or replace) an activity. Idempotent by `id`: re-registering the
- * same id replaces the entry, never duplicates it. Pass `{ default: true }` to
- * mark it the default activity (the last such call wins).
+ * Register an activity. Re-registering the exact same object is idempotent;
+ * attempting to replace an existing id with another object throws. Silent
+ * replacement would let an import-order accident change Werner's behavior.
+ * Pass `{ default: true }` to mark it the default activity.
  */
 export function registerActivity(
   activity: StationActivity,
   options: { default?: boolean } = {},
 ): void {
+  const existing = catalog.get(activity.id);
+  if (existing && existing !== activity) {
+    throw new Error(
+      `Werner station: activity "${activity.id}" is already registered`,
+    );
+  }
   catalog.set(activity.id, activity);
   if (options.default) defaultId = activity.id;
 }

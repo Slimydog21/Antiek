@@ -24,7 +24,7 @@
 </section>
 
 <section class="block"><h2>Goal</h2>
-  <p>Replace the one-off ice-fishing coupling with a typed activity boundary. An activity may declare ambient classes, a cursor instrument, and an unlock rule. It cannot read or write Werner's position. Ice fishing remains behavior-identical as the default.</p>
+  <p>Replace the one-off ice-fishing coupling with a typed activity boundary. An activity may declare ambient classes, a cursor instrument, and an unlock rule. The contract grants no Werner-position authority, and a focused source-boundary test rejects direct movement, navigation, and network dependencies. Ice fishing remains behavior-identical as the default.</p>
   <h3>Success criteria</h3><ul>
     <li><code>StationActivity</code> contains no position, movement, mascot ref, or stage-controller capability.</li>
     <li>The production shell mounts the default activity's instrument; the mascot reads its idle class; current fishing tests remain green.</li>
@@ -60,11 +60,11 @@ PenguinMascot               WernerIceCursorShell
 toggles ambient class       mounts active instrument
         │                        │
         └──── no position capability ────┘</div>
-  <h3>Invariants</h3><ul><li>Exactly one interactive Werner exists at shell level.</li><li>Reduced motion disables involuntary activity motion and custom cursor layers.</li><li>Activities cannot create product authority, spend, network calls, or navigation.</li><li>Every generated image is presentation evidence, never interaction or research evidence.</li></ul>
+  <h3>Invariants</h3><ul><li>Exactly one interactive Werner exists at shell level.</li><li>Reduced motion disables involuntary activity motion and custom cursor layers.</li><li>The activity contract grants no product authority, spend, network, navigation, or mascot-position capability; the source gate catches direct violations but is not presented as a JavaScript sandbox.</li><li>Every generated image is presentation evidence, never interaction or research evidence.</li></ul>
 </section>
 
 <section class="block"><h2>Sprint roster</h2><div class="wave">Wave 1 · revived on current main</div>
-  <div class="grid"><a class="card" href="sprint-01-activity-spine.html"><span class="id">SPR-01</span><strong>Typed station-activity spine</strong><span>Extract ice fishing into a behavior-preserving registry and enforce “activities cannot move Werner” by type.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Inline</span></div></a></div>
+  <div class="grid"><a class="card" href="sprint-01-activity-spine.html"><span class="id">SPR-01</span><strong>Typed station-activity spine</strong><span>Extract ice fishing into a behavior-preserving registry and withhold movement authority by contract plus a focused source gate.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Inline</span></div></a></div>
   <h3>Freshness-gated next candidates</h3><table><thead><tr><th>Candidate</th><th>Start only when</th><th>Current collision</th></tr></thead><tbody>
     <tr><td>Active-activity switching + persistence</td><td>SPR-01 is merged; the activity state owner and route policy are named.</td><td>None found, but do not widen this sprint.</td></tr>
     <tr><td>Research/reading cursor instruments</td><td>Each instrument has one page job and no overlap with product reaction events.</td><td>Shared checkout already has <code>reactionBus</code> and <code>shellExperienceSignals</code>.</td></tr>

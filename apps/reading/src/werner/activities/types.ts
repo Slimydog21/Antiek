@@ -4,14 +4,15 @@ import type { ComponentType } from "react";
  * StationActivity — the contract for a thing Werner does at his fixed station.
  *
  * ─── THE NO-MOVE INVARIANT (why this type is shaped the way it is) ───────────
- * An activity declares appearance + a cursor-instrument; it cannot move the
- * penguin — that is why the reel could never come back. This type deliberately
+ * An activity declares appearance + a cursor-instrument; the contract grants
+ * it no authority to move the penguin. This type deliberately
  * has NO whereabouts field, NO ref, NO setter that could steer Werner: an
  * activity may toggle ambient CSS classes and mount a cursor-instrument, and
  * that is ALL. The fixed-station model (2026-07-02 operator ratification,
- * docs/htmlspec/werner-fixed-station/DESIGN.md) is enforced here BY TYPE — a
- * future activity author literally cannot express "walk the penguin to the
- * cursor", because the surface to do so does not exist on this type. The reel
+ * docs/htmlspec/werner-fixed-station/DESIGN.md) is represented here BY TYPE: a
+ * caller cannot pass a Werner ref, position, or movement command through the
+ * activity surface. The companion activity-boundary test rejects direct
+ * movement/navigation/network imports and APIs in implementation modules. The reel
  * (SPR-15) was a whole subsystem; an activity is a declaration.
  *
  * The registry that holds these (registry.ts) exists so SPR-03/04/05 add
@@ -41,7 +42,7 @@ export interface CursorInstrumentProps {
  * (for ice-fishing, the bait worm + the rod-tip→cursor line), plus a manifest
  * of which read-seam fields it consumes. The manifest is documentation the
  * type carries: an instrument declares WHICH cursor signals it reads, and is
- * given no way whatsoever to read or write Werner's whereabouts.
+ * given no such capability through this contract.
  */
 export interface CursorInstrument {
   readonly render: ComponentType<CursorInstrumentProps>;

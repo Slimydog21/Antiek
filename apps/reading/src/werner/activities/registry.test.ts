@@ -32,13 +32,24 @@ describe("station activity registry", () => {
     expect(getDefaultActivity()).toBe(iceFishingActivity);
   });
 
-  it("registerActivity is idempotent by id (re-register replaces, never dupes)", () => {
+  it("registerActivity is idempotent for the same object", () => {
     const before = listActivities().filter((a) => a.id === "ice-fishing").length;
     // Re-register the SAME id — the catalog must not grow a duplicate entry.
     registerActivity(iceFishingActivity, { default: true });
     const after = listActivities().filter((a) => a.id === "ice-fishing").length;
     expect(before).toBe(1);
     expect(after).toBe(1);
+    expect(getActivity("ice-fishing")).toBe(iceFishingActivity);
+  });
+
+  it("rejects a conflicting replacement for an existing id", () => {
+    const conflicting = {
+      ...iceFishingActivity,
+      label: "Impostor fishing",
+    };
+    expect(() => registerActivity(conflicting)).toThrow(
+      'Werner station: activity "ice-fishing" is already registered',
+    );
     expect(getActivity("ice-fishing")).toBe(iceFishingActivity);
   });
 
