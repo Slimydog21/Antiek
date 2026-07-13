@@ -35,7 +35,16 @@ def test_trimmed_surface_and_linked_session() -> None:
     assert body["investigation_id"].startswith("inv_")
     assert body["view_format"] == "html"
 
-    paths = {route.path for route in api.app.routes if route.path.startswith("/engagement")}
+    # Starlette 1.x nests included routers behind _IncludedRouter wrappers
+    # (no .path); descend into original_router to collect registered paths.
+    paths = set()
+    for route in api.app.routes:
+        if hasattr(route, "path"):
+            paths.add(route.path)
+        for sub in getattr(getattr(route, "original_router", None), "routes", []):
+            if hasattr(sub, "path"):
+                paths.add(sub.path)
+    paths = {p for p in paths if p.startswith("/engagement")}
     assert paths == {
         "/engagement/sessions/open",
         "/engagement/twins/{asset_id}",
