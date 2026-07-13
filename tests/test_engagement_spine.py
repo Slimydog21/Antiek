@@ -29,6 +29,7 @@ from substrate.engagement_spine import (  # noqa: E402
     spawn_from_highlight,
 )
 from substrate.engagement_spine.store import FileEngagementStore as _FileStore  # noqa: E402
+from substrate.floating_session.store import FileSessionStore  # noqa: E402
 
 
 @pytest.fixture
@@ -39,6 +40,139 @@ def store():
 @pytest.fixture
 def file_store(tmp_path):
     return _FileStore(tmp_path / "engagement")
+
+
+@pytest.mark.parametrize("hostile_id", ["../../outside", "../outside", "/tmp/outside"])
+def test_durable_spawn_ids_cannot_escape_store(tmp_path, hostile_id):
+    root = tmp_path / "engagement"
+    store = _FileStore(root)
+    row = {"spawn_id": hostile_id, "parent_asset_id": "asset-1"}
+
+    store.put_spawn(row)
+
+    assert store.get_spawn(hostile_id) == row
+    assert not (tmp_path / "outside.json").exists()
+    assert len(list((root / "spawns").glob("*.json"))) == 1
+
+
+@pytest.mark.parametrize("hostile_id", ["../../outside", "../outside", "/tmp/outside"])
+def test_durable_session_ids_cannot_escape_store(tmp_path, hostile_id):
+    root = tmp_path / "floating"
+    store = FileSessionStore(root)
+    row = {"session_id": hostile_id, "parent_asset_id": "asset-1"}
+
+    store.put_session(row)
+
+    assert store.get_session(hostile_id) == row
+    assert not (tmp_path / "outside.json").exists()
+    assert len(list((root / "sessions").glob("*.json"))) == 1
+
+
+def test_durable_asset_and_document_ids_are_safe_and_collision_free(tmp_path):
+    root = tmp_path / "engagement"
+    store = _FileStore(root)
+
+    store.put_twin({"asset_id": "../../outside", "note_id": "n-1"})
+    store.put_twin({"asset_id": ".._.._outside", "note_id": "n-2"})
+    store.put_document("../../document", {"document_id": "../../document"})
+
+    assert store.list_twins("../../outside") == [
+        {"asset_id": "../../outside", "note_id": "n-1"}
+    ]
+    assert store.list_twins(".._.._outside") == [
+        {"asset_id": ".._.._outside", "note_id": "n-2"}
+    ]
+    assert store.get_document("../../document") == {
+        "document_id": "../../document"
+    }
+    assert not (tmp_path / "outside.json").exists()
+    assert not (tmp_path / "document.json").exists()
+    assert len(list((root / "twins").glob("*.json"))) == 2
+
+
+def test_durable_store_reads_and_migrates_legacy_slash_flattened_files(tmp_path):
+    root = tmp_path / "engagement"
+    store = _FileStore(root)
+    legacy_twin = root / "twins" / "asset_part.json"
+    legacy_doc = root / "docs" / "doc_part.json"
+    legacy_twin.write_text(
+        '[{"asset_id":"asset/part","note_id":"legacy-note"}]', encoding="utf-8"
+    )
+    legacy_doc.write_text(
+        '{"document_id":"doc/part","title":"Legacy"}', encoding="utf-8"
+    )
+
+    assert store.list_twins("asset/part")[0]["note_id"] == "legacy-note"
+    assert store.get_document("doc/part") == {
+        "document_id": "doc/part",
+        "title": "Legacy",
+    }
+
+    store.put_twin({"asset_id": "asset/part", "note_id": "new-note"})
+    assert {row["note_id"] for row in store.list_twins("asset/part")} == {
+        "legacy-note",
+        "new-note",
+    }
+    assert len(list((root / "twins").glob("id_sha256_*.json"))) == 1
+
+
+def test_legacy_collision_is_rejected_when_embedded_identity_disagrees(tmp_path):
+    root = tmp_path / "engagement"
+    store = _FileStore(root)
+    (root / "twins" / "a_b.json").write_text(
+        '[{"asset_id":"a_b","note_id":"other"}]', encoding="utf-8"
+    )
+    (root / "docs" / "a_b.json").write_text(
+        '{"document_id":"a_b","title":"Other"}', encoding="utf-8"
+    )
+
+    assert store.list_twins("a/b") == []
+    assert store.get_document("a/b") is None
+
+    (root / "docs" / "missing_id.json").write_text(
+        '{"title":"Ambiguous legacy document"}', encoding="utf-8"
+    )
+    assert store.get_document("missing/id") is None
+
+
+def test_spawn_and_session_legacy_filenames_remain_readable_without_escape(tmp_path):
+    engagement = _FileStore(tmp_path / "engagement")
+    sessions = FileSessionStore(tmp_path / "floating")
+    legacy_spawn = engagement.root / "spawns" / "research draft.json"
+    legacy_session = sessions.root / "sessions" / "session λ.json"
+    legacy_spawn.write_text(
+        '{"spawn_id":"research draft","parent_asset_id":"asset-1"}',
+        encoding="utf-8",
+    )
+    legacy_session.write_text(
+        '{"session_id":"session λ","parent_asset_id":"asset-1"}',
+        encoding="utf-8",
+    )
+
+    assert engagement.get_spawn("research draft") == {
+        "spawn_id": "research draft",
+        "parent_asset_id": "asset-1",
+    }
+    assert sessions.get_session("session λ") == {
+        "session_id": "session λ",
+        "parent_asset_id": "asset-1",
+    }
+    assert engagement.get_spawn("../../outside") is None
+    assert sessions.get_session("../../outside") is None
+
+
+def test_posix_backslash_legacy_twin_remains_readable(tmp_path):
+    root = tmp_path / "engagement"
+    store = _FileStore(root)
+    legacy = root / "twins" / "asset\\part.json"
+    legacy.write_text(
+        '[{"asset_id":"asset\\\\part","note_id":"legacy-note"}]',
+        encoding="utf-8",
+    )
+
+    assert store.list_twins("asset\\part") == [
+        {"asset_id": "asset\\part", "note_id": "legacy-note"}
+    ]
 
 
 def test_spawn_from_highlight_reserves_investigation(store):
