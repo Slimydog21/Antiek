@@ -1,10 +1,10 @@
-"""SPR-01 (antiek-data-durability): backup → restore round-trip detection guard.
+"""DuckDB backup/restore behavior and upstream self-reference regression guard.
 
-The product's entire state is the DuckDB graph + the append-only event log.
-``infrastructure/ansible/templates/backup.sh.j2`` backs the graph up nightly via
-DuckDB's ``EXPORT DATABASE '...' (FORMAT PARQUET)``; the intended restore is the
-inverse ``IMPORT DATABASE``. This module is the **detection guard** for a
-verified defect in that restore path.
+The product's state is the DuckDB graph plus the append-only event log.
+``infrastructure/ansible/templates/backup.sh.j2`` exports the graph and then
+applies Antiek's schema normalizer before restore. This module pins the raw
+upstream DuckDB defect and an unaffected positive control. The deployed
+product-path proof lives in ``test_backup_normalize_schema.py``.
 
 == The finding (root-caused 2026-07-03, glm-5.2 /infinite) ==
 
@@ -13,13 +13,12 @@ DuckDB's ``EXPORT DATABASE`` cannot round-trip a **self-referential foreign key*
 (``FOREIGN KEY (parent) REFERENCES t(id)``). On export the self-ref FK is
 silently dropped *and* a stray comma is left in the emitted ``schema.sql``
 (a trailing ``, )`` for a lone self-ref; a double ``, ,`` when other table-level
-constraints follow). Consequences for the Antiek backup:
+constraints follow). Consequences for an **unnormalized raw DuckDB export**:
 
   1. ``IMPORT DATABASE`` **hard-fails** on the real schema. The full schema's
      ``edges`` and ``deliverable_sections`` tables (both carry a self-ref FK)
      produce malformed DDL, and IMPORT raises ``Parser Error: syntax error at
-     or near ","`` at the first one. **The nightly backup is not restorable via
-     IMPORT DATABASE as it stands.**
+     or near ","`` at the first one.
   2. Where IMPORT does limp past a lone trailing comma, the self-ref FK is gone
      and no longer enforced — silent data-integrity loss on restore.
 
@@ -28,19 +27,15 @@ Only **two** self-ref FKs exist in the source schema (``edges.superseded_by`` �
 Non-self-referential FKs, CHECK constraints, indexes, and data all round-trip
 correctly (proven below).
 
-The fix is a product-durability decision and is **operator-gated** (see the spec
-README, SPR-02): (A) drop the two advisory self-ref FK constraints + a prod
-migration; (B) change ``backup.sh.j2`` to a self-ref-safe method (e.g. direct
-read-only file copy of ``antiek.duckdb``, which round-trips perfectly); or
-first (C) verify the operator's *actual* restore procedure — if it is already a
-file copy, the EXPORT format is decorative and the severity drops. This module
-does NOT make that choice; it detects + documents it so the gap can never
-regress silently.
+SPR-02 resolved the product failure in #184 by normalizing only DuckDB's
+definitively malformed top-level commas after export. The two advisory self-ref
+FKs remain absent after restore (an upstream limitation), while data,
+non-self-referential FKs, CHECK constraints, and indexes survive.
 
 Tests: (1) pins the upstream self-ref-FK EXPORT bug on a minimal schema;
-(2) xfail-strict — the full real-schema round-trip must preserve everything
-   once the fix lands (currently fails: IMPORT raises); (3) proves the mechanism
-   is sound for a self-ref-free schema. Hermetic on tmp_path; test-only; §16-clean.
+(2) explicitly characterizes the raw full-schema failure without misreporting
+it as an unresolved product defect; (3) proves raw EXPORT/IMPORT is sound for a
+self-ref-free schema. Hermetic on tmp_path; test-only; §16-clean.
 """
 
 from __future__ import annotations
@@ -51,7 +46,7 @@ import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
-from substrate.graph.schema import init_database_at_path, list_tables
+from substrate.graph.schema import init_database_at_path
 
 _BACKUP_EXPORT_OPTIONS = "(FORMAT PARQUET)"  # mirrors backup.sh.j2
 
@@ -89,9 +84,8 @@ def test_self_referential_fk_is_dropped_by_export_import(ddl_form: str, tmp_path
     ``, )`` that IMPORT *tolerates* (the FK is silently dropped, no error); a
     self-ref FK followed by sibling table-level constraints exports a mid-
     statement double comma ``, ,`` that makes IMPORT raise. This test exercises
-    the lone (tolerated) shape; the full-schema xfail below exercises the
-    raising shape. Green today; update (to assert enforcement survives) when
-    DuckDB fixes the bug or when SPR-02 changes the backup mechanism.
+    the lone (tolerated) shape; the full-schema negative control below exercises
+    the raising shape. Green today; update when DuckDB fixes the upstream bug.
     """
     if ddl_form == "column":
         create_sql = "CREATE TABLE t(id INTEGER PRIMARY KEY, parent INTEGER REFERENCES t(id))"
@@ -134,25 +128,10 @@ def test_self_referential_fk_is_dropped_by_export_import(ddl_form: str, tmp_path
 
 
 # ---------------------------------------------------------------------------
-# 2. Prod impact: the full real-schema round-trip must work (xfail-strict today)
+# 2. Raw upstream impact: the real schema fails before Antiek normalization
 # ---------------------------------------------------------------------------
-@pytest.mark.xfail(
-    reason=(
-        "DuckDB EXPORT DATABASE breaks on the real Antiek schema's two "
-        "self-referential FKs (edges.superseded_by, deliverable_sections."
-        "parent_section_id): IMPORT raises a comma Parser Error. Restore is "
-        "non-functional until SPR-02 (spec antiek-data-durability) lands the "
-        "operator-gated fix. Remove this xfail when green."
-    ),
-    strict=True,
-)
-def test_full_antiek_schema_roundtrip_preserves_everything(tmp_path) -> None:
-    """The full real Antiek schema + data + constraints survive backup→restore.
-
-    Currently fails because IMPORT chokes on the malformed DDL emitted for the
-    self-referential FK tables (see test above). xfail-strict turns green the
-    day the fix lands — and then refuses to pass silently if the fix regresses.
-    """
+def test_raw_full_schema_import_fails_only_for_known_self_ref_bug(tmp_path) -> None:
+    """Raw IMPORT fails for the pinned comma bug before product normalization."""
     src = str(tmp_path / "antiek.duckdb")
     init_database_at_path(src)
     with connect_write(src, purpose="roundtrip_seed") as con:
@@ -177,33 +156,12 @@ def test_full_antiek_schema_roundtrip_preserves_everything(tmp_path) -> None:
     exp = str(tmp_path / "export")
     restored = str(tmp_path / "restored.duckdb")
     _export(src, exp)
-    try:
+    with pytest.raises(duckdb.Error) as raised:
         _import(exp, restored)
-    except duckdb.Error as exc:
-        # Pin the failure to the known self-ref-FK comma bug, so this xfail
-        # cannot silently mask an UNRELATED regression (a fixture/init/env
-        # failure would otherwise also xfail green). When the fix lands, IMPORT
-        # succeeds, this except is skipped, the assertions below run and pass,
-        # and strict-xfail flips the test to RED — forcing this marker's removal.
-        # Pin the failure to the comma Parser Error specifically (not just any
-        # syntax error), so this xfail can't mask an unrelated parse failure.
-        assert "syntax error" in str(exc) and "," in str(exc), (
-            f"IMPORT failed for an unexpected reason (not the comma bug): {exc!r}"
-        )
-        raise
-
-    rc = duckdb.connect(restored, read_only=True)
-    try:
-        assert set(list_tables(rc)) >= {"documents", "chunks", "nodes", "edges"}
-        assert rc.execute("SELECT COUNT(*) FROM edges").fetchone()[0] == 1
-        # CHECK constraint still enforces on the restored DB
-        with pytest.raises(duckdb.Error):
-            rc.execute(
-                "INSERT INTO nodes(node_id, canonical_label, node_type, graph_scope) "
-                "VALUES ('bad', 'x', 'not_a_real_type', 'depth')"
-            )
-    finally:
-        rc.close()
+    error = str(raised.value)
+    assert "syntax error" in error and "," in error, (
+        f"IMPORT failed for an unexpected reason (not the comma bug): {error}"
+    )
 
 
 # ---------------------------------------------------------------------------
