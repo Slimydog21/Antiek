@@ -198,24 +198,42 @@ class OpenAICompatProvider:
 
         client = self._ensure_client()
         t_start = time.monotonic()
+        resp: httpx.Response | None = None
+        sanitized_transport_error: str | None = None
         try:
             resp = client.post(url, json=body, headers=headers)
         except httpx.TimeoutException as e:
-            detail = f" — {e}" if self._expose_error_body else ""
-            raise ProviderError(
-                f"{self.name}: request timeout after {self._timeout_s}s{detail}",
-                provider=self.name, model=model,
-                latency_ms=int((time.monotonic() - t_start) * 1000),
-                retryable=True,
-            ) from e
+            if self._expose_error_body:
+                raise ProviderError(
+                    f"{self.name}: request timeout after {self._timeout_s}s — {e}",
+                    provider=self.name, model=model,
+                    latency_ms=int((time.monotonic() - t_start) * 1000),
+                    retryable=True,
+                ) from e
+            sanitized_transport_error = (
+                f"{self.name}: request timeout after {self._timeout_s}s"
+            )
         except httpx.RequestError as e:
-            detail = f" — {e}" if self._expose_error_body else ""
+            if self._expose_error_body:
+                raise ProviderError(
+                    f"{self.name}: network error — {e}",
+                    provider=self.name, model=model,
+                    latency_ms=int((time.monotonic() - t_start) * 1000),
+                    retryable=True,
+                ) from e
+            sanitized_transport_error = f"{self.name}: network error"
+
+        # Raise only after leaving the ``except`` context. ``raise ... from
+        # None`` would hide the cause in formatted tracebacks but still retain
+        # it in ``__context__``, including httpx's credential-bearing request.
+        if sanitized_transport_error is not None:
             raise ProviderError(
-                f"{self.name}: network error{detail}",
+                sanitized_transport_error,
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
-            ) from e
+            )
+        assert resp is not None
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:

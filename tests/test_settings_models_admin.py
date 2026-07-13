@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import traceback
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -204,6 +205,11 @@ def test_untrusted_transport_exception_cannot_reflect_key(
     message = str(raised.value)
     assert _SECRET not in message
     assert "malformed transport" not in message
+    assert raised.value.__cause__ is None
+    assert raised.value.__context__ is None
+    rendered = "".join(traceback.format_exception(raised.value))
+    assert _SECRET not in rendered
+    assert "malformed transport" not in rendered
     assert raised.value.retryable is True
 
 
