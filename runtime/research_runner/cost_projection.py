@@ -20,6 +20,7 @@ from .protocol import (
     ProjectionIneligibility,
     ProjectionRate,
 )
+from .provider_qualification import require_paid_catalog_qualifications
 
 _INVENTORY_PATH = Path(__file__).with_name("dispatch_inventory.json")
 _MAX_PROJECTED_USD = Decimal("1000000000")
@@ -411,7 +412,9 @@ def _server_catalog() -> tuple[CostCatalogEntry, ...]:
     return (*local_entries, exa, *llm_entries)
 
 
-SERVER_COST_PROJECTOR = CostProjector(_server_catalog())
+_SERVER_CATALOG = _server_catalog()
+require_paid_catalog_qualifications(_SERVER_CATALOG)
+SERVER_COST_PROJECTOR = CostProjector(_SERVER_CATALOG)
 
 
 def project_cascade_cost(
