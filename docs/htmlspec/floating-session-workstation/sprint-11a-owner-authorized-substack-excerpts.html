@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>FSW-SPR-11A · Owner-authorized Substack excerpts</title>
+<style>
+:root{--ink:#171717;--paper:#f5f0e6;--card:#fffdf7;--red:#bb2d23;--blue:#174a72;--green:#245b3d;--amber:#8a5a0a;--line:#b9ad99;--muted:#645f56}*{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.55 Georgia,serif}.page{width:min(1120px,calc(100% - 32px));margin:28px auto 72px}.hero,.block{background:var(--card);border:2px solid var(--ink);box-shadow:6px 6px 0 var(--ink);padding:26px;margin:0 0 24px}.eyebrow,.tag,.label,code,pre,.num{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.eyebrow{letter-spacing:.08em;text-transform:uppercase;font-size:.78rem}.hero h1{font-size:clamp(2.2rem,6vw,4.8rem);line-height:.95;margin:.4rem 0 1rem}.tagline{font-size:1.18rem;max-width:850px}.tags{display:flex;gap:8px;flex-wrap:wrap}.tag{border:1px solid var(--ink);padding:3px 8px;font-size:.75rem;background:#eadfc8}.ready{background:#cce7d6}.partial{background:#f1d6a4}.danger{background:#efc2bd}h2{font:700 1.55rem/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;margin:.1rem 0 1rem}h3{font-size:1.08rem;margin:0 0 .5rem}.milestone{display:grid;grid-template-columns:52px 1fr;gap:16px;padding:18px 0;border-top:1px solid var(--line)}.num{width:44px;height:44px;border:2px solid var(--ink);display:grid;place-items:center;background:#e7d6b4;font-weight:700}.criteria{border-left:4px solid var(--green);padding:10px 14px;background:#edf5ef}.warn{border-left:4px solid var(--red);padding:12px 16px;background:#fae9e7}.decision{border-left:4px solid var(--blue);padding:12px 16px;background:#e8f1f7}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:14px}.card{border:1px solid var(--ink);padding:15px;background:#fff}.label{display:block;font-size:.75rem;text-transform:uppercase;color:var(--blue);font-weight:700}.flow{display:flex;gap:8px;align-items:stretch;overflow:auto;padding-bottom:6px}.flow div{min-width:150px;border:1px solid var(--ink);padding:12px;background:#fff}.arrow{border:0!important;min-width:auto!important;display:grid;place-items:center;background:transparent!important}table{border-collapse:collapse;width:100%;font-size:.9rem}th,td{border:1px solid var(--line);padding:8px;text-align:left;vertical-align:top}th{background:#e8dfcf}pre{white-space:pre-wrap;background:#191919;color:#f5f0e6;padding:16px;overflow:auto;font-size:.8rem}code{font-size:.88em;background:#eee5d5;padding:1px 4px}a{color:var(--blue)}ul{padding-left:22px}.small{color:var(--muted);font-size:.88rem}@media(max-width:650px){.page{width:min(100% - 16px,1120px)}.hero,.block{padding:18px;box-shadow:3px 3px 0 var(--ink)}.milestone{grid-template-columns:1fr}.flow{flex-direction:column}.arrow{transform:rotate(90deg)}}
+</style>
+</head>
+<body><main class="page">
+<header class="hero">
+  <p class="eyebrow"><a href="sprint-11-reviewed-publication-source-acquisition.html">← FSW-SPR-11 parent</a> · FSW-SPR-11A · Cycle 18</p>
+  <h1>Owner-authorized Substack excerpts</h1>
+  <p class="tagline">Give a confirmed collective exactly one bounded, owner-selected Substack excerpt for private model context without fetching a page or feed, forwarding credentials, relabeling paid text as open content, or laundering it into a public deliverable.</p>
+  <div class="tags"><span class="tag ready">spec ready</span><span class="tag ready">milestone 1 implemented</span><span class="tag danger">production remains disabled</span><span class="tag">4 milestones remain</span></div>
+</header>
+
+<section class="block"><h2>Parent context and terminal decision</h2>
+<p>FSW-SPR-11 now ships a signed fixed-egress arXiv abstract connector. It deliberately rejects every Substack reference in <code>substrate/midnight_oil/publication_sources.py</code>. Existing Substack RSS ingest and interactive hydrate are different products: they accept generic feed/post clients, may hold full bodies, use heuristic paywall detection, and do not prove exact collective, excerpt, provider-use, expiry, or revocation authority.</p>
+<div class="decision"><strong>Decision:</strong> V1 performs zero Substack network egress. The browser/operator supplies only a selected bounded excerpt and an attestation about the representation and range. The server creates two immutable owner-private artifacts: a revocable use authorization and a content-addressed excerpt receipt. Midnight Oil reads only the exact receipt bytes.</div>
+<div class="warn"><strong>Non-negotiable:</strong> A reviewed URL proves source identity only. A subscription proves access only. Neither proves permission to send a full paid post to a model. V1 never stores a Substack cookie, password, bearer/session header, page HTML, full paid body, or hidden remainder.</div>
+</section>
+
+<section class="block"><h2>Authority flow</h2><div class="flow">
+<div><strong>1 · Exact ref</strong><br>Confirmed collective pins <code>ref_id</code>, exact <code>*.substack.com/p/&lt;slug&gt;</code>, and preview hash.</div><div class="arrow">→</div>
+<div><strong>2 · Use grant</strong><br>Owner attests lawful access and requests private processing under closed constraints; a separate provider capability must prove route compatibility.</div><div class="arrow">→</div>
+<div><strong>3 · Excerpt receipt</strong><br>Only bounded UTF-8 text, representation evidence, range, and hashes enter owner-private storage.</div><div class="arrow">→</div>
+<div><strong>4 · Reviewed preview</strong><br>Collective preview changes and shows bytes, expiry, private-output consequence, and receipt hash.</div><div class="arrow">→</div>
+<div><strong>5 · Paid dispatch</strong><br>Worker rereads the exact receipt and checks owner, revision, expiry, and revocation immediately before every model call.</div>
+</div></section>
+
+<section class="block"><h2>Artifact contracts</h2>
+<h3>A. Server-signed <code>SubstackUseAuthorization</code></h3>
+<table><thead><tr><th>Field group</th><th>Required material</th><th>Why</th></tr></thead><tbody>
+<tr><td>Identity</td><td>schema/version; authorization id/hash/signature; key id; nonce</td><td>Closed parsing, content addressing, signature rotation, replay conflict.</td></tr>
+<tr><td>Owner/review</td><td>opaque owner-scope SHA; collective unit id; exact <code>collective_preview_sha256</code>; reviewed ref id</td><td>Stops cross-owner, cross-collective, stale-preview, and ref substitution.</td></tr>
+<tr><td>Post</td><td>ASCII lower-case tenant host; exact <code>/p/&lt;strict-slug&gt;</code>; canonical HTTPS URL; external id</td><td>No custom domain, port, userinfo, query, fragment, trailing path, or generic URL in V1.</td></tr>
+<tr><td>Use policy</td><td><code>owner_selected_excerpt_v1</code>; <code>owner_private_model_context</code>; owner processing affirmation; separate-compatible-provider-capability requirement and constraints hash; redistribution/training/publication forbidden</td><td>The grant does not prove a provider&#39;s terms. Dispatch additionally requires an independently reviewed route capability compatible with no training, retention, or provider logging.</td></tr>
+<tr><td>Exact selection</td><td>max bytes ≤ 8,192; owner-attested representation hash/length; half-open range; excerpt hash/bytes; partial affirmation</td><td>The server signature commits one grant to one exact selection. The authorization row atomically claims one receipt id/hash; changed replay conflicts.</td></tr>
+<tr><td>Time/revocation</td><td>issued/not-before/expires; max lifetime; live server-side active/revoked tombstone</td><td>Runtime and required horizon must be covered. Revocation shares the authorization-row CAS with the one-receipt claim and remains live for cached replay.</td></tr>
+</tbody></table>
+
+<h3>B. <code>SubstackExcerptReceipt</code></h3>
+<table><thead><tr><th>Field group</th><th>Required material</th><th>Validation</th></tr></thead><tbody>
+<tr><td>Binding</td><td>authorization id/hash; owner/unit/preview/ref/post identities</td><td>Exact equality to signed grant and immutable collective revision.</td></tr>
+<tr><td>Representation evidence</td><td>canonicalization <code>utf8-plain-v1</code>; <code>owner_attestation_unverified</code>; source representation SHA-256 and byte length</td><td>Evidence records the owner&#39;s claim. V1 never sees the hidden representation and therefore cannot prove membership, publisher provenance, or source code-point boundaries.</td></tr>
+<tr><td>Range</td><td>half-open source byte range <code>[start,end)</code>; partial-excerpt affirmation</td><td>Server validates non-negative ordering, strict-subrange shape, length bounds, and equality to excerpt byte count; the source offsets remain explicitly unverified.</td></tr>
+<tr><td>Content</td><td>plain NFC UTF-8 excerpt text; excerpt SHA-256; exact byte count ≤ grant cap</td><td>Server recomputes bytes/hash; rejects empty/control/format text, markup, and remote-resource Markdown. Every consumer must still escape it as text.</td></tr>
+<tr><td>Privacy</td><td><code>content_class=personal_reading</code>; <code>rights_tier=not_applicable</code>; <code>rights_use=operator_authorized_excerpt</code></td><td>Never fake T1; never public serve, ads, attribution, training/RL export, or public graph projection.</td></tr>
+<tr><td>Receipt</td><td>receipt id/hash; injected time; immutable state</td><td>Content-addressed owner-private writer; same material replays, changed material conflicts.</td></tr>
+</tbody></table>
+<p class="small">Publisher-signed representation/range envelopes are a future origin variant. They require a distinct trusted publisher key registry and do not weaken owner-selected V1.</p>
+</section>
+
+<section class="block"><h2>Technical milestones</h2>
+<div class="milestone"><div class="num">1</div><div><h3>Land closed authorization and receipt substrate <span class="tag ready">implemented</span></h3><p>Create <code>substrate/midnight_oil/substack_authorization.py</code> with strict frozen models, domain-separated canonical hashes/signatures, maximum lifetime/byte limits, exact post normalization, owner-private durable claim/apply/revoke operations, and a live revocation lookup.</p><div class="criteria"><strong>Acceptance:</strong> duplicate JSON keys, unknown fields/keys, bad signature/hash, cross-owner/unit/revision/ref, invalid host/path/range/UTF-8, oversized excerpt, false policy, stale expiry, and replay drift fail closed. No function imports HTTP, accepts cookies, or accepts a fetch callback.</div><p class="small"><strong>Cycle 18 closure:</strong> exact selection is server-signed; the authorization-row CAS admits one deterministic crash-repairable receipt; stable revocation and a final live reader barrier close replay races. Evidence: 35 focused authorization tests, 73 publication/deposit integration tests, 467 Midnight Oil tests, strict mypy/Ruff, three independent ACCEPT verdicts, and hardenx LOW with zero real findings.</p></div></div>
+<div class="milestone"><div class="num">2</div><div><h3>Add explicit authenticated review UI/API</h3><p>Add a session/collective-scoped endpoint and browser form. The server verifies the exact ref is present in the owner&#39;s confirmed revision. The UI shows the selected excerpt, exact bytes, expiry, provider-processing affirmation, and private-output consequence before confirmation. The raw authorization signature/token never enters browser persistence.</p><div class="criteria"><strong>Acceptance:</strong> idempotent same-material replay; changed selection conflicts; foreign unit/ref is nondisclosing; hydrate readiness is never treated as Midnight Oil authorization; response HTML escapes excerpt content; consent remains disabled until a newly reviewed collective preview pins the receipt.</div></div></div>
+<div class="milestone"><div class="num">3</div><div><h3>Version mixed-source authority</h3><p>Introduce manifest v2 and a per-source discriminated authority bundle. ArXiv rows bind the egress capability hash; Substack rows bind use authorization, excerpt receipt, range, and excerpt hashes. Bind the bundle through context, owner payload, JobConsentConfig v6, queue, worker, and canonical receipt v4 without changing v1/v5 vectors.</p><div class="criteria"><strong>Acceptance:</strong> arXiv-only legacy rows replay unchanged. Mixed jobs select arXiv capability only for arXiv rows and require active Substack grants for Substack rows. Missing, expired, revoked, or substituted authority blocks prepare/consent/delivery with zero provider calls.</div></div></div>
+<div class="milestone"><div class="num">4</div><div><h3>Read exact local bytes before every provider</h3><p>Add <code>acquisition/substack/midnight_oil.py</code> as a local <code>StoredAuthorizedSubstackExcerptReader</code>. It accepts typed owner/ref/receipt authority only, rereads the exact owner-private receipt, recomputes every hash/range/policy field, and returns inert excerpt text. It contains no network client or URL fetch.</p><div class="criteria"><strong>Acceptance:</strong> every source is acquired and persisted before planner/provider work; local reads are crash-replayable; revocation/expiry is checked again immediately before each provider dispatch; applied cached bytes cannot outlive use authority; any tamper stops the all-source barrier.</div></div></div>
+<div class="milestone"><div class="num">5</div><div><h3>Propagate owner-private taint to every output</h3><p>Publication receipts carry authorization/receipt hashes and <code>personal_reading</code>. Deposit, graph projection, HTML hosting, export, attribution, ads, and training/RL consumers must preserve owner-only restrictions. A derived analysis may be visible to its owner but cannot reproduce or publicly serve the excerpt.</p><div class="criteria"><strong>Acceptance:</strong> a Substack-grounded job deposits owner-private HTML, never enters public serve/ads/attribution/training exports, and cannot be projected into a shared graph. Tests prove excerpt canaries are absent from public artifacts and logs.</div></div></div>
+</section>
+
+<section class="block"><h2>Five-values operating manual</h2><div class="grid">
+<article class="card"><span class="label">1 · Intellectual honesty</span><p>Owner attestation is evidence of the owner&#39;s decision, not publisher permission or proof of the unseen full representation. UI and receipts say exactly that. Paid text is never called T1, open, redistributable, or full-text.</p></article>
+<article class="card"><span class="label">2 · Fairness</span><p>The owner gets private research utility from a small selection. The publisher does not absorb page scraping, credential forwarding, paywall bypass, public rehosting, model-training export, or silent full-body transmission.</p></article>
+<article class="card"><span class="label">3 · Rigor</span><p>Test every identity, byte, range, hash, expiry, revocation, crash, replay, substitution, and output-taint boundary. Provider-call count is zero for every failed prerequisite and exactly authorized for a valid run.</p></article>
+<article class="card"><span class="label">4 · Diligence</span><p>Reuse owner stores, confirmed collective revisions, consent CAS, durable source barrier, and personal-reading gates. Do not reuse hydrate exception swallowing, RSS redirect/fetch behavior, or generic URL plumbing.</p></article>
+<article class="card"><span class="label">5 · Defensibility</span><p>An auditor can reconstruct who authorized what excerpt, for which immutable collective, under what private-use policy, for how long, whether it was revoked, what exact bytes reached a provider, and why no public consumer received them.</p></article>
+</div></section>
+
+<section class="block"><h2>Rejected alternatives</h2><ul>
+<li><strong>Remove the current Substack guard and reuse RSS/hydrate:</strong> rejected; those lanes fetch generic/full material, follow redirects, use heuristic truncation, and carry no spend authority.</li>
+<li><strong>Owner checkbox plus URL:</strong> rejected; identity and access do not prove bounded content or provider use.</li>
+<li><strong>Fetch full page then truncate:</strong> rejected; the system already acquired unauthorized excess bytes and may have bypassed a paywall.</li>
+<li><strong>Byte cap without representation/range attestation:</strong> rejected; a short complete post can fit under the cap. V1 additionally rejects an attested whole-representation range, while honestly acknowledging that a dishonest attestation cannot be detected without source bytes.</li>
+<li><strong>DOM character offsets:</strong> rejected; mutable DOM/extraction makes them non-reproducible. V1 records owner-attested UTF-8 byte offsets as unverified evidence, not publisher proof.</li>
+<li><strong>Call paid text T1:</strong> rejected; T1 is open/redistributable arXiv evidence. Substack V1 is owner-private and non-attributable.</li>
+<li><strong>Replay cached excerpt after revocation:</strong> rejected; content-use authority differs from connector egress authority and must remain live for each provider call.</li>
+<li><strong>Put URL/ref/range hashes in general audit:</strong> rejected; predictable identifiers reveal reading interests. Use per-install keyed correlation or isolated short-retention security audit only.</li>
+</ul></section>
+
+<section class="block"><h2>Deterministic verification matrix</h2><pre>uv run pytest -q \
+  tests/test_midnight_oil_substack_authorization.py \
+  tests/test_midnight_oil_publication_sources.py \
+  tests/test_midnight_oil_authorized_e2e.py \
+  tests/test_midnight_oil_live_stage_engine.py \
+  tests/test_midnight_oil_deposit_route.py \
+  tests/test_midnight_oil_graph_projection.py
+
+uv run ruff check &lt;changed-python&gt;
+uv run mypy --strict &lt;changed-production-python&gt;
+npm --prefix apps/reading test -- &lt;changed-focused-tests&gt;
+npm --prefix apps/reading run typecheck
+npm --prefix apps/reading run build
+hardenx . --strict --no-color</pre>
+<p>Required adversarial cases: cross-owner/unit/revision/ref and durable inner/outer substitution; custom domain/userinfo/query/fragment/port/trailing-path rejection; malformed signature/hash/duplicate JSON; not-before/expiry/horizon; revocation before consent, after consent, after cached read, and immediately before provider; one grant claiming a second receipt; Unicode byte accounting and explicitly unverified offsets; empty/whole-source/oversized/control/format/markup/remote-Markdown input; changed idempotent replay; worker crash before/after local read; mixed arXiv/Substack bundle; incompatible provider route; no HTTP call from Substack reader; excerpt canary absent from logs/public serve/ads/attribution/training/shared graph; zero provider calls on every failure.</p>
+</section>
+
+<section class="block"><h2>Collision protocol and handoff</h2><p><strong>Source of truth:</strong> this child spec owns Substack authorization semantics; the parent FSW-SPR-11 owns the shared publication barrier and remains partial until all five milestones pass. If implementation discovers a conflict with current manifest/capability/receipt versions, update this page first, preserve old vectors, and create a distinct version/domain rather than silently changing canonical hashes.</p>
+<pre>## FSW-SPR-11A handoff
+Status: ready | partial | blocked | done
+Authority artifacts: exact schemas/domains/limits
+Files: path:line + why
+Compatibility: v1/v5/v3 vectors and mixed-source behavior
+Privacy/rights: owner-private propagation proof
+Gates: command + count + exit
+Rejected alternative or assumption changed
+Next-start condition</pre></section>
+
+<section class="block" id="harness-hint" data-harness-pattern="authority-first-local-evidence" data-harness-fanout-unit="authorization; manifest-consent; worker-receipts; private-output; UI" data-harness-verifier-lenses="rights honesty; owner/revision substitution; revocation timing; no-network proof; output taint" data-harness-rounds-floor="2" data-harness-rounds-cap="6"><h2>Execution harness hint</h2><p>Parallelize only after milestone 1 freezes canonical fields and domains. Merge authorization substrate first; every other lane consumes those exact types. Run an independent rights/privacy critic and a consent/crash critic after each integration round.</p></section>
+
+<footer class="small">FSW-SPR-11A · authored 2026-07-13 · Cycle 18 milestone 1 implemented · milestones 2–5 remain · production Substack execution remains disabled</footer>
+</main></body></html>

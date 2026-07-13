@@ -12,6 +12,7 @@ from interfaces.research.api.midnight_oil_routes import (
     MidnightOilDependencies,
     register_midnight_oil_routes,
 )
+from substrate.engagement_spine.store import InMemoryEngagementStore
 from substrate.midnight_oil.job import InMemoryJobStore
 from substrate.midnight_oil.job_store import (
     CompareAndSetResult,
@@ -51,6 +52,7 @@ def _client(tmp_path: Path) -> tuple[TestClient, MidnightOilDependencies]:
         signing_key=KEY,
         verification_keys={"test-key": KEY},
         operation_queue=DurableOperationQueue(tmp_path / "operations.sqlite3"),
+        engagement_store=InMemoryEngagementStore(),
         clock_ms=lambda: 1_000_000,
         random_token=random_token,
         test_mode=True,
