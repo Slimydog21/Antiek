@@ -585,7 +585,7 @@ hr.divider {
 <p class="eyebrow"><a href="index.html">&larr; Midnight Oil claim admission</a> · SPR-01</p>
 <h1>Research acceptance contract</h1><p class="tagline">Name and canonicalize the approval-time epistemic policy.</p>
 <div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Wave 1</span>
-<span class="tag tag--yellow"><span class="dot"></span>Pending</span>
+<span class="tag tag--blue"><span class="dot"></span>Executed; tests green; inherited type gate open</span>
 <span class="tag tag--grey">Budget: 5 milestones</span>
 <span class="tag tag--grey">Owner: serial sprint agent</span></div></header>
 <section class="block"><h2>Parent context</h2><p>Midnight Oil already signs spend authority, route configuration, source policy, duration, and model selection. Those controls prove who authorized execution; they do not define which returned claims may become durable knowledge.</p><p>The preceding admission patch removed fabricated fallback insights. This sprint defines the next authority without changing dispatch, deposit, or graph writes.</p>
@@ -597,28 +597,13 @@ hr.divider {
 <div><h3>External systems &amp; configs</h3><ul><li>No live provider keys</li><li>Existing spend-consent test keyring</li></ul></div></div></section>
 <section class="block"><h2>Out of scope</h2><ul><li>Claim evidence schema</li><li>Graph writes</li><li>Frontend controls</li></ul><div class="callout callout--warn"><strong>Scope stop:</strong> record tempting expansions in the handoff; do not implement them here.</div></section>
 <section class="block"><h2>Verification gates</h2><table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Contract</strong></td><td><code>.venv/bin/python -m pytest tests/test_midnight_oil_contract.py tests/test_midnight_oil_spend_consent.py -q</code></td><td>all passed</td></tr><tr><td><strong>Types</strong></td><td><code>.venv/bin/mypy substrate/midnight_oil/contracts.py substrate/midnight_oil/spend_consent.py --no-error-summary</code></td><td>exit 0</td></tr></tbody></table></section>
-<section class="block"><h2>Handoff packet</h2><pre><code>## SPR-01 — Handoff
-
-### Status
-done | blocked | partial — exact reason
-
-### Files touched
-- path:line — change and why
-
-### Milestones
-- [ ] M1 …
-
-### Verification gates
-- gate: pass | fail | NOT RUN (why)
-
-### Decisions and reversers
-- decision / rejected alternative / what would reverse it
-
-### Assumptions and open questions
-- assumption or question — resolver
-
-### Next sprint can start when
-- mechanically checkable condition
+<section class="block"><h2>Execution evidence</h2><pre><code>## SPR-01: audited handoff
+Status: Executed; tests green; inherited type gate open
+Audit date: 2026-07-13
+Milestones: 5 implemented and covered by the named sprint suites
+Gate results:
+1. Contract tests: PASS in 315-test grouped Midnight Oil run
+2. Types: BLOCKED by pre-existing transitive mypy errors outside the sprint files
 </code></pre></section>
 <section class="block" id="harness-hint" data-harness-pattern="inline"
  data-harness-fanout-unit="Shared consent contract files require serial ownership." data-harness-verifier-lenses="hash drift|closed-version refusal"

@@ -140,6 +140,20 @@ def test_launch_refuses_unapproved_plan(client):
     assert "not approved" in r.json()["detail"]
 
 
+def test_safe_gather_stub_refuses_recursive_context(client, monkeypatch):
+    monkeypatch.setenv("ANTIEK_DRW_GATHER", "stub")
+    root = _make_approved_plan(client, ("Assess prior research",))
+    response = client.post(
+        f"/research/plans/{root}/launch",
+        json={"recursive_asset_ids": ["prior-research"]},
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == (
+        "recursive context requires the Exa reasoning research mode"
+    )
+
+
 # --------------------------------------------------------------------------
 # Full launch → watch → cost journey
 # --------------------------------------------------------------------------

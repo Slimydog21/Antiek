@@ -585,7 +585,7 @@ hr.divider {
 <p class="eyebrow"><a href="index.html">&larr; Midnight Oil claim admission</a> · SPR-05</p>
 <h1>Launch brief and admission status</h1><p class="tagline">Make the approved research brief and graph-admission outcome visible.</p>
 <div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Wave 5</span>
-<span class="tag tag--yellow"><span class="dot"></span>Pending</span>
+<span class="tag tag--blue"><span class="dot"></span>Executed + reverified</span>
 <span class="tag tag--grey">Budget: 4 milestones</span>
 <span class="tag tag--grey">Owner: serial sprint agent</span></div></header>
 <section class="block"><h2>Parent context</h2><p>The operator chooses goals, duration, budget, model, and source policy in the Midnight Oil surface. The new acceptance policy is meaningful only if it is visible before approval and immutable afterward.</p><p>Operational deposits must remain readable even when graph admission refuses them. The UI must distinguish no-result, unverified operational output, graph-admitted knowledge, and reconciliation-required authority drift.</p>
@@ -597,28 +597,14 @@ hr.divider {
 <div><h3>External systems &amp; configs</h3><ul><li>Vitest/jsdom</li><li>No browser network</li></ul></div></div></section>
 <section class="block"><h2>Out of scope</h2><ul><li>Live provider smoke</li><li>Automatic retry</li><li>Settings-wide policy presets</li></ul><div class="callout callout--warn"><strong>Scope stop:</strong> record tempting expansions in the handoff; do not implement them here.</div></section>
 <section class="block"><h2>Verification gates</h2><table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Frontend</strong></td><td><code>cd apps/reading && npm test -- --run src/api/midnightOil.test.ts src/modes/MidnightOil/MidnightOil.test.tsx</code></td><td>all passed</td></tr><tr><td><strong>Types</strong></td><td><code>cd apps/reading && npm run typecheck</code></td><td>exit 0</td></tr><tr><td><strong>Routes</strong></td><td><code>.venv/bin/python -m pytest tests/test_midnight_oil_routes.py tests/test_midnight_oil_consent_routes.py -q</code></td><td>all passed</td></tr></tbody></table></section>
-<section class="block"><h2>Handoff packet</h2><pre><code>## SPR-05 — Handoff
-
-### Status
-done | blocked | partial — exact reason
-
-### Files touched
-- path:line — change and why
-
-### Milestones
-- [ ] M1 …
-
-### Verification gates
-- gate: pass | fail | NOT RUN (why)
-
-### Decisions and reversers
-- decision / rejected alternative / what would reverse it
-
-### Assumptions and open questions
-- assumption or question — resolver
-
-### Next sprint can start when
-- mechanically checkable condition
+<section class="block"><h2>Execution evidence</h2><pre><code>## SPR-05: audited handoff
+Status: Executed + reverified
+Audit date: 2026-07-13
+Milestones: 4 implemented and covered by the named sprint suites
+Gate results:
+1. Frontend: 67 tests PASS
+2. TypeScript: PASS
+3. Routes: PASS in grouped Midnight Oil run
 </code></pre></section>
 <section class="block" id="harness-hint" data-harness-pattern="inline"
  data-harness-fanout-unit="API and one product surface share the launch contract." data-harness-verifier-lenses="copy truthfulness|backend-frontend enum parity"

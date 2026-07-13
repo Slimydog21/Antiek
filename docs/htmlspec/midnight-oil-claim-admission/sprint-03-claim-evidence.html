@@ -585,7 +585,7 @@ hr.divider {
 <p class="eyebrow"><a href="index.html">&larr; Midnight Oil claim admission</a> · SPR-03</p>
 <h1>Claim-to-receipt evidence model</h1><p class="tagline">Represent which receipts support each returned claim or paragraph.</p>
 <div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Wave 3</span>
-<span class="tag tag--yellow"><span class="dot"></span>Pending</span>
+<span class="tag tag--blue"><span class="dot"></span>Executed; tests green; inherited type gate open</span>
 <span class="tag tag--grey">Budget: 4 milestones</span>
 <span class="tag tag--grey">Owner: serial sprint agent</span></div></header>
 <section class="block"><h2>Parent context</h2><p>Step-level source receipts prove only that retrieval happened somewhere in a step. They cannot prove that every insight or paragraph is supported by every source.</p><p>This sprint changes evidence representation and worker normalization only. It must preserve raw operational output for audit while refusing to invent mappings for legacy, offline, or malformed provider results.</p>
@@ -597,28 +597,13 @@ hr.divider {
 <div><h3>External systems &amp; configs</h3><ul><li>Injected fake retrieval and dispatch only</li></ul></div></div></section>
 <section class="block"><h2>Out of scope</h2><ul><li>Consent persistence</li><li>Graph write refusal</li><li>Frontend policy control</li></ul><div class="callout callout--warn"><strong>Scope stop:</strong> record tempting expansions in the handoff; do not implement them here.</div></section>
 <section class="block"><h2>Verification gates</h2><table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Evidence</strong></td><td><code>.venv/bin/python -m pytest tests/test_midnight_oil_job.py tests/test_midnight_oil.py tests/test_midnight_oil_live.py tests/test_midnight_oil_graph_projection.py -q</code></td><td>duplicate/unknown receipt, delimiter collision, key order, display-title exclusion, legacy, paragraph, and replay proofs passed</td></tr><tr><td><strong>Types</strong></td><td><code>.venv/bin/mypy substrate/midnight_oil/job.py substrate/midnight_oil/worker.py substrate/midnight_oil/live.py --no-error-summary</code></td><td>exit 0</td></tr></tbody></table></section>
-<section class="block"><h2>Handoff packet</h2><pre><code>## SPR-03 — Handoff
-
-### Status
-done | blocked | partial — exact reason
-
-### Files touched
-- path:line — change and why
-
-### Milestones
-- [ ] M1 …
-
-### Verification gates
-- gate: pass | fail | NOT RUN (why)
-
-### Decisions and reversers
-- decision / rejected alternative / what would reverse it
-
-### Assumptions and open questions
-- assumption or question — resolver
-
-### Next sprint can start when
-- mechanically checkable condition
+<section class="block"><h2>Execution evidence</h2><pre><code>## SPR-03: audited handoff
+Status: Executed; tests green; inherited type gate open
+Audit date: 2026-07-13
+Milestones: 4 implemented and covered by the named sprint suites
+Gate results:
+1. Evidence tests: PASS in 315-test grouped Midnight Oil run
+2. Types: BLOCKED by pre-existing transitive mypy errors outside the sprint files
 </code></pre></section>
 <section class="block" id="harness-hint" data-harness-pattern="inline"
  data-harness-fanout-unit="Job and worker evidence schema are tightly coupled." data-harness-verifier-lenses="invented mapping|replay hash stability"

@@ -585,7 +585,7 @@ hr.divider {
 <p class="eyebrow"><a href="index.html">&larr; Midnight Oil claim admission</a> · SPR-04</p>
 <h1>Fail-closed graph admission</h1><p class="tagline">Preflight verified claim coverage before the first DuckDB write.</p>
 <div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Wave 4</span>
-<span class="tag tag--yellow"><span class="dot"></span>Pending</span>
+<span class="tag tag--blue"><span class="dot"></span>Executed + reverified</span>
 <span class="tag tag--grey">Budget: 6 milestones</span>
 <span class="tag tag--grey">Owner: serial sprint agent</span></div></header>
 <section class="block"><h2>Parent context</h2><p>Operational HTML deposit may retain partial or unsupported work honestly. The durable depth graph is a stronger epistemic surface and must admit only claims covered under the approved policy.</p><p>Graph projection currently begins inserting a deliverable before it evaluates each source receipt. This sprint adds a read-only full preflight and preserves deterministic replay semantics.</p>
@@ -597,28 +597,12 @@ hr.divider {
 <div><h3>External systems &amp; configs</h3><ul><li>Temporary DuckDB graph</li><li>No network or provider calls</li></ul></div></div></section>
 <section class="block"><h2>Out of scope</h2><ul><li>Automatic promotion of legacy rows</li><li>Changing engagement deposit semantics</li><li>Write citation gate</li></ul><div class="callout callout--warn"><strong>Scope stop:</strong> record tempting expansions in the handoff; do not implement them here.</div></section>
 <section class="block"><h2>Verification gates</h2><table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody><tr><td><strong>Admission</strong></td><td><code>.venv/bin/python -m pytest tests/test_midnight_oil_claim_admission.py tests/test_midnight_oil_graph_projection.py tests/test_midnight_oil_job.py -q</code></td><td>admission and DurableJobStore restart proofs passed</td></tr><tr><td><strong>No-write</strong></td><td><code>.venv/bin/python -m pytest tests/test_midnight_oil_graph_projection.py -k 'refus or no_write or conflict or concurrent' -q</code></td><td>zero-delta, unchanged-conflict, and lock-barrier proofs passed</td></tr></tbody></table></section>
-<section class="block"><h2>Handoff packet</h2><pre><code>## SPR-04 — Handoff
-
-### Status
-done | blocked | partial — exact reason
-
-### Files touched
-- path:line — change and why
-
-### Milestones
-- [ ] M1 …
-
-### Verification gates
-- gate: pass | fail | NOT RUN (why)
-
-### Decisions and reversers
-- decision / rejected alternative / what would reverse it
-
-### Assumptions and open questions
-- assumption or question — resolver
-
-### Next sprint can start when
-- mechanically checkable condition
+<section class="block"><h2>Execution evidence</h2><pre><code>## SPR-04: audited handoff
+Status: Executed + reverified
+Audit date: 2026-07-13
+Milestones: 6 implemented and covered by the named sprint suites
+Gate results:
+1. Admission and no-write tests: PASS
 </code></pre></section>
 <section class="block" id="harness-hint" data-harness-pattern="adversarial-verification"
  data-harness-fanout-unit="One builder; independent verifier attempts partial-write and forged-coverage attacks." data-harness-verifier-lenses="zero-write refusal|receipt forgery|replay equivalence"

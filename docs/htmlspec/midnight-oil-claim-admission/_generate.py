@@ -8,6 +8,38 @@ ROOT = Path(__file__).resolve().parent
 STYLE_PATH = Path("/Users/slimydog/.agents/skills/htmlspec/templates/style.css")
 DATE = "2026-07-13"
 CSS = STYLE_PATH.read_text(encoding="utf-8")
+EXECUTION_EVIDENCE = {
+    "SPR-01": {
+        "label": "Executed; tests green; inherited type gate open",
+        "gates": (
+            "Contract tests: PASS in 315-test grouped Midnight Oil run",
+            "Types: BLOCKED by pre-existing transitive mypy errors outside the sprint files",
+        ),
+    },
+    "SPR-02": {
+        "label": "Executed + reverified",
+        "gates": ("Composition, authority, and live-fence tests: PASS",),
+    },
+    "SPR-03": {
+        "label": "Executed; tests green; inherited type gate open",
+        "gates": (
+            "Evidence tests: PASS in 315-test grouped Midnight Oil run",
+            "Types: BLOCKED by pre-existing transitive mypy errors outside the sprint files",
+        ),
+    },
+    "SPR-04": {
+        "label": "Executed + reverified",
+        "gates": ("Admission and no-write tests: PASS",),
+    },
+    "SPR-05": {
+        "label": "Executed + reverified",
+        "gates": (
+            "Frontend: 67 tests PASS",
+            "TypeScript: PASS",
+            "Routes: PASS in grouped Midnight Oil run",
+        ),
+    },
+}
 
 
 def wrap(title: str, body: str, *, wide: bool = False) -> str:
@@ -60,6 +92,10 @@ def milestones(items: list[tuple[str, str, list[str], list[str]]]) -> str:
 
 def sprint(spec: dict[str, object]) -> str:
     sid = str(spec["sid"])
+    evidence = EXECUTION_EVIDENCE[sid]
+    evidence_rows = "\n".join(
+        f"{index}. {row}" for index, row in enumerate(evidence["gates"], 1)
+    )
     deps = "".join(f"<li>{item}</li>" for item in spec["deps"]) or '<li class="muted">None</li>'
     external = "".join(f"<li>{item}</li>" for item in spec["external"])
     out = "".join(f"<li>{item}</li>" for item in spec["out"])
@@ -72,7 +108,7 @@ def sprint(spec: dict[str, object]) -> str:
 <p class="eyebrow"><a href="index.html">&larr; Midnight Oil claim admission</a> · {sid}</p>
 <h1>{spec['title']}</h1><p class="tagline">{spec['tagline']}</p>
 <div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Wave {spec['wave']}</span>
-<span class="tag tag--yellow"><span class="dot"></span>Pending</span>
+<span class="tag tag--blue"><span class="dot"></span>{evidence['label']}</span>
 <span class="tag tag--grey">Budget: {len(spec['milestones'])} milestones</span>
 <span class="tag tag--grey">Owner: serial sprint agent</span></div></header>
 <section class="block"><h2>Parent context</h2><p>{spec['context1']}</p><p>{spec['context2']}</p>
@@ -84,28 +120,12 @@ def sprint(spec: dict[str, object]) -> str:
 <div><h3>External systems &amp; configs</h3><ul>{external}</ul></div></div></section>
 <section class="block"><h2>Out of scope</h2><ul>{out}</ul><div class="callout callout--warn"><strong>Scope stop:</strong> record tempting expansions in the handoff; do not implement them here.</div></section>
 <section class="block"><h2>Verification gates</h2><table class="spec"><thead><tr><th>Gate</th><th>Command</th><th>Expected</th></tr></thead><tbody>{gates}</tbody></table></section>
-<section class="block"><h2>Handoff packet</h2><pre><code>## {sid} — Handoff
-
-### Status
-done | blocked | partial — exact reason
-
-### Files touched
-- path:line — change and why
-
-### Milestones
-- [ ] M1 …
-
-### Verification gates
-- gate: pass | fail | NOT RUN (why)
-
-### Decisions and reversers
-- decision / rejected alternative / what would reverse it
-
-### Assumptions and open questions
-- assumption or question — resolver
-
-### Next sprint can start when
-- mechanically checkable condition
+<section class="block"><h2>Execution evidence</h2><pre><code>## {sid}: audited handoff
+Status: {evidence['label']}
+Audit date: 2026-07-13
+Milestones: {len(spec['milestones'])} implemented and covered by the named sprint suites
+Gate results:
+{evidence_rows}
 </code></pre></section>
 <section class="block" id="harness-hint" data-harness-pattern="{harness[0]}"
  data-harness-fanout-unit="{harness[1]}" data-harness-verifier-lenses="{harness[2]}"
@@ -253,12 +273,12 @@ def master() -> str:
         f'<a class="sprint-card" href="sprint-{str(item["sid"])[4:]}-{item["slug"]}.html">'
         f'<span class="id">{item["sid"]}</span><span class="title">{item["title"]}</span>'
         f'<span class="goal">{item["tagline"]}</span><span class="footer">'
-        f'<span class="tag tag--blue">Wave {item["wave"]}</span><span class="tag tag--yellow">Pending</span></span></a>'
+        f'<span class="tag tag--blue">Wave {item["wave"]}</span><span class="tag tag--blue">{EXECUTION_EVIDENCE[str(item["sid"])]["label"]}</span></span></a>'
         for item in SPECS
     )
     body = f"""<header class="hero"><p class="eyebrow">Master spec · ANT-MOCA</p>
 <h1>Midnight Oil claim admission</h1><p class="tagline">Bind an approved research brief to per-claim evidence and fail closed before durable graph writes.</p>
-<div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Status: executable</span>
+<div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Status: Executed; two inherited type gates open</span>
 <span class="tag tag--yellow"><span class="dot"></span>Owner: primary orchestrator</span>
 <span class="tag tag--grey">5 sprints · 5 serial waves</span><span class="tag tag--grey">Generated {DATE}</span></div></header>
 <section id="spec-lineage" class="block" data-spec-depth="0" data-parent-spec="">
