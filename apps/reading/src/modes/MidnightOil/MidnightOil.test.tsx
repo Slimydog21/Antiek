@@ -17,6 +17,7 @@ const {
   depositMidnightOilJob,
   runMidnightOilJob,
   getMidnightOilJob,
+  retryMidnightOilGraphAdmission,
   fetchMidnightOilLiveStepStatus,
   fetchDecisionTreeSelection,
   seedTwinNotes,
@@ -31,6 +32,7 @@ const {
   depositMidnightOilJob: vi.fn<(...args: unknown[]) => unknown>(),
   runMidnightOilJob: vi.fn<(...args: unknown[]) => unknown>(),
   getMidnightOilJob: vi.fn<(...args: unknown[]) => unknown>(),
+  retryMidnightOilGraphAdmission: vi.fn<(...args: unknown[]) => unknown>(),
   fetchMidnightOilLiveStepStatus: vi.fn(async () => ({
     view_format: "html",
     product_panel: "midnight_oil_live_step_status",
@@ -110,6 +112,7 @@ vi.mock("../../api/midnightOil", async (importOriginal) => {
     depositMidnightOilJob,
     runMidnightOilJob,
     getMidnightOilJob,
+    retryMidnightOilGraphAdmission,
     fetchMidnightOilLiveStepStatus,
   };
 });
@@ -352,6 +355,7 @@ describe("MidnightOil mode", () => {
     depositMidnightOilJob.mockReset();
     runMidnightOilJob.mockReset();
     getMidnightOilJob.mockReset();
+    retryMidnightOilGraphAdmission.mockReset();
     openWindow.mockClear();
     collectDeepResearchSpawnIdsMock.mockClear();
     listRecentDeepResearchSpawnIdsMock.mockReset().mockReturnValue([]);
@@ -1028,6 +1032,83 @@ describe("MidnightOil mode", () => {
       expect.objectContaining({ document_id: "doc-refused-html" }),
       expect.objectContaining({ mode: "floating" }),
     );
+    expect(screen.queryByTestId("moil-retry-graph-admission")).toBeNull();
+  });
+
+  it("retries transient graph admission once without rerunning research", async () => {
+    createMidnightOilJob.mockResolvedValue({
+      job_id: "moil_retry",
+      goals: ["Recover graph admission"],
+      duration_minutes: 60,
+      status: "complete",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
+      research_brief_hash: "c".repeat(64),
+      approved_research_brief_hash: "c".repeat(64),
+      research_brief_state: "approved",
+      research_result_state: "returned",
+      deposit_state: "complete",
+      deposit_document_id: "doc-retry-html",
+      graph_projection_state: "pending",
+      graph_projection_reason: "graph_lock_unavailable",
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+    });
+    let resolveRetry: (value: unknown) => void = () => undefined;
+    retryMidnightOilGraphAdmission.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRetry = resolve;
+        }),
+    );
+
+    render(<MidnightOil />);
+    fireEvent.change(screen.getByLabelText(/^Goals \(one per line\)$/i), {
+      target: { value: "Recover graph admission" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: /create job \+ recommend ceiling/i }),
+    );
+    const retry = await screen.findByTestId("moil-retry-graph-admission");
+    expect(retry.textContent).toMatch(/no research rerun/i);
+    fireEvent.click(retry);
+    fireEvent.click(retry);
+    expect(retryMidnightOilGraphAdmission).toHaveBeenCalledTimes(1);
+    expect(retryMidnightOilGraphAdmission).toHaveBeenCalledWith("moil_retry");
+    expect((retry as HTMLButtonElement).disabled).toBe(true);
+
+    resolveRetry({
+      job_id: "moil_retry",
+      goals: ["Recover graph admission"],
+      duration_minutes: 60,
+      status: "complete",
+      acceptance_policy_version: 1,
+      acceptance_policy: V1_POLICY,
+      research_brief_hash: "c".repeat(64),
+      approved_research_brief_hash: "c".repeat(64),
+      research_brief_state: "approved",
+      research_result_state: "returned",
+      deposit_state: "complete",
+      deposit_document_id: "doc-retry-html",
+      graph_projection_state: "complete",
+      graph_projection_reason: null,
+      graph_node_ids: ["node-recovered"],
+      graph_deliverable_id: "dlv-recovered",
+      recommended_price_ceiling_usd: 3.6,
+      view_format: "html",
+      runnable: false,
+    });
+    await waitFor(() => {
+      expect(
+        screen
+          .getByTestId("moil-graph-admission-status")
+          .getAttribute("data-admission-state"),
+      ).toBe("admitted");
+    });
+    expect(screen.queryByTestId("moil-retry-graph-admission")).toBeNull();
+    expect(screen.getByTestId("moil-graph-projection-nav")).toBeTruthy();
+    expect(runMidnightOilJob).not.toHaveBeenCalled();
   });
 
   it("hides graph navigation for a contradictory complete response", async () => {

@@ -12,11 +12,13 @@ import time
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_FLOOR, Decimal
-from typing import Any, Literal
+from pathlib import Path
+from typing import Any, Literal, cast
 
 from fastapi import APIRouter, FastAPI, Header, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictInt, StrictStr, field_validator
 
+from substrate.engagement_spine.store import EngagementStore
 from substrate.midnight_oil import (
     LiveExecutionPlan,
     MidnightOilExecutionReceipt,
@@ -33,8 +35,16 @@ from substrate.midnight_oil import (
     product_result_html,
     research_acceptance_policy_authority_fields,
     research_acceptance_policy_from_authority,
+    resume_terminal_projection,
 )
+from substrate.midnight_oil.claim_admission import RETRYABLE_GRAPH_ADMISSION_REASONS
 from substrate.midnight_oil.durable_job import DurableJobStore
+from substrate.midnight_oil.graph_projection import (
+    GraphProjectionConflict,
+    GraphProjectionNotReady,
+    GraphProjectionPending,
+    GraphProjectionRefused,
+)
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
 from substrate.midnight_oil.job_store import (
     DurableOwnerJobStore,
@@ -446,6 +456,49 @@ def _legacy_matches_authority(legacy: MidnightOilJob, config: JobConsentConfig) 
     )
 
 
+def _job_response(authority: OwnerJob, job: MidnightOilJob) -> dict[str, Any]:
+    return {
+        "job_id": job.job_id,
+        "goals": list(job.goals),
+        "duration_minutes": job.duration_minutes,
+        "model_id": job.model_id,
+        "research_tier": job.research_tier,
+        "fanout_depth": int(job.fanout_depth),
+        "status": (
+            job.status
+            if authority.operation_state is OperationState.NONE
+            else authority.operation_state.value
+        ),
+        "operation_state": authority.operation_state.value,
+        "recommended_price_ceiling_usd": job.recommended_price_ceiling_usd,
+        "approved_ceiling_usd": (
+            None
+            if authority.approved_ceiling_cents is None
+            else authority.approved_ceiling_cents / 100
+        ),
+        "force_below_recommended": job.force_below_recommended,
+        "asset_id": job.asset_id,
+        "spawn_ids": list(job.spawn_ids),
+        **_launch_contract(authority, job=job),
+        "notes": job.notes,
+        "view_format": "html",
+        "runnable": False,
+        "html": job_summary_html(job),
+    }
+
+
+def _projection_resources(request: Request) -> tuple[EngagementStore, Path]:
+    engagement_store = getattr(request.app.state, "engagement_store", None)
+    graph_db_path = getattr(request.app.state, "engagement_graph_db_path", None)
+    if engagement_store is None or not isinstance(graph_db_path, Path):
+        raise HTTPException(
+            status_code=503,
+            detail="graph admission recovery is unavailable",
+            headers={"Cache-Control": "no-store"},
+        )
+    return cast(EngagementStore, engagement_store), graph_db_path
+
+
 @midnight_oil_router.post("/jobs/{job_id}/spend-consent")
 def post_spend_consent(
     request: Request, job_id: str, body: ConsentBody, response: Response
@@ -598,42 +651,76 @@ def get_job_route(request: Request, response: Response, job_id: str) -> dict[str
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     response.headers["Cache-Control"] = "no-store"
-    return {
-        "job_id": job.job_id,
-        "goals": list(job.goals),
-        "duration_minutes": job.duration_minutes,
-        "model_id": job.model_id,
-        "research_tier": job.research_tier,
-        "fanout_depth": int(job.fanout_depth),
-        "status": (
-            job.status
-            if authority.operation_state is OperationState.NONE
-            else authority.operation_state.value
-        ),
-        "operation_state": authority.operation_state.value,
-        "recommended_price_ceiling_usd": job.recommended_price_ceiling_usd,
-        "approved_ceiling_usd": (
-            None
-            if authority.approved_ceiling_cents is None
-            else authority.approved_ceiling_cents / 100
-        ),
-        "force_below_recommended": job.force_below_recommended,
-        "asset_id": job.asset_id,
-        "spawn_ids": list(job.spawn_ids),
-        "graph_projection_state": job.graph_projection_state,
-        "graph_projection_reason": job.graph_projection_reason,
-        "graph_node_ids": (
-            [] if job.graph_effect_receipt is None else list(job.graph_effect_receipt.node_ids)
-        ),
-        "graph_deliverable_id": (
-            None if job.graph_effect_receipt is None else job.graph_effect_receipt.deliverable_id
-        ),
-        **_launch_contract(authority, job=job),
-        "notes": job.notes,
-        "view_format": "html",
-        "runnable": False,
-        "html": job_summary_html(job),
+    return _job_response(authority, job)
+
+
+@midnight_oil_router.post("/jobs/{job_id}/graph-admission/retry")
+def post_graph_admission_retry(
+    request: Request,
+    response: Response,
+    job_id: str,
+) -> dict[str, Any]:
+    """Retry graph effects only; never retrieve, dispatch, lease, or spend."""
+
+    deps, authority = _owned(request, job_id)
+    content_length = request.headers.get("content-length")
+    if request.headers.get("transfer-encoding") or content_length not in {None, "0"}:
+        raise _run_error(409, "graph admission retry body must be empty")
+    terminal_operations = {
+        OperationState.COMPLETE,
+        OperationState.FAILED,
+        OperationState.STEP_CAPPED,
+        OperationState.BUDGET_HALTED,
+        OperationState.TIMED_OUT,
     }
+    if authority.operation_state not in terminal_operations:
+        raise _run_error(409, "graph admission retry requires a terminal operation")
+    job = get_job(job_id, store=deps.jobs)
+    if job is None:
+        raise _run_error(404, "job not found")
+    if job.status not in {"complete", "failed", "timed_out", "budget_halted"}:
+        raise _run_error(409, "graph admission retry requires a terminal job")
+    if (
+        job.graph_projection_state != "pending"
+        or job.graph_projection_reason not in RETRYABLE_GRAPH_ADMISSION_REASONS
+    ):
+        raise _run_error(409, "graph admission is not retryable")
+    try:
+        config = _config(authority)
+    except (KeyError, TypeError, ValueError):
+        raise _run_error(409, "stored job authority is invalid") from None
+    if not _legacy_matches_authority(job, config):
+        raise _run_error(409, "job configuration requires reconciliation")
+    engagement_store, graph_db_path = _projection_resources(request)
+    try:
+        outcome = resume_terminal_projection(
+            job_id,
+            owner_user_id=_owner(request),
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            engagement_store=engagement_store,
+            graph_db_path=graph_db_path,
+        )
+        current = outcome.job
+    except GraphProjectionPending:
+        recovered = get_job(job_id, store=deps.jobs)
+        if recovered is None:
+            raise _run_error(503, "graph admission recovery lost job state") from None
+        current = recovered
+        response.status_code = 202
+    except GraphProjectionRefused:
+        recovered = get_job(job_id, store=deps.jobs)
+        if recovered is None:
+            raise _run_error(503, "graph admission recovery lost job state") from None
+        current = recovered
+    except GraphProjectionNotReady:
+        raise _run_error(409, "graph admission preconditions changed") from None
+    except GraphProjectionConflict:
+        raise _run_error(409, "graph admission requires reconciliation") from None
+    except Exception:
+        raise _run_error(503, "graph admission recovery is unavailable") from None
+    response.headers["Cache-Control"] = "no-store"
+    return _job_response(authority, current)
 
 
 @midnight_oil_router.post("/approve")

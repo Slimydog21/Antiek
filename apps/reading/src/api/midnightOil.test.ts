@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approveMidnightOilCeiling,
+  canRetryMidnightOilAdmission,
   createMidnightOilJob,
   describeMidnightOilAdmission,
   getMidnightOilJob,
+  retryMidnightOilGraphAdmission,
   runMidnightOilJob,
 } from "./midnightOil";
 
@@ -188,6 +190,44 @@ describe("midnightOil API client", () => {
     const presentation = describeMidnightOilAdmission({ ...V1_LAUNCH, ...job });
     expect(presentation.state).toBe(expected);
     expect(presentation.verified).toBe(expected === "admitted");
+  });
+
+  it.each([
+    "internal_local_chunk_temporarily_missing",
+    "operational_artifact_pending",
+    "graph_lock_unavailable",
+  ])("permits operator retry only for terminal transient reason %s", (reason) => {
+    expect(
+      canRetryMidnightOilAdmission({
+        ...V1_LAUNCH,
+        status: "complete",
+        research_result_state: "returned",
+        deposit_state: "complete",
+        graph_projection_state: "pending",
+        graph_projection_reason: reason,
+      }),
+    ).toBe(true);
+  });
+
+  it.each([
+    "policy_authority_drift",
+    "legacy_unverified",
+    "claim_coverage_missing",
+    "receipt_malformed_or_forged",
+    "external_receipt_not_admissible_v1",
+    "deterministic_row_conflict",
+    null,
+  ])("refuses operator retry for non-transient reason %s", (reason) => {
+    expect(
+      canRetryMidnightOilAdmission({
+        ...V1_LAUNCH,
+        status: "complete",
+        research_result_state: "returned",
+        deposit_state: "complete",
+        graph_projection_state: reason ? "refused" : "pending",
+        graph_projection_reason: reason,
+      }),
+    ).toBe(false);
   });
 
   it("fails closed when version 1 is paired with an incomplete policy", async () => {
@@ -446,5 +486,30 @@ describe("midnightOil API client", () => {
     expect(out.graph_node_ids).toEqual([]);
     expect(out.graph_deliverable_id).toBeNull();
     expect(mockFetch.mock.calls[0][0]).toBe("/midnight-oil/jobs/moil_1");
+  });
+
+  it("retries graph admission with an empty POST and normalizes navigation", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        job_id: "moil/retry",
+        goals: ["g"],
+        duration_minutes: 60,
+        status: "complete",
+        recommended_price_ceiling_usd: 3.6,
+        view_format: "html",
+        runnable: false,
+        graph_projection_state: "complete",
+        graph_node_ids: ["node-1"],
+        graph_deliverable_id: "dlv-1",
+      }),
+    });
+    const out = await retryMidnightOilGraphAdmission("moil/retry");
+    expect(out.graph_projection_state).toBe("complete");
+    expect(out.graph_node_ids).toEqual(["node-1"]);
+    expect(mockFetch).toHaveBeenCalledWith(
+      "/midnight-oil/jobs/moil%2Fretry/graph-admission/retry",
+      { method: "POST" },
+    );
   });
 });

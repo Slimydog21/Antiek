@@ -394,6 +394,33 @@ export function describeMidnightOilAdmission(job: {
   };
 }
 
+export function canRetryMidnightOilAdmission(job: {
+  status?: unknown;
+  graph_projection_state?: unknown;
+  graph_projection_reason?: unknown;
+  research_brief_state?: unknown;
+  research_result_state?: unknown;
+  deposit_state?: unknown;
+  acceptance_policy?: unknown;
+  acceptance_policy_version?: unknown;
+  research_brief_hash?: unknown;
+  approved_research_brief_hash?: unknown;
+}): boolean {
+  const presentation = describeMidnightOilAdmission(job);
+  return (
+    presentation.state === "operational_pending" &&
+    job.graph_projection_state === "pending" &&
+    typeof job.graph_projection_reason === "string" &&
+    RETRYABLE_GRAPH_REASONS.has(
+      job.graph_projection_reason as MidnightOilGraphAdmissionReason,
+    ) &&
+    typeof job.status === "string" &&
+    ["complete", "failed", "step_capped", "budget_halted", "timed_out"].includes(
+      job.status,
+    )
+  );
+}
+
 export type MidnightOilJobResponse = {
   job_id: string;
   goals: string[];
@@ -559,6 +586,16 @@ export async function getMidnightOilJob(
   jobId: string,
 ): Promise<MidnightOilJobResponse> {
   const res = await apiFetch(`${API_BASE}/midnight-oil/jobs/${encodeURIComponent(jobId)}`);
+  return normalizeGraphNavigation(await readJson<MidnightOilJobResponse>(res));
+}
+
+export async function retryMidnightOilGraphAdmission(
+  jobId: string,
+): Promise<MidnightOilJobResponse> {
+  const res = await apiFetch(
+    `${API_BASE}/midnight-oil/jobs/${encodeURIComponent(jobId)}/graph-admission/retry`,
+    { method: "POST" },
+  );
   return normalizeGraphNavigation(await readJson<MidnightOilJobResponse>(res));
 }
 

@@ -80,6 +80,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { seedTwinNotes } from "../../api/engagement";
 import {
   approveMidnightOilCeiling,
+  canRetryMidnightOilAdmission,
   createMidnightOilJob,
   depositMidnightOilJob,
   describeMidnightOilAdmission,
@@ -87,6 +88,7 @@ import {
   fetchMidnightOilLiveStepStatus,
   getMidnightOilJob,
   MidnightOilConsentExpiredError,
+  retryMidnightOilGraphAdmission,
   runMidnightOilJob,
   type MidnightOilDepositResponse,
   type MidnightOilJobResponse,
@@ -250,6 +252,7 @@ export default function MidnightOil() {
   /** Residual (ex): auto-open hosted HTML after deposit (default on). */
   const [autoOpenDeposit, setAutoOpenDeposit] = useState(true);
   const [busy, setBusy] = useState(false);
+  const [admissionRetryBusy, setAdmissionRetryBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [depositWindowId, setDepositWindowId] = useState<string | null>(null);
   // Residual (gk): twin reseed status after deposit.
@@ -264,6 +267,10 @@ export default function MidnightOil() {
   const [contextRefreshKey, setContextRefreshKey] = useState(0);
   const admission = useMemo(
     () => (job ? describeMidnightOilAdmission(job) : null),
+    [job],
+  );
+  const admissionRetryable = useMemo(
+    () => Boolean(job && canRetryMidnightOilAdmission(job)),
     [job],
   );
   const onContextNeedsRefresh = useCallback(() => {
@@ -778,6 +785,32 @@ export default function MidnightOil() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function onRetryGraphAdmission() {
+    if (!job || !admissionRetryable || admissionRetryBusy) return;
+    setAdmissionRetryBusy(true);
+    setError(null);
+    try {
+      const refreshed = await retryMidnightOilGraphAdmission(job.job_id);
+      if (refreshed.view_format !== "html") {
+        throw new Error("Midnight Oil admission retry view_format must be html");
+      }
+      setJob((current) => {
+        if (!current || current.job_id !== refreshed.job_id) return current;
+        if (
+          current.graph_projection_state !== "pending" &&
+          refreshed.graph_projection_state === "pending"
+        ) {
+          return current;
+        }
+        return refreshed;
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAdmissionRetryBusy(false);
     }
   }
 
@@ -1605,6 +1638,20 @@ export default function MidnightOil() {
                 </p>
                 <p className="font-medium">{admission.heading}</p>
                 <p className="text-xs opacity-75">{admission.detail}</p>
+                {admissionRetryable ? (
+                  <button
+                    type="button"
+                    className="font-mono text-[11px] underline decoration-sun decoration-2 underline-offset-4"
+                    data-testid="moil-retry-graph-admission"
+                    data-retry-reason={job.graph_projection_reason || ""}
+                    onClick={() => void onRetryGraphAdmission()}
+                    disabled={busy || admissionRetryBusy}
+                  >
+                    {admissionRetryBusy
+                      ? "Retrying graph admission…"
+                      : "Retry graph admission (no research rerun)"}
+                  </button>
+                ) : null}
               </div>
             </div>
           ) : null}
