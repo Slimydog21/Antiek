@@ -14,6 +14,7 @@ from .ken_burns_renderer import (
     SceneStillInput,
     render_ken_burns_documentary,
 )
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .video import TimelineEntry
 from .visual_selection import (
     EvidenceVerifier,
@@ -49,8 +50,8 @@ def produce_ken_burns_documentary(
     evidence_authority_key: bytes,
     render_integrity_key: bytes,
     verify_evidence: EvidenceVerifier,
-    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-    ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+    ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+    ffprobe_path: str = DEFAULT_FFPROBE_PATH,
     width_px: int = 1280,
     height_px: int = 720,
     fps: int = 30,

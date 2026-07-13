@@ -22,6 +22,7 @@ from substrate.multimedia.ken_burns_renderer import (
 from substrate.multimedia.ken_burns_renderer import (
     render_ken_burns_documentary as _render_ken_burns_documentary,
 )
+from substrate.multimedia.media_executables import DEFAULT_FFMPEG_PATH
 from substrate.multimedia.video import TimelineEntry
 
 _INTEGRITY_KEY = b"antiek-render-test-key-32-bytes!!"
@@ -136,7 +137,7 @@ def test_real_ffmpeg_render_has_verified_streams_and_reopens_without_process(
     frame = output / "decoded-frame.png"
     subprocess.run(
         [
-            "/opt/homebrew/bin/ffmpeg", "-hide_banner", "-loglevel", "error",
+            DEFAULT_FFMPEG_PATH, "-hide_banner", "-loglevel", "error",
             "-ss", "0.2", "-i", manifest.output_path, "-frames:v", "1", str(frame),
         ],
         check=True,

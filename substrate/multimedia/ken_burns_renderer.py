@@ -16,6 +16,7 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .video import MotionPreset, TimelineEntry, VisualLabel
 
 _MAX_SCENES = 64
@@ -176,8 +177,8 @@ def render_ken_burns_documentary(
     narration_path: str,
     output_dir: str,
     integrity_key: bytes,
-    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-    ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+    ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+    ffprobe_path: str = DEFAULT_FFPROBE_PATH,
     width_px: int = 1280,
     height_px: int = 720,
     fps: int = 30,

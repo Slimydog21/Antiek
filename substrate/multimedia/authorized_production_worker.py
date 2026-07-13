@@ -17,6 +17,7 @@ from .educational_video_production import (
 )
 from .educational_video_receipt import issue as issue_educational_video_receipt
 from .execution_authorization import MultimediaExecutionAuthorizationV2
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .narration_production import NarrationProductionArtifact
 from .narration_run import (
     authorize_narration_run,
@@ -81,8 +82,8 @@ class AuthorizedProductionRuntime:
     synthesize: Callable[[PreparedChapterTTSRequest], ChapterTTSSynthesisResult]
     verify_evidence: EvidenceVerifier
     clock: Callable[[], datetime]
-    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg"
-    ffprobe_path: str = "/opt/homebrew/bin/ffprobe"
+    ffmpeg_path: str = DEFAULT_FFMPEG_PATH
+    ffprobe_path: str = DEFAULT_FFPROBE_PATH
     width_px: int = 1280
     height_px: int = 720
     fps: int = 30

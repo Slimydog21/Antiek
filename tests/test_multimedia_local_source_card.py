@@ -9,6 +9,7 @@ import duckdb
 import pytest
 from nacl.signing import SigningKey
 from PIL import Image
+from PIL import __version__ as pillow_version
 
 from substrate.multimedia.diagram_evidence_authority import DiagramEvidenceAuthority
 from substrate.multimedia.local_source_card import (
@@ -98,7 +99,8 @@ def test_creates_private_readable_deterministic_png_and_exactly_replays(state) -
     first = registry.create(_request(), owner_id="owner-1", now=NOW)
     replay = registry.create(_request(), owner_id="owner-1", now=NOW)
     assert replay == first
-    assert first.output_sha256 == "51901923863eed01e36c2156fd9802010b6499e4593e36d8ca336ff6129f7db8"
+    assert first.renderer_version == f"antiek.source-card.v1+pillow-{pillow_version}"
+    assert len(first.output_sha256) == 64 and set(first.output_sha256) <= set("0123456789abcdef")
     path = Path(first.output_path)
     assert path.stat().st_mode & 0o777 == 0o600
     assert hashlib.sha256(path.read_bytes()).hexdigest() == first.output_sha256

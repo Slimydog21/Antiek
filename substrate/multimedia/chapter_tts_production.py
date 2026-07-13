@@ -32,6 +32,7 @@ from .execution_authorization import (
     MultimediaExecutionAuthorizationV2,
     verify_async_execution_authorization,
 )
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .narration import NarrationParagraph, normalize_script
 from .narration_production import NarrationProductionArtifact, produce_narration_track
 from .planner import MultimediaPlan
@@ -302,8 +303,8 @@ def produce_chapter_narration(
     output_dir: str,
     now: datetime,
     synthesize: Callable[[PreparedChapterTTSRequest], ChapterTTSSynthesisResult],
-    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-    ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+    ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+    ffprobe_path: str = DEFAULT_FFPROBE_PATH,
     timeout_seconds: int = 300,
 ) -> NarrationProductionArtifact:
     """Execute one authorized synchronous TTS call and seal its narration.

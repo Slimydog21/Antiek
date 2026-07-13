@@ -24,6 +24,7 @@ from .chapter_tts_production import (
     verify_chapter_tts_authorization,
 )
 from .execution_authorization import MultimediaExecutionAuthorizationV2
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .narration_production import NarrationProductionArtifact, produce_narration_track
 from .planner import MultimediaPlan
 from .provider_execution import (
@@ -182,8 +183,8 @@ def produce_narration_run(
     synthesize: Callable[
         [PreparedChapterTTSRequest], ChapterTTSSynthesisResult
     ],
-    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-    ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+    ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+    ffprobe_path: str = DEFAULT_FFPROBE_PATH,
     timeout_seconds: int = 300,
 ) -> NarrationProductionArtifact:
     """Admit all chapter ceilings, resume each child, then seal one aggregate."""

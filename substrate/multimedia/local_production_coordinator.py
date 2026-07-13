@@ -39,6 +39,7 @@ from .local_video_bridge import (
     LocalVideoInputs,
     compile_local_video_inputs,
 )
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .narration_production import (
     NarrationProductionArtifact,
     produce_narration_track,
@@ -134,8 +135,8 @@ class LocalProductionCoordinator:
         narration_output_dir: str,
         store: MultimediaAssetStore,
         tts_resolver: LocalTTSArtifactResolver,
-        ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-        ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+        ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+        ffprobe_path: str = DEFAULT_FFPROBE_PATH,
         timeout_seconds: int = 300,
     ) -> None:
         if (

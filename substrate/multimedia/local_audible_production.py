@@ -18,6 +18,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .local_audible_bridge import LocalAudibleInputs
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 
 _MAX_SPANS = 4096
 _MAX_SOURCE_BYTES = 64 * 1024 * 1024
@@ -115,8 +116,8 @@ def produce_local_audible_track(
     *,
     output_dir: str,
     integrity_key: bytes,
-    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-    ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+    ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+    ffprobe_path: str = DEFAULT_FFPROBE_PATH,
     sample_rate_hz: int = 24_000,
     channels: Literal[1, 2] = 1,
     timeout_seconds: int = 300,

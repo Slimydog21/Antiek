@@ -34,6 +34,7 @@ from .local_audible_production import (
     produce_local_audible_track,
 )
 from .local_audible_tts import PreparedAudibleSpanTTSRequest
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .read_model import MultimediaAssetStore
 from .verified_audio_playback import VerifiedAudioPlaybackRuntime
 
@@ -93,8 +94,8 @@ class LocalAudibleCoordinator:
         output_dir: str,
         store: MultimediaAssetStore,
         tts_resolver: LocalAudibleArtifactResolver,
-        ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-        ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+        ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+        ffprobe_path: str = DEFAULT_FFPROBE_PATH,
         timeout_seconds: int = 300,
     ) -> None:
         if (

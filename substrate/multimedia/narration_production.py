@@ -21,6 +21,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from ..contracts.multimedia import GeneratedFile
 from .audio_assembly import ChapterAudio
+from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 
 _MAX_CHAPTERS = 64
 _MAX_FILE_BYTES = 512 * 1024 * 1024
@@ -149,8 +150,8 @@ def produce_narration_track(
     chapter_paths: Mapping[str, str],
     output_dir: str,
     integrity_key: bytes,
-    ffmpeg_path: str = "/opt/homebrew/bin/ffmpeg",
-    ffprobe_path: str = "/opt/homebrew/bin/ffprobe",
+    ffmpeg_path: str = DEFAULT_FFMPEG_PATH,
+    ffprobe_path: str = DEFAULT_FFPROBE_PATH,
     sample_rate_hz: int = 24_000,
     channels: Literal[1, 2] = 1,
     timeout_seconds: int = 300,

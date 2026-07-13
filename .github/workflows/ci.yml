@@ -95,6 +95,13 @@ jobs:
           pip install -c tools/lints/constraints.txt \
             -e '.[dev,arxiv,pdf,urls,embedding,youtube,rss]'
 
+      - name: Install local media runtime
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes ffmpeg
+          test -x /usr/bin/ffmpeg
+          test -x /usr/bin/ffprobe
+
       - name: Inline-rubric latency (craft signature — informational on CI)
         # Antiek's one craft signature per docs/craft_signature.md.
         # Compares p95 against benchmarks/baseline.json (locked
