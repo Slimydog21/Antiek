@@ -37,7 +37,7 @@ from .budget_ledger import (
     UnknownCallOutcome,
     UnknownOutcomePersistenceError,
 )
-from .contracts import research_acceptance_policy_from_payload
+from .contracts import research_acceptance_policy_from_authority
 from .deposit import DepositResult, deposit_job_results
 from .graph_projection import (
     GraphProjectionResult,
@@ -45,7 +45,7 @@ from .graph_projection import (
 )
 from .job import JobStore, MidnightOilJob, get_job
 from .job_store import OperationState, OwnerJob, OwnerJobStore
-from .operation_queue import OperationQueue
+from .operation_queue import OperationQueue, validate_operation_options
 from .spend_consent import JobConsentConfig
 from .worker import (
     Clock,
@@ -477,6 +477,9 @@ class LiveOperatorCorpusStep:
         if authority.consent_config_hash is None:
             raise ValueError("live step lacks signed configuration authority")
         plan = self._plan()
+        acceptance_policy = research_acceptance_policy_from_authority(authority.payload)
+        if acceptance_policy is None or authority.consent_receipt_id is None:
+            raise ValueError("live step lacks research acceptance authority")
         signed_config = JobConsentConfig(
             job_id=job.job_id,
             goals=job.goals,
@@ -486,23 +489,43 @@ class LiveOperatorCorpusStep:
             fanout_depth=job.fanout_depth,
             asset_id=job.asset_id,
             live_execution_plan_hash=plan.plan_hash,
-            acceptance_policy=research_acceptance_policy_from_payload(
-                None
-                if authority.payload.get("acceptance_policy_version") is None
-                else {
-                    "policy_version": authority.payload["acceptance_policy_version"]
-                }
-            ),
+            acceptance_policy=acceptance_policy,
         )
         if not hmac.compare_digest(
             signed_config.canonical_hash(), authority.consent_config_hash
         ):
             raise ValueError("live step configuration conflicts with signed consent")
+        queued = self.operation_queue.get(self.lease.operation_id)
+        if queued is None:
+            raise ValueError("live step lacks queued authority")
+        if (queued.owner_user_id, queued.job_id) != (
+            self.lease.owner_user_id,
+            self.lease.job_id,
+        ):
+            raise ValueError("live step queue identity conflicts with worker lease")
+        try:
+            queued_options = validate_operation_options(queued.options)
+            queued_policy = research_acceptance_policy_from_authority(queued_options)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("live step queue authority is invalid") from exc
+        queued_hash = queued_options.get("consent_config_hash")
+        queued_receipt = queued_options.get("consent_receipt_id")
+        if (
+            queued_policy != acceptance_policy
+            or type(queued_hash) is not str
+            or type(queued_receipt) is not str
+            or not hmac.compare_digest(queued_hash, authority.consent_config_hash)
+            or not hmac.compare_digest(queued_receipt, authority.consent_receipt_id)
+        ):
+            raise ValueError("live step queue authority conflicts with signed consent")
         if not self.operation_queue.validate_lease(
             operation_id=self.lease.operation_id,
             worker_id=self.lease.worker_id,
             lease_generation=self.lease.lease_generation,
             now_ms=self.clock.now_ms(),
+            expected_owner_user_id=self.lease.owner_user_id,
+            expected_job_id=self.lease.job_id,
+            expected_options=queued_options,
         ):
             raise ValueError("live step lease is stale or expired")
 

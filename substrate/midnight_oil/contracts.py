@@ -152,6 +152,44 @@ class ResearchAcceptancePolicy(_ContractModel):
     legacy_rows: Literal["legacy_unverified"] = "legacy_unverified"
 
 
+_ACCEPTANCE_POLICY_AUTHORITY_FIELDS = {
+    "policy_version": "acceptance_policy_version",
+    "required_coverage": "acceptance_policy_required_coverage",
+    "exploratory_questions": "acceptance_policy_exploratory_questions",
+    "external_receipts": "acceptance_policy_external_receipts",
+    "unsupported_output": "acceptance_policy_unsupported_output",
+    "legacy_rows": "acceptance_policy_legacy_rows",
+}
+
+
+def research_acceptance_policy_authority_fields(
+    policy: ResearchAcceptancePolicy,
+) -> dict[str, object]:
+    validated = ResearchAcceptancePolicy.model_validate(policy.model_dump(mode="python"))
+    values = validated.model_dump(mode="python")
+    return {
+        authority_field: values[policy_field]
+        for policy_field, authority_field in _ACCEPTANCE_POLICY_AUTHORITY_FIELDS.items()
+    }
+
+
+def research_acceptance_policy_from_authority(
+    payload: Mapping[str, object],
+) -> ResearchAcceptancePolicy | None:
+    authority_fields = set(_ACCEPTANCE_POLICY_AUTHORITY_FIELDS.values())
+    present = set(payload).intersection(authority_fields)
+    if not present:
+        return None
+    if present != authority_fields:
+        raise ValueError("research acceptance policy authority is incomplete")
+    return ResearchAcceptancePolicy.model_validate(
+        {
+            policy_field: payload[authority_field]
+            for policy_field, authority_field in _ACCEPTANCE_POLICY_AUTHORITY_FIELDS.items()
+        }
+    )
+
+
 def research_acceptance_policy_from_payload(
     value: object,
 ) -> ResearchAcceptancePolicy | None:

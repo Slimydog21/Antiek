@@ -27,6 +27,14 @@ The complete v1 policy is:
 
 New consent issuance rejects a policy-absent config. Policy-absent configs retain the pre-policy canonical hash shape only so an already-issued legacy receipt can be reconstructed and audited without fabricating a new binding. This compatibility is reconstructive, not admission authority.
 
+## Durable authority
+
+The complete six-field policy is flattened into the closed owner payload. It is never rehydrated from a version number plus runtime defaults. Once consent is issued, the immutable queue options carry the same six fields together with `consent_receipt_id` and `consent_config_hash`. The worker reconstructs one `JobConsentConfig` and requires exact policy equality plus matching owner and queue receipt/config identities before the owner can enter `RUNNING` or the queue can expose a dispatchable lease.
+
+The API deliberately retains its crash-repair ordering: signed consent is claimed, owner authority moves to `QUEUED`, and then the queue row is inserted idempotently. Requiring a queue row before that transition would make the existing claim-to-CAS and CAS-to-enqueue repair protocol impossible without a transactional outbox redesign. Here, “before lease” means before a dispatchable or paid lease. A worker may still acquire a quarantine lease solely to remove an invalid row from the queue and prevent starvation; quarantine cannot create a budget hold, retrieval, or provider dispatch.
+
+Policy-absent legacy owner or queue authority is non-dispatchable. Receipt reconstruction remains available for audit, but legacy absence never becomes v1 authority.
+
 ## Canonical identity
 
 All identity payloads use UTF-8 JSON with sorted keys, compact separators, `ensure_ascii=False`, and `schema_version = 1`.

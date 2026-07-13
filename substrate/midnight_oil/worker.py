@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import math
 import re
 from collections.abc import Callable
@@ -10,6 +11,7 @@ from decimal import ROUND_CEILING, ROUND_FLOOR, Decimal, InvalidOperation
 from typing import Protocol
 
 from .budget_ledger import BudgetCeilingExceeded, BudgetLedger
+from .contracts import research_acceptance_policy_from_authority
 from .job import (
     JobStore,
     MidnightOilJob,
@@ -18,7 +20,12 @@ from .job import (
     put_job_state,
 )
 from .job_store import InvalidStoredJob, OperationState, OwnerJobStore
-from .operation_queue import OperationQueue, provider_idempotency_key
+from .operation_queue import (
+    OperationQueue,
+    provider_idempotency_key,
+    validate_operation_options,
+)
+from .spend_consent import JobConsentConfig
 
 _WORKER_ROLE = "research"
 
@@ -152,7 +159,7 @@ def lease_authorized_operation(
     now_ms: int,
     lease_expires_at_ms: int,
 ) -> WorkerLease:
-    """Recheck immutable authority, owner-CAS, then acquire one queue lease."""
+    """Recheck immutable authority, lease the queue, then publish owner RUNNING."""
     try:
         authority = owner_jobs.get_job(owner_user_id=owner_user_id, job_id=job_id)
         queued = operation_queue.get(operation_id)
@@ -166,8 +173,49 @@ def lease_authorized_operation(
         queued.job_id,
     ) != (owner_user_id, job_id):
         raise LeaseValidationError("operation identity conflicts with durable authority")
+    authority_config_hash = authority.consent_config_hash
+    authority_receipt_id = authority.consent_receipt_id
     payload = authority.payload
     durable_goals = payload.get("goals")
+    try:
+        acceptance_policy = research_acceptance_policy_from_authority(payload)
+        signed_config = JobConsentConfig(
+            job_id=job_id,
+            goals=tuple(durable_goals) if isinstance(durable_goals, list) else (),
+            duration_minutes=payload.get("duration_minutes"),  # type: ignore[arg-type]
+            model_id=payload.get("model_id"),  # type: ignore[arg-type]
+            research_tier=payload.get("research_tier"),  # type: ignore[arg-type]
+            fanout_depth=payload.get("fanout_depth"),  # type: ignore[arg-type]
+            asset_id=payload.get("asset_id"),  # type: ignore[arg-type]
+            live_execution_plan_hash=payload.get("live_plan_hash"),  # type: ignore[arg-type]
+            acceptance_policy=acceptance_policy,
+        )
+        signed_hash = signed_config.canonical_hash()
+    except (TypeError, ValueError) as exc:
+        raise LeaseValidationError("job configuration requires reconciliation") from exc
+
+    def queue_authority_matches(options: object) -> bool:
+        try:
+            checked = validate_operation_options(options)
+            queued_policy = research_acceptance_policy_from_authority(checked)
+            queued_config_hash = checked.get("consent_config_hash")
+            queued_receipt_id = checked.get("consent_receipt_id")
+        except (TypeError, ValueError):
+            return False
+        return (
+            acceptance_policy is not None
+            and queued_policy == acceptance_policy
+            and authority_config_hash is not None
+            and authority_receipt_id is not None
+            and type(queued_config_hash) is str
+            and type(queued_receipt_id) is str
+            and hmac.compare_digest(signed_hash, authority_config_hash)
+            and hmac.compare_digest(queued_config_hash, authority_config_hash)
+            and hmac.compare_digest(queued_receipt_id, authority_receipt_id)
+        )
+
+    if not queue_authority_matches(queued.options):
+        raise LeaseValidationError("job configuration requires reconciliation")
     immutable_matches = (
         isinstance(durable_goals, list)
         and all(type(goal) is str for goal in durable_goals)
@@ -195,33 +243,22 @@ def lease_authorized_operation(
             raise LeaseValidationError(
                 "legacy ceiling conflicts with durable authority"
             )
-    if authority.operation_state is OperationState.QUEUED:
-        transitioned = owner_jobs.compare_and_set(
-            owner_user_id=owner_user_id,
-            job_id=job_id,
-            expected_version=authority.state_version,
-            expected_state=OperationState.QUEUED,
-            operation_id=operation_id,
-            next_state=OperationState.RUNNING,
-            dispatch_started_at_ms=now_ms,
-        )
-        authority = transitioned.job or authority
+    dispatchable_states = {OperationState.QUEUED, OperationState.RUNNING}
+    terminal_states = {
+        OperationState.COMPLETE,
+        OperationState.FAILED,
+        OperationState.STEP_CAPPED,
+        OperationState.BUDGET_HALTED,
+        OperationState.TIMED_OUT,
+    }
     repair_key = provider_idempotency_key(operation_id, queued.next_step_index)
-    terminal_repair = (
-        authority.operation_state
-        in {
-            OperationState.COMPLETE,
-            OperationState.FAILED,
-            OperationState.STEP_CAPPED,
-            OperationState.BUDGET_HALTED,
-            OperationState.TIMED_OUT,
-        }
-        and repair_key in tuple(legacy_row.get("completed_step_keys") or ())
+    terminal_repair = authority.operation_state in terminal_states and repair_key in tuple(
+        legacy_row.get("completed_step_keys") or ()
     )
-    if authority.operation_state is not OperationState.RUNNING and not terminal_repair:
+    if authority.operation_state not in dispatchable_states and not terminal_repair:
         raise OperationNotDispatchableError("operation is not dispatchable")
-    # Project authority before exposing the dispatchable lease. A crash after
-    # this idempotent write but before lease can be recovered without dispatch.
+    # Project authority before leasing. A crash after this idempotent write is
+    # recoverable without exposing a paid boundary.
     updated = dict(legacy_row)
     updated["approved_ceiling_usd"] = expected_usd
     if updated.get("status") in {"awaiting_approval", "draft"}:
@@ -238,8 +275,29 @@ def lease_authorized_operation(
     )
     if not won:
         raise LeaseContentionError("operation is already leased")
-    if leased.state != "running":
+    if (
+        leased.state != "running"
+        or (leased.owner_user_id, leased.job_id) != (owner_user_id, job_id)
+        or not queue_authority_matches(leased.options)
+    ):
         raise LeaseValidationError("operation lease did not persist")
+    if authority.operation_state is OperationState.QUEUED:
+        transitioned = owner_jobs.compare_and_set(
+            owner_user_id=owner_user_id,
+            job_id=job_id,
+            expected_version=authority.state_version,
+            expected_state=OperationState.QUEUED,
+            operation_id=operation_id,
+            next_state=OperationState.RUNNING,
+            dispatch_started_at_ms=now_ms,
+        )
+        authority = transitioned.job or authority
+    terminal_repair = authority.operation_state in terminal_states and repair_key in tuple(
+        legacy_row.get("completed_step_keys") or ()
+    )
+    if authority.operation_state is not OperationState.RUNNING and not terminal_repair:
+        raise OperationNotDispatchableError("operation is not dispatchable")
+    leased_max_steps = leased.options.get("max_steps")
     return WorkerLease(
         operation_id,
         owner_user_id,
@@ -247,11 +305,7 @@ def lease_authorized_operation(
         worker_id,
         leased.next_step_index,
         leased.lease_generation,
-        (
-            leased.options["max_steps"]
-            if isinstance(leased.options.get("max_steps"), int)
-            else None
-        ),
+        leased_max_steps if type(leased_max_steps) is int else None,
     )
 
 

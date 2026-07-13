@@ -1926,6 +1926,83 @@ def test_missing_details_poison_is_quarantined_instead_of_hot_looping(
     assert next_claimable.operation_id == "valid-operation-behind-poison"
 
 
+def test_malformed_queue_policy_is_quarantined_without_starving_later_work(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="operator-runtime",
+            job_id="policy-poison-job",
+            state_version=3,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="policy-poison-operation",
+            operation_state=OperationState.QUEUED,
+            dispatch_started_at_ms=None,
+            dispatched_at_ms=None,
+            completed_at_ms=None,
+            payload={},
+        )
+    )
+    legacy_options = {
+        "max_steps": None,
+        "auto_deposit": True,
+        "draft_combined": True,
+        "force_offline": False,
+    }
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="policy-poison-operation",
+        owner_user_id="operator-runtime",
+        job_id="policy-poison-job",
+        enqueued_at_ms=2,
+        options=legacy_options,
+    )
+    with sqlite3.connect(runtime.stores.operation_queue.path) as connection:
+        connection.execute(
+            "UPDATE midnight_oil_operation_queue SET options_json = ? "
+            "WHERE operation_id = ?",
+            (
+                json.dumps(
+                    {**legacy_options, "acceptance_policy_version": 1},
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ),
+                "policy-poison-operation",
+            ),
+        )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="valid-operation-behind-policy-poison",
+        owner_user_id="next-owner",
+        job_id="next-job",
+        enqueued_at_ms=3,
+        options=legacy_options,
+    )
+
+    quarantined = run_worker_once(
+        runtime,
+        worker_id="policy-quarantine-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 4,
+    )
+
+    assert quarantined.result == "reconcile_required"
+    assert quarantined.phase == "lease_validation_quarantined"
+    authority = runtime.stores.owner_jobs.get_job(
+        owner_user_id="operator-runtime", job_id="policy-poison-job"
+    )
+    assert authority is not None
+    assert authority.operation_state is OperationState.FAILED_RECONCILE
+    next_claimable = runtime.stores.operation_queue.next_claimable(now_ms=5)
+    assert next_claimable is not None
+    assert next_claimable.operation_id == "valid-operation-behind-policy-poison"
+
+
 def test_missing_terminal_details_are_quarantined_and_survive_restart(
     tmp_path: Path,
 ) -> None:

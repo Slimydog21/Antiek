@@ -323,6 +323,11 @@ _PAYLOAD_FIELDS: Final = frozenset(
         "live_dispatch_config_hash",
         "live_max_input_bytes",
         "acceptance_policy_version",
+        "acceptance_policy_required_coverage",
+        "acceptance_policy_exploratory_questions",
+        "acceptance_policy_external_receipts",
+        "acceptance_policy_unsupported_output",
+        "acceptance_policy_legacy_rows",
     }
 )
 

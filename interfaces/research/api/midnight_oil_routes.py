@@ -31,7 +31,8 @@ from substrate.midnight_oil import (
     job_summary_html,
     preflight_midnight_oil,
     product_result_html,
-    research_acceptance_policy_from_payload,
+    research_acceptance_policy_authority_fields,
+    research_acceptance_policy_from_authority,
 )
 from substrate.midnight_oil.durable_job import DurableJobStore
 from substrate.midnight_oil.job import InMemoryJobStore, JobStore, MidnightOilJob
@@ -218,6 +219,7 @@ def _owner_payload(job: Any, *, live_plan: LiveExecutionPlan | None = None) -> d
             rounding=ROUND_FLOOR
         )
     )
+    policy = ResearchAcceptancePolicy()
     return {
         "goals": list(job.goals),
         "duration_minutes": job.duration_minutes,
@@ -236,7 +238,7 @@ def _owner_payload(job: Any, *, live_plan: LiveExecutionPlan | None = None) -> d
             None if live_plan is None else live_plan.dispatch_config_hash
         ),
         "live_max_input_bytes": (None if live_plan is None else live_plan.max_input_bytes),
-        "acceptance_policy_version": ResearchAcceptancePolicy().policy_version,
+        **research_acceptance_policy_authority_fields(policy),
     }
 
 
@@ -372,11 +374,7 @@ def _config(row: OwnerJob) -> JobConsentConfig:
         fanout_depth=fanout,
         asset_id=asset_id,
         live_execution_plan_hash=(None if live_plan is None else live_plan.plan_hash),
-        acceptance_policy=research_acceptance_policy_from_payload(
-            None
-            if payload.get("acceptance_policy_version") is None
-            else {"policy_version": payload["acceptance_policy_version"]}
-        ),
+        acceptance_policy=research_acceptance_policy_from_authority(payload),
     )
 
 
@@ -439,7 +437,7 @@ def post_spend_consent(
             raise HTTPException(status_code=409, detail="job already has different spend consent")
         try:
             recovery_now = deps.clock_ms()
-            token, receipt = deps.consents.recover_unclaimed(
+            token, recovered_receipt = deps.consents.recover_unclaimed(
                 receipt_id=row.consent_receipt_id,
                 expected_operator_id=owner,
                 expected_config=config,
@@ -461,10 +459,10 @@ def post_spend_consent(
             response.headers["Cache-Control"] = "no-store"
             return {
                 "token": token,
-                "operation_id": receipt.operation_id,
-                "ceiling_cents": receipt.ceiling_cents,
-                "issued_at_ms": receipt.issued_at_ms,
-                "expires_at_ms": receipt.expires_at_ms,
+                "operation_id": recovered_receipt.operation_id,
+                "ceiling_cents": recovered_receipt.ceiling_cents,
+                "issued_at_ms": recovered_receipt.issued_at_ms,
+                "expires_at_ms": recovered_receipt.expires_at_ms,
                 "recovered": True,
             }
     if row.operation_state is not OperationState.NONE and not renewing_expired:
@@ -635,7 +633,8 @@ def post_run(
         if legacy is None:
             raise _run_error(404, "job not found")
         if (
-            not _legacy_matches_authority(legacy, config)
+            config.acceptance_policy is None
+            or not _legacy_matches_authority(legacy, config)
             or config.canonical_hash() != authority.consent_config_hash
         ):
             raise _run_error(409, "job configuration requires reconciliation")
@@ -704,6 +703,11 @@ def post_run(
 
     try:
         queued = deps.operation_queue.get(claim.receipt.operation_id)
+        archived = (
+            deps.operation_queue.get_terminal(claim.receipt.operation_id)
+            if queued is None
+            else None
+        )
     except Exception:
         raise _run_error(503, "operation queue is unavailable") from None
     requested_options: dict[str, object] = {
@@ -711,6 +715,9 @@ def post_run(
         "auto_deposit": body.auto_deposit,
         "draft_combined": body.draft_combined,
         "force_offline": body.force_offline,
+        "consent_receipt_id": claim.receipt.receipt_id,
+        "consent_config_hash": claim.receipt.config_hash,
+        **research_acceptance_policy_authority_fields(config.acceptance_policy),
     }
     if current.operation_state is OperationState.QUEUED and queued is None:
         try:
@@ -730,6 +737,20 @@ def post_run(
             raise _run_error(409, "operation queue conflicts with authority")
         if queued.options != requested_options:
             raise _run_error(409, "operation replay options conflict with durable queue")
+    elif archived is not None:
+        if (archived.owner_user_id, archived.job_id) != (owner, body.job_id):
+            raise _run_error(409, "terminal queue conflicts with authority")
+        if archived.options != requested_options:
+            raise _run_error(409, "operation replay options conflict with terminal queue")
+    elif current.operation_state in {
+        OperationState.COMPLETE,
+        OperationState.FAILED,
+        OperationState.BUDGET_HALTED,
+        OperationState.TIMED_OUT,
+        OperationState.STEP_CAPPED,
+        OperationState.FAILED_RECONCILE,
+    }:
+        raise _run_error(409, "terminal operation lacks archived queue authority")
     return {
         "job_id": body.job_id,
         "operation_id": claim.receipt.operation_id,

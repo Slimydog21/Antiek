@@ -29,6 +29,8 @@ from .contracts import (
     is_known_adapter_key,
     normalize_research_paragraphs,
     preflight_midnight_oil,
+    research_acceptance_policy_authority_fields,
+    research_acceptance_policy_from_authority,
     research_acceptance_policy_from_payload,
     validate_receipt_chain,
 )
@@ -203,6 +205,8 @@ __all__ = [
     "offline_goal_project_fn",
     "offline_goal_step_fn",
     "recommend_price_ceiling",
+    "research_acceptance_policy_authority_fields",
+    "research_acceptance_policy_from_authority",
     "research_acceptance_policy_from_payload",
     "resolve_worker_step_fn",
     "resume_terminal_deposit",

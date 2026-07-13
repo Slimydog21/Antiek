@@ -10,12 +10,15 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import re
 import sqlite3
 from collections.abc import Callable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, TypeVar
+
+from .contracts import research_acceptance_policy_from_authority
 
 T = TypeVar("T")
 
@@ -35,6 +38,14 @@ class QueuedOperation:
     options: dict[str, object]
 
 
+@dataclass(frozen=True)
+class TerminalOperation:
+    operation_id: str
+    owner_user_id: str
+    job_id: str
+    options: dict[str, object]
+
+
 class OperationQueue(Protocol):
     def enqueue_once(
         self,
@@ -48,6 +59,8 @@ class OperationQueue(Protocol):
 
     def get(self, operation_id: str) -> QueuedOperation | None: ...
 
+    def get_terminal(self, operation_id: str) -> TerminalOperation | None: ...
+
     def next_claimable(self, *, now_ms: int) -> QueuedOperation | None: ...
 
     def validate_lease(
@@ -57,6 +70,9 @@ class OperationQueue(Protocol):
         worker_id: str,
         lease_generation: int,
         now_ms: int,
+        expected_owner_user_id: str | None = None,
+        expected_job_id: str | None = None,
+        expected_options: dict[str, object] | None = None,
     ) -> bool: ...
 
     def run_fenced(
@@ -123,9 +139,18 @@ def _time(value: object, field: str) -> int:
 
 
 def _options(value: object) -> tuple[dict[str, object], str]:
-    if not isinstance(value, dict) or set(value) - {
-        "max_steps", "auto_deposit", "draft_combined", "force_offline"
-    }:
+    authority_fields = {
+        "consent_receipt_id",
+        "consent_config_hash",
+        "acceptance_policy_version",
+        "acceptance_policy_required_coverage",
+        "acceptance_policy_exploratory_questions",
+        "acceptance_policy_external_receipts",
+        "acceptance_policy_unsupported_output",
+        "acceptance_policy_legacy_rows",
+    }
+    execution_fields = {"max_steps", "auto_deposit", "draft_combined", "force_offline"}
+    if not isinstance(value, dict) or set(value) - execution_fields - authority_fields:
         raise ValueError("queue options are outside the closed execution contract")
     if any("token" in str(key).lower() or "secret" in str(key).lower() for key in value):
         raise ValueError("queue options must not contain secrets")
@@ -136,13 +161,34 @@ def _options(value: object) -> tuple[dict[str, object], str]:
     for name in ("auto_deposit", "draft_combined", "force_offline"):
         if type(checked.get(name)) is not bool:
             raise ValueError(f"{name} must be boolean")
+    present_authority = set(checked).intersection(authority_fields)
+    if present_authority and present_authority != authority_fields:
+        raise ValueError("queue authority is incomplete")
+    if present_authority:
+        receipt_id = checked["consent_receipt_id"]
+        config_hash = checked["consent_config_hash"]
+        if type(receipt_id) is not str or not 1 <= len(receipt_id) <= 128:
+            raise ValueError("queue consent receipt id is invalid")
+        if (
+            type(config_hash) is not str
+            or re.fullmatch(r"[0-9a-f]{64}", config_hash) is None
+        ):
+            raise ValueError("queue consent config hash is invalid")
+        research_acceptance_policy_from_authority(checked)
     encoded = json.dumps(checked, sort_keys=True, separators=(",", ":"))
     return checked, encoded
 
 
+def validate_operation_options(value: object) -> dict[str, object]:
+    checked, _ = _options(value)
+    return checked
+
+
 def _decode(row: tuple[object, ...]) -> QueuedOperation:
     raw = json.loads(str(row[10]))
-    options, _ = _options(raw)
+    if not isinstance(raw, dict):
+        raise ValueError("stored queue options are not an object")
+    options = dict(raw)
     state = str(row[3])
     enqueued = _time(row[4], "enqueued_at_ms")
     leased = None if row[5] is None else _time(row[5], "leased_at_ms")
@@ -330,6 +376,24 @@ class DurableOperationQueue:
         with self._connect() as connection:
             return self._select(connection, operation)
 
+    def get_terminal(self, operation_id: str) -> TerminalOperation | None:
+        operation = _text(operation_id, "operation_id")
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT owner_user_id, job_id, options_json "
+                "FROM midnight_oil_operation_terminal "
+                "WHERE operation_id = ?",
+                (operation,),
+            ).fetchone()
+        if row is None:
+            return None
+        return TerminalOperation(
+            operation_id=operation,
+            owner_user_id=_text(row[0], "owner_user_id"),
+            job_id=_text(row[1], "job_id"),
+            options=validate_operation_options(json.loads(str(row[2]))),
+        )
+
     def next_claimable(self, *, now_ms: int) -> QueuedOperation | None:
         """Return the oldest queued or expired operation; ``lease`` arbitrates."""
 
@@ -450,19 +514,44 @@ class DurableOperationQueue:
         worker_id: str,
         lease_generation: int,
         now_ms: int,
+        expected_owner_user_id: str | None = None,
+        expected_job_id: str | None = None,
+        expected_options: dict[str, object] | None = None,
     ) -> bool:
         operation = _text(operation_id, "operation_id")
         worker = _text(worker_id, "worker_id")
         generation = _time(lease_generation, "lease_generation")
         now = _time(now_ms, "now_ms")
+        expected_owner = (
+            None
+            if expected_owner_user_id is None
+            else _text(expected_owner_user_id, "expected_owner_user_id")
+        )
+        expected_job = (
+            None if expected_job_id is None else _text(expected_job_id, "expected_job_id")
+        )
+        checked_options = (
+            None if expected_options is None else validate_operation_options(expected_options)
+        )
         with self._connect() as connection:
             row = connection.execute(
-                "SELECT 1 FROM midnight_oil_operation_queue WHERE operation_id = ? "
+                "SELECT owner_user_id, job_id, options_json "
+                "FROM midnight_oil_operation_queue WHERE operation_id = ? "
                 "AND state = 'running' AND lease_owner = ? AND lease_generation = ? "
                 "AND lease_expires_at_ms > ?",
                 (operation, worker, generation, now),
             ).fetchone()
-            return row is not None
+        if row is None:
+            return False
+        try:
+            actual_options = validate_operation_options(json.loads(str(row[2])))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            return False
+        return (
+            (expected_owner is None or row[0] == expected_owner)
+            and (expected_job is None or row[1] == expected_job)
+            and (checked_options is None or actual_options == checked_options)
+        )
 
     def run_fenced(
         self,
@@ -588,4 +677,5 @@ __all__ = [
     "OperationQueue",
     "QueuedOperation",
     "provider_idempotency_key",
+    "validate_operation_options",
 ]

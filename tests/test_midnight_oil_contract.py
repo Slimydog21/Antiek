@@ -16,6 +16,8 @@ from substrate.midnight_oil import (
     canonical_source_receipt_id,
     normalize_research_paragraphs,
     preflight_midnight_oil,
+    research_acceptance_policy_authority_fields,
+    research_acceptance_policy_from_authority,
 )
 
 
@@ -381,6 +383,17 @@ def test_unknown_acceptance_policy_version_fails_closed() -> None:
                 "acceptance_policy": {"policy_version": 2},
             }
         )
+
+
+def test_complete_policy_authority_round_trips_and_partial_authority_refuses() -> None:
+    policy = ResearchAcceptancePolicy()
+    authority = research_acceptance_policy_authority_fields(policy)
+
+    assert research_acceptance_policy_from_authority(authority) == policy
+    assert research_acceptance_policy_from_authority({}) is None
+    authority.pop("acceptance_policy_legacy_rows")
+    with pytest.raises(ValueError, match="incomplete"):
+        research_acceptance_policy_from_authority(authority)
 
 
 def test_paragraph_normalization_is_platform_stable() -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import sqlite3
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -32,6 +34,7 @@ from substrate.midnight_oil.live import (
     run_authorized_live_iteration,
 )
 from substrate.midnight_oil.operation_queue import DurableOperationQueue
+from substrate.midnight_oil.spend_consent import JobConsentConfig
 from substrate.midnight_oil.worker import FakeClock, lease_authorized_operation
 from tests.test_midnight_oil_consent_routes import _client
 
@@ -384,6 +387,175 @@ def test_dispatch_plan_drift_blocks_before_retrieval_or_provider(tmp_path: Path)
             retrieval=retrieval,
             dispatch=dispatch,
         )
+    assert retrieval.calls == []
+    assert calls == []
+
+
+def test_post_lease_policy_drift_blocks_before_hold_retrieval_or_provider(
+    tmp_path: Path,
+) -> None:
+    _, deps, queue, lease, plan = _lease(tmp_path)
+    retrieval = _Retrieval()
+    calls: list[str] = []
+
+    def dispatch(*args: object, **kwargs: object) -> DispatchResult:
+        calls.append("called")
+        raise AssertionError("provider must remain unreachable")
+
+    dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None
+    payload = dict(authority.payload)
+    payload["acceptance_policy_unsupported_output"] = "discard"
+    deps.owner_jobs._jobs[("alice", "job-owned")] = replace(  # type: ignore[attr-defined]
+        authority, payload=payload
+    )
+    with pytest.raises(LiveExecutionFailed):
+        run_authorized_live_iteration(
+            lease,
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            retrieval=retrieval,
+            dispatch=dispatch,
+            clock=FakeClock(1_000_002),
+        )
+
+    assert retrieval.calls == []
+    assert calls == []
+    from substrate.midnight_oil.budget_ledger import BudgetLedger
+
+    assert BudgetLedger(deps.jobs.budget_db_path()).balance(lease.job_id).held_cents == 0
+
+
+def test_post_lease_queue_identity_drift_blocks_before_hold_or_retrieval(
+    tmp_path: Path,
+) -> None:
+    _, deps, queue, lease, plan = _lease(tmp_path)
+    retrieval = _Retrieval()
+    calls: list[str] = []
+
+    def dispatch(*args: object, **kwargs: object) -> DispatchResult:
+        calls.append("called")
+        raise AssertionError("provider must remain unreachable")
+
+    dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
+    with sqlite3.connect(queue.path) as connection:
+        connection.execute(
+            "UPDATE midnight_oil_operation_queue SET owner_user_id = ? "
+            "WHERE operation_id = ?",
+            ("mallory", lease.operation_id),
+        )
+
+    with pytest.raises(LiveExecutionFailed):
+        run_authorized_live_iteration(
+            lease,
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            retrieval=retrieval,
+            dispatch=dispatch,
+            clock=FakeClock(1_000_002),
+        )
+
+    assert retrieval.calls == []
+    assert calls == []
+    from substrate.midnight_oil.budget_ledger import BudgetLedger
+
+    assert BudgetLedger(deps.jobs.budget_db_path()).balance(lease.job_id).held_cents == 0
+
+
+def test_live_lease_validation_rechecks_queue_authority_snapshot(tmp_path: Path) -> None:
+    _, deps, queue, lease, plan = _lease(tmp_path)
+    retrieval = _Retrieval()
+    calls: list[str] = []
+
+    class DriftDuringLeaseValidation:
+        def get(self, operation_id: str):  # type: ignore[no-untyped-def]
+            return queue.get(operation_id)
+
+        def validate_lease(self, **kwargs):  # type: ignore[no-untyped-def]
+            current = queue.get(lease.operation_id)
+            assert current is not None
+            options = dict(current.options)
+            options["consent_config_hash"] = "0" * 64
+            with sqlite3.connect(queue.path) as connection:
+                connection.execute(
+                    "UPDATE midnight_oil_operation_queue SET options_json = ? "
+                    "WHERE operation_id = ?",
+                    (
+                        json.dumps(options, sort_keys=True, separators=(",", ":")),
+                        lease.operation_id,
+                    ),
+                )
+            return queue.validate_lease(**kwargs)
+
+    def dispatch(*args: object, **kwargs: object) -> DispatchResult:
+        calls.append("called")
+        raise AssertionError("provider must remain unreachable")
+
+    dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
+    with pytest.raises(LiveExecutionFailed):
+        run_authorized_live_iteration(
+            lease,
+            operation_queue=DriftDuringLeaseValidation(),  # type: ignore[arg-type]
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            retrieval=retrieval,
+            dispatch=dispatch,
+            clock=FakeClock(1_000_002),
+        )
+
+    assert retrieval.calls == []
+    assert calls == []
+
+
+def test_post_lease_legacy_policy_absence_is_non_dispatchable(tmp_path: Path) -> None:
+    _, deps, queue, lease, plan = _lease(tmp_path)
+    retrieval = _Retrieval()
+    calls: list[str] = []
+
+    def dispatch(*args: object, **kwargs: object) -> DispatchResult:
+        calls.append("called")
+        raise AssertionError("provider must remain unreachable")
+
+    dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    row = deps.jobs.get_job("job-owned")
+    assert authority is not None and row is not None
+    job = _job_from_row(row)
+    payload = {
+        key: value
+        for key, value in authority.payload.items()
+        if not key.startswith("acceptance_policy_")
+    }
+    legacy_config = JobConsentConfig(
+        job_id=job.job_id,
+        goals=job.goals,
+        duration_minutes=job.duration_minutes,
+        model_id=job.model_id,
+        research_tier=job.research_tier,
+        fanout_depth=job.fanout_depth,
+        asset_id=job.asset_id,
+        live_execution_plan_hash=plan.plan_hash,
+        acceptance_policy=None,
+    )
+    deps.owner_jobs._jobs[("alice", "job-owned")] = replace(  # type: ignore[attr-defined]
+        authority,
+        payload=payload,
+        consent_config_hash=legacy_config.canonical_hash(),
+    )
+
+    step = LiveOperatorCorpusStep(
+        lease=lease,
+        operation_queue=queue,
+        owner_jobs=deps.owner_jobs,
+        clock=FakeClock(1_000_002),
+        retrieval=retrieval,
+        dispatch=dispatch,
+    )
+    with pytest.raises(ValueError, match="acceptance authority"):
+        step.project(job)
     assert retrieval.calls == []
     assert calls == []
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -9,6 +10,10 @@ from pathlib import Path
 import pytest
 
 from substrate.midnight_oil.budget_ledger import UnknownCallOutcome
+from substrate.midnight_oil.contracts import (
+    ResearchAcceptancePolicy,
+    research_acceptance_policy_authority_fields,
+)
 from substrate.midnight_oil.job_store import (
     CompareAndSetResult,
     InvalidStoredJob,
@@ -20,6 +25,7 @@ from substrate.midnight_oil.operation_queue import (
 )
 from substrate.midnight_oil.worker import (
     FakeClock,
+    LeaseValidationError,
     WorkerStepResult,
     lease_authorized_operation,
     run_leased_worker_iteration,
@@ -143,6 +149,262 @@ def test_exact_replay_rejects_changed_durable_execution_options(tmp_path: Path) 
     assert queued is not None
     assert queued.options["max_steps"] == 1
     assert queued.options["auto_deposit"] is False
+
+
+def test_terminal_replay_rejects_changed_archived_options(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    first = client.post(
+        "/midnight-oil/run",
+        headers={"x-test-user": "alice", HEADER: token},
+        json={"job_id": "job-owned", "max_steps": 1},
+    )
+    operation_id = first.json()["operation_id"]
+    lease = lease_authorized_operation(
+        operation_queue=queue,
+        owner_jobs=deps.owner_jobs,
+        jobs=deps.jobs,
+        operation_id=operation_id,
+        owner_user_id="alice",
+        job_id="job-owned",
+        worker_id="worker-terminal",
+        now_ms=1_000_001,
+        lease_expires_at_ms=1_060_001,
+    )
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None
+    assert deps.owner_jobs.compare_and_set(
+        owner_user_id="alice",
+        job_id="job-owned",
+        expected_version=authority.state_version,
+        expected_state=OperationState.RUNNING,
+        operation_id=operation_id,
+        next_state=OperationState.COMPLETE,
+        completed_at_ms=1_000_002,
+    ).applied
+    assert queue.acknowledge_terminal(
+        operation_id=operation_id,
+        worker_id=lease.worker_id,
+        lease_generation=lease.lease_generation,
+        terminal_state="complete",
+        completed_at_ms=1_000_003,
+    )
+
+    replay = client.post(
+        "/midnight-oil/run",
+        headers={"x-test-user": "alice", HEADER: token},
+        json={"job_id": "job-owned", "max_steps": 99},
+    )
+    assert replay.status_code == 409
+    assert "terminal queue" in replay.text
+
+
+def test_terminal_replay_rejects_changed_archived_identity(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    lease = lease_authorized_operation(
+        operation_queue=queue,
+        owner_jobs=deps.owner_jobs,
+        jobs=deps.jobs,
+        operation_id=operation_id,
+        owner_user_id="alice",
+        job_id="job-owned",
+        worker_id="worker-terminal-identity",
+        now_ms=1_000_001,
+        lease_expires_at_ms=1_060_001,
+    )
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None
+    assert deps.owner_jobs.compare_and_set(
+        owner_user_id="alice",
+        job_id="job-owned",
+        expected_version=authority.state_version,
+        expected_state=OperationState.RUNNING,
+        operation_id=operation_id,
+        next_state=OperationState.COMPLETE,
+        completed_at_ms=1_000_002,
+    ).applied
+    assert queue.acknowledge_terminal(
+        operation_id=operation_id,
+        worker_id=lease.worker_id,
+        lease_generation=lease.lease_generation,
+        terminal_state="complete",
+        completed_at_ms=1_000_003,
+    )
+    with sqlite3.connect(queue.path) as connection:
+        connection.execute(
+            "UPDATE midnight_oil_operation_terminal SET owner_user_id = ? "
+            "WHERE operation_id = ?",
+            ("mallory", operation_id),
+        )
+
+    replay = client.post(
+        "/midnight-oil/run",
+        headers={"x-test-user": "alice", HEADER: token},
+        json={"job_id": "job-owned", "max_steps": 1},
+    )
+    assert replay.status_code == 409
+    assert "terminal queue" in replay.text
+
+
+def test_enqueue_binds_exact_policy_receipt_and_config_across_restart(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    queued = DurableOperationQueue(queue.path).get(operation_id)
+
+    assert authority is not None
+    assert queued is not None
+    assert queued.options["consent_receipt_id"] == authority.consent_receipt_id
+    assert queued.options["consent_config_hash"] == authority.consent_config_hash
+    expected_policy = research_acceptance_policy_authority_fields(
+        ResearchAcceptancePolicy()
+    )
+    assert {key: queued.options[key] for key in expected_policy} == expected_policy
+    assert {key: authority.payload[key] for key in expected_policy} == expected_policy
+
+
+def test_owner_policy_drift_refuses_before_running_or_queue_lease(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None
+    payload = dict(authority.payload)
+    payload["acceptance_policy_unsupported_output"] = "discard"
+    deps.owner_jobs._jobs[("alice", "job-owned")] = replace(  # type: ignore[attr-defined]
+        authority, payload=payload
+    )
+    budget_path = Path(deps.jobs.budget_db_path())
+    existed_before = budget_path.exists()
+
+    with pytest.raises(LeaseValidationError, match="reconciliation"):
+        lease_authorized_operation(
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            jobs=deps.jobs,
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id="job-owned",
+            worker_id="worker-drift",
+            now_ms=1_000_001,
+            lease_expires_at_ms=1_060_001,
+        )
+
+    after = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    queued = queue.get(operation_id)
+    assert after is not None and after.operation_state is OperationState.QUEUED
+    assert after.dispatch_started_at_ms is None
+    assert queued is not None and queued.state == "queued" and queued.leased_at_ms is None
+    assert budget_path.exists() is existed_before
+
+
+def test_queue_config_drift_refuses_before_running_or_queue_lease(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    queued = queue.get(operation_id)
+    assert queued is not None
+    options = dict(queued.options)
+    options["consent_config_hash"] = "0" * 64
+    with sqlite3.connect(queue.path) as connection:
+        connection.execute(
+            "UPDATE midnight_oil_operation_queue SET options_json = ? WHERE operation_id = ?",
+            (json.dumps(options, sort_keys=True, separators=(",", ":")), operation_id),
+        )
+
+    with pytest.raises(LeaseValidationError, match="reconciliation"):
+        lease_authorized_operation(
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            jobs=deps.jobs,
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id="job-owned",
+            worker_id="worker-drift",
+            now_ms=1_000_001,
+            lease_expires_at_ms=1_060_001,
+        )
+
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    after = queue.get(operation_id)
+    assert authority is not None and authority.operation_state is OperationState.QUEUED
+    assert authority.dispatch_started_at_ms is None
+    assert after is not None and after.state == "queued" and after.leased_at_ms is None
+
+
+def test_queue_authority_race_refuses_before_owner_running(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+
+    class DriftOnLease:
+        def get(self, requested: str):  # type: ignore[no-untyped-def]
+            return queue.get(requested)
+
+        def lease(self, **kwargs):  # type: ignore[no-untyped-def]
+            current = queue.get(operation_id)
+            assert current is not None
+            options = dict(current.options)
+            options["consent_config_hash"] = "0" * 64
+            with sqlite3.connect(queue.path) as connection:
+                connection.execute(
+                    "UPDATE midnight_oil_operation_queue SET options_json = ? "
+                    "WHERE operation_id = ?",
+                    (
+                        json.dumps(options, sort_keys=True, separators=(",", ":")),
+                        operation_id,
+                    ),
+                )
+            return queue.lease(**kwargs)
+
+    with pytest.raises(LeaseValidationError, match="lease did not persist"):
+        lease_authorized_operation(
+            operation_queue=DriftOnLease(),  # type: ignore[arg-type]
+            owner_jobs=deps.owner_jobs,
+            jobs=deps.jobs,
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id="job-owned",
+            worker_id="worker-race",
+            now_ms=1_000_001,
+            lease_expires_at_ms=1_060_001,
+        )
+
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None and authority.operation_state is OperationState.QUEUED
+    assert authority.dispatch_started_at_ms is None
+
+
+def test_queue_identity_race_refuses_before_owner_running(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+
+    class DriftIdentityOnLease:
+        def get(self, requested: str):  # type: ignore[no-untyped-def]
+            return queue.get(requested)
+
+        def lease(self, **kwargs):  # type: ignore[no-untyped-def]
+            with sqlite3.connect(queue.path) as connection:
+                connection.execute(
+                    "UPDATE midnight_oil_operation_queue SET owner_user_id = ? "
+                    "WHERE operation_id = ?",
+                    ("mallory", operation_id),
+                )
+            return queue.lease(**kwargs)
+
+    with pytest.raises(LeaseValidationError, match="lease did not persist"):
+        lease_authorized_operation(
+            operation_queue=DriftIdentityOnLease(),  # type: ignore[arg-type]
+            owner_jobs=deps.owner_jobs,
+            jobs=deps.jobs,
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id="job-owned",
+            worker_id="worker-identity-race",
+            now_ms=1_000_001,
+            lease_expires_at_ms=1_060_001,
+        )
+
+    authority = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert authority is not None and authority.operation_state is OperationState.QUEUED
+    assert authority.dispatch_started_at_ms is None
 
 
 def test_token_is_header_only_and_duplicate_rejected(tmp_path: Path) -> None:

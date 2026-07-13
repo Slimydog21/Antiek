@@ -8,6 +8,10 @@ from pathlib import Path
 import duckdb
 import pytest
 
+from substrate.midnight_oil.contracts import (
+    ResearchAcceptancePolicy,
+    research_acceptance_policy_authority_fields,
+)
 from substrate.midnight_oil.job_store import (
     SCHEMA_VERSION,
     DurableOwnerJobStore,
@@ -38,7 +42,13 @@ def _job(owner: str = "owner-a", job_id: str = "job-1") -> OwnerJob:
         dispatch_started_at_ms=None,
         dispatched_at_ms=None,
         completed_at_ms=None,
-        payload={"goals": ["prove restart"], "display_usd": 123.45},
+        payload={
+            "goals": ["prove restart"],
+            "display_usd": 123.45,
+            **research_acceptance_policy_authority_fields(
+                ResearchAcceptancePolicy()
+            ),
+        },
     )
 
 
