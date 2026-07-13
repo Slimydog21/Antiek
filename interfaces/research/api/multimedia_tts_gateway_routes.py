@@ -173,7 +173,7 @@ def multimedia_tts_gateway_runtime_from_environment(
             base_url="https://api.openai.com/v1", follow_redirects=False,
             trust_env=False, timeout=timeout, transport=transport,
         ) as client, client.stream(
-            "POST", "/audio/speech", headers=headers, json=payload
+            "POST", "/audio/speech", headers=headers, json=payload, timeout=timeout,
         ) as response:
             if response.status_code != 200:
                 raise RuntimeError("TTS provider refused synthesis")
