@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Multimedia Distillation Recovery</title>
+  <style>body{max-width:980px;margin:auto;padding:32px;font:15px/1.55 system-ui;color:#18181b;background:#fafafa}section{border-top:1px solid #d4d4d8;padding:18px 0}h1,h2{line-height:1.2}code{background:#e4e4e7;padding:2px 5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d4d4d8;padding:8px;text-align:left;vertical-align:top}</style>
+</head>
+<body>
+  <h1>Multimedia Distillation Recovery</h1>
+  <p><strong>TW executable sub-spec.</strong> Complete PR #1049's at-most-once model protocol with an explicit owner recovery path for uncertain outcomes.</p>
+  <section>
+    <h2>State Contract</h2>
+    <table>
+      <tr><th>State</th><th>Meaning</th><th>Recovery</th></tr>
+      <tr><td><code>not_started</code></td><td>No claim or checkpoint exists for this owner-bound source revision.</td><td>Use normal finalization.</td></tr>
+      <tr><td><code>in_progress</code></td><td>A durable claim exists without a checkpoint. The model may still be running or its outcome may be uncertain.</td><td>Denied until the claim is at least 15 minutes old.</td></tr>
+      <tr><td><code>completed</code></td><td>An exact owner/source/hash checkpoint exists.</td><td>Denied; normal replay uses the checkpoint.</td></tr>
+      <tr><td><code>integrity_conflict</code></td><td>A checkpoint exists but its payload, digest, owner/source identity, or completed claim authority does not verify.</td><td>With both acknowledgements, a recoverable completed claim quarantines the corrupt checkpoint and rotates authority for regeneration.</td></tr>
+    </table>
+  </section>
+  <section>
+    <h2>Recovery Authority</h2>
+    <ol>
+      <li>The authenticated owner pins the current reserved asset revision.</li>
+      <li>The owner acknowledges both model use and the possibility of duplicate model spend.</li>
+      <li>The canonical writer verifies the claim is in progress, identity-exact, and stale.</li>
+      <li>One transaction rotates the secret claim token and refreshes its start time.</li>
+      <li>Finalization immediately runs with that token. Any prior worker carrying the old token cannot publish.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Fail-Closed Rules</h2>
+    <p>Foreign owner, missing acknowledgement, fresh claim, valid completed checkpoint, absent claim, stale revision, irreconcilable checkpoint/claim identity, old token, concurrent recovery, or unavailable runtime returns no model output and writes no link. A digest-corrupt checkpoint is never reported as completed.</p>
+  </section>
+  <section>
+    <h2>Acceptance</h2>
+    <p>Tests prove read-only status, the 15-minute threshold, zero automatic retry calls, one explicitly authorized recovery call, old-token rejection, completed-state denial, owner opacity, route behavior, revision reservation preservation, and exact checkpoint/claim identity verification.</p>
+  </section>
+  <section>
+    <h2>Non-Goals</h2>
+    <p>No automatic retry, background timeout worker, paid media provider execution, model routing redesign, frontend redesign, publication, merge, or deploy.</p>
+  </section>
+</body>
+</html>

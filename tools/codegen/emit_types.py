@@ -134,6 +134,7 @@ NESTED_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.ExaLookupResult,
     # SPR-08 M4 — sub-model for ReadMetaReadingGeneratedPayload.citations.
     schema_module.MetaReadingCitation,
+    schema_module.BookAnswerCitation,
     # Foundation v2 SPR-02 — sub-model for GroundednessScoredPayload.per_claim.
     schema_module.ClaimGroundednessVerdict,
 )
@@ -274,6 +275,8 @@ PAYLOAD_MODELS: tuple[type[BaseModel], ...] = (
     schema_module.BlockPositionPayload,
     # Living Roadmap SPR-07 — source.read → SiteSee "read" tint.
     schema_module.SourceReadPayload,
+    schema_module.ReadBookAnsweredPayload,
+    schema_module.ReadBookAnswerJudgedPayload,
     # Living Roadmap SPR-08 — meta-reading deliverable → re-openable Read asset.
     schema_module.ReadMetaReadingGeneratedPayload,
     # Living Roadmap SPR-13 — file a personal-space doc INTO a research project.

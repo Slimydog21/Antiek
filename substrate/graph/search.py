@@ -138,6 +138,7 @@ def search(
     document_ids: Sequence[str] | None = None,
     with_edges: bool = False,
     policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None = None,
 ) -> dict[str, Any]:
     """Vector search over ``chunks.embedding``. Returns top-``k``
     chunks ordered by cosine similarity desc.
@@ -243,6 +244,7 @@ def search(
     gate_sql, gate_params = non_privileged_chunk_sql_clause(
         table_alias="d",
         policy_tag=policy_tag,
+        owner_user_id=owner_user_id or "__operator__",
     )
     sql += gate_sql
     params.extend(gate_params)
@@ -274,7 +276,7 @@ def search(
         }
         if with_edges:
             item["edges"], item["nodes"] = _fetch_edges_and_nodes(
-                con, chunk_id, policy_tag=policy_tag,
+                con, chunk_id, policy_tag=policy_tag, owner_user_id=owner_user_id,
             )
         results.append(item)
 
@@ -283,13 +285,14 @@ def search(
         "top_k": top_k,
         "results": results,
         "node_matches": search_nodes_by_label(
-            con, query, limit=10, policy_tag=policy_tag,
+            con, query, limit=10, policy_tag=policy_tag, owner_user_id=owner_user_id,
         ),
     }
 
 
 def _fetch_edges_and_nodes(
     con: Any, chunk_id: str, *, policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Helper for ``with_edges=True``: returns the edges sourced from
     a chunk and the nodes those edges connect.
@@ -313,6 +316,12 @@ def _fetch_edges_and_nodes(
     g2_sql, g2_params = _retrieval_gate.non_privileged_node_provenance_clause(
         node_alias="n2", policy_tag=policy_tag,
     )
+    o1_sql, o1_params = _retrieval_gate.node_owner_sql_clause(
+        node_alias="n1", owner_user_id=owner_user_id,
+    )
+    o2_sql, o2_params = _retrieval_gate.node_owner_sql_clause(
+        node_alias="n2", owner_user_id=owner_user_id,
+    )
     edge_rows = con.execute(
         f"""
         SELECT e.edge_id, e.source_node_id, e.target_node_id, e.relation,
@@ -322,10 +331,10 @@ def _fetch_edges_and_nodes(
         FROM edges e
         JOIN nodes n1 ON e.source_node_id = n1.node_id
         JOIN nodes n2 ON e.target_node_id = n2.node_id
-        WHERE e.chunk_id = ?{g1_sql}{g2_sql}
+        WHERE e.chunk_id = ?{g1_sql}{g2_sql}{o1_sql}{o2_sql}
         LIMIT 20
         """,
-        [chunk_id, *g1_params, *g2_params],
+        [chunk_id, *g1_params, *g2_params, *o1_params, *o2_params],
     ).fetchall()
 
     edges = [
@@ -347,14 +356,17 @@ def _fetch_edges_and_nodes(
         gn_sql, gn_params = _retrieval_gate.non_privileged_node_provenance_clause(
             node_alias="n", policy_tag=policy_tag,
         )
+        own_sql, own_params = _retrieval_gate.node_owner_sql_clause(
+            node_alias="n", owner_user_id=owner_user_id,
+        )
         node_rows = con.execute(
             f"""
             SELECT n.node_id, n.node_type, n.canonical_label
             FROM nodes n
-            WHERE n.node_id IN ({placeholders}){gn_sql}
+            WHERE n.node_id IN ({placeholders}){gn_sql}{own_sql}
             LIMIT 30
             """,
-            [*node_ids, *gn_params],
+            [*node_ids, *gn_params, *own_params],
         ).fetchall()
         nodes = [
             {"node_id": n[0], "node_type": n[1], "label": n[2]}
@@ -367,6 +379,7 @@ def search_nodes_by_label(
     con: Any, query: str, limit: int = 10,
     *,
     policy_tag: str = "attribution_eligible",
+    owner_user_id: str | None = None,
 ) -> list[dict[str, Any]]:
     """ILIKE search over ``nodes.canonical_label``, §9.0-gated (SPR-01).
 
@@ -393,14 +406,17 @@ def search_nodes_by_label(
         node_alias="n",
         policy_tag=policy_tag,
     )
+    owner_sql, owner_params = _retrieval_gate.node_owner_sql_clause(
+        node_alias="n", owner_user_id=owner_user_id,
+    )
     rows = con.execute(
         f"""
         SELECT n.node_id, n.node_type, n.canonical_label
         FROM nodes n
-        WHERE n.canonical_label ILIKE ?{gate_sql}
+        WHERE n.canonical_label ILIKE ?{gate_sql}{owner_sql}
         LIMIT ?
         """,
-        [f"%{query}%", *gate_params, int(limit)],
+        [f"%{query}%", *gate_params, *owner_params, int(limit)],
     ).fetchall()
     return [
         {"node_id": r[0], "node_type": r[1], "label": r[2]}

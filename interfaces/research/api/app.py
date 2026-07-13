@@ -1463,6 +1463,8 @@ def create_app(
         # public by design so any MCP client can verify the tool
         # hashes without an account.
         "/.well-known/mcp-tools.json",
+        # Machine-to-machine multimedia gateway verifies its own fixed bearer.
+        "/multimedia/tts-gateway/synthesize",
     }
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
@@ -1481,6 +1483,19 @@ def create_app(
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
+        if request.url.path == "/multimedia/tts-gateway/synthesize":
+            declared_length = request.headers.get("Content-Length")
+            try:
+                bounded = declared_length is not None and 1 <= int(declared_length) <= 512 * 1024
+            except ValueError:
+                bounded = False
+            if not bounded:
+                from fastapi.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "TTS gateway request body is invalid"},
+                )
         if not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default

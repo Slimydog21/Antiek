@@ -57,6 +57,10 @@ async def run_document_pass(
     distiller: Distiller,
     chunk_ids: Sequence[str] = (),
     supported_by: Sequence[str] = (),
+    source_event_ids: Sequence[str] = (),
+    identity_scope: str | None = None,
+    owner_user_id: str | None = None,
+    emit_graph_events: bool = True,
     embedding_provider: Any = None,
     emit_events: bool = True,
     events_dir: str | None = None,
@@ -66,7 +70,9 @@ async def run_document_pass(
     caller can schedule it off the ingest critical path (document
     availability never waits on note extraction). The blocking distillation
     runs in a worker thread."""
-    distillation: Distillation = await asyncio.to_thread(distiller.distill, text)
+    distillation: Distillation = await asyncio.to_thread(
+        distiller.distill, text, source_event_ids=source_event_ids
+    )
     result = PassResult()
     primary_chunk = chunk_ids[0] if chunk_ids else None
 
@@ -75,6 +81,9 @@ async def run_document_pass(
         # source_event_ids; we additionally anchor document-level provenance.
         # A note that somehow reaches here with neither attribution nor a
         # document is dropped, never promoted.
+        if source_event_ids and set(note.source_event_ids) != set(source_event_ids):
+            result.dropped_provenance_free += 1
+            continue
         if not note.source_event_ids and not document_id:
             result.dropped_provenance_free += 1
             continue
@@ -96,6 +105,9 @@ async def run_document_pass(
                       "source_event_ids": list(note.source_event_ids),
                       "origin_note_id": note.note_id},
             embedding_provider=embedding_provider, con=con,
+            identity_scope=identity_scope,
+            owner_user_id=owner_user_id,
+            emit_graph_events=emit_graph_events,
         )
         result.insight_node_ids.append(nid)
 
@@ -113,8 +125,14 @@ async def run_document_pass(
             text=q.text, investigation_id=investigation_id,
             asks_about=q.asks_about, anchor_region_id=q.anchor_region_id,
             source_document_id=document_id, chunk_id=primary_chunk,
-            metadata={"source_document_id": document_id},
+            metadata={
+                "source_document_id": document_id,
+                "source_event_ids": list(source_event_ids),
+            },
             embedding_provider=embedding_provider, con=con,
+            identity_scope=identity_scope,
+            owner_user_id=owner_user_id,
+            emit_graph_events=emit_graph_events,
         )
         result.question_node_ids.append(qid)
 

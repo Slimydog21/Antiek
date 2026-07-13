@@ -141,6 +141,7 @@ def insert_document(
     metadata: Any | None = None,
     content_class: str | None = None,
     ip_holder_id: str | None = None,
+    owner_user_id: str = "__operator__",
     on_conflict: OnConflict = "error",
     events_dir: str | None = None,
 ) -> str:
@@ -211,12 +212,12 @@ def insert_document(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
         " source_tier, document_type, investigation_id, raw_text, metadata, "
-        " content_class, ip_holder_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " content_class, ip_holder_id, owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             document_id, source_uri, title, author, published_at,
             int(source_tier), document_type, investigation_id, raw_text,
-            _maybe_json(metadata), content_class, ip_holder_id,
+            _maybe_json(metadata), content_class, ip_holder_id, owner_user_id,
         ],
     )
 
@@ -378,6 +379,9 @@ def insert_node(
     node_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
+    events_dir: str | None = None,
+    owner_user_id: str | None = None,
+    emit_event: bool = True,
 ) -> str:
     """Insert one node row AND emit GRAPH_NODE_INSERTED. Returns the
     node_id.
@@ -392,29 +396,31 @@ def insert_node(
         return nid  # row exists; no INSERT, no event — fully idempotent
     con.execute(
         "INSERT INTO nodes "
-        "(node_id, canonical_label, node_type, embedding, graph_scope, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?)",
+        "(node_id, canonical_label, node_type, embedding, graph_scope, metadata, owner_user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         [
             nid, canonical_label, node_type,
             list(embedding) if embedding is not None else None,
-            graph_scope, _maybe_json(metadata),
+            graph_scope, _maybe_json(metadata), owner_user_id,
         ],
     )
     # Typed event AFTER the row commits — the Pydantic Literal validators
     # on node_type and graph_scope raise here if the caller passed
     # something the DB CHECK would also reject. We get both layers.
-    emit_typed(
-        investigation_id,
-        GraphNodeInsertedPayload(
-            node_id=nid,
-            canonical_label=canonical_label,
-            node_type=node_type,  # type: ignore[arg-type]
-            graph_scope=graph_scope,  # type: ignore[arg-type]
-            has_embedding=embedding is not None,
-        ),
-        parent_event_id=parent_event_id,
-        role="connector",
-    )
+    if emit_event:
+        emit_typed(
+            investigation_id,
+            GraphNodeInsertedPayload(
+                node_id=nid,
+                canonical_label=canonical_label,
+                node_type=node_type,  # type: ignore[arg-type]
+                graph_scope=graph_scope,  # type: ignore[arg-type]
+                has_embedding=embedding is not None,
+            ),
+            parent_event_id=parent_event_id,
+            role="connector",
+            events_dir=events_dir,
+        )
     return nid
 
 
@@ -440,6 +446,7 @@ def insert_edge(
     edge_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: OnConflict = "error",
+    emit_event: bool = True,
 ) -> str:
     """Insert one edge row AND emit GRAPH_EDGE_INSERTED. Returns the
     edge_id.
@@ -469,9 +476,10 @@ def insert_edge(
             graph_scope, investigation_id, _maybe_json(metadata),
         ],
     )
-    emit_typed(
-        investigation_id,
-        GraphEdgeInsertedPayload(
+    if emit_event:
+        emit_typed(
+            investigation_id,
+            GraphEdgeInsertedPayload(
             edge_id=eid,
             source_node_id=source_node_id,
             target_node_id=target_node_id,
@@ -481,10 +489,10 @@ def insert_edge(
             source_tier=int(source_tier),
             extraction_confidence=float(extraction_confidence),
             graph_scope=graph_scope,  # type: ignore[arg-type]
-        ),
-        parent_event_id=parent_event_id,
-        role="connector",
-    )
+            ),
+            parent_event_id=parent_event_id,
+            role="connector",
+        )
     return eid
 
 

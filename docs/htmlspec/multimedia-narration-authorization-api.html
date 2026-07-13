@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Multimedia Narration Authorization API</title></head>
+<body><main>
+<h1>Authorize exact chapter narration without executing it</h1>
+<p>Stacked on PR #1251. This sprint exposes the existing durable V2 asynchronous authority through an authenticated, server-derived chapter boundary. It is the authorization prerequisite for the owner-bound educational-video production command.</p>
+<h2>Authority split</h2>
+<p>The operator controls request id, current parent revision, chapter, voice/speed/media shape, TTL, an explicit maximum microdollar ceiling, and spend acknowledgement. The server controls asset plan, chapter text and grounding, deterministic child revision, provider/model, endpoint capability, catalog version/digest, quote identity/lifetime, recovery authority, and canonical request-body digest.</p>
+<h2>Flow</h2>
+<ol><li>Authenticate and load the owner-scoped asset.</li><li>Require current ready non-cheapest revision and explicit spend acknowledgement.</li><li>Resolve trusted narration terms from server runtime configuration.</li><li>Derive spoken chapter sequence and the exact child revision shared with <code>NarrationRun</code>.</li><li>Rebuild <code>PreparedChapterTTSRequest</code> from the stored plan; never accept text or body digest from HTTP.</li><li>Require approved ceiling not exceed the trusted quote maximum.</li><li>Call <code>ExecutionAuthorizationIssuer.issue_async</code>. Same owner/request id and same terms exactly replay; changed terms conflict.</li></ol>
+<h2>HTTP contract</h2>
+<p><code>POST /multimedia/assets/{asset_id}/narration-authorizations</code> returns chapter ID, child revision, body digest, and a fully typed signed V2 authority. It returns no narration text, body JSON, local path, signing key, credential, raw quote evidence, or recovery key.</p>
+<h2>Product contract</h2>
+<p>The plan review shows a numeric USD ceiling, explicit checkbox acknowledgement, and chapter-scoped authorization command. Success displays authorization ID, provider/model, body digest, and expiry. Authorization is not presented as provider execution, narration completion, or spend.</p>
+<h2>Failure model</h2>
+<p>Foreign/missing asset is opaque. Stale/unready/cheapest revision, missing chapter, missing acknowledgement, invalid shape, ceiling above trusted maximum, malformed runtime, expired quote relationship, or changed idempotency terms fail before any provider callback, authorization claim, or budget reservation.</p>
+<h2>Replay and races</h2>
+<p>The durable issuer is authoritative for exact replay. UI completion is revision/chapter request-token bound. Steering or chapter selection invalidates an in-flight response. Reusing a request id with a different ceiling, speed, voice, body, trusted terms, or TTL is a conflict rather than reinterpretation.</p>
+<h2>Non-goals</h2>
+<p>No TTS/provider call, authorization claim, budget hold, narration-run execution, reconciliation, visual generation, rendering, receipt issuance, publication, merge, or deploy. Static environment terms are an initial trusted adapter; a future quote service may replace it behind the same resolver contract.</p>
+<h2>Acceptance</h2><ul><li>Server-derived request digest and deterministic child revision match narration-run execution.</li><li>Operator cannot submit provider/catalog/quote/recovery/body fields.</li><li>Exact replay is byte-identical; changed terms conflict.</li><li>Foreign/stale/unready/cheapest/unacknowledged/over-ceiling/missing chapter cases issue nothing.</li><li>UI requires acknowledgement and displays signed authority facts without execution claims.</li><li>Broad tests, typecheck/build, Ruff, HTML parse, and HardenX report zero real findings.</li><li>Independent review findings are resolved; unavailable or malformed judge output is recorded as an engine gap rather than represented as acceptance.</li></ul>
+</main></body></html>

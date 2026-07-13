@@ -62,11 +62,12 @@ def test_default_policy_tag_clause_binds_full_denylist():
     assert params == sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
 
 
-def test_privileged_policy_tag_emits_no_clause():
+def test_privileged_policy_tag_retains_owner_boundary():
     for tag in ("private_research", "operator_only"):
         sql, params = non_privileged_chunk_sql_clause(policy_tag=tag)
-        assert sql == ""
-        assert params == []
+        assert "owner_user_id = ?" in sql
+        assert params[-1] == "__operator__"
+        assert set(params[:-1]) == PERSONAL_ONLY_CONTENT_CLASSES
 
 
 @pytest.fixture

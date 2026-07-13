@@ -1,0 +1,27 @@
+{
+  "source_url": "https://api.krea.ai/openapi.json",
+  "retrieved_at": "2026-07-11",
+  "path": "/jobs/{id}",
+  "method": "get",
+  "response_200": {
+    "additionalProperties": false,
+    "required": ["job_id", "status", "created_at"],
+    "status": ["backlogged", "queued", "scheduled", "processing", "sampling", "intermediate-complete", "completed", "failed", "cancelled"],
+    "result": {
+      "additionalProperties": false,
+      "urls": [
+        "array<uri>",
+        "array<{type:model|preview,url:uri}>",
+        "object<string,uri>"
+      ],
+      "style_id": "string"
+    },
+    "error": {
+      "additionalProperties": false,
+      "required": ["code"],
+      "code": "string",
+      "message": "string"
+    }
+  },
+  "response_404": "not found or caller not authorized"
+}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Antiek Multimedia Reconciliation Operations</title></head>
+<body><main>
+<h1>Multimedia Reconciliation Operations</h1>
+<p><strong>Status:</strong> executable sub-spec. <strong>Parent:</strong> multimedia TTS reconciliation.</p>
+<section><h2>Outcome</h2><p>Give an authenticated operator a redacted diagnosis and explicit recovery action for a crashed chapter narration without exposing provider credentials, recovery keys, signatures, audio bytes, or private filesystem paths.</p></section>
+<section><h2>Contracts</h2><ul>
+<li>The read projection verifies the signed provider execution and signed chapter attempt before deriving status.</li>
+<li>Unknown ownership and missing state return the same opaque unavailable error.</li>
+<li>Sending becomes quarantine-eligible only after the configured stale interval; outcome-unknown always remains fully charged.</li>
+<li>Provider evidence is required for unknown-send recovery and for resuming a received receipt whose provider success observation crashed.</li>
+<li>Sealing remains wait-only until the signed seal lease reaches the configured stale threshold; legacy attempts without lease evidence fail closed.</li>
+<li>Commands accept short-lived signed operator authority and delegate to the canonical recovery state machine. They never invoke provider transport.</li>
+</ul></section>
+<section><h2>Acceptance</h2><ol>
+<li>Status progresses from wait to quarantine, recover, narration resume, and no-action states deterministically.</li>
+<li>Read responses contain booleans and safe codes, never secrets or raw paths.</li>
+<li>Wrong-operator reads and commands fail closed.</li>
+<li>Focused tests, multimedia regression tests, Ruff, strict mypy, HTML parsing, and security review pass.</li>
+</ol></section>
+</main></body></html>

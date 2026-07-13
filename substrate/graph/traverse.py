@@ -56,25 +56,48 @@ TraversalScope = Literal["depth", "cross_domain", "constraint", "all"]
 # ---------------------------------------------------------------------------
 
 
-def resolve_node(con: Any, label: str, scope: str | None = None) -> str:
+def _owner_filter(alias: str, owner_user_id: str | None) -> tuple[str, list[str]]:
+    if owner_user_id is None:
+        return f"{alias}.owner_user_id IS NULL", []
+    return f"({alias}.owner_user_id IS NULL OR {alias}.owner_user_id = ?)", [owner_user_id]
+
+
+def _nodes_visible(con: Any, node_ids: tuple[str, ...], owner_user_id: str | None) -> bool:
+    owner_sql, owner_params = _owner_filter("n", owner_user_id)
+    placeholders = ",".join("?" for _ in node_ids)
+    count = con.execute(
+        f"SELECT count(*) FROM nodes n WHERE node_id IN ({placeholders}) AND {owner_sql}",
+        [*node_ids, *owner_params],
+    ).fetchone()[0]
+    return bool(count == len(set(node_ids)))
+
+
+def resolve_node(
+    con: Any, label: str, scope: str | None = None, owner_user_id: str | None = None
+) -> str:
     """Resolve a node by ID exact match → canonical_label exact match →
     fuzzy ILIKE. Raises ValueError if nothing matches.
 
     Production callers should pass already-resolved node_ids when they
     have them; the fuzzy path is for the wrestling UI's "show me the
     PsiQuantum node" affordance."""
-    row = con.execute("SELECT node_id FROM nodes WHERE node_id = ?", [label]).fetchone()
-    if row:
-        return row[0]
-
+    owner_sql, owner_params = _owner_filter("n", owner_user_id)
     row = con.execute(
-        "SELECT node_id FROM nodes WHERE canonical_label = ?", [label]
+        f"SELECT node_id FROM nodes n WHERE node_id = ? AND {owner_sql}",
+        [label, *owner_params],
     ).fetchone()
     if row:
         return row[0]
 
-    query = "SELECT node_id, canonical_label FROM nodes WHERE canonical_label ILIKE ?"
-    params: list[Any] = [f"%{label}%"]
+    row = con.execute(
+        f"SELECT node_id FROM nodes n WHERE canonical_label = ? AND {owner_sql}",
+        [label, *owner_params],
+    ).fetchone()
+    if row:
+        return row[0]
+
+    query = f"SELECT node_id, canonical_label FROM nodes n WHERE canonical_label ILIKE ? AND {owner_sql}"
+    params: list[Any] = [f"%{label}%", *owner_params]
     if scope and scope != "all":
         query += " AND graph_scope = ?"
         params.append(scope)
@@ -148,13 +171,16 @@ def _format_path(row: Any) -> dict:
     }
 
 
-def _resolve_labels(con: Any, node_ids: list[str]) -> list[str]:
+def _resolve_labels(
+    con: Any, node_ids: list[str], owner_user_id: str | None = None
+) -> list[str]:
     if not node_ids:
         return []
     placeholders = ",".join(["?"] * len(node_ids))
+    owner_sql, owner_params = _owner_filter("n", owner_user_id)
     rows = con.execute(
-        f"SELECT node_id, canonical_label FROM nodes WHERE node_id IN ({placeholders})",
-        node_ids,
+        f"SELECT node_id, canonical_label FROM nodes n WHERE node_id IN ({placeholders}) AND {owner_sql}",
+        [*node_ids, *owner_params],
     ).fetchall()
     label_map = {r[0]: r[1] for r in rows}
     return [label_map.get(nid, nid) for nid in node_ids]
@@ -174,8 +200,12 @@ def shortest_path(
     scope: str = "cross_domain",
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
+    owner_user_id: str | None = None,
 ) -> list[dict]:
+    if not _nodes_visible(con, (source_id, target_id), owner_user_id):
+        return []
     scope_filter = _scope_filter(scope)
+    visible_sql, visible_params = _owner_filter("nv", owner_user_id)
     row = con.execute(
         f"""
         WITH RECURSIVE paths AS (
@@ -189,6 +219,7 @@ def shortest_path(
             WHERE e.source_node_id = ?
               AND {scope_filter}
               AND e.extraction_confidence >= ?
+              AND EXISTS (SELECT 1 FROM nodes nv WHERE nv.node_id=e.target_node_id AND {visible_sql})
             UNION ALL
             SELECT
                 e.source_node_id, e.target_node_id, e.relation,
@@ -203,6 +234,7 @@ def shortest_path(
               AND e.extraction_confidence >= ?
               AND NOT list_contains(p.path_nodes, e.target_node_id)
               AND e.target_node_id <> p.source_node_id
+              AND EXISTS (SELECT 1 FROM nodes nv WHERE nv.node_id=e.target_node_id AND {visible_sql})
         )
         SELECT path_nodes, path_relations, depth, confidence
         FROM paths
@@ -210,7 +242,7 @@ def shortest_path(
         ORDER BY depth ASC
         LIMIT 1
         """,
-        [source_id, min_confidence, max_depth, min_confidence, target_id],
+        [source_id, min_confidence, *visible_params, max_depth, min_confidence, *visible_params, target_id],
     ).fetchone()
     if row is None:
         return []
@@ -235,8 +267,12 @@ def top_n_paths(
     scope: str = "cross_domain",
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
+    owner_user_id: str | None = None,
 ) -> list[dict]:
+    if not _nodes_visible(con, (source_id, target_id), owner_user_id):
+        return []
     scope_filter = _scope_filter(scope)
+    visible_sql, visible_params = _owner_filter("nv", owner_user_id)
     rows = con.execute(
         f"""
         WITH RECURSIVE paths AS (
@@ -250,6 +286,7 @@ def top_n_paths(
             WHERE e.source_node_id = ?
               AND {scope_filter}
               AND e.extraction_confidence >= ?
+              AND EXISTS (SELECT 1 FROM nodes nv WHERE nv.node_id=e.target_node_id AND {visible_sql})
             UNION ALL
             SELECT
                 e.source_node_id, e.target_node_id, e.relation,
@@ -263,6 +300,7 @@ def top_n_paths(
               AND {scope_filter}
               AND e.extraction_confidence >= ?
               AND NOT list_contains(p.path_nodes, e.target_node_id)
+              AND EXISTS (SELECT 1 FROM nodes nv WHERE nv.node_id=e.target_node_id AND {visible_sql})
         )
         SELECT path_nodes, path_relations, depth, confidence
         FROM paths
@@ -270,7 +308,7 @@ def top_n_paths(
         ORDER BY depth ASC, confidence DESC
         LIMIT ?
         """,
-        [source_id, min_confidence, max_depth, min_confidence, target_id, int(n)],
+        [source_id, min_confidence, *visible_params, max_depth, min_confidence, *visible_params, target_id, int(n)],
     ).fetchall()
     paths = [_format_path(r) for r in rows]
     if normalize_degree:
@@ -293,8 +331,12 @@ def dfs_with_depth(
     scope: str = "cross_domain",
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
+    owner_user_id: str | None = None,
 ) -> list[dict]:
+    if not _nodes_visible(con, (source_id, target_id), owner_user_id):
+        return []
     scope_filter = _scope_filter(scope)
+    visible_sql, visible_params = _owner_filter("nv", owner_user_id)
     rows = con.execute(
         f"""
         WITH RECURSIVE paths AS (
@@ -308,6 +350,7 @@ def dfs_with_depth(
             WHERE e.source_node_id = ?
               AND {scope_filter}
               AND e.extraction_confidence >= ?
+              AND EXISTS (SELECT 1 FROM nodes nv WHERE nv.node_id=e.target_node_id AND {visible_sql})
             UNION ALL
             SELECT
                 e.source_node_id, e.target_node_id, e.relation,
@@ -321,6 +364,7 @@ def dfs_with_depth(
               AND {scope_filter}
               AND e.extraction_confidence >= ?
               AND NOT list_contains(p.path_nodes, e.target_node_id)
+              AND EXISTS (SELECT 1 FROM nodes nv WHERE nv.node_id=e.target_node_id AND {visible_sql})
         )
         SELECT path_nodes, path_relations, depth, confidence
         FROM paths
@@ -328,7 +372,7 @@ def dfs_with_depth(
         ORDER BY depth DESC, confidence DESC
         LIMIT 10
         """,
-        [source_id, min_confidence, int(depth_limit), min_confidence, target_id],
+        [source_id, min_confidence, *visible_params, int(depth_limit), min_confidence, *visible_params, target_id],
     ).fetchall()
     paths = [_format_path(r) for r in rows]
     if normalize_degree:
@@ -352,18 +396,20 @@ def bfs_semantic_stop(
     scope: str = "cross_domain",
     min_confidence: float = 0.0,
     normalize_degree: bool = False,
+    owner_user_id: str | None = None,
 ) -> list[dict]:
     """Two-phase BFS through a constraint waypoint. Useful when the
     cross-domain analogy MUST flow through a named intermediate
     concept (e.g. "must touch 'photon coherence' on the way from
     PsiQuantum to error-correction-threshold")."""
-    waypoint_id = resolve_node(con, waypoint_label, scope)
+    waypoint_id = resolve_node(con, waypoint_label, scope, owner_user_id)
     half = max(1, int(max_depth) // 2)
 
     phase1 = top_n_paths(
         con, source_id, waypoint_id,
         n=3, max_depth=half, scope=scope,
         min_confidence=min_confidence, normalize_degree=False,
+        owner_user_id=owner_user_id,
     )
     if not phase1:
         return []
@@ -374,6 +420,7 @@ def bfs_semantic_stop(
             con, waypoint_id, target_id,
             n=3, max_depth=half, scope=scope,
             min_confidence=min_confidence, normalize_degree=False,
+            owner_user_id=owner_user_id,
         )
         for p2 in phase2:
             full_nodes = p1["path_nodes"] + p2["path_nodes"][1:]
@@ -410,13 +457,14 @@ def traverse(
     scope: TraversalScope = "cross_domain",
     min_confidence: float = 0.0,
     normalize_degree: bool = True,
+    owner_user_id: str | None = None,
 ) -> dict:
     """Execute one traversal. Resolves ``source`` and ``target`` (by id
     or fuzzy label) before dispatching. Returns a dict shaped to match
     the Researchmaxx convention so downstream consumers don't need
     adapter code."""
-    source_id = resolve_node(con, source, scope)
-    target_id = resolve_node(con, target, scope)
+    source_id = resolve_node(con, source, scope, owner_user_id)
+    target_id = resolve_node(con, target, scope, owner_user_id)
     source_label = con.execute(
         "SELECT canonical_label FROM nodes WHERE node_id = ?", [source_id]
     ).fetchone()[0]
@@ -430,6 +478,7 @@ def traverse(
             max_depth=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
+            owner_user_id=owner_user_id,
         )
     elif algorithm == "top_n":
         paths = top_n_paths(
@@ -437,6 +486,7 @@ def traverse(
             n=n, max_depth=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
+            owner_user_id=owner_user_id,
         )
     elif algorithm == "dfs":
         paths = dfs_with_depth(
@@ -444,6 +494,7 @@ def traverse(
             depth_limit=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
+            owner_user_id=owner_user_id,
         )
     elif algorithm == "bfs_semantic_stop":
         if not waypoint:
@@ -453,13 +504,14 @@ def traverse(
             max_depth=depth, scope=scope,
             min_confidence=min_confidence,
             normalize_degree=normalize_degree,
+            owner_user_id=owner_user_id,
         )
     else:  # pragma: no cover — Literal exhausted
         raise ValueError(f"unknown algorithm: {algorithm!r}")
 
     for path in paths:
         if "node_labels" not in path:
-            path["node_labels"] = _resolve_labels(con, path["path_nodes"])
+            path["node_labels"] = _resolve_labels(con, path["path_nodes"], owner_user_id)
         if normalize_degree:
             path["hub_concerns"] = _flag_hub_concerns(path)
 

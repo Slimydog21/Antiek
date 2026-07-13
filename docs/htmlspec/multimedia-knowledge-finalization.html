@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Multimedia Knowledge Finalization</title>
+  <style>body{max-width:980px;margin:auto;padding:32px;font:15px/1.55 system-ui;color:#18181b;background:#fafafa}section{border-top:1px solid #d4d4d8;padding:18px 0}h1,h2{line-height:1.2}code{background:#e4e4e7;padding:2px 5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d4d4d8;padding:8px;text-align:left;vertical-align:top}</style>
+</head>
+<body>
+  <h1>Multimedia Knowledge Finalization</h1>
+  <p><strong>TV executable sub-spec.</strong> Join the authenticated multimedia asset store to the canonical HTML, graph, and recursive-twin lifecycle delivered by PR #1031.</p>
+  <section>
+    <h2>Operator Contract</h2>
+    <ol>
+      <li>The request is authenticated by the mounted multimedia owner boundary.</li>
+      <li>The operator supplies the exact current revision and explicitly acknowledges note-model use.</li>
+      <li>An unavailable, foreign, planned, stale, or unacknowledged asset fails before distiller construction.</li>
+      <li>Runtime activation requires both an explicit enable flag and a graph database path.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Authority Order</h2>
+    <table>
+      <tr><th>Step</th><th>Authority and invariant</th></tr>
+      <tr><td>1. Read</td><td><code>MultimediaAssetStore.get</code> proves owner, readiness, and revision.</td></tr>
+      <tr><td>2. Project</td><td>The ready record becomes deterministic inert multimedia HTML with exact citations.</td></tr>
+      <tr><td>3. Register</td><td>Canonical graph/twin registration checkpoints the first distillation, commits private nodes, and reconciles events.</td></tr>
+      <tr><td>4. Link</td><td>The asset store compare-and-sets an immutable <code>MultimediaKnowledgeLink</code> for the same asset and revision.</td></tr>
+    </table>
+  </section>
+  <section>
+    <h2>Recovery</h2>
+    <p>A durable in-progress claim commits before model dispatch. Concurrent requests fail closed. If the model outcome becomes uncertain before checkpoint publication, replay refuses another model call and reports that operator recovery is required. Once the checkpoint exists, graph registration precedes the JSON asset link; a link-publication failure replays without another model request and retries the owner-bound compare-and-set. A conflicting existing link fails closed.</p>
+  </section>
+  <section>
+    <h2>Revision Semantics</h2>
+    <p>Finalization first reserves the exact current revision in the owner-bound asset store. Steering is rejected while that reservation exists. A successful link clears the reservation; later steering creates a child revision and clears the previous revision link. Historical graph documents remain private and immutable, and the new revision requires independent finalization.</p>
+  </section>
+  <section>
+    <h2>Acceptance</h2>
+    <p>Tests must prove successful durable linking, list/get visibility, replay without another distiller call, graph-complete/link-missing repair, one model call under concurrency, uncertain-outcome retry denial, revision reservation, owner opacity, stale and unready rejection, acknowledgement ordering, link conflict rejection, steering invalidation, unavailable runtime behavior, and zero paid-media provider calls.</p>
+  </section>
+  <section>
+    <h2>Non-Goals</h2>
+    <p>No media provider execution, publication, cross-store atomicity claim, frontend redesign, merge, or deploy.</p>
+  </section>
+</body>
+</html>

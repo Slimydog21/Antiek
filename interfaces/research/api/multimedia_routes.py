@@ -6,11 +6,32 @@ planner/audio/video/steering/hardening seams without live provider spend.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, FastAPI, HTTPException
+import os
+from collections.abc import Callable
+from dataclasses import dataclass, replace
+from typing import Any
 
+from fastapi import APIRouter, Depends, FastAPI, HTTPException
+
+from roles.note_taker import DispatchDistiller, Distiller
+from substrate.multimedia.knowledge_finalization import (
+    MultimediaKnowledgeFinalizationError,
+    MultimediaKnowledgeFinalizationRequest,
+    MultimediaKnowledgeFinalizationResponse,
+    MultimediaKnowledgeFinalizationStatus,
+    MultimediaKnowledgeRecoveryRequest,
+    MultimediaTwinDocument,
+    finalize_multimedia_knowledge,
+    inspect_multimedia_knowledge_finalization,
+    read_multimedia_twin_document,
+    recover_multimedia_knowledge_finalization,
+)
+from substrate.multimedia.production_registration import (
+    MultimediaProductionRegistrationRequest,
+    register_multimedia_production,
+)
 from substrate.multimedia.read_model import (
     CreateMultimediaDraftRequest,
-    LiveProviderExecutionRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
@@ -18,79 +39,403 @@ from substrate.multimedia.read_model import (
     SteeringRequest,
 )
 
+from .multimedia_local_audible_routes import (
+    get_multimedia_local_audible_runtime,
+    get_multimedia_local_audible_runtime_optional,
+    multimedia_local_audible_router,
+)
+from .multimedia_local_audible_runtime import (
+    multimedia_local_audible_runtime_from_environment,
+)
+from .multimedia_local_routes import (
+    get_multimedia_local_runtime,
+    get_multimedia_local_runtime_optional,
+    multimedia_local_router,
+)
+from .multimedia_local_runtime import multimedia_local_runtime_from_environment
+from .multimedia_narration_authorization_routes import (
+    get_multimedia_narration_authorization_runtime,
+    multimedia_narration_authorization_router,
+    multimedia_narration_authorization_runtime_from_environment,
+)
+from .multimedia_playback_routes import (
+    get_multimedia_playback_runtime,
+    multimedia_playback_router,
+    multimedia_playback_runtime_from_environment,
+)
+from .multimedia_production_worker_routes import (
+    get_multimedia_production_worker_runtime,
+    multimedia_production_worker_router,
+)
+from .multimedia_production_worker_runtime import (
+    multimedia_production_worker_runtime_from_environment,
+)
+from .multimedia_reconciliation_routes import (
+    authenticated_multimedia_operator,
+    get_multimedia_reconciliation_runtime,
+    multimedia_reconciliation_router,
+    multimedia_reconciliation_runtime_from_environment,
+)
+from .multimedia_reviewed_visual_routes import (
+    get_multimedia_reviewed_visual_runtime,
+    multimedia_reviewed_visual_router,
+    multimedia_reviewed_visual_runtime_from_environment,
+)
+from .multimedia_tts_gateway_routes import (
+    get_multimedia_tts_gateway_runtime,
+    multimedia_tts_gateway_router,
+    multimedia_tts_gateway_runtime_from_environment,
+)
+from .multimedia_visual_authorization_routes import (
+    get_multimedia_visual_authorization_runtime,
+    multimedia_visual_authorization_router,
+    multimedia_visual_authorization_runtime_from_environment,
+)
+from .multimedia_visual_candidate_routes import (
+    get_multimedia_visual_candidate_runtime,
+    multimedia_visual_candidate_router,
+    multimedia_visual_candidate_runtime_from_environment,
+)
+from .multimedia_visual_generation_routes import (
+    get_multimedia_visual_generation_runtime,
+    multimedia_visual_generation_router,
+    multimedia_visual_generation_runtime_from_environment,
+)
+from .multimedia_visual_review_routes import (
+    get_multimedia_visual_review_runtime,
+    multimedia_visual_review_router,
+    multimedia_visual_review_runtime_from_environment,
+)
+
 multimedia_router = APIRouter(prefix="/multimedia", tags=["multimedia"])
+multimedia_router.include_router(multimedia_reconciliation_router)
+multimedia_router.include_router(multimedia_local_router)
+multimedia_router.include_router(multimedia_local_audible_router)
+multimedia_router.include_router(multimedia_playback_router)
+multimedia_router.include_router(multimedia_narration_authorization_router)
+multimedia_router.include_router(multimedia_reviewed_visual_router)
+multimedia_router.include_router(multimedia_production_worker_router)
+multimedia_router.include_router(multimedia_tts_gateway_router)
+multimedia_router.include_router(multimedia_visual_authorization_router)
+multimedia_router.include_router(multimedia_visual_generation_router)
+multimedia_router.include_router(multimedia_visual_candidate_router)
+multimedia_router.include_router(multimedia_visual_review_router)
 _STORE = MultimediaAssetStore()
+
+
+@dataclass(frozen=True)
+class MultimediaKnowledgeRuntime:
+    db_path: str
+    distiller_factory: Callable[[], Distiller]
+    events_dir: str | None = None
+    embedding_provider: Any = None
 
 
 def get_store() -> MultimediaAssetStore:
     return _STORE
 
 
+def get_multimedia_knowledge_runtime() -> MultimediaKnowledgeRuntime:
+    raise HTTPException(status_code=503, detail="multimedia knowledge runtime is unavailable")
+
+
+def multimedia_knowledge_runtime_from_environment(
+    environ: dict[str, str] | None = None,
+) -> MultimediaKnowledgeRuntime | None:
+    values = os.environ if environ is None else environ
+    enabled = values.get("ANTIEK_MULTIMEDIA_KNOWLEDGE_ENABLED", "").strip().lower()
+    db_path = values.get("ANTIEK_MULTIMEDIA_KNOWLEDGE_DB_PATH", "").strip()
+    events_dir = values.get("ANTIEK_MULTIMEDIA_KNOWLEDGE_EVENTS_DIR", "").strip()
+    if not any((enabled, db_path, events_dir)):
+        return None
+    if enabled not in {"1", "true"} or not db_path:
+        raise RuntimeError("multimedia knowledge configuration is incomplete")
+    return MultimediaKnowledgeRuntime(
+        db_path=db_path,
+        events_dir=events_dir or None,
+        distiller_factory=DispatchDistiller,
+    )
+
+
 @multimedia_router.post("/assets", response_model=MultimediaAssetRecord, status_code=201)
-def create_multimedia_asset(request: CreateMultimediaDraftRequest) -> MultimediaAssetRecord:
-    return get_store().create_draft(request)
+def create_multimedia_asset(
+    request: CreateMultimediaDraftRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
+    return get_store().create_draft(request, owner_id=operator_id)
 
 
 @multimedia_router.get("/assets", response_model=MultimediaAssetList)
-def list_multimedia_assets() -> MultimediaAssetList:
-    return get_store().list_assets()
+def list_multimedia_assets(
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetList:
+    return get_store().list_assets(owner_id=operator_id)
 
 
 @multimedia_router.get("/assets/{asset_id}", response_model=MultimediaAssetRecord)
-def get_multimedia_asset(asset_id: str) -> MultimediaAssetRecord:
+def get_multimedia_asset(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
     try:
-        return get_store().get(asset_id)
+        return get_store().get(asset_id, owner_id=operator_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
 @multimedia_router.get("/assets/{asset_id}/jobs", response_model=MultimediaJobList)
-def list_multimedia_jobs(asset_id: str) -> MultimediaJobList:
+def list_multimedia_jobs(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaJobList:
     try:
-        return get_store().list_jobs(asset_id)
+        return get_store().list_jobs(asset_id, owner_id=operator_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
 @multimedia_router.post("/assets/{asset_id}/approve-dry-run", response_model=MultimediaAssetRecord)
-def approve_multimedia_dry_run(asset_id: str) -> MultimediaAssetRecord:
+def approve_multimedia_dry_run(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
     try:
-        return get_store().approve_dry_run(asset_id)
+        return get_store().approve_dry_run(asset_id, owner_id=operator_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
 @multimedia_router.post("/assets/{asset_id}/steer", response_model=MultimediaAssetRecord)
-def steer_multimedia_asset(asset_id: str, request: SteeringRequest) -> MultimediaAssetRecord:
+def steer_multimedia_asset(
+    asset_id: str,
+    request: SteeringRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> MultimediaAssetRecord:
     try:
-        return get_store().apply_steering(asset_id, request)
+        return get_store().apply_steering(asset_id, request, owner_id=operator_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @multimedia_router.post("/assets/{asset_id}/hardening", response_model=MultimediaAssetRecord)
-def run_multimedia_hardening(asset_id: str) -> MultimediaAssetRecord:
-    try:
-        return get_store().run_hardening(asset_id)
-    except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
-
-
-@multimedia_router.post("/assets/{asset_id}/prepare-live-execution", response_model=MultimediaAssetRecord)
-def prepare_multimedia_live_execution(
+def run_multimedia_hardening(
     asset_id: str,
-    request: LiveProviderExecutionRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
 ) -> MultimediaAssetRecord:
     try:
-        return get_store().prepare_live_execution(asset_id, request)
+        return get_store().run_hardening(asset_id, owner_id=operator_id)
     except KeyError as exc:
-        raise HTTPException(status_code=404, detail=f"multimedia asset {asset_id!r} not found") from exc
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+
+
+@multimedia_router.post(
+    "/assets/{asset_id}/finalize-knowledge",
+    response_model=MultimediaKnowledgeFinalizationResponse,
+)
+async def finalize_multimedia_asset_knowledge(
+    asset_id: str,
+    request: MultimediaKnowledgeFinalizationRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaKnowledgeFinalizationResponse:
+    try:
+        return await finalize_multimedia_knowledge(
+            asset_id,
+            request,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+            distiller_factory=runtime.distiller_factory,
+            events_dir=runtime.events_dir,
+            embedding_provider=runtime.embedding_provider,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@multimedia_router.get(
+    "/assets/{asset_id}/knowledge-twin",
+    response_model=MultimediaTwinDocument,
+)
+def get_multimedia_asset_knowledge_twin(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaTwinDocument:
+    try:
+        return read_multimedia_twin_document(
+            asset_id,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia twin is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@multimedia_router.get(
+    "/assets/{asset_id}/knowledge-finalization",
+    response_model=MultimediaKnowledgeFinalizationStatus,
+)
+def get_multimedia_asset_knowledge_finalization(
+    asset_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaKnowledgeFinalizationStatus:
+    try:
+        return inspect_multimedia_knowledge_finalization(
+            asset_id,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
+
+
+@multimedia_router.post(
+    "/assets/{asset_id}/recover-knowledge-finalization",
+    response_model=MultimediaKnowledgeFinalizationResponse,
+)
+async def recover_multimedia_asset_knowledge_finalization(
+    asset_id: str,
+    request: MultimediaKnowledgeRecoveryRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaKnowledgeRuntime = Depends(get_multimedia_knowledge_runtime),
+) -> MultimediaKnowledgeFinalizationResponse:
+    try:
+        return await recover_multimedia_knowledge_finalization(
+            asset_id,
+            request,
+            owner_id=operator_id,
+            store=get_store(),
+            db_path=runtime.db_path,
+            distiller_factory=runtime.distiller_factory,
+            events_dir=runtime.events_dir,
+            embedding_provider=runtime.embedding_provider,
+        )
+    except MultimediaKnowledgeFinalizationError as exc:
+        status_code = 404 if str(exc) == "multimedia asset is unavailable" else 409
+        raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
 def register_multimedia_routes(app: FastAPI) -> None:
+    legacy_owner = os.environ.get("ANTIEK_MULTIMEDIA_LEGACY_OWNER_ID", "").strip()
+    if legacy_owner:
+        get_store().migrate_legacy_assets(owner_id=legacy_owner)
     app.include_router(multimedia_router)
+    runtime = multimedia_reconciliation_runtime_from_environment()
+    if runtime is not None:
+        runtime = replace(
+            runtime,
+            asset_revision_resolver=lambda asset_id, operator_id: get_store()
+            .get(asset_id, owner_id=operator_id)
+            .asset.revision_id,
+        )
+        app.dependency_overrides[get_multimedia_reconciliation_runtime] = lambda: runtime
+    knowledge_runtime = multimedia_knowledge_runtime_from_environment()
+    if knowledge_runtime is not None:
+        app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
+    local_runtime = multimedia_local_runtime_from_environment(store=get_store())
+    if local_runtime is not None:
+        app.dependency_overrides[get_multimedia_local_runtime_optional] = (
+            lambda: local_runtime
+        )
+        app.dependency_overrides[get_multimedia_local_runtime] = lambda: local_runtime
+    local_audible_runtime = multimedia_local_audible_runtime_from_environment(
+        store=get_store()
+    )
+    if local_audible_runtime is not None:
+        app.dependency_overrides[get_multimedia_local_audible_runtime_optional] = (
+            lambda: local_audible_runtime
+        )
+        app.dependency_overrides[get_multimedia_local_audible_runtime] = (
+            lambda: local_audible_runtime
+        )
+    playback_runtime = multimedia_playback_runtime_from_environment()
+    if playback_runtime is not None:
+        playback = playback_runtime.playback
+        playback_runtime = replace(
+            playback_runtime,
+            asset_authority_resolver=lambda asset_id, operator_id: (
+                (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
+                record.production_link,
+            ),
+            production_registrar=lambda asset_id, revision_id, operator_id: register_multimedia_production(
+                asset_id,
+                MultimediaProductionRegistrationRequest(expected_revision_id=revision_id),
+                owner_id=operator_id,
+                store=get_store(),
+                playback=playback,
+            ),
+        )
+        app.dependency_overrides[get_multimedia_playback_runtime] = lambda: playback_runtime
+    narration_runtime = multimedia_narration_authorization_runtime_from_environment(
+        store=get_store()
+    )
+    if narration_runtime is not None:
+        app.dependency_overrides[get_multimedia_narration_authorization_runtime] = (
+            lambda: narration_runtime
+        )
+    reviewed_visual_runtime = multimedia_reviewed_visual_runtime_from_environment(
+        store=get_store()
+    )
+    if reviewed_visual_runtime is not None:
+        app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = (
+            lambda: reviewed_visual_runtime
+        )
+    production_worker_runtime = multimedia_production_worker_runtime_from_environment(
+        store=get_store()
+    )
+    if production_worker_runtime is not None:
+        app.dependency_overrides[get_multimedia_production_worker_runtime] = (
+            lambda: production_worker_runtime
+        )
+    tts_gateway_runtime = multimedia_tts_gateway_runtime_from_environment()
+    if tts_gateway_runtime is not None:
+        app.dependency_overrides[get_multimedia_tts_gateway_runtime] = (
+            lambda: tts_gateway_runtime
+        )
+    visual_authorization_runtime = multimedia_visual_authorization_runtime_from_environment(
+        store=get_store()
+    )
+    if visual_authorization_runtime is not None:
+        app.dependency_overrides[get_multimedia_visual_authorization_runtime] = (
+            lambda: visual_authorization_runtime
+        )
+    visual_generation_runtime = multimedia_visual_generation_runtime_from_environment(
+        store=get_store()
+    )
+    if visual_generation_runtime is not None:
+        app.dependency_overrides[get_multimedia_visual_generation_runtime] = (
+            lambda: visual_generation_runtime
+        )
+    visual_candidate_runtime = multimedia_visual_candidate_runtime_from_environment(
+        store=get_store()
+    )
+    if visual_candidate_runtime is not None:
+        app.dependency_overrides[get_multimedia_visual_candidate_runtime] = (
+            lambda: visual_candidate_runtime
+        )
+    visual_review_runtime = multimedia_visual_review_runtime_from_environment(
+        store=get_store()
+    )
+    if visual_review_runtime is not None:
+        app.dependency_overrides[get_multimedia_visual_review_runtime] = (
+            lambda: visual_review_runtime
+        )
 
 
-__all__ = ["get_store", "multimedia_router", "register_multimedia_routes"]
+__all__ = [
+    "MultimediaKnowledgeRuntime",
+    "get_multimedia_knowledge_runtime",
+    "get_store",
+    "multimedia_knowledge_runtime_from_environment",
+    "multimedia_router",
+    "register_multimedia_routes",
+]
