@@ -7,6 +7,7 @@ import os
 import shutil
 import stat
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
+from pathlib import Path
 
 import pytest
 from fastapi import FastAPI, Request
@@ -108,11 +109,64 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
     latest_summary = reloaded_store.list_assets().assets[0]
     assert latest_summary.latest_job_kind == "provider_execution"
     assert latest_summary.latest_job_status == "failed"
-
     listed = store.list_assets()
     assert listed.count == 1
     assert listed.assets[0].asset_id == draft.asset.asset_id
     assert listed.assets[0].hardening_status == hardened.hardening_report.ship_status
+
+
+def test_store_persists_raw_and_corrected_voice_steering(tmp_path: Path) -> None:
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="Aircraft engine reliability",
+            target_minutes=20,
+            mode="audio",
+            route_policy="cheapest",
+        )
+    )
+
+    steered = store.apply_steering(
+        draft.asset.asset_id,
+        SteeringRequest(
+            prompt="go deeper on engines in chapter 2",
+            raw_voice_transcript="go deeper on cabins in chapter 2",
+            corrected_voice_transcript="go deeper on engines in chapter 2",
+        ),
+    )
+
+    assert steered.latest_steering_intent is not None
+    transcript = steered.latest_steering_intent.transcript
+    assert transcript is not None
+    assert transcript.raw_text == "go deeper on cabins in chapter 2"
+    assert transcript.corrected_text == "go deeper on engines in chapter 2"
+
+
+def test_store_parses_raw_voice_steering_without_a_correction(tmp_path: Path) -> None:
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="Aircraft engine reliability",
+            target_minutes=20,
+            mode="audio",
+            route_policy="cheapest",
+        )
+    )
+
+    steered = store.apply_steering(
+        draft.asset.asset_id,
+        SteeringRequest(
+            prompt="go deeper on engines in chapter 2",
+            raw_voice_transcript="go deeper on engines in chapter 2",
+        ),
+    )
+
+    assert steered.latest_steering_intent is not None
+    transcript = steered.latest_steering_intent.transcript
+    assert transcript is not None
+    assert transcript.raw_text == "go deeper on engines in chapter 2"
+    assert transcript.corrected_text is None
+    assert steered.latest_steering_intent.prompt == transcript.raw_text
 
 
 def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeypatch):
