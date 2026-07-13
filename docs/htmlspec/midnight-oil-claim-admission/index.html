@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ANT-MOCA — Midnight Oil claim admission</title>
+<style>
+/* htmlspec — Lemon UI inspired style system
+ * Inline this entire file into <style> of every output HTML file.
+ * No external fonts, no CDNs. Must work fully offline.
+ */
+
+:root {
+  /* Brand */
+  --color-primary: #1d4aff;
+  --color-primary-dark: #1330b0;
+  --color-accent: #f9bd2b;
+  --color-accent-dark: #d99e10;
+  --color-success: #1a7f4f;
+  --color-warning: #c47a00;
+  --color-danger: #c63d24;
+  --color-info: #0e6ea0;
+
+  /* Neutrals */
+  --color-black: #151515;
+  --color-ink: #2c2c2c;
+  --color-muted: #6b6b6b;
+  --color-line: #cfcfcf;
+  --color-bg: #fafaf7;
+  --color-bg-card: #ffffff;
+  --color-bg-soft: #f3f1ea;
+  --color-bg-code: #1c1c1c;
+  --color-bg-code-text: #e8e8e0;
+
+  /* Tag backgrounds (light tints) */
+  --tag-blue: #e5ecff;
+  --tag-yellow: #fdf1cf;
+  --tag-green: #d9efe2;
+  --tag-orange: #fce3cd;
+  --tag-red: #f7d5cd;
+  --tag-grey: #ebebe6;
+
+  /* Geometry */
+  --radius: 6px;
+  --radius-sm: 4px;
+  --border: 2px solid var(--color-black);
+  --border-thin: 1px solid var(--color-line);
+  --shadow-card: 4px 4px 0 0 var(--color-black);
+  --shadow-card-sm: 2px 2px 0 0 var(--color-black);
+  --shadow-hover: 6px 6px 0 0 var(--color-black);
+
+  /* Spacing scale (4px base) */
+  --space-0: 0px;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-7: 28px;
+  --space-8: 32px;
+  --space-9: 36px;
+  --space-10: 40px;
+  --space-11: 44px;
+  --space-12: 48px;
+
+  /* Typography scale */
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-md: 13px;
+  --text-base: 14px;
+  --text-body: 15px;
+  --text-lg: 16px;
+  --text-xl: 17px;
+  --text-2xl: 22px;
+  --text-3xl: 32px;
+}
+
+* { box-sizing: border-box; }
+
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: var(--text-body);
+  line-height: 1.55;
+  color: var(--color-ink);
+  background: var(--color-bg);
+}
+
+/* Layout */
+.page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-8) var(--space-7) var(--space-12) var(--space-7);
+}
+
+.page--wide {
+  max-width: 1320px;
+}
+
+header.hero {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-7) var(--space-7) var(--space-6) var(--space-7);
+  margin-bottom: var(--space-7);
+}
+
+header.hero .eyebrow {
+  font-size: var(--text-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-muted);
+  font-weight: 600;
+  margin: 0 0 var(--space-1) 0;
+}
+
+header.hero h1 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-3xl);
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.01em;
+}
+
+header.hero .tagline {
+  margin: 0 0 var(--space-4) 0;
+  font-size: var(--text-xl);
+  color: var(--color-ink);
+}
+
+header.hero .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+/* Section */
+section.block {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-6) var(--space-6) var(--space-5) var(--space-6);
+  margin: 0 0 var(--space-5) 0;
+}
+
+section.block > h2 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-2xl);
+  font-weight: 800;
+  color: var(--color-black);
+  letter-spacing: -0.005em;
+}
+
+section.block > h2 + .lede {
+  margin: 0 0 var(--space-4) 0;
+  color: var(--color-muted);
+  font-size: var(--text-base);
+}
+
+section.block h3 {
+  margin: var(--space-5) 0 var(--space-2) 0;
+  font-size: var(--text-body);
+  font-weight: 700;
+  color: var(--color-black);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+section.block p { margin: 0 0 var(--space-3) 0; }
+section.block p:last-child { margin-bottom: 0; }
+
+section.block ul, section.block ol {
+  margin: 0 0 var(--space-3) 0;
+  padding-left: var(--space-5);
+}
+
+section.block li { margin-bottom: var(--space-1); }
+
+/* Tags / chips */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--color-black);
+  background: var(--tag-grey);
+  color: var(--color-black);
+  white-space: nowrap;
+}
+
+.tag--blue   { background: var(--tag-blue); }
+.tag--yellow { background: var(--tag-yellow); }
+.tag--green  { background: var(--tag-green); }
+.tag--orange { background: var(--tag-orange); }
+.tag--red    { background: var(--tag-red); }
+.tag--grey   { background: var(--tag-grey); }
+
+.tag .dot {
+  width: var(--space-2); height: var(--space-2); border-radius: 50%;
+  background: var(--color-black);
+  display: inline-block;
+}
+
+/* Status colors via .dot inside .tag */
+.tag--green  .dot { background: var(--color-success); }
+.tag--yellow .dot { background: var(--color-accent-dark); }
+.tag--orange .dot { background: var(--color-warning); }
+.tag--red    .dot { background: var(--color-danger); }
+.tag--blue   .dot { background: var(--color-primary); }
+
+/* Sprint card grid */
+.sprint-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+.sprint-card {
+  border: var(--border);
+  border-radius: var(--radius);
+  background: var(--color-bg-card);
+  box-shadow: var(--shadow-card-sm);
+  padding: var(--space-4) 18px;
+  text-decoration: none;
+  color: var(--color-ink);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  transition: box-shadow 80ms ease, transform 80ms ease;
+}
+
+.sprint-card:hover {
+  box-shadow: var(--shadow-card);
+  transform: translate(-1px, -1px);
+}
+
+.sprint-card .id {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  color: var(--color-muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.sprint-card .title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-black);
+  line-height: 1.25;
+}
+
+.sprint-card .goal {
+  font-size: var(--text-md);
+  color: var(--color-ink);
+  line-height: 1.45;
+}
+
+.sprint-card .footer {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: auto;
+}
+
+/* Tables */
+table.spec {
+  width: 100%;
+  border-collapse: collapse;
+  margin: var(--space-1) 0 var(--space-3) 0;
+  font-size: var(--text-base);
+}
+
+table.spec th, table.spec td {
+  padding: var(--space-2) 10px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: var(--border-thin);
+}
+
+table.spec th {
+  font-weight: 700;
+  color: var(--color-black);
+  background: var(--color-bg-soft);
+  border-bottom: 2px solid var(--color-black);
+  font-size: var(--text-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+table.spec tr:last-child td { border-bottom: none; }
+
+table.spec td code {
+  font-size: 12.5px;
+}
+
+/* Code blocks */
+pre, code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+code {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+  font-size: var(--text-md);
+}
+
+pre {
+  background: var(--color-bg-code);
+  color: var(--color-bg-code-text);
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius);
+  padding: var(--space-3) var(--space-4);
+  overflow-x: auto;
+  font-size: var(--text-md);
+  line-height: 1.5;
+  margin: var(--space-2) 0 var(--space-3) 0;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* Callouts */
+.callout {
+  border-left: 4px solid var(--color-black);
+  border-top: 1px solid var(--color-line);
+  border-right: 1px solid var(--color-line);
+  border-bottom: 1px solid var(--color-line);
+  background: var(--color-bg-soft);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-sm);
+  margin: var(--space-2) 0 var(--space-3) 0;
+  font-size: var(--text-base);
+}
+
+.callout strong { color: var(--color-black); }
+
+.callout--warn    { border-left-color: var(--color-warning); background: #fff5dd; }
+.callout--danger  { border-left-color: var(--color-danger);  background: #fde7e0; }
+.callout--info    { border-left-color: var(--color-primary); background: var(--tag-blue); }
+.callout--success { border-left-color: var(--color-success); background: var(--tag-green); }
+
+/* Rigor block — distinctive five-card layout */
+.rigor {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.rigor-card {
+  border: 2px solid var(--color-black);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-3) var(--space-3) var(--space-3);
+  background: var(--color-bg-soft);
+}
+
+.rigor-card .label {
+  display: inline-block;
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  background: var(--color-black);
+  color: var(--color-bg);
+  padding: 2px 8px;
+  border-radius: 3px;
+  margin-bottom: var(--space-2);
+}
+
+.rigor-card h4 {
+  margin: 0 0 var(--space-1) 0;
+  font-size: var(--text-body);
+  color: var(--color-black);
+  font-weight: 700;
+}
+
+.rigor-card p {
+  margin: 0;
+  font-size: 13.5px;
+  color: var(--color-ink);
+  line-height: 1.5;
+}
+
+/* Milestones — numbered, with acceptance criteria */
+.milestone {
+  display: grid;
+  grid-template-columns: 36px 1fr;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: var(--border-thin);
+}
+
+.milestone:last-child { border-bottom: none; }
+
+.milestone .num {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--color-black);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  background: var(--color-accent);
+  font-size: var(--text-base);
+}
+
+.milestone .title {
+  font-size: var(--text-lg);
+  font-weight: 700;
+  color: var(--color-black);
+  margin-bottom: var(--space-1);
+}
+
+.milestone .desc {
+  font-size: var(--text-base);
+  margin: var(--space-1) 0 var(--space-2) 0;
+  color: var(--color-ink);
+}
+
+.milestone .criteria {
+  margin: var(--space-1) 0 0 0;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-bg-soft);
+  border-left: 3px solid var(--color-primary);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  font-size: 13.5px;
+}
+
+.milestone .criteria ul { margin: var(--space-1) 0 0 0; padding-left: var(--space-4); }
+.milestone .criteria li { margin-bottom: 3px; }
+.milestone .files {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  font-size: var(--text-sm);
+}
+
+.milestone .files .file {
+  background: var(--color-bg-soft);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  color: var(--color-ink);
+}
+
+/* Dependency graph (simple text-based) */
+.dep-graph {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  background: var(--color-bg-soft);
+  border: var(--border-thin);
+  border-radius: var(--radius-sm);
+  padding: var(--space-3) var(--space-4);
+  font-size: var(--text-md);
+  line-height: 1.6;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+/* Two-column layouts for compact info */
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-4);
+  margin-top: var(--space-2);
+}
+
+@media (max-width: 720px) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+/* Footer */
+footer.spec-footer {
+  margin-top: var(--space-8);
+  padding-top: var(--space-4);
+  border-top: var(--border-thin);
+  font-size: var(--text-sm);
+  color: var(--color-muted);
+}
+
+footer.spec-footer a { color: var(--color-muted); }
+
+/* Links */
+a {
+  color: var(--color-primary);
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--color-primary-dark); }
+
+/* Buttons */
+.btn {
+  display: inline-block;
+  padding: var(--space-2) 14px;
+  border: var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  color: var(--color-black);
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: var(--shadow-card-sm);
+  font-size: var(--text-base);
+  transition: transform 80ms ease, box-shadow 80ms ease;
+}
+
+.btn:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 3px 3px 0 0 var(--color-black);
+  color: var(--color-black);
+}
+
+.btn--primary { background: var(--color-primary); color: white; }
+.btn--ghost   { background: var(--color-bg-card); }
+
+/* Small util */
+.muted { color: var(--color-muted); }
+.mono  { font-family: ui-monospace, SFMono-Regular, monospace; }
+.kbd {
+  font-family: ui-monospace, monospace;
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-line);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: var(--text-sm);
+}
+
+hr.divider {
+  border: none;
+  border-top: 2px solid var(--color-black);
+  margin: var(--space-6) 0;
+}
+
+/* Numbered wave bands on the dashboard */
+.wave-band {
+  margin: var(--space-5) 0 var(--space-1) 0;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-black);
+  color: var(--color-bg);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-radius: var(--radius-sm);
+  display: inline-block;
+}
+
+/* Print niceties */
+@media print {
+  body { background: white; }
+  section.block, header.hero, .sprint-card {
+    box-shadow: none;
+    page-break-inside: avoid;
+  }
+  a { color: var(--color-black); text-decoration: none; }
+}
+
+</style>
+</head>
+<body>
+<main class="page page--wide">
+<header class="hero"><p class="eyebrow">Master spec · ANT-MOCA</p>
+<h1>Midnight Oil claim admission</h1><p class="tagline">Bind an approved research brief to per-claim evidence and fail closed before durable graph writes.</p>
+<div class="meta-row"><span class="tag tag--blue"><span class="dot"></span>Status: executable</span>
+<span class="tag tag--yellow"><span class="dot"></span>Owner: primary orchestrator</span>
+<span class="tag tag--grey">5 sprints · 5 serial waves</span><span class="tag tag--grey">Generated 2026-07-13</span></div></header>
+<section id="spec-lineage" class="block" data-spec-depth="0" data-parent-spec="">
+<h2>Spec lineage</h2><p class="lede">Root htmlspec derived from the active Antiek goal and the output-admission decision.</p>
+<p><strong>Parent:</strong> <a href="../../decisions/midnight-oil-output-admission.md">Midnight Oil output admission</a></p>
+<h3>Child specs</h3><ul class="child-specs"><li>None yet. Hatch a child only if a sprint discovers a separately load-bearing program.</li></ul></section>
+<section class="block"><h2>Goal</h2><p>Prevent unsupported Midnight Oil claims from becoming trusted graph knowledge while preserving partial work as clearly labeled operational HTML. Success is a signed policy, durable drift fencing, per-claim evidence mapping, a zero-write graph preflight, and truthful operator-visible states.</p>
+<h3>Success criteria</h3><ul><li>Changing the acceptance policy invalidates approval authority before lease or spend.</li><li>Every admitted insight maps to approved, canonical receipt identifiers; unmapped claims remain operational-only.</li><li>Every graph refusal is proven to create zero protected-graph row delta, zero typed-event delta, and no new effect receipt while preserving any pre-existing rows byte-for-byte.</li><li>Legacy jobs never acquire invented coverage or retroactive operator consent.</li></ul>
+<h3>Failure mode to avoid</h3><p>Do not confuse execution receipts, one step-level citation, fluent prose, or retained HTML with per-claim epistemic support.</p></section>
+<section class="block"><h2>Context &amp; motivation</h2><p>Antiek’s completed Midnight Oil runtime already secures consent, budget, leases, terminal settlement, replay, deposit ordering, and graph effect receipts. Commit <code>16b0734e4</code> removed fabricated fallback claims and made no-result recovery honest.</p><p>The remaining gap is narrower and deeper: <code>MidnightOilStepEvidence</code> attaches receipts to a whole step, while graph projection creates every insight/question edge from that shared set. A count cannot prove coverage. This program versions the acceptance rule at approval and carries exact claim-to-receipt identity through recovery.</p></section>
+<section class="block"><h2>Architecture overview</h2><div class="dep-graph">approved ResearchAcceptancePolicy
+        │ included in JobConsentConfig canonical hash
+        ▼
+owner authority + operation queue + lease reconciliation
+        │
+        ▼
+MidnightOilStepEvidence.claims[] ──► receipt-id validation
+        │                                  │
+        ├──► operational HTML (may retain unverified work)
+        │
+        └──► non-DuckDB preflight ──► exclusive writer flock
+                                          │ authority + census SELECTs before mutation
+                         refusal ────────► zero protected-graph/event delta + typed state</div>
+<h3>Key invariants</h3><ul><li>Approval-time policy identity is one authority, carried by the existing canonical config hash.</li><li>Claim support is explicit; no string matching, first-receipt fallback, or legacy auto-upgrade.</li><li>Operational retention and graph admission are separate states.</li><li>Only non-DuckDB policy, claim-shape, and artifact checks finish before <code>connect_write</code>. Document/chunk association, current chunk text/hash, receipt identity, deterministic conflict census, and mutation share one exclusive connection; every authority/census SELECT precedes the first mutating SQL.</li><li>Projection never initializes schema; graph initialization is an explicit prerequisite.</li></ul></section>
+<section class="block"><h2>Sprint roster</h2><p class="lede">All waves are serial because authority and evidence both cross the worker/live boundary. Each sprint must hand off green before the next begins.</p><div class="sprint-grid"><a class="sprint-card" href="sprint-01-acceptance-contract.html"><span class="id">SPR-01</span><span class="title">Research acceptance contract</span><span class="goal">Name and canonicalize the approval-time epistemic policy.</span><span class="footer"><span class="tag tag--blue">Wave 1</span><span class="tag tag--yellow">Pending</span></span></a><a class="sprint-card" href="sprint-02-durable-authority.html"><span class="id">SPR-02</span><span class="title">Durable policy authority</span><span class="goal">Bind the approved acceptance policy through queue, lease, and recovery.</span><span class="footer"><span class="tag tag--blue">Wave 2</span><span class="tag tag--yellow">Pending</span></span></a><a class="sprint-card" href="sprint-03-claim-evidence.html"><span class="id">SPR-03</span><span class="title">Claim-to-receipt evidence model</span><span class="goal">Represent which receipts support each returned claim or paragraph.</span><span class="footer"><span class="tag tag--blue">Wave 3</span><span class="tag tag--yellow">Pending</span></span></a><a class="sprint-card" href="sprint-04-graph-admission.html"><span class="id">SPR-04</span><span class="title">Fail-closed graph admission</span><span class="goal">Preflight verified claim coverage before the first DuckDB write.</span><span class="footer"><span class="tag tag--blue">Wave 4</span><span class="tag tag--yellow">Pending</span></span></a><a class="sprint-card" href="sprint-05-launch-surface.html"><span class="id">SPR-05</span><span class="title">Launch brief and admission status</span><span class="goal">Make the approved research brief and graph-admission outcome visible.</span><span class="footer"><span class="tag tag--blue">Wave 5</span><span class="tag tag--yellow">Pending</span></span></a></div></section>
+<section class="block"><h2>Decision log</h2><table class="spec"><thead><tr><th>Decision</th><th>Why</th><th>Reverser</th><th>Date</th></tr></thead><tbody>
+<tr><td>Per-claim mapping, not citation count</td><td>A step receipt cannot prove every claim.</td><td>A formally verified provider contract that supplies equivalent claim coverage.</td><td>2026-07-13</td></tr>
+<tr><td>Operational HTML may retain unverified work</td><td>Partial research is useful and recovery must not lose it.</td><td>Operator explicitly chooses destructive discard in a later policy version.</td><td>2026-07-13</td></tr>
+<tr><td>Preflight before first write</td><td>DuckDB writes and event logs must not partially admit claims.</td><td>A proven atomic cross-store transaction replaces replay.</td><td>2026-07-13</td></tr></tbody></table></section>
+<section class="block"><h2>Binding v1 policy</h2><ul>
+<li><strong>Covered classes:</strong> every insight and every non-empty normalized <code>output_text</code> paragraph requires one or more exact locally canonical document/chunk/hash receipts.</li>
+<li><strong>Exploratory questions:</strong> may remain explicitly unverified and operational-only; they are never projected as supported assertions.</li>
+<li><strong>Paragraphs:</strong> normalize CRLF to LF, trim outer whitespace, split on one or more blank lines, preserve order, and retain normalized text.</li>
+<li><strong>Canonical encoding:</strong> UTF-8 JSON with keys sorted, compact <code>(",", ":")</code> separators, <code>ensure_ascii=False</code>, and no display-only fields.</li>
+<li><strong>Claim identity:</strong> SHA-256 of canonical JSON containing <code>domain="antiek.midnight_oil.claim"</code>, <code>schema_version=1</code>, <code>job_id</code>, <code>step_key</code>, <code>claim_class</code>, zero-based <code>ordinal</code>, and <code>normalized_text</code>.</li>
+<li><strong>Receipt identity:</strong> SHA-256 of canonical JSON containing <code>domain="antiek.midnight_oil.source_receipt"</code>, <code>schema_version=1</code>, <code>document_id</code>, <code>chunk_id</code>, <code>hash_scope</code>, <code>content_hash</code>, and <code>canonical_url</code>. Title and other display metadata are excluded.</li>
+<li><strong>External receipts:</strong> public-web receipts without a locally canonical chunk are retained operationally but refused graph admission in v1.</li>
+<li><strong>Legacy:</strong> old rows are <code>legacy-unverified</code>; no default, migration, or similarity matcher may invent consent or coverage.</li>
+</ul></section>
+<section class="block"><h2>Admission outcomes</h2><table class="spec"><thead><tr><th>Reason code</th><th>State</th><th>Retry / operator action</th></tr></thead><tbody>
+<tr><td><code>internal_local_chunk_temporarily_missing</code></td><td>pending</td><td>Retry only after local ingestion/reconciliation restores the already-authorized chunk.</td></tr>
+<tr><td><code>operational_artifact_pending</code></td><td>pending</td><td>Resume deposit recovery; never redispatch research.</td></tr>
+<tr><td><code>graph_lock_unavailable</code></td><td>pending</td><td>Retry projection after contention clears; never redispatch research.</td></tr>
+<tr><td><code>policy_authority_drift</code></td><td>refused</td><td>New explicit approval/rerun; do not mutate the signed run.</td></tr>
+<tr><td><code>legacy_unverified</code></td><td>refused</td><td>Explicit operator review or rerun; never auto-upgrade.</td></tr>
+<tr><td><code>claim_coverage_missing</code></td><td>refused</td><td>Retain operational HTML; a new run may supply coverage.</td></tr>
+<tr><td><code>receipt_malformed_or_forged</code></td><td>refused</td><td>Quarantine evidence; no automatic retry.</td></tr>
+<tr><td><code>external_receipt_not_admissible_v1</code></td><td>refused</td><td>Ingest canonically under a future/new approved run or leave operational-only.</td></tr>
+<tr><td><code>deterministic_row_conflict</code></td><td>refused</td><td>Operator reconciliation; pre-existing graph rows remain unchanged.</td></tr>
+</tbody></table></section>
+<section class="block"><h2>Rejected alternatives</h2><table class="spec"><thead><tr><th>Alternative</th><th>Why rejected</th><th>Reconsider if…</th></tr></thead><tbody>
+<tr><td><strong>One citation per step</strong></td><td>Creates false coverage for unrelated claims in the same step.</td><td>Never without claim-scoped semantics.</td></tr>
+<tr><td><strong>Reject all unsupported deposits</strong></td><td>Loses partial operational work and contradicts Midnight Oil recovery.</td><td>The operator selects destructive retention policy explicitly.</td></tr>
+<tr><td><strong>Auto-link by embedding similarity</strong></td><td>Manufactures provenance probabilistically.</td><td>Only as advisory UI, never admission authority.</td></tr>
+<tr><td><strong>Retroactively default legacy rows</strong></td><td>Fabricates approval and evidence mappings that never existed.</td><td>Never; rerun or explicit operator review is required.</td></tr></tbody></table></section>
+<section class="block"><h2>Open questions</h2><table class="spec"><thead><tr><th>Question</th><th>Non-blocking v1 rule</th><th>Resolver</th></tr></thead><tbody>
+<tr><td>Should a future policy admit cryptographically signed external receipts without local ingestion?</td><td>No. V1 requires a locally canonical document/chunk/hash chain.</td><td>Future policy-version RFC with operator approval</td></tr>
+<tr><td>Should verified quotations become a distinct claim class?</td><td>No. V1 treats them as prose paragraphs and requires the same exact local coverage.</td><td>Usage evidence after SPR-05</td></tr></tbody></table></section>
+<section class="block"><h2>Glossary</h2><table class="spec"><tbody><tr><td><strong>Operational output</strong></td><td>Retained HTML/audit material that is not yet admitted as trusted graph knowledge.</td></tr><tr><td><strong>Claim coverage</strong></td><td>An explicit mapping from one stable claim ID to one or more approved receipt IDs.</td></tr><tr><td><strong>Admission preflight</strong></td><td>A two-phase zero-mutation check: non-DuckDB validation before lock acquisition, followed by all DuckDB-resident authority and deterministic-row SELECTs under the exclusive writer connection before its first mutating SQL.</td></tr></tbody></table></section>
+<section class="block" id="harness-hint-run" data-harness-default-pattern="serial" data-harness-serial-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05"><h2>Execution harness hint</h2><p>Run all five waves serially. Use adversarial verification for SPR-04, but do not overlap file ownership across waves.</p></section>
+<footer class="spec-footer">Generated by htmlspec · Source: active Antiek goal + <code>16b0734e4</code> · 2026-07-13</footer>
+</main>
+</body>
+</html>
