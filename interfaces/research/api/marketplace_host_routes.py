@@ -30,6 +30,9 @@ MAX_BASE64_SOURCE_CHARS = ((MAX_SOURCE_BYTES + 2) // 3) * 4
 
 _store: HostStore | None = None
 _catalog: Catalog | None = None
+_STORE_STATE = "marketplace_host_store"
+_CATALOG_STATE = "marketplace_host_catalog"
+_MISSING = object()
 
 
 def reset_marketplace_host_store(store: HostStore | None = None) -> None:
@@ -38,19 +41,31 @@ def reset_marketplace_host_store(store: HostStore | None = None) -> None:
     _catalog = default_demo_catalog()
 
 
-def _s() -> HostStore:
+def _s(request: Request | None = None) -> HostStore:
+    if request is not None:
+        configured = getattr(request.app.state, _STORE_STATE, _MISSING)
+        if isinstance(configured, HostStore):
+            return configured
+        if configured is not _MISSING:
+            raise RuntimeError("configured marketplace host store is invalid")
     global _store
     if _store is None:
         _store = InMemoryHostStore()
     return _store
 
 
-def get_marketplace_host_store() -> HostStore:
+def get_marketplace_host_store(request: Request | None = None) -> HostStore:
     """Return the shared account-host store used by all hosted-document routes."""
-    return _s()
+    return _s(request)
 
 
-def _c() -> Catalog:
+def _c(request: Request | None = None) -> Catalog:
+    if request is not None:
+        configured = getattr(request.app.state, _CATALOG_STATE, _MISSING)
+        if isinstance(configured, Catalog):
+            return configured
+        if configured is not _MISSING:
+            raise RuntimeError("configured marketplace catalog is invalid")
     global _catalog
     if _catalog is None:
         _catalog = default_demo_catalog()
@@ -136,9 +151,11 @@ def _canonical_marketplace_host(
     book_id: str,
     content: bytes | None,
     receipt_id: str | None,
+    store: HostStore,
+    catalog: Catalog,
     source_format: str | None = None,
 ) -> dict[str, Any]:
-    entry = _c().get(book_id)
+    entry = catalog.get(book_id)
     if entry is None:
         raise KeyError(f"unknown book_id: {book_id}")
     if entry.license_class == "unknown":
@@ -152,7 +169,7 @@ def _canonical_marketplace_host(
     if entry.license_class == "purchased":
         if not receipt_id:
             raise ValueError("purchased license requires receipt_id")
-        receipt = _s().get_receipt(receipt_id)
+        receipt = store.get_receipt(receipt_id)
         if receipt is None:
             raise ValueError(f"unknown receipt_id: {receipt_id}")
         if receipt.get("owner_id") != owner_id or receipt.get("book_id") != book_id:
@@ -167,7 +184,7 @@ def _canonical_marketplace_host(
         owner_id=owner_id,
         raw=raw,
         source_format=_source_format(raw, source_format or entry.source_format),
-        store=_s(),
+        store=store,
         authorization=HostAuthorization(
             entry.license_class,
             entitlement_id=entitlement_id,
@@ -191,7 +208,7 @@ def _canonical_marketplace_host(
             "license_class": entry.license_class,
             "already_hosted": hosted.already_hosted,
             "source_format": hosted.source_format,
-            "library_document_ids": _s().list_membership(owner_id),
+            "library_document_ids": store.list_membership(owner_id),
             "view_format": "html",
             "state": hosted.state,
             "html": "",
@@ -208,10 +225,10 @@ def _canonical_marketplace_host(
         "license_class": entry.license_class,
         "already_hosted": hosted.already_hosted,
         "source_format": hosted.source_format,
-        "library_document_ids": _s().list_membership(owner_id),
+        "library_document_ids": store.list_membership(owner_id),
         "view_format": "html",
         "state": hosted.state,
-        "html": project_hosted_book_html(hosted.document_id, store=_s()),
+        "html": project_hosted_book_html(hosted.document_id, store=store),
         "body_preview": hosted.body_text[:280],
         "non_viewable_reason": None,
         "document_loaded_event_id": hosted.document_loaded_event_id,
@@ -260,12 +277,13 @@ def catalog_honesty_payload(entries: list[dict[str, Any]]) -> dict[str, Any]:
 
 @marketplace_host_router.get("/catalog")
 def get_catalog(
+    request: Request,
     free_only: bool = False,
     subject: str | None = None,
     source: str | None = None,
     include_html: bool = True,
 ) -> dict[str, Any]:
-    cat = _c()
+    cat = _c(request)
     # Empty search returns all entries (catalog.search contract).
     entries = []
     for e in cat.search(""):
@@ -341,6 +359,7 @@ def _maybe_record_marketplace_host_usage(
     title: str,
     license_class: str,
     already_hosted: bool,
+    catalog: Catalog,
 ) -> dict[str, Any] | None:
     """Residual (ma): feed marketplace host → Antiek-bench book_qa usage.
 
@@ -356,7 +375,7 @@ def _maybe_record_marketplace_host_usage(
         store = get_bench_usage_store(create_if_missing=True)
         if store is None:
             return None
-        entry = _c().get(book_id)
+        entry = catalog.get(book_id)
         subjects = ",".join(entry.subjects) if entry and entry.subjects else ""
         source_name = (entry.source if entry else "") or "unknown"
         hint = (
@@ -387,6 +406,8 @@ def _maybe_record_marketplace_host_usage(
 @marketplace_host_router.post("/host")
 def post_host(body: HostBody, request: Request) -> dict[str, Any]:
     owner_id = _authorized_owner(request, body.owner_id)
+    store = _s(request)
+    catalog = _c(request)
     content = _decode_content_b64(body.content_b64) if body.content_b64 else None
     try:
         out = _canonical_marketplace_host(
@@ -394,6 +415,8 @@ def post_host(body: HostBody, request: Request) -> dict[str, Any]:
             book_id=body.book_id,
             content=content,
             receipt_id=body.receipt_id,
+            store=store,
+            catalog=catalog,
         )
     except KeyError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
@@ -418,6 +441,7 @@ def post_host(body: HostBody, request: Request) -> dict[str, Any]:
             title=str(out["title"]),
             license_class=str(out["license_class"]),
             already_hosted=bool(out["already_hosted"]),
+            catalog=catalog,
         )
         if out["state"] == "ready"
         else None
@@ -439,6 +463,8 @@ def post_purchase_and_host(body: PurchaseHostBody, request: Request) -> dict[str
         source_format=body.source_format,
         note=body.note,
         seed_twins=body.seed_twins,
+        store=_s(request),
+        catalog=_c(request),
     )
 
 
@@ -451,14 +477,16 @@ def _purchase_host_response(
     source_format: str | None,
     note: str,
     seed_twins: bool,
+    store: HostStore,
+    catalog: Catalog,
 ) -> dict[str, Any]:
     try:
-        entry = _c().get(book_id)
+        entry = catalog.get(book_id)
         if entry is None:
             raise KeyError(f"unknown book_id: {book_id}")
         if entry.license_class != "purchased":
             raise ValueError("purchase-and-host requires a purchased catalog entry")
-        receipt = ManualPurchaseReceipt(store=_s()).record_receipt(
+        receipt = ManualPurchaseReceipt(store=store).record_receipt(
             book_id=book_id,
             owner_id=owner_id,
             opaque_reference=opaque_reference,
@@ -469,6 +497,8 @@ def _purchase_host_response(
             book_id=book_id,
             content=content,
             receipt_id=receipt.receipt_id,
+            store=store,
+            catalog=catalog,
             source_format=source_format,
         )
     except KeyError as e:
@@ -495,6 +525,7 @@ def _purchase_host_response(
             title=str(out["title"]),
             license_class=str(out["license_class"]),
             already_hosted=bool(out["already_hosted"]),
+            catalog=catalog,
         )
         if out["state"] == "ready"
         else None
@@ -534,13 +565,15 @@ async def post_purchase_and_host_file(
         source_format=source_format,
         note=bounded_note,
         seed_twins=seed_twins,
+        store=_s(request),
+        catalog=_c(request),
     )
 
 
 @marketplace_host_router.get("/library/{owner_id}")
 def get_library(owner_id: str, request: Request) -> dict[str, Any]:
     owner_id = _authorized_owner(request, owner_id)
-    store = _s()
+    store = _s(request)
     from substrate.marketplace_host import AccountLibrary
 
     if owner_id == "__operator__":
@@ -583,7 +616,7 @@ def get_library(owner_id: str, request: Request) -> dict[str, Any]:
 @marketplace_host_router.get("/documents/{document_id}/html")
 def get_document_html(document_id: str, request: Request) -> dict[str, Any]:
     """Residual (dp): return HTML body plus title/license for library rehydrate."""
-    store = _s()
+    store = _s(request)
     owner_id = _request_owner(request)
     doc = store.get_document(document_id)
     if doc is None:
@@ -615,7 +648,18 @@ def get_document_html(document_id: str, request: Request) -> dict[str, Any]:
     }
 
 
-def register_marketplace_host_routes(app: FastAPI) -> None:
+def register_marketplace_host_routes(
+    app: FastAPI,
+    *,
+    store: HostStore | None = None,
+    catalog: Catalog | None = None,
+) -> None:
+    if store is not None and not isinstance(store, HostStore):
+        raise TypeError("marketplace host store does not satisfy HostStore")
+    if catalog is not None and not isinstance(catalog, Catalog):
+        raise TypeError("marketplace catalog is invalid")
+    app.state.marketplace_host_store = store if store is not None else _s()
+    app.state.marketplace_host_catalog = catalog if catalog is not None else _c()
     app.include_router(marketplace_host_router)
 
 

@@ -1369,6 +1369,7 @@ def create_app(
     register_providers: bool = True,
     midnight_oil_dependencies: Any = None,
     enable_midnight_oil: bool = False,
+    marketplace_host_store: Any = None,
 ) -> FastAPI:
     """Create the FastAPI app. Pass ``broadcaster`` for tests that want to
     inspect subscriber state; production calls ``create_app()`` and gets
@@ -1743,8 +1744,15 @@ def create_app(
     elif midnight_oil_dependencies is not None:
         raise RuntimeError("Midnight Oil dependencies supplied while the feature is disabled")
     # Marketplace host-into-account — catalog → host → HTML library view.
+    from substrate.marketplace_host.library import HostStore
+
     from .marketplace_host_routes import register_marketplace_host_routes
-    register_marketplace_host_routes(app)
+
+    if marketplace_host_store is not None and not isinstance(
+        marketplace_host_store, HostStore
+    ):
+        raise RuntimeError("marketplace host store does not satisfy HostStore")
+    register_marketplace_host_routes(app, store=marketplace_host_store)
     # Shared owner-bound ingest for Wrestle/private uploads; Marketplace wraps
     # the same service only after its entitlement gate.
     from .hosted_document_routes import register_hosted_document_routes

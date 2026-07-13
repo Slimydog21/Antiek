@@ -14,6 +14,7 @@ from acquisition.documents import ExtractedDocument
 from services.hosted_documents import HostAuthorization, ingest_hosted_document
 from substrate.event_log import emit_typed, trajectory
 from substrate.marketplace_host import project_hosted_book_html
+from substrate.marketplace_host.library import HostStore
 from substrate.schemas import DocumentLoadedPayload
 
 from .marketplace_host_routes import get_marketplace_host_store
@@ -90,8 +91,9 @@ def _projection_hash(html: str) -> str:
     return "sha256:" + hashlib.sha256(html.encode()).hexdigest()
 
 
-def _acknowledge_projection(document_id: str, html: str) -> dict[str, Any]:
-    store = get_marketplace_host_store()
+def _acknowledge_projection(
+    document_id: str, html: str, *, store: HostStore
+) -> dict[str, Any]:
     doc = store.get_document(document_id)
     if doc is None:
         raise RuntimeError("hosted document disappeared before projection acknowledgement")
@@ -138,7 +140,7 @@ def _receipt_fields(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _payload(result: Any) -> dict[str, Any]:
+def _payload(result: Any, *, store: HostStore) -> dict[str, Any]:
     out = {
         "document_id": result.document_id,
         "owner_id": result.owner_id,
@@ -157,12 +159,12 @@ def _payload(result: Any) -> dict[str, Any]:
     if result.state == "ready":
         html = project_hosted_book_html(
             result.document_id,
-            store=get_marketplace_host_store(),
+            store=store,
         )
         out["html"] = html
-        doc = _acknowledge_projection(result.document_id, html)
+        doc = _acknowledge_projection(result.document_id, html, store=store)
     else:
-        doc = get_marketplace_host_store().get_document(result.document_id) or {}
+        doc = store.get_document(result.document_id) or {}
     out.update(_receipt_fields(doc))
     return out
 
@@ -170,6 +172,7 @@ def _payload(result: Any) -> dict[str, Any]:
 @hosted_document_router.post("/ingest")
 def post_hosted_document(body: HostedDocumentIngestBody, request: Request) -> dict[str, Any]:
     owner_id = _request_owner(request)
+    store = get_marketplace_host_store(request)
     try:
         raw = base64.b64decode(body.content_b64, validate=True)
     except (binascii.Error, ValueError) as exc:
@@ -179,7 +182,7 @@ def post_hosted_document(body: HostedDocumentIngestBody, request: Request) -> di
             owner_id=owner_id,
             raw=raw,
             source_format=body.source_format,
-            store=get_marketplace_host_store(),
+            store=store,
             authorization=HostAuthorization("private_upload"),
             emit_document_loaded=_emit_document_loaded,
             investigation_id=body.investigation_id,
@@ -191,7 +194,7 @@ def post_hosted_document(body: HostedDocumentIngestBody, request: Request) -> di
     except (KeyError, RuntimeError, TypeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     try:
-        return _payload(result)
+        return _payload(result, store=store)
     except (KeyError, RuntimeError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
 
@@ -199,7 +202,7 @@ def post_hosted_document(body: HostedDocumentIngestBody, request: Request) -> di
 @hosted_document_router.get("/{document_id}/html")
 def get_hosted_document_html(document_id: str, request: Request) -> dict[str, Any]:
     owner_id = _request_owner(request)
-    store = get_marketplace_host_store()
+    store = get_marketplace_host_store(request)
     doc = store.get_document(document_id)
     if doc is None:
         raise HTTPException(status_code=404, detail="hosted document was not found")
@@ -212,7 +215,7 @@ def get_hosted_document_html(document_id: str, request: Request) -> dict[str, An
         )
     try:
         html = project_hosted_book_html(document_id, store=store)
-        doc = _acknowledge_projection(document_id, html)
+        doc = _acknowledge_projection(document_id, html, store=store)
     except (KeyError, RuntimeError, TypeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {
