@@ -17,7 +17,7 @@
  * not reach for Daytona.
  */
 
-import { useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useRef, useState, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
@@ -30,6 +30,7 @@ import {
   getPlan,
   launchPlan,
   steerResearch,
+  TERMINAL_STATES,
   type PlanTree,
   type SteerKind,
 } from "../../api/research";
@@ -43,6 +44,11 @@ import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
 import { useWernerResearchReactions } from "./useWernerResearchReactions";
 import { emitWernerExperience, notifyResearchStarted } from "../../werner";
+import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
+import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
+import { deriveResearchWaitArcadeMode } from "./researchWaitArcadePolicy";
+
+const LazyResearchWaitArcade = lazy(() => import("./ResearchWaitArcade"));
 
 interface PlanState {
   rootNodeId: string;
@@ -148,6 +154,7 @@ function Workspace() {
         <Monitor
           key={`${sessionId}:${sessionGeneration}`}
           sessionId={sessionId}
+          sessionGeneration={sessionGeneration}
           busy={busy}
         />
       )}
@@ -182,7 +189,11 @@ function ComposeBar({
   );
 }
 
-function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
+export function Monitor({ sessionId, sessionGeneration, busy }: {
+  sessionId: string;
+  sessionGeneration: number;
+  busy: boolean;
+}) {
   const session = useResearchSession(sessionId);
   useWernerResearchReactions({
     sessionId,
@@ -204,6 +215,7 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   // uses. Non-breaking: the canvas keeps rendering underneath; the detail is an
   // overlay, dismissed back to the canvas.
   const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
+  const monitorHeadingRef = useRef<HTMLHeadingElement | null>(null);
 
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
@@ -267,7 +279,7 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
-        <h2 className="text-sm font-semibold text-ink dark:text-bright">
+        <h2 ref={monitorHeadingRef} tabIndex={-1} className="text-sm font-semibold text-ink dark:text-bright">
           {session.researches.length} researches
           {!session.allTerminal && session.researches.length > 0 && (
             <span className="ml-2 text-[11px] font-normal text-aurora">live</span>
@@ -301,6 +313,17 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
       {session.error && (
         <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
       )}
+      <ResearchWaitArcadeGate
+        enabled={wernerResearchWaitArcadeEnabled}
+        episodeId={`${sessionId}:${sessionGeneration}`}
+        hasAuthoritativeSnapshot={!session.loading}
+        researchCount={session.researches.length}
+        activeResearchCount={session.researches.filter(
+          (research) => !TERMINAL_STATES.has(research.state),
+        ).length}
+        allTerminal={session.allTerminal}
+        returnFocusRef={monitorHeadingRef}
+      />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {session.researches.map((r) => (
           <ResearchPanel
@@ -313,5 +336,49 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
         ))}
       </div>
     </div>
+  );
+}
+
+export interface ResearchWaitArcadeGateProps {
+  enabled: boolean;
+  episodeId: string;
+  hasAuthoritativeSnapshot: boolean;
+  researchCount: number;
+  activeResearchCount: number;
+  allTerminal: boolean;
+  returnFocusRef: RefObject<HTMLElement | null>;
+}
+
+/** Disabled and ineligible sessions never render React.lazy. */
+export function ResearchWaitArcadeGate({
+  enabled,
+  episodeId,
+  hasAuthoritativeSnapshot,
+  researchCount,
+  activeResearchCount,
+  allTerminal,
+  returnFocusRef,
+}: ResearchWaitArcadeGateProps) {
+  const reducedMotion = usePrefersReducedMotion();
+  const eligible = activeResearchCount > 0 && deriveResearchWaitArcadeMode({
+    featureEnabled: enabled,
+    hasAuthoritativeSnapshot,
+    researchCount,
+    allTerminal,
+    reducedMotion,
+    offerReady: false,
+    optedIn: false,
+  }) !== "hidden";
+
+  if (!eligible) return null;
+  return (
+    <Suspense fallback={null}>
+      <LazyResearchWaitArcade
+        key={episodeId}
+        episodeId={episodeId}
+        activeResearchCount={activeResearchCount}
+        returnFocusRef={returnFocusRef}
+      />
+    </Suspense>
   );
 }
