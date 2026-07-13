@@ -202,6 +202,20 @@ export interface TraceTarget {
   detail: string | null;
 }
 
+export function traceReaderPath(
+  target: TraceTarget,
+  returnWriteId?: string | null,
+): string | null {
+  if (!target.full_text_allowed || !target.document_id) return null;
+  const params = new URLSearchParams();
+  const primaryChunk = target.chunk_ids[0]?.trim();
+  if (primaryChunk) params.set("chunk", primaryChunk);
+  const returnId = returnWriteId?.trim();
+  if (returnId) params.set("return_write", returnId);
+  const query = params.toString();
+  return `/read/${encodeURIComponent(target.document_id)}${query ? `?${query}` : ""}`;
+}
+
 /** Resolve a placed block's trace target (the source the citation chip
  * opens). Honest about gating: `full_text_allowed=false` for a gated source
  * (§9.0 no-leak). The shared reader that opens it is DRW SPR-10. */

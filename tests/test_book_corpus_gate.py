@@ -697,6 +697,98 @@ def test_api_full_text_unknown_404(db, client):
     assert client.get("/books/doc-nope/full-text").status_code == 404
 
 
+def test_api_chunk_anchor_resolves_only_for_servable_owning_book(db, client):
+    _insert_book(db, "doc-anchor")
+    con = connect_write(db, purpose="anchor-seed")
+    try:
+        bingest.register_book(
+            con,
+            document_id="doc-anchor",
+            content_class="public_domain",
+            license_basis="public domain",
+        )
+        chunk_id = con.execute(
+            "SELECT chunk_id FROM chunks WHERE document_id = 'doc-anchor'"
+        ).fetchone()[0]
+        con.execute(
+            "UPDATE chunks SET section_path = 'Page 3' WHERE chunk_id = ?",
+            [chunk_id],
+        )
+    finally:
+        con.close()
+
+    body = client.get(f"/books/doc-anchor/chunk-anchors/{chunk_id}").json()
+    assert body == {
+        "document_id": "doc-anchor",
+        "chunk_id": chunk_id,
+        "page_index": 2,
+        "page_resolved": True,
+        "reason": "page_resolved",
+    }
+
+
+def test_api_chunk_anchor_is_honest_when_page_unresolved(db, client):
+    _insert_book(db, "doc-anchor-chapter")
+    con = connect_write(db, purpose="anchor-unresolved")
+    try:
+        bingest.register_book(
+            con,
+            document_id="doc-anchor-chapter",
+            content_class="public_domain",
+            license_basis="public domain",
+        )
+        chunk_id = con.execute(
+            "SELECT chunk_id FROM chunks WHERE document_id = 'doc-anchor-chapter'"
+        ).fetchone()[0]
+        con.execute(
+            "UPDATE chunks SET section_path = 'Chapter Four' WHERE chunk_id = ?",
+            [chunk_id],
+        )
+    finally:
+        con.close()
+
+    body = client.get(f"/books/doc-anchor-chapter/chunk-anchors/{chunk_id}").json()
+    assert body["page_index"] is None
+    assert body["page_resolved"] is False
+    assert body["reason"] == "page_not_resolved"
+
+
+def test_api_chunk_anchor_rejects_wrong_document_and_gated_body(db, client):
+    _insert_book(db, "doc-anchor-a")
+    _insert_book(db, "doc-anchor-b", with_chunk=False)
+    con = connect_write(db, purpose="anchor-boundary")
+    try:
+        bingest.register_book(
+            con, document_id="doc-anchor-a", content_class="public_domain",
+        )
+        bingest.register_book(
+            con,
+            document_id="doc-anchor-b",
+            content_class="restricted_pending_opt_in",
+        )
+        chunk_a = con.execute(
+            "SELECT chunk_id FROM chunks WHERE document_id = 'doc-anchor-a'"
+        ).fetchone()[0]
+        chunk_b = insert_chunk(
+            con,
+            document_id="doc-anchor-b",
+            chunk_index=0,
+            text="distinct gated chunk body",
+            token_count=4,
+            embedding=StubEmbedding().encode("distinct gated chunk body"),
+        )
+    finally:
+        con.close()
+
+    assert client.get(
+        f"/books/doc-anchor-a/chunk-anchors/{chunk_b}"
+    ).status_code == 404
+    gated = client.get(f"/books/doc-anchor-b/chunk-anchors/{chunk_b}")
+    assert gated.status_code == 403
+    assert "chunk body text" not in gated.text
+    assert chunk_a != chunk_b
+
+
 def _insert_arxiv_t1(db_path, document_id, *, arxiv_id, license_uri):
     """Insert a servable arXiv doc (CC-BY / T1) the way the OAI persist path
     stamps it — content_class ``source_declared_open`` (servable) plus a

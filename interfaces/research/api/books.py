@@ -314,6 +314,14 @@ class FullTextResponse(BaseModel):
     license: str | None = None
 
 
+class BookChunkAnchorResponse(BaseModel):
+    document_id: str
+    chunk_id: str
+    page_index: int | None
+    page_resolved: bool
+    reason: str
+
+
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
 
 
@@ -590,6 +598,44 @@ def register_book_routes(app: FastAPI) -> None:
             ad_eligible=result.ad_eligible,
             canonical_url=result.canonical_url,
             license=result.license,
+        )
+
+    @app.get(
+        "/books/{document_id}/chunk-anchors/{chunk_id}",
+        response_model=BookChunkAnchorResponse,
+        tags=["books"],
+    )
+    async def get_book_chunk_anchor(
+        document_id: str,
+        chunk_id: str,
+    ) -> BookChunkAnchorResponse:
+        from runtime.db_lock import connect_read
+        from substrate.books.page_anchor import page_index_from_section_path
+
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            served = serve_full_text_guarded(con, document_id)
+            if not served.found:
+                raise HTTPException(status_code=404, detail="book_not_found")
+            if not served.servable or served.full_text is None:
+                raise HTTPException(status_code=403, detail="book_body_not_servable")
+            row = con.execute(
+                "SELECT section_path FROM chunks "
+                "WHERE chunk_id = ? AND document_id = ?",
+                [chunk_id, document_id],
+            ).fetchone()
+        finally:
+            con.close()
+        if row is None:
+            raise HTTPException(status_code=404, detail="chunk_not_in_book")
+        page_index = page_index_from_section_path(row[0])
+        return BookChunkAnchorResponse(
+            document_id=document_id,
+            chunk_id=chunk_id,
+            page_index=page_index,
+            page_resolved=page_index is not None,
+            reason="page_resolved" if page_index is not None else "page_not_resolved",
         )
 
     @app.post(

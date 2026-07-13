@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { LemonButton, LemonTag } from "../../components/lemon";
 import type { BookDetail, BookSummary, FullTextResponse } from "../../api/books";
-import { getBook, getBookFullText, listBooks, servabilityLabel } from "../../api/books";
+import {
+  getBook,
+  getBookChunkAnchor,
+  getBookFullText,
+  listBooks,
+  servabilityLabel,
+} from "../../api/books";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type {
@@ -43,6 +49,9 @@ import { emitSourceRead, isRead } from "./sourceRead";
 export default function BookReader() {
   const { documentId = "" } = useParams<{ documentId: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const traceChunkId = (searchParams.get("chunk") ?? "").trim();
+  const returnWriteId = (searchParams.get("return_write") ?? "").trim();
 
   const [book, setBook] = useState<BookDetail | null>(null);
   const [body, setBody] = useState<FullTextResponse | null>(null);
@@ -86,6 +95,45 @@ export default function BookReader() {
     [body],
   );
   const { pageIndex, setPageIndex } = usePosition(documentId, pages.length);
+  const [traceLanding, setTraceLanding] = useState<
+    | { status: "resolved"; pageNumber: number }
+    | { status: "unresolved" }
+    | null
+  >(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!traceChunkId || !body || pages.length === 0) {
+      setTraceLanding(null);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void getBookChunkAnchor(documentId, traceChunkId)
+      .then((anchor) => {
+        if (cancelled) return;
+        if (anchor.page_resolved && anchor.page_index !== null) {
+          // Chunk anchors are evidence locators, so clamping would fabricate a
+          // landing when extraction metadata and the served body disagree.
+          const citedPageNumber = anchor.page_index + 1;
+          const window = pages.findIndex(
+            (page) => page.pageNumber === citedPageNumber,
+          );
+          if (window >= 0) {
+            setPageIndex(window);
+            setTraceLanding({ status: "resolved", pageNumber: citedPageNumber });
+            return;
+          }
+        }
+        setTraceLanding({ status: "unresolved" });
+      })
+      .catch(() => {
+        if (!cancelled) setTraceLanding({ status: "unresolved" });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [body, documentId, pages, setPageIndex, traceChunkId]);
 
   // Citation → page jump (M2). A talk-to-book / search citation carries a
   // resolved 0-based page; map it to the window index and move the reader.
@@ -382,6 +430,28 @@ export default function BookReader() {
               {label}
             </LemonTag>
           </header>
+
+          {(traceLanding || returnWriteId) && (
+            <div className="flex items-center justify-between gap-3 rounded-md border border-ocean/30 bg-ocean/5 px-3 py-2 text-[12px] text-ink dark:text-bright">
+              <span>
+                {traceLanding?.status === "resolved"
+                  ? `Opened the cited source on page ${traceLanding.pageNumber}.`
+                  : traceLanding?.status === "unresolved"
+                    ? "Opened the cited source; its exact page could not be resolved."
+                    : "Opened from Write."}
+              </span>
+              {returnWriteId && (
+                <LemonButton
+                  type="button"
+                  variant="tertiary"
+                  size="sm"
+                  onClick={() => navigate(`/write/${encodeURIComponent(returnWriteId)}`)}
+                >
+                  ← Back to writing
+                </LemonButton>
+              )}
+            </div>
+          )}
 
           {isArxivLinkBack ? (
             /* arXiv T2/T3 — the gated / unknown-rights tiers. Antiek hosts NO

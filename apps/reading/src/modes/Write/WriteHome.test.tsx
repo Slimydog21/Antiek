@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import { emitTraceIntent } from "./Editor/traceIntent";
 import type { TraceTarget } from "./writeApi";
@@ -335,9 +335,19 @@ function mountAt(path: string) {
       <Routes>
         <Route path="/write" element={<WriteHome />} />
         <Route path="/write/:deliverableId" element={<WriteHome />} />
-        <Route path="/read/:documentId" element={<div>READER</div>} />
+        <Route path="/read/:documentId" element={<ReaderProbe />} />
       </Routes>
     </MemoryRouter>,
+  );
+}
+
+function ReaderProbe() {
+  const location = useLocation();
+  return (
+    <>
+      <div>READER</div>
+      <div data-testid="reader-location">{location.pathname + location.search}</div>
+    </>
   );
 }
 
@@ -1504,6 +1514,9 @@ describe("WriteHome — the re-homed door", () => {
     });
     // The honest trip: a servable source opens the reader.
     await waitFor(() => expect(screen.getByText("READER")).toBeTruthy());
+    expect(screen.getByTestId("reader-location").textContent).toBe(
+      "/read/doc-1?chunk=c1",
+    );
   });
 
   it("falls back honestly (no dead page) when the source is gated/unreachable", async () => {

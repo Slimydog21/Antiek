@@ -16,7 +16,7 @@ vi.mock("../../lib/api", () => ({
   apiFetch,
 }));
 
-import { moveBlock } from "./writeApi";
+import { moveBlock, traceReaderPath, type TraceTarget } from "./writeApi";
 
 const COMMAND_1 = "00000000-0000-4000-8000-000000000001";
 const COMMAND_2 = "00000000-0000-4000-8000-000000000002";
@@ -84,5 +84,31 @@ describe("moveBlock convergence", () => {
 
     expect(apiFetch).toHaveBeenCalledTimes(2);
     expect(commandKeys()).toEqual([COMMAND_1, COMMAND_2]);
+  });
+});
+
+describe("traceReaderPath", () => {
+  const target: TraceTarget = {
+    kind: "source_span",
+    full_text_allowed: true,
+    document_id: "doc/one",
+    document_title: "Source",
+    chunk_ids: ["chunk primary", "chunk-secondary"],
+    servability_status: "public_domain",
+    detail: null,
+  };
+
+  it("carries only the primary chunk and a closed Write return id", () => {
+    expect(traceReaderPath(target, "dlv/one")).toBe(
+      "/read/doc%2Fone?chunk=chunk+primary&return_write=dlv%2Fone",
+    );
+  });
+
+  it("opens the document root when no chunk or return id exists", () => {
+    expect(traceReaderPath({ ...target, chunk_ids: [] })).toBe("/read/doc%2Fone");
+  });
+
+  it("refuses a non-servable target", () => {
+    expect(traceReaderPath({ ...target, full_text_allowed: false }, "dlv-1")).toBeNull();
   });
 });

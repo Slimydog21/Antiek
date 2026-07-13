@@ -10,6 +10,7 @@ import { useReaderImpressions } from "./useReaderImpressions";
 const {
   getBookMock,
   getFullTextMock,
+  getBookChunkAnchorMock,
   listBooksMock,
   spinResearchMock,
   recordAdImpressionsMock,
@@ -24,6 +25,7 @@ const {
 } = vi.hoisted(() => ({
   getBookMock: vi.fn<(...args: unknown[]) => unknown>(),
   getFullTextMock: vi.fn<(...args: unknown[]) => unknown>(),
+  getBookChunkAnchorMock: vi.fn<(...args: unknown[]) => unknown>(),
   listBooksMock: vi.fn<(...args: unknown[]) => unknown>(),
   spinResearchMock: vi.fn<(...args: unknown[]) => unknown>(),
   recordAdImpressionsMock: vi.fn<typeof import("../../api/books").recordAdImpressions>().mockResolvedValue(undefined),
@@ -84,6 +86,7 @@ vi.mock("../../api/books", async (orig) => {
     ...actual,
     getBook: getBookMock,
     getBookFullText: getFullTextMock,
+    getBookChunkAnchor: getBookChunkAnchorMock,
     listBooks: listBooksMock,
     spinResearch: spinResearchMock,
     recordAdImpressions: recordAdImpressionsMock,
@@ -284,11 +287,11 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
   };
 }
 
-async function renderReader() {
+async function renderReader(path = "/read/doc-1") {
   listBooksMock.mockResolvedValue({ books: [], count: 0 });
   const { default: BookReader } = await import("./index");
   return render(
-    <MemoryRouter initialEntries={["/read/doc-1"]}>
+    <MemoryRouter initialEntries={[path]}>
       <Routes>
         <Route path="/read/:documentId" element={<BookReader />} />
       </Routes>
@@ -301,6 +304,7 @@ describe("BookReader", () => {
     window.sessionStorage.clear();
     getBookMock.mockReset();
     getFullTextMock.mockReset();
+    getBookChunkAnchorMock.mockReset();
     listBooksMock.mockReset();
     navigateMock.mockReset();
     fetchDepthTiersMock.mockReset().mockResolvedValue({
@@ -330,6 +334,78 @@ describe("BookReader", () => {
     expect(screen.getByText(/Page 1 of 2/)).toBeTruthy(); // pager text (matcher spans nodes)
     fireEvent.click(screen.getByRole("button", { name: /Next/ }));
     await waitFor(() => expect(screen.getByText("The second page.")).toBeTruthy());
+  });
+
+  it("lands a Write trace on its resolved cited page and returns locally", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    getBookChunkAnchorMock.mockResolvedValue({
+      document_id: "doc-1",
+      chunk_id: "chunk-2",
+      page_index: 1,
+      page_resolved: true,
+      reason: "page_resolved",
+    });
+    await renderReader("/read/doc-1?chunk=chunk-2&return_write=dlv%2Fone");
+
+    expect(await screen.findByText("The second page.")).toBeTruthy();
+    expect(screen.getByText(/opened the cited source on page 2/i)).toBeTruthy();
+    await fireEvent.click(screen.getByRole("button", { name: /back to writing/i }));
+    expect(navigateMock).toHaveBeenCalledWith("/write/dlv%2Fone");
+  });
+
+  it("opens an unresolved cited chunk without inventing a page", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    getBookChunkAnchorMock.mockResolvedValue({
+      document_id: "doc-1",
+      chunk_id: "chunk-chapter",
+      page_index: null,
+      page_resolved: false,
+      reason: "page_not_resolved",
+    });
+    await renderReader("/read/doc-1?chunk=chunk-chapter");
+
+    expect(await screen.findByText("The opening of the book.")).toBeTruthy();
+    expect(screen.getByText(/exact page could not be resolved/i)).toBeTruthy();
+    expect(screen.getByText(/Page 1 of 2/)).toBeTruthy();
+  });
+
+  it("rejects a resolved anchor absent from the served body instead of clamping", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    getBookChunkAnchorMock.mockResolvedValue({
+      document_id: "doc-1",
+      chunk_id: "chunk-page-3",
+      page_index: 2,
+      page_resolved: true,
+      reason: "page_resolved",
+    });
+    await renderReader("/read/doc-1?chunk=chunk-page-3");
+
+    expect(await screen.findByText("The opening of the book.")).toBeTruthy();
+    expect(screen.getByText(/exact page could not be resolved/i)).toBeTruthy();
+    expect(screen.getByText(/Page 1 of 2/)).toBeTruthy();
+    expect(screen.queryByText(/opened the cited source on page 2/i)).toBeNull();
+  });
+
+  it("labels a non-contiguous source marker by page number, not window index", async () => {
+    getBookMock.mockResolvedValue(makeDetail({ page_count: 1 }));
+    getFullTextMock.mockResolvedValue(makeBody({
+      full_text: "## Page 3\n\nThe cited appendix page.",
+    }));
+    getBookChunkAnchorMock.mockResolvedValue({
+      document_id: "doc-1",
+      chunk_id: "chunk-page-3",
+      page_index: 2,
+      page_resolved: true,
+      reason: "page_resolved",
+    });
+    await renderReader("/read/doc-1?chunk=chunk-page-3");
+
+    expect(await screen.findByText("The cited appendix page.")).toBeTruthy();
+    expect(screen.getByText(/opened the cited source on page 3/i)).toBeTruthy();
+    expect(screen.queryByText(/opened the cited source on page 1/i)).toBeNull();
   });
 
   it("shows the preview banner and snippet for a gated book", async () => {

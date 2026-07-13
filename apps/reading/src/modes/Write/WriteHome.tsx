@@ -54,7 +54,7 @@ import {
   prepareHtmlDraftForWrite,
   type HtmlDraftImportPrepared,
 } from "./htmlDraftImport";
-import { getTraceTarget, type RepositoryHit } from "./writeApi";
+import { getTraceTarget, traceReaderPath, type RepositoryHit } from "./writeApi";
 import { composeDriverPromptText } from "../../lib/driverPromptText";
 
 /**
@@ -373,8 +373,9 @@ export default function WriteHome() {
       void (async () => {
         try {
           const target = await getTraceTarget(intent.outlineBlockId!);
-          if (target.full_text_allowed && target.document_id) {
-            navigate(`/read/${encodeURIComponent(target.document_id)}`);
+          const readerPath = traceReaderPath(target, deliverableId);
+          if (readerPath) {
+            navigate(readerPath);
           } else {
             // Honest fallback (§9.0): gated/unreachable source — say so, don't
             // open a dead page.
@@ -388,7 +389,7 @@ export default function WriteHome() {
         }
       })();
     });
-  }, [navigate]);
+  }, [deliverableId, navigate]);
 
   // The "start a piece" action — the obvious way to begin (WX-01). SPR-09 M1:
   // it now runs title → project-type → connect-to-research, so a piece is

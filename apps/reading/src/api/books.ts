@@ -72,6 +72,14 @@ export interface FullTextResponse {
   license: string | null;
 }
 
+export interface BookChunkAnchorResponse {
+  document_id: string;
+  chunk_id: string;
+  page_index: number | null;
+  page_resolved: boolean;
+  reason: "page_resolved" | "page_not_resolved";
+}
+
 export type CorpusStatus = "servable" | "gated" | "all";
 
 /** List the corpus. `servable` (default) returns only full-text-servable
@@ -99,6 +107,17 @@ export async function getBookFullText(documentId: string): Promise<FullTextRespo
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}/full-text: HTTP ${resp.status}`);
   return (await resp.json()) as FullTextResponse;
+}
+
+export async function getBookChunkAnchor(
+  documentId: string,
+  chunkId: string,
+): Promise<BookChunkAnchorResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/chunk-anchors/${encodeURIComponent(chunkId)}`,
+  );
+  if (!resp.ok) throw new Error(`GET /books/{id}/chunk-anchors/{chunk}: HTTP ${resp.status}`);
+  return (await resp.json()) as BookChunkAnchorResponse;
 }
 
 export interface TranscribeResponse {
