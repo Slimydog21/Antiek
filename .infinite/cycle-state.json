@@ -1,20 +1,20 @@
 {
-  "cycle": 26,
+  "cycle": 27,
   "phase": "RECORD",
-  "subgoal": "Implement the frozen OverlapCheckerV1 and atomic encrypted compliance checkpoint on top of the accepted fixture-only capability-v2/request-core/receipt-v5/envelope-v2 authority chain",
+  "subgoal": "Sharpen the non-executable OverlapCheckerV1 authority, then re-derive the executable successor corpus and attributed normalizer/checker before any encrypted checkpoint",
   "lanes": [
-    {"id": "11b-e-fable-architecture", "engine": "claude-fable-5", "worktree": ".", "status": "complete-grounded"},
-    {"id": "11b-e-grok-compliance", "engine": "grok-composer-2.5", "worktree": ".", "status": "gap-http-402"},
-    {"id": "11b-e-mimo-archaeology", "engine": "mimo-v2.5-pro", "worktree": ".", "status": "complete-grounded-protocol-violation-removed-generated-file"},
-    {"id": "11b-e-codex-architecture", "engine": "gpt-5.6-sol", "worktree": ".", "status": "complete-grounded"},
-    {"id": "11b-e-glm-ultracode", "engine": "glm-cc-ultracode", "worktree": ".", "status": "gap-session-unavailable"}
+    {"id": "11b-e-fable-checker", "engine": "claude-fable-5", "worktree": ".", "status": "complete-grounded-found-five-row-defect"},
+    {"id": "11b-e-grok-checker", "engine": "grok-composer-2.5", "worktree": ".", "status": "gap-http-402"},
+    {"id": "11b-e-mimo-checker", "engine": "mimo-v2.5-pro", "worktree": ".", "status": "complete-grounded-plan-partially-rejected"},
+    {"id": "11b-e-codex-checker", "engine": "gpt-5.6-sol", "worktree": ".", "status": "complete-grounded-strongest-authority-critique"},
+    {"id": "11b-e-glm-ultracode-checker", "engine": "glm-cc-ultracode", "worktree": ".", "status": "gap-empty-cwd-ungrounded"}
   ],
   "engineHealth": {
-    "grok": "probe ok; Cycle 25 lane failed HTTP 402 balance exhausted",
-    "mimo": "probe ok; Cycle 25 output rejected as ungrounded repository archaeology",
-    "claude": "probe ok; Cycle 25 Fable lane returned no usable output",
-    "codex": "probe ok; Cycle 25 GPT-5.6-sol supplied grounded reader/receipt/dispatch critique",
-    "glm-cc": "probe ok; Cycle 25 ultracode output rejected for inspecting a different JavaScript surface",
+    "grok": "probe ok; Cycle 27 lane failed HTTP 402 balance exhausted",
+    "mimo": "probe ok; Cycle 27 returned grounded plan but proposed incorrect per-scalar NFKC provenance and was only partially accepted",
+    "claude": "probe ok; Cycle 27 Fable independently proved the five-row repetition oracle incoherent",
+    "codex": "probe ok; Cycle 27 GPT-5.6-sol supplied the strongest grounded canonicalization/provenance/corpus critique",
+    "glm-cc": "probe ok; Cycle 27 ultracode launched outside the worktree and its ungrounded report was rejected",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -35,7 +35,8 @@
     {"cycle": 23, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
     {"cycle": 24, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
     {"cycle": 25, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
-    {"cycle": 26, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false}
+    {"cycle": 26, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false},
+    {"cycle": 27, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false}
   ],
-  "updatedAt": "2026-07-13T13:45:41Z"
+  "updatedAt": "2026-07-13T14:44:19Z"
 }

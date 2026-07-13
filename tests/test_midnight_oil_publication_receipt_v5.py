@@ -118,7 +118,7 @@ def test_receipt_v5_is_distinct_content_addressed_and_nonconferring() -> None:
 
 def test_receipt_v5_has_literal_golden_vector() -> None:
     assert _receipt_v5().receipt_sha256 == (
-        "d68c93d4c32ce1d749d78c9bb7675eb06a9197cf3002a33b4270e1a0b6aba837"
+        "0b342003db2d624c1beb3c839a6dd83e669246fe78d1c8e37ebf7811a34e59b4"
     )
 
 

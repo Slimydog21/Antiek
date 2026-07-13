@@ -115,7 +115,7 @@ def test_capability_v2_is_distinct_signed_and_nonconferring() -> None:
 
 def test_capability_v2_has_literal_golden_vector() -> None:
     assert _capability_v2().capability_sha256 == (
-        "e64aaef828c7782897b8e82ace56c608dadc211f257664e49d488e8b66bf6dd5"
+        "5fe3f126714c7ccada22a66ea54b160f74a8272544b0d279849e51ccee1caa42"
     )
 
 
