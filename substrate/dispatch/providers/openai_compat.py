@@ -45,6 +45,7 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 except ImportError:  # pragma: no cover
     import sys
@@ -54,6 +55,7 @@ except ImportError:  # pragma: no cover
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 
 
@@ -247,6 +249,16 @@ class OpenAICompatProvider:
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
 
+        if (
+            not self._expose_error_body
+            and response_contains_secret(data, api_key)
+        ):
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
+
         try:
             choice = data["choices"][0]
             text = choice["message"]["content"] or ""
@@ -259,6 +271,13 @@ class OpenAICompatProvider:
                 f"{self.name}: unexpected response shape — {e}{detail}",
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
+
+        if not self._expose_error_body and api_key in text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
 
         return RawProviderResponse(
             text=text,

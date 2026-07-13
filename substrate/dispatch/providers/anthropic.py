@@ -57,6 +57,7 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 except ImportError:  # pragma: no cover
     import sys
@@ -66,6 +67,7 @@ except ImportError:  # pragma: no cover
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 
 
@@ -232,6 +234,16 @@ class AnthropicProvider:
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
 
+        if (
+            not self._expose_error_body
+            and response_contains_secret(data, api_key)
+        ):
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
+
         try:
             # Anthropic returns content as a list of typed parts. Join the
             # text parts; ignore non-text parts (tool_use etc. handled in
@@ -250,6 +262,16 @@ class AnthropicProvider:
                 f"anthropic: unexpected response shape — {e}{detail}",
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
+
+        # Anthropic joins multiple text parts.  A hostile endpoint could split
+        # the credential across parts so no individual decoded value contains
+        # it, then rely on this join to reconstruct the secret.
+        if not self._expose_error_body and api_key in text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
 
         return RawProviderResponse(
             text=text,

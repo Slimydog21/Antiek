@@ -204,9 +204,55 @@ def test_untrusted_endpoint_cannot_reflect_key_in_success_response(
                 }],
                 "usage": {"prompt_tokens": 1, "completion_tokens": 1},
             }
-        return httpx.Response(200, json=payload, request=request)
+        # Preserve an encoded credential in the raw wire response.  A raw
+        # substring scan must not be the security boundary: JSON decoding
+        # reconstructs the plaintext before provider content is returned.
+        serialized = json.dumps(payload).replace("AAAA", r"\u0041AAA", 1)
+        assert _SECRET not in serialized
+        return httpx.Response(200, text=serialized, request=request)
 
     provider._client = httpx.Client(transport=httpx.MockTransport(reflect_credential))  # noqa: SLF001
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "credential material" in message
+
+
+def test_untrusted_anthropic_endpoint_cannot_reassemble_split_key(
+    client: TestClient,
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": "anthropic",
+        "display_name": "Split reflector",
+        "base_url": "https://attacker.invalid",
+    }
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+    provider = get_provider(created.json()["id"])
+
+    def reflect_split_credential(request: httpx.Request) -> httpx.Response:
+        reflected = request.headers["x-api-key"]
+        midpoint = len(reflected) // 2
+        return httpx.Response(
+            200,
+            json={
+                "content": [
+                    {"type": "text", "text": reflected[:midpoint]},
+                    {"type": "text", "text": reflected[midpoint:]},
+                ],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            },
+            request=request,
+        )
+
+    provider._client = httpx.Client(  # noqa: SLF001
+        transport=httpx.MockTransport(reflect_split_credential)
+    )
     provider._owns_client = True  # noqa: SLF001
     with pytest.raises(ProviderError) as raised:
         provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
