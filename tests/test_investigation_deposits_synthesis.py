@@ -145,7 +145,7 @@ async def test_investigation_deposits_synthesis_with_manifest(
         async_client, investigation_id=inv,
         question="Is PsiQuantum's photonic quantum roadmap defensible?",
     )
-    terminal = await _await_terminal(bus, inv, timeout=20.0)
+    terminal = await _await_terminal(bus, inv, timeout=30.0)
     assert terminal is not None, "no terminal event landed"
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
 

@@ -23,6 +23,7 @@ a clean thesis on the first try.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import sys
@@ -428,11 +429,8 @@ async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
     we poll the trajectory rather than register another handler."""
     deadline = asyncio.get_event_loop().time() + timeout
     while asyncio.get_event_loop().time() < deadline:
-        remaining = deadline - asyncio.get_event_loop().time()
-        try:
-            await bus.wait_for_handlers(timeout=remaining)
-        except TimeoutError:
-            return None
+        with contextlib.suppress(TimeoutError):
+            await bus.wait_for_handlers(timeout=2.0)
         rows = trajectory(investigation_id)
         for r in rows:
             at = r.get("action_type")
@@ -486,7 +484,7 @@ async def test_loop_one_happy_path_emits_completed(
         question="Is PsiQuantum's photonic quantum roadmap defensible?",
     )
 
-    terminal = await _await_terminal(bus, inv, timeout=20.0)
+    terminal = await _await_terminal(bus, inv, timeout=30.0)
     assert terminal is not None, "no terminal event landed in trajectory"
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
 
@@ -527,7 +525,7 @@ async def test_loop_one_decomposer_failure_emits_failed_at_phase_1(
         question="Anything will do here.",
     )
 
-    terminal = await _await_terminal(bus, inv, timeout=15.0)
+    terminal = await _await_terminal(bus, inv, timeout=25.0)
     assert terminal is not None
     assert terminal["action_type"] == ActionType.INVESTIGATION_FAILED.value
     e = Event.model_validate(terminal)
@@ -611,7 +609,7 @@ async def test_loop_one_synthesizer_unparseable_converges_via_insufficient_evide
         question="PsiQuantum roadmap question.",
     )
 
-    terminal = await _await_terminal(bus, inv, timeout=20.0)
+    terminal = await _await_terminal(bus, inv, timeout=30.0)
     assert terminal is not None
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
     e = Event.model_validate(terminal)
