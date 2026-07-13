@@ -51,8 +51,8 @@ describe("DistillView — first-class insights + questions (M2)", () => {
   it("renders both sections from the graph result", async () => {
     getDistillationMock.mockResolvedValue({
       investigation_id: "inv-1",
-      insights: [insight("i1", "GPUs gate scale.")],
-      questions: [question("q1", "What is the moat?")],
+      insights: [insight("insight/a b", "GPUs gate scale.")],
+      questions: [question("question/c d", "What is the moat?")],
     });
     render(<DistillView investigationId="inv-1" />);
     await waitFor(() => expect(screen.getByText("GPUs gate scale.")).toBeTruthy());
@@ -62,6 +62,16 @@ describe("DistillView — first-class insights + questions (M2)", () => {
     // grounding shown in human terms, never a raw id label.
     expect(screen.getByText("grounded in a source")).toBeTruthy();
     expect(screen.queryByText("doc-1")).toBeNull();
+    expect(
+      screen
+        .getByTestId("distill-open-graph-insight")
+        .getAttribute("href"),
+    ).toBe("/knowledge-graph?node_id=insight%2Fa%20b");
+    expect(
+      screen
+        .getByTestId("distill-open-graph-question")
+        .getAttribute("href"),
+    ).toBe("/knowledge-graph?node_id=question%2Fc%20d");
   });
 });
 

@@ -2110,7 +2110,7 @@ export function TwinNotesPanel({
               return graphNodeIds.map((nodeId, index) => (
                 <a
                   key={nodeId}
-                  href={`/knowledge-graph?q=${encodeURIComponent(nodeId)}`}
+                  href={`/knowledge-graph?node_id=${encodeURIComponent(nodeId)}`}
                   data-testid={`twin-promote-open-graph-${index}`}
                   data-view-format="html"
                   className="underline decoration-sun decoration-2 opacity-90 hover:opacity-100"

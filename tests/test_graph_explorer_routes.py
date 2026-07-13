@@ -87,6 +87,31 @@ def test_graph_explorer_filters_investigation_and_marks_restricted_evidence(
     assert evidence["chunk_text"] == "Private source passage."
 
 
+def test_graph_explorer_resolves_an_exact_node_id_without_label_search(
+    monkeypatch, tmp_path
+):
+    client, _ = _client(monkeypatch, tmp_path)
+    response = client.get(
+        "/graph/explore",
+        params={"node_id": "question-route"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["query"] == ""
+    assert body["node_id"] == "question-route"
+    assert [node["node_id"] for node in body["nodes"]] == ["question-route"]
+    assert [edge["edge_id"] for edge in body["edges"]] == ["edge-private"]
+
+
+def test_graph_explorer_rejects_blank_exact_node_id(monkeypatch, tmp_path):
+    client, _ = _client(monkeypatch, tmp_path)
+
+    response = client.get("/graph/explore", params={"node_id": "   "})
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "node_id must not be blank"
+
+
 def test_graph_explorer_uses_chunk_rights_bounds_preview_and_aligns_filters(
     monkeypatch, tmp_path
 ):
@@ -131,3 +156,7 @@ def test_graph_explorer_empty_state_and_bounds(monkeypatch, tmp_path):
     assert empty.json()["edges"] == []
     assert client.get("/graph/explore", params={"limit": 201}).status_code == 422
     assert client.get("/graph/explore", params={"q": "x" * 201}).status_code == 422
+    assert (
+        client.get("/graph/explore", params={"node_id": "x" * 257}).status_code
+        == 422
+    )

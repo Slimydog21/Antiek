@@ -1478,6 +1478,27 @@ export default function MidnightOil() {
             Status: <strong>{job.status}</strong>
             {job.runnable ? " · runnable" : ""}
           </p>
+          {job.graph_projection_state === "complete" &&
+          (job.graph_node_ids || []).length > 0 ? (
+            <nav
+              className="flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px]"
+              data-testid="moil-graph-projection-nav"
+              data-graph-node-count={String(job.graph_node_ids?.length || 0)}
+              data-deliverable-id={job.graph_deliverable_id || ""}
+              aria-label="Midnight Oil knowledge graph projection"
+            >
+              {(job.graph_node_ids || []).map((nodeId, index) => (
+                <a
+                  key={nodeId}
+                  href={`/knowledge-graph?node_id=${encodeURIComponent(nodeId)}`}
+                  data-testid={`moil-open-graph-node-${index}`}
+                  className="underline decoration-sun decoration-2 underline-offset-2 hover:text-aurora"
+                >
+                  inspect graph finding {index + 1}
+                </a>
+              ))}
+            </nav>
+          ) : null}
           {/* Residual (gs): show curated research tier on job receipt. */}
           <p
             className="font-mono text-sm"

@@ -39,6 +39,7 @@ export type GraphEdge = {
 
 export type GraphExploreResponse = {
   query: string;
+  node_id: string | null;
   node_type?: string | null;
   graph_scope?: string | null;
   investigation_id?: string | null;
@@ -53,6 +54,7 @@ export type GraphExploreResponse = {
 
 export async function exploreGraph(options: {
   query?: string;
+  nodeId?: string;
   nodeType?: string;
   graphScope?: string;
   investigationId?: string;
@@ -60,6 +62,7 @@ export async function exploreGraph(options: {
 } = {}): Promise<GraphExploreResponse> {
   const params = new URLSearchParams();
   if (options.query?.trim()) params.set("q", options.query.trim());
+  if (options.nodeId?.trim()) params.set("node_id", options.nodeId.trim());
   if (options.nodeType?.trim()) params.set("node_type", options.nodeType.trim());
   if (options.graphScope?.trim()) params.set("graph_scope", options.graphScope.trim());
   if (options.investigationId?.trim()) {

@@ -83,6 +83,47 @@ def test_force_below_api(client):
     assert r2.json()["ceiling_cents"] == 1
 
 
+def test_job_status_exposes_only_safe_graph_projection_navigation(tmp_path):
+    client, deps = _client(tmp_path)
+    headers = {"x-test-user": "alice"}
+    created = client.post(
+        "/midnight-oil/create",
+        headers=headers,
+        json={"goals": ["g"], "duration_minutes": 30},
+    ).json()
+    raw = deps.jobs.get_job(created["job_id"])
+    assert raw is not None
+    node_id = "node-" + "1" * 16
+    deliverable_id = "dlv-" + "2" * 16
+    raw["graph_projection_state"] = "complete"
+    raw["graph_effect_receipt"] = {
+        "schema_version": 1,
+        "owner_user_id": "alice",
+        "deliverable_id": deliverable_id,
+        "section_ids": ["sec-" + "3" * 16],
+        "node_ids": [node_id],
+        "edge_ids": ["edge-" + "4" * 16],
+        "html_sha256": "5" * 64,
+        "evidence_sha256": "6" * 64,
+        "deep_links": [
+            f"antiek://deliverable/{deliverable_id}",
+            f"antiek://node/{node_id}",
+        ],
+    }
+    deps.jobs.put_job(raw)
+
+    response = client.get(
+        f"/midnight-oil/jobs/{created['job_id']}", headers=headers
+    )
+    assert response.headers["cache-control"] == "no-store"
+    body = response.json()
+    assert body["graph_projection_state"] == "complete"
+    assert body["graph_node_ids"] == [node_id]
+    assert body["graph_deliverable_id"] == deliverable_id
+    assert "owner_user_id" not in body
+    assert "html_sha256" not in body
+
+
 def test_create_rejects_empty_goals(client):
     r = client.post(
         "/midnight-oil/create",

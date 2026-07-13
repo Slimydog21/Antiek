@@ -830,7 +830,7 @@ describe("TwinNotesPanel", () => {
     expect(metrics.getAttribute("data-context-unit-count")).toBe("1");
     expect(
       screen.getByTestId("twin-promote-open-graph-0").getAttribute("href"),
-    ).toBe("/knowledge-graph?q=insight%2Fa%20b");
+    ).toBe("/knowledge-graph?node_id=insight%2Fa%20b");
     expect(screen.queryAllByTestId(/twin-promote-open-graph-/)).toHaveLength(1);
     const graphNav = screen.getByTestId("twin-promote-depth-graph-nav");
     expect(graphNav.textContent).not.toContain("insight/a b");

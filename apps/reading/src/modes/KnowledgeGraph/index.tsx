@@ -14,7 +14,12 @@ const SCOPES = ["", "depth", "cross_domain", "constraint"];
 export default function KnowledgeGraph() {
   const [query, setQuery] = useState(() => {
     if (typeof window === "undefined") return "";
-    return (new URLSearchParams(window.location.search).get("q") || "").trim();
+    const params = new URLSearchParams(window.location.search);
+    return (params.get("node_id") || params.get("q") || "").trim();
+  });
+  const [exactNodeId, setExactNodeId] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return (new URLSearchParams(window.location.search).get("node_id") || "").trim();
   });
   const [nodeType, setNodeType] = useState("");
   const [scope, setScope] = useState("");
@@ -33,7 +38,7 @@ export default function KnowledgeGraph() {
     setError(null);
     try {
       const next = await exploreGraph({
-        query,
+        ...(exactNodeId ? { nodeId: exactNodeId } : { query }),
         nodeType,
         graphScope: scope,
         investigationId,
@@ -52,7 +57,7 @@ export default function KnowledgeGraph() {
     } finally {
       if (generation === loadGeneration.current) setBusy(false);
     }
-  }, [investigationId, nodeType, query, scope]);
+  }, [exactNodeId, investigationId, nodeType, query, scope]);
 
   useEffect(() => {
     // React StrictMode replays mount effects in development. The inventory is a
@@ -119,7 +124,10 @@ export default function KnowledgeGraph() {
             <input
               aria-label="Search graph"
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setExactNodeId("");
+              }}
               placeholder="Search labels or paste a node id"
               className="rounded-md border border-rule bg-transparent px-3 py-2 text-sm outline-none focus:border-aurora dark:border-charcoal-1"
             />

@@ -82,6 +82,9 @@ export type MidnightOilJobResponse = {
   approved_ceiling_usd?: number | null;
   force_below_recommended?: boolean;
   asset_id?: string | null;
+  graph_projection_state?: "pending" | "complete" | string;
+  graph_node_ids?: string[];
+  graph_deliverable_id?: string | null;
   notes?: string;
   view_format: "html";
   runnable: boolean;

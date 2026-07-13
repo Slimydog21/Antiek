@@ -13,6 +13,7 @@ vi.mock("../../api/graph", async () => {
 
 const response = {
   query: "",
+  node_id: null,
   node_type: null,
   graph_scope: null,
   investigation_id: null,
@@ -136,6 +137,33 @@ describe("KnowledgeGraph", () => {
     await waitFor(() =>
       expect(exploreGraph).toHaveBeenCalledWith({
         query: "insight_a/b",
+        nodeType: "",
+        graphScope: "",
+        investigationId: "",
+      }),
+    );
+    expect((screen.getByLabelText("Search graph") as HTMLInputElement).value).toBe(
+      "insight_a/b",
+    );
+    expect(exploreGraph).toHaveBeenCalledTimes(1);
+  });
+
+  it("uses an exact node-id deep link without falling back to label search", async () => {
+    window.history.replaceState(
+      {},
+      "",
+      "/knowledge-graph?node_id=insight_a%2Fb",
+    );
+    exploreGraph.mockResolvedValue({
+      ...response,
+      query: "",
+      node_id: "insight_a/b",
+    });
+    render(<KnowledgeGraph />);
+
+    await waitFor(() =>
+      expect(exploreGraph).toHaveBeenCalledWith({
+        nodeId: "insight_a/b",
         nodeType: "",
         graphScope: "",
         investigationId: "",

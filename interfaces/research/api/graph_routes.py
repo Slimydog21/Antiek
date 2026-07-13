@@ -58,6 +58,7 @@ class GraphEdgeOut(BaseModel):
 
 class GraphExploreOut(BaseModel):
     query: str
+    node_id: str | None
     node_type: str | None
     graph_scope: str | None
     investigation_id: str | None
@@ -86,6 +87,7 @@ def _bounded_text(value: Any, *, max_chars: int = 1_200) -> str | None:
 @graph_router.get("/explore", response_model=GraphExploreOut)
 def explore_graph(
     q: str = Query(default="", max_length=200),
+    node_id: str | None = Query(default=None, min_length=1, max_length=256),
     node_type: str | None = Query(default=None, max_length=40),
     graph_scope: str | None = Query(default=None, max_length=40),
     investigation_id: str | None = Query(default=None, max_length=200),
@@ -102,6 +104,12 @@ def explore_graph(
     where = ["1=1"]
     params: list[Any] = []
     query = q.strip()
+    exact_node_id = node_id.strip() if node_id is not None else None
+    if node_id is not None and not exact_node_id:
+        raise HTTPException(status_code=422, detail="node_id must not be blank")
+    if exact_node_id:
+        where.append("n.node_id = ?")
+        params.append(exact_node_id)
     if query:
         where.append("(n.canonical_label ILIKE ? OR n.node_id ILIKE ?)")
         term = f"%{query}%"
@@ -227,6 +235,7 @@ def explore_graph(
 
     return GraphExploreOut(
         query=query,
+        node_id=exact_node_id,
         node_type=node_type,
         graph_scope=graph_scope,
         investigation_id=investigation_id,

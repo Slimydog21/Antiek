@@ -531,11 +531,12 @@ def post_spend_consent(
 
 
 @midnight_oil_router.get("/jobs/{job_id}")
-def get_job_route(request: Request, job_id: str) -> dict[str, Any]:
+def get_job_route(request: Request, response: Response, job_id: str) -> dict[str, Any]:
     deps, authority = _owned(request, job_id)
     job = get_job(job_id, store=deps.jobs)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
+    response.headers["Cache-Control"] = "no-store"
     return {
         "job_id": job.job_id,
         "goals": list(job.goals),
@@ -558,6 +559,17 @@ def get_job_route(request: Request, job_id: str) -> dict[str, Any]:
         "force_below_recommended": job.force_below_recommended,
         "asset_id": job.asset_id,
         "spawn_ids": list(job.spawn_ids),
+        "graph_projection_state": job.graph_projection_state,
+        "graph_node_ids": (
+            []
+            if job.graph_effect_receipt is None
+            else list(job.graph_effect_receipt.node_ids)
+        ),
+        "graph_deliverable_id": (
+            None
+            if job.graph_effect_receipt is None
+            else job.graph_effect_receipt.deliverable_id
+        ),
         "notes": job.notes,
         "view_format": "html",
         "runnable": False,

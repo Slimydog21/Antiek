@@ -1050,6 +1050,9 @@ describe("MidnightOil mode", () => {
       operation_state: "complete",
       recommended_price_ceiling_usd: 2.0,
       approved_ceiling_usd: 2.0,
+      graph_projection_state: "complete",
+      graph_node_ids: ["node-1111111111111111"],
+      graph_deliverable_id: "dlv-2222222222222222",
       view_format: "html",
       runnable: false,
     });
@@ -1098,6 +1101,14 @@ describe("MidnightOil mode", () => {
     fireEvent.click(screen.getByTestId("moil-refresh-status"));
     await waitFor(() => expect(screen.getByTestId("moil-deposit")).toBeTruthy());
     expect(screen.queryByText("Worker queued")).toBeNull();
+    expect(
+      screen.getByTestId("moil-open-graph-node-0").getAttribute("href"),
+    ).toBe("/knowledge-graph?node_id=node-1111111111111111");
+    expect(
+      screen
+        .getByTestId("moil-graph-projection-nav")
+        .getAttribute("data-deliverable-id"),
+    ).toBe("dlv-2222222222222222");
     openWindow.mockClear();
     expect(screen.getByTestId("moil-auto-open-deposit")).toBeTruthy();
     fireEvent.click(screen.getByTestId("moil-deposit"));

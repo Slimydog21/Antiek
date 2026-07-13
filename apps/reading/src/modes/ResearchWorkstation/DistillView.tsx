@@ -205,6 +205,7 @@ function InsightRow({
           </p>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
             <Grounding node={node} />
+            <GraphNodeLink node={node} kind="insight" />
             {node.refinement_count > 0 && (
               <span className="font-mono">changed {node.refinement_count === 1 ? "once" : `${node.refinement_count} times`}</span>
             )}
@@ -264,6 +265,7 @@ function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: Dis
           {node.escalated ? (
             <span className="font-mono text-sun-deep dark:text-sun">this needs more research</span>
           ) : null}
+          <GraphNodeLink node={node} kind="question" />
           {onChase && (
             <button
               type="button"
@@ -288,4 +290,25 @@ function Grounding({ node }: { node: DistilledNode }) {
     return <span className="font-mono italic">no source on record</span>;
   }
   return <span className="font-mono">grounded in a source</span>;
+}
+
+/** A distilled item is already the canonical graph node. Re-enter the graph
+ * with that exact identity rather than searching by mutable display prose. */
+function GraphNodeLink({
+  node,
+  kind,
+}: {
+  node: DistilledNode;
+  kind: "insight" | "question";
+}) {
+  return (
+    <a
+      href={`/knowledge-graph?node_id=${encodeURIComponent(node.node_id)}`}
+      data-testid={`distill-open-graph-${kind}`}
+      className="font-mono underline decoration-sun decoration-2 underline-offset-2 transition-colors hover:text-ink dark:hover:text-bright"
+      title="Inspect this distilled item and its evidence in the knowledge graph"
+    >
+      inspect in graph
+    </a>
+  );
 }
