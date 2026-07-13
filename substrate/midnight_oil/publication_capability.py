@@ -235,7 +235,7 @@ def publication_capability_covers(
         return False
     if not capability.not_before_ms <= now_ms < capability.expires_at_ms:
         return False
-    if required_until_ms > capability.expires_at_ms or required_until_ms < now_ms:
+    if required_until_ms >= capability.expires_at_ms or required_until_ms < now_ms:
         return False
     if manifest.rights_policy_id != capability.rights_policy_id:
         return False

@@ -48,6 +48,7 @@ const getOwnedCollectiveWrittenAnalysis = vi.hoisted(() => vi.fn());
 const fetchEngagementSession = vi.hoisted(() => vi.fn());
 const listOwnedEngagementSessions = vi.hoisted(() => vi.fn());
 const prepareCollectiveExecution = vi.hoisted(() => vi.fn());
+const previewCollectiveExecutionReadiness = vi.hoisted(() => vi.fn());
 const getCollectiveExecutionStatus = vi.hoisted(() => vi.fn());
 const resetMidnightOilSpendConsent = vi.hoisted(() => vi.fn());
 const issueMidnightOilSpendConsent = vi.hoisted(() => vi.fn());
@@ -73,6 +74,7 @@ vi.mock("../../api/engagement", () => ({
   fetchEngagementSession,
   listOwnedEngagementSessions,
   prepareCollectiveExecution,
+  previewCollectiveExecutionReadiness,
   getCollectiveExecutionStatus,
 }));
 
@@ -264,7 +266,137 @@ describe("DeepResearchSessionHost", () => {
     const panel = screen.getByTestId("collective-execution-panel");
     expect(panel.getAttribute("data-execution-state")).toBe("not_prepared");
     expect(panel.getAttribute("data-consent-token-persisted")).toBe("false");
-    expect(screen.getByText("Review execution budget")).toBeTruthy();
+    expect(screen.getByText("Review source readiness")).toBeTruthy();
+  });
+
+  it("keeps mixed private publication readiness non-conferring and consent hidden", async () => {
+    const refId = "sref_1111111111111111";
+    getOwnedCollectiveUnit.mockResolvedValueOnce({
+      collective_unit_id: "cunit_111111111111111111111111",
+      preview_sha256: "a".repeat(64),
+      state: "confirmed",
+      html: "<article></article>",
+      view_format: "html",
+      material: {
+        source_session_ids: [],
+        unit: {
+          source_references: [
+            {
+              ref_id: refId,
+              kind: "substack",
+              canonical_url: "https://example.substack.com/p/private-note",
+              external_id: "example.substack.com/p/private-note",
+            },
+          ],
+        },
+        prompt_block: "",
+      },
+      substack_excerpt_reviews: [
+        {
+          ref_id: refId,
+          overlay_id: "csubrev_111111111111111111111111",
+          overlay_sha256: "b".repeat(64),
+          authorization_state: "active",
+        },
+      ],
+    });
+    previewCollectiveExecutionReadiness.mockResolvedValue({
+      schema_version: 1,
+      projection_kind: "mixed_source_readiness_preview",
+      read_only: true,
+      applicability: "mixed_v2",
+      collective_unit_id: "cunit_111111111111111111111111",
+      collective_preview_sha256: "a".repeat(64),
+      duration_minutes: 60,
+      checked_at_ms: 1_000,
+      required_until_ms: 4_501_000,
+      request_fingerprint_sha256: "c".repeat(64),
+      manifest_schema_version: 2,
+      manifest_sha256: "d".repeat(64),
+      authority_binding_ready: true,
+      live_authority_ready: true,
+      legacy_prepare_available: false,
+      execution_ready: false,
+      consent_enabled: false,
+      confers_execution_authority: false,
+      live_reverification_required: true,
+      reason_codes: ["manifest_v2_not_executable"],
+      sources: [
+        {
+          kind: "substack",
+          ref_id: refId,
+          review_state: "reviewed",
+          binding_state: "bound",
+          live_state: "active_at_check",
+          acquisition: "owner_supplied_local_excerpt",
+          network_egress: false,
+          privacy: "owner_private",
+          rights_tier: "not_applicable",
+          provider_processing_state: "unavailable",
+          execution_ready: false,
+          confers_execution_authority: false,
+          reason_codes: ["compatible_provider_capability_missing"],
+          available_reviews: [
+            {
+              overlay_id: "csubrev_111111111111111111111111",
+              overlay_sha256: "b".repeat(64),
+              expires_at_ms: 8_000_000,
+            },
+          ],
+        },
+      ],
+      view_format: "html",
+    });
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        source_collective_id="cunit_111111111111111111111111"
+        source_collective_preview_sha256={"a".repeat(64)}
+      />,
+    );
+    fireEvent.click(screen.getByText("Review source readiness"));
+    expect(
+      await screen.findByText(
+        "Consent unavailable — mixed-source execution is not implemented.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText("Prepare execution budget")).toBeNull();
+    expect(screen.getByTestId("collective-readiness-preview").textContent).toContain(
+      "owner-supplied local private excerpt; no Substack network fetch",
+    );
+    expect(getOwnedCollectiveUnit).not.toHaveBeenCalled();
+    expect(previewCollectiveExecutionReadiness).toHaveBeenCalledWith(
+      "cunit_111111111111111111111111",
+      expect.objectContaining({
+        duration_minutes: 60,
+        substack_overlays: [
+          {
+            ref_id: refId,
+            overlay_id: "csubrev_111111111111111111111111",
+            overlay_sha256: "b".repeat(64),
+          },
+        ],
+      }),
+    );
+    fireEvent.change(screen.getByLabelText("Collective execution duration minutes"), {
+      target: { value: "90" },
+    });
+    fireEvent.click(screen.getByText("Review source readiness"));
+    await waitFor(() =>
+      expect(previewCollectiveExecutionReadiness).toHaveBeenLastCalledWith(
+        "cunit_111111111111111111111111",
+        expect.objectContaining({
+          duration_minutes: 90,
+          substack_overlays: [
+            {
+              ref_id: refId,
+              overlay_id: "csubrev_111111111111111111111111",
+              overlay_sha256: "b".repeat(64),
+            },
+          ],
+        }),
+      ),
+    );
   });
 
   it("recovers an issued but unqueued ephemeral consent before reissue", async () => {
@@ -323,7 +455,9 @@ describe("DeepResearchSessionHost", () => {
         source_collective_preview_sha256={"a".repeat(64)}
       />,
     );
-    fireEvent.click(screen.getByText("Review execution budget"));
+    fireEvent.click(screen.getByText("Review source readiness"));
+    await screen.findByText("Prepare execution budget");
+    fireEvent.click(screen.getByText("Prepare execution budget"));
     await screen.findByText("Reconcile unqueued consent");
     expect(screen.getByTestId("collective-execution-source-attestation").textContent).toContain(
       "dddddddddddd…",
@@ -333,6 +467,60 @@ describe("DeepResearchSessionHost", () => {
       "moil_111111111111111111111111",
     ));
     expect(await screen.findByText("Approve ceiling and queue")).toBeTruthy();
+  });
+
+  it("removes a stale readiness snapshot when a live refresh fails", async () => {
+    render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        source_collective_id="cunit_111111111111111111111111"
+        source_collective_preview_sha256={"a".repeat(64)}
+      />,
+    );
+    fireEvent.click(screen.getByText("Review source readiness"));
+    await screen.findByTestId("collective-readiness-preview");
+    previewCollectiveExecutionReadiness.mockRejectedValueOnce(
+      new Error("Live readiness unavailable"),
+    );
+    fireEvent.click(screen.getByText("Refresh live readiness"));
+    expect(screen.queryByTestId("collective-readiness-preview")).toBeNull();
+    expect(await screen.findByText("Live readiness unavailable")).toBeTruthy();
+    expect(screen.queryByTestId("collective-readiness-preview")).toBeNull();
+  });
+
+  it("does not attach an old prepare result after collective identity changes", async () => {
+    let resolvePrepare: (value: Record<string, unknown>) => void = () => undefined;
+    prepareCollectiveExecution.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolvePrepare = resolve;
+      }),
+    );
+    const { rerender } = render(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        source_collective_id="cunit_111111111111111111111111"
+        source_collective_preview_sha256={"a".repeat(64)}
+      />,
+    );
+    fireEvent.click(screen.getByText("Review source readiness"));
+    fireEvent.click(await screen.findByText("Prepare execution budget"));
+    rerender(
+      <DeepResearchSessionHost
+        {...FIXTURE}
+        source_collective_id="cunit_222222222222222222222222"
+        source_collective_preview_sha256={"b".repeat(64)}
+      />,
+    );
+    resolvePrepare({
+      collective_unit_id: "cunit_111111111111111111111111",
+      collective_preview_sha256: "a".repeat(64),
+      session_id: FIXTURE.session_id,
+      job_id: "moil_stale_prepare_result",
+    });
+    await waitFor(() =>
+      expect(screen.queryByText(/moil_stale_prepare_result/)).toBeNull(),
+    );
+    expect(screen.getByText("Review source readiness")).toBeTruthy();
   });
   afterEach(() => {
     cleanup();
@@ -344,10 +532,46 @@ describe("DeepResearchSessionHost", () => {
     confirmSessionsCollective.mockReset();
     launchCollectiveResearch.mockReset();
     createCollectiveWrittenAnalysis.mockReset();
-    getOwnedCollectiveUnit.mockReset();
+    getOwnedCollectiveUnit.mockReset().mockResolvedValue({
+      collective_unit_id: "cunit_111111111111111111111111",
+      preview_sha256: "a".repeat(64),
+      state: "confirmed",
+      html: "<article></article>",
+      view_format: "html",
+      material: {
+        source_session_ids: [],
+        unit: { source_references: [] },
+        prompt_block: "",
+      },
+      substack_excerpt_reviews: [],
+    });
     getOwnedCollectiveWrittenAnalysis.mockReset();
     fetchEngagementSession.mockReset();
     prepareCollectiveExecution.mockReset();
+    previewCollectiveExecutionReadiness.mockReset().mockResolvedValue({
+      schema_version: 1,
+      projection_kind: "mixed_source_readiness_preview",
+      read_only: true,
+      applicability: "legacy_v1",
+      collective_unit_id: "cunit_111111111111111111111111",
+      collective_preview_sha256: "a".repeat(64),
+      duration_minutes: 60,
+      checked_at_ms: 1_000,
+      required_until_ms: 4_501_000,
+      request_fingerprint_sha256: "f".repeat(64),
+      manifest_schema_version: null,
+      manifest_sha256: null,
+      authority_binding_ready: false,
+      live_authority_ready: true,
+      legacy_prepare_available: true,
+      execution_ready: false,
+      consent_enabled: false,
+      confers_execution_authority: false,
+      live_reverification_required: true,
+      reason_codes: ["readiness_preview_does_not_confer_execution"],
+      sources: [],
+      view_format: "html",
+    });
     getCollectiveExecutionStatus.mockReset();
     resetMidnightOilSpendConsent.mockReset();
     issueMidnightOilSpendConsent.mockReset();

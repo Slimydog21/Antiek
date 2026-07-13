@@ -18,6 +18,8 @@ from substrate.midnight_oil.substack_authorization import (
     SubstackUseAuthorizationV2,
     canonical_substack_post,
     create_substack_excerpt_receipt,
+    inspect_active_stored_substack_excerpt,
+    inspect_stored_substack_excerpt_binding,
     owner_scope_sha256,
     parse_substack_authorization_json,
     require_active_stored_substack_authorization,
@@ -432,6 +434,38 @@ def test_receipt_store_is_owner_scoped_and_immutable() -> None:
         now_ms=2_001,
     )
     assert (active, loaded) == (authorization, receipt)
+    original_mutate = store.mutate_owned_document
+    store.mutate_owned_document = lambda *_args, **_kwargs: (_ for _ in ()).throw(  # type: ignore[method-assign]
+        AssertionError("readiness inspection must not mutate authority")
+    )
+    inspected = inspect_active_stored_substack_excerpt(
+        store,
+        owner_id=_OWNER,
+        authorization_id=authorization.authorization_id,
+        expected_authorization_sha256=authorization.authorization_sha256,
+        receipt_id=receipt.receipt_id,
+        expected_receipt_sha256=receipt.receipt_sha256,
+        verification_keys={"substack-test-key": _KEY},
+        now_ms=2_001,
+        required_until_ms=19_999,
+        collective_unit_id=authorization.collective_unit_id,
+        collective_preview_sha256=authorization.collective_preview_sha256,
+        ref_id=authorization.ref_id,
+    )
+    assert inspected == (authorization, receipt)
+    with pytest.raises(ValueError, match="required horizon"):
+        inspect_active_stored_substack_excerpt(
+            store,
+            owner_id=_OWNER,
+            authorization_id=authorization.authorization_id,
+            expected_authorization_sha256=authorization.authorization_sha256,
+            receipt_id=receipt.receipt_id,
+            expected_receipt_sha256=receipt.receipt_sha256,
+            verification_keys={"substack-test-key": _KEY},
+            now_ms=2_001,
+            required_until_ms=20_000,
+        )
+    store.mutate_owned_document = original_mutate  # type: ignore[method-assign]
     revoke_substack_authorization(
         store,
         owner_id=_OWNER,
@@ -439,6 +473,19 @@ def test_receipt_store_is_owner_scoped_and_immutable() -> None:
         expected_authorization_sha256=authorization.authorization_sha256,
         clock_ms=lambda: 3_000,
     )
+    assert inspect_stored_substack_excerpt_binding(
+        store,
+        owner_id=_OWNER,
+        authorization_id=authorization.authorization_id,
+        expected_authorization_sha256=authorization.authorization_sha256,
+        receipt_id=receipt.receipt_id,
+        expected_receipt_sha256=receipt.receipt_sha256,
+        verification_keys={"substack-test-key": _KEY},
+        now_ms=authorization.expires_at_ms + 1,
+        collective_unit_id=authorization.collective_unit_id,
+        collective_preview_sha256=authorization.collective_preview_sha256,
+        ref_id=authorization.ref_id,
+    ) == (authorization, receipt)
     with pytest.raises(ValueError, match="authorization is unavailable"):
         require_active_stored_substack_excerpt(
             store,

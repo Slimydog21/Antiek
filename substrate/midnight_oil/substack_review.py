@@ -844,7 +844,9 @@ def list_confirmed_substack_reviews(
             raise ValueError("Substack review overlay is unavailable")
         overlay = ConfirmedSubstackReviewOverlay.model_validate(overlay_row.get("overlay"))
         if (
-            overlay.collective_unit_id != collective_unit_id
+            overlay.overlay_id != overlay_id
+            or overlay_row.get("overlay_sha256") != overlay.overlay_sha256
+            or overlay.collective_unit_id != collective_unit_id
             or overlay.collective_preview_sha256 != collective_preview_sha256
         ):
             raise ValueError("Substack review overlay binding conflicts")

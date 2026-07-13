@@ -116,6 +116,7 @@ def test_registry_rejects_not_yet_valid_expired_and_insufficient_horizon() -> No
     capability = _capability(not_before_ms=1_000, expires_at_ms=10_000)
     registry = PublicationCapabilityRegistry((capability,))
     assert registry.select(manifest, now_ms=999, required_until_ms=2_000) is None
+    assert registry.select(manifest, now_ms=1_000, required_until_ms=10_000) is None
     assert registry.select(manifest, now_ms=1_000, required_until_ms=10_001) is None
     assert registry.select(manifest, now_ms=10_000, required_until_ms=10_000) is None
     assert registry.select(manifest, now_ms=1_000, required_until_ms=9_999) == capability

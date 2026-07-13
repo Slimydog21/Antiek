@@ -123,6 +123,62 @@ def test_confirmation_creates_v2_authority_receipt_and_review_only_overlay() -> 
     assert replay == overlay
 
 
+def test_list_reviews_reproves_index_key_row_hash_and_embedded_identity() -> None:
+    store = InMemoryEngagementStore()
+    draft = _claim(store)
+    overlay = confirm_substack_excerpt_review(
+        store,
+        owner_id="alice",
+        review_id=draft.review_id,
+        expected_review_preview_sha256=draft.review_preview_sha256,
+        idempotency_key="confirm-list-integrity-0001",
+        key_id="substack-purpose-2026-07",
+        signing_key=_KEY,
+        verification_keys={"substack-purpose-2026-07": _KEY},
+        now_ms=2_000,
+    )
+    original = store.get_owned_document(overlay.overlay_id, "alice")
+    assert original is not None
+    store.mutate_owned_document(
+        overlay.overlay_id,
+        "alice",
+        lambda _current: {**original, "overlay_sha256": "0" * 64},
+    )
+    with pytest.raises(ValueError, match="binding conflicts"):
+        list_confirmed_substack_reviews(
+            store,
+            owner_id="alice",
+            collective_unit_id=_UNIT_ID,
+            collective_preview_sha256=_PREVIEW,
+        )
+
+    forged_raw = overlay.model_dump(mode="json")
+    forged_raw["excerpt_bytes"] = overlay.excerpt_bytes + 1
+    forged_raw["source_byte_end"] = overlay.source_byte_end + 1
+    forged_digest = substack_review_overlay_sha256(forged_raw)
+    forged_raw.update(
+        overlay_id="csubrev_" + forged_digest[:24],
+        overlay_sha256=forged_digest,
+    )
+    forged = ConfirmedSubstackReviewOverlay.model_validate(forged_raw)
+    store.mutate_owned_document(
+        overlay.overlay_id,
+        "alice",
+        lambda _current: {
+            **original,
+            "overlay_sha256": forged.overlay_sha256,
+            "overlay": forged.model_dump(mode="json"),
+        },
+    )
+    with pytest.raises(ValueError, match="binding conflicts"):
+        list_confirmed_substack_reviews(
+            store,
+            owner_id="alice",
+            collective_unit_id=_UNIT_ID,
+            collective_preview_sha256=_PREVIEW,
+        )
+
+
 @pytest.mark.parametrize(
     "fault_step",
     ["claim", "reservation", "authorization", "receipt", "overlay", "bind", "index", "settle"],

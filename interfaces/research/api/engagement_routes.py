@@ -39,10 +39,13 @@ import hashlib
 import hmac
 import json
 import os
+import re
+from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from interfaces.research.api.substack_authorization_dependencies import (
@@ -503,6 +506,71 @@ async def _parse_substack_review_body[ReviewBody: BaseModel](
         raise
 
 
+_READINESS_NO_STORE_HEADERS = {
+    "Cache-Control": "no-store, private, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+    "Vary": "Authorization, Cookie",
+}
+
+
+async def _parse_publication_readiness_body(
+    request: Request,
+) -> CollectivePublicationReadinessBody:
+    length = request.headers.get("content-length")
+    if length is not None:
+        try:
+            if int(length) > 65_536:
+                raise HTTPException(
+                    status_code=413,
+                    detail="readiness preview request is too large",
+                    headers=_READINESS_NO_STORE_HEADERS,
+                )
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail="invalid content length",
+                headers=_READINESS_NO_STORE_HEADERS,
+            ) from exc
+    payload = await request.body()
+    if not payload or len(payload) > 65_536:
+        raise HTTPException(
+            status_code=413,
+            detail="readiness preview request is too large",
+            headers=_READINESS_NO_STORE_HEADERS,
+        )
+    try:
+        decoded = payload.decode("utf-8", errors="strict")
+        raw = json.loads(decoded, object_pairs_hook=_reject_duplicate_review_keys)
+        return CollectivePublicationReadinessBody.model_validate(raw)
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="readiness preview requires UTF-8 JSON",
+            headers=_READINESS_NO_STORE_HEADERS,
+        ) from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail="readiness preview JSON is invalid",
+            headers=_READINESS_NO_STORE_HEADERS,
+        ) from exc
+    except ValidationError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail="readiness preview body is invalid",
+            headers=_READINESS_NO_STORE_HEADERS,
+        ) from exc
+    except ValueError as exc:
+        if "duplicate JSON keys" in str(exc):
+            raise HTTPException(
+                status_code=400,
+                detail="readiness preview contains duplicate JSON keys",
+                headers=_READINESS_NO_STORE_HEADERS,
+            ) from exc
+        raise
+
+
 class CollectiveLaunchResearchBody(_ClosedSessionBody):
     idempotency_key: str = Field(min_length=8, max_length=128)
     anchor_asset_id: str = Field(min_length=1, max_length=512)
@@ -519,6 +587,34 @@ class CollectiveExecutionPrepareBody(_ClosedSessionBody):
     model_id: str | None = Field(default=None, max_length=200)
     research_tier: Literal["fast", "deep", "wrestle"] | None = None
     fanout_depth: int = Field(default=3, ge=1, le=64)
+
+
+class CollectiveReadinessOverlaySelection(_ClosedSessionBody):
+    ref_id: str = Field(pattern=r"^sref_[0-9a-f]{16}$")
+    overlay_id: str = Field(pattern=r"^csubrev_[0-9a-f]{24}$")
+    overlay_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class CollectivePublicationReadinessBody(_ClosedSessionBody):
+    schema_version: Literal[1] = 1
+    expected_collective_preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    duration_minutes: int = Field(ge=1, le=10_080)
+    substack_overlays: list[CollectiveReadinessOverlaySelection] = Field(
+        default_factory=list, max_length=64
+    )
+
+    @model_validator(mode="after")
+    def _canonical_selections(self) -> CollectivePublicationReadinessBody:
+        identities = [
+            (item.ref_id, item.overlay_id, item.overlay_sha256) for item in self.substack_overlays
+        ]
+        if identities != sorted(identities):
+            raise ValueError("readiness overlay selections must be sorted")
+        if len({item.ref_id for item in self.substack_overlays}) != len(identities) or len(
+            {item.overlay_id for item in self.substack_overlays}
+        ) != len(identities):
+            raise ValueError("readiness overlay selections must be unique")
+        return self
 
 
 class CollectiveWrittenAnalysisBody(_ClosedSessionBody):
@@ -2605,6 +2701,150 @@ def post_collective_launch_research(
     return _session_payload(session, include_html=True)
 
 
+@engagement_router.post("/sessions/collective/{unit_id}/execution/readiness-preview")
+async def post_collective_publication_readiness_preview(
+    unit_id: str, request: Request, response: Response
+) -> dict[str, Any]:
+    """Observe mixed publication authority without creating execution authority."""
+    from interfaces.research.api.midnight_oil_routes import CONSENT_TTL_MS
+    from interfaces.research.api.midnight_oil_routes import (
+        _deps as midnight_oil_dependencies,
+    )
+    from substrate.midnight_oil.publication_readiness_v2 import (
+        preview_mixed_publication_readiness,
+    )
+
+    for key, value in _READINESS_NO_STORE_HEADERS.items():
+        response.headers[key] = value
+    raw_owner = getattr(request.state, "user_id", None)
+    if not isinstance(raw_owner, str) or not raw_owner.strip():
+        raise HTTPException(
+            status_code=401,
+            detail="authentication required",
+            headers=_READINESS_NO_STORE_HEADERS,
+        )
+    owner_id = raw_owner.strip()
+    try:
+        unit = get_collective_unit(unit_id, store=_eng(), owner_id=owner_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="publication readiness requires reconciliation",
+            headers=_READINESS_NO_STORE_HEADERS,
+        ) from exc
+    if unit is None:
+        raise HTTPException(
+            status_code=404,
+            detail="collective unit not found",
+            headers=_READINESS_NO_STORE_HEADERS,
+        )
+    body = await _parse_publication_readiness_body(request)
+    durable_preview = str(unit.get("preview_sha256") or "")
+    if not hmac.compare_digest(durable_preview, body.expected_collective_preview_sha256):
+        raise HTTPException(
+            status_code=409,
+            detail="collective preview changed before readiness review",
+            headers=_READINESS_NO_STORE_HEADERS,
+        )
+    try:
+        midnight_dependencies = midnight_oil_dependencies(request)
+    except RuntimeError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="publication readiness is unavailable",
+            headers=_READINESS_NO_STORE_HEADERS,
+        ) from exc
+    if midnight_dependencies.engagement_store is not _eng():
+        raise HTTPException(
+            status_code=503,
+            detail="publication readiness is unavailable",
+            headers=_READINESS_NO_STORE_HEADERS,
+        )
+    material = unit.get("material")
+    source = material.get("unit") if isinstance(material, dict) else None
+    references = source.get("source_references") if isinstance(source, dict) else None
+    if not isinstance(references, list) or len(references) > 64:
+        raise HTTPException(
+            status_code=409,
+            detail="collective source authority requires reconciliation",
+            headers=_READINESS_NO_STORE_HEADERS,
+        )
+    substack_verification_keys: Mapping[str, bytes] = {}
+    if any(isinstance(row, dict) and row.get("kind") == "substack" for row in references):
+        try:
+            substack_dependencies = _substack_authorization_deps(request)
+        except HTTPException as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="publication readiness is unavailable",
+                headers=_READINESS_NO_STORE_HEADERS,
+            ) from exc
+        if substack_dependencies.engagement_store is not _eng():
+            raise HTTPException(
+                status_code=503,
+                detail="publication readiness is unavailable",
+                headers=_READINESS_NO_STORE_HEADERS,
+            )
+        substack_verification_keys = substack_dependencies.verification_keys
+    try:
+        checked_at_ms = midnight_dependencies.clock_ms()
+        if not isinstance(checked_at_ms, int) or isinstance(checked_at_ms, bool) or checked_at_ms < 0:
+            raise ValueError("invalid readiness clock")
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="publication readiness is unavailable",
+            headers=_READINESS_NO_STORE_HEADERS,
+        ) from exc
+    required_until_ms = (
+        checked_at_ms
+        + CONSENT_TTL_MS
+        + body.duration_minutes * 60_000
+        + midnight_dependencies.publication_completion_margin_ms
+    )
+    canonical_request = {
+        "schema_version": body.schema_version,
+        "collective_unit_id": unit_id,
+        "collective_preview_sha256": durable_preview,
+        "duration_minutes": body.duration_minutes,
+        "substack_overlays": [item.model_dump(mode="json") for item in body.substack_overlays],
+    }
+    request_fingerprint = hashlib.sha256(
+        b"antiek.midnight-oil.publication-readiness-preview.v1\x00"
+        + json.dumps(
+            canonical_request,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode()
+    ).hexdigest()
+    selected_overlays = {
+        item.ref_id: (item.overlay_id, item.overlay_sha256) for item in body.substack_overlays
+    }
+    try:
+        projection = preview_mixed_publication_readiness(
+            collective_unit_id=unit_id,
+            collective_preview_sha256=durable_preview,
+            references=references,
+            owner_id=owner_id,
+            store=_eng(),
+            publication_capabilities=midnight_dependencies.publication_capabilities,
+            substack_verification_keys=substack_verification_keys,
+            selected_overlays=selected_overlays,
+            duration_minutes=body.duration_minutes,
+            checked_at_ms=checked_at_ms,
+            required_until_ms=required_until_ms,
+            request_fingerprint_sha256=request_fingerprint,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="publication readiness requires reconciliation",
+            headers=_READINESS_NO_STORE_HEADERS,
+        ) from exc
+    return projection.model_dump(mode="json")
+
+
 @engagement_router.post("/sessions/collective/{unit_id}/execution/prepare")
 def post_collective_execution_prepare(
     unit_id: str, body: CollectiveExecutionPrepareBody, request: Request
@@ -3040,6 +3280,32 @@ def register_engagement_routes(
     *,
     substack_authorization_dependencies: SubstackAuthorizationApiDependencies | None = None,
 ) -> None:
+    middleware_marker = "_antiek_publication_readiness_no_store_middleware"
+    if not getattr(app.state, middleware_marker, False):
+        setattr(app.state, middleware_marker, True)
+
+        @app.middleware("http")
+        async def publication_readiness_no_store(
+            request: Request, call_next: Callable[[Request], Awaitable[Response]]
+        ) -> Response:
+            exact_readiness_path = re.fullmatch(
+                r"/engagement/sessions/collective/[^/]+/execution/readiness-preview",
+                request.url.path,
+            ) is not None
+            try:
+                routed_response = await call_next(request)
+            except Exception:
+                if not exact_readiness_path:
+                    raise
+                routed_response = JSONResponse(
+                    status_code=500,
+                    content={"detail": "publication readiness is unavailable"},
+                )
+            if exact_readiness_path:
+                for key, value in _READINESS_NO_STORE_HEADERS.items():
+                    routed_response.headers[key] = value
+            return routed_response
+
     if substack_authorization_dependencies is not None:
         setattr(
             app.state,

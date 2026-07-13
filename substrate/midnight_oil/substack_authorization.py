@@ -549,7 +549,9 @@ def stored_substack_authorization_state(
     expected_authorization_sha256: str,
     verification_keys: Mapping[str, bytes],
     now_ms: int,
-) -> Literal["active", "expired", "not_yet_active", "revoked", "unavailable", "reconciliation_required"]:
+) -> Literal[
+    "active", "expired", "not_yet_active", "revoked", "unavailable", "reconciliation_required"
+]:
     """Project current authority without exposing the signed authorization."""
 
     _validate_time(now_ms, field="now_ms")
@@ -631,7 +633,7 @@ def require_active_stored_substack_authorization(
     return authorization
 
 
-def require_active_stored_substack_excerpt(
+def _read_active_stored_substack_excerpt(
     store: EngagementStore,
     *,
     owner_id: str,
@@ -641,8 +643,7 @@ def require_active_stored_substack_excerpt(
     expected_receipt_sha256: str,
     verification_keys: Mapping[str, bytes],
     now_ms: int,
-) -> tuple[SubstackAuthorization, SubstackExcerptReceipt]:
-    """Recheck live use authority and exact local bytes as one reader boundary."""
+) -> tuple[SubstackAuthorization, SubstackExcerptReceipt, str]:
     authorization = require_active_stored_substack_authorization(
         store,
         owner_id=owner_id,
@@ -680,6 +681,184 @@ def require_active_stored_substack_excerpt(
         or receipt.injected_at_ms != authorization.not_before_ms
     ):
         raise ValueError("Substack excerpt receipt binding conflicts")
+
+    return authorization, receipt, authorization_logical_id
+
+
+def inspect_stored_substack_excerpt_binding(
+    store: EngagementStore,
+    *,
+    owner_id: str,
+    authorization_id: str,
+    expected_authorization_sha256: str,
+    receipt_id: str,
+    expected_receipt_sha256: str,
+    verification_keys: Mapping[str, bytes],
+    now_ms: int,
+    collective_unit_id: str,
+    collective_preview_sha256: str,
+    ref_id: str,
+) -> tuple[SubstackAuthorization, SubstackExcerptReceipt]:
+    """Verify immutable authorization↔receipt binding without requiring live use authority."""
+    _validate_stored_identity(
+        authorization_id=authorization_id,
+        authorization_sha256=expected_authorization_sha256,
+    )
+    logical_id = "suauth_" + authorization_id.removeprefix("sua_")
+    row = store.get_owned_document(logical_id, owner_id)
+    if row is None:
+        raise ValueError("Substack authorization is unavailable")
+    authorization = _authorization_from_row(
+        row,
+        authorization_id=authorization_id,
+        authorization_sha256=expected_authorization_sha256,
+    )
+    verification_time = min(
+        max(now_ms, authorization.not_before_ms), authorization.expires_at_ms - 1
+    )
+    verify_substack_authorization(
+        authorization,
+        verification_keys=verification_keys,
+        owner_id=owner_id,
+        now_ms=verification_time,
+        collective_unit_id=collective_unit_id,
+        collective_preview_sha256=collective_preview_sha256,
+        ref_id=ref_id,
+    )
+    state = row.get("state")
+    if state == "revoked":
+        revoked_at_ms = row.get("revoked_at_ms")
+        if type(revoked_at_ms) is not int or revoked_at_ms < authorization.issued_at_ms:
+            raise ValueError("Substack authorization requires reconciliation")
+    elif state != "active":
+        raise ValueError("Substack authorization requires reconciliation")
+    if (
+        _RECEIPT_ID_RE.fullmatch(receipt_id) is None
+        or _SHA256_RE.fullmatch(expected_receipt_sha256) is None
+        or row.get("claimed_receipt_id") != receipt_id
+        or row.get("claimed_receipt_sha256") != expected_receipt_sha256
+    ):
+        raise ValueError("Substack excerpt receipt is unavailable")
+    receipt_logical_id = "suexcerpt_" + receipt_id.removeprefix("suer_")
+    receipt_row = store.get_owned_document(receipt_logical_id, owner_id)
+    if receipt_row is None or receipt_row.get("receipt_sha256") != expected_receipt_sha256:
+        raise ValueError("Substack excerpt receipt is unavailable")
+    receipt = _receipt_from_row(
+        receipt_row,
+        receipt_id=receipt_id,
+        receipt_sha256=expected_receipt_sha256,
+    )
+    if (
+        not hmac.compare_digest(receipt.authorization_sha256, authorization.authorization_sha256)
+        or receipt.authorization_id != authorization.authorization_id
+        or receipt.owner_scope_sha256 != authorization.owner_scope_sha256
+        or receipt.collective_unit_id != authorization.collective_unit_id
+        or receipt.collective_preview_sha256 != authorization.collective_preview_sha256
+        or receipt.ref_id != authorization.ref_id
+        or receipt.canonical_url != authorization.canonical_url
+        or receipt.external_id != authorization.external_id
+        or receipt.source_representation_sha256 != authorization.source_representation_sha256
+        or receipt.source_representation_bytes != authorization.source_representation_bytes
+        or receipt.source_byte_start != authorization.source_byte_start
+        or receipt.source_byte_end != authorization.source_byte_end
+        or receipt.excerpt_sha256 != authorization.excerpt_sha256
+        or receipt.excerpt_bytes != authorization.excerpt_bytes
+        or receipt.injected_at_ms != authorization.not_before_ms
+    ):
+        raise ValueError("Substack excerpt receipt binding conflicts")
+    final_row = store.get_owned_document(logical_id, owner_id)
+    final_receipt_row = store.get_owned_document(receipt_logical_id, owner_id)
+    if final_row != row or final_receipt_row != receipt_row:
+        raise ValueError("Substack authorization changed during inspection")
+    return authorization, receipt
+
+
+def inspect_active_stored_substack_excerpt(
+    store: EngagementStore,
+    *,
+    owner_id: str,
+    authorization_id: str,
+    expected_authorization_sha256: str,
+    receipt_id: str,
+    expected_receipt_sha256: str,
+    verification_keys: Mapping[str, bytes],
+    now_ms: int,
+    required_until_ms: int | None = None,
+    collective_unit_id: str | None = None,
+    collective_preview_sha256: str | None = None,
+    ref_id: str | None = None,
+) -> tuple[SubstackAuthorization, SubstackExcerptReceipt]:
+    """Read and verify one live excerpt without mutating its authority row."""
+    authorization, receipt, logical_id = _read_active_stored_substack_excerpt(
+        store,
+        owner_id=owner_id,
+        authorization_id=authorization_id,
+        expected_authorization_sha256=expected_authorization_sha256,
+        receipt_id=receipt_id,
+        expected_receipt_sha256=expected_receipt_sha256,
+        verification_keys=verification_keys,
+        now_ms=now_ms,
+    )
+    verify_substack_authorization(
+        authorization,
+        verification_keys=verification_keys,
+        owner_id=owner_id,
+        now_ms=now_ms,
+        required_until_ms=required_until_ms,
+        collective_unit_id=collective_unit_id,
+        collective_preview_sha256=collective_preview_sha256,
+        ref_id=ref_id,
+    )
+    current = store.get_owned_document(logical_id, owner_id)
+    if (
+        current is None
+        or current.get("state") != "active"
+        or current.get("claimed_receipt_id") != receipt_id
+        or current.get("claimed_receipt_sha256") != expected_receipt_sha256
+    ):
+        raise ValueError("Substack authorization is unavailable")
+    reread = _authorization_from_row(
+        current,
+        authorization_id=authorization_id,
+        authorization_sha256=expected_authorization_sha256,
+    )
+    verify_substack_authorization(
+        reread,
+        verification_keys=verification_keys,
+        owner_id=owner_id,
+        now_ms=now_ms,
+        required_until_ms=required_until_ms,
+        collective_unit_id=collective_unit_id,
+        collective_preview_sha256=collective_preview_sha256,
+        ref_id=ref_id,
+    )
+    if reread != authorization:
+        raise ValueError("Substack authorization changed during inspection")
+    return authorization, receipt
+
+
+def require_active_stored_substack_excerpt(
+    store: EngagementStore,
+    *,
+    owner_id: str,
+    authorization_id: str,
+    expected_authorization_sha256: str,
+    receipt_id: str,
+    expected_receipt_sha256: str,
+    verification_keys: Mapping[str, bytes],
+    now_ms: int,
+) -> tuple[SubstackAuthorization, SubstackExcerptReceipt]:
+    """Recheck live use authority and exact local bytes under a final row barrier."""
+    authorization, receipt, authorization_logical_id = _read_active_stored_substack_excerpt(
+        store,
+        owner_id=owner_id,
+        authorization_id=authorization_id,
+        expected_authorization_sha256=expected_authorization_sha256,
+        receipt_id=receipt_id,
+        expected_receipt_sha256=expected_receipt_sha256,
+        verification_keys=verification_keys,
+        now_ms=now_ms,
+    )
 
     def final_live_barrier(current: dict[str, object] | None) -> dict[str, object]:
         if (
@@ -859,6 +1038,8 @@ __all__ = [
     "SubstackUseAuthorizationV2",
     "canonical_substack_post",
     "create_substack_excerpt_receipt",
+    "inspect_active_stored_substack_excerpt",
+    "inspect_stored_substack_excerpt_binding",
     "owner_scope_sha256",
     "parse_substack_authorization_json",
     "require_active_stored_substack_authorization",

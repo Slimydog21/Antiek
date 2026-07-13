@@ -259,6 +259,85 @@ export type CollectiveExecutionPreparation = {
   view_format: "html";
 };
 
+export type CollectivePublicationReadinessPreview = {
+  schema_version: 1;
+  projection_kind: "mixed_source_readiness_preview";
+  read_only: true;
+  applicability: "mixed_v2" | "legacy_v1";
+  collective_unit_id: string;
+  collective_preview_sha256: string;
+  duration_minutes: number;
+  checked_at_ms: number;
+  required_until_ms: number;
+  request_fingerprint_sha256: string;
+  manifest_schema_version: 2 | null;
+  manifest_sha256: string | null;
+  authority_binding_ready: boolean;
+  live_authority_ready: boolean;
+  legacy_prepare_available: boolean;
+  execution_ready: false;
+  consent_enabled: false;
+  confers_execution_authority: false;
+  live_reverification_required: true;
+  reason_codes: string[];
+  sources: Array<
+    | {
+        kind: "arxiv";
+        ref_id: string;
+        review_state: "reviewed";
+        binding_state: "bound" | "blocked";
+        live_state: "covered" | "unavailable";
+        acquisition: "remote_arxiv_abstract";
+        network_egress: true;
+        rights_tier: "T1";
+        capability_sha256: string | null;
+        capability_expires_at_ms: number | null;
+        execution_ready: false;
+        confers_execution_authority: false;
+        reason_codes: string[];
+      }
+    | {
+        kind: "substack";
+        ref_id: string;
+        review_state: "reviewed";
+        binding_state: "bound" | "blocked";
+        live_state:
+          | "active_at_check"
+          | "selection_required"
+          | "not_yet_active"
+          | "expired"
+          | "horizon_insufficient"
+          | "revoked"
+          | "unavailable"
+          | "reconciliation_required";
+        acquisition: "owner_supplied_local_excerpt";
+        network_egress: false;
+        privacy: "owner_private";
+        rights_tier: "not_applicable";
+        provider_processing_state: "unavailable";
+        execution_ready: false;
+        confers_execution_authority: false;
+        reason_codes: string[];
+        available_reviews: Array<{
+          overlay_id: string;
+          overlay_sha256: string;
+          expires_at_ms: number;
+        }>;
+      }
+    | {
+        kind: "unsupported";
+        ref_id: string;
+        review_state: "reviewed";
+        binding_state: "blocked";
+        live_state: "unavailable";
+        execution_ready: false;
+        confers_execution_authority: false;
+        reason_codes: string[];
+      }
+  >;
+  view_format: "html";
+};
+
 export type CollectiveExecutionStatus = {
   schema_version: 1;
   execution_id: string;
@@ -1389,6 +1468,31 @@ export async function prepareCollectiveExecution(
   const res = await apiFetch(
     `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/execution/prepare`,
     { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  return readJson(res);
+}
+
+export async function previewCollectiveExecutionReadiness(
+  unitId: string,
+  body: {
+    schema_version: 1;
+    expected_collective_preview_sha256: string;
+    duration_minutes: number;
+    substack_overlays: Array<{
+      ref_id: string;
+      overlay_id: string;
+      overlay_sha256: string;
+    }>;
+  },
+): Promise<CollectivePublicationReadinessPreview> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/execution/readiness-preview`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    },
   );
   return readJson(res);
 }

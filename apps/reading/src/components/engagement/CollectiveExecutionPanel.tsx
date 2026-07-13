@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from "react";
 import {
   getCollectiveExecutionStatus,
   prepareCollectiveExecution,
+  previewCollectiveExecutionReadiness,
+  type CollectivePublicationReadinessPreview,
   type CollectiveExecutionPreparation,
   type CollectiveExecutionStatus,
 } from "../../api/engagement";
@@ -13,6 +15,12 @@ import {
   resetMidnightOilSpendConsent,
   type MidnightOilLifecycleStatus,
 } from "../../api/midnightOil";
+
+type ReadinessSubstackSource = Extract<
+  CollectivePublicationReadinessPreview["sources"][number],
+  { kind: "substack" }
+>;
+type ReadinessChoice = ReadinessSubstackSource["available_reviews"][number];
 
 function idempotencyKey(): string {
   return `collective-execution-${
@@ -32,12 +40,35 @@ export function CollectiveExecutionPanel(props: {
 }) {
   const key = useRef(idempotencyKey());
   const [duration, setDuration] = useState(60);
+  const [readiness, setReadiness] =
+    useState<CollectivePublicationReadinessPreview | null>(null);
+  const [overlaySelections, setOverlaySelections] = useState<Record<string, string>>({});
+  const [reviewChoices, setReviewChoices] = useState<
+    Array<{ refId: string; choice: ReadinessChoice }>
+  >([]);
   const [prepared, setPrepared] = useState<CollectiveExecutionPreparation | null>(null);
   const [status, setStatus] = useState<CollectiveExecutionStatus | null>(null);
   const [lifecycle, setLifecycle] = useState<MidnightOilLifecycleStatus | null>(null);
   const [ceilingCents, setCeilingCents] = useState<number | null>(null);
-  const [busy, setBusy] = useState<"prepare" | "consent" | null>(null);
+  const [busy, setBusy] = useState<"readiness" | "prepare" | "consent" | null>(null);
   const [error, setError] = useState("");
+  const readinessGeneration = useRef(0);
+  const operationGeneration = useRef(0);
+
+  useEffect(() => {
+    readinessGeneration.current += 1;
+    operationGeneration.current += 1;
+    key.current = idempotencyKey();
+    setReadiness(null);
+    setOverlaySelections({});
+    setReviewChoices([]);
+    setPrepared(null);
+    setStatus(null);
+    setLifecycle(null);
+    setCeilingCents(null);
+    setBusy(null);
+    setError("");
+  }, [props.modelId, props.previewSha256, props.researchTier, props.sessionId, props.unitId]);
 
   useEffect(() => {
     if (!prepared?.execution_id) return;
@@ -77,7 +108,80 @@ export function CollectiveExecutionPanel(props: {
     };
   }, [prepared?.execution_id, props.onTerminal, props.unitId]);
 
+  const reviewReadiness = async () => {
+    const generation = ++readinessGeneration.current;
+    const requestedDuration = duration;
+    setBusy("readiness");
+    setError("");
+    setReadiness(null);
+    try {
+      const makeSelections = (selected: Record<string, string>, choices = reviewChoices) =>
+        Object.entries(selected)
+        .map(([refId, overlayId]) => {
+          const overlay = choices.find(
+            (item) => item.refId === refId && item.choice.overlay_id === overlayId,
+          );
+          return overlay
+            ? {
+                ref_id: refId,
+                overlay_id: overlay.choice.overlay_id,
+                overlay_sha256: overlay.choice.overlay_sha256,
+              }
+            : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item != null)
+        .sort((left, right) =>
+          `${left.ref_id}:${left.overlay_id}`.localeCompare(`${right.ref_id}:${right.overlay_id}`),
+        );
+      const requestPreview = (selections: ReturnType<typeof makeSelections>) =>
+        previewCollectiveExecutionReadiness(props.unitId, {
+        schema_version: 1,
+        expected_collective_preview_sha256: props.previewSha256,
+        duration_minutes: requestedDuration,
+        substack_overlays: selections,
+      });
+      let next = await requestPreview(makeSelections(overlaySelections));
+      const nextSelections = { ...overlaySelections };
+      const nextChoices = next.sources.flatMap((source) =>
+        source.kind === "substack"
+          ? source.available_reviews.map((choice) => ({ refId: source.ref_id, choice }))
+          : [],
+      );
+      for (const source of next.sources) {
+        if (source.kind !== "substack" || nextSelections[source.ref_id]) continue;
+        if (source.available_reviews.length === 1) {
+          nextSelections[source.ref_id] = source.available_reviews[0].overlay_id;
+        }
+      }
+      if (JSON.stringify(nextSelections) !== JSON.stringify(overlaySelections)) {
+        next = await requestPreview(makeSelections(nextSelections, nextChoices));
+      }
+      if (
+        generation !== readinessGeneration.current ||
+        requestedDuration !== duration ||
+        next.collective_unit_id !== props.unitId ||
+        next.collective_preview_sha256 !== props.previewSha256 ||
+        next.duration_minutes !== requestedDuration
+      ) {
+        return;
+      }
+      setOverlaySelections(nextSelections);
+      setReviewChoices(nextChoices);
+      setReadiness(next);
+    } catch (cause) {
+      if (generation === readinessGeneration.current) {
+        setError(cause instanceof Error ? cause.message : "Readiness preview failed");
+      }
+    } finally {
+      if (generation === readinessGeneration.current) setBusy(null);
+    }
+  };
+
   const prepare = async () => {
+    const generation = ++operationGeneration.current;
+    const requestedUnitId = props.unitId;
+    const requestedPreview = props.previewSha256;
+    const requestedSessionId = props.sessionId;
     setBusy("prepare");
     setError("");
     try {
@@ -90,17 +194,28 @@ export function CollectiveExecutionPanel(props: {
         research_tier: props.researchTier,
         fanout_depth: 3,
       });
+      if (
+        generation !== operationGeneration.current ||
+        next.collective_unit_id !== requestedUnitId ||
+        next.collective_preview_sha256 !== requestedPreview ||
+        next.session_id !== requestedSessionId
+      ) {
+        return;
+      }
       setPrepared(next);
       setCeilingCents(next.recommended_ceiling_cents);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Preparation failed");
+      if (generation === operationGeneration.current) {
+        setError(cause instanceof Error ? cause.message : "Preparation failed");
+      }
     } finally {
-      setBusy(null);
+      if (generation === operationGeneration.current) setBusy(null);
     }
   };
 
   const consentAndQueue = async () => {
     if (!prepared || ceilingCents == null) return;
+    const generation = ++operationGeneration.current;
     setBusy("consent");
     setError("");
     try {
@@ -116,14 +231,17 @@ export function CollectiveExecutionPanel(props: {
         getCollectiveExecutionStatus(props.unitId, prepared.execution_id),
         getMidnightOilLifecycle(prepared.job_id),
       ]);
+      if (generation !== operationGeneration.current) return;
       setStatus(next);
       setLifecycle(spend);
     } catch (cause) {
+      if (generation !== operationGeneration.current) return;
       try {
         const reconciled = await getCollectiveExecutionStatus(
           props.unitId,
           prepared.execution_id,
         );
+        if (generation !== operationGeneration.current) return;
         setStatus(reconciled);
         setError(
           reconciled.state === "consent_issued"
@@ -131,15 +249,18 @@ export function CollectiveExecutionPanel(props: {
             : "The response was ambiguous; durable execution state is shown below.",
         );
       } catch {
-        setError(cause instanceof Error ? cause.message : "Consent or queue failed");
+        if (generation === operationGeneration.current) {
+          setError(cause instanceof Error ? cause.message : "Consent or queue failed");
+        }
       }
     } finally {
-      setBusy(null);
+      if (generation === operationGeneration.current) setBusy(null);
     }
   };
 
   const recoverConsent = async () => {
     if (!prepared) return;
+    const generation = ++operationGeneration.current;
     setBusy("consent");
     setError("");
     try {
@@ -147,17 +268,21 @@ export function CollectiveExecutionPanel(props: {
         props.unitId,
         prepared.execution_id,
       );
+      if (generation !== operationGeneration.current) return;
       if (reconciled.state !== "consent_issued") {
         setStatus(reconciled);
         return;
       }
       await resetMidnightOilSpendConsent(prepared.job_id);
+      if (generation !== operationGeneration.current) return;
       setStatus(null);
       setPrepared({ ...prepared, state: "consent_required", operation_state: "none" });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Consent recovery failed");
+      if (generation === operationGeneration.current) {
+        setError(cause instanceof Error ? cause.message : "Consent recovery failed");
+      }
     } finally {
-      setBusy(null);
+      if (generation === operationGeneration.current) setBusy(null);
     }
   };
 
@@ -179,22 +304,116 @@ export function CollectiveExecutionPanel(props: {
         </p>
       </div>
       {!prepared ? (
-        <div className="flex items-end gap-2">
-          <label className="text-[11px]">
-            Work time (minutes)
-            <input
-              aria-label="Collective execution duration minutes"
-              className="ml-2 w-20 rounded border px-2 py-1 text-xs"
-              type="number"
-              min={1}
-              max={10080}
-              value={duration}
-              onChange={(event) => setDuration(Number(event.target.value))}
-            />
-          </label>
-          <button type="button" disabled={busy != null} onClick={() => void prepare()}>
-            {busy === "prepare" ? "Preparing…" : "Review execution budget"}
-          </button>
+        <div className="space-y-3">
+          <div className="flex items-end gap-2">
+            <label className="text-[11px]">
+              Work time (minutes)
+              <input
+                aria-label="Collective execution duration minutes"
+                className="ml-2 w-20 rounded border px-2 py-1 text-xs"
+                type="number"
+                min={1}
+                max={10080}
+                value={duration}
+                onChange={(event) => {
+                  readinessGeneration.current += 1;
+                  setReadiness(null);
+                  setDuration(Number(event.target.value));
+                }}
+              />
+            </label>
+            <button
+              type="button"
+              disabled={
+                busy != null ||
+                !Number.isSafeInteger(duration) ||
+                duration < 1 ||
+                duration > 10_080
+              }
+              onClick={() => void reviewReadiness()}
+            >
+              {busy === "readiness"
+                ? "Checking…"
+                : readiness
+                  ? "Refresh live readiness"
+                  : "Review source readiness"}
+            </button>
+          </div>
+          {[...new Set(reviewChoices.map((item) => item.refId))].map((refId) => {
+              const choices = reviewChoices
+                .filter((item) => item.refId === refId)
+                .map((item) => item.choice);
+              return choices.length > 1 ? (
+                <label key={refId} className="block text-[11px]">
+                  Private excerpt authority for {refId}
+                  <select
+                    aria-label={`Private excerpt authority ${refId}`}
+                    value={overlaySelections[refId] ?? ""}
+                    onChange={(event) => {
+                      readinessGeneration.current += 1;
+                      setReadiness(null);
+                      setOverlaySelections((current) => ({
+                        ...current,
+                        [refId]: event.target.value,
+                      }));
+                    }}
+                  >
+                    <option value="">Choose reviewed excerpt</option>
+                    {choices.map((item) => (
+                      <option key={item.overlay_id} value={item.overlay_id}>
+                        Review {item.overlay_id.slice(-8)} · valid through{" "}
+                        {new Date(item.expires_at_ms).toISOString()}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null;
+            })}
+          {readiness ? (
+            <div
+              className="space-y-2 rounded border border-black/15 p-2 text-[11px] dark:border-white/15"
+              data-testid="collective-readiness-preview"
+              data-request-fingerprint-sha256={readiness.request_fingerprint_sha256}
+              data-confers-execution-authority="false"
+              role="status"
+              aria-live="polite"
+            >
+              <p className="font-semibold">Publication readiness snapshot</p>
+              <p>
+                Checked {new Date(readiness.checked_at_ms).toISOString()} for authority through{" "}
+                {new Date(readiness.required_until_ms).toISOString()}. Live revalidation is always
+                required.
+              </p>
+              <ul className="space-y-1">
+                {readiness.sources.map((source) => (
+                  <li key={`${source.kind}:${source.ref_id}`}>
+                    <span className="font-semibold uppercase">{source.kind}</span> · Reviewed: yes ·
+                    Bound: {source.binding_state === "bound" ? "yes" : "no"} · Live:{" "}
+                    {source.live_state.replaceAll("_", " ")} · Executable: no
+                    {source.kind === "arxiv"
+                      ? " · remote abstract egress"
+                      : source.kind === "substack"
+                        ? " · owner-supplied local private excerpt; no Substack network fetch"
+                        : ""}
+                    {source.reason_codes.length
+                      ? ` · ${source.reason_codes.join(", ").replaceAll("_", " ")}`
+                      : ""}
+                  </li>
+                ))}
+              </ul>
+              {readiness.applicability === "mixed_v2" ? (
+                <p>
+                  Consent unavailable — mixed-source execution is not implemented.
+                </p>
+              ) : readiness.legacy_prepare_available ? (
+                <button type="button" disabled={busy != null} onClick={() => void prepare()}>
+                  {busy === "prepare" ? "Preparing…" : "Prepare execution budget"}
+                </button>
+              ) : (
+                <p>Preparation unavailable — reviewed publication scope is not live-ready.</p>
+              )}
+            </div>
+          ) : null}
         </div>
       ) : (
         <div className="space-y-2 text-[11px] font-mono">

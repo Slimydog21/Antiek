@@ -13,6 +13,7 @@ import {
   mergeSpawnOutputs,
   openEngagementSession,
   prepareCollectiveExecution,
+  previewCollectiveExecutionReadiness,
   reviewCollectiveSubstackExcerpt,
   spawnFromHighlight,
   updateEngagementSessionView,
@@ -309,6 +310,27 @@ describe("engagement API client", () => {
     expect(mockFetch.mock.calls[1][0]).toBe(
       "/engagement/sessions/collective/cunit_aaaaaaaaaaaaaaaaaaaaaaaa/execution/cexec_cccccccccccccccccccccccc",
     );
+  });
+
+  it("requests a no-store non-conferring publication readiness preview", async () => {
+    mockFetch.mockResolvedValueOnce({ ok: true, json: async () => ({ consent_enabled: false }) });
+    await previewCollectiveExecutionReadiness("cunit_aaaaaaaaaaaaaaaaaaaaaaaa", {
+      schema_version: 1,
+      expected_collective_preview_sha256: "b".repeat(64),
+      duration_minutes: 60,
+      substack_overlays: [
+        {
+          ref_id: "sref_1111111111111111",
+          overlay_id: "csubrev_222222222222222222222222",
+          overlay_sha256: "c".repeat(64),
+        },
+      ],
+    });
+    const [url, init] = mockFetch.mock.calls[0] as [string, RequestInit];
+    expect(url).toContain("/execution/readiness-preview");
+    expect(init.cache).toBe("no-store");
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("owner_id");
+    expect(JSON.parse(String(init.body))).not.toHaveProperty("idempotency_key");
   });
 
   it("sends pinned preview authority for confirmed twin promotion", async () => {

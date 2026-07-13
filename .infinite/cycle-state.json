@@ -1,7 +1,7 @@
 {
-  "cycle": 20,
+  "cycle": 21,
   "phase": "RE_DERIVE",
-  "subgoal": "Freeze manifest-v2 mixed-source authority while preserving legacy arXiv vectors and zero-provider-call failure boundaries",
+  "subgoal": "Expose a read-only mixed-source readiness preview with zero authority or provider side effects",
   "lanes": [],
   "engineHealth": {
     "grok": "degraded: Cycle 20 invocation failed HTTP 402 due exhausted balance",
@@ -23,7 +23,8 @@
     {"cycle": 17, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 18, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
     {"cycle": 19, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 11},
-    {"cycle": 20, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12}
+    {"cycle": 20, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12},
+    {"cycle": 21, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 12}
   ],
-  "updatedAt": "2026-07-13T09:06:11Z"
+  "updatedAt": "2026-07-13T12:45:00Z"
 }
