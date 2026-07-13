@@ -383,6 +383,7 @@ describe("Multimedia workstation", () => {
   });
 
   it("accumulates exact chapter authorities before producing", async () => {
+    const user = userEvent.setup();
     mockReviewedVisuals.mockResolvedValueOnce({
       set_id: "mmvset-test",
       asset_id: "mm-1",
@@ -400,12 +401,17 @@ describe("Multimedia workstation", () => {
     const produce = await screen.findByRole("button", { name: "Produce documentary" });
     expect(produce.getAttribute("disabled")).not.toBeNull();
 
-    fireEvent.click(screen.getByLabelText("Approve this maximum"));
-    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    const authorizeSelectedChapter = async () => {
+      await user.click(screen.getByLabelText("Approve this maximum"));
+      const authorize = screen.getByRole("button", { name: "Authorize narration" });
+      await waitFor(() => expect(authorize.getAttribute("disabled")).toBeNull());
+      await user.click(authorize);
+    };
+
+    await authorizeSelectedChapter();
     await screen.findByText("mmauth2-server-intro");
-    fireEvent.click(screen.getByRole("button", { name: "Select storyboard chapter 2" }));
-    fireEvent.click(screen.getByLabelText("Approve this maximum"));
-    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    await user.click(screen.getByRole("button", { name: "Select storyboard chapter 2" }));
+    await authorizeSelectedChapter();
     await screen.findByText("mmauth2-server-mechanism");
 
     await waitFor(() => expect(produce.getAttribute("disabled")).toBeNull());
