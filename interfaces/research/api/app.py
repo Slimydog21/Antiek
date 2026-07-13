@@ -83,6 +83,7 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402
+from .marketplace_host_runtime import marketplace_host_store_from_env  # noqa: E402
 from .operator_allowlist import operator_allowlist_from_env  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -6509,5 +6510,7 @@ def create_app(
     return app
 
 
-# Default app instance for ``uvicorn interfaces.research.api.app:app``.
-app = create_app()
+# Default app instance for ``uvicorn interfaces.research.api.app:app``. Local
+# development remains in-memory when the production durability path is absent;
+# an explicitly configured path must initialize successfully or import fails.
+app = create_app(marketplace_host_store=marketplace_host_store_from_env())

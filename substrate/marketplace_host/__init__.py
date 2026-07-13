@@ -16,7 +16,13 @@ from __future__ import annotations
 
 from .catalog import Catalog, CatalogEntry, LicenseClass, make_catalog
 from .host import HostResult, host_into_account
-from .library import AccountLibrary, InMemoryHostStore, SQLiteHostStore
+from .library import (
+    AccountLibrary,
+    InMemoryHostStore,
+    SQLiteHostStore,
+    backup_sqlite_host_store,
+    verify_sqlite_host_store,
+)
 from .payment_adapter import (
     ANTIEK_MARKETPLACE_LIVE_PAYMENT_ENV,
     CheckoutSession,
@@ -62,6 +68,8 @@ __all__ = [
     "PurchaseAdapter",
     "PurchaseReceipt",
     "SQLiteHostStore",
+    "backup_sqlite_host_store",
+    "verify_sqlite_host_store",
     "build_payment_adapter",
     "default_demo_catalog",
     "host_book_into_account",

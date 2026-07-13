@@ -11,6 +11,7 @@
 - DuckDB graph (chunks, nodes, edges, documents, syntheses, outcomes)
 - Event log (typed events; trajectory data)
 - Knowledge skills (Phase 8 accumulations)
+- Marketplace hosted documents, account memberships, and opaque receipts
 
 **What you cannot recover**:
 - Anything since the last backup. Backups run nightly at 03:00 UTC, so
@@ -101,28 +102,87 @@ in which case pick one from before the corruption.
 
 ```bash
 ssh root@<new-vm-ip>
-cd /tmp
-tar -xzf antiek-restore.tar.gz
-# Creates /tmp/antiek-backup-<timestamp>/
-ls -la /tmp/antiek-backup-*/
-# Expected: duckdb/  research_events/  knowledge_skills/
+set -euo pipefail
+RESTORE_ROOT=$(mktemp -d /tmp/antiek-restore.XXXXXX)
+tar -xzf /tmp/antiek-restore.tar.gz -C "${RESTORE_ROOT}"
+mapfile -t RESTORE_DIRS < <(
+    find "${RESTORE_ROOT}" -mindepth 1 -maxdepth 1 \
+        -type d -name 'antiek-backup-*' -print
+)
+if [[ "${#RESTORE_DIRS[@]}" -ne 1 ]]; then
+    echo "Expected exactly one backup directory; found ${#RESTORE_DIRS[@]}" >&2
+    exit 1
+fi
+RESTORE_DIR=${RESTORE_DIRS[0]}
+printf '%s\n' "${RESTORE_DIR}" > /tmp/antiek-restore-dir
+ls -la "${RESTORE_DIR}"
+# Expected: duckdb/  marketplace-host.sqlite3  research_events/  knowledge_skills/
+# marketplace-host.sqlite3 is absent in backups created before its rollout.
 ```
 
-## Step 6 — Restore the event log + knowledge skills
+## Step 6: Stop the substrate and restore file-backed state
 
-These are file copies — straightforward rsync over the empty state
-directory:
+Stop the service before replacing state. Event logs and knowledge skills are
+directory copies. The marketplace database in the archive is already an
+online-consistent SQLite snapshot; restore it as a single mode-0600 file.
 
 ```bash
-RESTORE_DIR=$(ls -d /tmp/antiek-backup-*/ | head -n 1)
+set -euo pipefail
+RESTORE_DIR=$(</tmp/antiek-restore-dir)
+[[ -d "${RESTORE_DIR}" ]]
+systemctl stop antiek
+if systemctl is-active --quiet antiek; then
+    echo "antiek service is still active; refusing to replace state" >&2
+    exit 1
+fi
 
-# Restore the event log
-sudo -u antiek rsync -a "${RESTORE_DIR}/research_events/" \
-    /home/antiek/.antiek/research_events/
+# Replace directory-backed state exactly, never overlay it. Preserve the prior
+# directories by rename so rollback remains possible without mixing generations.
+# Current backups always contain both directories, including empty generations.
+# For a historical archive that omitted a genuinely nonexistent directory, the
+# operator must explicitly export ALLOW_LEGACY_EMPTY_DIRS=1 before this block.
+ALLOW_LEGACY_EMPTY_DIRS=${ALLOW_LEGACY_EMPTY_DIRS:-0}
+for NAME in research_events knowledge_skills; do
+    if [[ ! -d "${RESTORE_DIR}/${NAME}" ]]; then
+        if [[ "${ALLOW_LEGACY_EMPTY_DIRS}" != 1 ]]; then
+            echo "Backup is missing ${NAME}; refusing an implicit empty restore" >&2
+            exit 1
+        fi
+        mkdir -p "${RESTORE_DIR}/${NAME}"
+    fi
+done
 
-# Restore the knowledge-skills directory
-sudo -u antiek rsync -a "${RESTORE_DIR}/knowledge_skills/" \
-    /home/antiek/.antiek/knowledge_skills/
+RESTORE_STAMP=$(date -u +%Y%m%dT%H%M%SZ)-$$
+for NAME in research_events knowledge_skills; do
+    TARGET="/home/antiek/.antiek/${NAME}"
+    if [[ -e "${TARGET}" ]]; then
+        mv "${TARGET}" "${TARGET}.pre-restore-${RESTORE_STAMP}"
+    fi
+    install -d -o antiek -g antiek -m 0700 "${TARGET}"
+    if [[ -d "${RESTORE_DIR}/${NAME}" ]]; then
+        sudo -u antiek rsync -a "${RESTORE_DIR}/${NAME}/" "${TARGET}/"
+    fi
+done
+
+MARKETPLACE_RESTORE_TMP=/home/antiek/.antiek/.marketplace-host.restore.sqlite3
+MARKETPLACE_RESTORE_ABSENT=/home/antiek/.antiek/.marketplace-host.restore.absent
+rm -f "${MARKETPLACE_RESTORE_TMP}" \
+    "${MARKETPLACE_RESTORE_TMP}-wal" \
+    "${MARKETPLACE_RESTORE_TMP}-shm" \
+    "${MARKETPLACE_RESTORE_TMP}-journal" \
+    "${MARKETPLACE_RESTORE_ABSENT}"
+
+# Stage marketplace state when present (older archives do not contain it).
+# Clearing the staging name above is unconditional, so a historical archive
+# cannot accidentally consume residue from an earlier failed restore.
+# Do not overwrite the current database until this copy has been validated.
+if [[ -f "${RESTORE_DIR}/marketplace-host.sqlite3" ]]; then
+    install -o antiek -g antiek -m 0600 \
+        "${RESTORE_DIR}/marketplace-host.sqlite3" \
+        "${MARKETPLACE_RESTORE_TMP}"
+else
+    touch "${MARKETPLACE_RESTORE_ABSENT}"
+fi
 ```
 
 ## Step 7 — Restore the DuckDB graph
@@ -132,7 +192,8 @@ The backup is a directory of Parquet shards + a `load.sql` script
 DATABASE`:
 
 ```bash
-RESTORE_DIR=$(ls -d /tmp/antiek-backup-*/ | head -n 1)
+RESTORE_DIR=$(</tmp/antiek-restore-dir)
+[[ -d "${RESTORE_DIR}/duckdb" ]]
 
 # Ensure no stale DuckDB file exists (IMPORT requires a fresh DB)
 rm -f /home/antiek/.antiek/antiek.duckdb
@@ -154,6 +215,86 @@ minutes for a large one.
 
 ```bash
 chown -R antiek:antiek /home/antiek/.antiek/
+```
+
+Validate the staged marketplace snapshot before replacing the current file.
+The verifier checks version, tables, column constraints, foreign keys, required
+indexes, schema objects, `quick_check`, and `foreign_key_check`. Before either
+replacement or intentional absence, hard-link the current main file and all
+SQLite sidecars into a timestamped rollback directory. Remove live sidecars,
+then atomically rename the validated staged snapshot over the live main path.
+For a historical archive with no marketplace state, remove the live generation
+after preserving it so startup creates a fresh empty store rather than a hybrid.
+
+```bash
+MARKETPLACE_DB=/home/antiek/.antiek/marketplace-host.sqlite3
+MARKETPLACE_RESTORE_TMP=/home/antiek/.antiek/.marketplace-host.restore.sqlite3
+MARKETPLACE_RESTORE_ABSENT=/home/antiek/.antiek/.marketplace-host.restore.absent
+set -euo pipefail
+
+MARKETPLACE_OUTCOMES=0
+if [[ -f "${MARKETPLACE_RESTORE_TMP}" ]]; then
+    MARKETPLACE_OUTCOMES=$((MARKETPLACE_OUTCOMES + 1))
+fi
+if [[ -f "${MARKETPLACE_RESTORE_ABSENT}" ]]; then
+    MARKETPLACE_OUTCOMES=$((MARKETPLACE_OUTCOMES + 1))
+fi
+if [[ "${MARKETPLACE_OUTCOMES}" -ne 1 ]]; then
+    echo "Expected exactly one marketplace restore outcome" >&2
+    exit 1
+fi
+
+preserve_marketplace_state() {
+    if [[ ! -e "${MARKETPLACE_DB}" \
+          && ! -e "${MARKETPLACE_DB}-wal" \
+          && ! -e "${MARKETPLACE_DB}-shm" \
+          && ! -e "${MARKETPLACE_DB}-journal" ]]; then
+        return
+    fi
+    RESTORE_STAMP=$(date -u +%Y%m%dT%H%M%SZ)-$$
+    PREVIOUS_DIR="${MARKETPLACE_DB}.pre-restore-${RESTORE_STAMP}"
+    install -d -o antiek -g antiek -m 0700 "${PREVIOUS_DIR}"
+    for CURRENT in \
+        "${MARKETPLACE_DB}" \
+        "${MARKETPLACE_DB}-wal" \
+        "${MARKETPLACE_DB}-shm" \
+        "${MARKETPLACE_DB}-journal"; do
+        if [[ -e "${CURRENT}" ]]; then
+            ln "${CURRENT}" "${PREVIOUS_DIR}/$(basename "${CURRENT}")"
+        fi
+    done
+}
+
+if [[ -f "${MARKETPLACE_RESTORE_TMP}" ]]; then
+    cd /opt/antiek
+    sudo -u antiek .venv/bin/python3 -c "
+from pathlib import Path
+from substrate.marketplace_host import verify_sqlite_host_store
+p = Path('/home/antiek/.antiek/.marketplace-host.restore.sqlite3')
+verify_sqlite_host_store(p)
+print('staged marketplace restore verified')
+"
+    rm -f "${MARKETPLACE_RESTORE_TMP}-wal" \
+        "${MARKETPLACE_RESTORE_TMP}-shm" \
+        "${MARKETPLACE_RESTORE_TMP}-journal"
+    preserve_marketplace_state
+    rm -f "${MARKETPLACE_DB}-wal" \
+        "${MARKETPLACE_DB}-shm" \
+        "${MARKETPLACE_DB}-journal"
+    mv "${MARKETPLACE_RESTORE_TMP}" "${MARKETPLACE_DB}"
+    chown antiek:antiek "${MARKETPLACE_DB}"
+    chmod 0600 "${MARKETPLACE_DB}"
+elif [[ -f "${MARKETPLACE_RESTORE_ABSENT}" ]]; then
+    preserve_marketplace_state
+    rm -f "${MARKETPLACE_DB}" \
+        "${MARKETPLACE_DB}-wal" \
+        "${MARKETPLACE_DB}-shm" \
+        "${MARKETPLACE_DB}-journal"
+fi
+rm -f "${MARKETPLACE_RESTORE_TMP}-wal" \
+    "${MARKETPLACE_RESTORE_TMP}-shm" \
+    "${MARKETPLACE_RESTORE_TMP}-journal" \
+    "${MARKETPLACE_RESTORE_ABSENT}"
 ```
 
 ## Step 9 — Populate the secrets file
@@ -207,7 +348,14 @@ substrate is healthy AND the restored graph is queryable end-to-end.
 
 ```bash
 rm /tmp/antiek-restore.tar.gz
-rm -rf /tmp/antiek-backup-*/
+RESTORE_DIR=$(</tmp/antiek-restore-dir)
+RESTORE_ROOT=$(dirname "${RESTORE_DIR}")
+if [[ "${RESTORE_ROOT}" != /tmp/antiek-restore.* ]]; then
+    echo "Refusing unexpected cleanup path: ${RESTORE_ROOT}" >&2
+    exit 1
+fi
+rm -rf "${RESTORE_ROOT}"
+rm -f /tmp/antiek-restore-dir
 ```
 
 ---

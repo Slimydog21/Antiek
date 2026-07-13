@@ -4,7 +4,8 @@
 # Antiek nightly backup.
 #
 # Snapshots DuckDB consistently (EXPORT DATABASE → directory of SQL +
-# Parquet), rsyncs the append-only event log and knowledge-skills dir,
+# Parquet), snapshots the marketplace SQLite store through SQLite's online
+# backup API, rsyncs the append-only event log and knowledge-skills dir,
 # tar+gzip, uploads to R2. Retention enforced in-script.
 #
 # Runs as root via cron at {{ backup_cron_hour }}:{{ backup_cron_minute }}
@@ -91,23 +92,36 @@ else:
     print("  schema.sql already clean (no-op)")
 PY
 
-# ── 2. Event log (append-only, safe to rsync live) ────────────────────────
+# ── 2. Marketplace host SQLite (online-consistent snapshot) ───────────────
+if [[ -f "${STATE_DIR}/marketplace-host.sqlite3" ]]; then
+    echo "${LOG_PREFIX} snapshotting marketplace host store"
+    sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 \
+        {{ antiek_install_dir }}/tools/backup_marketplace_sqlite.py \
+        --source "${STATE_DIR}/marketplace-host.sqlite3" \
+        --destination "${STAGING}/marketplace-host.sqlite3"
+else
+    echo "${LOG_PREFIX} no marketplace host database yet; skipping"
+fi
+
+# ── 3. Event log (append-only, safe to rsync live) ────────────────────────
+mkdir -p "${STAGING}/research_events"
 if [[ -d "${STATE_DIR}/research_events" ]]; then
     echo "${LOG_PREFIX} rsync event log"
     rsync -a "${STATE_DIR}/research_events/" "${STAGING}/research_events/"
 else
-    echo "${LOG_PREFIX} no event log directory yet; skipping"
+    echo "${LOG_PREFIX} no event log directory yet; recording empty generation"
 fi
 
-# ── 3. Knowledge skills (Phase 8 auto-patches accumulate here) ────────────
+# ── 4. Knowledge skills (Phase 8 auto-patches accumulate here) ────────────
+mkdir -p "${STAGING}/knowledge_skills"
 if [[ -d "${STATE_DIR}/knowledge_skills" ]]; then
     echo "${LOG_PREFIX} rsync knowledge_skills"
     rsync -a "${STATE_DIR}/knowledge_skills/" "${STAGING}/knowledge_skills/"
 else
-    echo "${LOG_PREFIX} no knowledge_skills directory yet; skipping"
+    echo "${LOG_PREFIX} no knowledge_skills directory yet; recording empty generation"
 fi
 
-# ── 4. Compress + upload ──────────────────────────────────────────────────
+# ── 5. Compress + upload ──────────────────────────────────────────────────
 echo "${LOG_PREFIX} tar+gzip"
 tar -czf "${ARCHIVE}" -C "/var/tmp" "$(basename "${STAGING}")"
 
@@ -118,7 +132,7 @@ echo "${LOG_PREFIX} uploading to R2"
 rclone copyto "${ARCHIVE}" "r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz" \
     --config /etc/rclone/rclone.conf
 
-# ── 5. Retention — prune old backups ──────────────────────────────────────
+# ── 6. Retention: prune old backups ───────────────────────────────────────
 # `|| true` because a delete failure shouldn't fail the whole backup
 # (more important to keep new backups landing than to keep old ones pruned).
 echo "${LOG_PREFIX} pruning backups older than ${RETENTION_DAYS}d"
