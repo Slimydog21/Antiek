@@ -19,6 +19,7 @@
 import "./iceFishing";
 import "./researchLens";
 import "./writingNib";
+import "./speakingResonance";
 
 export {
   registerActivity,
@@ -29,6 +30,7 @@ export {
 export { iceFishingActivity } from "./iceFishing";
 export { researchLensActivity } from "./researchLens";
 export { writingNibActivity } from "./writingNib";
+export { speakingResonanceActivity } from "./speakingResonance";
 export { activityIdForPathname, getActivityForPathname } from "./selection";
 export type {
   ActivityId,

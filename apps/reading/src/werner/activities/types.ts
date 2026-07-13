@@ -23,7 +23,8 @@ import type { ComponentType } from "react";
 
 /** The catalogued fixed-station activities. The arcade (SPR-05) and easter egg
  *  (SPR-04) may widen this union later without gaining movement authority. */
-export type ActivityId = "ice-fishing" | "research-lens" | "writing-nib";
+export type ActivityId =
+  "ice-fishing" | "research-lens" | "writing-nib" | "speaking-resonance";
 
 /** The useMouseFollow read-seam fields an instrument is allowed to consume.
  *  Note what is ABSENT: any read of the penguin's own whereabouts. An
@@ -59,7 +60,7 @@ export type ActivityUnlock =
   | { readonly kind: "default" }
   | {
       readonly kind: "route";
-      readonly policyId: "knowledge-work" | "writing-work";
+      readonly policyId: "knowledge-work" | "writing-work" | "speaking-work";
     }
   | { readonly kind: "easter-egg"; readonly sequenceId: string };
 

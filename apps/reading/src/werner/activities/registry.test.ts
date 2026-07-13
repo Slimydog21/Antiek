@@ -8,6 +8,7 @@ import {
   listActivities,
   researchLensActivity,
   registerActivity,
+  speakingResonanceActivity,
   writingNibActivity,
   type CursorInstrumentProps,
 } from "./index";
@@ -40,6 +41,7 @@ describe("station activity registry", () => {
       iceFishingActivity,
       researchLensActivity,
       writingNibActivity,
+      speakingResonanceActivity,
     ]);
     expect(getDefaultActivity()).toBe(iceFishingActivity);
   });
@@ -136,6 +138,27 @@ describe("station activity registry", () => {
 
     it("reads only the cursor seam", () => {
       expect(writingNibActivity.instrument.reads).toEqual([
+        "live",
+        "pointerIdle",
+        "tabHidden",
+      ]);
+    });
+  });
+
+  describe("speaking-resonance activity shape", () => {
+    it("declares the speaking route policy and no mascot ambient", () => {
+      expect(speakingResonanceActivity.unlock).toEqual({
+        kind: "route",
+        policyId: "speaking-work",
+      });
+      expect(speakingResonanceActivity.ambient).toEqual({
+        activeClass: null,
+        idleClass: null,
+      });
+    });
+
+    it("reads only the cursor seam", () => {
+      expect(speakingResonanceActivity.instrument.reads).toEqual([
         "live",
         "pointerIdle",
         "tabHidden",

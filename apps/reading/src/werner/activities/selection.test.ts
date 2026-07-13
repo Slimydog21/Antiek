@@ -5,6 +5,7 @@ import {
   activityIdForPathname,
   getActivityForPathname,
   researchLensActivity,
+  speakingResonanceActivity,
   writingNibActivity,
 } from "./index";
 
@@ -21,11 +22,16 @@ const NON_KNOWLEDGE_WORK_ROUTES = MODE_TAXONOMY.filter(
     Boolean(mode.route) &&
     mode.workflow !== "research" &&
     mode.workflow !== "read" &&
-    mode.workflow !== "write",
+    mode.workflow !== "write" &&
+    mode.workflow !== "speak",
 ).map((mode) => concretePath(mode.route!));
 
 const WRITING_WORK_ROUTES = MODE_TAXONOMY.filter(
   (mode) => Boolean(mode.route) && mode.workflow === "write",
+).map((mode) => concretePath(mode.route!));
+
+const SPEAKING_WORK_ROUTES = MODE_TAXONOMY.filter(
+  (mode) => Boolean(mode.route) && mode.workflow === "speak",
 ).map((mode) => concretePath(mode.route!));
 
 describe("station activity route policy", () => {
@@ -69,6 +75,23 @@ describe("station activity route policy", () => {
       expect(activityIdForPathname(pathname)).toBe("writing-nib");
     },
   );
+
+  it.each(SPEAKING_WORK_ROUTES)(
+    "selects speaking-resonance for taxonomy speaking work: %s",
+    (pathname) => {
+      expect(activityIdForPathname(pathname)).toBe("speaking-resonance");
+      expect(getActivityForPathname(pathname)).toBe(speakingResonanceActivity);
+    },
+  );
+
+  it.each([
+    "/speak",
+    "/speak/project-7",
+    "/speak/invite/invite-token",
+    "/biography",
+  ])("keeps resonance across speaking route boundaries: %s", (pathname) => {
+    expect(activityIdForPathname(pathname)).toBe("speaking-resonance");
+  });
 
   it.each(["/home", "/deep-researcher", "/not-a-route"])(
     "does not leak the lens onto unknown route lookalikes: %s",
