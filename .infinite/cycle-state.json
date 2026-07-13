@@ -1,20 +1,20 @@
 {
-  "cycle": 31,
-  "phase": "CERTIFIED",
-  "subgoal": "Certify the verifier-only creation anchor, sealed exact-source bundle, declarative source-vault contract, semantic identity, and production quarantine while leaving encrypted storage, source heads, witnesses, resolution, provider execution, checkpoints, and sinks unimplemented",
+  "cycle": 33,
+  "phase": "INVESTIGATE",
+  "subgoal": "Investigate and freeze a genuinely linearizable owner-private transition coordinator that can atomically bind certified capability and source heads to one provider-effect claim, while keeping paid transport, encrypted checkpoints, compliance, taint and every sink denied until the complete V4/V7 authority chain is executable",
   "lanes": [
-    "verifier-only-creation-anchor",
-    "sealed-exact-source-bundle-and-range-joins",
-    "declarative-source-vault-contract",
-    "semantic-source-attestation-and-production-quarantine",
-    "encrypted-store-head-witness-and-sinks-deferred"
+    "one-database-or-fenced-service-transition-authority",
+    "capability-source-and-provider-effect-current-head-cas",
+    "policy-v4-capability-v4-core-v4-receipt-v7-envelope-v4",
+    "paid-unknown-crash-replay-and-budget-hold-semantics",
+    "encrypted-checkpoint-compliance-taint-and-terminal-sinks-remain-deferred"
   ],
   "engineHealth": {
-    "grok": "Cycle 31 failed HTTP 402 before producing a deliverable",
-    "mimo": "Cycle 31 returned grounded inventory but proposed unsafe plaintext indexes and audit storage; those recommendations were rejected",
-    "claude": "Cycle 31 standing reviewers found and closed verifier bypass, import-quarantine, exact-lineage, nonconferral, and absolute-range gaps",
-    "codex": "Cycle 31 default GPT-5.6-sol performed extensive read-only archaeology and established why storage, external rollback authority, production issuance, and cross-database coordination must remain deferred",
-    "glm-cc": "Cycle 31 ultracode ran from a false repository premise and returned an unrelated greenfield design; no result was used",
+    "grok": "Cycle 32 failed HTTP 402 before producing a deliverable",
+    "mimo": "Cycle 32 hung without a decision-ready report and was interrupted",
+    "claude": "Cycle 32 standing architecture and seam critics independently passed the final certified bytes; the third review lane was unavailable because its platform classifier rejected the request",
+    "codex": "Cycle 32 GPT-5.6-sol supplied the grounded one-database source-authority architecture and exact module seam map",
+    "glm-cc": "Cycle 32 ultracode activated but returned configuration confusion rather than grounded repository evidence",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -40,7 +40,8 @@
     {"cycle": 28, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false},
     {"cycle": 29, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false},
     {"cycle": 30, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 16, "corpusCertified": false},
-    {"cycle": 31, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 17, "corpusCertified": false}
+    {"cycle": 31, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 17, "corpusCertified": false},
+    {"cycle": 32, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 17, "corpusCertified": false}
   ],
-  "updatedAt": "2026-07-13T17:33:20Z"
+  "updatedAt": "2026-07-13T18:35:45Z"
 }

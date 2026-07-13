@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
+import urllib.parse
 from dataclasses import dataclass
 
 from cryptography.hazmat.primitives import serialization
@@ -55,7 +57,7 @@ def sign_digest(domain: bytes, digest: str, *, private_key: bytes) -> str:
 
 
 def encoded_private_needles(case: OwnerPrivateV2Case) -> frozenset[bytes]:
-    """Raw, hex, and base64 encodings that must be absent from store artifacts."""
+    """Raw and common reversible/content-derived encodings forbidden on disk."""
 
     private_values = {
         PRIVATE_CANARY,
@@ -70,7 +72,16 @@ def encoded_private_needles(case: OwnerPrivateV2Case) -> frozenset[bytes]:
     needles: set[bytes] = set()
     for value in private_values:
         raw = value.encode("utf-8")
-        needles.update({raw, raw.hex().encode("ascii"), base64.b64encode(raw)})
+        needles.update(
+            {
+                raw,
+                raw.hex().encode("ascii"),
+                base64.b64encode(raw),
+                urllib.parse.quote(value, safe="").encode("ascii"),
+                json.dumps(value, ensure_ascii=True)[1:-1].encode("utf-8"),
+                hashlib.sha256(raw).hexdigest().encode("ascii"),
+            }
+        )
     return frozenset(needles)
 
 
