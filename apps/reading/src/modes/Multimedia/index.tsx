@@ -32,6 +32,7 @@ import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePan
 import { LocalProductionPanel } from "./LocalProductionPanel";
 import { LocalAudiblePanel } from "./LocalAudiblePanel";
 import { VisualReviewPanel } from "./VisualReviewPanel";
+import { VoiceSteeringInput } from "./VoiceSteeringInput";
 import { projectMultimediaPlan } from "./planProjection";
 
 type Mode = "video" | "audio" | "hybrid";
@@ -203,6 +204,8 @@ export default function Multimedia() {
   const [activeChapterId, setActiveChapterId] = useState(CHAPTERS[0].id);
   const [selectedSourceId, setSelectedSourceId] = useState(SOURCES[0].id);
   const [steer, setSteer] = useState("Make chapter 2 more concrete and add a voice note about turbofan reliability.");
+  const [rawVoiceSteer, setRawVoiceSteer] = useState<string | null>(null);
+  const [voiceSteeringBusy, setVoiceSteeringBusy] = useState(false);
   const [assets, setAssets] = useState<MultimediaAssetSummary[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
@@ -223,6 +226,7 @@ export default function Multimedia() {
   useEffect(() => {
     productionRequestId.current += 1;
     setProductionRegistrationPending(false);
+    setRawVoiceSteer(null);
   }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id]);
 
   useEffect(() => {
@@ -554,7 +558,14 @@ export default function Multimedia() {
     if (!selectedRecord || !steer.trim()) return;
     setPendingCommand("steer");
     try {
-      const record = await steerMultimediaAsset(selectedRecord.asset.asset_id, { prompt: steer });
+      const prompt = steer.trim();
+      const record = await steerMultimediaAsset(selectedRecord.asset.asset_id, {
+        prompt,
+        ...(rawVoiceSteer ? {
+          raw_voice_transcript: rawVoiceSteer,
+          ...(prompt === rawVoiceSteer ? {} : { corrected_voice_transcript: prompt }),
+        } : {}),
+      });
       setSelectedRecord(record);
       setPlanReady(true);
       setApproved(record.asset.status === "ready");
@@ -1036,21 +1047,25 @@ export default function Multimedia() {
               }}
             />
             <section className="rounded-md border border-rule bg-ice-1 p-3 dark:border-charcoal-1 dark:bg-charcoal-2">
-              <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Text or voice steering</p>
-              <LemonTextarea
+              <VoiceSteeringInput
+                key={`${selectedRecord?.asset.asset_id ?? "none"}:${selectedRecord?.asset.revision_id ?? "none"}`}
                 value={steer}
-                minRows={3}
-                maxRows={5}
-                onChange={(event) => setSteer(event.target.value)}
-                aria-label="Steering prompt"
-                className="mt-2"
+                rawTranscript={rawVoiceSteer}
+                disabled={!canRunAssetCommand}
+                onChange={setSteer}
+                onTranscript={(transcript) => {
+                  setRawVoiceSteer(transcript);
+                  setSteer(transcript);
+                }}
+                onDiscardTranscript={() => setRawVoiceSteer(null)}
+                onBusyChange={setVoiceSteeringBusy}
               />
               <div className="mt-2 flex gap-2">
                 <LemonButton
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={!canRunAssetCommand}
+                  disabled={!canRunAssetCommand || voiceSteeringBusy}
                   onClick={applySteeringPrompt}
                 >
                   {pendingCommand === "steer" ? "Applying..." : "Apply steer"}
