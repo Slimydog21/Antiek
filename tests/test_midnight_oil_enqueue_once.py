@@ -233,6 +233,72 @@ def test_worker_has_one_lease_and_stable_step_idempotency(tmp_path: Path) -> Non
     assert provider_idempotency_key(operation_id, 0) != provider_idempotency_key(operation_id, 1)
 
 
+def test_worker_private_guard_fails_before_owner_cas_projection_or_lease(
+    tmp_path: Path,
+) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    before_owner = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    before_legacy = deps.jobs.get_job("job-owned")
+    before_queue = queue.get(operation_id)
+    assert before_owner is not None and before_queue is not None
+
+    def deny(_authority, _now_ms):  # type: ignore[no-untyped-def]
+        raise ValueError("owner-private execution remains disabled")
+
+    with pytest.raises(ValueError, match="owner-private execution remains disabled"):
+        lease_authorized_operation(
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            jobs=deps.jobs,
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id="job-owned",
+            worker_id="worker-private",
+            now_ms=1_000_001,
+            lease_expires_at_ms=1_060_001,
+            private_authority_guard=deny,
+        )
+    assert deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned") == before_owner
+    assert deps.jobs.get_job("job-owned") == before_legacy
+    assert queue.get(operation_id) == before_queue
+
+
+def test_worker_absent_guard_rejects_private_marker_before_mutation(tmp_path: Path) -> None:
+    client, deps, queue, token = _authorized(tmp_path)
+    operation_id = _run(client, token).json()["operation_id"]
+    before_owner = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    before_queue = queue.get(operation_id)
+    assert before_owner is not None and before_queue is not None
+
+    class PartialPrivateStore:
+        def get_job(self, *, owner_user_id: str, job_id: str):  # type: ignore[no-untyped-def]
+            row = deps.owner_jobs.get_job(owner_user_id=owner_user_id, job_id=job_id)
+            assert row is not None
+            return replace(
+                row,
+                payload={**row.payload, "context_binding_schema_version": 2},
+            )
+
+        def compare_and_set(self, **kwargs):  # type: ignore[no-untyped-def]
+            raise AssertionError("private denial must precede owner CAS")
+
+    with pytest.raises(ValueError, match="incomplete"):
+        lease_authorized_operation(
+            operation_queue=queue,
+            owner_jobs=PartialPrivateStore(),  # type: ignore[arg-type]
+            jobs=deps.jobs,
+            operation_id=operation_id,
+            owner_user_id="alice",
+            job_id="job-owned",
+            worker_id="worker-private",
+            now_ms=1_000_001,
+            lease_expires_at_ms=1_060_001,
+        )
+    assert deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned") == before_owner
+    assert queue.get(operation_id) == before_queue
+
+
 def test_worker_propagates_key_and_same_worker_resumes_before_dispatch(tmp_path: Path) -> None:
     client, deps, queue, token = _authorized(tmp_path)
     operation_id = _run(client, token).json()["operation_id"]

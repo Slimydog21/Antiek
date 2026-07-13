@@ -21,6 +21,58 @@ from substrate.midnight_oil.session_flywheel import (
 )
 
 
+def _context_hash(**overrides: object) -> str:
+    values: dict[str, object] = {
+        "owner_id": "alice",
+        "execution_id": "cexec_" + "1" * 24,
+        "collective_unit_id": "cunit_" + "2" * 24,
+        "collective_preview_sha256": "3" * 64,
+        "floating_session_id": "session-1",
+        "floating_spawn_id": "spawn-1",
+        "parent_asset_id": "asset-1",
+        "duration_minutes": 30,
+        "model_id": "private-model",
+        "research_tier": "deep",
+        "fanout_depth": 3,
+    }
+    values.update(overrides)
+    return context_binding_sha256(**values)  # type: ignore[arg-type]
+
+
+def test_context_v2_is_complete_distinct_and_preserves_v1() -> None:
+    legacy = _context_hash()
+    assert legacy == _context_hash()
+    private = _context_hash(
+        publication_manifest_sha256="4" * 64,
+        publication_manifest_schema_version=2,
+        owner_private_publication_authority_sha256="5" * 64,
+        private_output_policy_sha256="6" * 64,
+    )
+    assert private == "bbcfcb73f8fa902b683826e2b6d260fd8b7013e978ca9159619bb0fd62a23b31"
+    assert private != legacy
+    with pytest.raises(ValueError, match="incomplete"):
+        _context_hash(
+            publication_manifest_sha256="4" * 64,
+            publication_manifest_schema_version=2,
+            owner_private_publication_authority_sha256="5" * 64,
+        )
+    with pytest.raises(ValueError, match="incomplete"):
+        _context_hash(
+            publication_manifest_sha256="4" * 64,
+            publication_capability_sha256="7" * 64,
+            publication_manifest_schema_version=2,
+            owner_private_publication_authority_sha256="5" * 64,
+            private_output_policy_sha256="6" * 64,
+        )
+    with pytest.raises(ValueError, match="invalid"):
+        _context_hash(
+            publication_manifest_sha256="z" * 64,
+            publication_manifest_schema_version=2,
+            owner_private_publication_authority_sha256="5" * 64,
+            private_output_policy_sha256="6" * 64,
+        )
+
+
 def test_terminal_effect_completes_bound_session_once() -> None:
     engagement = InMemoryEngagementStore()
     sessions = InMemorySessionStore()

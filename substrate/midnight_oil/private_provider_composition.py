@@ -684,6 +684,8 @@ class PrivateProviderComposition:
     revocation_key_ids: tuple[str, ...]
     verification_key_envs: frozenset[str]
     public_verification_keys: tuple[bytes, ...] = field(repr=False)
+    capability_verification_keys: tuple[tuple[str, bytes], ...] = field(repr=False)
+    revocation_verification_keys: tuple[tuple[str, bytes], ...] = field(repr=False)
     capabilities: tuple[PrivateProviderProcessingCapabilityV1, ...] = field(repr=False)
     revocation_store: DurablePrivateProviderRevocationHeadStore = field(repr=False)
     current_head: PrivateProviderRevocationHeadV1
@@ -694,6 +696,19 @@ class PrivateProviderComposition:
     @property
     def capability_hashes(self) -> tuple[str, ...]:
         return tuple(sorted(row.capability_sha256 for row in self.capabilities))
+
+    def live_reference_registry(
+        self, *, now_ms: int
+    ) -> PrivateProviderCapabilityReferenceRegistry:
+        """Re-audit durable current revocation state for one transition."""
+
+        current = self.revocation_store.current(now_ms=now_ms)
+        return PrivateProviderCapabilityReferenceRegistry(
+            self.capabilities,
+            capability_verification_keys=dict(self.capability_verification_keys),
+            revocation_verification_keys=dict(self.revocation_verification_keys),
+            revocation_snapshot=current.snapshot,
+        )
 
 
 def private_provider_composition_sha256(
@@ -876,6 +891,8 @@ def build_private_provider_composition(
         revocation_key_ids=tuple(sorted(revocation_keys)),
         verification_key_envs=frozenset(all_key_envs),
         public_verification_keys=tuple(sorted(all_public_keys)),
+        capability_verification_keys=tuple(sorted(capability_keys.items())),
+        revocation_verification_keys=tuple(sorted(revocation_keys.items())),
         capabilities=capabilities,
         revocation_store=store,
         current_head=current,

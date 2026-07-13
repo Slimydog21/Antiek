@@ -341,6 +341,12 @@ _PAYLOAD_FIELDS: Final = frozenset(
         "publication_capability_sha256",
         "publication_capability_id",
         "publication_capability_expires_at_ms",
+        "publication_manifest_schema_version",
+        "owner_private_publication_authority_json",
+        "owner_private_publication_authority_sha256",
+        "private_output_policy_sha256",
+        "context_binding_schema_version",
+        "owner_private_execution_state",
     }
 )
 

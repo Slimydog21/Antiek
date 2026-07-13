@@ -57,6 +57,7 @@ from substrate.midnight_oil.publication_capability import (
     PublicationCapabilityRegistry,
     require_pinned_publication_capability,
 )
+from substrate.midnight_oil.session_flywheel import context_binding_sha256
 from substrate.midnight_oil.spend_consent import (
     MAX_CEILING_CENTS,
     ConsentReceipt,
@@ -71,6 +72,7 @@ from substrate.midnight_oil.swarm_plan import SwarmLivePlan, build_stage_plan
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
 midnight_oil_preflight_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
 _DEPENDENCIES = "midnight_oil_dependencies"
+_PRIVATE_AUTHORITY_RESOLVER = "midnight_oil_private_authority_resolver"
 CONSENT_TTL_MS = 15 * 60 * 1000
 
 
@@ -173,6 +175,10 @@ def _deps(request: Request) -> MidnightOilDependencies:
     return value
 
 
+def _private_authority_resolver(request: Request) -> object | None:
+    return getattr(request.app.state, _PRIVATE_AUTHORITY_RESOLVER, None)
+
+
 def _owner(request: Request) -> str:
     value = getattr(request.state, "user_id", None)
     if not isinstance(value, str) or not value.strip():
@@ -245,7 +251,7 @@ def _owner_payload(
     *,
     live_plan: LiveExecutionPlan | None = None,
     swarm_plan: SwarmLivePlan | None = None,
-    context_binding: Mapping[str, str] | None = None,
+    context_binding: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     if live_plan is not None and swarm_plan is not None:
         raise ValueError("legacy and swarm live authority cannot coexist")
@@ -255,7 +261,7 @@ def _owner_payload(
         )
     )
     binding = context_binding or {}
-    return {
+    payload: dict[str, object] = {
         "goals": list(job.goals),
         "duration_minutes": job.duration_minutes,
         "model_id": job.model_id,
@@ -293,6 +299,42 @@ def _owner_payload(
             "publication_capability_expires_at_ms"
         ),
     }
+    private_names = (
+        "publication_manifest_schema_version",
+        "owner_private_publication_authority_json",
+        "owner_private_publication_authority_sha256",
+        "private_output_policy_sha256",
+        "context_binding_schema_version",
+        "owner_private_execution_state",
+    )
+    private_values = tuple(binding.get(name) for name in private_names)
+    if any(value is not None for value in private_values):
+        if any(value is None for value in private_values):
+            raise ValueError("owner-private context binding is incomplete")
+        payload.update(dict(zip(private_names, private_values, strict=True)))
+        for name in (
+            "publication_preflight_ready",
+            "publication_capability_sha256",
+            "publication_capability_id",
+            "publication_capability_expires_at_ms",
+        ):
+            payload.pop(name, None)
+        if swarm_plan is None:
+            raise ValueError("owner-private execution requires signed swarm authority")
+        from substrate.midnight_oil.private_provider_authority import (
+            parse_owner_private_publication_authority_json,
+        )
+
+        private_authority = parse_owner_private_publication_authority_json(
+            str(binding["owner_private_publication_authority_json"])
+        )
+        for selection in private_authority.selections:
+            if any(
+                selection.route_key not in swarm_plan.role(role).allowed_routes
+                for role in selection.required_router_roles
+            ):
+                raise ValueError("owner-private swarm topology conflicts")
+    return payload
 
 
 def create_job_authority(
@@ -302,7 +344,7 @@ def create_job_authority(
     body: CreateJobBody,
     job_id: str | None = None,
     asset_id: str | None = None,
-    context_binding: Mapping[str, str] | None = None,
+    context_binding: Mapping[str, object] | None = None,
 ) -> MidnightOilProductResult:
     """Create or replay one exact owner job without issuing spend authority."""
     if job_id is None:
@@ -330,6 +372,12 @@ def create_job_authority(
             "publication_capability_sha256",
             "publication_capability_id",
             "publication_capability_expires_at_ms",
+            "publication_manifest_schema_version",
+            "owner_private_publication_authority_json",
+            "owner_private_publication_authority_sha256",
+            "private_output_policy_sha256",
+            "context_binding_schema_version",
+            "owner_private_execution_state",
         )
         stored_binding = {
             key: existing.payload[key]
@@ -468,6 +516,120 @@ def create_job_authority(
         raise ValueError("job creation material is invalid") from None
 
 
+def create_owner_private_job_authority(
+    *,
+    deps: MidnightOilDependencies,
+    owner: str,
+    body: CreateJobBody,
+    job_id: str,
+    asset_id: str,
+    execution_id: str,
+    collective_unit_id: str,
+    collective_preview_sha256: str,
+    floating_session_id: str,
+    floating_spawn_id: str,
+    parent_asset_id: str,
+    manifest: Any,
+    private_authority_resolver: Any,
+    now_ms: int,
+) -> MidnightOilProductResult:
+    """Persist complete v2 authority internally without exposing a route."""
+
+    from substrate.midnight_oil.private_provider_authority import (
+        LivePrivateProviderAuthorityResolver,
+        canonical_owner_private_publication_authority_json,
+    )
+    from substrate.midnight_oil.private_provider_policy import (
+        OWNER_PRIVATE_OUTPUT_SINK_POLICY_SHA256,
+    )
+    from substrate.midnight_oil.publication_authority_v2 import (
+        ReviewedPublicationManifestV2,
+    )
+
+    if (
+        not isinstance(manifest, ReviewedPublicationManifestV2)
+        or not isinstance(
+            private_authority_resolver, LivePrivateProviderAuthorityResolver
+        )
+        or manifest.collective_unit_id != collective_unit_id
+        or manifest.collective_preview_sha256 != collective_preview_sha256
+        or type(now_ms) is not int
+        or isinstance(now_ms, bool)
+        or now_ms < 0
+    ):
+        raise ValueError("owner-private job authority input conflicts")
+    required_until_ms = (
+        now_ms
+        + CONSENT_TTL_MS
+        + body.duration_minutes * 60_000
+        + deps.publication_completion_margin_ms
+    )
+    private_authority = private_authority_resolver.resolve(
+        manifest,
+        now_ms=now_ms,
+        required_until_ms=required_until_ms,
+    )
+    binding_hash = context_binding_sha256(
+        owner_id=owner,
+        execution_id=execution_id,
+        collective_unit_id=collective_unit_id,
+        collective_preview_sha256=collective_preview_sha256,
+        floating_session_id=floating_session_id,
+        floating_spawn_id=floating_spawn_id,
+        parent_asset_id=parent_asset_id,
+        duration_minutes=body.duration_minutes,
+        model_id=body.model_id,
+        research_tier=body.research_tier or "deep",
+        fanout_depth=body.fanout_depth,
+        publication_manifest_sha256=manifest.manifest_sha256,
+        publication_manifest_schema_version=2,
+        owner_private_publication_authority_sha256=(
+            private_authority.authority_sha256
+        ),
+        private_output_policy_sha256=OWNER_PRIVATE_OUTPUT_SINK_POLICY_SHA256,
+    )
+    binding: dict[str, object] = {
+        "execution_id": execution_id,
+        "collective_unit_id": collective_unit_id,
+        "collective_preview_sha256": collective_preview_sha256,
+        "floating_session_id": floating_session_id,
+        "floating_spawn_id": floating_spawn_id,
+        "context_binding_sha256": binding_hash,
+        "context_parent_asset_id": parent_asset_id,
+        "publication_manifest_schema_version": 2,
+        "publication_manifest_sha256": manifest.manifest_sha256,
+        "publication_manifest_json": manifest.model_dump_json(),
+        "owner_private_publication_authority_json": (
+            canonical_owner_private_publication_authority_json(private_authority)
+        ),
+        "owner_private_publication_authority_sha256": (
+            private_authority.authority_sha256
+        ),
+        "private_output_policy_sha256": OWNER_PRIVATE_OUTPUT_SINK_POLICY_SHA256,
+        "context_binding_schema_version": 2,
+        "owner_private_execution_state": "propagated_disabled",
+    }
+    result = create_job_authority(
+        deps=deps,
+        owner=owner,
+        body=body,
+        job_id=job_id,
+        asset_id=asset_id,
+        context_binding=binding,
+    )
+    from substrate.midnight_oil.private_provider_authority import (
+        prospective_owner_private_queue_commitment_from_payload,
+        recompute_owner_private_consent_config,
+    )
+
+    reopened = deps.owner_jobs.get_job(owner_user_id=owner, job_id=job_id)
+    if reopened is None:
+        raise RuntimeError("owner-private authority disappeared after persistence")
+    recompute_owner_private_consent_config(reopened, result.job).canonical_hash()
+    prospective_owner_private_queue_commitment_from_payload(reopened.payload)
+    return result
+
+
 @midnight_oil_router.post("/create")
 def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
     try:
@@ -483,9 +645,17 @@ def post_create(request: Request, body: CreateJobBody) -> dict[str, Any]:
 
 def _config(row: OwnerJob) -> JobConsentConfig:
     payload = row.payload
+    from substrate.midnight_oil.private_provider_authority import (
+        owner_private_authority_from_payload,
+    )
     from substrate.midnight_oil.publication_sources import manifest_from_authority
 
-    publication_manifest = manifest_from_authority(payload)
+    private_authority = owner_private_authority_from_payload(payload)
+    publication_manifest = (
+        private_authority[0]
+        if private_authority is not None
+        else manifest_from_authority(payload)
+    )
     goals = payload["goals"]
     duration = payload["duration_minutes"]
     fanout = payload["fanout_depth"]
@@ -577,6 +747,19 @@ def _config(row: OwnerJob) -> JobConsentConfig:
             if payload.get("publication_capability_sha256") is not None
             else None
         ),
+        publication_manifest_schema_version=(
+            2 if private_authority is not None else None
+        ),
+        owner_private_publication_authority_sha256=(
+            private_authority[1].authority_sha256
+            if private_authority is not None
+            else None
+        ),
+        private_output_policy_sha256=(
+            private_authority[1].output_policy_sha256
+            if private_authority is not None
+            else None
+        ),
     )
 
 
@@ -618,9 +801,17 @@ def _require_publication_capability(
 
 
 def _require_publication_swarm_authority(row: OwnerJob) -> Any:
+    from substrate.midnight_oil.private_provider_authority import (
+        owner_private_authority_from_payload,
+    )
     from substrate.midnight_oil.publication_sources import manifest_from_authority
 
-    manifest = manifest_from_authority(row.payload)
+    private_authority = owner_private_authority_from_payload(row.payload)
+    manifest = (
+        private_authority[0]
+        if private_authority is not None
+        else manifest_from_authority(row.payload)
+    )
     if manifest is not None and manifest.sources and _swarm_plan_from_payload(row.payload) is None:
         raise ValueError("reviewed publication execution requires signed swarm authority")
     return manifest
@@ -658,6 +849,62 @@ def post_spend_consent(
     owner = _owner(request)
     if row.operation_state is not OperationState.NONE:
         raise HTTPException(status_code=409, detail="job already has spend consent")
+    try:
+        from substrate.midnight_oil.private_provider_authority import (
+            owner_private_authority_from_payload,
+        )
+
+        private_authority = owner_private_authority_from_payload(row.payload)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=409,
+            detail="stored job configuration is invalid",
+            headers={"Cache-Control": "no-store"},
+        ) from None
+    if private_authority is not None:
+        from substrate.midnight_oil.private_provider_authority import (
+            LivePrivateProviderAuthorityResolver,
+            prospective_owner_private_queue_commitment_from_payload,
+            recompute_owner_private_consent_config,
+        )
+
+        resolver = _private_authority_resolver(request)
+        try:
+            duration = row.payload.get("duration_minutes")
+            now_ms = deps.clock_ms()
+            if (
+                not isinstance(resolver, LivePrivateProviderAuthorityResolver)
+                or type(duration) is not int
+                or isinstance(duration, bool)
+            ):
+                raise ValueError("owner-private live authority is unavailable")
+            legacy_job = get_job(job_id, store=deps.jobs)
+            if legacy_job is None:
+                raise ValueError("owner-private job detail is unavailable")
+            recompute_owner_private_consent_config(row, legacy_job).canonical_hash()
+            prospective_owner_private_queue_commitment_from_payload(row.payload)
+            live_authority = resolver.resolve(
+                private_authority[0],
+                now_ms=now_ms,
+                required_until_ms=(
+                    now_ms
+                    + CONSENT_TTL_MS
+                    + duration * 60_000
+                    + deps.publication_completion_margin_ms
+                ),
+            )
+            if not secrets.compare_digest(
+                live_authority.authority_sha256,
+                private_authority[1].authority_sha256,
+            ):
+                raise ValueError("owner-private live authority changed")
+        except Exception:
+            pass
+        raise HTTPException(
+            status_code=409,
+            detail="owner-private execution remains disabled",
+            headers={"Cache-Control": "no-store"},
+        )
     try:
         config = _config(row)
         recommended = _recommended_cents(row)
@@ -1292,11 +1539,22 @@ def get_live_step_status(request: Request) -> dict[str, Any]:
 
 
 def register_midnight_oil_routes(
-    app: FastAPI, *, dependencies: MidnightOilDependencies | None = None
+    app: FastAPI,
+    *,
+    dependencies: MidnightOilDependencies | None = None,
+    private_authority_resolver: object | None = None,
 ) -> None:
     if dependencies is None:
         raise RuntimeError("Midnight Oil durable dependencies must be configured at startup")
     setattr(app.state, _DEPENDENCIES, dependencies)
+    if private_authority_resolver is not None:
+        from substrate.midnight_oil.private_provider_authority import (
+            LivePrivateProviderAuthorityResolver,
+        )
+
+        if not isinstance(private_authority_resolver, LivePrivateProviderAuthorityResolver):
+            raise TypeError("private authority resolver is invalid")
+        setattr(app.state, _PRIVATE_AUTHORITY_RESOLVER, private_authority_resolver)
     app.include_router(midnight_oil_router)
 
 

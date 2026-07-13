@@ -101,6 +101,9 @@ def test_stage_plan_uses_v2_config_hash_without_changing_legacy_v1() -> None:
             "context_binding_sha256",
                 "publication_manifest_sha256",
                 "publication_capability_sha256",
+                "publication_manifest_schema_version",
+                "owner_private_publication_authority_sha256",
+                "private_output_policy_sha256",
         }
     }
     encoded = json.dumps(
@@ -146,7 +149,19 @@ def test_publication_capability_uses_v5_and_changes_signed_configuration() -> No
     first = replace(v4, publication_capability_sha256="b" * 64)
     second = replace(v4, publication_capability_sha256="c" * 64)
     material = json.dumps(
-        first.__dict__, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        {
+            key: value
+            for key, value in first.__dict__.items()
+            if key
+            not in {
+                "publication_manifest_schema_version",
+                "owner_private_publication_authority_sha256",
+                "private_output_policy_sha256",
+            }
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=False,
     ).encode()
     expected = hashlib.sha256(
         b"antiek.midnight-oil.job-config.v5\x00" + material
@@ -154,6 +169,27 @@ def test_publication_capability_uses_v5_and_changes_signed_configuration() -> No
     assert first.canonical_hash() == expected
     assert first.canonical_hash() != v4.canonical_hash()
     assert first.canonical_hash() != second.canonical_hash()
+
+
+def test_owner_private_authority_uses_v6_and_partial_state_cannot_fall_back() -> None:
+    complete = replace(
+        config(),
+        context_binding_sha256="1" * 64,
+        publication_manifest_sha256="2" * 64,
+        publication_manifest_schema_version=2,
+        owner_private_publication_authority_sha256="3" * 64,
+        private_output_policy_sha256="4" * 64,
+    )
+    assert complete.canonical_hash() == (
+        "1d75e032dc642ffdd8c9cda6871094cf43a74774b37e8dd0055a7f1b146e446c"
+    )
+    assert complete.canonical_hash() != replace(
+        complete, owner_private_publication_authority_sha256="5" * 64
+    ).canonical_hash()
+    with pytest.raises(ValueError, match="incomplete"):
+        replace(complete, private_output_policy_sha256=None).canonical_hash()
+    with pytest.raises(ValueError, match="incomplete"):
+        replace(complete, publication_capability_sha256="6" * 64).canonical_hash()
 
 
 def test_reopen_preserves_claim_state(tmp_path: Path) -> None:

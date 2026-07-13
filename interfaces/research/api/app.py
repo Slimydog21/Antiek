@@ -1465,6 +1465,7 @@ def create_app(
     wrestling_embedder: Any = None,
     register_providers: bool = True,
     midnight_oil_dependencies: Any = None,
+    midnight_oil_private_authority_resolver: Any = None,
     substack_authorization_dependencies: Any = None,
     enable_midnight_oil: bool = False,
     operator_auth_environ: Mapping[str, str] | None = None,
@@ -1918,9 +1919,15 @@ def create_app(
             raise RuntimeError(
                 "enabled Midnight Oil requires validated durable dependencies"
             )
-        register_midnight_oil_routes(app, dependencies=midnight_oil_dependencies)
+        register_midnight_oil_routes(
+            app,
+            dependencies=midnight_oil_dependencies,
+            private_authority_resolver=midnight_oil_private_authority_resolver,
+        )
     elif midnight_oil_dependencies is not None:
         raise RuntimeError("Midnight Oil dependencies supplied while the feature is disabled")
+    elif midnight_oil_private_authority_resolver is not None:
+        raise RuntimeError("Midnight Oil private resolver supplied while the feature is disabled")
     # Marketplace host-into-account — catalog → host → HTML library view.
     from .marketplace_host_routes import register_marketplace_host_routes
     register_marketplace_host_routes(app)

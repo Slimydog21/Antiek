@@ -152,10 +152,19 @@ def create_midnight_oil_production_app(
         raise MidnightOilRuntimeConfigError(
             "Substack authorization composition is invalid"
         ) from exc
+    from substrate.midnight_oil.private_provider_authority import (
+        LivePrivateProviderAuthorityResolver,
+    )
+
     app = create_app(
         register_providers=False,
         enable_midnight_oil=True,
         midnight_oil_dependencies=runtime.dependencies,
+        midnight_oil_private_authority_resolver=(
+            None
+            if private is None
+            else LivePrivateProviderAuthorityResolver(private)
+        ),
         substack_authorization_dependencies=substack_authorization_dependencies,
         operator_auth_environ=environment,
     )

@@ -549,11 +549,13 @@ class PrivateProviderCapabilityReferenceRegistry:
         now_ms: int,
         required_until_ms: int,
     ) -> PrivateProviderProcessingCapabilityV1:
-        row = self._by_hash.get(capability_sha256)
+        row = self.require_reference_available(
+            capability_sha256=capability_sha256,
+            now_ms=now_ms,
+            required_until_ms=required_until_ms,
+        )
         if (
-            row is None
-            or capability_sha256 in self._revoked
-            or row.provider_id != provider_id
+            row.provider_id != provider_id
             or row.model_id != model_id
             or row.route_key != route_key
             or router_role not in row.allowed_router_roles
@@ -561,6 +563,23 @@ class PrivateProviderCapabilityReferenceRegistry:
             or isinstance(private_input_bytes, bool)
             or private_input_bytes < 1
             or private_input_bytes > row.max_private_input_bytes
+        ):
+            raise ValueError("private provider capability is unavailable")
+        return row
+
+    def require_reference_available(
+        self,
+        *,
+        capability_sha256: str,
+        now_ms: int,
+        required_until_ms: int,
+    ) -> PrivateProviderProcessingCapabilityV1:
+        """Resolve stable identity/live horizon without claiming dispatch eligibility."""
+
+        row = self._by_hash.get(capability_sha256)
+        if (
+            row is None
+            or capability_sha256 in self._revoked
             or type(now_ms) is not int
             or isinstance(now_ms, bool)
             or self._revocation_snapshot_issued_at_ms > now_ms

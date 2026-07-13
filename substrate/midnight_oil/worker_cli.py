@@ -38,6 +38,12 @@ from .live_roles import (
     publication_source_receipt_id,
 )
 from .live_stage_engine import LiveSwarmStageEngine, RouterStageDispatch
+from .private_provider_authority import (
+    LivePrivateProviderAuthorityResolver,
+    owner_private_authority_from_payload,
+    prospective_owner_private_queue_commitment_from_payload,
+    recompute_owner_private_consent_config,
+)
 from .private_provider_composition import (
     InvalidPrivateProviderRevocationStore,
     PrivateProviderComposition,
@@ -129,6 +135,64 @@ class MidnightOilWorkerRuntime:
     private_provider_composition: PrivateProviderComposition | None = None
 
 
+def _guard_owner_private_authority(
+    runtime: MidnightOilWorkerRuntime, authority: object, now_ms: int
+) -> None:
+    from .job_store import OwnerJob
+
+    if not isinstance(authority, OwnerJob):
+        raise ValueError("owner-private authority is invalid")
+    private_authority = owner_private_authority_from_payload(authority.payload)
+    if private_authority is None:
+        return
+    job = get_job(authority.job_id, store=runtime.stores.jobs)
+    duration = authority.payload.get("duration_minutes")
+    if (
+        job is None
+        or runtime.private_provider_composition is None
+        or type(duration) is not int
+        or isinstance(duration, bool)
+    ):
+        raise ValueError("owner-private live authority is unavailable")
+    stage_plan_hash = None
+    if authority.operation_state is not OperationState.NONE:
+        if (
+            authority.consent_stage_plan_hash is None
+            or authority.consent_config_hash is None
+        ):
+            raise ValueError("owner-private queued consent authority is incomplete")
+        stage_plan = runtime.stores.jobs.get_stage_plan(authority.job_id)
+        if (
+            stage_plan.plan_hash != authority.consent_stage_plan_hash
+            or stage_plan.operation_id != authority.operation_id
+        ):
+            raise ValueError("owner-private stage plan requires reconciliation")
+        stage_plan_hash = stage_plan.plan_hash
+    config_hash = recompute_owner_private_consent_config(
+        authority,
+        job,
+        stage_plan_hash=stage_plan_hash,
+    ).canonical_hash()
+    if (
+        authority.consent_config_hash is not None
+        and config_hash != authority.consent_config_hash
+    ):
+        raise ValueError("owner-private consent configuration requires reconciliation")
+    prospective_owner_private_queue_commitment_from_payload(authority.payload)
+    current = LivePrivateProviderAuthorityResolver(
+        runtime.private_provider_composition
+    ).resolve(
+        private_authority[0],
+        now_ms=now_ms,
+        required_until_ms=(
+            now_ms + duration * 60_000 + runtime.config.worker_lease_ms
+        ),
+    )
+    if current.authority_sha256 != private_authority[1].authority_sha256:
+        raise ValueError("owner-private live authority changed")
+    raise ValueError("owner-private execution remains disabled")
+
+
 _SWARM_VALIDATOR_SHA256 = hashlib.sha256(b"antiek.midnight-oil.live-swarm-validator.v1").hexdigest()
 
 
@@ -187,6 +251,12 @@ def _validated_swarm_runtime(
             else None
         ),
     )
+    if owner_private_authority_from_payload(authority.payload) is not None:
+        signed = recompute_owner_private_consent_config(
+            authority,
+            job,
+            stage_plan_hash=plan.plan_hash,
+        )
     if signed.canonical_hash() != authority.consent_config_hash:
         raise ValueError("stage plan conflicts with signed consent configuration")
     router = RouterSwarmDispatch(plan=swarm, config=runtime.dispatch_config)
@@ -748,6 +818,18 @@ def run_worker_once(
     authority = runtime.stores.owner_jobs.get_job(
         owner_user_id=queued.owner_user_id, job_id=queued.job_id
     )
+    if authority is not None:
+        try:
+            _guard_owner_private_authority(runtime, authority, now_ms)
+        except Exception:
+            return WorkerPhaseRecord(
+                result="contended",
+                phase="private_authority_denied",
+                worker_id=worker_id,
+                operation_id=queued.operation_id,
+                job_id=queued.job_id,
+                error_code="configuration_blocked",
+            )
     if authority is None or authority.operation_id != queued.operation_id:
         leased, won = runtime.stores.operation_queue.lease(
             operation_id=queued.operation_id,
@@ -788,6 +870,12 @@ def run_worker_once(
             clock_ms=clock_ms,
         )
     try:
+        def private_authority_guard(authority: object, guard_now_ms: int) -> None:
+            try:
+                _guard_owner_private_authority(runtime, authority, guard_now_ms)
+            except Exception:
+                raise ValueError("owner-private live authority is unavailable") from None
+
         lease = lease_authorized_operation(
             operation_id=queued.operation_id,
             owner_user_id=queued.owner_user_id,
@@ -798,6 +886,7 @@ def run_worker_once(
             worker_id=worker_id,
             now_ms=now_ms,
             lease_expires_at_ms=now_ms + runtime.config.worker_lease_ms,
+            private_authority_guard=private_authority_guard,
         )
     except ValueError:
         return WorkerPhaseRecord(

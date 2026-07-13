@@ -62,9 +62,34 @@ class JobConsentConfig:
     context_binding_sha256: str | None = None
     publication_manifest_sha256: str | None = None
     publication_capability_sha256: str | None = None
+    publication_manifest_schema_version: int | None = None
+    owner_private_publication_authority_sha256: str | None = None
+    private_output_policy_sha256: str | None = None
 
     def canonical_hash(self) -> str:
         material = asdict(self)
+        private_fields = (
+            self.publication_manifest_schema_version,
+            self.owner_private_publication_authority_sha256,
+            self.private_output_policy_sha256,
+        )
+        if any(value is not None for value in private_fields):
+            if (
+                type(self.publication_manifest_schema_version) is not int
+                or self.publication_manifest_schema_version != 2
+                or self.owner_private_publication_authority_sha256 is None
+                or self.private_output_policy_sha256 is None
+                or self.publication_manifest_sha256 is None
+                or self.context_binding_sha256 is None
+                or self.publication_capability_sha256 is not None
+            ):
+                raise ValueError("owner-private consent authority is incomplete")
+            return hashlib.sha256(
+                b"antiek.midnight-oil.job-config.v6\x00" + _canonical_json(material)
+            ).hexdigest()
+        material.pop("publication_manifest_schema_version")
+        material.pop("owner_private_publication_authority_sha256")
+        material.pop("private_output_policy_sha256")
         if self.publication_capability_sha256 is not None:
             return hashlib.sha256(
                 b"antiek.midnight-oil.job-config.v5\x00" + _canonical_json(material)
@@ -197,6 +222,32 @@ def _validate_config(config: JobConsentConfig) -> None:
             raise ValueError("publication capability must be SHA-256 hex") from exc
         if config.publication_manifest_sha256 is None:
             raise ValueError("publication capability requires a publication manifest")
+    private_fields = (
+        config.publication_manifest_schema_version,
+        config.owner_private_publication_authority_sha256,
+        config.private_output_policy_sha256,
+    )
+    if any(value is not None for value in private_fields):
+        if (
+            type(config.publication_manifest_schema_version) is not int
+            or config.publication_manifest_schema_version != 2
+            or config.owner_private_publication_authority_sha256 is None
+            or config.private_output_policy_sha256 is None
+            or config.publication_manifest_sha256 is None
+            or config.context_binding_sha256 is None
+            or config.publication_capability_sha256 is not None
+        ):
+            raise ValueError("owner-private consent authority is incomplete")
+        for value in (
+            config.owner_private_publication_authority_sha256,
+            config.private_output_policy_sha256,
+        ):
+            if len(value) != 64:
+                raise ValueError("owner-private consent authority hash is invalid")
+            try:
+                bytes.fromhex(value)
+            except ValueError as exc:
+                raise ValueError("owner-private consent authority hash is invalid") from exc
     if type(config.duration_minutes) is not int or not 1 <= config.duration_minutes <= 10_080:
         raise ValueError("duration is outside consent bounds")
     if type(config.fanout_depth) is not int or not 1 <= config.fanout_depth <= 64:

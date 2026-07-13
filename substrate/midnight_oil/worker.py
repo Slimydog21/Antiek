@@ -17,7 +17,7 @@ from .job import (
     _job_from_row,
     put_job_state,
 )
-from .job_store import OperationState, OwnerJobStore
+from .job_store import OperationState, OwnerJob, OwnerJobStore
 from .operation_queue import OperationQueue, provider_idempotency_key
 
 _WORKER_ROLE = "research"
@@ -134,6 +134,7 @@ def lease_authorized_operation(
     worker_id: str,
     now_ms: int,
     lease_expires_at_ms: int,
+    private_authority_guard: Callable[[OwnerJob, int], None] | None = None,
 ) -> WorkerLease:
     """Recheck immutable authority, owner-CAS, then acquire one queue lease."""
     authority = owner_jobs.get_job(owner_user_id=owner_user_id, job_id=job_id)
@@ -141,6 +142,13 @@ def lease_authorized_operation(
     legacy_row = jobs.get_job(job_id)
     if authority is None or queued is None or legacy_row is None:
         raise ValueError("durable operation is incomplete")
+    from .private_provider_authority import owner_private_authority_from_payload
+
+    if private_authority_guard is None:
+        if owner_private_authority_from_payload(authority.payload) is not None:
+            raise ValueError("owner-private execution requires a live authority guard")
+    else:
+        private_authority_guard(authority, now_ms)
     if authority.operation_id != operation_id or (
         queued.owner_user_id,
         queued.job_id,

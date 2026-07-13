@@ -46,6 +46,9 @@ def context_binding_sha256(
     fanout_depth: int,
     publication_manifest_sha256: str | None = None,
     publication_capability_sha256: str | None = None,
+    publication_manifest_schema_version: int | None = None,
+    owner_private_publication_authority_sha256: str | None = None,
+    private_output_policy_sha256: str | None = None,
 ) -> str:
     """Commit consent to the complete immutable product/execution tuple."""
     material: dict[str, object] = {
@@ -72,8 +75,43 @@ def context_binding_sha256(
         if publication_manifest_sha256 is None:
             raise ValueError("publication capability requires a publication manifest")
         material["publication_capability_sha256"] = publication_capability_sha256
+    private_fields = (
+        publication_manifest_schema_version,
+        owner_private_publication_authority_sha256,
+        private_output_policy_sha256,
+    )
+    if any(value is not None for value in private_fields):
+        if (
+            type(publication_manifest_schema_version) is not int
+            or publication_manifest_schema_version != 2
+            or type(owner_private_publication_authority_sha256) is not str
+            or len(owner_private_publication_authority_sha256) != 64
+            or type(private_output_policy_sha256) is not str
+            or len(private_output_policy_sha256) != 64
+            or publication_manifest_sha256 is None
+            or publication_capability_sha256 is not None
+        ):
+            raise ValueError("owner-private context authority is incomplete")
+        try:
+            bytes.fromhex(publication_manifest_sha256)
+            bytes.fromhex(owner_private_publication_authority_sha256)
+            bytes.fromhex(private_output_policy_sha256)
+        except ValueError as exc:
+            raise ValueError("owner-private context authority is invalid") from exc
+        material.update(
+            {
+                "publication_manifest_schema_version": 2,
+                "owner_private_publication_authority_sha256": (
+                    owner_private_publication_authority_sha256
+                ),
+                "private_output_policy_sha256": private_output_policy_sha256,
+            }
+        )
+        domain = b"antiek:midnight-oil-context-binding:v2\0"
+    else:
+        domain = b"antiek:midnight-oil-context-binding:v1\0"
     return hashlib.sha256(
-        b"antiek:midnight-oil-context-binding:v1\0"
+        domain
         + json.dumps(material, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
     ).hexdigest()
 
@@ -81,9 +119,15 @@ def context_binding_sha256(
 def validate_context_binding(authority: OwnerJob, job: MidnightOilJob) -> None:
     """Recompute signed product context before spend and final effects."""
     payload = authority.payload
+    from .private_provider_authority import owner_private_authority_from_payload
     from .publication_sources import manifest_from_authority
 
-    publication_manifest = manifest_from_authority(payload)
+    private_authority = owner_private_authority_from_payload(payload)
+    publication_manifest = (
+        private_authority[0]
+        if private_authority is not None
+        else manifest_from_authority(payload)
+    )
     binding_hash = payload.get("context_binding_sha256")
     if binding_hash is None:
         return
@@ -122,6 +166,19 @@ def validate_context_binding(authority: OwnerJob, job: MidnightOilJob) -> None:
         publication_capability_sha256=(
             str(payload["publication_capability_sha256"])
             if payload.get("publication_capability_sha256") is not None
+            else None
+        ),
+        publication_manifest_schema_version=(
+            2 if private_authority is not None else None
+        ),
+        owner_private_publication_authority_sha256=(
+            private_authority[1].authority_sha256
+            if private_authority is not None
+            else None
+        ),
+        private_output_policy_sha256=(
+            private_authority[1].output_policy_sha256
+            if private_authority is not None
             else None
         ),
     )
