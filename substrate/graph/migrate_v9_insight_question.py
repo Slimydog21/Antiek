@@ -61,6 +61,7 @@ regardless — the migration does not snapshot for you.
 
 from __future__ import annotations
 
+import contextlib
 import os
 import sys
 
@@ -104,7 +105,8 @@ CREATE TABLE nodes_mig (
     )),
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     degree_cached    INTEGER NOT NULL DEFAULT 0,
-    metadata         TEXT
+    metadata         TEXT,
+    owner_user_id    TEXT
 )
 """
 
@@ -259,10 +261,8 @@ def migrate(con: LockedConnection) -> bool:
             )
         con.execute("COMMIT")
     except Exception:
-        try:
+        with contextlib.suppress(Exception):
             con.execute("ROLLBACK")
-        except Exception:  # pragma: no cover — rollback on a dead txn
-            pass
         raise
     return True
 

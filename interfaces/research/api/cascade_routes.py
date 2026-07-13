@@ -311,8 +311,8 @@ class ApproveRequest(BaseModel):
 
 
 class LaunchRequest(BaseModel):
-    per_research_budget_usd: float = Field(default=0.50, gt=0)
-    aggregate_budget_usd: float | None = None
+    per_research_budget_usd: float = Field(default=0.50, gt=0, allow_inf_nan=False)
+    aggregate_budget_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class SteerRequest(BaseModel):
@@ -348,10 +348,10 @@ class SuggestionsResponse(BaseModel):
 
 @cascade_router.get("/budget-defaults")
 async def budget_defaults() -> dict[str, Any]:
-    """The per-research spend ceiling the runner uses when the launch request
+    """The per-research stop limit the runner uses when the launch request
     omits one, plus the host-local concurrency cap. Both read straight off the
     contracts (``BudgetCap`` + ``host_local.DEFAULT_MAX_CONCURRENCY``) so the
-    entry + monitor UIs can show "estimated up to $X for N researches" and an
+    entry + monitor UIs can recommend a stop limit for N researches and show an
     honest "N running, M queued" without hardcoding a number that would drift
     if the contract default changes. The concurrency cap is the host-local
     bound; the §16-gated remote runner raises the practical ceiling only once

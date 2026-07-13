@@ -155,6 +155,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         # SIDECAR_CONTENT_CLASS and the .antiek _FORBIDDEN_SUBSTRATE_FIELDS gate
         # independently forbids chunks/embeddings/edges in the emitted container.
         "services/antiek_format/sidecar_writer.py",
+        # Multimedia evidence registration reads private bodies only inside
+        # owner-bound internal verification. The diagram authority hashes
+        # source text to prove evidence identity; the knowledge registrar asks
+        # DuckDB for SHA-256 digests to reject conflicting source/twin rows.
+        # Neither module exposes a body or implements a serve surface.
+        "substrate/multimedia/diagram_evidence_authority.py",
+        "substrate/multimedia/knowledge_registration.py",
         # Corpus source-census (operator CLI): one read-only
         # `SELECT ... raw_text ... FROM documents` used to compute corpus
         # statistics (metadata / linkback / rights-tier / servable percentages).

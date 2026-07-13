@@ -1,0 +1,46 @@
+{
+  "source_url": "https://api.krea.ai/openapi.json",
+  "retrieved_at": "2026-07-11",
+  "full_document_observed_sha256": [
+    "06516d4f952d48d9a1abb5a84ef36b70a1a1503c2a2403d7f5663e3170143b17",
+    "ae1e6216a0c799a8cb356fac55c5fe34f65ad370c81e697e6a5b32bd0826ae0e"
+  ],
+  "note": "The generated full document varied across consecutive fetches; this reviewed subset is canonicalized for drift review.",
+  "paths": {
+    "/generate/image/google/imagen-3": {
+      "request_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "height": {"default": 1024, "maximum": 8192, "minimum": 512, "type": "number"},
+          "prompt": {"minLength": 1, "type": "string"},
+          "seed": {"default": 1337, "type": "number"},
+          "width": {"default": 1024, "maximum": 8192, "minimum": 512, "type": "number"}
+        },
+        "required": ["prompt"],
+        "type": "object"
+      },
+      "response": {
+        "job_id": "uuid",
+        "status": ["backlogged", "queued", "scheduled", "processing", "sampling", "intermediate-complete", "completed", "failed", "cancelled"]
+      }
+    },
+    "/generate/video/runway/gen-4.5": {
+      "request_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "aspect_ratio": {"default": "1280:720", "enum": ["1280:720", "720:1280", "1104:832", "832:1104", "960:960", "1584:672", "672:1584"], "type": "string"},
+          "duration": {"default": 5, "maximum": 10, "minimum": 2, "type": "number"},
+          "prompt": {"type": "string"},
+          "seed": {"type": "number"},
+          "start_image": {"description": "Can be an external URL, base64 data URI, or uploaded asset URL.", "format": "uri", "maxLength": 1024, "type": "string"}
+        },
+        "required": ["prompt"],
+        "type": "object"
+      },
+      "response": {
+        "job_id": "uuid",
+        "status": ["backlogged", "queued", "scheduled", "processing", "sampling", "intermediate-complete", "completed", "failed", "cancelled"]
+      }
+    }
+  }
+}

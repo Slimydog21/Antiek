@@ -111,6 +111,66 @@ async def test_document_pass_promotes_with_provenance(env):
         con.close()
 
 
+async def test_document_pass_threads_canonical_source_event_ids(env):
+    observed = {}
+
+    class RecordingDistiller(FakeDistiller):
+        def distill(self, text, *, source_event_ids=(), context=""):
+            observed["source_event_ids"] = tuple(source_event_ids)
+            return super().distill(
+                text, source_event_ids=source_event_ids, context=context
+            )
+
+    await run_document_pass(
+        "doc-1",
+        "source",
+        investigation_id="inv-1",
+        distiller=RecordingDistiller(insights=["Grounded insight."]),
+        chunk_ids=["c1"],
+        source_event_ids=("event-source-1",),
+        events_dir=env["events"],
+    )
+    assert observed == {"source_event_ids": ("event-source-1",)}
+
+
+async def test_document_pass_drops_notes_that_discard_or_forge_required_sources(env):
+    class UnattributedDistiller(FakeDistiller):
+        def distill(self, text, *, source_event_ids=(), context=""):
+            return Distillation(
+                insights=[
+                    ExtractedNote(
+                        note_id="missing",
+                        text="Missing source.",
+                        confidence="high",
+                        source_event_ids=(),
+                    ),
+                    ExtractedNote(
+                        note_id="forged",
+                        text="Forged source.",
+                        confidence="high",
+                        source_event_ids=("event-forged",),
+                    ),
+                    ExtractedNote(
+                        note_id="partial",
+                        text="Partial source set.",
+                        confidence="high",
+                        source_event_ids=("event-source-1",),
+                    ),
+                ]
+            )
+
+    result = await run_document_pass(
+        "doc-1",
+        "source",
+        investigation_id="inv-1",
+        distiller=UnattributedDistiller(),
+        source_event_ids=("event-source-1", "event-source-2"),
+        events_dir=env["events"],
+    )
+    assert result.insight_node_ids == []
+    assert result.dropped_provenance_free == 3
+
+
 async def test_document_pass_idempotent(env):
     distiller = FakeDistiller(insights=["GPUs gate scale."])
     await run_document_pass("doc-1", "t", investigation_id="inv-1",

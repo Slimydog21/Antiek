@@ -14,11 +14,14 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import type { AskBookResponse, BookCitation } from "../../api/books";
 import TalkToBook from "./TalkToBook";
 
-const { askBookMock } = vi.hoisted(() => ({ askBookMock: vi.fn() }));
+const { askBookMock, judgeBookAnswerMock } = vi.hoisted(() => ({
+  askBookMock: vi.fn(),
+  judgeBookAnswerMock: vi.fn(),
+}));
 
 vi.mock("../../api/books", async (orig) => {
   const actual = await orig<typeof import("../../api/books")>();
-  return { ...actual, askBook: askBookMock };
+  return { ...actual, askBook: askBookMock, judgeBookAnswer: judgeBookAnswerMock };
 });
 
 // Stub ReadAloud so the TTS network path isn't coupled into this test (the real
@@ -43,6 +46,8 @@ const cite = (over: Partial<BookCitation> = {}): BookCitation => ({
 
 function answer(over: Partial<AskBookResponse> = {}): AskBookResponse {
   return {
+    answer_id: "evt-answer-1",
+    capture_status: "captured",
     answer: "Page seven discusses entanglement.",
     citations: [cite()],
     grounded: true,
@@ -53,6 +58,13 @@ function answer(over: Partial<AskBookResponse> = {}): AskBookResponse {
 
 beforeEach(() => {
   askBookMock.mockReset();
+  judgeBookAnswerMock.mockReset();
+  judgeBookAnswerMock.mockResolvedValue({
+    answer_id: "evt-answer-1",
+    judgment_id: "evt-judgment-1",
+    verdict: "good",
+    note: null,
+  });
   window.sessionStorage.clear();
 });
 afterEach(cleanup);
@@ -153,5 +165,23 @@ describe("TalkToBook (M2)", () => {
     );
     await openAndAsk(vi.fn(), "anything", "No readable text here.");
     expect(screen.getByText(/isn’t grounded in the book’s text/)).toBeTruthy();
+  });
+
+  it("captures a one-tap judgment and persists its completed state", async () => {
+    askBookMock.mockResolvedValue(answer());
+    await openAndAsk();
+    fireEvent.click(screen.getByRole("button", { name: "Mark answer good" }));
+    await screen.findByText("Marked good");
+    expect(judgeBookAnswerMock).toHaveBeenCalledWith("doc-x", "evt-answer-1", "good");
+  });
+
+  it("delivers an uncaptured answer without offering a broken rating action", async () => {
+    askBookMock.mockResolvedValue(answer({
+      answer_id: null,
+      capture_status: "unavailable",
+    }));
+    await openAndAsk();
+    expect(screen.queryByRole("button", { name: "Mark answer good" })).toBeNull();
+    expect(screen.getByText(/rating is unavailable because its evidence record could not be saved/)).toBeTruthy();
   });
 });

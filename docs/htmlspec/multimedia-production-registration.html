@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Multimedia Production Registration</title></head>
+<body><main>
+<h1>Bind verified production to the owner asset lifecycle</h1>
+<p>Stacked on PR #1239. Production primitives can issue a composite educational-video receipt, but the account-scoped asset store does not record that production and playback previously discovered orphan receipt files by deterministic name. This sprint creates the durable handoff without introducing an API spend path.</p>
+<h2>Five values</h2>
+<ol><li><strong>Owner is one fact:</strong> authenticated account, account envelope, asset owner digest, and production link owner digest agree.</li><li><strong>Receipt is authority:</strong> every link field is derived from a complete composite/nested-authority reopen; callers provide only asset and expected revision.</li><li><strong>Current revision only:</strong> stale or steered revisions cannot register or play.</li><li><strong>Replay repairs:</strong> a receipt may exist before the asset link after a crash; exact registration replay attaches or returns the same link without regenerating media or spending.</li><li><strong>Orphans do not play:</strong> deterministic receipt existence alone is insufficient after this sprint.</li></ol>
+<h2>Production link</h2>
+<p><code>MultimediaProductionLink</code> stores schema version, owner digest, asset/revision, canonical receipt JSON SHA-256, video and narration SHA-256, duration, dimensions, and ordered chapter IDs. It stores no filesystem path, key, provider credential, or caller assertion.</p>
+<h2>Registration flow</h2>
+<ol><li>Authenticate owner and load the owner-scoped current ready video asset.</li><li>Require an exact expected revision.</li><li>Resolve the canonical receipt path under the configured private root and reopen receipt, narration, visual, render, and media authorities.</li><li>Derive the production link from verified metadata.</li><li>Atomically compare-and-set the link in the account asset envelope. Exact replay returns existing state; conflict never overwrites.</li></ol>
+<h2>Playback binding</h2>
+<p>Metadata and media routes first require a production link for the authenticated current revision. Every reopened receipt response is compared with the link's receipt/media digests and media facts before bytes are returned. Stream handles close before any conflict response. Steering clears the previous production link.</p>
+<h2>Failure model</h2>
+<p>Foreign owner, stale revision, unready or audio-only asset, missing/tampered receipt, wrong nested key, link identity mismatch, receipt/media digest drift, duration/dimension/chapter drift, conflicting replay, or late frontend response fails closed. Registration errors expose no receipt path or key.</p>
+<h2>Non-goals</h2>
+<p>No provider call, authorization issuance or consumption, TTS, visual generation, FFmpeg execution, receipt issuance, automatic worker, publication, merge, or deploy. The next worker-orchestration sprint must consume existing signed provider authorities and call this registration boundary only after successful receipt issuance.</p>
+<h2>Acceptance</h2><ul><li>Exact verified link attaches and replays.</li><li>Crash-created orphan receipt can be linked but cannot play before linking.</li><li>Foreign/stale/unready/audio/conflicting cases fail without mutation.</li><li>Playback rejects absent or drifted links.</li><li>Frontend explicitly checks for an existing produced receipt and rejects stale responses.</li><li>Focused/broad tests, typecheck/build, Ruff, HTML parse, HardenX zero real findings, and independent acceptance pass.</li></ul>
+</main></body></html>

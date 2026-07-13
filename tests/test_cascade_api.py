@@ -76,7 +76,7 @@ def _poll_until_terminal(client, session_id, timeout_s=5.0):
 
 
 def test_budget_defaults_reads_the_contract(client):
-    # The entry UI shows "estimated up to $X for N researches" off this, so it
+    # The entry UI recommends an aggregate stop limit from this value, so it
     # must be the BudgetCap contract default, not a hardcoded API number.
     from runtime.research_runner import BudgetCap
     r = client.get("/research/budget-defaults")
@@ -126,6 +126,17 @@ def test_launch_refuses_unapproved_plan(client):
     r = client.post(f"/research/plans/{root}/launch", json={})
     assert r.status_code == 409
     assert "not approved" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])
+def test_launch_request_rejects_invalid_aggregate_stop_limit(value):
+    with pytest.raises(ValueError):
+        cr.LaunchRequest(aggregate_budget_usd=value)
+
+
+def test_launch_request_rejects_non_finite_per_research_limit():
+    with pytest.raises(ValueError):
+        cr.LaunchRequest(per_research_budget_usd=float("inf"))
 
 
 # --------------------------------------------------------------------------
