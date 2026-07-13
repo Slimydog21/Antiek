@@ -31,6 +31,7 @@ from __future__ import annotations
 import enum
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from decimal import Decimal
 from typing import (
     Any,
     Protocol,
@@ -64,14 +65,223 @@ class CommandKind(str, enum.Enum):
     DEEPEN = "deepen"       # extend budget + queue a follow-up
 
 
+class SpendControlMode(enum.StrEnum):
+    """Execution accounting policy selected by the operator."""
+
+    STOP_LIMIT = "stop_limit"
+    HARD_CEILING = "hard_ceiling"
+
+
 @dataclass(frozen=True)
 class BudgetCap:
-    """A research's spend ceiling. ``cost_usd`` is the hard cap; exceeding
-    it halts the research. ``max_steps`` bounds runaway loops independently
-    of cost (a loop that makes free calls still terminates)."""
+    """A research's stop limit based on reported cost.
+
+    This preserves the original runner behavior. It is not a pre-dispatch
+    authorization hold; ``SpendControlMode.HARD_CEILING`` uses the provider
+    gateway for that stronger contract.
+    """
 
     cost_usd: float = 0.50
     max_steps: int = 50
+
+
+class BillingUnit(enum.StrEnum):
+    """Closed billing vocabulary used by conservative cost projections."""
+
+    CALL = "call"
+    INPUT_TOKEN = "input_token"
+    OUTPUT_TOKEN = "output_token"
+    HTTP_REQUEST = "http_request"
+    LOCAL_OPERATION = "local_operation"
+
+
+class ProjectionDisposition(enum.StrEnum):
+    """Whether a projection can back a hold, needs no hold, or is refused."""
+
+    HOLD_ELIGIBLE = "hold_eligible"
+    ZERO_COST_RECEIPT = "zero_cost_receipt"
+    INELIGIBLE = "ineligible"
+
+
+class ProjectionIneligibility(enum.StrEnum):
+    UNKNOWN_DISPATCH = "unknown_dispatch"
+    ROUTE_MISMATCH = "route_mismatch"
+    UNKNOWN_PRICING = "unknown_pricing"
+    ZERO_PRICE_FOR_PAID_SERVICE = "zero_price_for_paid_service"
+    UNBOUNDED_USAGE = "unbounded_usage"
+    STALE_RATE_SNAPSHOT = "stale_rate_snapshot"
+    NON_USD_BILLING = "non_usd_billing"
+    PROVIDER_IDEMPOTENCY_UNAVAILABLE = "provider_idempotency_unavailable"
+    PROVIDER_RECONCILIATION_UNAVAILABLE = "provider_reconciliation_unavailable"
+    HIDDEN_RETRIES_ENABLED = "hidden_retries_enabled"
+    INVALID_RATE = "invalid_rate"
+    PROJECTION_OVERFLOW = "projection_overflow"
+
+
+@dataclass(frozen=True)
+class BoundedUsage:
+    unit: BillingUnit
+    maximum: int
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.unit, BillingUnit):
+            raise TypeError("bounded usage unit must be BillingUnit")
+        if isinstance(self.maximum, bool) or not isinstance(self.maximum, int):
+            raise TypeError("bounded usage maximum must be an integer")
+        if self.maximum < 0:
+            raise ValueError("bounded usage maximum must be non-negative")
+        if self.maximum > 9_223_372_036_854_775_807:
+            raise ValueError("bounded usage maximum exceeds the signed 64-bit contract")
+
+
+@dataclass(frozen=True)
+class ProjectionRate:
+    unit: BillingUnit
+    usd_per_unit: Decimal
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.unit, BillingUnit):
+            raise TypeError("projection rate unit must be BillingUnit")
+        if not isinstance(self.usd_per_unit, Decimal):
+            raise TypeError("projection rate must be Decimal")
+        if not self.usd_per_unit.is_finite() or self.usd_per_unit < 0:
+            raise ValueError("projection rate must be finite and non-negative")
+        exponent = self.usd_per_unit.as_tuple().exponent
+        assert isinstance(exponent, int)
+        if abs(exponent) > 1_000:
+            raise ValueError("projection rate exponent exceeds the projection contract")
+        if len(self.usd_per_unit.as_tuple().digits) > 1_000:
+            raise ValueError("projection rate precision exceeds the projection contract")
+
+
+@dataclass(frozen=True)
+class CostProjectionRequest:
+    """Caller-owned route identity and enforced maximum usage only.
+
+    Rates and provider capabilities are deliberately absent: the server-owned
+    catalog supplies them, so a client cannot make itself hold-eligible.
+    """
+
+    seam_id: str
+    provider: str
+    model: str
+    operation: str
+    bounded_usage: tuple[BoundedUsage, ...]
+    expected_rate_snapshot: str | None = None
+
+    def __post_init__(self) -> None:
+        for name, value in (
+            ("seam_id", self.seam_id),
+            ("provider", self.provider),
+            ("model", self.model),
+            ("operation", self.operation),
+        ):
+            if not value.strip():
+                raise ValueError(f"{name} must be non-empty")
+        units = [item.unit for item in self.bounded_usage]
+        if len(units) != len(set(units)):
+            raise ValueError("bounded usage units must be unique")
+
+
+@dataclass(frozen=True)
+class CostProjection:
+    seam_id: str
+    provider: str
+    model: str
+    operation: str
+    bounded_usage: tuple[BoundedUsage, ...]
+    rates: tuple[ProjectionRate, ...]
+    rate_snapshot: str
+    currency: str
+    maximum_cost_usd: Decimal
+    reservation_cents: int
+    disposition: ProjectionDisposition
+    ineligibility: ProjectionIneligibility | None = None
+    assumptions: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.disposition, ProjectionDisposition):
+            raise TypeError("projection disposition must be ProjectionDisposition")
+        if self.ineligibility is not None and not isinstance(
+            self.ineligibility, ProjectionIneligibility
+        ):
+            raise TypeError("projection refusal must be ProjectionIneligibility")
+        if not isinstance(self.maximum_cost_usd, Decimal):
+            raise TypeError("maximum cost must be Decimal")
+        for name, value in (
+            ("seam_id", self.seam_id),
+            ("provider", self.provider),
+            ("model", self.model),
+            ("operation", self.operation),
+            ("rate_snapshot", self.rate_snapshot),
+            ("currency", self.currency),
+        ):
+            if not value.strip():
+                raise ValueError(f"{name} must be non-empty")
+        if not self.maximum_cost_usd.is_finite() or self.maximum_cost_usd < 0:
+            raise ValueError("maximum cost must be finite and non-negative")
+        finite_exponent = self.maximum_cost_usd.as_tuple().exponent
+        assert isinstance(finite_exponent, int)
+        if abs(finite_exponent) > 1_000:
+            raise ValueError("maximum cost exponent exceeds the projection contract")
+        if self.reservation_cents < 0:
+            raise ValueError("reservation cents must be non-negative")
+        eligible = self.disposition is ProjectionDisposition.HOLD_ELIGIBLE
+        if eligible:
+            rate_units = [rate.unit for rate in self.rates]
+            if len(rate_units) != len(set(rate_units)):
+                raise ValueError("eligible projection rates must be unique by unit")
+            value_tuple = self.maximum_cost_usd.as_tuple()
+            exponent = value_tuple.exponent
+            assert isinstance(exponent, int)  # finite value checked above
+            coefficient = int("".join(map(str, value_tuple.digits)) or "0")
+            if exponent >= -2:
+                expected_cents = coefficient * 10 ** (exponent + 2)
+            else:
+                denominator = 10 ** (-exponent - 2)
+                expected_cents = (coefficient + denominator - 1) // denominator
+            usage_by_unit = {item.unit: item.maximum for item in self.bounded_usage}
+            rate_exponents = [rate.usd_per_unit.as_tuple().exponent for rate in self.rates]
+            assert all(isinstance(item, int) for item in rate_exponents)
+            integer_exponents = [int(item) for item in rate_exponents]
+            common_exponent = min(integer_exponents, default=0)
+            expected_coefficient = 0
+            for rate, rate_exponent in zip(self.rates, integer_exponents, strict=True):
+                rate_tuple = rate.usd_per_unit.as_tuple()
+                rate_coefficient = int("".join(map(str, rate_tuple.digits)) or "0")
+                expected_coefficient += (
+                    usage_by_unit.get(rate.unit, 0)
+                    * rate_coefficient
+                    * 10 ** (rate_exponent - common_exponent)
+                )
+            expected_digits = Decimal(expected_coefficient).as_tuple().digits
+            expected_maximum = Decimal((0, expected_digits, common_exponent))
+            if (
+                self.ineligibility is not None
+                or self.maximum_cost_usd <= 0
+                or self.currency != "USD"
+                or not self.bounded_usage
+                or {item.unit for item in self.bounded_usage} != {rate.unit for rate in self.rates}
+                or self.maximum_cost_usd != expected_maximum
+                or self.reservation_cents != expected_cents
+            ):
+                raise ValueError(
+                    "eligible paid projections require USD bounds and the exact upward hold"
+                )
+        if self.disposition is ProjectionDisposition.INELIGIBLE and self.ineligibility is None:
+            raise ValueError("ineligible projections require a typed reason")
+        if self.disposition is ProjectionDisposition.INELIGIBLE and (
+            self.maximum_cost_usd != 0 or self.reservation_cents != 0
+        ):
+            raise ValueError("ineligible projections cannot authorize spend")
+        if self.disposition is ProjectionDisposition.ZERO_COST_RECEIPT and (
+            self.maximum_cost_usd != 0
+            or self.reservation_cents != 0
+            or self.ineligibility is not None
+            or any(rate.usd_per_unit != 0 for rate in self.rates)
+            or {item.unit for item in self.bounded_usage} != {rate.unit for rate in self.rates}
+        ):
+            raise ValueError("zero-cost receipts cannot carry a hold or refusal")
 
 
 @dataclass(frozen=True)

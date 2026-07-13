@@ -1,16 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 
-import Multimedia from "./index";
+import Multimedia, { formatRecordCost, shouldUseLocalAudiblePlayback } from "./index";
 import {
   approveMultimediaDryRun,
+  authorizeMultimediaNarration,
   createMultimediaDraft,
   getMultimediaAsset,
+  getMultimediaPlayback,
+  getMultimediaReviewedVisualSet,
   listMultimediaAssets,
   runMultimediaHardening,
+  registerMultimediaProduction,
+  produceAuthorizedMultimedia,
   steerMultimediaAsset,
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord } from "../../api/multimedia";
+import type { MultimediaPlanWire } from "../../api/multimedia";
 
 vi.mock("../../api/multimedia", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/multimedia")>();
@@ -20,20 +27,50 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
   return {
     ...actual,
     approveMultimediaDryRun: vi.fn(),
+    authorizeMultimediaNarration: vi.fn(),
     createMultimediaDraft: vi.fn(),
     getMultimediaAsset: vi.fn(),
+    getMultimediaPlayback: vi.fn(),
+    getMultimediaReviewedVisualSet: vi.fn(),
     listMultimediaAssets: vi.fn(),
     runMultimediaHardening: vi.fn(),
+    registerMultimediaProduction: vi.fn(),
+    produceAuthorizedMultimedia: vi.fn(),
     steerMultimediaAsset: vi.fn(),
   };
 });
 
 const mockApprove = vi.mocked(approveMultimediaDryRun);
+const mockAuthorizeNarration = vi.mocked(authorizeMultimediaNarration);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
+const mockPlayback = vi.mocked(getMultimediaPlayback);
+const mockReviewedVisuals = vi.mocked(getMultimediaReviewedVisualSet);
 const mockList = vi.mocked(listMultimediaAssets);
 const mockHarden = vi.mocked(runMultimediaHardening);
+const mockRegisterProduction = vi.mocked(registerMultimediaProduction);
+const mockProduceAuthorized = vi.mocked(produceAuthorizedMultimedia);
 const mockSteer = vi.mocked(steerMultimediaAsset);
+
+const serverPlan: MultimediaPlanWire = {
+  request: { topic: "Server plan", target_minutes: 30, mode: "video", route_policy: "balanced" },
+  suggestions: [{ arc_id: "mechanism", title: "Server coverage", teaches: "Learn only persisted content", evidence: [], tradeoff: "Server tradeoff" }],
+  chosen_arc_ids: ["mechanism"],
+  chapters: [
+    { chapter_id: "server-intro", title: "Server introduction", minutes: 10, purpose: "Frame the persisted lesson.", arc_id: "intro", source_chunk_ids: [], cuts: [] },
+    { chapter_id: "server-mechanism", title: "Server mechanism", minutes: 20, purpose: "Explain the persisted mechanism.", arc_id: "mechanism", source_chunk_ids: ["server-chunk"], cuts: [] },
+  ],
+  script_lines: [
+    { line_id: "server-intro-line-0", sequence: 0, text: "This opening came from the server.", kind: "transition", citations: [], unsourced_reason: null },
+    { line_id: "server-mechanism-line-0", sequence: 1, text: "The server-backed mechanism uses exact cited evidence.", kind: "factual", citations: [{ chunk_id: "server-chunk", document_id: "server-document", locator: "section 4", quote_sha256: null }], unsourced_reason: null },
+  ],
+  scenes: [
+    { scene_id: "server-scene", chapter_id: "server-mechanism", visual_intent: "Evidence diagram", information_purpose: "Show the cited mechanism", narration_line_ids: ["server-mechanism-line-0"], source_chunk_ids: ["server-chunk"] },
+  ],
+  omissions: ["Server-declared omission"],
+  unsourced_line_ids: [],
+  duration_tolerance_minutes: 0.25,
+};
 
 const draftRecord: MultimediaAssetRecord = {
   asset: {
@@ -48,7 +85,7 @@ const draftRecord: MultimediaAssetRecord = {
       cost_rows: [{ cost_usd: 40.5 }],
     },
   },
-  plan: {},
+  plan: serverPlan,
   mode: "video",
   style: "Asianometry-style explainer with restrained Ken Burns motion",
   hardening_report: null,
@@ -89,7 +126,60 @@ const hardenedRecord: MultimediaAssetRecord = {
   },
 };
 
+const producedRecord: MultimediaAssetRecord = {
+  ...approvedRecord,
+  production_link: {
+    schema_version: "antiek.multimedia-production-link.v1",
+    owner_identity_digest: "a".repeat(64),
+    asset_id: "mm-1",
+    revision_id: "rev-1",
+    receipt_sha256: "b".repeat(64),
+    video_sha256: "c".repeat(64),
+    audio_sha256: "d".repeat(64),
+    duration_seconds: 10,
+    width_px: 320,
+    height_px: 240,
+    chapter_ids: ["server-intro", "server-mechanism"],
+  },
+};
+
+function narrationAuthority(chapterId: string, requestId: string) {
+  return {
+    chapter_id: chapterId,
+    child_revision_id: `tts-${chapterId}`,
+    request_body_digest: "e".repeat(64),
+    authorization: {
+      version: 2,
+      authorization_id: `mmauth2-${chapterId}`,
+      request_id: requestId,
+      operator_id: "owner-1",
+      asset_id: "mm-1",
+      revision_id: `tts-${chapterId}`,
+      provider: "trusted-tts",
+      route_policy: "balanced",
+      model: "voice-1",
+      endpoint_capability: "text-to-speech",
+      catalog_version: "catalog-1",
+      catalog_digest: "a".repeat(64),
+      quote_id: `quote-${chapterId}`,
+      quote_expires_at: "2026-07-12T01:10:00Z",
+      recovery_authority_id: "recovery-1",
+      recovery_verification_key_digest: "b".repeat(64),
+      approved_ceiling_microdollars: 1_000_000,
+      request_body_digest: "e".repeat(64),
+      issued_at: "2026-07-12T01:00:00Z",
+      expires_at: "2026-07-12T01:15:00Z",
+      signature: "f".repeat(64),
+    },
+  };
+}
+
 beforeEach(() => {
+  mockProduceAuthorized.mockResolvedValue(producedRecord);
+  mockReviewedVisuals.mockRejectedValue(new Error("multimedia_reviewed_visuals_unavailable"));
+  mockAuthorizeNarration.mockResolvedValue(
+    narrationAuthority("server-intro", "narration-server-intro"),
+  );
   mockList.mockResolvedValue({
     assets: [
       {
@@ -110,6 +200,37 @@ beforeEach(() => {
   });
   mockCreate.mockResolvedValue(draftRecord);
   mockGet.mockResolvedValue(draftRecord);
+  mockPlayback.mockResolvedValue({
+    asset_id: "mm-1",
+    revision_id: "rev-1",
+    receipt_sha256: "c".repeat(64),
+    duration_seconds: 30,
+    video_sha256: "a".repeat(64),
+    audio_sha256: "b".repeat(64),
+    video_size_bytes: 100,
+    audio_size_bytes: 80,
+    width_px: 1920,
+    height_px: 1080,
+    chapter_ids: ["server-intro", "server-mechanism"],
+    video_url: "/multimedia/assets/mm-1/playback/rev-1/video",
+    audio_url: "/multimedia/assets/mm-1/playback/rev-1/audio",
+  });
+  mockRegisterProduction.mockResolvedValue({
+    ...approvedRecord,
+    production_link: {
+      schema_version: "antiek.multimedia-production-link.v1",
+      owner_identity_digest: "d".repeat(64),
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      receipt_sha256: "c".repeat(64),
+      video_sha256: "a".repeat(64),
+      audio_sha256: "b".repeat(64),
+      duration_seconds: 30,
+      width_px: 1920,
+      height_px: 1080,
+      chapter_ids: ["server-intro", "server-mechanism"],
+    },
+  });
   mockApprove.mockResolvedValue(approvedRecord);
   mockSteer.mockResolvedValue(steeredRecord);
   mockHarden.mockResolvedValue(hardenedRecord);
@@ -132,6 +253,39 @@ async function reviewPlan() {
 }
 
 describe("Multimedia workstation", () => {
+  it("preserves legacy playback until a local audible link is registered", () => {
+    const audio = {
+      ...approvedRecord,
+      mode: "audio" as const,
+      asset: {
+        ...approvedRecord.asset,
+        kind: "audio_experience" as const,
+        route_policy: "cheapest" as const,
+      },
+    };
+    expect(shouldUseLocalAudiblePlayback(audio)).toBe(false);
+    expect(shouldUseLocalAudiblePlayback({
+      ...audio,
+      audio_production_link: {
+        schema_version: "antiek.multimedia-audio-production-link.v1",
+        owner_identity_digest: "d".repeat(64),
+        asset_id: audio.asset.asset_id,
+        revision_id: audio.asset.revision_id,
+        receipt_sha256: "a".repeat(64),
+        audio_sha256: "b".repeat(64),
+        duration_seconds: 30,
+        chapter_ids: ["chapter-1"],
+        retention_marker_count: 2,
+        learned_claim_count: 1,
+      },
+    })).toBe(true);
+  });
+
+  it("fails closed for malformed persisted cost rows", () => {
+    const record = structuredClone(draftRecord);
+    record.asset.manifest = { cost_rows: [{ cost_usd: "40.50" }] };
+    expect(formatRecordCost(record, "$22.28")).toBe("Unavailable");
+  });
   it("updates the estimated cost when the operator selects the cheapest route", async () => {
     render(<Multimedia />);
     await waitForApiReady();
@@ -140,7 +294,8 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: /Cheapest/ }));
 
     expect(screen.getByTestId("multimedia-estimated-cost").textContent).toBe("$22.28");
-    expect(screen.getByText(/Local placeholders first/)).toBeTruthy();
+    expect(screen.getByText(/Fully local narration and source-card documentary/)).toBeTruthy();
+    expect(screen.getByText(/No Krea or paid-provider fallback/)).toBeTruthy();
   });
 
   it("reviews a plan before render approval and then opens playback", async () => {
@@ -155,6 +310,132 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByTestId("multimedia-player")).toBeTruthy();
     expect(mockApprove).toHaveBeenCalledWith("mm-1");
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
+    const video = await screen.findByLabelText(/Video playback for/);
+    expect(video.getAttribute("src")).toBe("/multimedia/assets/mm-1/playback/rev-1/video");
+  });
+
+  it("requires explicit ceiling acknowledgement before issuing narration authority", async () => {
+    const user = userEvent.setup();
+    await reviewPlan();
+    const authorize = screen.getByRole("button", { name: "Authorize narration" });
+    expect(authorize.getAttribute("disabled")).not.toBeNull();
+    const acknowledgement = screen.getByRole("checkbox", { name: "Approve this maximum" });
+    await user.click(acknowledgement);
+    expect((acknowledgement as HTMLInputElement).checked).toBe(true);
+    await waitFor(() => expect(
+      screen.getByRole("button", { name: "Authorize narration" }).getAttribute("disabled"),
+    ).toBeNull(), { timeout: 5_000 });
+    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+
+    await waitFor(() => expect(mockAuthorizeNarration).toHaveBeenCalledWith(
+      "mm-1",
+      expect.objectContaining({
+        chapter_id: "server-intro",
+        approved_ceiling_microdollars: 1_000_000,
+        operator_acknowledged_spend: true,
+      }),
+    ));
+    expect(await screen.findByText("mmauth2-server-intro")).toBeTruthy();
+    expect(screen.getByText("trusted-tts / voice-1")).toBeTruthy();
+  }, 15_000);
+
+  it("shows only owner-bound reviewed visual readiness", async () => {
+    mockReviewedVisuals.mockResolvedValueOnce({
+      set_id: "mmvset-test",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      chapter_ids: ["server-intro", "server-mechanism"],
+      scene_ids: ["scene-server-intro", "scene-server-mechanism"],
+      candidate_ids: ["candidate-1", "candidate-2"],
+      selection_digest: "a".repeat(64),
+      created_at: "2026-07-12T01:00:00Z",
+    });
+    await reviewPlan();
+    expect(await screen.findByText("2 scenes bound")).toBeTruthy();
+    expect(screen.getByText("mmvset-test")).toBeTruthy();
+    expect(screen.queryByText("candidate-1")).toBeNull();
+  });
+
+  it("distinguishes reviewed visual runtime failure from no reviewed set", async () => {
+    mockReviewedVisuals.mockRejectedValueOnce(
+      new Error("multimedia_reviewed_visuals_runtime_unavailable"),
+    );
+    await reviewPlan();
+    expect(await screen.findByText("Status unavailable")).toBeTruthy();
+    expect(screen.queryByText("Awaiting reviewed candidates")).toBeNull();
+  });
+
+  it("accumulates exact chapter authorities before producing", async () => {
+    mockReviewedVisuals.mockResolvedValueOnce({
+      set_id: "mmvset-test",
+      asset_id: "mm-1",
+      revision_id: "rev-1",
+      chapter_ids: ["server-intro", "server-mechanism"],
+      scene_ids: ["scene-server-intro", "scene-server-mechanism"],
+      candidate_ids: ["candidate-1", "candidate-2"],
+      selection_digest: "a".repeat(64),
+      created_at: "2026-07-12T01:00:00Z",
+    });
+    mockAuthorizeNarration.mockImplementation(async (_assetId, request) =>
+      narrationAuthority(request.chapter_id, request.request_id),
+    );
+    await reviewPlan();
+    const produce = await screen.findByRole("button", { name: "Produce documentary" });
+    expect(produce.getAttribute("disabled")).not.toBeNull();
+
+    fireEvent.click(screen.getByLabelText("Approve this maximum"));
+    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    await screen.findByText("mmauth2-server-intro");
+    fireEvent.click(screen.getByRole("button", { name: "Select storyboard chapter 2" }));
+    fireEvent.click(screen.getByLabelText("Approve this maximum"));
+    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    await screen.findByText("mmauth2-server-mechanism");
+
+    await waitFor(() => expect(produce.getAttribute("disabled")).toBeNull());
+    fireEvent.click(produce);
+    await waitFor(() => expect(mockProduceAuthorized).toHaveBeenCalledWith(
+      "mm-1",
+      "rev-1",
+      [
+        expect.objectContaining({ chapter_id: "server-intro" }),
+        expect.objectContaining({ chapter_id: "server-mechanism" }),
+      ],
+    ));
+  });
+
+  it("does not present simulated media when verified playback is unavailable", async () => {
+    mockPlayback.mockRejectedValueOnce(new Error("multimedia_playback_unavailable"));
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    await screen.findByText("No verified media receipt");
+    expect(screen.queryByLabelText(/Video playback for/)).toBeNull();
+    expect(screen.queryByText("Ken Burns preview")).toBeNull();
+  });
+
+  it("registers an existing verified receipt before presenting produced media", async () => {
+    mockPlayback.mockRejectedValueOnce(new Error("multimedia_playback_unavailable"));
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    const register = await screen.findByRole("button", { name: "Register produced media" });
+    fireEvent.click(register);
+
+    await waitFor(() => expect(mockRegisterProduction).toHaveBeenCalledWith("mm-1", "rev-1"));
+    expect(await screen.findByLabelText(/Video playback for/)).toBeTruthy();
+  });
+
+  it("blocks approval while the persisted plan contains an unsourced factual line", async () => {
+    const record = structuredClone(draftRecord);
+    const plan = structuredClone(serverPlan);
+    plan.script_lines[0].kind = "factual";
+    plan.script_lines[0].unsourced_reason = "needs an opening source";
+    plan.unsourced_line_ids = [plan.script_lines[0].line_id];
+    record.plan = plan;
+    mockCreate.mockResolvedValueOnce(record);
+
+    await reviewPlan();
+
+    expect(screen.getByRole("button", { name: "Approve render" }).getAttribute("disabled")).not.toBeNull();
+    expect(screen.getByText(/needs an opening source/)).toBeTruthy();
   });
 
   it("surfaces provider unavailable and lets the operator downgrade safely", async () => {
@@ -169,7 +450,7 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Use cheapest fallback" }));
 
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
-    expect(screen.getByTestId("multimedia-estimated-cost").textContent).toBe("$22.28");
+    expect(screen.getByTestId("multimedia-estimated-cost").textContent).toBe("$40.50");
   });
 
   it("surfaces an over-budget state with the same downgrade path", async () => {
@@ -189,13 +470,21 @@ describe("Multimedia workstation", () => {
     fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
     await screen.findByTestId("multimedia-player");
 
-    fireEvent.click(screen.getByRole("button", { name: /The engineering constraint stack/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Server mechanism/ }));
 
     const transcript = screen.getByTestId("multimedia-transcript");
-    expect(within(transcript).getByText(/engines, wing structure, and fatigue testing/)).toBeTruthy();
-    expect(screen.getByTestId("multimedia-source-detail").textContent).toContain(
-      "engine and fatigue-testing sequence",
-    );
+    expect(within(transcript).getByText(/server-backed mechanism uses exact cited evidence/)).toBeTruthy();
+    expect(screen.getByTestId("multimedia-source-detail").textContent).toContain("section 4");
+  });
+
+  it("renders persisted plan truth instead of the aircraft fixture", async () => {
+    await reviewPlan();
+    expect(screen.getByText("Server introduction")).toBeTruthy();
+    expect(screen.getByText("Server-declared omission")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Approve render" }));
+    await screen.findByTestId("multimedia-player");
+    expect(screen.getByText(/This opening came from the server/)).toBeTruthy();
+    expect(screen.queryByText("The engineering constraint stack")).toBeNull();
   });
 
   it("lists and reopens persisted multimedia assets", async () => {

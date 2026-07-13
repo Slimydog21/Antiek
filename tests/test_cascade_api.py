@@ -38,12 +38,15 @@ def client(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="cascade-api-test-")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", os.path.join(tmpdir, "t.duckdb"))
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(tmpdir, "events"))
+    monkeypatch.setenv("ANTIEK_ALLOW_LOCAL_HARD_CEILING", "1")
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
     # Hermetic embedding (no sentence-transformers) for plan persistence + funnel.
     monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
     cr._SESSIONS.clear()
     cr._SESSION_TASKS.clear()
+    cr._HARD_CEILING_RUNS.clear()
+    cr._HARD_CEILING_LAUNCHING.clear()
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     return TestClient(app)
 
@@ -76,7 +79,7 @@ def _poll_until_terminal(client, session_id, timeout_s=5.0):
 
 
 def test_budget_defaults_reads_the_contract(client):
-    # The entry UI shows "estimated up to $X for N researches" off this, so it
+    # The entry UI recommends an aggregate stop limit from this value, so it
     # must be the BudgetCap contract default, not a hardcoded API number.
     from runtime.research_runner import BudgetCap
     r = client.get("/research/budget-defaults")
@@ -126,6 +129,286 @@ def test_launch_refuses_unapproved_plan(client):
     r = client.post(f"/research/plans/{root}/launch", json={})
     assert r.status_code == 409
     assert "not approved" in r.json()["detail"]
+
+
+@pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])
+def test_launch_request_rejects_invalid_aggregate_stop_limit(value):
+    with pytest.raises(ValueError):
+        cr.LaunchRequest(aggregate_budget_usd=value)
+
+
+def test_launch_request_rejects_non_finite_per_research_limit():
+    with pytest.raises(ValueError):
+        cr.LaunchRequest(per_research_budget_usd=float("inf"))
+
+
+def test_hard_ceiling_auto_decomposition_fails_before_paid_dispatch(client):
+    r = client.post(
+        "/research/plans",
+        json={"problem": "P", "spend_mode": "hard_ceiling"},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "hard_ceiling_provider_ineligible"
+
+
+def test_hard_launch_rejects_plan_automatically_decomposed_in_stop_limit_mode(
+    client, monkeypatch
+):
+    class Fixed:
+        def decompose(self, question, *, context=""):
+            return [cr.SubQuestion("a")]
+
+    monkeypatch.setattr(
+        cr,
+        "_decompose",
+        lambda problem, max_depth: cr.build_plan(
+            problem, decomposer=Fixed(), max_depth=max_depth
+        ),
+    )
+    created = client.post("/research/plans", json={"problem": "P"})
+    assert created.status_code == 200, created.text
+    root = created.json()["root_node_id"]
+    client.post(f"/research/plans/{root}/approve", json={})
+
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"},
+    )
+
+    assert launched.status_code == 409
+    assert launched.json()["detail"]["code"] == "hard_ceiling_plan_ineligible"
+
+
+def test_hard_launch_rejects_ceiling_above_ledger_maximum(client):
+    root = _make_approved_plan(client, ("a",))
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "46116860184273879.04",
+        },
+    )
+    assert launched.status_code == 422
+
+
+def test_hard_launch_rejects_decimal_exponent_overflow(client):
+    root = _make_approved_plan(client, ("a",))
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1e999999"},
+    )
+    assert launched.status_code == 422
+
+
+def test_launch_rejects_caller_authored_owner_identity(client):
+    root = _make_approved_plan(client, ("a",))
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "1.00",
+            "owner_id": "spoofed-owner",
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_hard_launch_requires_explicit_local_authority(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    monkeypatch.delenv("ANTIEK_ALLOW_LOCAL_HARD_CEILING")
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"},
+    )
+    assert r.status_code == 403
+
+
+def test_hard_ceiling_launch_binds_plan_and_receipts_zero_cost_work(
+    client, monkeypatch
+):
+    root = _make_approved_plan(client, ("a", "b"))
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "2.00",
+            "per_research_budget_usd": 1.0,
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["spend_mode"] == "hard_ceiling"
+    assert body["hard_ceiling"]["ceiling_cents"] == 200
+    assert body["hard_ceiling"]["blocked_stages"] == [
+        "synthesizer",
+        "knowledge_extractor",
+    ]
+    assert len(body["hard_ceiling"]["plan_digest"]) == 64
+    sid = body["session_id"]
+    _poll_until_terminal(client, sid)
+
+    gateway, binding = cr._HARD_CEILING_RUNS[cr._SESSIONS[sid]]
+    balance = gateway.ledger.balance(binding.run_id)
+    assert balance.status.value == "closed_reconciled"
+    assert balance.authorized_spent_cents == 0
+    events = gateway.ledger.events(binding.run_id)
+    assert [event.event_kind for event in events].count("zero_prepared") == 4
+    assert [event.event_kind for event in events].count("zero_completed") == 4
+
+
+def test_hard_ceiling_authority_changes_with_plan_revision_and_ceiling(
+    client, monkeypatch
+):
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
+    root = _make_approved_plan(client, ("a",))
+    first = cr._hard_ceiling_binding(
+        root_id=root,
+        session_id=f"session-{root}",
+        owner_id="owner-1",
+        tree=cr.load_tree(root, db_path=cr._db()),
+        request=cr.LaunchRequest(
+            spend_mode="hard_ceiling", hard_ceiling_usd="1.00"
+        ),
+    )
+    tree = client.get(f"/research/plans/{root}").json()["tree"]
+    local_id = tree["root"]["children"][0]["local_id"]
+    assert client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "reword", "target_local_id": local_id, "question": "changed"},
+    ).json()["launchable"] is False
+    client.post(f"/research/plans/{root}/approve", json={})
+    changed_tree = cr.load_tree(root, db_path=cr._db())
+    assert changed_tree is not None
+    revised = cr._hard_ceiling_binding(
+        root_id=root,
+        session_id=f"session-{root}",
+        owner_id="owner-1",
+        tree=changed_tree,
+        request=cr.LaunchRequest(
+            spend_mode="hard_ceiling", hard_ceiling_usd="1.00"
+        ),
+    )
+    higher_ceiling = cr._hard_ceiling_binding(
+        root_id=root,
+        session_id=f"session-{root}",
+        owner_id="owner-1",
+        tree=changed_tree,
+        request=cr.LaunchRequest(
+            spend_mode="hard_ceiling", hard_ceiling_usd="2.00"
+        ),
+    )
+    assert revised.approval_revision == first.approval_revision + 1
+    assert len({first.run_id, revised.run_id, higher_ceiling.run_id}) == 3
+    assert len({first.plan_digest, revised.plan_digest, higher_ceiling.plan_digest}) == 3
+
+
+def test_hard_ceiling_refuses_exa_before_loop_construction(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    monkeypatch.setenv("ANTIEK_DRW_GATHER", "exa")
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
+    monkeypatch.setattr(
+        cr,
+        "_research_loop_factory",
+        lambda: (_ for _ in ()).throw(AssertionError("loop must not be constructed")),
+    )
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"},
+    )
+    assert r.status_code == 409
+    assert "Exa" in r.json()["detail"]["message"]
+
+
+def test_hard_ceiling_skips_configured_paid_tail_without_affecting_launch(
+    client, monkeypatch
+):
+    calls = 0
+
+    async def paid_tail(*args):
+        nonlocal calls
+        calls += 1
+
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", paid_tail)
+    root = _make_approved_plan(client, ("a",))
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"},
+    )
+    assert r.status_code == 200, r.text
+    _poll_until_terminal(client, r.json()["session_id"])
+    assert calls == 0
+
+
+def test_identical_hard_launch_retry_returns_existing_session_without_rerun(
+    client, monkeypatch
+):
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
+    root = _make_approved_plan(client, ("a",))
+    payload = {
+        "spend_mode": "hard_ceiling",
+        "hard_ceiling_usd": "1.00",
+        "per_research_budget_usd": 1.0,
+    }
+    first = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert first.status_code == 200, first.text
+    sid = first.json()["session_id"]
+    _poll_until_terminal(client, sid)
+    session_before = cr._SESSIONS[sid]
+    gateway, binding = cr._HARD_CEILING_RUNS[session_before]
+    events_before = gateway.ledger.events(binding.run_id)
+
+    replay = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["replayed"] is True
+    assert replay.json()["session_id"] == sid
+    assert cr._SESSIONS[sid] is session_before
+    assert gateway.ledger.events(binding.run_id) == events_before
+
+
+def test_hard_launch_replay_after_restart_uses_durable_run_without_rerun(
+    client, monkeypatch
+):
+    root = _make_approved_plan(client, ("a",))
+    payload = {"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"}
+    first = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert first.status_code == 200, first.text
+    sid = first.json()["session_id"]
+    _poll_until_terminal(client, sid)
+    gateway, binding = cr._HARD_CEILING_RUNS[cr._SESSIONS[sid]]
+    events_before = gateway.ledger.events(binding.run_id)
+
+    cr._SESSIONS.clear()
+    cr._HARD_CEILING_RUNS.clear()
+    monkeypatch.setattr(
+        cr,
+        "_research_loop_factory",
+        lambda: (_ for _ in ()).throw(AssertionError("replay must not build a loop")),
+    )
+    replay = client.post(f"/research/plans/{root}/launch", json=payload)
+
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["replayed"] is True
+    assert replay.json()["session_id"] == sid
+    assert sid not in cr._SESSIONS
+    assert gateway.ledger.events(binding.run_id) == events_before
+
+
+def test_interrupted_hard_launch_is_not_reported_as_a_durable_replay(
+    client, monkeypatch
+):
+    root = _make_approved_plan(client, ("a",))
+    payload = {"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"}
+    monkeypatch.setattr(
+        cr,
+        "_embedding_provider",
+        lambda: (_ for _ in ()).throw(RuntimeError("setup failed")),
+    )
+    with pytest.raises(RuntimeError, match="setup failed"):
+        client.post(f"/research/plans/{root}/launch", json=payload)
+
+    replay = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert replay.status_code == 409
+    assert replay.json()["detail"]["code"] == "hard_ceiling_launch_interrupted"
 
 
 # --------------------------------------------------------------------------

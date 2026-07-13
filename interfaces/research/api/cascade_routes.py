@@ -41,11 +41,14 @@ import logging
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Sequence
 from contextlib import contextmanager
+from dataclasses import replace
+from decimal import Decimal, DecimalException
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from interfaces.research.api.dispatch_failure import classify_dispatch_failure
 from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
@@ -63,17 +66,37 @@ from roles.cascade_planner.planner import DispatchDecomposer
 from roles.cascade_planner.tree_contract import PlanTree
 from runtime.db_lock import connect_write
 from runtime.research_runner import (
+    BillingUnit,
+    BoundedUsage,
     BudgetCap,
     BudgetManager,
     Command,
     CommandKind,
+    CostProjectionRequest,
     HostLocalRunner,
     PromotionFunnel,
+    SpendControlMode,
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
 from runtime.research_runner.protocol import BrowseLoop
+from runtime.research_runner.provider_gateway import (
+    HARD_MODE_DISPATCH_POLICY,
+    HARD_MODE_SKIPPED_STAGES,
+    ResearchProviderGateway,
+    ZeroCostReceipt,
+    canonical_digest,
+    deterministic_key,
+)
 from substrate.graph import default_db_path, ensure_initialized
+from substrate.research_spend import (
+    ResearchSpendLedger,
+    RunBinding,
+    RunNotFound,
+    ZeroCostState,
+    ZeroReplayClass,
+)
+from substrate.research_spend.ledger import MAX_AUTHORITY_CENTS
 
 if TYPE_CHECKING:
     from orchestration.session_evidence_pack import SessionEvidencePack
@@ -90,6 +113,10 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
 _SESSIONS: dict[str, CascadeSession] = {}
 _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
+_HARD_CEILING_RUNS: dict[
+    CascadeSession, tuple[ResearchProviderGateway, RunBinding]
+] = {}
+_HARD_CEILING_LAUNCHING: set[str] = set()
 
 # Optional hook set by ``create_app`` after Loop 1 handlers register.
 # Runs Path A synthesis tail (phases 6–9) once gather + merge finish.
@@ -112,6 +139,15 @@ def _db() -> str:
     path = default_db_path()
     ensure_initialized(path)
     return path
+
+
+def _spend_db() -> Path:
+    """SQLite authority ledger kept beside, but never inside, DuckDB."""
+    configured = os.environ.get("ANTIEK_RESEARCH_SPEND_DB")
+    if configured:
+        return Path(configured).expanduser()
+    graph = Path(_db())
+    return graph.with_name(f"{graph.name}.research-spend.sqlite3")
 
 
 @contextmanager
@@ -241,12 +277,16 @@ class _LazyReuseSubstrate:
                 parent.close()
 
 
-def _reuse_substrate() -> _LazyReuseSubstrate | None:
+def _reuse_substrate(
+    embedding_provider: EmbeddingProvider | None = None,
+) -> _LazyReuseSubstrate | None:
     """Build the lazy reuse substrate for a launch, or ``None`` on failure (reuse
-    is best-effort — a launch never breaks because reuse could not be set up)."""
+    is best-effort; a launch never breaks because reuse could not be set up)."""
     try:
-        return _LazyReuseSubstrate(_db(), _embedding_provider())
-    except Exception:  # pragma: no cover — reuse is best-effort, never fatal
+        return _LazyReuseSubstrate(
+            _db(), embedding_provider if embedding_provider is not None else _embedding_provider()
+        )
+    except Exception:  # pragma: no cover - reuse is best-effort, never fatal
         return None
 
 
@@ -295,6 +335,7 @@ class CreatePlanRequest(BaseModel):
     # decomposer role runs.
     sub_questions: list[str] | None = None
     max_depth: int = Field(default=3, ge=1, le=6)
+    spend_mode: SpendControlMode = SpendControlMode.STOP_LIMIT
 
 
 class TreeEditRequest(BaseModel):
@@ -311,8 +352,12 @@ class ApproveRequest(BaseModel):
 
 
 class LaunchRequest(BaseModel):
-    per_research_budget_usd: float = Field(default=0.50, gt=0)
-    aggregate_budget_usd: float | None = None
+    model_config = ConfigDict(extra="forbid")
+
+    per_research_budget_usd: float = Field(default=0.50, gt=0, allow_inf_nan=False)
+    aggregate_budget_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
+    spend_mode: SpendControlMode = SpendControlMode.STOP_LIMIT
+    hard_ceiling_usd: Decimal | None = Field(default=None, gt=0, allow_inf_nan=False)
 
 
 class SteerRequest(BaseModel):
@@ -348,10 +393,10 @@ class SuggestionsResponse(BaseModel):
 
 @cascade_router.get("/budget-defaults")
 async def budget_defaults() -> dict[str, Any]:
-    """The per-research spend ceiling the runner uses when the launch request
+    """The per-research stop limit the runner uses when the launch request
     omits one, plus the host-local concurrency cap. Both read straight off the
     contracts (``BudgetCap`` + ``host_local.DEFAULT_MAX_CONCURRENCY``) so the
-    entry + monitor UIs can show "estimated up to $X for N researches" and an
+    entry + monitor UIs can recommend a stop limit for N researches and show an
     honest "N running, M queued" without hardcoding a number that would drift
     if the contract default changes. The concurrency cap is the host-local
     bound; the §16-gated remote runner raises the practical ceiling only once
@@ -406,6 +451,17 @@ async def suggestions(limit: int = 8) -> SuggestionsResponse:
 async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
     """Decompose a problem into an editable, focus-checked sub-question tree
     and persist it. Returns the root node id + the editable tree."""
+    if req.spend_mode is SpendControlMode.HARD_CEILING and not req.sub_questions:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "hard_ceiling_provider_ineligible",
+                "message": (
+                    "Automatic plan decomposition is not hard-ceiling eligible; "
+                    "supply reviewed sub_questions or use stop_limit mode."
+                ),
+            },
+        )
     if req.sub_questions:
         sub_questions = req.sub_questions
 
@@ -433,6 +489,12 @@ async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
                 },
             ) from exc
     tree = report.tree
+    tree.seed_provenance = {
+        **tree.seed_provenance,
+        "decomposition_origin": (
+            "manual_sub_questions" if req.sub_questions else "automatic_dispatch"
+        ),
+    }
     with _write("create_plan") as con:
         root_id = persist_tree(tree, investigation_id="__operator__",
                                embedding_provider=_embedding_provider(), con=con)
@@ -496,8 +558,179 @@ async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+def _hard_ceiling_cents(amount: Decimal | None) -> int:
+    if amount is None:
+        raise HTTPException(
+            status_code=422,
+            detail="hard_ceiling_usd is required when spend_mode is hard_ceiling",
+        )
+    try:
+        cents = amount * Decimal(100)
+        integral = cents.to_integral_exact()
+    except (DecimalException, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="hard ceiling must use whole cents") from exc
+    if cents != integral:
+        raise HTTPException(status_code=422, detail="hard ceiling must use whole cents")
+    result = int(integral)
+    if result > MAX_AUTHORITY_CENTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"hard ceiling must not exceed {MAX_AUTHORITY_CENTS} cents",
+        )
+    return result
+
+
+def _hard_ceiling_plan_digest(
+    *, root_id: str, tree: PlanTree, request: LaunchRequest
+) -> str:
+    gather_mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
+    return canonical_digest(
+        {
+            "root_id": root_id,
+            "tree": tree.to_dict(),
+            "launch": {
+                "mode": request.spend_mode,
+                "per_research_budget_usd": str(request.per_research_budget_usd),
+                "aggregate_budget_usd": (
+                    None
+                    if request.aggregate_budget_usd is None
+                    else str(request.aggregate_budget_usd)
+                ),
+                "hard_ceiling_cents": (
+                    None if request.hard_ceiling_usd is None else _hard_ceiling_cents(
+                        request.hard_ceiling_usd
+                    )
+                ),
+                "gather_mode": gather_mode,
+                "synthesis_tail": False,
+                "dispatch_policy": HARD_MODE_DISPATCH_POLICY,
+            },
+        }
+    )
+
+
+def _hard_ceiling_binding(
+    *, root_id: str, session_id: str, owner_id: str, tree: PlanTree, request: LaunchRequest
+) -> RunBinding:
+    plan_digest = _hard_ceiling_plan_digest(root_id=root_id, tree=tree, request=request)
+    run_id = deterministic_key(
+        "research-hard-run", owner_id, session_id, root_id, plan_digest
+    )
+    return RunBinding(
+        run_id=run_id,
+        owner_id=owner_id,
+        session_id=session_id,
+        plan_digest=plan_digest,
+        approval_revision=tree.approval.plan_version,
+    )
+
+
+def _receipted_hard_ceiling_loop(
+    inner: BrowseLoop,
+    *,
+    gateway: ResearchProviderGateway,
+    binding: RunBinding,
+) -> BrowseLoop:
+    async def _loop(ctx: Any) -> AsyncIterator[Any]:
+        receipt = gateway.prepare_zero_cost(
+            binding,
+            logical_operation_id=f"{ctx.investigation_id}:gather",
+            projection_request=CostProjectionRequest(
+                seam_id="cascade.gather.contract_stub",
+                provider="antiek",
+                model="contract-stub",
+                operation="gather",
+                bounded_usage=(BoundedUsage(BillingUnit.LOCAL_OPERATION, 1),),
+            ),
+            operation_payload={
+                "investigation_id": ctx.investigation_id,
+                "sub_question": ctx.sub_question,
+            },
+            replay_class=ZeroReplayClass.PURE,
+        )
+        if receipt.attempt.state is ZeroCostState.COMPLETED:
+            return
+        if receipt.attempt.state is ZeroCostState.FAILED:
+            raise RuntimeError("zero-cost gather attempt previously failed")
+        emitted = 0
+        try:
+            async for event in inner(ctx):
+                emitted += 1
+                # The contract stub's cents are simulated stop-limit telemetry,
+                # not provider billing. Hard mode reports provider cost as zero.
+                yield replace(event, cost_usd=0.0)
+        except BaseException as exc:
+            gateway.fail_zero_cost(
+                receipt,
+                outcome={"exception_type": type(exc).__name__, "emitted_steps": emitted},
+            )
+            raise
+        else:
+            gateway.complete_zero_cost(receipt, outcome={"emitted_steps": emitted})
+
+    return cast(BrowseLoop, _loop)
+
+
+def _hard_ceiling_embedding_provider(
+    gateway: ResearchProviderGateway, binding: RunBinding
+) -> EmbeddingProvider:
+    receipt = gateway.prepare_zero_cost(
+        binding,
+        logical_operation_id="session:embedding-bootstrap",
+        projection_request=CostProjectionRequest(
+            seam_id="cascade.gather.embedding.bootstrap",
+            provider="local",
+            model="sentence-transformers-or-hash",
+            operation="embed",
+            bounded_usage=(BoundedUsage(BillingUnit.LOCAL_OPERATION, 1),),
+        ),
+        operation_payload={"purpose": "cascade-promotion-and-reuse"},
+        replay_class=ZeroReplayClass.CHECKPOINT_RESUMABLE,
+    )
+    if receipt.attempt.state is ZeroCostState.FAILED:
+        raise RuntimeError("embedding bootstrap attempt previously failed")
+    try:
+        provider = _embedding_provider()
+    except BaseException as exc:
+        if receipt.attempt.state is ZeroCostState.PREPARED:
+            gateway.fail_zero_cost(
+                receipt, outcome={"exception_type": type(exc).__name__}
+            )
+        raise
+    if receipt.attempt.state is ZeroCostState.PREPARED:
+        gateway.complete_zero_cost(
+            receipt, outcome={"provider_type": type(provider).__name__}
+        )
+    return provider
+
+
+def _hard_ceiling_launch_receipt(
+    gateway: ResearchProviderGateway,
+    binding: RunBinding,
+    *,
+    root_id: str,
+    leaves: Sequence[Leaf],
+) -> ZeroCostReceipt:
+    return gateway.prepare_zero_cost(
+        binding,
+        logical_operation_id="session:launch",
+        projection_request=CostProjectionRequest(
+            seam_id="cascade.session.launch",
+            provider="antiek",
+            model="host-local",
+            operation="launch",
+            bounded_usage=(BoundedUsage(BillingUnit.LOCAL_OPERATION, 1),),
+        ),
+        operation_payload={
+            "root_id": root_id,
+            "leaf_ids": [leaf.investigation_id for leaf in leaves],
+        },
+        replay_class=ZeroReplayClass.CHECKPOINT_RESUMABLE,
+    )
+
+
 @cascade_router.post("/plans/{root_id}/launch")
-async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
+async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str, Any]:
     """Launch an approved plan as N parallel researches. Refuses an
     unapproved plan (SPR-05 gate). Returns the session id + the researches.
 
@@ -513,6 +746,68 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
             raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
 
     session_id = f"session-{root_id}"
+    gateway: ResearchProviderGateway | None = None
+    binding: RunBinding | None = None
+    existing_durable_run = False
+    if req.spend_mode is SpendControlMode.HARD_CEILING:
+        owner_id = getattr(request.state, "user_id", None)
+        if not isinstance(owner_id, str) or not owner_id:
+            raise HTTPException(status_code=401, detail="authenticated owner identity required")
+        if (
+            getattr(request.state, "auth_method", None) == "unauthenticated_local"
+            and os.environ.get("ANTIEK_ALLOW_LOCAL_HARD_CEILING", "") != "1"
+        ):
+            raise HTTPException(
+                status_code=403,
+                detail=(
+                    "hard-ceiling launch requires authenticated operator authority or "
+                    "ANTIEK_ALLOW_LOCAL_HARD_CEILING=1 on an operator-controlled host"
+                ),
+            )
+        gather_mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
+        if gather_mode != "stub":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "hard_ceiling_provider_ineligible",
+                    "message": "Exa gather lacks durable idempotency and billing reconciliation.",
+                },
+            )
+        if tree.seed_provenance.get("decomposition_origin") != "manual_sub_questions":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "hard_ceiling_plan_ineligible",
+                    "message": (
+                        "Hard-ceiling launch requires a plan created from explicit "
+                        "sub_questions and subsequently approved."
+                    ),
+                },
+            )
+        plan_digest = _hard_ceiling_plan_digest(root_id=root_id, tree=tree, request=req)
+        authority_suffix = canonical_digest(
+            {"owner_id": owner_id, "plan_digest": plan_digest}
+        )[:16]
+        session_id = f"session-{root_id}-hard-{authority_suffix}"
+        binding = _hard_ceiling_binding(
+            root_id=root_id,
+            session_id=session_id,
+            owner_id=owner_id,
+            tree=tree,
+            request=req,
+        )
+        gateway = ResearchProviderGateway(ResearchSpendLedger(_spend_db()))
+        ceiling_cents = _hard_ceiling_cents(req.hard_ceiling_usd)
+        gateway.ledger.ensure_schema()
+        try:
+            existing_run = gateway.ledger.balance(binding.run_id)
+        except RunNotFound:
+            gateway.create_or_reopen_run(binding, ceiling_cents=ceiling_cents)
+        else:
+            if existing_run.binding != binding or existing_run.ceiling_cents != ceiling_cents:
+                raise HTTPException(status_code=409, detail="durable run binding conflict")
+            existing_durable_run = True
+
     leaves = [
         Leaf(investigation_id=f"{session_id}-leaf-{i}", sub_question=leaf.question,
              question_node_id=leaf.graph_node_id,
@@ -520,20 +815,122 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
         for i, leaf in enumerate(tree.leaves)
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
-    funnel = PromotionFunnel(db_path=_db(), embedding_provider=_embedding_provider())
+    launch_receipt = (
+        None
+        if gateway is None or binding is None
+        else _hard_ceiling_launch_receipt(
+            gateway, binding, root_id=root_id, leaves=leaves
+        )
+    )
+    durable_replay = bool(
+        launch_receipt is not None
+        and launch_receipt.attempt.state is ZeroCostState.COMPLETED
+    )
+    if (
+        existing_durable_run
+        and launch_receipt is not None
+        and launch_receipt.replayed
+        and launch_receipt.attempt.state is ZeroCostState.PREPARED
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "code": "hard_ceiling_launch_interrupted",
+                "message": (
+                    "A prior launch did not durably complete; operator recovery "
+                    "is required before this authority can be reused."
+                ),
+            },
+        )
+    if launch_receipt is not None and launch_receipt.attempt.state is ZeroCostState.FAILED:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "hard_ceiling_launch_failed"},
+        )
+    existing_session = _SESSIONS.get(session_id)
+    if gateway is not None and binding is not None and existing_session is not None:
+        existing_hard_run = _HARD_CEILING_RUNS.get(existing_session)
+        if existing_hard_run is None or existing_hard_run[1] != binding:
+            raise HTTPException(status_code=409, detail="session identity is already in use")
+        existing_gateway, _ = existing_hard_run
+        balance = existing_gateway.ledger.balance(binding.run_id)
+        return {
+            "session_id": session_id,
+            "researches": [
+                {
+                    "investigation_id": leaf.investigation_id,
+                    "sub_question": leaf.sub_question,
+                    "question_node_id": leaf.question_node_id,
+                }
+                for leaf in leaves
+            ],
+            "aggregate_cap_usd": budget.aggregate_cap_usd,
+            "spend_mode": req.spend_mode.value,
+            "replayed": True,
+            "hard_ceiling": {
+                "run_id": binding.run_id,
+                "plan_digest": binding.plan_digest,
+                "approval_revision": binding.approval_revision,
+                "ceiling_cents": balance.ceiling_cents,
+                "available_cents": balance.available_cents,
+                "blocked_stages": list(HARD_MODE_SKIPPED_STAGES),
+            },
+        }
+    if gateway is not None and binding is not None and durable_replay:
+        balance = gateway.ledger.balance(binding.run_id)
+        return {
+            "session_id": session_id,
+            "researches": [
+                {
+                    "investigation_id": leaf.investigation_id,
+                    "sub_question": leaf.sub_question,
+                    "question_node_id": leaf.question_node_id,
+                }
+                for leaf in leaves
+            ],
+            "aggregate_cap_usd": budget.aggregate_cap_usd,
+            "spend_mode": req.spend_mode.value,
+            "replayed": True,
+            "hard_ceiling": {
+                "run_id": binding.run_id,
+                "plan_digest": binding.plan_digest,
+                "approval_revision": binding.approval_revision,
+                "ceiling_cents": balance.ceiling_cents,
+                "available_cents": balance.available_cents,
+                "blocked_stages": list(HARD_MODE_SKIPPED_STAGES),
+            },
+        }
+    if gateway is not None and session_id in _HARD_CEILING_LAUNCHING:
+        raise HTTPException(status_code=409, detail="hard-ceiling session launch in progress")
+    embedding_provider = (
+        _embedding_provider()
+        if gateway is None or binding is None
+        else _hard_ceiling_embedding_provider(gateway, binding)
+    )
+    funnel = PromotionFunnel(db_path=_db(), embedding_provider=embedding_provider)
     # Flywheel reuse ON: a §9.0-gated substrate that reads the live graph through
     # a cursor of a read-write handle SHARING the funnel's DuckDB instance (never
     # a conflicting connect_read). It opens lazily on the first reuse read inside
     # launch() and is closed the instant launch() returns, so the read-write
     # handle never overlaps a connect_read reader. Best-effort: None degrades to
     # today's no-reuse behaviour, so a launch never breaks. See _reuse_substrate.
-    reuse_substrate = _reuse_substrate()
-    runner = HostLocalRunner(_research_loop_factory(), budget=budget,
+    reuse_substrate = _reuse_substrate(embedding_provider)
+    loop = _research_loop_factory()
+    if gateway is not None and binding is not None:
+        loop = _receipted_hard_ceiling_loop(loop, gateway=gateway, binding=binding)
+    runner = HostLocalRunner(loop, budget=budget,
                              on_emit=funnel.submit, seal_on_complete=False,
                              retrieval_substrate=reuse_substrate)
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
+    if gateway is not None:
+        _HARD_CEILING_LAUNCHING.add(session_id)
     try:
         await session.launch(root_id, leaves)
+        if gateway is not None and launch_receipt is not None:
+            gateway.complete_zero_cost(
+                launch_receipt,
+                outcome={"session_id": session_id, "leaf_count": len(leaves)},
+            )
     finally:
         # The reuse reads happen synchronously during launch(); close the shared
         # read handle NOW so it never overlaps the connect_read readers that run
@@ -543,11 +940,14 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
         if reuse_substrate is not None:
             with contextlib.suppress(Exception):
                 reuse_substrate.close()
+        _HARD_CEILING_LAUNCHING.discard(session_id)
     _SESSIONS[session_id] = session
+    if gateway is not None and binding is not None:
+        _HARD_CEILING_RUNS[session] = (gateway, binding)
     # Drive the fan-out to completion (join + funnel drain + merge) in the
     # background so the session progresses without a connected stream client.
     _SESSION_TASKS[session_id] = asyncio.create_task(_run_to_completion(session))
-    return {
+    response: dict[str, Any] = {
         "session_id": session_id,
         "researches": [
             {"investigation_id": leaf.investigation_id, "sub_question": leaf.sub_question,
@@ -555,7 +955,20 @@ async def launch(root_id: str, req: LaunchRequest) -> dict[str, Any]:
             for leaf in leaves
         ],
         "aggregate_cap_usd": budget.aggregate_cap_usd,
+        "spend_mode": req.spend_mode.value,
+        "replayed": False,
     }
+    if binding is not None and gateway is not None:
+        balance = gateway.ledger.balance(binding.run_id)
+        response["hard_ceiling"] = {
+            "run_id": binding.run_id,
+            "plan_digest": binding.plan_digest,
+            "approval_revision": binding.approval_revision,
+            "ceiling_cents": balance.ceiling_cents,
+            "available_cents": balance.available_cents,
+            "blocked_stages": list(HARD_MODE_SKIPPED_STAGES),
+        }
+    return response
 
 
 async def _run_to_completion(session: CascadeSession) -> None:
@@ -572,7 +985,10 @@ async def _run_to_completion(session: CascadeSession) -> None:
     stage = "join_and_merge"
     try:
         await session.join_and_merge()
-        if _SYNTHESIS_TAIL_RUNNER is not None:
+        if (
+            _SYNTHESIS_TAIL_RUNNER is not None
+            and session not in _HARD_CEILING_RUNS
+        ):
             stage = "synthesis_tail"
             pack = session.build_evidence_pack()
             await _SYNTHESIS_TAIL_RUNNER(session, pack)
@@ -580,6 +996,20 @@ async def _run_to_completion(session: CascadeSession) -> None:
         # Capture, do not swallow: record WITH the failing stage (so a join/merge
         # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
         session.record_synthesis_tail_error(exc, stage=stage)
+    finally:
+        hard_run = _HARD_CEILING_RUNS.get(session)
+        if hard_run is not None:
+            gateway, binding = hard_run
+            try:
+                gateway.ledger.close_execution(
+                    deterministic_key("research-close", binding.run_id),
+                    binding.run_id,
+                    "cascade execution reached terminal state",
+                )
+            except Exception as exc:
+                logger.exception(
+                    "hard-ceiling close failed for %s: %s", binding.run_id, exc
+                )
 
 
 @cascade_router.get("/sessions/{session_id}")

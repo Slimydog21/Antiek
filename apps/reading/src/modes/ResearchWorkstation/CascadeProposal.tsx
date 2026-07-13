@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import LemonButton from "../../components/lemon/LemonButton";
 import AIActionFailure from "../../shared/AIActionFailure";
 import {
+  ApiError,
   classifyClientError,
   type ClientFailureClassification,
 } from "../../lib/api";
@@ -12,6 +13,8 @@ import {
   createPlan,
   editPlan,
   getBudgetDefaults,
+  getPlan,
+  getSession,
   launchPlan,
   type PlanNode,
   type PlanTree,
@@ -78,6 +81,8 @@ interface PlanState {
   launchable: boolean;
 }
 
+type FailureStage = "propose" | "edit" | "approval" | "launch";
+
 /** The leaf sub-questions under the root — exactly the set the backend launches
  * (cascade_session spawns one research per tree leaf). We render and count the
  * leaves, not just root.children, so "what you see" equals "what runs": a
@@ -99,13 +104,17 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
   // phase === "ready" (after createPlan resolves), so an edit can NEVER race the
   // planner while it is still proposing (the spec's rigor-#3 edit-while-streaming
   // edge — handled by construction, not left as a free-for-all).
-  const [phase, setPhase] = useState<"proposing" | "ready" | "launching">("proposing");
+  const [phase, setPhase] = useState<"proposing" | "recovering" | "ready" | "launching">("proposing");
   const [failure, setFailure] = useState<ClientFailureClassification | null>(
     null,
   );
+  const [failureStage, setFailureStage] = useState<FailureStage>("propose");
   const [editing, setEditing] = useState<string | null>(null);
+  const [planMutationPending, setPlanMutationPending] = useState(false);
   const [draft, setDraft] = useState("");
   const [perResearchCost, setPerResearchCost] = useState<number | null>(null);
+  const [priceCeiling, setPriceCeiling] = useState("");
+  const [ceilingApproved, setCeilingApproved] = useState(false);
 
   // Propose the tree once on mount (and on an explicit retry). A ref guards
   // React 18 StrictMode's double-invoke so we don't POST two plans.
@@ -114,6 +123,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
   const propose = useCallback(async () => {
     setPhase("proposing");
     setFailure(null);
+    setFailureStage("propose");
     try {
       const r = await createPlan({ problem });
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
@@ -138,23 +148,53 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       .catch(() => setPerResearchCost(null));
   }, [propose]);
 
+  useEffect(() => {
+    const count = plan === null ? 0 : subQuestions(plan.tree).length;
+    if (perResearchCost === null || count === 0) {
+      setPriceCeiling("");
+    } else {
+      setPriceCeiling((perResearchCost * count).toFixed(2));
+    }
+    setCeilingApproved(false);
+  }, [perResearchCost, plan]);
+
   const applyEdit = useCallback(
     async (edit: { op: "remove" | "reword"; target_local_id: string; question?: string }) => {
-      if (!plan) return;
+      if (!plan || planMutationPending || phase !== "ready") return;
+      // Approval belongs to an exact tree version. Revoke it before the edit
+      // request leaves the browser so the old tree cannot launch in the gap.
+      setCeilingApproved(false);
+      setPlanMutationPending(true);
       try {
         const r = await editPlan(plan.rootNodeId, edit);
         setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
-      } catch {
-        // A failed edit leaves the prior tree on screen; the next action
-        // re-reads authoritative state. No optimistic lie.
+      } catch (e) {
+        // The server may have committed the edit even if its response was
+        // lost. Fail closed instead of letting the stale visible tree launch.
+        setFailureStage("edit");
+        setFailure(classifyClientError(e));
+      } finally {
+        setPlanMutationPending(false);
       }
     },
-    [plan],
+    [phase, plan, planMutationPending],
   );
 
   const onLaunch = useCallback(async () => {
-    if (!plan) return;
+    const parsedCeiling = Number(priceCeiling);
+    const researchCount = plan === null ? 0 : subQuestions(plan.tree).length;
+    if (
+      !plan ||
+      phase !== "ready" ||
+      planMutationPending ||
+      researchCount === 0 ||
+      !ceilingApproved ||
+      !/^\d+(?:\.\d{1,2})?$/.test(priceCeiling) ||
+      !Number.isFinite(parsedCeiling) ||
+      parsedCeiling <= 0
+    ) return;
     setPhase("launching");
+    let approvalCompleted = false;
     try {
       // The glass-box gate: approve, then launch. approvePlan pins the
       // current (possibly trimmed) plan; launchPlan refuses anything not
@@ -162,21 +202,62 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       // door's affordance is a single "Start these researches" — the
       // human-in-the-loop trim already happened above.
       await approvePlan(plan.rootNodeId);
-      const r = await launchPlan(plan.rootNodeId);
+      approvalCompleted = true;
+      const r = await launchPlan(plan.rootNodeId, {
+        aggregate_budget_usd: parsedCeiling,
+      });
       onLaunched(r.session_id);
+    } catch (e) {
+      setFailureStage(approvalCompleted ? "launch" : "approval");
+      setFailure(classifyClientError(e));
+      setPhase("ready");
+    }
+  }, [ceilingApproved, onLaunched, phase, plan, planMutationPending, priceCeiling]);
+
+  const retryFailure = useCallback(async () => {
+    if (failureStage === "propose" || plan === null) {
+      await propose();
+      return;
+    }
+    setFailure(null);
+    setPhase("recovering");
+    try {
+      if (failureStage === "edit" || failureStage === "approval") {
+        const r = await getPlan(plan.rootNodeId);
+        setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
+        setCeilingApproved(false);
+        setPhase("ready");
+        return;
+      }
+      const sessionId = `session-${plan.rootNodeId}`;
+      try {
+        await getSession(sessionId);
+        onLaunched(sessionId);
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.status !== 404) throw e;
+        const r = await getPlan(plan.rootNodeId);
+        setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
+        setCeilingApproved(false);
+        setPhase("ready");
+      }
     } catch (e) {
       setFailure(classifyClientError(e));
       setPhase("ready");
     }
-  }, [plan, onLaunched]);
+  }, [failureStage, onLaunched, plan, propose]);
 
   // ── Proposing: the AI is breaking the problem down. ──
-  if (phase === "proposing") {
+  if (phase === "proposing" || phase === "recovering") {
     return (
       <div className="flex flex-col items-center gap-3 py-8" role="status" aria-live="polite">
-        <Thinking size={40} label="Breaking your question into sub-questions" />
+        <Thinking
+          size={40}
+          label={phase === "recovering" ? "Recovering authoritative research state" : "Breaking your question into sub-questions"}
+        />
         <p className="text-sm font-serif text-ink-mute dark:text-moonlight">
-          Working out the sub-questions to research in parallel…
+          {phase === "recovering"
+            ? "Checking what the research engine committed…"
+            : "Working out the sub-questions to research in parallel…"}
         </p>
       </div>
     );
@@ -187,11 +268,26 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
     return (
       <div className="flex flex-col gap-3 py-4">
         <AIActionFailure
-          title="Couldn’t break this into sub-questions"
+          title={
+            failureStage === "edit"
+              ? "Couldn’t update the research plan"
+              : failureStage === "approval"
+                ? "Couldn’t approve the research plan"
+              : failureStage === "launch"
+                ? "Couldn’t start the research plan"
+                : "Couldn’t break this into sub-questions"
+          }
           code={failure.code}
           retryable={failure.retryable}
           reason={failure.message ?? null}
-          onRetry={() => void propose()}
+          onRetry={() => void retryFailure()}
+          retryLabel={
+            failureStage === "edit" || failureStage === "approval"
+              ? "Reload plan"
+              : failureStage === "launch"
+                ? "Check launch status"
+                : "Try again"
+          }
         />
         <div>
           <LemonButton variant="tertiary" size="sm" onClick={onFallBackToAsk}>
@@ -231,10 +327,16 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
 
   const estimate =
     perResearchCost !== null
-      ? `estimated up to $${(perResearchCost * launchCount).toFixed(2)} for ${launchCount} ${
+      ? `recommended $${(perResearchCost * launchCount).toFixed(2)} stop limit for ${launchCount} ${
           launchCount === 1 ? "research" : "researches"
         }`
       : null;
+  const parsedCeiling = Number(priceCeiling);
+  const ceilingValid =
+    /^\d+(?:\.\d{1,2})?$/.test(priceCeiling) &&
+    Number.isFinite(parsedCeiling) &&
+    parsedCeiling > 0;
+  const interactionLocked = planMutationPending || phase === "launching";
 
   // ── The proposed sub-questions: trim, edit, then launch. ──
   return (
@@ -272,9 +374,10 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   aria-label="Edit sub-question"
+                  disabled={interactionLocked}
                   autoFocus
                 />
-                <LemonButton variant="primary" size="sm" type="submit">
+                <LemonButton variant="primary" size="sm" type="submit" disabled={interactionLocked}>
                   Save
                 </LemonButton>
               </form>
@@ -298,6 +401,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                   <button
                     type="button"
                     className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-sun"
+                    disabled={interactionLocked}
                     onClick={() => {
                       setDraft(sub.question);
                       setEditing(sub.local_id);
@@ -308,6 +412,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                   <button
                     type="button"
                     className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-emperor"
+                    disabled={interactionLocked}
                     onClick={() => void applyEdit({ op: "remove", target_local_id: sub.local_id })}
                   >
                     remove
@@ -319,20 +424,72 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
         ))}
       </ul>
 
+      <fieldset className="border-t border-rule pt-3 dark:border-charcoal-1">
+        <legend className="text-[11px] font-mono uppercase text-shadow-1 dark:text-moonlight">
+          Aggregate stop limit
+        </legend>
+        <div className="mt-2 flex flex-wrap items-end gap-3">
+          <label className="flex flex-col gap-1 text-xs font-medium text-ink dark:text-bright">
+            Stop after reported spend
+            <span className="flex h-9 items-center border border-rule bg-ice-0 px-2 dark:border-charcoal-1 dark:bg-charcoal-2">
+              <span aria-hidden="true" className="mr-1 text-ink-mute dark:text-moonlight">$</span>
+              <input
+                aria-describedby="aggregate-stop-limit-note"
+                aria-invalid={!ceilingValid && priceCeiling !== ""}
+                aria-label="Aggregate stop limit"
+                className="w-24 bg-transparent font-mono text-sm text-ink outline-none dark:text-bright"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                type="number"
+                value={priceCeiling}
+                disabled={interactionLocked}
+                onChange={(event) => {
+                  setPriceCeiling(event.target.value);
+                  setCeilingApproved(false);
+                }}
+              />
+            </span>
+          </label>
+          <p className="pb-2 text-xs text-ink-mute dark:text-moonlight">
+            {estimate ?? "Set when this plan should stop."}
+          </p>
+        </div>
+        {!ceilingValid && priceCeiling !== "" && (
+          <p className="mt-1 text-xs text-emperor" role="alert">
+            Enter a positive amount with at most two decimal places.
+          </p>
+        )}
+        <p id="aggregate-stop-limit-note" className="mt-2 text-xs text-ink-mute dark:text-moonlight">
+          Research stops after reported spend reaches this amount. Final in-flight steps can exceed it.
+        </p>
+        <label className="mt-3 flex items-start gap-2 text-xs text-ink dark:text-bright">
+          <input
+            checked={ceilingApproved}
+            className="mt-0.5 size-4 accent-sun"
+            disabled={!ceilingValid || interactionLocked}
+            onChange={(event) => setCeilingApproved(event.target.checked)}
+            type="checkbox"
+          />
+          <span>
+            I approve a {ceilingValid ? `$${parsedCeiling.toFixed(2)}` : "configured"} aggregate stop limit for this plan.
+          </span>
+        </label>
+      </fieldset>
+
       <div className="flex items-center justify-between gap-3">
         <p className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
           {launchCount} {launchCount === 1 ? "research" : "researches"}
-          {estimate ? ` · ${estimate}` : ""}
         </p>
         <div className="flex gap-2">
-          <LemonButton variant="tertiary" size="sm" onClick={onFallBackToAsk}>
+          <LemonButton variant="tertiary" size="sm" onClick={onFallBackToAsk} disabled={interactionLocked}>
             Ask one question instead
           </LemonButton>
           <LemonButton
             variant="primary"
             size="lg"
             onClick={() => void onLaunch()}
-            disabled={phase === "launching"}
+            disabled={interactionLocked || !ceilingApproved || !ceilingValid}
           >
             {phase === "launching"
               ? "Starting…"

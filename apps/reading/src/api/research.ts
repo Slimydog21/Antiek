@@ -96,9 +96,9 @@ export interface LaunchResponse {
 
 export type SteerKind = "pause" | "resume" | "stop" | "redirect" | "deepen";
 
-/** The per-research spend ceiling the runner applies when launch omits one
+/** The per-research stop limit the runner applies when launch omits one
  * (mirrors runtime/research_runner protocol.BudgetCap). The entry UI reads
- * this to show "estimated up to $X for N researches" — never a hardcoded
+ * this to recommend a stop limit for N researches, never a hardcoded
  * number that would drift from the contract. */
 export interface BudgetDefaults {
   per_research_cost_usd: number;
