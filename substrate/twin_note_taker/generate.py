@@ -64,6 +64,12 @@ MAX_QUESTIONS = 100
 MAX_PROPOSAL_ITEM_CHARS = 10_000
 MAX_SYNTHESIS_CHARS = 50_000
 MAX_TOTAL_PROPOSAL_CHARS = 200_000
+MAX_IDENTIFIER_CHARS = 256
+MAX_TITLE_CHARS = 1_000
+MAX_CONTENT_CLASS_CHARS = 64
+MAX_SOURCE_EVENTS = 100
+MAX_SIGNATURE_CHARS = 128
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 
 
 class TwinGenerationError(ValueError):
@@ -130,6 +136,7 @@ class TwinGenerationReceipt:
     model_id: str
     budget_authority_id: str
     source_content_hash: str
+    source_asset_hash: str
     source_event_ids: tuple[str, ...]
     proposal_payload_hash: str
     expires_at_unix: int
@@ -142,7 +149,7 @@ class TwinDocument:
 
     asset_id: str
     twin_investigation_id: str
-    body: ResearchArtifactBody  # the canonical data model (renders HTML-native)
+    _body_json: str
     proposed_insights: tuple[str, ...]
     proposed_questions: tuple[str, ...]
     authority: str
@@ -153,6 +160,11 @@ class TwinDocument:
     budget_authority_id: str | None
     source_content_hash: str
     proposal_hash: str  # sha256 over canonical proposals (idempotency)
+
+    @property
+    def body(self) -> ResearchArtifactBody:
+        """Return a detached body so callers cannot mutate signed document state."""
+        return ResearchArtifactBody.model_validate_json(self._body_json)
 
 
 @dataclass(frozen=True)
@@ -213,6 +225,7 @@ def _snapshot_receipt(receipt: TwinGenerationReceipt) -> TwinGenerationReceipt:
         receipt.model_id,
         receipt.budget_authority_id,
         receipt.source_content_hash,
+        receipt.source_asset_hash,
         receipt.proposal_payload_hash,
         receipt.signature,
     )
@@ -231,6 +244,7 @@ def _snapshot_receipt(receipt: TwinGenerationReceipt) -> TwinGenerationReceipt:
         model_id=receipt.model_id,
         budget_authority_id=receipt.budget_authority_id,
         source_content_hash=receipt.source_content_hash,
+        source_asset_hash=receipt.source_asset_hash,
         source_event_ids=tuple(receipt.source_event_ids),
         proposal_payload_hash=receipt.proposal_payload_hash,
         expires_at_unix=receipt.expires_at_unix,
@@ -240,6 +254,18 @@ def _snapshot_receipt(receipt: TwinGenerationReceipt) -> TwinGenerationReceipt:
 
 def _source_content_hash(asset: AssetContent) -> str:
     return hashlib.sha256(asset.content_text.encode("utf-8")).hexdigest()
+
+
+def _source_asset_hash(asset: AssetContent) -> str:
+    payload = {
+        "asset_id": asset.asset_id,
+        "content_class": asset.content_class,
+        "source_content_hash": _source_content_hash(asset),
+        "source_event_ids": list(asset.source_event_ids),
+        "title": asset.title,
+    }
+    blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()
 
 
 def _receipt_payload(receipt: TwinGenerationReceipt) -> bytes:
@@ -252,6 +278,7 @@ def _receipt_payload(receipt: TwinGenerationReceipt) -> bytes:
         "proposal_payload_hash": receipt.proposal_payload_hash,
         "receipt_id": receipt.receipt_id,
         "source_content_hash": receipt.source_content_hash,
+        "source_asset_hash": receipt.source_asset_hash,
         "source_event_ids": list(receipt.source_event_ids),
     }
     return json.dumps(claims, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -280,9 +307,7 @@ def _canonical_proposal_hash(
 ) -> str:
     payload = {
         "asset_id": asset.asset_id,
-        "content_class": asset.content_class,
-        "source_content_hash": _source_content_hash(asset),
-        "title": asset.title,
+        "source_asset_hash": _source_asset_hash(asset),
         "model_id": model_id,
         "insights": list(proposal.insights),
         "questions": list(proposal.questions),
@@ -381,6 +406,11 @@ def proposal_receipt_hash(asset: AssetContent, proposal: TwinProposal) -> str:
     return _normalized_payload_hash(_normalize_proposal(source, completed))
 
 
+def source_asset_receipt_hash(asset: AssetContent) -> str:
+    """Canonical digest of every source field that can affect materialization."""
+    return _source_asset_hash(_snapshot_asset(asset))
+
+
 def _build_body(
     asset: AssetContent,
     proposal: _NormalizedProposal,
@@ -415,7 +445,9 @@ def _build_body(
         open_questions=[],
         synthesis_excerpt=excerpt,
         synthesis_withheld=withheld,
-        source_event_ids=list(asset.source_event_ids),
+        # Shape checks are not proof of graph existence or account ownership.
+        # A later event-store boundary may promote validated provenance.
+        source_event_ids=[],
         agent_notes=agent_notes,
     )
 
@@ -441,11 +473,31 @@ def generate_twin(
         raise TwinGenerationError("authenticated_account_id must be a non-empty exact string")
     if not source.asset_id.strip():
         raise TwinGenerationError("asset_id must be non-empty")
+    bounded_identifiers = {
+        "asset_id": source.asset_id,
+        "model_id": model_id,
+        "authenticated_account_id": authenticated_account_id,
+    }
+    for field, value in bounded_identifiers.items():
+        if value != value.strip() or len(value) > MAX_IDENTIFIER_CHARS:
+            raise TwinGenerationError(f"{field} must be canonical and within its ceiling")
+    if len(source.title) > MAX_TITLE_CHARS:
+        raise TwinGenerationError("asset title exceeds its ceiling")
+    if (
+        not source.content_class.strip()
+        or source.content_class != source.content_class.strip()
+        or len(source.content_class) > MAX_CONTENT_CLASS_CHARS
+    ):
+        raise TwinGenerationError("content_class must be canonical and within its ceiling")
+    if len(source.source_event_ids) > MAX_SOURCE_EVENTS:
+        raise TwinGenerationError("source_event_ids exceeds its count ceiling")
     if not source.source_event_ids or any(
         not isinstance(event_id, str) or not _EVENT_ID_RE.fullmatch(event_id)
         for event_id in source.source_event_ids
     ):
-        raise TwinGenerationError("source_event_ids must contain real event identifiers")
+        raise TwinGenerationError("source_event_ids must contain event-shaped identifiers")
+    if len(set(source.source_event_ids)) != len(source.source_event_ids):
+        raise TwinGenerationError("source_event_ids must be unique")
 
     stripped = source.content_text.strip()
     if len(stripped) < MIN_CONTENT_CHARS:
@@ -477,11 +529,34 @@ def generate_twin(
             evidence.model_id,
             evidence.budget_authority_id,
             evidence.source_content_hash,
+            evidence.source_asset_hash,
             evidence.proposal_payload_hash,
             evidence.signature,
         )
         if not all(value.strip() for value in string_claims):
             raise TwinGenerationError("receipt fields must be non-empty")
+        bounded_receipt_ids = (
+            evidence.receipt_id,
+            evidence.account_id,
+            evidence.asset_id,
+            evidence.model_id,
+            evidence.budget_authority_id,
+        )
+        if any(
+            value != value.strip() or len(value) > MAX_IDENTIFIER_CHARS
+            for value in bounded_receipt_ids
+        ):
+            raise TwinGenerationError("receipt identifiers exceed their canonical ceiling")
+        if len(evidence.signature) > MAX_SIGNATURE_CHARS:
+            raise TwinGenerationError("receipt signature exceeds its ceiling")
+        if (
+            not _SHA256_RE.fullmatch(evidence.source_content_hash)
+            or not _SHA256_RE.fullmatch(evidence.source_asset_hash)
+            or not _SHA256_RE.fullmatch(evidence.proposal_payload_hash)
+        ):
+            raise TwinGenerationError("receipt hashes must be canonical sha256 digests")
+        if len(evidence.source_event_ids) > MAX_SOURCE_EVENTS:
+            raise TwinGenerationError("receipt source events exceed their count ceiling")
         if evidence.account_id != authenticated_account_id:
             raise TwinGenerationError("receipt belongs to a different authenticated account")
         if evidence.asset_id != source.asset_id:
@@ -490,6 +565,8 @@ def generate_twin(
             raise TwinGenerationError("receipt is bound to a different model")
         if evidence.source_content_hash != _source_content_hash(source):
             raise TwinGenerationError("receipt is bound to a different source revision")
+        if evidence.source_asset_hash != _source_asset_hash(source):
+            raise TwinGenerationError("receipt is bound to different source metadata")
         if evidence.source_event_ids != source.source_event_ids:
             raise TwinGenerationError("receipt is bound to different source events")
         if evidence.proposal_payload_hash != _normalized_payload_hash(normalized):
@@ -507,7 +584,7 @@ def generate_twin(
     return TwinDocument(
         asset_id=source.asset_id,
         twin_investigation_id=body.investigation_id,
-        body=body,
+        _body_json=body.model_dump_json(),
         proposed_insights=normalized.insights,
         proposed_questions=normalized.questions,
         authority=TWIN_AUTHORITY,
@@ -530,6 +607,11 @@ __all__ = [
     "MAX_SYNTHESIS_CHARS",
     "MAX_TOTAL_PROPOSAL_CHARS",
     "MAX_CONTENT_CHARS",
+    "MAX_CONTENT_CLASS_CHARS",
+    "MAX_IDENTIFIER_CHARS",
+    "MAX_SIGNATURE_CHARS",
+    "MAX_SOURCE_EVENTS",
+    "MAX_TITLE_CHARS",
     "MIN_CONTENT_CHARS",
     "ProposedInsight",
     "ProposedQuestion",
@@ -540,4 +622,5 @@ __all__ = [
     "TwinProposal",
     "generate_twin",
     "proposal_receipt_hash",
+    "source_asset_receipt_hash",
 ]

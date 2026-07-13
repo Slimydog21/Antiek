@@ -23,10 +23,13 @@ from substrate.research_artifact.schema import ResearchArtifactBody  # noqa: E40
 from substrate.twin_note_taker.generate import (  # noqa: E402
     AUTHORITY_VERIFY_KEY_ENV,
     MAX_CONTENT_CHARS,
+    MAX_IDENTIFIER_CHARS,
     MAX_INSIGHTS,
     MAX_PROPOSAL_ITEM_CHARS,
     MAX_QUESTIONS,
+    MAX_SOURCE_EVENTS,
     MAX_SYNTHESIS_CHARS,
+    MAX_TITLE_CHARS,
     TWIN_AUTHORITY,
     AssetContent,
     ProposedInsight,
@@ -37,6 +40,7 @@ from substrate.twin_note_taker.generate import (  # noqa: E402
     TwinProposal,
     generate_twin,
     proposal_receipt_hash,
+    source_asset_receipt_hash,
 )
 
 CONTENT = (
@@ -95,6 +99,7 @@ def _receipt(
     receipt_id: str = "receipt-1",
     budget_authority_id: str = "hold-1",
     source_content_hash: str | None = None,
+    source_asset_hash: str | None = None,
     source_event_ids: tuple[str, ...] | None = None,
     proposal_payload_hash: str | None = None,
     expires_at_unix: int = 4_000_000_000,
@@ -108,6 +113,7 @@ def _receipt(
         "budget_authority_id": budget_authority_id,
         "source_content_hash": source_content_hash
         or hashlib.sha256(asset.content_text.encode()).hexdigest(),
+        "source_asset_hash": source_asset_hash or source_asset_receipt_hash(asset),
         "source_event_ids": source_event_ids or asset.source_event_ids,
         "proposal_payload_hash": proposal_payload_hash or proposal_receipt_hash(asset, proposal),
         "expires_at_unix": expires_at_unix,
@@ -210,7 +216,7 @@ def test_valid_receipt_materializes_advisory_non_graph_twin() -> None:
     assert result.body.open_questions == []
     assert TWIN_AUTHORITY in result.body.agent_notes[0]
     assert "Proposed question:" in result.body.agent_notes[-1]
-    assert result.body.source_event_ids == ["evt-source-1"]
+    assert result.body.source_event_ids == []
 
 
 def test_forged_signature_is_rejected() -> None:
@@ -260,6 +266,10 @@ def test_receipt_is_bound_to_authenticated_account() -> None:
         (
             _receipt(_asset(), _proposal(), source_content_hash="0" * 64),
             "different source revision",
+        ),
+        (
+            _receipt(_asset(), _proposal(), source_asset_hash="0" * 64),
+            "different source metadata",
         ),
         (
             _receipt(_asset(), _proposal(), source_event_ids=("evt-unrelated",)),
@@ -358,6 +368,34 @@ def test_receipt_replay_is_pure_and_idempotent() -> None:
     assert one.body.content_hash() == two.body.content_hash()
 
 
+@pytest.mark.parametrize(
+    "changed",
+    [
+        _asset(title="Attacker title"),
+        _asset(content_class="attacker-class"),
+    ],
+)
+def test_receipt_binds_all_output_affecting_source_metadata(changed: AssetContent) -> None:
+    asset, proposal = _asset(), _proposal()
+    receipt = _receipt(asset, proposal)
+    with pytest.raises(TwinGenerationError, match="different source metadata"):
+        generate_twin(
+            changed,
+            model_id="m",
+            authenticated_account_id="account-1",
+            proposal=proposal,
+            receipt=receipt,
+        )
+
+
+def test_returned_body_is_detached_from_signed_document_state() -> None:
+    result = _generate(_asset())
+    body = result.body
+    body.source_event_ids.append("evt-forged")
+    assert result.body.source_event_ids == []
+    assert result.body.insights == []
+
+
 def test_hashes_bind_exact_raw_source_and_model() -> None:
     baseline = _generate(_asset())
     changed_source = _generate(_asset(content_text=CONTENT + " Revision."))
@@ -419,6 +457,36 @@ def test_aggregate_output_limit_fails_closed() -> None:
     )
     with pytest.raises(TwinGenerationError, match="aggregate"):
         proposal_receipt_hash(_asset(), proposal)
+
+
+@pytest.mark.parametrize(
+    ("asset", "model_id", "account_id", "message"),
+    [
+        (_asset(asset_id="x" * (MAX_IDENTIFIER_CHARS + 1)), "m", "account-1", "asset_id"),
+        (_asset(title="x" * (MAX_TITLE_CHARS + 1)), "m", "account-1", "title"),
+        (
+            _asset(
+                source_event_ids=tuple(f"evt-{index}" for index in range(MAX_SOURCE_EVENTS + 1))
+            ),
+            "m",
+            "account-1",
+            "count ceiling",
+        ),
+        (_asset(), "m" * (MAX_IDENTIFIER_CHARS + 1), "account-1", "model_id"),
+        (_asset(), "m", "a" * (MAX_IDENTIFIER_CHARS + 1), "authenticated_account_id"),
+    ],
+)
+def test_untrusted_metadata_limits_fail_closed(
+    asset: AssetContent, model_id: str, account_id: str, message: str
+) -> None:
+    with pytest.raises(TwinGenerationError, match=message):
+        generate_twin(asset, model_id=model_id, authenticated_account_id=account_id)
+
+
+def test_package_exports_public_contract() -> None:
+    from substrate.twin_note_taker import generate_twin as public_generate_twin
+
+    assert public_generate_twin is generate_twin
 
 
 def test_exact_builtin_types_prevent_overridable_string_bypasses() -> None:
