@@ -9,6 +9,7 @@ from typing import Any
 
 import pytest
 
+from runtime.db_lock import connect_write
 from substrate.dispatch import (
     DispatchConfig,
     DispatchResult,
@@ -21,6 +22,8 @@ from substrate.dispatch import (
     reset_provider_registry,
 )
 from substrate.engagement_spine.store import FileEngagementStore
+from substrate.graph import ensure_initialized
+from substrate.graph.ops import insert_chunk, insert_document
 from substrate.midnight_oil.contracts import canonical_source_receipt_id
 from substrate.midnight_oil.job import MidnightOilJob, _job_from_row
 from substrate.midnight_oil.job_store import OperationState
@@ -42,6 +45,25 @@ from substrate.midnight_oil.worker import FakeClock, lease_authorized_operation
 from tests.test_midnight_oil_consent_routes import _client
 
 HEADER = "X-Midnight-Oil-Spend-Consent"
+
+
+def _seed_live_graph(path: Path) -> None:
+    ensure_initialized(str(path))
+    with connect_write(str(path), purpose="test/seed-live-source") as con:
+        insert_document(
+            con,
+            document_id="document-1",
+            source_tier=1,
+            document_type="paper",
+            title="Primary evidence",
+        )
+        insert_chunk(
+            con,
+            document_id="document-1",
+            chunk_index=0,
+            text="Evidence with api_key=secret-value-never-forward.",
+            chunk_id="chunk-1",
+        )
 
 
 def _structured_result(text: str, *, supported: bool = True) -> str:
@@ -272,6 +294,7 @@ def test_authorized_live_step_is_fenced_budgeted_and_durably_evidenced(
 
     engagement_root = tmp_path / "engagement"
     graph_path = tmp_path / "live-graph.duckdb"
+    _seed_live_graph(graph_path)
     engagement_store = FileEngagementStore(engagement_root)
     outcome = consume_authorized_live_operation(
         lease,
@@ -304,6 +327,7 @@ def test_authorized_live_step_is_fenced_budgeted_and_durably_evidenced(
     from substrate.graph import schema as graph_schema
 
     graph_schema._INITIALIZED_PATHS.discard(str(graph_path))
+    _seed_live_graph(graph_path)
     recovered_graph = resume_terminal_projection(
         lease.job_id,
         owner_user_id=lease.owner_user_id,
@@ -954,18 +978,26 @@ def test_overlong_retrieval_is_hard_capped_before_provider(tmp_path: Path) -> No
         )
 
     dispatch.plan_hash = plan.plan_hash  # type: ignore[attr-defined]
-    outcome = consume_authorized_live_operation(
-        lease,
-        operation_queue=queue,
-        owner_jobs=deps.owner_jobs,
-        store=deps.jobs,
-        engagement_store=FileEngagementStore(tmp_path / "bounded-engagement"),
-        graph_db_path=tmp_path / "bounded-graph.duckdb",
-        retrieval=retrieval,
-        dispatch=dispatch,
-        clock=FakeClock(1_000_002),
-    )
-    assert outcome.job.status == "complete"
+    graph_path = tmp_path / "bounded-graph.duckdb"
+    _seed_live_graph(graph_path)
+    with pytest.raises(LiveExecutionFailed):
+        consume_authorized_live_operation(
+            lease,
+            operation_queue=queue,
+            owner_jobs=deps.owner_jobs,
+            store=deps.jobs,
+            engagement_store=FileEngagementStore(tmp_path / "bounded-engagement"),
+            graph_db_path=graph_path,
+            retrieval=retrieval,
+            dispatch=dispatch,
+            clock=FakeClock(1_000_002),
+        )
+    persisted = deps.jobs.get_job(lease.job_id)
+    assert persisted is not None
+    restored = _job_from_row(persisted)
+    assert restored.status == "complete"
+    assert restored.graph_projection_state == "refused"
+    assert restored.graph_projection_reason == "claim_coverage_missing"
     assert prompt_sizes and prompt_sizes[0] <= plan.max_input_bytes
 
 

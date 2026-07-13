@@ -1683,9 +1683,10 @@ def test_running_validation_quarantine_recovers_paid_evidence_before_archive(
         clock_ms=lambda: 5,
     )
     assert recovered.result == "reconcile_required"
-    assert recovered.phase == "terminal_archived"
+    assert recovered.phase == "graph_projection_refused"
+    assert recovered.error_code == "policy_authority_drift"
     assert recovered.deposit_document_id
-    assert recovered.graph_deliverable_id
+    assert recovered.graph_deliverable_id is None
     assert runtime.stores.operation_queue.next_claimable(now_ms=6) is None
 
 
@@ -2186,6 +2187,116 @@ def test_terminal_graph_conflict_is_quarantined_without_starving_queue(
     next_claimable = runtime.stores.operation_queue.next_claimable(now_ms=6)
     assert next_claimable is not None
     assert next_claimable.operation_id == "valid-behind-graph-conflict"
+
+
+@pytest.mark.parametrize(
+    ("exception_name", "reason", "result", "phase", "archived"),
+    [
+        (
+            "GraphProjectionRefused",
+            "claim_coverage_missing",
+            "reconcile_required",
+            "graph_projection_refused",
+            True,
+        ),
+        (
+            "GraphProjectionPending",
+            "graph_lock_unavailable",
+            "projection_pending",
+            "graph_projection_pending",
+            False,
+        ),
+    ],
+)
+def test_terminal_graph_admission_reports_typed_reason_without_redispatch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    exception_name: str,
+    reason: str,
+    result: str,
+    phase: str,
+    archived: bool,
+) -> None:
+    import substrate.midnight_oil.worker_cli as worker_module
+
+    path, environment, _ = _runtime_files(tmp_path)
+    runtime = build_worker_runtime(path, environ=environment)
+    job = create_job(
+        ["Terminal graph admission must never redispatch."],
+        10,
+        store=runtime.stores.jobs,
+        job_id="typed-graph-admission-job",
+    )
+    put_job_state(
+        replace(
+            job,
+            status="failed",
+            step_evidence=(
+                MidnightOilStepEvidence(
+                    step_key="paid-step",
+                    spawn_id="paid-spawn",
+                    output_text="Already paid evidence.",
+                    insights=("Do not dispatch it twice.",),
+                    questions=("What is the graph disposition?",),
+                ),
+            ),
+        ),
+        store=runtime.stores.jobs,
+    )
+    runtime.stores.owner_jobs.put_job(
+        OwnerJob(
+            owner_user_id="typed-owner",
+            job_id=job.job_id,
+            state_version=5,
+            approved_ceiling_cents=100,
+            consent_receipt_id="receipt",
+            consent_config_hash="c" * 64,
+            consent_issued_at_ms=1,
+            consent_expires_at_ms=100,
+            consent_claimed_at_ms=2,
+            operation_id="typed-graph-admission-operation",
+            operation_state=OperationState.FAILED_RECONCILE,
+            dispatch_started_at_ms=3,
+            dispatched_at_ms=None,
+            completed_at_ms=4,
+            payload={},
+        )
+    )
+    runtime.stores.operation_queue.enqueue_once(
+        operation_id="typed-graph-admission-operation",
+        owner_user_id="typed-owner",
+        job_id=job.job_id,
+        enqueued_at_ms=1,
+        options={
+            "max_steps": None,
+            "auto_deposit": True,
+            "draft_combined": True,
+            "force_offline": False,
+        },
+    )
+    exception_type = getattr(worker_module, exception_name)
+    monkeypatch.setattr(
+        worker_module,
+        "resume_terminal_projection",
+        lambda *args, **kwargs: (_ for _ in ()).throw(exception_type(reason)),
+    )
+
+    record = run_worker_once(
+        runtime,
+        worker_id="typed-admission-worker",
+        embedding_model=_Embedding(),
+        clock_ms=lambda: 5,
+    )
+
+    assert record.result == result
+    assert record.phase == phase
+    assert record.error_code == reason
+    assert (
+        runtime.stores.operation_queue.get(record.operation_id or "") is None
+    ) == archived
+    assert (
+        runtime.stores.operation_queue.get_terminal(record.operation_id or "") is not None
+    ) == archived
 
 
 @pytest.mark.parametrize("error_type", [RuntimeError, ValueError])

@@ -124,6 +124,27 @@ def test_job_status_exposes_only_safe_graph_projection_navigation(tmp_path):
     assert "html_sha256" not in body
 
 
+def test_job_status_exposes_closed_graph_projection_reason(tmp_path):
+    client, deps = _client(tmp_path)
+    headers = {"x-test-user": "alice"}
+    created = client.post(
+        "/midnight-oil/create",
+        headers=headers,
+        json={"goals": ["g"], "duration_minutes": 30},
+    ).json()
+    raw = deps.jobs.get_job(created["job_id"])
+    assert raw is not None
+    raw["graph_projection_state"] = "refused"
+    raw["graph_projection_reason"] = "claim_coverage_missing"
+    deps.jobs.put_job(raw)
+
+    body = client.get(
+        f"/midnight-oil/jobs/{created['job_id']}", headers=headers
+    ).json()
+    assert body["graph_projection_state"] == "refused"
+    assert body["graph_projection_reason"] == "claim_coverage_missing"
+
+
 def test_create_rejects_empty_goals(client):
     r = client.post(
         "/midnight-oil/create",

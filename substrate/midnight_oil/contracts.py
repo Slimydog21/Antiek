@@ -137,6 +137,34 @@ SourcePolicy = Literal["arxiv", "substack", "web", "operator_corpus"]
 DeliverableKind = Literal["html_research_asset"]
 MidnightOilRole = Literal["planner", "gatherer", "verifier", "synthesizer"]
 ResearchClaimClass = Literal["insight", "output_paragraph", "exploratory_question"]
+GraphAdmissionReason = Literal[
+    "internal_local_chunk_temporarily_missing",
+    "operational_artifact_pending",
+    "graph_lock_unavailable",
+    "policy_authority_drift",
+    "legacy_unverified",
+    "claim_coverage_missing",
+    "receipt_malformed_or_forged",
+    "external_receipt_not_admissible_v1",
+    "deterministic_row_conflict",
+]
+RETRYABLE_GRAPH_ADMISSION_REASONS: frozenset[GraphAdmissionReason] = frozenset(
+    {
+        "internal_local_chunk_temporarily_missing",
+        "operational_artifact_pending",
+        "graph_lock_unavailable",
+    }
+)
+REFUSED_GRAPH_ADMISSION_REASONS: frozenset[GraphAdmissionReason] = frozenset(
+    {
+        "policy_authority_drift",
+        "legacy_unverified",
+        "claim_coverage_missing",
+        "receipt_malformed_or_forged",
+        "external_receipt_not_admissible_v1",
+        "deterministic_row_conflict",
+    }
+)
 
 
 class ResearchAcceptancePolicy(_ContractModel):

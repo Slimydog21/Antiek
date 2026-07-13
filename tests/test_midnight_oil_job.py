@@ -7,6 +7,11 @@ from dataclasses import replace
 
 import pytest
 
+from substrate.midnight_oil.contracts import (
+    REFUSED_GRAPH_ADMISSION_REASONS,
+    RETRYABLE_GRAPH_ADMISSION_REASONS,
+    GraphAdmissionReason,
+)
 from substrate.midnight_oil.job import (
     InMemoryJobStore,
     MidnightOilStepEvidence,
@@ -373,4 +378,59 @@ def test_durable_step_census_rejects_non_object_entries() -> None:
     row["step_evidence"] = [None]
 
     with pytest.raises(ValueError, match="step evidence"):
+        _job_from_row(row)
+
+
+@pytest.mark.parametrize("reason", sorted(REFUSED_GRAPH_ADMISSION_REASONS))
+def test_permanent_graph_refusal_round_trips_without_an_effect_receipt(
+    reason: GraphAdmissionReason,
+) -> None:
+    store = InMemoryJobStore()
+    job = create_job(["goal"], 5, store=store, job_id=f"refused-{reason}")
+    refused = replace(
+        job,
+        graph_projection_state="refused",
+        graph_projection_reason=reason,
+    )
+
+    restored = _job_from_row(_job_to_row(refused))
+
+    assert restored.graph_projection_state == "refused"
+    assert restored.graph_projection_reason == reason
+    assert restored.graph_effect_receipt is None
+
+
+@pytest.mark.parametrize("reason", sorted(RETRYABLE_GRAPH_ADMISSION_REASONS))
+def test_retryable_graph_reason_remains_pending_after_restart(
+    reason: GraphAdmissionReason,
+) -> None:
+    store = InMemoryJobStore()
+    job = create_job(["goal"], 5, store=store, job_id=f"pending-{reason}")
+    pending = replace(job, graph_projection_reason=reason)
+
+    restored = _job_from_row(_job_to_row(pending))
+
+    assert restored.graph_projection_state == "pending"
+    assert restored.graph_projection_reason == reason
+    assert restored.graph_effect_receipt is None
+
+
+def test_graph_projection_disposition_rejects_state_reason_drift() -> None:
+    store = InMemoryJobStore()
+    job = create_job(["goal"], 5, store=store, job_id="disposition-drift")
+
+    with pytest.raises(ValueError, match="pending graph projection"):
+        _job_to_row(replace(job, graph_projection_reason="legacy_unverified"))
+    with pytest.raises(ValueError, match="permanent reason"):
+        _job_to_row(
+            replace(
+                job,
+                graph_projection_state="refused",
+                graph_projection_reason="graph_lock_unavailable",
+            )
+        )
+
+    row = _job_to_row(job)
+    row["graph_projection_reason"] = "invented_reason"
+    with pytest.raises(ValueError, match="reason is unsupported"):
         _job_from_row(row)

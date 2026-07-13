@@ -15,7 +15,7 @@ import os
 import tempfile
 import threading
 from collections.abc import Iterator
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -33,6 +33,7 @@ class EngagementStore(Protocol):
     ) -> None: ...
     def put_document(self, document_id: str, doc: dict[str, Any]) -> None: ...
     def get_document(self, document_id: str) -> dict[str, Any] | None: ...
+    def lock_document(self, document_id: str) -> AbstractContextManager[None]: ...
 
 
 @dataclass
@@ -95,6 +96,12 @@ class InMemoryEngagementStore:
         with self._lock:
             row = self._docs.get(document_id)
             return dict(row) if row is not None else None
+
+    @contextmanager
+    def lock_document(self, document_id: str) -> Iterator[None]:
+        del document_id
+        with self._lock:
+            yield
 
 
 @dataclass
@@ -164,6 +171,16 @@ class FileEngagementStore:
         safe = document_id.replace("/", "_")
         return self.root / "docs" / f"{safe}.json"
 
+    @contextmanager
+    def lock_document(self, document_id: str) -> Iterator[None]:
+        lock_path = self._doc_path(document_id).with_suffix(".lock")
+        with self._lock, lock_path.open("a+b") as handle:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
     def put_spawn(self, spawn: dict[str, Any]) -> None:
         path = self._spawn_path(spawn["spawn_id"])
         path.write_text(json.dumps(spawn, sort_keys=True, indent=2), encoding="utf-8")
@@ -227,7 +244,8 @@ class FileEngagementStore:
 
     def put_document(self, document_id: str, doc: dict[str, Any]) -> None:
         path = self._doc_path(document_id)
-        path.write_text(json.dumps(doc, sort_keys=True, indent=2), encoding="utf-8")
+        with self.lock_document(document_id):
+            self._atomic_write_json(path, doc)
 
     def get_document(self, document_id: str) -> dict[str, Any] | None:
         path = self._doc_path(document_id)

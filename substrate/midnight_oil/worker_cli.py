@@ -18,7 +18,12 @@ from substrate.dispatch import DispatchConfig
 from substrate.graph.retrieval_substrate import RetrievalSubstrate, make_substrate
 from substrate.graph.search import EmbeddingModel, SentenceTransformerEmbedding
 
-from .graph_projection import GraphProjectionConflict, GraphProjectionNotReady
+from .graph_projection import (
+    GraphProjectionConflict,
+    GraphProjectionNotReady,
+    GraphProjectionPending,
+    GraphProjectionRefused,
+)
 from .job import InvalidStoredJobDetails, get_job, put_job_state
 from .job_store import CompareAndSetResult, InvalidStoredJob, OperationState
 from .live import (
@@ -243,6 +248,38 @@ def _recover_leased_terminal(
             if job.step_evidence
             else None
         )
+    except GraphProjectionRefused as exc:
+        if not queue.acknowledge_terminal(
+            operation_id=lease.operation_id,
+            worker_id=lease.worker_id,
+            lease_generation=lease.lease_generation,
+            terminal_state="failed_reconcile",
+            completed_at_ms=clock_ms(),
+        ):
+            raise RuntimeError(
+                "terminal graph refusal lost its queue fence"
+            ) from exc
+        return WorkerPhaseRecord(
+            result="reconcile_required",
+            phase="graph_projection_refused",
+            worker_id=lease.worker_id,
+            operation_id=lease.operation_id,
+            job_id=lease.job_id,
+            lease_generation=lease.lease_generation,
+            deposit_document_id=deposit.document_id,
+            error_code=exc.reason,
+        )
+    except GraphProjectionPending as exc:
+        return WorkerPhaseRecord(
+            result="projection_pending",
+            phase="graph_projection_pending",
+            worker_id=lease.worker_id,
+            operation_id=lease.operation_id,
+            job_id=lease.job_id,
+            lease_generation=lease.lease_generation,
+            deposit_document_id=deposit.document_id,
+            error_code=exc.reason,
+        )
     except (
         GraphProjectionConflict,
         GraphProjectionNotReady,
@@ -371,6 +408,7 @@ def _recover_terminal(
         )
     if authority is None or authority.operation_id != operation_id:
         raise ValueError("terminal recovery lacks matching owner authority")
+    max_steps_option = leased.options.get("max_steps")
     recovery_lease = WorkerLease(
         operation_id=operation_id,
         owner_user_id=owner_user_id,
@@ -378,11 +416,7 @@ def _recover_terminal(
         worker_id=worker_id,
         step_index=leased.next_step_index,
         lease_generation=leased.lease_generation,
-        max_steps=(
-            leased.options["max_steps"]
-            if isinstance(leased.options.get("max_steps"), int)
-            else None
-        ),
+        max_steps=max_steps_option if isinstance(max_steps_option, int) else None,
     )
     return _recover_leased_terminal(
         runtime,
@@ -1018,6 +1052,34 @@ def run_worker_once(
             store=runtime.stores.jobs,
             engagement_store=runtime.stores.engagement_store,
             graph_db_path=runtime.config.graph_db_path,
+        )
+    except GraphProjectionRefused as exc:
+        _archive_current_lease(
+            runtime,
+            lease,
+            terminal_state=OperationState.FAILED_RECONCILE,
+            clock_ms=clock_ms,
+        )
+        return WorkerPhaseRecord(
+            result="reconcile_required",
+            phase="graph_projection_refused",
+            worker_id=worker_id,
+            operation_id=lease.operation_id,
+            job_id=lease.job_id,
+            lease_generation=lease.lease_generation,
+            deposit_document_id=deposit.document_id,
+            error_code=exc.reason,
+        )
+    except GraphProjectionPending as exc:
+        return WorkerPhaseRecord(
+            result="projection_pending",
+            phase="graph_projection_pending",
+            worker_id=worker_id,
+            operation_id=lease.operation_id,
+            job_id=lease.job_id,
+            lease_generation=lease.lease_generation,
+            deposit_document_id=deposit.document_id,
+            error_code=exc.reason,
         )
     except Exception:
         return WorkerPhaseRecord(

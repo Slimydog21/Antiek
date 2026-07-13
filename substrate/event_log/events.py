@@ -224,6 +224,81 @@ def _append_jsonl(path: str, row: dict[str, Any]) -> None:
         _append_jsonl_unlocked(path, row)
 
 
+@dataclass
+class EventAppendBatch:
+    """One investigation's exhaustively validated, exclusively locked batch."""
+
+    investigation_id: str
+    path: str
+    events_dir: str | None
+    _rows: list[dict[str, Any]]
+    _load_error: str | None = None
+
+    def validate(self, events: tuple[Event, ...]) -> None:
+        if self._load_error is not None:
+            raise ValueError(self._load_error)
+        desired = {event.event_id: event.model_dump(mode="json") for event in events}
+        if len(desired) != len(events):
+            raise ValueError("event batch contains duplicate ids")
+        if any(event.investigation_id != self.investigation_id for event in events):
+            raise ValueError("event batch crosses investigation streams")
+        stored_by_id: dict[str, dict[str, Any]] = {}
+        for row in self._rows:
+            stored_event = Event.model_validate(row)
+            if stored_event.investigation_id != self.investigation_id:
+                raise ValueError("stored event crosses investigation streams")
+            event_id = stored_event.event_id
+            stored = stored_event.model_dump(mode="json")
+            prior = stored_by_id.get(event_id)
+            if prior is not None and prior != stored:
+                raise ValueError(f"event id collision: {event_id}")
+            stored_by_id[event_id] = stored
+            expected = desired.get(event_id)
+            if expected is None:
+                continue
+            if stored != expected:
+                raise ValueError(f"event id collision: {event_id}")
+
+    def append(self, events: tuple[Event, ...]) -> None:
+        self.validate(events)
+        present = {str(row.get("event_id") or "") for row in self._rows}
+        for event in events:
+            if event.event_id in present:
+                continue
+            row = event.model_dump(mode="json")
+            _append_jsonl_unlocked(self.path, row)
+            self._rows.append(row)
+            present.add(event.event_id)
+
+
+@contextmanager
+def event_append_batch(
+    investigation_id: str, *, events_dir: str | None = None
+) -> Iterator[EventAppendBatch]:
+    """Hold the stream lock across deterministic preflight and batch append."""
+
+    require_event_persistence()
+    path = _jsonl_path(investigation_id, events_dir=events_dir)
+    with _event_file_lock(path):
+        load_error: str | None = None
+        try:
+            rows = _read_event_rows(
+                investigation_id,
+                events_dir=events_dir,
+                reject_malformed=True,
+            )
+        except (TypeError, ValueError) as exc:
+            rows = []
+            load_error = str(exc)
+        yield EventAppendBatch(
+            investigation_id=investigation_id,
+            path=path,
+            events_dir=events_dir,
+            _rows=rows,
+            _load_error=load_error,
+        )
+
+
 def log_event(
     investigation_id: str,
     action_type: str | ActionType,
@@ -623,16 +698,7 @@ def _seal_investigation_unlocked(
     if not rows:
         return None
 
-    deduplicated: list[dict[str, Any]] = []
-    seen_event_ids: set[str] = set()
-    for row in rows:
-        event_id = str(row.get("event_id") or "")
-        if event_id and event_id in seen_event_ids:
-            continue
-        if event_id:
-            seen_event_ids.add(event_id)
-        deduplicated.append(row)
-    rows = deduplicated
+    rows = _deduplicate_event_rows(rows)
 
     for r in rows:
         if isinstance(r.get("payload"), (dict, list)):
@@ -648,6 +714,34 @@ def _seal_investigation_unlocked(
     return pq
 
 
+def _deduplicate_event_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Deduplicate only byte-equivalent typed envelopes; never hide collisions."""
+
+    deduplicated: list[dict[str, Any]] = []
+    seen: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        event_id = str(row.get("event_id") or "")
+        if not event_id:
+            deduplicated.append(row)
+            continue
+        try:
+            canonical = Event.model_validate(row).model_dump(mode="json")
+        except (TypeError, ValueError):
+            canonical = json.loads(json.dumps(row, sort_keys=True, default=str))
+            payload = canonical.get("payload")
+            if isinstance(payload, str):
+                with contextlib.suppress(TypeError, ValueError):
+                    canonical["payload"] = json.loads(payload)
+        existing = seen.get(event_id)
+        if existing is not None:
+            if existing != canonical:
+                raise ValueError(f"event id collision: {event_id}")
+            continue
+        seen[event_id] = canonical
+        deduplicated.append(row)
+    return deduplicated
+
+
 # ---------------------------------------------------------------------------
 # Query helpers (analytics; not called by orchestrator)
 # ---------------------------------------------------------------------------
@@ -657,6 +751,7 @@ def _read_event_rows(
     investigation_id: str,
     *,
     events_dir: str | None = None,
+    reject_malformed: bool = False,
 ) -> list[dict[str, Any]]:
     pq = _parquet_path(investigation_id, events_dir=events_dir)
     jl = _jsonl_path(investigation_id, events_dir=events_dir)
@@ -668,6 +763,8 @@ def _read_event_rows(
             table = pq_reader.read_table(pq)
             rows = table.to_pylist()
         except ImportError:
+            if reject_malformed:
+                raise ValueError("sealed event stream cannot be validated without pyarrow") from None
             print("pyarrow not installed; reading sealed Parquet requires pyarrow.",
                   file=sys.stderr)
     # A sealed investigation may receive a later append (for example a book
@@ -681,7 +778,9 @@ def _read_event_rows(
                     continue
                 try:
                     rows.append(json.loads(line))
-                except json.JSONDecodeError:
+                except json.JSONDecodeError as exc:
+                    if reject_malformed:
+                        raise ValueError("event stream contains malformed JSON") from exc
                     continue
 
     for r in rows:

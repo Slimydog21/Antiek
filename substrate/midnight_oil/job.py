@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import math
 import re
+import threading
 import uuid
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -17,6 +18,9 @@ from substrate.dispatch.research_tier import (
 
 from .ceiling import ModelPricing, recommend_price_ceiling
 from .contracts import (
+    REFUSED_GRAPH_ADMISSION_REASONS,
+    RETRYABLE_GRAPH_ADMISSION_REASONS,
+    GraphAdmissionReason,
     ResearchClaimClass,
     canonical_research_claim_id,
     canonical_source_receipt_id,
@@ -138,11 +142,7 @@ def _validate_versioned_route_receipt(value: object) -> None:
         or (event_id is not None and (type(event_id) is not str or not event_id))
         or (
             fallback_index is not None
-            and (
-                type(fallback_index) is not int
-                or fallback_index < 0
-                or fallback_index > 2_048
-            )
+            and (type(fallback_index) is not int or fallback_index < 0 or fallback_index > 2_048)
         )
         or (
             actual_cost is not None
@@ -335,8 +335,10 @@ class MidnightOilJob:
     step_evidence: tuple[MidnightOilStepEvidence, ...] = ()
     deposit_state: Literal["pending", "complete"] = "pending"
     deposit_document_id: str | None = None
-    graph_projection_state: Literal["pending", "complete"] = "pending"
+    graph_projection_state: Literal["pending", "complete", "refused"] = "pending"
+    graph_projection_reason: GraphAdmissionReason | None = None
     graph_effect_receipt: MidnightOilGraphEffectReceipt | None = None
+    graph_projection_source_sha256: str | None = None
 
 
 @runtime_checkable
@@ -344,6 +346,7 @@ class JobStore(Protocol):
     def put_job(self, job: dict[str, Any]) -> None: ...
     def get_job(self, job_id: str) -> dict[str, Any] | None: ...
     def budget_db_path(self) -> str: ...
+    def compare_and_put_graph(self, expected: MidnightOilJob, updated: MidnightOilJob) -> bool: ...
 
 
 class InvalidStoredJobDetails(ValueError):
@@ -353,25 +356,106 @@ class InvalidStoredJobDetails(ValueError):
 @dataclass
 class InMemoryJobStore:
     _jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
-    _budget_dir: TemporaryDirectory[str] = field(
-        default_factory=TemporaryDirectory, repr=False
-    )
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
+    _budget_dir: TemporaryDirectory[str] = field(default_factory=TemporaryDirectory, repr=False)
 
     def put_job(self, job: dict[str, Any]) -> None:
-        self._jobs[job["job_id"]] = dict(job)
+        with self._lock:
+            current_row = self._jobs.get(job["job_id"])
+            if current_row is not None:
+                current = _job_from_row(dict(current_row))
+                updated = _job_from_row(dict(job))
+                if current.graph_projection_source_sha256 is not None and _graph_source_checkpoint(
+                    current
+                ) != _graph_source_checkpoint(updated):
+                    raise ValueError("sealed graph projection source is immutable")
+            self._jobs[job["job_id"]] = dict(job)
 
     def get_job(self, job_id: str) -> dict[str, Any] | None:
-        row = self._jobs.get(job_id)
-        return dict(row) if row is not None else None
+        with self._lock:
+            row = self._jobs.get(job_id)
+            return dict(row) if row is not None else None
+
+    def compare_and_put_graph(self, expected: MidnightOilJob, updated: MidnightOilJob) -> bool:
+        if expected.job_id != updated.job_id:
+            raise ValueError("graph checkpoint jobs must match")
+        with self._lock:
+            row = self._jobs.get(expected.job_id)
+            if row is None:
+                return False
+            current = _job_from_row(dict(row))
+            if _graph_checkpoint(current) != _graph_checkpoint(
+                expected
+            ) or _graph_source_checkpoint(current) != _graph_source_checkpoint(expected):
+                return False
+            merged = replace(
+                current,
+                graph_projection_state=updated.graph_projection_state,
+                graph_projection_reason=updated.graph_projection_reason,
+                graph_effect_receipt=updated.graph_effect_receipt,
+                graph_projection_source_sha256=updated.graph_projection_source_sha256,
+            )
+            self._jobs[expected.job_id] = _job_to_row(merged)
+            return True
 
     def budget_db_path(self) -> str:
         """Return the store-scoped durable ledger used by its worker jobs."""
         return str(Path(self._budget_dir.name) / "midnight-oil-budget.duckdb")
 
 
+def _graph_checkpoint(
+    job: MidnightOilJob,
+) -> tuple[
+    Literal["pending", "complete", "refused"],
+    GraphAdmissionReason | None,
+    MidnightOilGraphEffectReceipt | None,
+    str | None,
+]:
+    return (
+        job.graph_projection_state,
+        job.graph_projection_reason,
+        job.graph_effect_receipt,
+        job.graph_projection_source_sha256,
+    )
+
+
+def _graph_source_checkpoint(
+    job: MidnightOilJob,
+) -> tuple[
+    JobStatus,
+    tuple[MidnightOilStepEvidence, ...],
+    Literal["pending", "complete"],
+    str | None,
+]:
+    return (
+        job.status,
+        job.step_evidence,
+        job.deposit_state,
+        job.deposit_document_id,
+    )
+
+
 def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
     for evidence in job.step_evidence:
         validate_step_claim_evidence(job.job_id, evidence)
+    if job.graph_projection_source_sha256 is not None and not re.fullmatch(
+        r"[0-9a-f]{64}", job.graph_projection_source_sha256
+    ):
+        raise ValueError("graph projection source seal is malformed")
+    if job.graph_projection_state == "complete" and (
+        job.graph_effect_receipt is None or job.graph_projection_reason is not None
+    ):
+        raise ValueError("complete graph projection requires only an effect receipt")
+    if job.graph_projection_state == "refused" and (
+        job.graph_projection_reason not in REFUSED_GRAPH_ADMISSION_REASONS
+        or job.graph_effect_receipt is not None
+    ):
+        raise ValueError("refused graph projection requires a permanent reason")
+    if job.graph_projection_state == "pending" and (
+        job.graph_projection_reason not in {None, *RETRYABLE_GRAPH_ADMISSION_REASONS}
+        or job.graph_effect_receipt is not None
+    ):
+        raise ValueError("pending graph projection requires a retryable reason")
     return {
         "job_id": job.job_id,
         "goals": list(job.goals),
@@ -419,6 +503,8 @@ def _job_to_row(job: MidnightOilJob) -> dict[str, Any]:
         "deposit_state": job.deposit_state,
         "deposit_document_id": job.deposit_document_id,
         "graph_projection_state": job.graph_projection_state,
+        "graph_projection_reason": job.graph_projection_reason,
+        "graph_projection_source_sha256": job.graph_projection_source_sha256,
         "graph_effect_receipt": (
             None
             if job.graph_effect_receipt is None
@@ -619,8 +705,7 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
             if not isinstance(value, list) or len(value) > limit:
                 return None
             if any(
-                not isinstance(item, str)
-                or re.fullmatch(rf"{prefix}-[0-9a-f]{{16}}", item) is None
+                not isinstance(item, str) or re.fullmatch(rf"{prefix}-[0-9a-f]{{16}}", item) is None
                 for item in value
             ):
                 return None
@@ -667,8 +752,24 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
     graph_complete = (
         row.get("graph_projection_state") == "complete"
         and graph_receipt is not None
+        and row.get("graph_projection_reason") is None
         and bool(graph_receipt.owner_user_id)
         and bool(graph_receipt.deliverable_id)
+    )
+    raw_graph_reason = row.get("graph_projection_reason")
+    known_graph_reasons = REFUSED_GRAPH_ADMISSION_REASONS | RETRYABLE_GRAPH_ADMISSION_REASONS
+    if raw_graph_reason is not None and raw_graph_reason not in known_graph_reasons:
+        raise ValueError("stored graph projection reason is unsupported")
+    graph_refused = (
+        row.get("graph_projection_state") == "refused"
+        and raw_graph_reason in REFUSED_GRAPH_ADMISSION_REASONS
+        and graph_receipt is None
+    )
+    graph_pending = (
+        not graph_complete
+        and not graph_refused
+        and graph_receipt is None
+        and (raw_graph_reason is None or raw_graph_reason in RETRYABLE_GRAPH_ADMISSION_REASONS)
     )
     job = MidnightOilJob(
         job_id=row["job_id"],
@@ -678,9 +779,7 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         recommended_price_ceiling_usd=float(row["recommended_price_ceiling_usd"]),
         status=row["status"],
         approved_ceiling_usd=(
-            None
-            if row.get("approved_ceiling_usd") is None
-            else float(row["approved_ceiling_usd"])
+            None if row.get("approved_ceiling_usd") is None else float(row["approved_ceiling_usd"])
         ),
         spent_usd=float(row.get("spent_usd") or 0.0),
         asset_id=row.get("asset_id"),
@@ -694,16 +793,26 @@ def _job_from_row(row: dict[str, Any]) -> MidnightOilJob:
         completed_step_keys=tuple(row.get("completed_step_keys") or ()),
         returned_step_keys=tuple(row.get("returned_step_keys") or ()),
         step_evidence=_decode_step_evidence_census(row.get("step_evidence") or ()),
-        deposit_state=(
-            "complete" if row.get("deposit_state") == "complete" else "pending"
-        ),
+        deposit_state=("complete" if row.get("deposit_state") == "complete" else "pending"),
         deposit_document_id=(
-            None
-            if row.get("deposit_document_id") is None
-            else str(row["deposit_document_id"])
+            None if row.get("deposit_document_id") is None else str(row["deposit_document_id"])
         ),
-        graph_projection_state="complete" if graph_complete else "pending",
+        graph_projection_state=(
+            "complete" if graph_complete else "refused" if graph_refused else "pending"
+        ),
+        graph_projection_reason=(
+            None
+            if graph_complete
+            else cast(GraphAdmissionReason, raw_graph_reason)
+            if graph_refused or graph_pending
+            else None
+        ),
         graph_effect_receipt=graph_receipt if graph_complete else None,
+        graph_projection_source_sha256=(
+            str(row["graph_projection_source_sha256"])
+            if row.get("graph_projection_source_sha256") is not None
+            else None
+        ),
     )
     for evidence in job.step_evidence:
         validate_step_claim_evidence(job.job_id, evidence)
@@ -785,13 +894,8 @@ def approve_job(
         )
     notes = job.notes
     if ceiling_usd < job.recommended_price_ceiling_usd and force_below:
-        notes = (
-            notes + " | "
-            if notes
-            else ""
-        ) + (
-            f"force_below: approved {ceiling_usd} < recommended "
-            f"{job.recommended_price_ceiling_usd}"
+        notes = (notes + " | " if notes else "") + (
+            f"force_below: approved {ceiling_usd} < recommended {job.recommended_price_ceiling_usd}"
         )
     updated = replace(
         job,

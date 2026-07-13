@@ -566,6 +566,7 @@ def get_job_route(request: Request, response: Response, job_id: str) -> dict[str
         "asset_id": job.asset_id,
         "spawn_ids": list(job.spawn_ids),
         "graph_projection_state": job.graph_projection_state,
+        "graph_projection_reason": job.graph_projection_reason,
         "graph_node_ids": (
             []
             if job.graph_effect_receipt is None

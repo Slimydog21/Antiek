@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
-from .job import _job_from_row, _job_to_row
+from .job import (
+    MidnightOilJob,
+    _graph_checkpoint,
+    _graph_source_checkpoint,
+    _job_from_row,
+    _job_to_row,
+)
 
 
 class DurableJobStore:
@@ -34,6 +41,21 @@ class DurableJobStore:
         with self._connect() as connection:
             connection.execute("BEGIN IMMEDIATE")
             try:
+                existing = connection.execute(
+                    "SELECT row_json FROM midnight_oil_job_details WHERE job_id = ?",
+                    (canonical["job_id"],),
+                ).fetchone()
+                if existing is not None:
+                    current_raw = json.loads(str(existing[0]))
+                    if not isinstance(current_raw, dict):
+                        raise ValueError("stored Midnight Oil job is invalid")
+                    current = _job_from_row(current_raw)
+                    updated = _job_from_row(canonical)
+                    if (
+                        current.graph_projection_source_sha256 is not None
+                        and _graph_source_checkpoint(current) != _graph_source_checkpoint(updated)
+                    ):
+                        raise ValueError("sealed graph projection source is immutable")
                 connection.execute(
                     "INSERT INTO midnight_oil_job_details(job_id, row_json) VALUES (?, ?) "
                     "ON CONFLICT(job_id) DO UPDATE SET row_json = excluded.row_json",
@@ -58,6 +80,46 @@ class DurableJobStore:
         if not isinstance(value, dict):
             raise ValueError("stored Midnight Oil job is invalid")
         return _job_to_row(_job_from_row(value))
+
+    def compare_and_put_graph(self, expected: MidnightOilJob, updated: MidnightOilJob) -> bool:
+        if expected.job_id != updated.job_id:
+            raise ValueError("graph checkpoint jobs must match")
+        with self._connect() as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            try:
+                row = connection.execute(
+                    "SELECT row_json FROM midnight_oil_job_details WHERE job_id = ?",
+                    (expected.job_id,),
+                ).fetchone()
+                if row is None:
+                    connection.execute("COMMIT")
+                    return False
+                current_raw = json.loads(str(row[0]))
+                if not isinstance(current_raw, dict):
+                    raise ValueError("stored Midnight Oil job is invalid")
+                current = _job_from_row(current_raw)
+                if _graph_checkpoint(current) != _graph_checkpoint(
+                    expected
+                ) or _graph_source_checkpoint(current) != _graph_source_checkpoint(expected):
+                    connection.execute("COMMIT")
+                    return False
+                merged = replace(
+                    current,
+                    graph_projection_state=updated.graph_projection_state,
+                    graph_projection_reason=updated.graph_projection_reason,
+                    graph_effect_receipt=updated.graph_effect_receipt,
+                    graph_projection_source_sha256=updated.graph_projection_source_sha256,
+                )
+                encoded = json.dumps(_job_to_row(merged), sort_keys=True, separators=(",", ":"))
+                connection.execute(
+                    "UPDATE midnight_oil_job_details SET row_json = ? WHERE job_id = ?",
+                    (encoded, expected.job_id),
+                )
+                connection.execute("COMMIT")
+                return True
+            except BaseException:
+                connection.execute("ROLLBACK")
+                raise
 
     def budget_db_path(self) -> str:
         return str(self._budget_path)
