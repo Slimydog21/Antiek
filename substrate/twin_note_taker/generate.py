@@ -180,9 +180,11 @@ def _snapshot_asset(asset: AssetContent) -> AssetContent:
     text_fields = (asset.asset_id, asset.title, asset.content_text, asset.content_class)
     if not all(type(value) is str for value in text_fields):
         raise TwinGenerationError("asset text fields must be exact strings")
-    if type(asset.source_event_ids) is not tuple or any(
-        type(event_id) is not str for event_id in asset.source_event_ids
-    ):
+    if type(asset.source_event_ids) is not tuple:
+        raise TwinGenerationError("asset source events must be a tuple of exact strings")
+    if len(asset.source_event_ids) > MAX_SOURCE_EVENTS:
+        raise TwinGenerationError("source_event_ids exceeds its count ceiling")
+    if any(type(event_id) is not str for event_id in asset.source_event_ids):
         raise TwinGenerationError("asset source events must be a tuple of exact strings")
     return AssetContent(
         asset_id=asset.asset_id,
@@ -193,11 +195,49 @@ def _snapshot_asset(asset: AssetContent) -> AssetContent:
     )
 
 
+def _validate_source(asset: AssetContent) -> None:
+    if not asset.asset_id.strip():
+        raise TwinGenerationError("asset_id must be non-empty")
+    if asset.asset_id != asset.asset_id.strip() or len(asset.asset_id) > MAX_IDENTIFIER_CHARS:
+        raise TwinGenerationError("asset_id must be canonical and within its ceiling")
+    if len(asset.title) > MAX_TITLE_CHARS:
+        raise TwinGenerationError("asset title exceeds its ceiling")
+    if (
+        not asset.content_class.strip()
+        or asset.content_class != asset.content_class.strip()
+        or len(asset.content_class) > MAX_CONTENT_CLASS_CHARS
+    ):
+        raise TwinGenerationError("content_class must be canonical and within its ceiling")
+    if len(asset.source_event_ids) > MAX_SOURCE_EVENTS:
+        raise TwinGenerationError("source_event_ids exceeds its count ceiling")
+    if not asset.source_event_ids or any(
+        not _EVENT_ID_RE.fullmatch(event_id) for event_id in asset.source_event_ids
+    ):
+        raise TwinGenerationError("source_event_ids must contain event-shaped identifiers")
+    if len(set(asset.source_event_ids)) != len(asset.source_event_ids):
+        raise TwinGenerationError("source_event_ids must be unique")
+    if len(asset.content_text) > MAX_CONTENT_CHARS:
+        raise TwinGenerationError(
+            f"asset content exceeds backstop ceiling ({len(asset.content_text)} > "
+            f"{MAX_CONTENT_CHARS} chars)"
+        )
+    stripped = asset.content_text.strip()
+    if len(stripped) < MIN_CONTENT_CHARS:
+        raise TwinGenerationError(
+            f"asset content too short to propose from ({len(stripped)} < "
+            f"{MIN_CONTENT_CHARS} chars) — no honest twin from nothing"
+        )
+
+
 def _snapshot_proposal(proposal: TwinProposal) -> TwinProposal:
     if type(proposal) is not TwinProposal:
         raise TwinGenerationError("proposal must be a TwinProposal value")
     if type(proposal.insights) is not tuple or type(proposal.questions) is not tuple:
         raise TwinGenerationError("proposal collections must be tuples")
+    if len(proposal.insights) > MAX_INSIGHTS:
+        raise TwinGenerationError(f"proposal exceeds {MAX_INSIGHTS} insights")
+    if len(proposal.questions) > MAX_QUESTIONS:
+        raise TwinGenerationError(f"proposal exceeds {MAX_QUESTIONS} questions")
     if type(proposal.synthesis_excerpt) is not str:
         raise TwinGenerationError("synthesis excerpt must be an exact string")
     insights: list[ProposedInsight] = []
@@ -231,9 +271,11 @@ def _snapshot_receipt(receipt: TwinGenerationReceipt) -> TwinGenerationReceipt:
     )
     if not all(type(value) is str for value in string_fields):
         raise TwinGenerationError("receipt string claims must be exact strings")
-    if type(receipt.source_event_ids) is not tuple or any(
-        type(event_id) is not str for event_id in receipt.source_event_ids
-    ):
+    if type(receipt.source_event_ids) is not tuple:
+        raise TwinGenerationError("receipt source events must be a tuple of exact strings")
+    if len(receipt.source_event_ids) > MAX_SOURCE_EVENTS:
+        raise TwinGenerationError("receipt source events exceed their count ceiling")
+    if any(type(event_id) is not str for event_id in receipt.source_event_ids):
         raise TwinGenerationError("receipt source events must be a tuple of exact strings")
     if type(receipt.expires_at_unix) is not int:
         raise TwinGenerationError("receipt expiry must be an integer timestamp")
@@ -402,13 +444,16 @@ def _normalized_payload_hash(proposal: _NormalizedProposal) -> str:
 def proposal_receipt_hash(asset: AssetContent, proposal: TwinProposal) -> str:
     """Canonical proposal digest the trusted dispatch boundary must sign."""
     source = _snapshot_asset(asset)
+    _validate_source(source)
     completed = _snapshot_proposal(proposal)
     return _normalized_payload_hash(_normalize_proposal(source, completed))
 
 
 def source_asset_receipt_hash(asset: AssetContent) -> str:
     """Canonical digest of every source field that can affect materialization."""
-    return _source_asset_hash(_snapshot_asset(asset))
+    source = _snapshot_asset(asset)
+    _validate_source(source)
+    return _source_asset_hash(source)
 
 
 def _build_body(
@@ -431,20 +476,16 @@ def _build_body(
         agent_notes.append(f"Source asset: {asset.asset_id}")
         agent_notes.extend(f"Proposed insight: {insight}" for insight in proposal.insights)
         agent_notes.extend(f"Proposed question: {question}" for question in proposal.questions)
-
-    excerpt = (
-        None
-        if withheld or not proposal.synthesis_excerpt
-        else f"Advisory model summary: {proposal.synthesis_excerpt}"
-    )
+        if proposal.synthesis_excerpt:
+            agent_notes.append(f"Proposed synthesis: {proposal.synthesis_excerpt}")
 
     return ResearchArtifactBody(
         investigation_id=f"twin-{asset.asset_id}",
         problem_question=f"Advisory twin notes: {asset.title or asset.asset_id}",
         insights=[],
         open_questions=[],
-        synthesis_excerpt=excerpt,
-        synthesis_withheld=withheld,
+        synthesis_excerpt=None,
+        synthesis_withheld=True,
         # Shape checks are not proof of graph existence or account ownership.
         # A later event-store boundary may promote validated provenance.
         source_event_ids=[],
@@ -467,50 +508,18 @@ def generate_twin(
     and normalized proposal digest. Replays are deterministic and spend-free.
     """
     source = _snapshot_asset(asset)
+    _validate_source(source)
     if type(model_id) is not str or not model_id.strip():
         raise TwinGenerationError("model_id must be a non-empty exact string")
     if type(authenticated_account_id) is not str or not authenticated_account_id.strip():
         raise TwinGenerationError("authenticated_account_id must be a non-empty exact string")
-    if not source.asset_id.strip():
-        raise TwinGenerationError("asset_id must be non-empty")
     bounded_identifiers = {
-        "asset_id": source.asset_id,
         "model_id": model_id,
         "authenticated_account_id": authenticated_account_id,
     }
     for field, value in bounded_identifiers.items():
         if value != value.strip() or len(value) > MAX_IDENTIFIER_CHARS:
             raise TwinGenerationError(f"{field} must be canonical and within its ceiling")
-    if len(source.title) > MAX_TITLE_CHARS:
-        raise TwinGenerationError("asset title exceeds its ceiling")
-    if (
-        not source.content_class.strip()
-        or source.content_class != source.content_class.strip()
-        or len(source.content_class) > MAX_CONTENT_CLASS_CHARS
-    ):
-        raise TwinGenerationError("content_class must be canonical and within its ceiling")
-    if len(source.source_event_ids) > MAX_SOURCE_EVENTS:
-        raise TwinGenerationError("source_event_ids exceeds its count ceiling")
-    if not source.source_event_ids or any(
-        not isinstance(event_id, str) or not _EVENT_ID_RE.fullmatch(event_id)
-        for event_id in source.source_event_ids
-    ):
-        raise TwinGenerationError("source_event_ids must contain event-shaped identifiers")
-    if len(set(source.source_event_ids)) != len(source.source_event_ids):
-        raise TwinGenerationError("source_event_ids must be unique")
-
-    stripped = source.content_text.strip()
-    if len(stripped) < MIN_CONTENT_CHARS:
-        raise TwinGenerationError(
-            f"asset content too short to propose from ({len(stripped)} < "
-            f"{MIN_CONTENT_CHARS} chars) — no honest twin from nothing"
-        )
-    if len(source.content_text) > MAX_CONTENT_CHARS:
-        raise TwinGenerationError(
-            f"asset content exceeds backstop ceiling ({len(source.content_text)} > "
-            f"{MAX_CONTENT_CHARS} chars)"
-        )
-
     normalized = _NormalizedProposal(insights=(), questions=(), synthesis_excerpt="")
     account_id: str | None = None
     receipt_id: str | None = None

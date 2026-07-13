@@ -215,8 +215,11 @@ def test_valid_receipt_materializes_advisory_non_graph_twin() -> None:
     assert result.body.insights == []
     assert result.body.open_questions == []
     assert TWIN_AUTHORITY in result.body.agent_notes[0]
-    assert "Proposed question:" in result.body.agent_notes[-1]
+    assert any(note.startswith("Proposed question:") for note in result.body.agent_notes)
     assert result.body.source_event_ids == []
+    assert result.body.synthesis_excerpt is None
+    assert result.body.synthesis_withheld is True
+    assert any(note.startswith("Proposed synthesis:") for note in result.body.agent_notes)
 
 
 def test_forged_signature_is_rejected() -> None:
@@ -481,6 +484,21 @@ def test_untrusted_metadata_limits_fail_closed(
 ) -> None:
     with pytest.raises(TwinGenerationError, match=message):
         generate_twin(asset, model_id=model_id, authenticated_account_id=account_id)
+
+
+@pytest.mark.parametrize(
+    "asset",
+    [
+        _asset(content_text="x" * (MAX_CONTENT_CHARS + 1)),
+        _asset(title="x" * (MAX_TITLE_CHARS + 1)),
+        _asset(source_event_ids=tuple(f"evt-{index}" for index in range(MAX_SOURCE_EVENTS + 1))),
+    ],
+)
+def test_public_receipt_hash_helpers_enforce_source_bounds(asset: AssetContent) -> None:
+    with pytest.raises(TwinGenerationError, match="ceiling"):
+        source_asset_receipt_hash(asset)
+    with pytest.raises(TwinGenerationError, match="ceiling"):
+        proposal_receipt_hash(asset, _proposal())
 
 
 def test_package_exports_public_contract() -> None:
