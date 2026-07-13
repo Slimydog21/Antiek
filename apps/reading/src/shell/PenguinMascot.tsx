@@ -7,10 +7,10 @@ import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   createWernerStage,
   EmoteView,
-  getDefaultActivity,
   installChoreography,
   installTargetChoreography,
   useMouseFollow,
+  useStationActivity,
   wernerIceFishingCursor,
   type EmoteKind,
   type StageHost,
@@ -106,7 +106,12 @@ function initialMascotPos(): { x: number; y: number } {
   const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
   const vh = typeof window !== "undefined" ? window.innerHeight : 900;
   return clampRectToViewport(
-    { x: 88, y: vh - MASCOT_SIZE - 96, width: MASCOT_SIZE, height: MASCOT_SIZE },
+    {
+      x: 88,
+      y: vh - MASCOT_SIZE - 96,
+      width: MASCOT_SIZE,
+      height: MASCOT_SIZE,
+    },
     { width: vw, height: vh },
   );
 }
@@ -121,7 +126,7 @@ export function PenguinMascot() {
   // — an activity can toggle CSS + mount a cursor-instrument, but has no access
   // to Werner's position (see src/werner/activities/types.ts). Stable identity
   // (the frozen registry singleton), so it is safe in effect deps.
-  const activeActivity = getDefaultActivity();
+  const activeActivity = useStationActivity();
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   // The bob wrapper (the span carrying the idle wander + the walk animation
@@ -293,15 +298,19 @@ export function PenguinMascot() {
   // WERNER-ICE flag is off (no ice-fishing experience at all — no bait, no line,
   // so nothing to fish).
   useEffect(() => {
-    if (reduceMotion || !wernerIceFishingCursor || typeof window === "undefined")
+    const idleClass = activeActivity.ambient.idleClass;
+    if (
+      reduceMotion ||
+      !wernerIceFishingCursor ||
+      !idleClass ||
+      typeof window === "undefined"
+    )
       return;
 
     // The idle-gag class comes from the active activity (ice-fishing's
     // idleClass is the `werner-fishing` gag), not a hard-coded literal — so an
     // activity owns its own ambient, and adding one is a registration, not a
     // mascot edit.
-    const idleClass = activeActivity.ambient.idleClass;
-
     let fishing = false;
     const setFishingLoop = (on: boolean) => {
       if (on === fishing) return;
@@ -455,27 +464,31 @@ export function PenguinMascot() {
 
   // ── Drag (pointer-capture, clamped — reuses the panel clamp rule). ──
   // A drag RE-STATIONS Werner: the station home moves to where he is dropped.
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragStart.current = { x: e.clientX, y: e.clientY };
-    moved.current = false;
-    // Hand the position to the pointer: kill any in-flight stroll transition +
-    // gait so the drag tracks the cursor 1:1 instead of easing behind it.
-    if (buttonRef.current) buttonRef.current.style.transition = "";
-    if (bobRef.current) {
-      // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
-      // `penguin-mascot-wander`. A drag ends any stroll, so swap back to the
-      // wander (gated on reduceMotion so a reduced-motion drag stays still).
-      bobRef.current.classList.remove("werner-waddle");
-      bobRef.current.classList.remove("werner-step");
-      if (!reduceMotion) bobRef.current.classList.add("penguin-mascot-wander");
-    }
-    if (returnTimer.current !== null) {
-      window.clearTimeout(returnTimer.current);
-      returnTimer.current = null;
-    }
-    returningHome.current = false;
-  }, [reduceMotion]);
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      moved.current = false;
+      // Hand the position to the pointer: kill any in-flight stroll transition +
+      // gait so the drag tracks the cursor 1:1 instead of easing behind it.
+      if (buttonRef.current) buttonRef.current.style.transition = "";
+      if (bobRef.current) {
+        // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
+        // `penguin-mascot-wander`. A drag ends any stroll, so swap back to the
+        // wander (gated on reduceMotion so a reduced-motion drag stays still).
+        bobRef.current.classList.remove("werner-waddle");
+        bobRef.current.classList.remove("werner-step");
+        if (!reduceMotion)
+          bobRef.current.classList.add("penguin-mascot-wander");
+      }
+      if (returnTimer.current !== null) {
+        window.clearTimeout(returnTimer.current);
+        returnTimer.current = null;
+      }
+      returningHome.current = false;
+    },
+    [reduceMotion],
+  );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {

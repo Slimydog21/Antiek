@@ -14,7 +14,7 @@
   <p class="eyebrow">Master spec · WERNER-ACT</p>
   <h1>Werner Station Activity System</h1>
   <p class="tagline">Make Werner a fixed, living character whose current activity turns the cursor into an instrument—without giving any activity permission to move him.</p>
-  <div class="meta"><span class="tag green">SPR-01 implemented</span><span class="tag yellow">Owner: Antiek design goal</span><span class="tag blue">HTML-native</span><span class="tag">Generated 2026-07-13</span></div>
+  <div class="meta"><span class="tag green">SPR-01 implemented</span><span class="tag green">SPR-02 implemented</span><span class="tag yellow">Owner: Antiek design goal</span><span class="tag blue">HTML-native</span><span class="tag">Generated 2026-07-13</span></div>
 </header>
 
 <section class="block" id="spec-lineage" data-spec-depth="0" data-parent-spec="">
@@ -64,10 +64,13 @@ toggles ambient class       mounts active instrument
 </section>
 
 <section class="block"><h2>Sprint roster</h2><div class="wave">Wave 1 · revived on current main</div>
-  <div class="grid"><a class="card" href="sprint-01-activity-spine.html"><span class="id">SPR-01</span><strong>Typed station-activity spine</strong><span>Extract ice fishing into a behavior-preserving registry and withhold movement authority by contract plus a focused source gate.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Inline</span></div></a></div>
+  <div class="grid">
+    <a class="card" href="sprint-01-activity-spine.html"><span class="id">SPR-01</span><strong>Typed station-activity spine</strong><span>Extract ice fishing into a behavior-preserving registry and withhold movement authority by contract plus a focused source gate.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Inline</span></div></a>
+    <a class="card" href="sprint-02-research-lens.html"><span class="id">SPR-02</span><strong>Route-derived research lens</strong><span>Turn the cursor into an HTML observatory lens on reading and research routes while Werner remains at home.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-01</span></div></a>
+  </div>
   <h3>Freshness-gated next candidates</h3><table><thead><tr><th>Candidate</th><th>Start only when</th><th>Current collision</th></tr></thead><tbody>
-    <tr><td>Active-activity switching + persistence</td><td>SPR-01 is merged; the activity state owner and route policy are named.</td><td>None found, but do not widen this sprint.</td></tr>
-    <tr><td>Research/reading cursor instruments</td><td>Each instrument has one page job and no overlap with product reaction events.</td><td>Shared checkout already has <code>reactionBus</code> and <code>shellExperienceSignals</code>.</td></tr>
+    <tr><td>Explicit temporary activity override</td><td>SPR-02 route policy is merged and a real user need defeats deterministic route selection.</td><td>Do not create another settings store before that need exists.</td></tr>
+    <tr><td>Additional research/reading instruments</td><td>Each instrument has one page job and no overlap with product reaction events.</td><td>Shared checkout already has <code>reactionBus</code> and <code>shellExperienceSignals</code>.</td></tr>
     <tr><td>Arcade wait host</td><td>The existing dirty cartridges/host are committed or handed off, then independently reviewed.</td><td><code>apps/reading/src/arcade/</code> is active shared work.</td></tr>
     <tr><td>ChatGPT Image activity sessions</td><td>A canonical Werner reference and asset provenance contract are selected.</td><td>Dirty checkout already contains four generated session PNGs and <code>sessionAssets.ts</code>.</td></tr>
   </tbody></table>
@@ -78,13 +81,15 @@ toggles ambient class       mounts active instrument
   <tr><td>Continue hard-coding fishing in shell + mascot</td><td>Rejected. Every new activity would reopen both owners and invite divergent state.</td><td>Antiek permanently abandons all non-fishing activities.</td></tr>
   <tr><td>Full Flipbook pure-pixel stream</td><td>Rejected for the pass bar: measured generation is far below 24 fps and cost is not defensible.</td><td>Measured sub-second frames under a hard spend ceiling support a dual HTML/pixel path.</td></tr>
   <tr><td>Activity may move Werner</td><td>Rejected. It reintroduces the cursor-chasing behavior the operator explicitly reversed.</td><td>Only an explicit operator re-ratification can reopen it.</td></tr>
+  <tr><td>Random or timer-based activity switching</td><td>Rejected. It makes cursor semantics unpredictable during professional reading and research.</td><td>An opt-in entertainment mode has its own visible state and never leaks into knowledge work.</td></tr>
+  <tr><td>Use the generated observatory PNG as the interactive UI</td><td>Rejected. Its apparent text and graph are pixels, not selectable HTML, accessible controls, or product evidence.</td><td>Never for core work; it remains design evidence and may inform decomposed assets.</td></tr>
 </tbody></table></section>
 
-<section class="block" id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="SPR-01">
-  <h2>Execution harness hint</h2><p><code>SPR-01</code> is small and file-coupled, so implementation is inline. Verification must be heterogeneous and try to prove behavioral drift: custom-cursor visibility, idle/active XOR, reduced-motion stillness, and illicit position capability.</p>
+<section class="block" id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="SPR-01,SPR-02">
+  <h2>Execution harness hint</h2><p>Both sprints are file-coupled and run inline. Verification must be heterogeneous and try to prove behavioral drift: route determinism, custom-cursor visibility, idle/active semantics, reduced-motion stillness, HTML authority, and illicit position capability.</p>
 </section>
 
-<section class="block"><h2>Open questions</h2><ul><li>Should switching be route-derived, operator-selected, or a deterministic priority stack? Default assumption: route policy plus explicit temporary override, never random rotation.</li><li>Which generated Werner session image becomes canonical? Default assumption: none until visual QA and provenance pass.</li><li>Should games replace the station activity or open an isolated modal/cabinet? Default assumption: cabinet host; Werner remains singular and visible only when the game composition warrants it.</li></ul></section>
+<section class="block"><h2>Open questions</h2><ul><li>Does a later workflow require a temporary operator override of route-derived activity? Default assumption: no persistent override until real use proves route policy insufficient.</li><li>Which generated Werner session image becomes canonical? Default assumption: none until visual QA and provenance pass.</li><li>Should games replace the station activity or open an isolated modal/cabinet? Default assumption: cabinet host; Werner remains singular and visible only when the game composition warrants it.</li></ul></section>
 
 <footer>Generated by htmlspec · Source: operator goal attachment + clean <code>origin/main</code> audit · 2026-07-13</footer>
 </main></body></html>

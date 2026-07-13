@@ -23,7 +23,7 @@ import type { ComponentType } from "react";
 
 /** The catalogued activities. Only ice-fishing exists today; the arcade
  *  (SPR-05) and the easter egg (SPR-04) widen this union later. */
-export type ActivityId = "ice-fishing";
+export type ActivityId = "ice-fishing" | "research-lens";
 
 /** The useMouseFollow read-seam fields an instrument is allowed to consume.
  *  Note what is ABSENT: any read of the penguin's own whereabouts. An
@@ -57,6 +57,7 @@ export interface CursorInstrument {
  */
 export type ActivityUnlock =
   | { readonly kind: "default" }
+  | { readonly kind: "route"; readonly policyId: "knowledge-work" }
   | { readonly kind: "easter-egg"; readonly sequenceId: string };
 
 /**
@@ -72,9 +73,10 @@ export interface StationActivity {
      *  state carries no ambient class (ice-fishing: the line-to-cursor is the
      *  instrument's job, so there is none). */
     readonly activeClass: string | null;
-    /** Class toggled while the pointer is IDLE — the own-hole never-catch gag
-     *  for ice-fishing ("werner-fishing"). */
-    readonly idleClass: string;
+    /** Class toggled while the pointer is IDLE, or null when the activity keeps
+     *  Werner in his neutral station pose. Ice fishing uses the own-hole
+     *  never-catch gag ("werner-fishing"); research lens uses null. */
+    readonly idleClass: string | null;
   };
   readonly instrument: CursorInstrument;
   readonly unlock: ActivityUnlock;
