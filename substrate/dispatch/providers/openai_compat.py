@@ -221,7 +221,22 @@ class OpenAICompatProvider:
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
-                request_id=resp.headers.get("x-request-id"),
+                request_id=(
+                    resp.headers.get("x-request-id")
+                    if self._expose_error_body
+                    else None
+                ),
+            )
+
+        # User-configured endpoints are untrusted. They already receive the
+        # credential to authenticate the call, but must not be able to reflect
+        # it into a nominally successful model response that Antiek would then
+        # return, log, or persist as generated content.
+        if not self._expose_error_body and api_key in resp.text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
             )
 
         try:
@@ -250,8 +265,12 @@ class OpenAICompatProvider:
             raw_usage=data.get("usage") or {},
             finish_reason=finish_reason,
             latency_ms=latency_ms,
-            request_id=resp.headers.get("x-request-id") or data.get("id"),
-            extra={"object": data.get("object")},
+            request_id=(
+                (resp.headers.get("x-request-id") or data.get("id"))
+                if self._expose_error_body
+                else None
+            ),
+            extra={"object": data.get("object")} if self._expose_error_body else {},
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:

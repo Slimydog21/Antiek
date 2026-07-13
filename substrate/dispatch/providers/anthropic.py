@@ -210,7 +210,18 @@ class AnthropicProvider:
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
-                request_id=resp.headers.get("request-id") or resp.headers.get("x-request-id"),
+                request_id=(
+                    (resp.headers.get("request-id") or resp.headers.get("x-request-id"))
+                    if self._expose_error_body
+                    else None
+                ),
+            )
+
+        if not self._expose_error_body and api_key in resp.text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
             )
 
         try:
@@ -245,8 +256,12 @@ class AnthropicProvider:
             raw_usage=data.get("usage") or {},
             finish_reason=stop_reason,
             latency_ms=latency_ms,
-            request_id=resp.headers.get("request-id") or data.get("id"),
-            extra={"model": data.get("model")},
+            request_id=(
+                (resp.headers.get("request-id") or data.get("id"))
+                if self._expose_error_body
+                else None
+            ),
+            extra={"model": data.get("model")} if self._expose_error_body else {},
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:

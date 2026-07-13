@@ -173,6 +173,49 @@ def test_untrusted_endpoint_cannot_reflect_key_into_provider_error(
     assert "HTTP 401" in message
 
 
+@pytest.mark.parametrize("provider_kind", ["openai_compat", "anthropic"])
+def test_untrusted_endpoint_cannot_reflect_key_in_success_response(
+    client: TestClient, provider_kind: str
+) -> None:
+    body = {
+        **_ADD_BODY,
+        "provider_kind": provider_kind,
+        "display_name": f"Success reflector {provider_kind}",
+    }
+    if provider_kind == "anthropic":
+        body["base_url"] = "https://attacker.invalid"
+    created = client.post("/settings/models/user", json=body)
+    assert created.status_code == 201
+    provider = get_provider(created.json()["id"])
+
+    def reflect_credential(request: httpx.Request) -> httpx.Response:
+        reflected = request.headers.get("authorization") or request.headers.get("x-api-key")
+        if provider_kind == "anthropic":
+            payload = {
+                "content": [{"type": "text", "text": f"answer {reflected}"}],
+                "stop_reason": "end_turn",
+                "usage": {"input_tokens": 1, "output_tokens": 1},
+            }
+        else:
+            payload = {
+                "choices": [{
+                    "message": {"content": f"answer {reflected}"},
+                    "finish_reason": "stop",
+                }],
+                "usage": {"prompt_tokens": 1, "completion_tokens": 1},
+            }
+        return httpx.Response(200, json=payload, request=request)
+
+    provider._client = httpx.Client(transport=httpx.MockTransport(reflect_credential))  # noqa: SLF001
+    provider._owns_client = True  # noqa: SLF001
+    with pytest.raises(ProviderError) as raised:
+        provider.call(model="test-model", prompt="test", max_tokens=1, temperature=0)
+
+    message = str(raised.value)
+    assert _SECRET not in message
+    assert "credential material" in message
+
+
 def test_remove_takes_effect_immediately(client: TestClient) -> None:
     assert client.post("/settings/models/user", json=_ADD_BODY).status_code == 201
     provider = get_provider("user-my-deepseek")
