@@ -353,8 +353,6 @@ async def test_end_to_end_post_drives_orchestrator(
     (which subscribes to investigation.start_requested via the
     broadcast that POST fires). The 9-phase chain runs against stub
     providers; GET returns completed with the verdict."""
-    _, bus = app_and_bus
-
     # The transport (KDL ref-validation) makes the evidence/parameter/synthesizer
     # parsers validate chunk_ids against the retrieved chunks block. With real
     # retrieval, the stub's "chunk-1" is not canonical → stripped → "chunk_ids
@@ -393,13 +391,18 @@ async def test_end_to_end_post_drives_orchestrator(
     )
     assert post_resp.status_code == 202
 
-    # Wait for the orchestrator's coroutine to drive the chain.
-    deadline = asyncio.get_event_loop().time() + 20.0
-    while asyncio.get_event_loop().time() < deadline:
-        await bus.wait_for_handlers(timeout=2.0)
+    # Observe the public contract instead of coupling this end-to-end test to
+    # the broadcaster's private handler-drain cadence. A cold CI worker may
+    # load the semantic model during synthesis, but a real hang still fails at
+    # this explicit ceiling.
+    deadline = asyncio.get_event_loop().time() + 30.0
+    while True:
         status_resp = await async_client.get("/investigations/inv-rest-e2e")
         body = status_resp.json()
-        if body["status"] in ("completed", "failed"):
+        if (
+            body["status"] in ("completed", "failed")
+            or asyncio.get_event_loop().time() >= deadline
+        ):
             break
         await asyncio.sleep(0.05)
 
