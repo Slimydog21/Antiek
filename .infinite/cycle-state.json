@@ -1,20 +1,18 @@
 {
-  "cycle": 28,
-  "phase": "RECORD",
-  "subgoal": "Build and independently verify the additive executable successor corpus, Unicode-16 attributed normalizer, and OverlapCheckerV2 primitive while every transport and output sink remains fail-closed",
+  "cycle": 29,
+  "phase": "SHIP",
+  "subgoal": "Implement and independently verify a non-conferring receipt-v5-resolved CheckerV2 source adapter while preserving the old PolicyV2 chain as historical evidence and keeping checkpoint, transport, and every sink unreachable",
   "lanes": [
-    "checker-v2-core-complete",
-    "strict-corpus-95-complete",
-    "html-authority-boundary-complete",
-    "independent-round-3-review-pass",
-    "hardenx-low-zero-real"
+    "authority-version-gap-confirmed-and-specified",
+    "source-adapter-certified-nonconferring",
+    "policy-v3-checkpoint-deferred"
   ],
   "engineHealth": {
-    "grok": "probe ok; Cycle 27 lane failed HTTP 402 balance exhausted",
-    "mimo": "probe ok; Cycle 27 returned grounded plan but proposed incorrect per-scalar NFKC provenance and was only partially accepted",
-    "claude": "probe ok; Cycle 27 Fable independently proved the five-row repetition oracle incoherent",
-    "codex": "probe ok; Cycle 27 GPT-5.6-sol supplied the strongest grounded canonicalization/provenance/corpus critique",
-    "glm-cc": "probe ok; Cycle 27 ultracode launched outside the worktree and its ungrounded report was rejected",
+    "grok": "Cycle 29 goal lane failed HTTP 402 balance exhausted",
+    "mimo": "Cycle 29 produced extensive archaeology but proposed reusing unsuitable generic stores and predecessor authority; rejected",
+    "claude": "Cycle 29 standing architecture and seam reviewers found the cross-role substitution and documentation trust-boundary overclaims",
+    "codex": "Cycle 29 GPT-5.6 identified the decisive predecessor-policy/checker version contradiction and supported the adapter/checkpoint split",
+    "glm-cc": "Cycle 29 ultracode activation returned no usable repository-grounded result",
     "glm-codex": "ok",
     "zcode": "ok",
     "conclave": "ok"
@@ -37,7 +35,8 @@
     {"cycle": 25, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
     {"cycle": 26, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false},
     {"cycle": 27, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false},
-    {"cycle": 28, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false}
+    {"cycle": 28, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false},
+    {"cycle": 29, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false}
   ],
-  "updatedAt": "2026-07-13T15:58:00Z"
+  "updatedAt": "2026-07-13T16:21:36Z"
 }

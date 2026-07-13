@@ -788,7 +788,9 @@ def test_checker_is_unreachable_from_interfaces_and_real_api_app() -> None:
         ["rg", "-l", "private_output_checker_v2", "substrate", "services", "apps", "interfaces"],
         cwd=ROOT, check=False, capture_output=True, text=True,
     ).stdout.splitlines()
-    assert occurrences == []
+    assert set(occurrences) == {
+        "substrate/midnight_oil/private_output_source_adapter_v1.py"
+    }
     probe = subprocess.run(
         [sys.executable, "-c", "import interfaces.research.api.app; import sys; assert 'substrate.midnight_oil.private_output_checker_v2' not in sys.modules"],
         cwd=ROOT, check=False, capture_output=True, text=True,
