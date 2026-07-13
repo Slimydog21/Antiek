@@ -19,6 +19,7 @@ import {
   type PlanNode,
   type PlanTree,
 } from "../../api/research";
+import { notifyResearchStarted } from "../../werner";
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode
@@ -206,6 +207,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       const r = await launchPlan(plan.rootNodeId, {
         aggregate_budget_usd: parsedCeiling,
       });
+      notifyResearchStarted(r.session_id);
       onLaunched(r.session_id);
     } catch (e) {
       setFailureStage(approvalCompleted ? "launch" : "approval");

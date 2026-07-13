@@ -81,6 +81,27 @@ export {
   type TargetChoreographyOptions,
 } from "./choreography";
 
+export {
+  emoteForExperience,
+  emitWernerExperience,
+  installReactionBus,
+  isProductExperience,
+  PRODUCT_EXPERIENCES,
+  WERNER_EXPERIENCE_EVENT,
+  type ProductExperience,
+  type ReactionBusOptions,
+  type WernerExperienceDetail,
+} from "./reactionBus";
+
+export {
+  consumeLocallyStartedResearchSession,
+  notifyPointerIdleEdge,
+  notifyResearchPhaseEdge,
+  notifyResearchStarted,
+  notifyShellFailure,
+  type ResearchReactionPhase,
+} from "./shellExperienceSignals";
+
 export { default as WernerRig, type WernerRigProps } from "./WernerRig";
 
 // SPR-01 — the station-activity surface. Importing this registers the built-in
