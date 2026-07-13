@@ -1,7 +1,7 @@
 # ANT-RHC SPR-04 handoff
 
 Status: implemented, independently reviewed  
-Commit: `TBD`
+Implementation commit: `c54d49dde`
 
 ## Operator contract
 
