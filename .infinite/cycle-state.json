@@ -1,13 +1,13 @@
 {
-  "cycle": 27,
+  "cycle": 28,
   "phase": "RECORD",
-  "subgoal": "Sharpen the non-executable OverlapCheckerV1 authority, then re-derive the executable successor corpus and attributed normalizer/checker before any encrypted checkpoint",
+  "subgoal": "Build and independently verify the additive executable successor corpus, Unicode-16 attributed normalizer, and OverlapCheckerV2 primitive while every transport and output sink remains fail-closed",
   "lanes": [
-    {"id": "11b-e-fable-checker", "engine": "claude-fable-5", "worktree": ".", "status": "complete-grounded-found-five-row-defect"},
-    {"id": "11b-e-grok-checker", "engine": "grok-composer-2.5", "worktree": ".", "status": "gap-http-402"},
-    {"id": "11b-e-mimo-checker", "engine": "mimo-v2.5-pro", "worktree": ".", "status": "complete-grounded-plan-partially-rejected"},
-    {"id": "11b-e-codex-checker", "engine": "gpt-5.6-sol", "worktree": ".", "status": "complete-grounded-strongest-authority-critique"},
-    {"id": "11b-e-glm-ultracode-checker", "engine": "glm-cc-ultracode", "worktree": ".", "status": "gap-empty-cwd-ungrounded"}
+    "checker-v2-core-complete",
+    "strict-corpus-95-complete",
+    "html-authority-boundary-complete",
+    "independent-round-3-review-pass",
+    "hardenx-low-zero-real"
   ],
   "engineHealth": {
     "grok": "probe ok; Cycle 27 lane failed HTTP 402 balance exhausted",
@@ -36,7 +36,8 @@
     {"cycle": 24, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
     {"cycle": 25, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13},
     {"cycle": 26, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false},
-    {"cycle": 27, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false}
+    {"cycle": 27, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 13, "corpusCertified": false},
+    {"cycle": 28, "phase": "hardenx-1", "band": "LOW", "real": 0, "advisory": 14, "corpusCertified": false}
   ],
-  "updatedAt": "2026-07-13T14:44:19Z"
+  "updatedAt": "2026-07-13T15:58:00Z"
 }
