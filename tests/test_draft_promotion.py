@@ -229,3 +229,22 @@ def test_promote_records_token_hash_not_raw_secret_in_audit():
     assert "token_hash=sha256:" in promote_event.detail  # hash IS recorded
     # the hash is deterministic (same token -> same hash)
     assert _redact_token("secret-tok") in promote_event.detail
+
+
+
+def test_promote_promoted_by_carries_no_raw_secret():
+    # Security keystone: promoted_by is part of the PERSISTED lifecycle value (the
+    # docstring states callers persist the lifecycle between actions). The raw
+    # consent token must never survive on it — only the redacted hash, consistent
+    # with the history detail. Otherwise a serializer/backup/log dump leaks the
+    # credential even though the audit log looks safe.
+    lc = create_lifecycle(_draft(), actor="op", at="t0")
+    lc = promote(lc, consent=_consent(token="secret-tok"), content_hash="hash-abc", at="t1")
+    assert lc.promoted_by is not None
+    assert "secret-tok" not in lc.promoted_by.consent_token  # raw secret never persisted
+    assert lc.promoted_by.consent_token.startswith("sha256:")  # redacted, like history
+    # identity preserved (operator_id is identity, not a secret — stays cleartext)
+    assert lc.promoted_by.operator_id == "operator-1"
+    # the promoted_by token matches the history hash (one true redaction source)
+    promote_event = [e for e in lc.history if e.action == "promoted"][0]
+    assert lc.promoted_by.consent_token in promote_event.detail

@@ -68,6 +68,9 @@ def _redact_token(token: str) -> str:
     The append-only history is permanent; storing a raw approval token there would
     make a credential impossible to redact. The hash lets the audit trail prove
     WHICH token authorized a promotion (identity) without persisting the secret.
+    This is an unsalted identity hash (proves which-token over the operator token
+    space), NOT a password hash — do not 'strengthen' it with a salt; that would
+    change the identity-matching contract.
     """
     return "sha256:" + hashlib.sha256(token.encode("utf-8")).hexdigest()[:16]
 
@@ -192,7 +195,14 @@ def promote(
         state="promoted",
         history=lc.history
         + (LifecycleEvent("promoted", consent.operator_id, at, reason, f"token_hash={_redact_token(consent.consent_token)}"),),
-        promoted_by=consent,
+        # promoted_by is part of the persisted lifecycle value, so it carries the
+        # same redacted token as history — the raw credential is never retained on
+        # any surface a caller might serialize, back up, or dump.
+        promoted_by=OperatorConsent(
+            operator_id=consent.operator_id,
+            consent_token=_redact_token(consent.consent_token),
+            promoted_at=consent.promoted_at,
+        ),
         superseded_by=lc.superseded_by,
     )
 
