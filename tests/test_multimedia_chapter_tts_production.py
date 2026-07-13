@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+import substrate.multimedia.chapter_tts_production as chapter_tts_module
 from runtime.db_lock import FlockWriteCoordinator
 from substrate.contracts.multimedia import ScriptLine
 from substrate.multimedia.chapter_tts_production import (
@@ -379,3 +380,71 @@ def test_twenty_concurrent_callers_invoke_provider_once(tmp_path: Path) -> None:
         or "retry is forbidden" in str(result)
         for result in results
     ), [repr(result) for result in results if isinstance(result, Exception)]
+
+
+def test_competing_sealer_after_receive_is_reported_in_flight(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, _ = _produce_args(tmp_path)
+    calls: list[int] = []
+    record_observation = chapter_tts_module.record_provider_observation
+
+    def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
+        calls.append(1)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-seal-race")
+
+    def record_and_claim(**kwargs: object) -> None:
+        record_observation(**kwargs)  # type: ignore[arg-type]
+        lease = chapter_tts_module._claim_seal(  # noqa: SLF001
+            str(values["db_path"]),
+            str(kwargs["execution_id"]),
+            KEY,
+            acquired_at=NOW,
+        )
+        assert lease is not None
+
+    monkeypatch.setattr(chapter_tts_module, "record_provider_observation", record_and_claim)
+
+    with pytest.raises(Exception, match="seal is already in flight"):
+        produce_chapter_narration(**values, synthesize=synthesize)  # type: ignore[arg-type]
+    assert calls == [1]
+
+
+def test_competing_sealer_completion_after_receive_reopens_artifact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    values, prepared = _produce_args(tmp_path)
+    calls: list[int] = []
+    record_observation = chapter_tts_module.record_provider_observation
+
+    def synthesize(request: PreparedChapterTTSRequest) -> ChapterTTSSynthesisResult:
+        calls.append(1)
+        return ChapterTTSSynthesisResult(_wav_bytes(), "provider-request-sealed-race")
+
+    def record_and_seal(**kwargs: object) -> None:
+        record_observation(**kwargs)  # type: ignore[arg-type]
+        attempt = get_chapter_tts_attempt(
+            db_path=str(values["db_path"]),
+            execution_id=str(kwargs["execution_id"]),
+            signing_key=KEY,
+        )
+        chapter_tts_module._seal_received(  # noqa: SLF001
+            attempt=attempt,
+            prepared=prepared,
+            signing_key=KEY,
+            integrity_key=values["integrity_key"],  # type: ignore[arg-type]
+            db_path=str(values["db_path"]),
+            output_dir=str(values["output_dir"]),
+            ffmpeg_path=chapter_tts_module.DEFAULT_FFMPEG_PATH,
+            ffprobe_path=chapter_tts_module.DEFAULT_FFPROBE_PATH,
+            timeout_seconds=300,
+            now=NOW,
+        )
+
+    monkeypatch.setattr(chapter_tts_module, "record_provider_observation", record_and_seal)
+
+    artifact = produce_chapter_narration(  # type: ignore[arg-type]
+        **values, synthesize=synthesize
+    )
+    assert calls == [1]
+    assert Path(artifact.manifest.output_path).is_file()

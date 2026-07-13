@@ -469,6 +469,10 @@ def produce_chapter_narration(
     received = get_chapter_tts_attempt(
         db_path=db_path, execution_id=execution.execution_id, signing_key=signing_key
     )
+    if received.status == "sealed":
+        return _reopen_attempt(received, prepared, integrity_key)
+    if received.status == "sealing":
+        raise ChapterTTSProductionError("chapter TTS seal is already in flight")
     return _seal_received(
         attempt=received,
         prepared=prepared,
