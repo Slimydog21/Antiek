@@ -17,8 +17,13 @@ Hard-to-vary invariants (each is a test):
    to all inputs; the hash is deterministic over the canonical input (idempotency).
 3. **HTML-native + escaped.** All interpolated content is HTML-escaped (``_esc``,
    the render.py convention). The combined document is self-contained HTML.
-4. **Same-parent cohesion.** All instances must share ``parent_asset_id`` — enforced,
-   not inferred. The merged analysis is rooted under that parent.
+4. **Same-parent cohesion.** ``ResearchArtifactBody`` carries no parent field, so
+   the pure layer cannot infer per-instance parents. Cohesion is therefore the
+   caller's contract: the instances arrive as an already-curated same-parent set
+   (the intent layer upstream guarantees this). When the caller supplies
+   ``instance_parent_asset_ids``, cohesion IS enforced — any instance attesting
+   a different parent raises ``CollectiveAnalysisError`` and no merged document is
+   produced. The pure layer never silently merges instances from different parents.
 5. **Empty-instance honesty.** An instance with no insights/questions/synthesis is
    represented honestly (empty placeholders), not silently dropped.
 
@@ -86,6 +91,7 @@ def compose_draft_analysis(
     instances: list[ResearchArtifactBody],
     findings: list[str] | None = None,
     instance_complete_flags: dict[str, bool] | None = None,
+    instance_parent_asset_ids: dict[str, str] | None = None,
 ) -> CollectiveDraftAnalysis:
     """Merge completed research instances into a combined draft HTML document.
 
@@ -97,6 +103,18 @@ def compose_draft_analysis(
         raise CollectiveAnalysisError("at least one source instance is required")
     if not parent_asset_id.strip():
         raise CollectiveAnalysisError("parent_asset_id must be non-empty")
+
+    # Same-parent cohesion: enforced when the caller attests per-instance parents.
+    # ResearchArtifactBody carries no parent field, so the pure layer can only
+    # verify cohesion when given the data — it never silently mis-attributes.
+    parent_map = instance_parent_asset_ids or {}
+    for body in instances:
+        attested = parent_map.get(body.investigation_id)
+        if attested is not None and attested != parent_asset_id:
+            raise CollectiveAnalysisError(
+                f"instance {body.investigation_id} attests parent "
+                f"{attested!r} which differs from requested {parent_asset_id!r}"
+            )
 
     complete_flags = instance_complete_flags or {}
     contributions: list[InstanceContribution] = []
@@ -116,6 +134,7 @@ def compose_draft_analysis(
         contributions=contributions,
         findings=caller_findings,
         analysis_id=analysis_id,
+        findings_hash=findings_hash,
     )
 
     return CollectiveDraftAnalysis(
@@ -135,6 +154,7 @@ def _render_combined_html(
     contributions: list[InstanceContribution],
     findings: list[str],
     analysis_id: str,
+    findings_hash: str,
 ) -> str:
     """Render the merged draft as self-contained, fully-escaped HTML."""
 
@@ -221,8 +241,7 @@ def _render_combined_html(
     parts.append("<footer>")
     parts.append(f'<p>Provenance: parent={_esc(parent_asset_id)} · '
                  f'instances={len(contributions)} · draft=True</p>')
-    parts.append(f'<p class="tag">findings_hash={_esc("sha256:" + "")}'
-                 f'{_esc("")}</p>')
+    parts.append(f'<p class="tag">findings_hash={_esc("sha256:" + findings_hash)}</p>')
     parts.append("</footer>")
 
     parts.append("</main>")

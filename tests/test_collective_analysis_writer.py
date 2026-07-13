@@ -189,3 +189,74 @@ def test_complete_instance_not_flagged() -> None:
     )
     assert "not DeepResearchComplete" not in draft.combined_html
     assert all(c.complete for c in draft.instance_contributions)
+
+
+# --- footer findings_hash non-empty (defect 1 fix) ------------------------ #
+
+
+def test_footer_renders_findings_hash_non_empty() -> None:
+    """The provenance footer must show the real findings_hash, never empty."""
+    draft = compose_draft_analysis(
+        parent_asset_id="asset-1",
+        instances=[_body(inv="inv-a")],
+        findings=["f1"],
+    )
+    expected = f"findings_hash=sha256:{draft.findings_hash}"
+    assert expected in draft.combined_html
+    # never the empty-hash footer that promised a value and showed none
+    assert "findings_hash=sha256:" + '"' not in draft.combined_html
+    assert "findings_hash=sha256:<" not in draft.combined_html
+
+
+def test_footer_hash_matches_dataclass_hash() -> None:
+    """The footer hash is the one true hash (same source as analysis_id)."""
+    draft = compose_draft_analysis(
+        parent_asset_id="asset-1",
+        instances=[_body(inv="inv-a"), _body(inv="inv-b")],
+    )
+    assert f"sha256:{draft.findings_hash}" in draft.combined_html
+    assert draft.analysis_id == f"collective-draft-{draft.findings_hash[:16]}"
+
+
+# --- same-parent cohesion enforcement (defect 2 fix) ---------------------- #
+
+
+def test_cohesion_mismatch_raises_when_parents_attested() -> None:
+    """A caller attesting a different parent is rejected — no silent mis-attribute."""
+    with pytest.raises(CollectiveAnalysisError, match="attests parent"):
+        compose_draft_analysis(
+            parent_asset_id="asset-1",
+            instances=[_body(inv="inv-a")],
+            instance_parent_asset_ids={"inv-a": "asset-DIFFERENT"},
+        )
+
+
+def test_cohesion_matching_parents_succeed() -> None:
+    """When all attested parents match the requested parent, the merge proceeds."""
+    draft = compose_draft_analysis(
+        parent_asset_id="asset-1",
+        instances=[_body(inv="inv-a"), _body(inv="inv-b")],
+        instance_parent_asset_ids={"inv-a": "asset-1", "inv-b": "asset-1"},
+    )
+    assert draft.source_instance_ids == ("inv-a", "inv-b")
+
+
+def test_cohesion_partial_attestation_rejects_only_mismatch() -> None:
+    """Only the mismatched instance triggers rejection; a partial map is honest."""
+    with pytest.raises(CollectiveAnalysisError, match="inv-b"):
+        compose_draft_analysis(
+            parent_asset_id="asset-1",
+            instances=[_body(inv="inv-a"), _body(inv="inv-b")],
+            # inv-a attested correctly; inv-b attests a different parent
+            instance_parent_asset_ids={"inv-a": "asset-1", "inv-b": "asset-OTHER"},
+        )
+
+
+def test_cohesion_omitted_map_is_caller_contract() -> None:
+    """No parent map = caller's contract (the pure layer cannot infer parents)."""
+    # succeeds without enforcement — cohesion is the caller's responsibility
+    draft = compose_draft_analysis(
+        parent_asset_id="asset-1",
+        instances=[_body(inv="inv-a")],
+    )
+    assert draft.parent_asset_id == "asset-1"
