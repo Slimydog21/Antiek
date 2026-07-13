@@ -66,7 +66,7 @@ def propose_collective_analysis_merge(
         raise CollectiveAnalysisMergeError(
             "kind must be draft_analysis or full_analysis"
         )
-    kind_s: AnalysisMergeKind = kind  # type: ignore[assignment]
+    kind_s: AnalysisMergeKind = kind
     if kind_s == "full_analysis" and ack is not True:
         raise CollectiveAnalysisMergeError(
             "full_analysis requires operator_ack=true (fail closed)"
