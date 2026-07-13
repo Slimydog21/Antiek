@@ -29,7 +29,10 @@ class CreativeWriterResult:
 
 
 def parse_creative_writer_response(
-    raw: str, *, known_block_ids: set[str],
+    raw: str,
+    *,
+    known_block_ids: set[str],
+    allow_unknown_provenance: bool = False,
 ) -> CreativeWriterResult:
     """Parse + validate the role's output."""
     data = extract_json_object(raw)
@@ -49,17 +52,17 @@ def parse_creative_writer_response(
     for k, v in raw_prov.items():
         try:
             idx = int(k)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as exc:
             raise CreativeWriterValidationError(
                 f"prose_provenance keys must be integer paragraph "
                 f"indices, got {k!r}"
-            )
+            ) from exc
         if not isinstance(v, list) or not all(isinstance(b, str) for b in v):
             raise CreativeWriterValidationError(
                 f"prose_provenance[{idx}] must be list of block_id strings"
             )
         for bid in v:
-            if bid not in known_block_ids:
+            if bid not in known_block_ids and not allow_unknown_provenance:
                 raise CreativeWriterValidationError(
                     f"prose_provenance references unknown block_id {bid!r}"
                 )

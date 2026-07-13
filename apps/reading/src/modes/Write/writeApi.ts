@@ -231,7 +231,7 @@ export async function promoteContext(body: unknown): Promise<PromoteResult> {
 }
 
 export interface GenerationResult {
-  status: "generated" | "gap" | "gate_failed" | "invalid";
+  status: "generated" | "gap" | "citation_failed" | "gate_failed" | "invalid";
   section_id: string;
   prose_text?: string;
   detail?: string;
@@ -239,6 +239,7 @@ export interface GenerationResult {
   all_claims_cited?: boolean | null;
   unsupported_paragraphs?: number[];
   fabricated_citations?: string[];
+  provenance_mismatches?: number[];
   /** paragraph_index (string key) → driving block_ids. Persisted server-side
    * (SECTION_DRAFT_GENERATED, SPR-09 M3) and returned so the X-ray can show
    * paragraph→blocks immediately; a reload reads the SAME map back from

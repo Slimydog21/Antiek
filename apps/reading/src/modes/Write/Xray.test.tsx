@@ -44,6 +44,7 @@ afterEach(cleanup);
 describe("Xray — paragraph↔blocks over persisted provenance", () => {
   it("splits prose the substrate's way (blank line)", () => {
     expect(splitParagraphs("a\n\nb\n\n\nc")).toEqual(["a", "b", "c"]);
+    expect(splitParagraphs("a\n   \nb")).toEqual(["a", "b"]);
   });
 
   it("click a paragraph → shows its driving blocks", async () => {

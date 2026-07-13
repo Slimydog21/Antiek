@@ -313,6 +313,51 @@ def test_generate_empty_section_returns_gap(client, seed):
     assert r.json()["status"] == "gap"  # never fabricated prose
 
 
+def test_citation_failure_preserves_existing_draft_and_emits_no_event(
+    client, seed, monkeypatch,
+):
+    from substrate.event_log import trajectory
+    from substrate.write import draft_generation
+
+    sec = seed["section_id"]
+    node = seed["node"]
+    client.post("/write/blocks", json={
+        "section_id": sec, "block_kind": "insight",
+        "provenance_kind": "graph_node", "node_id": node, "block_index": 0,
+    })
+    with connect_write(default_db_path(), purpose="test/existing_draft") as con:
+        con.execute(
+            "UPDATE deliverable_sections SET prose_text = ?, prose_provenance = ? "
+            "WHERE section_id = ?",
+            ["Previously accepted prose.", '{"0":["existing-node"]}', sec],
+        )
+
+    raw = (
+        '{"prose_text": "This substantive replacement makes a material claim without '
+        'any inline citation to the attached evidence.", '
+        f'"prose_provenance": {{}}, "uncited_blocks": ["{node}"]}}'
+    )
+    monkeypatch.setattr(
+        draft_generation,
+        "default_dispatch_fn",
+        lambda **_kwargs: lambda _system, _user: raw,
+    )
+
+    response = client.post(f"/write/sections/{sec}/generate")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "citation_failed"
+    assert body["unsupported_paragraphs"] == [0]
+    assert body["prose_provenance"] == {}
+    assert _section_prose_row(seed["deliverable_id"]) == (
+        "Previously accepted prose.", '{"0":["existing-node"]}',
+    )
+    assert not any(
+        event.get("action_type") == "section.draft_generated"
+        for event in trajectory(seed["deliverable_id"])
+    )
+
+
 # ── SPR-09 M3 — persist prose_provenance through the funnel + X-ray read-back ──
 
 
@@ -326,6 +371,20 @@ def _section_prose_row(deliverable_id: str):
         ).fetchone()
     finally:
         con.close()
+
+
+def _place_seed_block(con, seed):
+    from substrate.write.outline_block import place_block
+
+    return place_block(
+        con,
+        section_id=seed["section_id"],
+        block_kind="insight",
+        provenance_kind="graph_node",
+        node_id=seed["node"],
+        block_index=0,
+        emit_event=False,
+    )
 
 
 def test_persist_section_draft_round_trips_provenance_and_emits_event(seed, tmp_path):
@@ -354,6 +413,7 @@ def test_persist_section_draft_round_trips_provenance_and_emits_event(seed, tmp_
         fabricated_citations=[], uncited_blocks=[], cited_block_ids=[node],
     )
     with connect_write(default_db_path(), purpose="test/persist_draft") as con:
+        _place_seed_block(con, seed)
         event_id = persist_section_draft(
             con, section_id=sec, deliverable_id=seed["deliverable_id"],
             result=result, report=report, investigation_id=seed["deliverable_id"],
@@ -388,7 +448,7 @@ def test_persist_refuses_gate_failed_draft(seed):
         prose_text="slop", citation_report=None, gate=None,
     )
     with connect_write(default_db_path(), purpose="test/persist_bad") as con:
-        with pytest.raises(ValueError, match="only persists a 'generated'"):
+        with pytest.raises(ValueError, match="only persists a citation-clean 'generated'"):
             persist_section_draft(
                 con, section_id=seed["section_id"],
                 deliverable_id=seed["deliverable_id"], result=bad,
@@ -397,6 +457,87 @@ def test_persist_refuses_gate_failed_draft(seed):
     # Nothing was written.
     row = _section_prose_row(seed["deliverable_id"])
     assert row[0] is None
+
+
+def test_persist_refuses_generated_result_with_failed_citation_report(seed):
+    from substrate.write.draft_generation import (
+        CitationReport,
+        GenerationResult,
+        persist_section_draft,
+    )
+
+    result = GenerationResult(
+        status="generated", section_id=seed["section_id"], prose_text="unsupported",
+        citation_report=None, gate=None,
+    )
+    report = CitationReport(
+        supported_paragraphs=[], unsupported_paragraphs=[0],
+        fabricated_citations=[], uncited_blocks=[seed["node"]], cited_block_ids=[],
+    )
+    with connect_write(default_db_path(), purpose="test/persist_uncited") as con:
+        with pytest.raises(ValueError, match="all_claims_cited=False"):
+            persist_section_draft(
+                con, section_id=seed["section_id"],
+                deliverable_id=seed["deliverable_id"], result=result, report=report,
+            )
+    assert _section_prose_row(seed["deliverable_id"])[0] is None
+
+
+def test_persist_revalidates_result_instead_of_trusting_unrelated_clean_report(seed):
+    from substrate.write.draft_generation import (
+        CitationReport,
+        GateResult,
+        GenerationResult,
+        persist_section_draft,
+    )
+
+    result = GenerationResult(
+        status="generated", section_id=seed["section_id"],
+        prose_text="This material claim cites an unattached block [b: node-ghost].",
+        citation_report=None, gate=GateResult(score=0.9, passed=True, violations=[]),
+        prose_provenance={0: ["node-ghost"]},
+    )
+    unrelated_clean_report = CitationReport(
+        supported_paragraphs=[0], unsupported_paragraphs=[], fabricated_citations=[],
+        uncited_blocks=[], cited_block_ids=["node-ghost"],
+    )
+    with connect_write(default_db_path(), purpose="test/persist_unrelated_report") as con:
+        _place_seed_block(con, seed)
+        with pytest.raises(ValueError, match="all_claims_cited=False"):
+            persist_section_draft(
+                con, section_id=seed["section_id"],
+                deliverable_id=seed["deliverable_id"], result=result,
+                report=unrelated_clean_report,
+            )
+    assert _section_prose_row(seed["deliverable_id"])[0] is None
+
+
+def test_persist_refuses_voice_failed_generated_result(seed):
+    from substrate.write.draft_generation import (
+        CitationReport,
+        GateResult,
+        GenerationResult,
+        persist_section_draft,
+    )
+
+    node = seed["node"]
+    result = GenerationResult(
+        status="generated", section_id=seed["section_id"],
+        prose_text=f"The mechanism is grounded in attached evidence [b: {node}].",
+        citation_report=None, gate=GateResult(score=0.2, passed=False, violations=["slop"]),
+        prose_provenance={0: [node]},
+    )
+    report = CitationReport(
+        supported_paragraphs=[0], unsupported_paragraphs=[], fabricated_citations=[],
+        uncited_blocks=[], cited_block_ids=[node],
+    )
+    with connect_write(default_db_path(), purpose="test/persist_voice_failed") as con:
+        with pytest.raises(ValueError, match="gate_passed=False"):
+            persist_section_draft(
+                con, section_id=seed["section_id"],
+                deliverable_id=seed["deliverable_id"], result=result, report=report,
+            )
+    assert _section_prose_row(seed["deliverable_id"])[0] is None
 
 
 def test_xray_reads_persisted_provenance_via_get_deliverable(client, seed):
@@ -420,6 +561,7 @@ def test_xray_reads_persisted_provenance_via_get_deliverable(client, seed):
         uncited_blocks=[], cited_block_ids=[node],
     )
     with connect_write(default_db_path(), purpose="test/persist_xray") as con:
+        _place_seed_block(con, seed)
         persist_section_draft(
             con, section_id=sec, deliverable_id=seed["deliverable_id"],
             result=result, report=report, investigation_id=seed["deliverable_id"],

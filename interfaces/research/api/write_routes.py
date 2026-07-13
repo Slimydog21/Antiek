@@ -525,9 +525,9 @@ def generate_section_draft(section_id: str) -> dict[str, Any]:
 
     report = result.citation_report
     # M3: persist prose_provenance so the X-ray can read paragraph→blocks back.
-    # ONLY on a clean generation (gate passed, parser valid). A gate_failed /
-    # invalid result never ships, so it never persists provenance either (no
-    # half-written draft in the graph). The persist + the audit event go
+    # ONLY on a clean generation (citation + voice gates passed, parser valid).
+    # A rejected result never persists provenance (no half-written draft in the
+    # graph). The persist + the audit event go
     # through the single-writer funnel together (db_lock + emit_typed),
     # mirroring patch_section_prose. See docs/decisions/spr-09-*.md (D-2).
     if result.status == "generated" and report is not None:
@@ -548,6 +548,7 @@ def generate_section_draft(section_id: str) -> dict[str, Any]:
         "all_claims_cited": report.all_claims_cited if report else None,
         "unsupported_paragraphs": report.unsupported_paragraphs if report else [],
         "fabricated_citations": report.fabricated_citations if report else [],
+        "provenance_mismatches": report.provenance_mismatches if report else [],
         # paragraph_index → [block_ids], so the client can render the X-ray
         # immediately AND a reload reads the same persisted map back.
         "prose_provenance": (

@@ -539,6 +539,12 @@ function SectionCard({
           The draft didn't meet the voice and style bar — {genResult.detail ?? "left unkept."}
         </p>
       )}
+      {genResult?.status === "citation_failed" && (
+        <p className="mt-3 text-xs text-emperor">
+          The draft was not kept because its citations did not match the attached evidence —{" "}
+          {genResult.detail ?? "regenerate before editing."}
+        </p>
+      )}
 
       {/* M4: the spin-a-sub-agent proposal (search + accept/reject). */}
       {proposal && (
@@ -577,14 +583,6 @@ function SectionCard({
           SHARED FloatMenu with Write's rewrite actions (imported, D-3). */}
       {draftContent != null && view === "draft" && (
         <div className="mt-3 rounded border border-rule p-3 dark:border-charcoal-1">
-          {genResult?.status === "generated" &&
-            genResult.unsupported_paragraphs &&
-            genResult.unsupported_paragraphs.length > 0 && (
-              <p className="mb-2 text-[11px] text-shadow-1 dark:text-moonlight">
-                {genResult.unsupported_paragraphs.length} paragraph(s) flagged
-                unsupported — verify before keeping.
-              </p>
-            )}
           <div ref={editorScopeRef}>
             <WriteEditor
               deliverableId={deliverableId}
@@ -666,7 +664,7 @@ function provenanceLabel(b: OutlineBlockView): string {
  * generation endpoint emits structured content. */
 function proseToEditorHtml(prose: string): string {
   return prose
-    .split(/\n{2,}/)
+    .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean)
     .map((p) => `<p>${escapeHtml(p)}</p>`)

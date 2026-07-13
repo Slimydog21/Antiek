@@ -12,10 +12,8 @@ that makes "provenance is the moat" structural rather than hopeful:
   (resolves each block's text: the node label for graph-node blocks, the
   inline content for user-originated ones).
 - ``validate_generated_citations`` — extracts inline ``[b: <id>]`` citations
-  + the ``prose_provenance`` map, then flags: paragraphs with NO citation
-  (``unsupported`` — surfaced to the writer, never asserted as fact) and
-  citations to blocks that were never attached (``fabricated`` — the
-  failure the parser alone can't catch).
+  + the ``prose_provenance`` map, then rejects paragraphs with no citation,
+  mismatched inline/provenance sets, and references to unattached blocks.
 - ``enforce_voice_gate`` — scores prose with ``voice_style`` (§5.5). The
   gate WINS: a style prompt can never push output below it.
 - ``generate_section`` — the orchestration. A section with NO blocks
@@ -145,18 +143,22 @@ _MIN_CLAIM_CHARS = 40
 
 @dataclass(frozen=True)
 class CitationReport:
-    """Which paragraphs are supported, which claims are unsupported, and
-    which citations were fabricated. The moat made legible."""
+    """The evidence required to decide whether prose may become durable."""
 
     supported_paragraphs: list[int]
     unsupported_paragraphs: list[int]
     fabricated_citations: list[str]
     uncited_blocks: list[str]
     cited_block_ids: list[str]
+    provenance_mismatches: list[int] = field(default_factory=list)
 
     @property
     def all_claims_cited(self) -> bool:
-        return not self.unsupported_paragraphs and not self.fabricated_citations
+        return (
+            not self.unsupported_paragraphs
+            and not self.fabricated_citations
+            and not self.provenance_mismatches
+        )
 
 
 def validate_generated_citations(
@@ -164,19 +166,20 @@ def validate_generated_citations(
     *,
     attached_block_ids: set[str],
 ) -> CitationReport:
-    """Validate that every claim cites an attached block. Paragraphs with
-    a substantive claim and no citation are flagged ``unsupported``;
-    citations to non-attached blocks are flagged ``fabricated``."""
+    """Validate inline/provenance agreement against the attached evidence."""
     supported: list[int] = []
     unsupported: list[int] = []
     fabricated: set[str] = set()
+    provenance_mismatches: list[int] = []
     all_cited: set[str] = set()
 
     paras = _paragraphs(result.prose_text)
     for idx, para in enumerate(paras):
-        inline = extract_inline_citations(para)
-        prov = result.prose_provenance.get(idx, [])
-        cited_here = set(inline) | set(prov)
+        inline = set(extract_inline_citations(para))
+        prov = set(result.prose_provenance.get(idx, []))
+        if inline != prov:
+            provenance_mismatches.append(idx)
+        cited_here = inline | prov
         all_cited |= cited_here
         for cid in cited_here:
             if cid not in attached_block_ids:
@@ -188,11 +191,16 @@ def validate_generated_citations(
         elif cited_here:
             supported.append(idx)
 
+    provenance_mismatches.extend(
+        sorted(set(result.prose_provenance) - set(range(len(paras))))
+    )
+
     uncited_blocks = sorted(attached_block_ids - {c for c in all_cited if c in attached_block_ids})
     return CitationReport(
         supported_paragraphs=supported,
         unsupported_paragraphs=unsupported,
         fabricated_citations=sorted(fabricated),
+        provenance_mismatches=provenance_mismatches,
         uncited_blocks=uncited_blocks,
         cited_block_ids=sorted(c for c in all_cited if c in attached_block_ids),
     )
@@ -224,7 +232,7 @@ def enforce_voice_gate(prose_text: str) -> GateResult:
 
 @dataclass(frozen=True)
 class GenerationResult:
-    status: str  # 'generated' | 'gap' | 'gate_failed' | 'invalid'
+    status: str  # 'generated' | 'gap' | 'citation_failed' | 'gate_failed' | 'invalid'
     section_id: str | None
     prose_text: str
     citation_report: CitationReport | None
@@ -262,7 +270,11 @@ def generate_section(
 
     attached = {b.block_id for b in ctx.blocks}
     try:
-        result = parse_creative_writer_response(raw, known_block_ids=attached)
+        result = parse_creative_writer_response(
+            raw,
+            known_block_ids=attached,
+            allow_unknown_provenance=True,
+        )
     except Exception as exc:  # parser raises on malformed/unknown-id output
         return GenerationResult(
             status="invalid", section_id=section_id, prose_text="",
@@ -272,6 +284,28 @@ def generate_section(
 
     report = validate_generated_citations(result, attached_block_ids=attached)
     gate = enforce_voice_gate(result.prose_text)
+    if not report.all_claims_cited:
+        failures: list[str] = []
+        if report.unsupported_paragraphs:
+            failures.append(
+                f"{len(report.unsupported_paragraphs)} unsupported paragraph(s)"
+            )
+        if report.fabricated_citations:
+            failures.append(
+                f"{len(report.fabricated_citations)} fabricated citation(s)"
+            )
+        if report.provenance_mismatches:
+            failures.append(
+                f"{len(report.provenance_mismatches)} provenance mismatch(es)"
+            )
+        return GenerationResult(
+            status="citation_failed",
+            section_id=section_id,
+            prose_text=result.prose_text,
+            citation_report=report,
+            gate=gate,
+            detail=f"citation gate failed: {', '.join(failures)}; regenerate",
+        )
     if not gate.passed:
         return GenerationResult(
             status="gate_failed", section_id=section_id, prose_text=result.prose_text,
@@ -284,17 +318,9 @@ def generate_section(
             # and never persists, so surfacing its map would be a draft that
             # looks kept when it isn't.
         )
-    detail = "generated"
-    if report.unsupported_paragraphs:
-        detail += (
-            f"; {len(report.unsupported_paragraphs)} unsupported paragraph(s) "
-            "flagged for the writer (not asserted as fact)"
-        )
-    if report.fabricated_citations:
-        detail += f"; {len(report.fabricated_citations)} fabricated citation(s) flagged"
     return GenerationResult(
         status="generated", section_id=section_id, prose_text=result.prose_text,
-        citation_report=report, gate=gate, detail=detail,
+        citation_report=report, gate=gate, detail="generated",
         # The per-paragraph provenance the X-ray persists + reads back (M3).
         prose_provenance=dict(result.prose_provenance),
     )
@@ -325,17 +351,46 @@ def persist_section_draft(
     paragraph→blocks link therefore EXISTS in the graph (a persisted row + a
     persisted event), not just on screen — the §9 moat made auditable.
 
-    Only call this for a ``generated`` result: a gate_failed / invalid draft
-    never ships, so it must never persist provenance (no half-written draft).
+    Only call this for a citation-clean ``generated`` result. Rejected drafts
+    never persist provenance, including if a caller constructs an inconsistent
+    result/report pair.
 
     Returns the emitted event_id (or None when events are disabled). Routes the
     table write through ``con`` (a ``LockedConnection`` from
     ``runtime/db_lock``) — no second writer, single-writer invariant intact.
     """
-    if result.status != "generated":
+    gate_passed = result.gate is not None and result.gate.passed
+    attached_rows = con.execute(
+        "SELECT outline_block_id, provenance_kind, node_id "
+        "FROM outline_blocks WHERE section_id = ?",
+        [section_id],
+    ).fetchall()
+    attached = {
+        node_id if provenance_kind == "graph_node" and node_id else outline_block_id
+        for outline_block_id, provenance_kind, node_id in attached_rows
+    }
+    revalidated = (
+        validate_generated_citations(
+            CreativeWriterResult(
+                prose_text=result.prose_text,
+                prose_provenance=result.prose_provenance,
+                uncited_blocks=list(report.uncited_blocks),
+            ),
+            attached_block_ids=attached,
+        )
+        if report is not None
+        else None
+    )
+    claims_cited = (
+        report is not None
+        and revalidated == report
+        and revalidated.all_claims_cited
+    )
+    if result.status != "generated" or not gate_passed or not claims_cited:
         raise ValueError(
-            f"persist_section_draft only persists a 'generated' result; "
-            f"got {result.status!r} (a gate_failed/invalid draft never ships)"
+            "persist_section_draft only persists a citation-clean 'generated' result; "
+            f"got status={result.status!r}, gate_passed={gate_passed}, "
+            f"all_claims_cited={claims_cited}"
         )
     # Lazy imports: keep this module importable without the substrate event log
     # / graph ops on a bare script path (mirrors the module's other fallbacks).

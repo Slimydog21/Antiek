@@ -4,23 +4,23 @@ These cover the parts that protect the moat regardless of which model runs
 — and use an INJECTED fake dispatch, so no live LLM is needed:
 
 M2/M6 no-blocks section → GAP, never fabricated prose.
-M4 cited claims — every claim cites an attached block; uncited paragraphs
-   flagged 'unsupported'; citations to non-attached blocks flagged
-   'fabricated'.
+M4 cited claims — every claim cites an attached block; unsupported,
+   fabricated, or provenance-mismatched prose is rejected.
 M5 voice_style gate WINS — sub-threshold prose returns gate_failed even if
    it cites perfectly.
 M1 context-building — OutlineBlocks → CreativeWriterContext with the right
    citation ids.
 
-The live generation path (the actual prose a model returns) needs API
-credentials + creative_writer wired into the dispatch config; it is marked
-PARTIAL in the handoff, not faked green here.
+The deterministic model boundary is injected here; no provider call is needed
+to prove that rejected prose cannot cross into durable state.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+
+import pytest
 
 _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
@@ -163,6 +163,110 @@ def test_all_claims_cited_clean_case():
     report = validate_generated_citations(result, attached_block_ids={"node-1"})
     assert report.all_claims_cited
     assert report.fabricated_citations == []
+    assert report.provenance_mismatches == []
+
+
+def _context_with_nodes(*node_ids: str) -> CreativeWriterContext:
+    return build_creative_writer_context(
+        deliverable_title="T", deliverable_kind="research_memo",
+        section_title="S", section_index=0, section_count=1,
+        blocks=[_oblock(f"oblk-{i}", node_id=node_id) for i, node_id in enumerate(node_ids)],
+    )
+
+
+def test_generation_rejects_substantive_uncited_paragraph():
+    raw = (
+        '{"prose_text": "This substantive paragraph makes a material claim without any '
+        'attached evidence or inline citation at all.", '
+        '"prose_provenance": {}, "uncited_blocks": ["node-1"]}'
+    )
+    res = generate_section(
+        ctx=_context_with_nodes("node-1"),
+        dispatch_fn=_fake_dispatch(raw), section_id="sec-1",
+    )
+    assert res.status == "citation_failed"
+    assert res.citation_report.unsupported_paragraphs == [0]
+    assert res.prose_provenance == {}
+
+
+def test_generation_rejects_fabricated_inline_citation():
+    raw = (
+        '{"prose_text": "The mechanism is load-bearing and grounded in the evidence '
+        '[b: node-ghost].", "prose_provenance": {"0": []}, '
+        '"uncited_blocks": ["node-1"]}'
+    )
+    res = generate_section(
+        ctx=_context_with_nodes("node-1"),
+        dispatch_fn=_fake_dispatch(raw), section_id="sec-1",
+    )
+    assert res.status == "citation_failed"
+    assert res.citation_report.fabricated_citations == ["node-ghost"]
+
+
+def test_generation_classifies_fabricated_inline_and_provenance_as_citation_failure():
+    raw = (
+        '{"prose_text": "The mechanism is load-bearing and grounded in the evidence '
+        '[b: node-ghost].", "prose_provenance": {"0": ["node-ghost"]}, '
+        '"uncited_blocks": ["node-1"]}'
+    )
+    res = generate_section(
+        ctx=_context_with_nodes("node-1"),
+        dispatch_fn=_fake_dispatch(raw), section_id="sec-1",
+    )
+    assert res.status == "citation_failed"
+    assert res.citation_report.fabricated_citations == ["node-ghost"]
+    assert res.citation_report.provenance_mismatches == []
+
+
+@pytest.mark.parametrize(
+    "inline,provenance",
+    [
+        ("", '["node-1"]'),
+        (" [b: node-1]", "[]"),
+        (" [b: node-1]", '["node-2"]'),
+    ],
+)
+def test_generation_rejects_inline_provenance_disagreement(inline, provenance):
+    raw = (
+        '{"prose_text": "The mechanism is load-bearing and grounded in attached evidence'
+        f'{inline}.", "prose_provenance": {{"0": {provenance}}}, '
+        '"uncited_blocks": []}'
+    )
+    res = generate_section(
+        ctx=_context_with_nodes("node-1", "node-2"),
+        dispatch_fn=_fake_dispatch(raw), section_id="sec-1",
+    )
+    assert res.status == "citation_failed"
+    assert res.citation_report.provenance_mismatches == [0]
+
+
+def test_unused_attached_block_and_short_structural_paragraph_remain_legal():
+    raw = (
+        '{"prose_text": "Implications.\\n\\nThe mechanism is load-bearing and grounded '
+        'in the attached evidence [b: node-1].", '
+        '"prose_provenance": {"1": ["node-1"]}, '
+        '"uncited_blocks": ["node-2"]}'
+    )
+    res = generate_section(
+        ctx=_context_with_nodes("node-1", "node-2"),
+        dispatch_fn=_fake_dispatch(raw), section_id="sec-1",
+    )
+    assert res.status == "generated"
+    assert res.citation_report.uncited_blocks == ["node-2"]
+
+
+def test_generation_rejects_provenance_for_nonexistent_paragraph():
+    raw = (
+        '{"prose_text": "The mechanism is load-bearing and grounded in the evidence '
+        '[b: node-1].", "prose_provenance": {"0": ["node-1"], "9": ["node-1"]}, '
+        '"uncited_blocks": []}'
+    )
+    res = generate_section(
+        ctx=_context_with_nodes("node-1"),
+        dispatch_fn=_fake_dispatch(raw), section_id="sec-1",
+    )
+    assert res.status == "citation_failed"
+    assert res.citation_report.provenance_mismatches == [9]
 
 
 # ── M5 — the gate wins ─────────────────────────────────────────────

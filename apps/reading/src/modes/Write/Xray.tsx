@@ -44,7 +44,7 @@ export interface XrayProps {
 /** Split prose into paragraphs the same way the substrate does (blank-line). */
 export function splitParagraphs(prose: string): string[] {
   return prose
-    .split(/\n{2,}/)
+    .split(/\n\s*\n/)
     .map((p) => p.trim())
     .filter(Boolean);
 }

@@ -162,17 +162,16 @@ export function ContextWindow({ className }: ContextWindowProps) {
           {result.status === "gate_failed" && (
             <p className="text-xs text-emperor">Voice/style gate not met — {result.detail}</p>
           )}
+          {result.status === "citation_failed" && (
+            <p className="text-xs text-emperor">
+              Draft not kept: citations did not match the attached evidence — {result.detail}
+            </p>
+          )}
           {result.status === "generated" && (
             <>
               <p className="font-serif text-sm text-ink dark:text-bright whitespace-pre-line">
                 {result.prose_text}
               </p>
-              {result.unsupported_paragraphs && result.unsupported_paragraphs.length > 0 && (
-                <p className="mt-2 text-[11px] text-shadow-1">
-                  {result.unsupported_paragraphs.length} paragraph(s) flagged unsupported —
-                  verify before keeping.
-                </p>
-              )}
             </>
           )}
         </div>

@@ -190,6 +190,26 @@ describe("Outline — no id, honest generate, real editor", () => {
     await waitFor(() => expect(screen.getByText(/left as a gap/i)).toBeTruthy());
   });
 
+  it("does not mount citation-failed prose as an editable draft", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    generateSectionMock.mockResolvedValue({
+      status: "citation_failed",
+      section_id: "sec-1",
+      prose_text: "An unsupported replacement that must not enter the editor.",
+      detail: "citation gate failed: 1 unsupported paragraph; regenerate",
+      unsupported_paragraphs: [0],
+      prose_provenance: {},
+    });
+    const { container } = render(
+      <Outline deliverableId="dlv-1" sections={[section({ block_count: 1 })]} onChanged={vi.fn()} />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    await userEvent.click(screen.getByRole("button", { name: /generate draft/i }));
+    expect(await screen.findByText(/citations did not match the attached evidence/i)).toBeTruthy();
+    expect(container.querySelector(".ProseMirror")).toBeNull();
+    expect(container.textContent ?? "").not.toContain("unsupported replacement");
+  });
+
   it("mounts the real WriteEditor (TipTap) when a draft generates", async () => {
     getSectionBlocksMock.mockResolvedValue([block()]);
     const generated: GenerationResult = {
