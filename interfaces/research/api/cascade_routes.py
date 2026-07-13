@@ -74,11 +74,13 @@ from runtime.research_runner import (
     CommandKind,
     CostProjectionRequest,
     HostLocalRunner,
+    ProjectionDisposition,
     PromotionFunnel,
     SpendControlMode,
     make_contract_gather_stub,
     make_exa_gather_loop,
 )
+from runtime.research_runner.cost_projection import project_cascade_cost
 from runtime.research_runner.protocol import BrowseLoop
 from runtime.research_runner.provider_gateway import (
     HARD_MODE_DISPATCH_POLICY,
@@ -113,9 +115,7 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
 _SESSIONS: dict[str, CascadeSession] = {}
 _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
-_HARD_CEILING_RUNS: dict[
-    CascadeSession, tuple[ResearchProviderGateway, RunBinding]
-] = {}
+_HARD_CEILING_RUNS: dict[CascadeSession, tuple[ResearchProviderGateway, RunBinding]] = {}
 _HARD_CEILING_LAUNCHING: set[str] = set()
 
 # Optional hook set by ``create_app`` after Loop 1 handlers register.
@@ -172,6 +172,7 @@ def _translate() -> Iterator[None]:
 
 def _embedding_provider() -> EmbeddingProvider:
     from processing.embedding import default_embedding_provider
+
     return default_embedding_provider()
 
 
@@ -235,9 +236,7 @@ class _LazyReuseSubstrate:
 
             # Read-write, NO flock — shares the funnel's DuckDB instance.
             self._parent = duckdb.connect(self._db_path)
-            self._inner = make_substrate_from_con(
-                "brute_force", self._parent, model=self._model
-            )
+            self._inner = make_substrate_from_con("brute_force", self._parent, model=self._model)
         return self._inner
 
     @property
@@ -358,6 +357,15 @@ class LaunchRequest(BaseModel):
     aggregate_budget_usd: float | None = Field(default=None, gt=0, allow_inf_nan=False)
     spend_mode: SpendControlMode = SpendControlMode.STOP_LIMIT
     hard_ceiling_usd: Decimal | None = Field(default=None, gt=0, allow_inf_nan=False)
+    authority_digest: str | None = Field(default=None, min_length=64, max_length=64)
+
+
+class SpendPreviewRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    spend_mode: SpendControlMode
+    amount_usd: Decimal = Field(gt=0, allow_inf_nan=False)
+    per_research_budget_usd: float = Field(default=0.50, gt=0, allow_inf_nan=False)
 
 
 class SteerRequest(BaseModel):
@@ -468,6 +476,7 @@ async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
         class _Fixed:
             def decompose(self, q: str, *, context: str = "") -> list[SubQuestion]:
                 return [SubQuestion(question=s) for s in sub_questions]
+
         report = build_plan(req.problem, decomposer=_Fixed(), max_depth=req.max_depth)
     else:
         try:
@@ -496,11 +505,15 @@ async def create_plan(req: CreatePlanRequest) -> dict[str, Any]:
         ),
     }
     with _write("create_plan") as con:
-        root_id = persist_tree(tree, investigation_id="__operator__",
-                               embedding_provider=_embedding_provider(), con=con)
-    return {"root_node_id": root_id, "tree": tree.to_dict(),
-            "capped_nodes": report.capped_nodes,
-            "over_broad_leaves": report.over_broad_leaves}
+        root_id = persist_tree(
+            tree, investigation_id="__operator__", embedding_provider=_embedding_provider(), con=con
+        )
+    return {
+        "root_node_id": root_id,
+        "tree": tree.to_dict(),
+        "capped_nodes": report.capped_nodes,
+        "over_broad_leaves": report.over_broad_leaves,
+    }
 
 
 @cascade_router.get("/plans/{root_id}")
@@ -508,8 +521,11 @@ async def get_plan(root_id: str) -> dict[str, Any]:
     tree = load_tree(root_id, db_path=_db())
     if tree is None:
         raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
-    return {"root_node_id": root_id, "tree": tree.to_dict(),
-            "launchable": is_plan_launchable(root_id, db_path=_db())}
+    return {
+        "root_node_id": root_id,
+        "tree": tree.to_dict(),
+        "launchable": is_plan_launchable(root_id, db_path=_db()),
+    }
 
 
 @cascade_router.post("/plans/{root_id}/edit")
@@ -524,10 +540,17 @@ async def edit_plan(root_id: str, req: TreeEditRequest) -> dict[str, Any]:
         if not ok:
             raise HTTPException(status_code=400, detail=f"edit {req.op!r} failed (bad target?)")
         with _write("edit_plan") as con:
-            persist_tree(tree, investigation_id="__operator__",
-                         embedding_provider=_embedding_provider(), con=con)
-    return {"root_node_id": root_id, "tree": tree.to_dict(),
-            "launchable": is_plan_launchable(root_id, db_path=_db())}
+            persist_tree(
+                tree,
+                investigation_id="__operator__",
+                embedding_provider=_embedding_provider(),
+                con=con,
+            )
+    return {
+        "root_node_id": root_id,
+        "tree": tree.to_dict(),
+        "launchable": is_plan_launchable(root_id, db_path=_db()),
+    }
 
 
 def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
@@ -538,7 +561,9 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
     if req.op == "reword":
         return tree.reword(req.target_local_id, req.question or "")
     if req.op == "set_budget":
-        return tree.set_budget(req.target_local_id, budget_usd=req.budget_usd, max_depth=req.max_depth)
+        return tree.set_budget(
+            req.target_local_id, budget_usd=req.budget_usd, max_depth=req.max_depth
+        )
     if req.op == "split":
         return tree.split(req.target_local_id, req.into or [])
     raise HTTPException(status_code=400, detail=f"unknown edit op {req.op!r}")
@@ -547,10 +572,63 @@ def _apply_edit(tree: PlanTree, req: TreeEditRequest) -> bool:
 @cascade_router.post("/plans/{root_id}/approve")
 async def approve(root_id: str, req: ApproveRequest) -> dict[str, Any]:
     with _write("approve_plan") as con:
-        approval = approve_plan(root_id, approver=req.approver,
-                                investigation_id="__operator__", con=con)
-    return {"root_node_id": root_id, "approval": approval,
-            "launchable": is_plan_launchable(root_id, db_path=_db())}
+        approval = approve_plan(
+            root_id, approver=req.approver, investigation_id="__operator__", con=con
+        )
+    return {
+        "root_node_id": root_id,
+        "approval": approval,
+        "launchable": is_plan_launchable(root_id, db_path=_db()),
+    }
+
+
+@cascade_router.post("/plans/{root_id}/spend-preview")
+async def spend_preview(root_id: str, req: SpendPreviewRequest, request: Request) -> dict[str, Any]:
+    """Return server-owned spend semantics for one exact operator choice.
+
+    No provider rates, credentials, run ids, or caller-authored capability claims cross
+    this boundary. Preview never issues authority; the explicit spend-approval action
+    records that separately after the plan is approved.
+    """
+    tree = load_tree(root_id, db_path=_db())
+    if tree is None:
+        raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
+    amount_cents = _hard_ceiling_cents(req.amount_usd)
+    if req.spend_mode is SpendControlMode.STOP_LIMIT:
+        return {
+            "spend_mode": req.spend_mode.value,
+            "currency": "USD",
+            "amount_cents": amount_cents,
+            "eligible": True,
+            "reasons": [],
+            "authority_digest": None,
+            "recovery_session_id": None,
+            "approval_revision": tree.approval.plan_version,
+            "assumptions": [
+                "Research stops after reported spend reaches the limit.",
+                "Final in-flight work can exceed the stop limit.",
+            ],
+        }
+    eligible, reasons, projection_assumptions = _hard_ceiling_eligibility(
+        tree=tree, request=request
+    )
+    return {
+        "spend_mode": req.spend_mode.value,
+        "currency": "USD",
+        "amount_cents": amount_cents,
+        "eligible": eligible,
+        "reasons": list(reasons),
+        "authority_digest": None,
+        "recovery_session_id": None,
+        "approval_revision": tree.approval.plan_version,
+        "assumptions": [
+            *projection_assumptions,
+            "Antiek reserves each conservative maximum before provider dispatch.",
+            "Unknown provider outcomes retain their full reservation until reconciled.",
+            "Taxes, currency conversion, external fees, and provider misbilling are not bounded.",
+            "Synthesis stages that lack enforceable billing are disabled.",
+        ],
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -580,9 +658,7 @@ def _hard_ceiling_cents(amount: Decimal | None) -> int:
     return result
 
 
-def _hard_ceiling_plan_digest(
-    *, root_id: str, tree: PlanTree, request: LaunchRequest
-) -> str:
+def _hard_ceiling_plan_digest(*, root_id: str, tree: PlanTree, request: LaunchRequest) -> str:
     gather_mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
     return canonical_digest(
         {
@@ -597,9 +673,9 @@ def _hard_ceiling_plan_digest(
                     else str(request.aggregate_budget_usd)
                 ),
                 "hard_ceiling_cents": (
-                    None if request.hard_ceiling_usd is None else _hard_ceiling_cents(
-                        request.hard_ceiling_usd
-                    )
+                    None
+                    if request.hard_ceiling_usd is None
+                    else _hard_ceiling_cents(request.hard_ceiling_usd)
                 ),
                 "gather_mode": gather_mode,
                 "synthesis_tail": False,
@@ -609,13 +685,159 @@ def _hard_ceiling_plan_digest(
     )
 
 
+def _hard_ceiling_eligibility(
+    *, tree: PlanTree, request: Request
+) -> tuple[bool, tuple[str, ...], tuple[str, ...]]:
+    reasons: list[str] = []
+    assumptions: list[str] = []
+    owner_id = getattr(request.state, "user_id", None)
+    if not isinstance(owner_id, str) or not owner_id:
+        reasons.append("An authenticated operator identity is required.")
+    if (
+        getattr(request.state, "auth_method", None) == "unauthenticated_local"
+        and os.environ.get("ANTIEK_ALLOW_LOCAL_HARD_CEILING", "") != "1"
+    ):
+        reasons.append("Hard ceilings are not enabled for this local operator session.")
+    gather_mode = os.environ.get("ANTIEK_DRW_GATHER", "stub").strip().lower()
+    projection_requests = (
+        (
+            "Operator approval",
+            CostProjectionRequest(
+                seam_id="cascade.operator.spend_approval",
+                provider="antiek",
+                model="operator-authority",
+                operation="approve",
+                bounded_usage=(BoundedUsage(BillingUnit.LOCAL_OPERATION, 1),),
+            ),
+        ),
+        (
+            "Session launch",
+            CostProjectionRequest(
+                seam_id="cascade.session.launch",
+                provider="antiek",
+                model="host-local",
+                operation="launch",
+                bounded_usage=(BoundedUsage(BillingUnit.LOCAL_OPERATION, 1),),
+            ),
+        ),
+        (
+            "Gather",
+            CostProjectionRequest(
+                seam_id=(
+                    "cascade.gather.contract_stub"
+                    if gather_mode == "stub"
+                    else "cascade.gather.exa.search"
+                ),
+                provider="antiek" if gather_mode == "stub" else "exa",
+                model="contract-stub" if gather_mode == "stub" else "search",
+                operation="gather" if gather_mode == "stub" else "search",
+                bounded_usage=(
+                    BoundedUsage(
+                        BillingUnit.LOCAL_OPERATION if gather_mode == "stub" else BillingUnit.CALL,
+                        1,
+                    ),
+                ),
+            ),
+        ),
+        (
+            "Embedding",
+            CostProjectionRequest(
+                seam_id="cascade.gather.embedding.bootstrap",
+                provider="local",
+                model="sentence-transformers-or-hash",
+                operation="embed",
+                bounded_usage=(BoundedUsage(BillingUnit.LOCAL_OPERATION, 1),),
+            ),
+        ),
+    )
+    for label, projection_request in projection_requests:
+        projection = project_cascade_cost(projection_request)
+        assumptions.extend(projection.assumptions)
+        if projection.disposition is ProjectionDisposition.INELIGIBLE:
+            reason = (
+                "not eligible"
+                if projection.ineligibility is None
+                else projection.ineligibility.value.replace("_", " ")
+            )
+            reasons.append(f"{label} is not hard-ceiling eligible: {reason}.")
+    if tree.seed_provenance.get("decomposition_origin") != "manual_sub_questions":
+        reasons.append("This automatically generated plan is stop-limit only.")
+    return not reasons, tuple(reasons), tuple(dict.fromkeys(assumptions))
+
+
+def _safe_hard_ceiling_snapshot(
+    gateway: ResearchProviderGateway, binding: RunBinding
+) -> dict[str, Any]:
+    balance = gateway.ledger.balance(binding.run_id)
+    recovery = gateway.ledger.recovery_work(binding.run_id)
+    unknown_count = sum(
+        item.kind == "paid" and item.action == "reconcile_provider" for item in recovery
+    )
+    return {
+        "currency": "USD",
+        "approval_revision": binding.approval_revision,
+        "authority_digest": _hard_ceiling_authority_digest_from_binding(binding),
+        "ceiling_cents": balance.ceiling_cents,
+        "authorized_spent_cents": balance.authorized_spent_cents,
+        "observed_provider_spend_cents": balance.observed_provider_spend_cents,
+        "held_cents": balance.held_cents,
+        "available_cents": balance.available_cents,
+        "run_state": balance.status.value,
+        "ceiling_breached": balance.ceiling_breached,
+        "unknown_outcome_count": unknown_count,
+        "blocked_stages": list(HARD_MODE_SKIPPED_STAGES),
+    }
+
+
+def _hard_ceiling_authority_digest_from_binding(binding: RunBinding) -> str:
+    return canonical_digest(
+        {
+            "contract": "research-hard-ceiling-approval-v1",
+            "owner_id": binding.owner_id,
+            "plan_digest": binding.plan_digest,
+            "approval_revision": binding.approval_revision,
+            "currency": binding.currency,
+        }
+    )
+
+
+def _hard_ceiling_snapshot_for_session(session_id: str, request: Request) -> dict[str, Any] | None:
+    owner_id = getattr(request.state, "user_id", None)
+    if not isinstance(owner_id, str) or not owner_id:
+        return None
+    live = _SESSIONS.get(session_id)
+    if live is not None:
+        hard_run = _HARD_CEILING_RUNS.get(live)
+        if hard_run is not None:
+            gateway, binding = hard_run
+            if binding.owner_id != owner_id:
+                return None
+            return _safe_hard_ceiling_snapshot(gateway, binding)
+    ledger = ResearchSpendLedger(_spend_db())
+    ledger.ensure_schema()
+    balance = ledger.balance_for_session(owner_id, session_id)
+    if balance is None:
+        return None
+    return _safe_hard_ceiling_snapshot(ResearchProviderGateway(ledger), balance.binding)
+
+
+def _enforce_hard_session_owner(session_id: str, request: Request) -> None:
+    """Hide a hard session entirely when it belongs to another owner."""
+    ledger = ResearchSpendLedger(_spend_db())
+    ledger.ensure_schema()
+    bound_owner = ledger.owner_for_session(session_id)
+    if bound_owner is None:
+        return
+    caller = getattr(request.state, "user_id", None)
+    if caller != bound_owner:
+        raise HTTPException(status_code=404, detail=f"no session {session_id!r}")
+
+
 def _hard_ceiling_binding(
     *, root_id: str, session_id: str, owner_id: str, tree: PlanTree, request: LaunchRequest
 ) -> RunBinding:
     plan_digest = _hard_ceiling_plan_digest(root_id=root_id, tree=tree, request=request)
-    run_id = deterministic_key(
-        "research-hard-run", owner_id, session_id, root_id, plan_digest
-    )
+    run_id = deterministic_key("research-hard-run", owner_id, session_id, root_id, plan_digest)
     return RunBinding(
         run_id=run_id,
         owner_id=owner_id,
@@ -693,14 +915,10 @@ def _hard_ceiling_embedding_provider(
         provider = _embedding_provider()
     except BaseException as exc:
         if receipt.attempt.state is ZeroCostState.PREPARED:
-            gateway.fail_zero_cost(
-                receipt, outcome={"exception_type": type(exc).__name__}
-            )
+            gateway.fail_zero_cost(receipt, outcome={"exception_type": type(exc).__name__})
         raise
     if receipt.attempt.state is ZeroCostState.PREPARED:
-        gateway.complete_zero_cost(
-            receipt, outcome={"provider_type": type(provider).__name__}
-        )
+        gateway.complete_zero_cost(receipt, outcome={"provider_type": type(provider).__name__})
     return provider
 
 
@@ -729,6 +947,103 @@ def _hard_ceiling_launch_receipt(
     )
 
 
+def _hard_ceiling_approval_receipt(
+    gateway: ResearchProviderGateway,
+    binding: RunBinding,
+    *,
+    authority_digest: str,
+    ceiling_cents: int,
+) -> ZeroCostReceipt:
+    return gateway.prepare_zero_cost(
+        binding,
+        logical_operation_id="operator:spend-approval",
+        projection_request=CostProjectionRequest(
+            seam_id="cascade.operator.spend_approval",
+            provider="antiek",
+            model="operator-authority",
+            operation="approve",
+            bounded_usage=(BoundedUsage(BillingUnit.LOCAL_OPERATION, 1),),
+        ),
+        operation_payload={
+            "authority_digest": authority_digest,
+            "approval_revision": binding.approval_revision,
+            "ceiling_cents": ceiling_cents,
+            "currency": binding.currency,
+            "mode": binding.mode,
+        },
+        replay_class=ZeroReplayClass.PURE,
+    )
+
+
+@cascade_router.post("/plans/{root_id}/spend-approval")
+async def approve_spend(root_id: str, req: SpendPreviewRequest, request: Request) -> dict[str, Any]:
+    """Durably record explicit operator approval of one exact spend authority."""
+    if req.spend_mode is not SpendControlMode.HARD_CEILING:
+        raise HTTPException(status_code=422, detail="durable spend approval is for hard mode")
+    tree = load_tree(root_id, db_path=_db())
+    if tree is None:
+        raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
+    if not is_plan_launchable(root_id, db_path=_db()):
+        raise HTTPException(status_code=409, detail={"code": "plan_not_approved"})
+    eligible, reasons, _ = _hard_ceiling_eligibility(tree=tree, request=request)
+    if not eligible:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "hard_ceiling_ineligible", "reasons": list(reasons)},
+        )
+    owner_id = getattr(request.state, "user_id", None)
+    if not isinstance(owner_id, str) or not owner_id:
+        raise HTTPException(status_code=401, detail="authenticated owner identity required")
+    launch_request = LaunchRequest(
+        spend_mode=SpendControlMode.HARD_CEILING,
+        hard_ceiling_usd=req.amount_usd,
+        per_research_budget_usd=req.per_research_budget_usd,
+    )
+    plan_digest = _hard_ceiling_plan_digest(root_id=root_id, tree=tree, request=launch_request)
+    authority_suffix = canonical_digest({"owner_id": owner_id, "plan_digest": plan_digest})[:16]
+    session_id = f"session-{root_id}-hard-{authority_suffix}"
+    binding = _hard_ceiling_binding(
+        root_id=root_id,
+        session_id=session_id,
+        owner_id=owner_id,
+        tree=tree,
+        request=launch_request,
+    )
+    authority_digest = _hard_ceiling_authority_digest_from_binding(binding)
+    ceiling_cents = _hard_ceiling_cents(req.amount_usd)
+    gateway = ResearchProviderGateway(ResearchSpendLedger(_spend_db()))
+    gateway.create_or_reopen_run(binding, ceiling_cents=ceiling_cents)
+    receipt = _hard_ceiling_approval_receipt(
+        gateway,
+        binding,
+        authority_digest=authority_digest,
+        ceiling_cents=ceiling_cents,
+    )
+    if receipt.attempt.state is ZeroCostState.FAILED:
+        raise HTTPException(status_code=409, detail={"code": "spend_approval_failed"})
+    if receipt.attempt.state is ZeroCostState.PREPARED:
+        gateway.complete_zero_cost(
+            receipt,
+            outcome={"approved": True, "authority_digest": authority_digest},
+        )
+    return {
+        "spend_mode": req.spend_mode.value,
+        "currency": "USD",
+        "amount_cents": ceiling_cents,
+        "eligible": True,
+        "reasons": [],
+        "authority_digest": authority_digest,
+        "recovery_session_id": session_id,
+        "approval_revision": binding.approval_revision,
+        "assumptions": [
+            "Antiek reserves each conservative maximum before provider dispatch.",
+            "Unknown provider outcomes retain their full reservation until reconciled.",
+            "Taxes, currency conversion, external fees, and provider misbilling are not bounded.",
+            "Synthesis stages that lack enforceable billing are disabled.",
+        ],
+    }
+
+
 @cascade_router.post("/plans/{root_id}/launch")
 async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str, Any]:
     """Launch an approved plan as N parallel researches. Refuses an
@@ -740,7 +1055,8 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
     with _translate():
         if not is_plan_launchable(root_id, db_path=_db()):
             raise PlanNotApproved(
-                f"plan {root_id!r} is not approved — the glass-box gate refuses launch.")
+                f"plan {root_id!r} is not approved — the glass-box gate refuses launch."
+            )
         tree = load_tree(root_id, db_path=_db())
         if tree is None:
             raise HTTPException(status_code=404, detail=f"no plan {root_id!r}")
@@ -785,9 +1101,7 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
                 },
             )
         plan_digest = _hard_ceiling_plan_digest(root_id=root_id, tree=tree, request=req)
-        authority_suffix = canonical_digest(
-            {"owner_id": owner_id, "plan_digest": plan_digest}
-        )[:16]
+        authority_suffix = canonical_digest({"owner_id": owner_id, "plan_digest": plan_digest})[:16]
         session_id = f"session-{root_id}-hard-{authority_suffix}"
         binding = _hard_ceiling_binding(
             root_id=root_id,
@@ -796,6 +1110,18 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
             tree=tree,
             request=req,
         )
+        expected_authority = _hard_ceiling_authority_digest_from_binding(binding)
+        if req.authority_digest != expected_authority:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "hard_ceiling_stale_approval",
+                    "message": (
+                        "The approved plan, mode, provider path, currency, or ceiling changed. "
+                        "Review the current spend preview before launching."
+                    ),
+                },
+            )
         gateway = ResearchProviderGateway(ResearchSpendLedger(_spend_db()))
         ceiling_cents = _hard_ceiling_cents(req.hard_ceiling_usd)
         gateway.ledger.ensure_schema()
@@ -807,24 +1133,38 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
             if existing_run.binding != binding or existing_run.ceiling_cents != ceiling_cents:
                 raise HTTPException(status_code=409, detail="durable run binding conflict")
             existing_durable_run = True
+        approval_receipt = _hard_ceiling_approval_receipt(
+            gateway,
+            binding,
+            authority_digest=expected_authority,
+            ceiling_cents=ceiling_cents,
+        )
+        if approval_receipt.attempt.state is not ZeroCostState.COMPLETED:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "hard_ceiling_approval_required",
+                    "message": "Approve this exact hard-ceiling authority before launching.",
+                },
+            )
 
     leaves = [
-        Leaf(investigation_id=f"{session_id}-leaf-{i}", sub_question=leaf.question,
-             question_node_id=leaf.graph_node_id,
-             budget=BudgetCap(cost_usd=req.per_research_budget_usd))
+        Leaf(
+            investigation_id=f"{session_id}-leaf-{i}",
+            sub_question=leaf.question,
+            question_node_id=leaf.graph_node_id,
+            budget=BudgetCap(cost_usd=req.per_research_budget_usd),
+        )
         for i, leaf in enumerate(tree.leaves)
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
     launch_receipt = (
         None
         if gateway is None or binding is None
-        else _hard_ceiling_launch_receipt(
-            gateway, binding, root_id=root_id, leaves=leaves
-        )
+        else _hard_ceiling_launch_receipt(gateway, binding, root_id=root_id, leaves=leaves)
     )
     durable_replay = bool(
-        launch_receipt is not None
-        and launch_receipt.attempt.state is ZeroCostState.COMPLETED
+        launch_receipt is not None and launch_receipt.attempt.state is ZeroCostState.COMPLETED
     )
     if (
         existing_durable_run
@@ -853,7 +1193,6 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
         if existing_hard_run is None or existing_hard_run[1] != binding:
             raise HTTPException(status_code=409, detail="session identity is already in use")
         existing_gateway, _ = existing_hard_run
-        balance = existing_gateway.ledger.balance(binding.run_id)
         return {
             "session_id": session_id,
             "researches": [
@@ -867,39 +1206,33 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
             "aggregate_cap_usd": budget.aggregate_cap_usd,
             "spend_mode": req.spend_mode.value,
             "replayed": True,
-            "hard_ceiling": {
-                "run_id": binding.run_id,
-                "plan_digest": binding.plan_digest,
-                "approval_revision": binding.approval_revision,
-                "ceiling_cents": balance.ceiling_cents,
-                "available_cents": balance.available_cents,
-                "blocked_stages": list(HARD_MODE_SKIPPED_STAGES),
-            },
+            "hard_ceiling": _safe_hard_ceiling_snapshot(existing_gateway, binding),
         }
+    resumed = False
     if gateway is not None and binding is not None and durable_replay:
-        balance = gateway.ledger.balance(binding.run_id)
-        return {
-            "session_id": session_id,
-            "researches": [
-                {
-                    "investigation_id": leaf.investigation_id,
-                    "sub_question": leaf.sub_question,
-                    "question_node_id": leaf.question_node_id,
-                }
-                for leaf in leaves
-            ],
-            "aggregate_cap_usd": budget.aggregate_cap_usd,
-            "spend_mode": req.spend_mode.value,
-            "replayed": True,
-            "hard_ceiling": {
-                "run_id": binding.run_id,
-                "plan_digest": binding.plan_digest,
-                "approval_revision": binding.approval_revision,
-                "ceiling_cents": balance.ceiling_cents,
-                "available_cents": balance.available_cents,
-                "blocked_stages": list(HARD_MODE_SKIPPED_STAGES),
-            },
-        }
+        recovered = reconstruct_session(session_id)
+        if recovered.researches and recovered.all_terminal:
+            return {
+                "session_id": session_id,
+                "researches": [
+                    {
+                        "investigation_id": leaf.investigation_id,
+                        "sub_question": leaf.sub_question,
+                        "question_node_id": leaf.question_node_id,
+                    }
+                    for leaf in leaves
+                ],
+                "aggregate_cap_usd": budget.aggregate_cap_usd,
+                "spend_mode": req.spend_mode.value,
+                "replayed": True,
+                "resumed": False,
+                "hard_ceiling": _safe_hard_ceiling_snapshot(gateway, binding),
+            }
+        # A completed launch receipt proves acceptance, not terminal execution.
+        # Rebuild the host-local session when durable lifecycle evidence is absent
+        # or nonterminal. Per-leaf receipts make completed work a no-op and resume
+        # only checkpoint-safe zero-cost work; paid unknowns remain held.
+        resumed = True
     if gateway is not None and session_id in _HARD_CEILING_LAUNCHING:
         raise HTTPException(status_code=409, detail="hard-ceiling session launch in progress")
     embedding_provider = (
@@ -918,9 +1251,13 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
     loop = _research_loop_factory()
     if gateway is not None and binding is not None:
         loop = _receipted_hard_ceiling_loop(loop, gateway=gateway, binding=binding)
-    runner = HostLocalRunner(loop, budget=budget,
-                             on_emit=funnel.submit, seal_on_complete=False,
-                             retrieval_substrate=reuse_substrate)
+    runner = HostLocalRunner(
+        loop,
+        budget=budget,
+        on_emit=funnel.submit,
+        seal_on_complete=False,
+        retrieval_substrate=reuse_substrate,
+    )
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
     if gateway is not None:
         _HARD_CEILING_LAUNCHING.add(session_id)
@@ -950,24 +1287,20 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
     response: dict[str, Any] = {
         "session_id": session_id,
         "researches": [
-            {"investigation_id": leaf.investigation_id, "sub_question": leaf.sub_question,
-             "question_node_id": leaf.question_node_id}
+            {
+                "investigation_id": leaf.investigation_id,
+                "sub_question": leaf.sub_question,
+                "question_node_id": leaf.question_node_id,
+            }
             for leaf in leaves
         ],
         "aggregate_cap_usd": budget.aggregate_cap_usd,
         "spend_mode": req.spend_mode.value,
         "replayed": False,
+        "resumed": resumed,
     }
     if binding is not None and gateway is not None:
-        balance = gateway.ledger.balance(binding.run_id)
-        response["hard_ceiling"] = {
-            "run_id": binding.run_id,
-            "plan_digest": binding.plan_digest,
-            "approval_revision": binding.approval_revision,
-            "ceiling_cents": balance.ceiling_cents,
-            "available_cents": balance.available_cents,
-            "blocked_stages": list(HARD_MODE_SKIPPED_STAGES),
-        }
+        response["hard_ceiling"] = _safe_hard_ceiling_snapshot(gateway, binding)
     return response
 
 
@@ -985,10 +1318,7 @@ async def _run_to_completion(session: CascadeSession) -> None:
     stage = "join_and_merge"
     try:
         await session.join_and_merge()
-        if (
-            _SYNTHESIS_TAIL_RUNNER is not None
-            and session not in _HARD_CEILING_RUNS
-        ):
+        if _SYNTHESIS_TAIL_RUNNER is not None and session not in _HARD_CEILING_RUNS:
             stage = "synthesis_tail"
             pack = session.build_evidence_pack()
             await _SYNTHESIS_TAIL_RUNNER(session, pack)
@@ -1007,22 +1337,26 @@ async def _run_to_completion(session: CascadeSession) -> None:
                     "cascade execution reached terminal state",
                 )
             except Exception as exc:
-                logger.exception(
-                    "hard-ceiling close failed for %s: %s", binding.run_id, exc
-                )
+                logger.exception("hard-ceiling close failed for %s: %s", binding.run_id, exc)
 
 
 @cascade_router.get("/sessions/{session_id}")
-async def session_status(session_id: str) -> dict[str, Any]:
+async def session_status(session_id: str, request: Request) -> dict[str, Any]:
+    _enforce_hard_session_owner(session_id, request)
     live = _SESSIONS.get(session_id)
     if live is not None:
         cost = live.aggregate_cost()
         terminal = live.terminal_status()
-        return {
-            "session_id": session_id, "live": True,
+        response = {
+            "session_id": session_id,
+            "live": True,
             "researches": [
-                {"investigation_id": s.investigation_id, "sub_question": s.sub_question,
-                 "state": s.state, "question_node_id": s.question_node_id}
+                {
+                    "investigation_id": s.investigation_id,
+                    "sub_question": s.sub_question,
+                    "state": s.state,
+                    "question_node_id": s.question_node_id,
+                }
                 for s in live.status()
             ],
             "cost": cost,
@@ -1032,15 +1366,23 @@ async def session_status(session_id: str) -> dict[str, Any]:
             "deep_research_complete": terminal["deep_research_complete"],
             "synthesis_tail_error": terminal["synthesis_tail_error"],
         }
+        hard_ceiling = _hard_ceiling_snapshot_for_session(session_id, request)
+        if hard_ceiling is not None:
+            response["hard_ceiling"] = hard_ceiling
+        return response
     # Recovery from the event log (durability — session evicted / restart).
     rec = reconstruct_session(session_id)
     if not rec.researches:
         raise HTTPException(status_code=404, detail=f"no session {session_id!r}")
-    return {
-        "session_id": session_id, "live": False,
+    response = {
+        "session_id": session_id,
+        "live": False,
         "researches": [
-            {"investigation_id": r.investigation_id, "sub_question": r.sub_question,
-             "state": r.state}
+            {
+                "investigation_id": r.investigation_id,
+                "sub_question": r.sub_question,
+                "state": r.state,
+            }
             for r in rec.researches
         ],
         "all_terminal": rec.all_terminal,
@@ -1051,10 +1393,39 @@ async def session_status(session_id: str) -> dict[str, Any]:
         "deep_research_complete": None,
         "synthesis_tail_error": rec.synthesis_tail_error,
     }
+    hard_ceiling = _hard_ceiling_snapshot_for_session(session_id, request)
+    if hard_ceiling is not None:
+        response["hard_ceiling"] = hard_ceiling
+    return response
+
+
+@cascade_router.post("/sessions/{session_id}/spend/reconcile")
+async def reconcile_session_spend(session_id: str, request: Request) -> dict[str, Any]:
+    """Refresh authoritative spend evidence without retrying provider work.
+
+    The currently reachable hard path is zero-cost and therefore has no paid adapter to
+    poll. Future paid adapters register reconciliation behind the provider gateway; until
+    then unresolved sends remain held and visible rather than being guessed or retried.
+    """
+    _enforce_hard_session_owner(session_id, request)
+    snapshot = _hard_ceiling_snapshot_for_session(session_id, request)
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"no hard-ceiling session {session_id!r}")
+    return {
+        "hard_ceiling": snapshot,
+        "provider_checks_started": 0,
+        "message": (
+            "Authoritative status refreshed. Unresolved provider outcomes remain held "
+            "until a provider reconciliation adapter supplies evidence."
+            if snapshot["unknown_outcome_count"]
+            else "Authoritative status refreshed; no provider outcomes need reconciliation."
+        ),
+    }
 
 
 @cascade_router.get("/sessions/{session_id}/cost")
-async def session_cost(session_id: str) -> dict[str, Any]:
+async def session_cost(session_id: str, request: Request) -> dict[str, Any]:
+    _enforce_hard_session_owner(session_id, request)
     live = _SESSIONS.get(session_id)
     if live is None:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
@@ -1062,22 +1433,29 @@ async def session_cost(session_id: str) -> dict[str, Any]:
 
 
 @cascade_router.post("/sessions/{session_id}/researches/{investigation_id}/steer")
-async def steer(session_id: str, investigation_id: str, req: SteerRequest) -> dict[str, Any]:
+async def steer(
+    session_id: str, investigation_id: str, req: SteerRequest, request: Request
+) -> dict[str, Any]:
+    _enforce_hard_session_owner(session_id, request)
     live = _SESSIONS.get(session_id)
     if live is None:
         raise HTTPException(status_code=404, detail=f"session {session_id!r} not live")
     await live.steer(investigation_id, _command(req.kind, req.payload))
     status = {s.investigation_id: s.state for s in live.status()}
-    return {"session_id": session_id, "investigation_id": investigation_id,
-            "state": status.get(investigation_id)}
+    return {
+        "session_id": session_id,
+        "investigation_id": investigation_id,
+        "state": status.get(investigation_id),
+    }
 
 
 @cascade_router.get("/sessions/{session_id}/stream")
-async def session_stream(session_id: str) -> StreamingResponse:
+async def session_stream(session_id: str, request: Request) -> StreamingResponse:
     """Server-sent events: the multiplexed per-research step stream. Live
     sessions stream their full event queue; a reconnect after the session is
     gone replays the durable lifecycle state and closes. At-least-once —
     clients dedup on (investigation_id, seq)."""
+    _enforce_hard_session_owner(session_id, request)
     live = _SESSIONS.get(session_id)
 
     async def _live(live_session: CascadeSession) -> AsyncIterator[str]:
@@ -1089,11 +1467,18 @@ async def session_stream(session_id: str) -> StreamingResponse:
         idle_after_complete = 0
         while True:
             for ev in live_session.drain_nowait():
-                yield _sse({
-                    "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
-                    "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
-                    "state": ev.state.value if ev.state else None, "data": ev.data,
-                })
+                yield _sse(
+                    {
+                        "investigation_id": ev.investigation_id,
+                        "seq": ev.seq,
+                        "kind": ev.kind,
+                        "text": ev.text,
+                        "cost_usd": ev.cost_usd,
+                        "tokens": ev.tokens,
+                        "state": ev.state.value if ev.state else None,
+                        "data": ev.data,
+                    }
+                )
             if live_session.is_complete():
                 # Drain one more cycle to flush any final events, then close.
                 idle_after_complete += 1
@@ -1101,18 +1486,31 @@ async def session_stream(session_id: str) -> StreamingResponse:
                     break
             await asyncio.sleep(0.02)
         for ev in live_session.drain_nowait():
-            yield _sse({
-                "investigation_id": ev.investigation_id, "seq": ev.seq, "kind": ev.kind,
-                "text": ev.text, "cost_usd": ev.cost_usd, "tokens": ev.tokens,
-                "state": ev.state.value if ev.state else None, "data": ev.data,
-            })
+            yield _sse(
+                {
+                    "investigation_id": ev.investigation_id,
+                    "seq": ev.seq,
+                    "kind": ev.kind,
+                    "text": ev.text,
+                    "cost_usd": ev.cost_usd,
+                    "tokens": ev.tokens,
+                    "state": ev.state.value if ev.state else None,
+                    "data": ev.data,
+                }
+            )
         yield _sse({"kind": "session_done"})
 
     async def _recovered() -> AsyncIterator[str]:
         rec = reconstruct_session(session_id)
         for r in rec.researches:
-            yield _sse({"investigation_id": r.investigation_id, "kind": "status",
-                        "text": r.sub_question, "state": r.state})
+            yield _sse(
+                {
+                    "investigation_id": r.investigation_id,
+                    "kind": "status",
+                    "text": r.sub_question,
+                    "state": r.state,
+                }
+            )
         yield _sse({"kind": "session_done", "recovered": True})
 
     gen = _live(live) if live is not None else _recovered()

@@ -123,6 +123,17 @@ def test_exact_headroom_succeeds_and_next_cent_fails(tmp_path: Path) -> None:
     assert ledger.balance("run-1").available_cents == 0
 
 
+def test_session_balance_lookup_is_owner_scoped(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path, ceiling=500)
+    visible = ledger.balance_for_session("owner-1", "session-1")
+    assert visible is not None
+    assert visible.binding == _binding()
+    assert ledger.owner_for_session("session-1") == "owner-1"
+    assert ledger.balance_for_session("other-owner", "session-1") is None
+    assert ledger.balance_for_session("owner-1", "other-session") is None
+    assert ledger.owner_for_session("other-session") is None
+
+
 @pytest.mark.parametrize(
     "binding",
     [

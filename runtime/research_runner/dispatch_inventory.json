@@ -1,5 +1,14 @@
 [
   {
+    "seam_id": "cascade.operator.spend_approval",
+    "stage": "approval",
+    "source": "interfaces/research/api/cascade_routes.py",
+    "function": "_hard_ceiling_approval_receipt",
+    "call_symbol": "gateway.prepare_zero_cost",
+    "classification": "zero_cost_local",
+    "reason": "the exact operator authority is durably receipted before launch and has no provider charge"
+  },
+  {
     "seam_id": "cascade.session.launch",
     "stage": "launch",
     "source": "interfaces/research/api/cascade_routes.py",
