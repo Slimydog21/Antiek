@@ -13,10 +13,10 @@ chasing) — linked to the source asset. That twin is a first-class information
 asset: it joins the graph, feeds the collective synthesizer (#1835), and is
 itself searchable ("infinite information platform").
 
-**Pure except two injected seams.** ``TwinProposer`` is the only model boundary;
-``TwinAuthorizationVerifier`` validates the opaque operator receipt minted by
-the authenticated budget boundary. The module does no networking or credential
-handling. Without a verified receipt the twin is **withheld** and the proposer
+``TwinProposer`` is the only injected model boundary. Operator authority is an
+Ed25519-signed receipt minted by the authenticated budget boundary and verified
+inside this module against server configuration; callers cannot inject their
+own verifier. Without a valid receipt the twin is **withheld** and the proposer
 is never invoked. Withholding is honest (``synthesis_withheld=True``), never
 silent.
 
@@ -34,20 +34,26 @@ collective synthesizer with zero adapter friction.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
+import os
+import re
+import time
 from dataclasses import dataclass
 from typing import Protocol
 
+from nacl.exceptions import BadSignatureError
+from nacl.signing import VerifyKey
+
 from substrate.graph.insight_question import canonical_text
-from substrate.graph.ops import content_addressed_id
-from substrate.research_artifact.schema import (
-    ArtifactQuestion,
-    ResearchArtifactBody,
-)
+from substrate.research_artifact.schema import ResearchArtifactBody
 
 # The advisory authority tag — twin insights/questions are PROPOSED, not grounded.
 TWIN_AUTHORITY = "twin_note_taker_advisory"
+AUTHORITY_VERIFY_KEY_ENV = "ANTIEK_TWIN_AUTHORITY_VERIFY_KEY"
+_EVENT_ID_RE = re.compile(r"^evt-[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$")
 
 # Sensible floor on content length: a twin of nothing is nothing. Below this the
 # asset has no substance to propose from — fail-closed rather than invent.
@@ -80,6 +86,7 @@ class AssetContent:
     title: str
     content_text: str
     content_class: str = "asset"
+    source_event_ids: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -125,18 +132,21 @@ class TwinAuthorization:
     asset_id: str
     model_id: str
     budget_authority_id: str
-
-
-class TwinAuthorizationVerifier(Protocol):
-    """Trusted boundary that validates an opaque operator authorization."""
-
-    def __call__(self, authorization: TwinAuthorization) -> bool: ...
+    source_content_hash: str
+    source_event_ids: tuple[str, ...]
+    expires_at_unix: int
+    signature: str
 
 
 class TwinProposer(Protocol):
     """The single dispatch seam. Implementations reach a real model; tests fake it."""
 
-    def __call__(self, asset: AssetContent, *, model_id: str) -> TwinProposal: ...
+    def __call__(
+        self,
+        asset: AssetContent,
+        *,
+        authorization: TwinAuthorization,
+    ) -> TwinProposal: ...
 
 
 @dataclass(frozen=True)
@@ -165,7 +175,36 @@ class _NormalizedProposal:
 
 
 def _source_content_hash(asset: AssetContent) -> str:
-    return hashlib.sha256(asset.content_text.strip().encode("utf-8")).hexdigest()
+    return hashlib.sha256(asset.content_text.encode("utf-8")).hexdigest()
+
+
+def _authorization_payload(authorization: TwinAuthorization) -> bytes:
+    claims = {
+        "account_id": authorization.account_id,
+        "asset_id": authorization.asset_id,
+        "authorization_id": authorization.authorization_id,
+        "budget_authority_id": authorization.budget_authority_id,
+        "expires_at_unix": authorization.expires_at_unix,
+        "model_id": authorization.model_id,
+        "source_content_hash": authorization.source_content_hash,
+        "source_event_ids": list(authorization.source_event_ids),
+    }
+    return json.dumps(claims, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def _verify_authorization(authorization: TwinAuthorization) -> None:
+    """Verify signed authority against server configuration, never caller code."""
+    encoded_key = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "").strip()
+    if not encoded_key:
+        raise TwinGenerationError("twin authorization verification key is not configured")
+    if authorization.expires_at_unix <= int(time.time()):
+        raise TwinGenerationError("twin authorization has expired")
+    try:
+        verify_key = VerifyKey(base64.b64decode(encoded_key, validate=True))
+        signature = base64.b64decode(authorization.signature, validate=True)
+        verify_key.verify(_authorization_payload(authorization), signature)
+    except (BadSignatureError, ValueError, binascii.Error) as exc:
+        raise TwinGenerationError("twin authorization signature is invalid") from exc
 
 
 def _canonical_proposal_hash(
@@ -265,24 +304,18 @@ def _build_body(
 ) -> ResearchArtifactBody:
     """Assemble the twin ResearchArtifactBody from structured proposals.
 
-    Model-proposed insights stay in explicitly advisory ``agent_notes`` rather
-    than canonical grounded ``insights``. Questions remain questions, with
-    proposal-prefixed display text and canonical 64-bit content identities.
+    All model proposals stay in ``agent_notes``, the canonical non-graph field.
+    Neither proposed claims nor proposed questions can masquerade as graph
+    findings/gaps before evidence-backed promotion.
     """
-    questions: list[ArtifactQuestion] = []
-    for question in proposal.questions:
-        node_id = content_addressed_id(
-            "twin-proposed-question",
-            canonical_text(question),
-        )
-        questions.append(ArtifactQuestion(node_id=node_id, text=f"Proposed question: {question}"))
-
     agent_notes: list[str] = []
     if not withheld:
         agent_notes.append(
             f"Authority: {TWIN_AUTHORITY}. Proposals are ungrounded until evidence-backed promotion."
         )
+        agent_notes.append(f"Source asset: {asset.asset_id}")
         agent_notes.extend(f"Proposed insight: {insight}" for insight in proposal.insights)
+        agent_notes.extend(f"Proposed question: {question}" for question in proposal.questions)
 
     excerpt = (
         None
@@ -294,10 +327,10 @@ def _build_body(
         investigation_id=f"twin-{asset.asset_id}",
         problem_question=f"Advisory twin notes: {asset.title or asset.asset_id}",
         insights=[],
-        open_questions=questions,
+        open_questions=[],
         synthesis_excerpt=excerpt,
         synthesis_withheld=withheld,
-        source_event_ids=[asset.asset_id],
+        source_event_ids=list(asset.source_event_ids),
         agent_notes=agent_notes,
     )
 
@@ -308,7 +341,6 @@ def generate_twin(
     caller: TwinProposer,
     model_id: str,
     authorization: TwinAuthorization | None = None,
-    verify_authorization: TwinAuthorizationVerifier | None = None,
 ) -> TwinDocument:
     """Generate the twin note document for an information asset.
 
@@ -320,6 +352,11 @@ def generate_twin(
         raise TwinGenerationError("asset_id must be non-empty")
     if not model_id.strip():
         raise TwinGenerationError("model_id must be non-empty")
+    if not asset.source_event_ids or any(
+        not isinstance(event_id, str) or not _EVENT_ID_RE.fullmatch(event_id)
+        for event_id in asset.source_event_ids
+    ):
+        raise TwinGenerationError("source_event_ids must contain real event identifiers")
 
     stripped = asset.content_text.strip()
     if len(stripped) < MIN_CONTENT_CHARS:
@@ -327,9 +364,9 @@ def generate_twin(
             f"asset content too short to propose from ({len(stripped)} < "
             f"{MIN_CONTENT_CHARS} chars) — no honest twin from nothing"
         )
-    if len(stripped) > MAX_CONTENT_CHARS:
+    if len(asset.content_text) > MAX_CONTENT_CHARS:
         raise TwinGenerationError(
-            f"asset content exceeds backstop ceiling ({len(stripped)} > "
+            f"asset content exceeds backstop ceiling ({len(asset.content_text)} > "
             f"{MAX_CONTENT_CHARS} chars) — caller must pre-budget the context window"
         )
 
@@ -338,30 +375,44 @@ def generate_twin(
     budget_authority_id: str | None = None
 
     if authorization is not None:
-        if verify_authorization is None:
-            raise TwinGenerationError("authorization verifier is required")
-        if not all(
-            value.strip()
-            for value in (
-                authorization.authorization_id,
-                authorization.account_id,
-                authorization.asset_id,
-                authorization.model_id,
-                authorization.budget_authority_id,
-            )
+        if not isinstance(authorization, TwinAuthorization):
+            raise TwinGenerationError("authorization must be a TwinAuthorization receipt")
+        if not isinstance(authorization.expires_at_unix, int) or isinstance(
+            authorization.expires_at_unix, bool
         ):
+            raise TwinGenerationError("authorization expiry must be an integer timestamp")
+        if not isinstance(authorization.source_event_ids, tuple) or any(
+            not isinstance(event_id, str) for event_id in authorization.source_event_ids
+        ):
+            raise TwinGenerationError("authorization source events must be a tuple of text")
+        string_claims = (
+            authorization.authorization_id,
+            authorization.account_id,
+            authorization.asset_id,
+            authorization.model_id,
+            authorization.budget_authority_id,
+            authorization.source_content_hash,
+            authorization.signature,
+        )
+        if not all(isinstance(value, str) for value in string_claims):
+            raise TwinGenerationError("authorization string claims must be text")
+        if not all(value.strip() for value in string_claims):
             raise TwinGenerationError("authorization fields must be non-empty")
         if authorization.asset_id != asset.asset_id:
             raise TwinGenerationError("authorization is bound to a different asset")
         if authorization.model_id != model_id:
             raise TwinGenerationError("authorization is bound to a different model")
-        if not verify_authorization(authorization):
-            raise TwinGenerationError("authorization verification failed")
+        if authorization.source_content_hash != _source_content_hash(asset):
+            raise TwinGenerationError("authorization is bound to a different source revision")
+        if authorization.source_event_ids != asset.source_event_ids:
+            raise TwinGenerationError("authorization is bound to different source events")
+        _verify_authorization(authorization)
         authorization_id = authorization.authorization_id
         budget_authority_id = authorization.budget_authority_id
-        normalized = _normalize_proposal(asset, caller(asset, model_id=model_id))
-    elif verify_authorization is not None:
-        raise TwinGenerationError("authorization receipt is required")
+        normalized = _normalize_proposal(
+            asset,
+            caller(asset, authorization=authorization),
+        )
 
     withheld = not bool(normalized.insights or normalized.questions or normalized.synthesis_excerpt)
     body = _build_body(asset, normalized, withheld=withheld)
@@ -385,6 +436,7 @@ def generate_twin(
 
 
 __all__ = [
+    "AUTHORITY_VERIFY_KEY_ENV",
     "AssetContent",
     "MAX_INSIGHTS",
     "MAX_PROPOSAL_ITEM_CHARS",
@@ -397,7 +449,6 @@ __all__ = [
     "ProposedQuestion",
     "TWIN_AUTHORITY",
     "TwinAuthorization",
-    "TwinAuthorizationVerifier",
     "TwinDocument",
     "TwinGenerationError",
     "TwinProposer",
