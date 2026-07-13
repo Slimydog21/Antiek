@@ -38,6 +38,8 @@ const updateEngagementSessionView = vi.hoisted(() =>
 const mergeEngagementSessions = vi.hoisted(() => vi.fn());
 const fetchSessionsCollective = vi.hoisted(() => vi.fn());
 const confirmSessionsCollective = vi.hoisted(() => vi.fn());
+const reviewCollectiveSubstackExcerpt = vi.hoisted(() => vi.fn());
+const confirmCollectiveSubstackExcerpt = vi.hoisted(() => vi.fn());
 const launchCollectiveResearch = vi.hoisted(() => vi.fn());
 const createCollectiveWrittenAnalysis = vi.hoisted(() => vi.fn());
 const listOwnedCollectiveUnits = vi.hoisted(() => vi.fn());
@@ -61,6 +63,8 @@ vi.mock("../../api/engagement", () => ({
   mergeEngagementSessions,
   fetchSessionsCollective,
   confirmSessionsCollective,
+  reviewCollectiveSubstackExcerpt,
+  confirmCollectiveSubstackExcerpt,
   launchCollectiveResearch,
   createCollectiveWrittenAnalysis,
   listOwnedCollectiveUnits,

@@ -15,6 +15,7 @@ from substrate.midnight_oil.substack_authorization import (
     SUBSTACK_PROVIDER_CONSTRAINTS_SHA256,
     SubstackExcerptReceipt,
     SubstackUseAuthorization,
+    SubstackUseAuthorizationV2,
     canonical_substack_post,
     create_substack_excerpt_receipt,
     owner_scope_sha256,
@@ -25,6 +26,7 @@ from substrate.midnight_oil.substack_authorization import (
     signed_substack_authorization,
     store_substack_authorization,
     store_substack_excerpt_receipt,
+    stored_substack_authorization_state,
     substack_excerpt_receipt_sha256,
     verify_substack_authorization,
 )
@@ -119,6 +121,31 @@ def test_signed_authorization_and_content_addressed_unicode_receipt() -> None:
     assert receipt.rights_tier == "not_applicable"
     with pytest.raises(ValueError, match="signed commitment"):
         _receipt(authorization, text="A second selection")
+
+
+def test_v2_signs_lawful_access_separately_and_preserves_v1_domain() -> None:
+    v1 = _authorization()
+    material = v1.model_dump(mode="json")
+    for computed in ("authorization_sha256", "signature_sha256", "key_id"):
+        material.pop(computed)
+    material.update(schema_version=2, owner_affirms_lawful_access=True)
+    v2 = signed_substack_authorization(material, key_id="substack-test-key", signing_key=_KEY)
+    assert isinstance(v2, SubstackUseAuthorizationV2)
+    assert v2.owner_affirms_lawful_access is True
+    assert v2.authorization_sha256 != v1.authorization_sha256
+    verify_substack_authorization(
+        v2,
+        verification_keys={"substack-test-key": _KEY},
+        owner_id=_OWNER,
+        now_ms=2_000,
+    )
+    material.pop("owner_affirms_lawful_access")
+    with pytest.raises(ValidationError):
+        signed_substack_authorization(material, key_id="substack-test-key", signing_key=_KEY)
+    material["owner_affirms_lawful_access"] = True
+    material["owner_affirms_provider_processing"] = False
+    with pytest.raises(ValidationError):
+        signed_substack_authorization(material, key_id="substack-test-key", signing_key=_KEY)
 
 
 @pytest.mark.parametrize(
@@ -293,6 +320,22 @@ def test_owner_private_store_is_idempotent_and_revocation_is_live() -> None:
         now_ms=2_000,
     )
     assert first == second
+    assert stored_substack_authorization_state(
+        store,
+        owner_id=_OWNER,
+        authorization_id=authorization.authorization_id,
+        expected_authorization_sha256=authorization.authorization_sha256,
+        verification_keys={"substack-test-key": _KEY},
+        now_ms=2_000,
+    ) == "active"
+    assert stored_substack_authorization_state(
+        store,
+        owner_id=_OWNER,
+        authorization_id=authorization.authorization_id,
+        expected_authorization_sha256=authorization.authorization_sha256,
+        verification_keys={"substack-test-key": _KEY},
+        now_ms=20_000,
+    ) == "expired"
     assert (
         require_active_stored_substack_authorization(
             store,
@@ -312,6 +355,14 @@ def test_owner_private_store_is_idempotent_and_revocation_is_live() -> None:
         clock_ms=lambda: 3_000,
     )
     assert revoked["state"] == "revoked"
+    assert stored_substack_authorization_state(
+        store,
+        owner_id=_OWNER,
+        authorization_id=authorization.authorization_id,
+        expected_authorization_sha256=authorization.authorization_sha256,
+        verification_keys={"substack-test-key": _KEY},
+        now_ms=3_001,
+    ) == "revoked"
     with pytest.raises(ValueError, match="unavailable"):
         require_active_stored_substack_authorization(
             store,

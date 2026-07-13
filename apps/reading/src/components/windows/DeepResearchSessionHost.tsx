@@ -88,6 +88,7 @@ import {
 import { ResearchProgressPanel } from "../engagement/ResearchProgressPanel";
 import { SessionFlywheelPanel } from "../engagement/SessionFlywheelPanel";
 import { SpawnMergePanel } from "../engagement/SpawnMergePanel";
+import { SubstackExcerptReviewPanel } from "../engagement/SubstackExcerptReviewPanel";
 import { TwinNotesPanel } from "../engagement/TwinNotesPanel";
 import { collectDeepResearchSpawnIds } from "../../workspace/collectDeepResearchSpawnIds";
 import { syncDeepResearchWindowModeDurably } from "../../workspace/deepResearchWindow";
@@ -1524,9 +1525,25 @@ export default function DeepResearchSessionHost(props: DeepResearchSessionHostPr
             </p>
           ) : null}
           {confirmedCollective ? (
-            <p className="text-[10px] font-mono" data-testid="confirmed-session-collective">
-              Confirmed unit {confirmedCollective.collective_unit_id} · source assets unchanged
-            </p>
+            <>
+              <p className="text-[10px] font-mono" data-testid="confirmed-session-collective">
+                Confirmed unit {confirmedCollective.collective_unit_id} · source assets unchanged
+              </p>
+              <SubstackExcerptReviewPanel
+                collective={confirmedCollective}
+                onAuthorityRefresh={async () => {
+                  const refreshed = await getOwnedCollectiveUnit(
+                    confirmedCollective.collective_unit_id,
+                  );
+                  setConfirmedCollective((current) =>
+                    current?.collective_unit_id === refreshed.collective_unit_id &&
+                    current.preview_sha256 === refreshed.preview_sha256
+                      ? refreshed
+                      : current,
+                  );
+                }}
+              />
+            </>
           ) : null}
           {sessionCollective?.html ? (
             <iframe

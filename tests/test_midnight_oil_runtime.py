@@ -233,6 +233,41 @@ def test_production_app_does_not_overwrite_attested_provider(tmp_path: Path) -> 
     path, environment, _ = _runtime_files(tmp_path)
     app = create_midnight_oil_production_app(path, environ=environment)
     assert app.state.midnight_oil_runtime.config.state_dir == tmp_path / "state"
+
+
+def test_production_app_mounts_only_a_distinct_substack_authorization_keyring(
+    tmp_path: Path,
+) -> None:
+    path, environment, _ = _runtime_files(tmp_path)
+    environment.update(
+        {
+            "ANTIEK_SUBSTACK_AUTH_ACTIVE_KEY_ID": "substack-2026-07",
+            "ANTIEK_SUBSTACK_AUTH_SIGNING_KEY_ENV": "SUBSTACK_PRIVATE_KEY",
+            "ANTIEK_SUBSTACK_AUTH_VERIFICATION_KEY_ENVS_JSON": json.dumps(
+                {"substack-2026-07": "SUBSTACK_PRIVATE_KEY"}
+            ),
+            "SUBSTACK_PRIVATE_KEY": base64.urlsafe_b64encode(b"s" * 32).decode().rstrip("="),
+        }
+    )
+    app = create_midnight_oil_production_app(path, environ=environment)
+    dependencies = app.state.substack_authorization_dependencies
+    assert dependencies.engagement_store is app.state.midnight_oil_runtime.stores.engagement_store
+    assert dependencies.active_key_id == "substack-2026-07"
+
+    environment["ANTIEK_SUBSTACK_AUTH_SIGNING_KEY_ENV"] = "MO_PRIMARY_KEY"
+    environment["ANTIEK_SUBSTACK_AUTH_VERIFICATION_KEY_ENVS_JSON"] = json.dumps(
+        {"substack-2026-07": "MO_PRIMARY_KEY"}
+    )
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        create_midnight_oil_production_app(path, environ=environment)
+
+    environment["ANTIEK_SUBSTACK_AUTH_SIGNING_KEY_ENV"] = "SUBSTACK_KEY_ALIAS"
+    environment["ANTIEK_SUBSTACK_AUTH_VERIFICATION_KEY_ENVS_JSON"] = json.dumps(
+        {"substack-2026-07": "SUBSTACK_KEY_ALIAS"}
+    )
+    environment["SUBSTACK_KEY_ALIAS"] = environment["MO_PRIMARY_KEY"]
+    with pytest.raises(MidnightOilRuntimeConfigError, match="composition is invalid"):
+        create_midnight_oil_production_app(path, environ=environment)
     provider = get_provider("verified-provider")
     assert provider.idempotency_guaranteed is True  # type: ignore[attr-defined]
 

@@ -43,8 +43,11 @@ from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Query, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
+from interfaces.research.api.substack_authorization_dependencies import (
+    SubstackAuthorizationApiDependencies,
+)
 from substrate.engagement_spine import (
     HighlightSelection,
     InMemoryEngagementStore,
@@ -124,6 +127,19 @@ from substrate.graph_per_user.runtime import (
     owner_graph_path_sha256,
     owner_graph_readiness,
 )
+from substrate.midnight_oil.substack_authorization import (
+    canonical_substack_post,
+    stored_substack_authorization_state,
+)
+from substrate.midnight_oil.substack_review import (
+    claim_substack_excerpt_review,
+    confirm_substack_excerpt_review,
+    get_substack_excerpt_review,
+    list_confirmed_substack_reviews,
+    pending_substack_review_count,
+    reconcile_pending_substack_reviews,
+    review_draft_projection,
+)
 
 engagement_router = APIRouter(prefix="/engagement", tags=["engagement"])
 
@@ -132,6 +148,7 @@ _engagement_store: EngagementStore | None = None
 _session_store: SessionStore | None = None
 _merge_receipt_store: MergeReceiptStore | None = None
 _bench_usage_store: Any = None
+_SUBSTACK_AUTHORIZATION_DEPS = "substack_authorization_dependencies"
 
 
 def get_bench_usage_store(*, create_if_missing: bool = True) -> Any:
@@ -240,6 +257,15 @@ def _request_owner(request: Request) -> str:
     if not owner:
         raise HTTPException(status_code=401, detail="authenticated identity is unavailable")
     return owner
+
+
+def _substack_authorization_deps(request: Request) -> SubstackAuthorizationApiDependencies:
+    value = getattr(request.app.state, _SUBSTACK_AUTHORIZATION_DEPS, None)
+    if not isinstance(value, SubstackAuthorizationApiDependencies):
+        raise HTTPException(
+            status_code=503, detail="Substack excerpt review signing is unavailable"
+        )
+    return value
 
 
 def _require_legacy_operator(request: Request) -> None:
@@ -416,6 +442,67 @@ class SessionsCollectiveConfirmBody(SessionsCollectiveBody):
     idempotency_key: str = Field(min_length=8, max_length=128)
 
 
+class CollectiveSubstackExcerptReviewBody(_ClosedSessionBody):
+    expected_collective_preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ref_id: str = Field(pattern=r"^sref_[0-9a-f]{16}$")
+    selection_text: str = Field(min_length=1, max_length=8_192)
+    source_representation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_representation_bytes: int = Field(ge=1, le=100_000_000)
+    source_byte_start: int = Field(ge=0)
+    authorization_lifetime_minutes: int = Field(ge=1, le=44_640)
+    owner_affirms_lawful_access: Literal[True]
+    owner_affirms_provider_processing: Literal[True]
+    partial_excerpt_affirmed: Literal[True]
+    redistribution_authorized: Literal[False]
+    training_authorized: Literal[False]
+    publication_authorized: Literal[False]
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9._:-]{8,128}$")
+
+
+class CollectiveSubstackExcerptConfirmBody(_ClosedSessionBody):
+    review_id: str = Field(pattern=r"^sureview_[0-9a-f]{24}$")
+    expected_review_preview_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    idempotency_key: str = Field(pattern=r"^[A-Za-z0-9._:-]{8,128}$")
+
+
+def _reject_duplicate_review_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    out: dict[str, object] = {}
+    for key, value in pairs:
+        if key in out:
+            raise ValueError("Substack review contains duplicate JSON keys")
+        out[key] = value
+    return out
+
+
+async def _parse_substack_review_body[ReviewBody: BaseModel](
+    request: Request, model: type[ReviewBody]
+) -> ReviewBody:
+    length = request.headers.get("content-length")
+    if length is not None:
+        try:
+            if int(length) > 65_536:
+                raise HTTPException(status_code=413, detail="Substack review request is too large")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail="invalid content length") from exc
+    payload = await request.body()
+    if not payload or len(payload) > 65_536:
+        raise HTTPException(status_code=413, detail="Substack review request is too large")
+    try:
+        decoded = payload.decode("utf-8", errors="strict")
+        raw = json.loads(decoded, object_pairs_hook=_reject_duplicate_review_keys)
+        return model.model_validate(raw)
+    except UnicodeDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Substack review requires UTF-8 JSON") from exc
+    except json.JSONDecodeError as exc:
+        raise HTTPException(status_code=400, detail="Substack review JSON is invalid") from exc
+    except ValidationError as exc:
+        raise HTTPException(status_code=422, detail="Substack review body is invalid") from exc
+    except ValueError as exc:
+        if "duplicate JSON keys" in str(exc):
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise
+
+
 class CollectiveLaunchResearchBody(_ClosedSessionBody):
     idempotency_key: str = Field(min_length=8, max_length=128)
     anchor_asset_id: str = Field(min_length=1, max_length=512)
@@ -559,7 +646,9 @@ def get_collective_execution_status(
     try:
         deps = midnight_oil_dependencies(request)
     except RuntimeError as exc:
-        raise HTTPException(status_code=503, detail="Midnight Oil execution is unavailable") from exc
+        raise HTTPException(
+            status_code=503, detail="Midnight Oil execution is unavailable"
+        ) from exc
     authority = deps.owner_jobs.get_job(owner_user_id=owner_id, job_id=job_id)
     if (
         authority is None
@@ -2061,6 +2150,118 @@ def post_sessions_collective_confirm(
     return durable
 
 
+def _confirmed_collective_substack_ref(unit: dict[str, Any], ref_id: str) -> dict[str, str]:
+    material = unit.get("material")
+    source = material.get("unit") if isinstance(material, dict) else None
+    references = source.get("source_references") if isinstance(source, dict) else None
+    if not isinstance(references, list):
+        raise HTTPException(status_code=409, detail="collective source authority is invalid")
+    matches = [row for row in references if isinstance(row, dict) and row.get("ref_id") == ref_id]
+    if len(matches) != 1 or matches[0].get("kind") != "substack":
+        raise HTTPException(status_code=404, detail="collective Substack reference not found")
+    row = matches[0]
+    canonical_url = row.get("canonical_url")
+    external_id = row.get("external_id")
+    if not isinstance(canonical_url, str) or not isinstance(external_id, str):
+        raise HTTPException(status_code=409, detail="collective source authority is invalid")
+    try:
+        canonical_substack_post(canonical_url, external_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=409, detail="collective source authority is invalid"
+        ) from exc
+    return {
+        "ref_id": ref_id,
+        "canonical_url": canonical_url,
+        "external_id": external_id,
+    }
+
+
+@engagement_router.post("/sessions/collective/{unit_id}/substack-excerpts/review")
+async def post_collective_substack_excerpt_review(
+    unit_id: str, request: Request
+) -> dict[str, object]:
+    owner_id = _request_owner(request)
+    dependencies = _substack_authorization_deps(request)
+    if dependencies.engagement_store is not _eng():
+        raise HTTPException(status_code=503, detail="Substack review store is unavailable")
+    unit = get_collective_unit(unit_id, store=dependencies.engagement_store, owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    body = await _parse_substack_review_body(request, CollectiveSubstackExcerptReviewBody)
+    if unit.get("preview_sha256") != body.expected_collective_preview_sha256:
+        raise HTTPException(status_code=409, detail="collective preview changed")
+    source = _confirmed_collective_substack_ref(unit, body.ref_id)
+    now_ms = dependencies.clock_ms()
+    nonce = dependencies.token_hex(16)
+    try:
+        draft = claim_substack_excerpt_review(
+            dependencies.engagement_store,
+            owner_id=owner_id,
+            idempotency_key=body.idempotency_key,
+            collective_unit_id=unit_id,
+            collective_preview_sha256=body.expected_collective_preview_sha256,
+            ref_id=source["ref_id"],
+            canonical_url=source["canonical_url"],
+            external_id=source["external_id"],
+            selection_text=body.selection_text,
+            source_representation_sha256=body.source_representation_sha256,
+            source_representation_bytes=body.source_representation_bytes,
+            source_byte_start=body.source_byte_start,
+            lifetime_ms=body.authorization_lifetime_minutes * 60_000,
+            now_ms=now_ms,
+            nonce=nonce,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return review_draft_projection(draft)
+
+
+@engagement_router.post("/sessions/collective/{unit_id}/substack-excerpts/confirm")
+async def post_collective_substack_excerpt_confirm(
+    unit_id: str, request: Request
+) -> dict[str, object]:
+    owner_id = _request_owner(request)
+    dependencies = _substack_authorization_deps(request)
+    if dependencies.engagement_store is not _eng():
+        raise HTTPException(status_code=503, detail="Substack review store is unavailable")
+    body = await _parse_substack_review_body(request, CollectiveSubstackExcerptConfirmBody)
+    draft = get_substack_excerpt_review(
+        dependencies.engagement_store, owner_id=owner_id, review_id=body.review_id
+    )
+    if draft is None or draft.collective_unit_id != unit_id:
+        raise HTTPException(status_code=404, detail="Substack review not found")
+    unit = get_collective_unit(unit_id, store=dependencies.engagement_store, owner_id=owner_id)
+    if unit is None:
+        raise HTTPException(status_code=404, detail="collective unit not found")
+    if unit.get("preview_sha256") != draft.collective_preview_sha256:
+        raise HTTPException(status_code=409, detail="collective preview changed")
+    source = _confirmed_collective_substack_ref(unit, draft.ref_id)
+    if source["canonical_url"] != draft.canonical_url or source["external_id"] != draft.external_id:
+        raise HTTPException(status_code=409, detail="collective source authority changed")
+    try:
+        overlay = confirm_substack_excerpt_review(
+            dependencies.engagement_store,
+            owner_id=owner_id,
+            review_id=body.review_id,
+            expected_review_preview_sha256=body.expected_review_preview_sha256,
+            idempotency_key=body.idempotency_key,
+            key_id=dependencies.active_key_id,
+            signing_key=dependencies.signing_key,
+            verification_keys=dependencies.verification_keys,
+            now_ms=dependencies.clock_ms(),
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Substack review not found") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {
+        **overlay.model_dump(mode="json"),
+        "execution_ready": False,
+        "publication_execution_enabled": False,
+    }
+
+
 def _project_collective_lineage(
     unit: dict[str, Any],
     owner_id: str,
@@ -2191,7 +2392,59 @@ def get_owned_collective_unit(
         lineage, next_cursor = _project_collective_lineage(
             unit, owner_id, cursor=lineage_cursor, limit=lineage_limit
         )
-        return {**unit, "lineage": lineage, "lineage_next_cursor": next_cursor}
+        dependencies = getattr(request.app.state, _SUBSTACK_AUTHORIZATION_DEPS, None)
+        reviews: list[dict[str, object]] = []
+        if isinstance(dependencies, SubstackAuthorizationApiDependencies):
+            if dependencies.engagement_store is not _eng():
+                raise ValueError("Substack review store conflicts")
+            reconcile_pending_substack_reviews(
+                dependencies.engagement_store,
+                owner_id=owner_id,
+                collective_unit_id=unit_id,
+                collective_preview_sha256=str(unit.get("preview_sha256") or ""),
+                active_key_id=dependencies.active_key_id,
+                signing_key=dependencies.signing_key,
+                verification_keys=dependencies.verification_keys,
+                now_ms=dependencies.clock_ms(),
+            )
+            reviews = []
+            for item in list_confirmed_substack_reviews(
+                dependencies.engagement_store,
+                owner_id=owner_id,
+                collective_unit_id=unit_id,
+                collective_preview_sha256=str(unit.get("preview_sha256") or ""),
+            ):
+                reviews.append(
+                    {
+                        **item.model_dump(mode="json"),
+                        "authorization_state": stored_substack_authorization_state(
+                            dependencies.engagement_store,
+                            owner_id=owner_id,
+                            authorization_id=item.authorization_id,
+                            expected_authorization_sha256=item.authorization_sha256,
+                            verification_keys=dependencies.verification_keys,
+                            now_ms=dependencies.clock_ms(),
+                        ),
+                        "execution_ready": False,
+                        "publication_execution_enabled": False,
+                    }
+                )
+        return {
+            **unit,
+            "lineage": lineage,
+            "lineage_next_cursor": next_cursor,
+            "substack_excerpt_reviews": reviews,
+            "pending_substack_excerpt_review_count": (
+                pending_substack_review_count(
+                    dependencies.engagement_store,
+                    owner_id=owner_id,
+                    collective_unit_id=unit_id,
+                    collective_preview_sha256=str(unit.get("preview_sha256") or ""),
+                )
+                if isinstance(dependencies, SubstackAuthorizationApiDependencies)
+                else 0
+            ),
+        }
     except ValueError as exc:
         raise HTTPException(
             status_code=409, detail="collective lineage requires reconciliation"
@@ -2436,9 +2689,7 @@ def post_collective_execution_prepare(
         "live": True,
         "publication_manifest_sha256": publication_manifest.manifest_sha256,
         "publication_capability_sha256": (
-            None
-            if publication_capability is None
-            else publication_capability.capability_sha256
+            None if publication_capability is None else publication_capability.capability_sha256
         ),
     }
     try:
@@ -2472,9 +2723,7 @@ def post_collective_execution_prepare(
         fanout_depth=body.fanout_depth,
         publication_manifest_sha256=publication_manifest.manifest_sha256,
         publication_capability_sha256=(
-            None
-            if publication_capability is None
-            else publication_capability.capability_sha256
+            None if publication_capability is None else publication_capability.capability_sha256
         ),
     )
     binding = {
@@ -2489,19 +2738,13 @@ def post_collective_execution_prepare(
         "publication_manifest_json": publication_manifest.model_dump_json(),
         "publication_preflight_ready": "true" if source_scope_ready else "false",
         "publication_capability_sha256": (
-            None
-            if publication_capability is None
-            else publication_capability.capability_sha256
+            None if publication_capability is None else publication_capability.capability_sha256
         ),
         "publication_capability_id": (
-            None
-            if publication_capability is None
-            else publication_capability.capability_id
+            None if publication_capability is None else publication_capability.capability_id
         ),
         "publication_capability_expires_at_ms": (
-            None
-            if publication_capability is None
-            else str(publication_capability.expires_at_ms)
+            None if publication_capability is None else str(publication_capability.expires_at_ms)
         ),
     }
     identity_digest = hashlib.sha256(
@@ -2549,10 +2792,7 @@ def post_collective_execution_prepare(
             },
         )
         authority = deps.owner_jobs.get_job(owner_user_id=owner_id, job_id=job_id)
-        if (
-            authority is None
-            or authority.payload.get("context_binding_sha256") != binding_hash
-        ):
+        if authority is None or authority.payload.get("context_binding_sha256") != binding_hash:
             raise ValueError("execution authority requires reconciliation")
         recommended = authority.payload.get("recommended_ceiling_cents")
         if type(recommended) is not int:
@@ -2586,14 +2826,10 @@ def post_collective_execution_prepare(
             "rights_policy_id": publication_manifest.rights_policy_id,
             "connector_capability_id": publication_manifest.connector_capability_id,
             "capability_sha256": (
-                None
-                if publication_capability is None
-                else publication_capability.capability_sha256
+                None if publication_capability is None else publication_capability.capability_sha256
             ),
             "capability_expires_at_ms": (
-                None
-                if publication_capability is None
-                else publication_capability.expires_at_ms
+                None if publication_capability is None else publication_capability.expires_at_ms
             ),
             "entries": [row.model_dump(mode="json") for row in publication_manifest.sources],
             "required_count": len(publication_manifest.sources),
@@ -2799,7 +3035,17 @@ def _offline_promote_question(
     return question_node_id(text)
 
 
-def register_engagement_routes(app: FastAPI) -> None:
+def register_engagement_routes(
+    app: FastAPI,
+    *,
+    substack_authorization_dependencies: SubstackAuthorizationApiDependencies | None = None,
+) -> None:
+    if substack_authorization_dependencies is not None:
+        setattr(
+            app.state,
+            _SUBSTACK_AUTHORIZATION_DEPS,
+            substack_authorization_dependencies,
+        )
     app.include_router(engagement_router)
 
 

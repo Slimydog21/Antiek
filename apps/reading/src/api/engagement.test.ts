@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   attachSourceRefs,
+  confirmCollectiveSubstackExcerpt,
   confirmSessionTwins,
   fetchResearchContext,
   getOwnedCollectiveUnit,
@@ -12,6 +13,7 @@ import {
   mergeSpawnOutputs,
   openEngagementSession,
   prepareCollectiveExecution,
+  reviewCollectiveSubstackExcerpt,
   spawnFromHighlight,
   updateEngagementSessionView,
 } from "./engagement";
@@ -246,6 +248,40 @@ describe("engagement API client", () => {
     expect(mockFetch.mock.calls[1][0]).toBe(
       "/engagement/sessions/collective/cunit_aaaaaaaaaaaaaaaaaaaaaaaa",
     );
+    expect(mockFetch.mock.calls[1][1]).toEqual({ cache: "no-store" });
+  });
+
+  it("reviews and confirms one private Substack excerpt without owner or signing material", async () => {
+    mockFetch
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ review_id: "sureview_1" }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ overlay_id: "csubrev_1" }) });
+    await reviewCollectiveSubstackExcerpt("cunit_aaaaaaaaaaaaaaaaaaaaaaaa", {
+      expected_collective_preview_sha256: "b".repeat(64),
+      ref_id: "sref_aaaaaaaaaaaaaaaa",
+      selection_text: "selected",
+      source_representation_sha256: "c".repeat(64),
+      source_representation_bytes: 100,
+      source_byte_start: 10,
+      authorization_lifetime_minutes: 30,
+      owner_affirms_lawful_access: true,
+      owner_affirms_provider_processing: true,
+      partial_excerpt_affirmed: true,
+      redistribution_authorized: false,
+      training_authorized: false,
+      publication_authorized: false,
+      idempotency_key: "review-key-001",
+    });
+    await confirmCollectiveSubstackExcerpt("cunit_aaaaaaaaaaaaaaaaaaaaaaaa", {
+      review_id: "sureview_aaaaaaaaaaaaaaaaaaaaaaaa",
+      expected_review_preview_sha256: "d".repeat(64),
+      idempotency_key: "confirm-key-001",
+    });
+    const reviewBody = JSON.parse((mockFetch.mock.calls[0][1] as { body: string }).body);
+    expect(reviewBody).not.toHaveProperty("owner_id");
+    expect(reviewBody).not.toHaveProperty("canonical_url");
+    expect(reviewBody).not.toHaveProperty("signing_key");
+    expect(String(mockFetch.mock.calls[0][0])).toContain("/substack-excerpts/review");
+    expect(String(mockFetch.mock.calls[1][0])).toContain("/substack-excerpts/confirm");
   });
 
   it("prepares and polls a collective execution without caller owner authority", async () => {

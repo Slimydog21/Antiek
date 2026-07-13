@@ -1465,6 +1465,7 @@ def create_app(
     wrestling_embedder: Any = None,
     register_providers: bool = True,
     midnight_oil_dependencies: Any = None,
+    substack_authorization_dependencies: Any = None,
     enable_midnight_oil: bool = False,
     operator_auth_environ: Mapping[str, str] | None = None,
     auth_account_store: Any = None,
@@ -1867,7 +1868,19 @@ def create_app(
     # Engagement spine — research↔reading spawn/refs/context/collective +
     # floating-session flywheel (process-local store MVP; residual (w)).
     from .engagement_routes import register_engagement_routes
-    register_engagement_routes(app)
+    if substack_authorization_dependencies is not None:
+        from .substack_authorization_dependencies import (
+            SubstackAuthorizationApiDependencies,
+        )
+
+        if not isinstance(
+            substack_authorization_dependencies, SubstackAuthorizationApiDependencies
+        ):
+            raise RuntimeError("Substack authorization dependencies are invalid")
+    register_engagement_routes(
+        app,
+        substack_authorization_dependencies=substack_authorization_dependencies,
+    )
     # Residual (cb): env-gated live twin seed note_taker (default no-op).
     try:
         from substrate.engagement_spine.twin_seed_live_wiring import (

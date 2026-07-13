@@ -106,6 +106,66 @@ export type ConfirmedCollectiveUnit = {
   material: { source_session_ids: string[]; unit: CollectiveResponse; prompt_block: string };
   lineage?: CollectiveLineageEdge[];
   lineage_next_cursor?: string | null;
+  substack_excerpt_reviews?: ConfirmedSubstackExcerptReview[];
+  pending_substack_excerpt_review_count?: number;
+};
+
+export type SubstackExcerptReviewDraft = {
+  schema_version: 1;
+  review_id: string;
+  review_preview_sha256: string;
+  collective_unit_id: string;
+  collective_preview_sha256: string;
+  ref_id: string;
+  canonical_url: string;
+  selection_text: string;
+  excerpt_sha256: string;
+  excerpt_bytes: number;
+  source_byte_start: number;
+  source_byte_end: number;
+  expires_at_ms: number;
+  representation_evidence: "owner_attestation_unverified";
+  content_class: "personal_reading";
+  rights_tier: "not_applicable";
+  rights_use: "operator_authorized_excerpt";
+  provider_constraints_sha256: string;
+  publication_execution_enabled: false;
+  state: "awaiting_confirmation";
+};
+
+export type ConfirmedSubstackExcerptReview = {
+  schema_version: 1;
+  overlay_id: string;
+  overlay_sha256: string;
+  review_id: string;
+  review_preview_sha256: string;
+  collective_unit_id: string;
+  collective_preview_sha256: string;
+  ref_id: string;
+  authorization_id: string;
+  authorization_sha256: string;
+  receipt_id: string;
+  receipt_sha256: string;
+  excerpt_sha256: string;
+  excerpt_bytes: number;
+  source_byte_start: number;
+  source_byte_end: number;
+  expires_at_ms: number;
+  content_class: "personal_reading";
+  rights_tier: "not_applicable";
+  rights_use: "operator_authorized_excerpt";
+  provider_constraints_sha256: string;
+  requires_manifest_v2: true;
+  publication_execution_enabled: false;
+  execution_ready?: false;
+  authorization_state?:
+    | "active"
+    | "expired"
+    | "not_yet_active"
+    | "revoked"
+    | "unavailable"
+    | "reconciliation_required";
+  state: "confirmed_owner_private_authority_review";
 };
 
 export type CollectiveLineageEdge = {
@@ -1256,6 +1316,47 @@ export async function confirmSessionsCollective(body: {
   return readJson(res);
 }
 
+export async function reviewCollectiveSubstackExcerpt(
+  unitId: string,
+  body: {
+    expected_collective_preview_sha256: string;
+    ref_id: string;
+    selection_text: string;
+    source_representation_sha256: string;
+    source_representation_bytes: number;
+    source_byte_start: number;
+    authorization_lifetime_minutes: number;
+    owner_affirms_lawful_access: true;
+    owner_affirms_provider_processing: true;
+    partial_excerpt_affirmed: true;
+    redistribution_authorized: false;
+    training_authorized: false;
+    publication_authorized: false;
+    idempotency_key: string;
+  },
+): Promise<SubstackExcerptReviewDraft> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/substack-excerpts/review`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  return readJson(res);
+}
+
+export async function confirmCollectiveSubstackExcerpt(
+  unitId: string,
+  body: {
+    review_id: string;
+    expected_review_preview_sha256: string;
+    idempotency_key: string;
+  },
+): Promise<ConfirmedSubstackExcerptReview> {
+  const res = await apiFetch(
+    `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}/substack-excerpts/confirm`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  return readJson(res);
+}
+
 export async function launchCollectiveResearch(
   unitId: string,
   body: {
@@ -1336,6 +1437,7 @@ export async function getOwnedCollectiveUnit(
 ): Promise<ConfirmedCollectiveUnit> {
   const res = await apiFetch(
     `${API_BASE}/engagement/sessions/collective/${encodeURIComponent(unitId)}`,
+    { cache: "no-store" },
   );
   return readJson(res);
 }

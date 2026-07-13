@@ -22,6 +22,7 @@ from substrate.midnight_oil.live import LiveExecutionPlan, build_router_live_pla
 from substrate.midnight_oil.publication_capability import PublicationCapabilityRegistry
 from substrate.midnight_oil.runtime import (
     MidnightOilRuntimeConfig,
+    MidnightOilRuntimeConfigError,
     MidnightOilRuntimeStores,
     build_runtime_stores,
     install_attested_providers,
@@ -30,6 +31,9 @@ from substrate.midnight_oil.runtime import (
 from substrate.midnight_oil.swarm_plan import SwarmLivePlan, build_swarm_live_plan
 
 from .midnight_oil_routes import MidnightOilDependencies
+from .substack_authorization_dependencies import (
+    build_substack_authorization_dependencies,
+)
 
 
 @dataclass(frozen=True)
@@ -103,10 +107,22 @@ def create_midnight_oil_production_app(
         engagement_store=runtime.stores.engagement_store,
         session_store=runtime.stores.session_store,
     )
+    try:
+        substack_authorization_dependencies = build_substack_authorization_dependencies(
+            engagement_store=runtime.stores.engagement_store,
+            environ=environment,
+            forbidden_key_envs=frozenset(runtime.config.consent_verification_key_envs.values()),
+            forbidden_keys=tuple(runtime.dependencies.verification_keys.values()),
+        )
+    except ValueError as exc:
+        raise MidnightOilRuntimeConfigError(
+            "Substack authorization composition is invalid"
+        ) from exc
     app = create_app(
         register_providers=False,
         enable_midnight_oil=True,
         midnight_oil_dependencies=runtime.dependencies,
+        substack_authorization_dependencies=substack_authorization_dependencies,
         operator_auth_environ=environment,
     )
     app.state.midnight_oil_runtime = runtime
