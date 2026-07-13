@@ -94,6 +94,21 @@ class OwnerJobStore(Protocol):
         consent_expires_at_ms: int,
     ) -> CompareAndSetResult: ...
 
+    def replace_expired_consent(
+        self,
+        *,
+        owner_user_id: str,
+        job_id: str,
+        expected_version: int,
+        now_ms: int,
+        operation_id: str,
+        approved_ceiling_cents: int,
+        consent_receipt_id: str,
+        consent_config_hash: str,
+        consent_issued_at_ms: int,
+        consent_expires_at_ms: int,
+    ) -> CompareAndSetResult: ...
+
     def compare_and_set(
         self,
         *,
@@ -169,9 +184,7 @@ _TRANSITIONS: Final[dict[OperationState, frozenset[OperationState]]] = {
     OperationState.CONSENT_ISSUED: frozenset(
         {OperationState.QUEUED, OperationState.FAILED_RECONCILE}
     ),
-    OperationState.QUEUED: frozenset(
-        {OperationState.RUNNING, OperationState.FAILED_RECONCILE}
-    ),
+    OperationState.QUEUED: frozenset({OperationState.RUNNING, OperationState.FAILED_RECONCILE}),
     OperationState.RUNNING: frozenset(
         {
             OperationState.COMPLETE,
@@ -770,6 +783,99 @@ class DurableOwnerJobStore:
                 connection.execute("ROLLBACK")
                 raise
 
+    def replace_expired_consent(
+        self,
+        *,
+        owner_user_id: str,
+        job_id: str,
+        expected_version: int,
+        now_ms: int,
+        operation_id: str,
+        approved_ceiling_cents: int,
+        consent_receipt_id: str,
+        consent_config_hash: str,
+        consent_issued_at_ms: int,
+        consent_expires_at_ms: int,
+    ) -> CompareAndSetResult:
+        """CAS a new bearer over an unclaimed, expired consent only."""
+        owner = _text(owner_user_id, "owner_user_id")
+        jid = _text(job_id, "job_id")
+        operation = _text(operation_id, "operation_id")
+        ceiling = _ceiling(approved_ceiling_cents)
+        receipt = _text(consent_receipt_id, "consent_receipt_id")
+        config_hash = _text(consent_config_hash, "consent_config_hash")
+        issued = _optional_nonnegative_int(consent_issued_at_ms, "consent_issued_at_ms")
+        expiry = _positive_int(consent_expires_at_ms, "consent_expires_at_ms")
+        if (
+            ceiling is None
+            or issued is None
+            or expiry <= issued
+            or type(now_ms) is not int
+            or now_ms < 0
+            or type(expected_version) is not int
+            or expected_version < 0
+        ):
+            raise ValueError("complete replacement consent authority is required")
+        with self._coordinator.acquire_write_context("midnight_oil.job_store") as connection:
+            connection.execute("BEGIN TRANSACTION")
+            try:
+                current = connection.execute(
+                    f"SELECT {', '.join(_COLUMNS)} FROM midnight_oil_jobs "
+                    "WHERE owner_user_id = ? AND job_id = ?",
+                    [owner, jid],
+                ).fetchone()
+                if current is None:
+                    connection.execute("COMMIT")
+                    return CompareAndSetResult(applied=False, job=None)
+                decoded = _decode(tuple(current))
+                if (
+                    decoded.state_version != expected_version
+                    or decoded.operation_state is not OperationState.CONSENT_ISSUED
+                    or decoded.consent_claimed_at_ms is not None
+                    or decoded.consent_expires_at_ms is None
+                    or decoded.consent_expires_at_ms > now_ms
+                ):
+                    connection.execute("COMMIT")
+                    return CompareAndSetResult(applied=False, job=decoded)
+                changed = connection.execute(
+                    "UPDATE midnight_oil_jobs SET state_version = ?, approved_ceiling_cents = ?, "
+                    "consent_receipt_id = ?, consent_config_hash = ?, consent_issued_at_ms = ?, "
+                    "consent_expires_at_ms = ?, consent_claimed_at_ms = NULL, operation_id = ? "
+                    "WHERE owner_user_id = ? AND job_id = ? AND state_version = ? "
+                    "AND operation_state = ? AND consent_claimed_at_ms IS NULL "
+                    "AND consent_expires_at_ms <= ? RETURNING state_version",
+                    [
+                        expected_version + 1,
+                        ceiling,
+                        receipt,
+                        config_hash,
+                        issued,
+                        expiry,
+                        operation,
+                        owner,
+                        jid,
+                        expected_version,
+                        OperationState.CONSENT_ISSUED.value,
+                        now_ms,
+                    ],
+                ).fetchone()
+                if changed is None:
+                    connection.execute("ROLLBACK")
+                    return CompareAndSetResult(applied=False, job=decoded)
+                updated = connection.execute(
+                    f"SELECT {', '.join(_COLUMNS)} FROM midnight_oil_jobs "
+                    "WHERE owner_user_id = ? AND job_id = ?",
+                    [owner, jid],
+                ).fetchone()
+                if updated is None:
+                    raise InvalidStoredJob("job disappeared during consent replacement")
+                result = _decode(tuple(updated))
+                connection.execute("COMMIT")
+                return CompareAndSetResult(applied=True, job=result)
+            except Exception:
+                connection.execute("ROLLBACK")
+                raise
+
     def compare_and_set(
         self,
         *,
@@ -938,6 +1044,49 @@ class TestOnlyInMemoryOwnerJobStore:
                     "consent_expires_at_ms": consent_expires_at_ms,
                     "operation_id": operation_id,
                     "operation_state": OperationState.CONSENT_ISSUED,
+                }
+            )
+            self._jobs[key] = _validate(updated)
+            return CompareAndSetResult(applied=True, job=replace_payload(self._jobs[key]))
+
+    def replace_expired_consent(
+        self,
+        *,
+        owner_user_id: str,
+        job_id: str,
+        expected_version: int,
+        now_ms: int,
+        operation_id: str,
+        approved_ceiling_cents: int,
+        consent_receipt_id: str,
+        consent_config_hash: str,
+        consent_issued_at_ms: int,
+        consent_expires_at_ms: int,
+    ) -> CompareAndSetResult:
+        key = (_text(owner_user_id, "owner_user_id"), _text(job_id, "job_id"))
+        with self._lock:
+            current = self._jobs.get(key)
+            if current is None:
+                return CompareAndSetResult(applied=False, job=None)
+            if (
+                current.state_version != expected_version
+                or current.operation_state is not OperationState.CONSENT_ISSUED
+                or current.consent_claimed_at_ms is not None
+                or current.consent_expires_at_ms is None
+                or current.consent_expires_at_ms > now_ms
+            ):
+                return CompareAndSetResult(applied=False, job=replace_payload(current))
+            updated = OwnerJob(
+                **{
+                    **current.__dict__,
+                    "state_version": expected_version + 1,
+                    "approved_ceiling_cents": approved_ceiling_cents,
+                    "consent_receipt_id": consent_receipt_id,
+                    "consent_config_hash": consent_config_hash,
+                    "consent_issued_at_ms": consent_issued_at_ms,
+                    "consent_expires_at_ms": consent_expires_at_ms,
+                    "consent_claimed_at_ms": None,
+                    "operation_id": operation_id,
                 }
             )
             self._jobs[key] = _validate(updated)

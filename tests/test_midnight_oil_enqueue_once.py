@@ -124,6 +124,27 @@ def test_cas_before_insert_failure_repairs_queue(tmp_path: Path) -> None:
     assert queue.get(authority.operation_id or "missing") is not None
 
 
+def test_exact_replay_rejects_changed_durable_execution_options(tmp_path: Path) -> None:
+    client, _, queue, token = _authorized(tmp_path)
+    first = client.post(
+        "/midnight-oil/run",
+        headers={"x-test-user": "alice", HEADER: token},
+        json={"job_id": "job-owned", "max_steps": 1, "auto_deposit": False},
+    )
+    assert first.status_code == 200
+    changed = client.post(
+        "/midnight-oil/run",
+        headers={"x-test-user": "alice", HEADER: token},
+        json={"job_id": "job-owned", "max_steps": 99, "auto_deposit": True},
+    )
+    assert changed.status_code == 409
+    assert "options conflict" in changed.text
+    queued = queue.get(first.json()["operation_id"])
+    assert queued is not None
+    assert queued.options["max_steps"] == 1
+    assert queued.options["auto_deposit"] is False
+
+
 def test_token_is_header_only_and_duplicate_rejected(tmp_path: Path) -> None:
     client, _, _, token = _authorized(tmp_path)
     assert client.post(

@@ -3,6 +3,7 @@ import {
   approveMidnightOilCeiling,
   createMidnightOilJob,
   getMidnightOilJob,
+  runMidnightOilJob,
 } from "./midnightOil";
 
 const mockFetch = vi.fn();
@@ -41,17 +42,25 @@ describe("midnightOil API client", () => {
   });
 
   it("approveMidnightOilCeiling posts use_recommended", async () => {
-    mockFetch.mockResolvedValue({
+    mockFetch.mockResolvedValueOnce({
       ok: true,
       json: async () => ({
         job_id: "moil_1",
         goals: ["g"],
         duration_minutes: 60,
-        status: "approved",
+        status: "awaiting_approval",
         recommended_price_ceiling_usd: 3.6,
-        approved_ceiling_usd: 3.6,
         view_format: "html",
-        runnable: true,
+        runnable: false,
+      }),
+    }).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        token: "signed-consent-token",
+        operation_id: "operation-1",
+        ceiling_cents: 360,
+        issued_at_ms: 100,
+        expires_at_ms: Date.now() + 60_000,
       }),
     });
     const out = await approveMidnightOilCeiling({
@@ -60,6 +69,218 @@ describe("midnightOil API client", () => {
     });
     expect(out.runnable).toBe(true);
     expect(out.status).toBe("approved");
+    expect(out.approved_ceiling_usd).toBe(3.6);
+    expect(mockFetch.mock.calls[1][0]).toBe(
+      "/midnight-oil/jobs/moil_1/spend-consent",
+    );
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+      ceiling_cents: null,
+      use_recommended: true,
+      force_below: false,
+    });
+  });
+
+  it("converts custom USD to integer cents and queues with in-memory consent", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_id: "moil_custom",
+          goals: ["g1", "g2"],
+          duration_minutes: 60,
+          status: "awaiting_approval",
+          recommended_price_ceiling_usd: 3.6,
+          view_format: "html",
+          runnable: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "secret-consent",
+          operation_id: "operation-custom",
+          ceiling_cents: 425,
+          issued_at_ms: 100,
+          expires_at_ms: Date.now() + 60_000,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_id: "moil_custom",
+          operation_id: "operation-custom",
+          state: "queued",
+        }),
+      });
+
+    await approveMidnightOilCeiling({
+      job_id: "moil_custom",
+      ceiling_usd: 4.25,
+      force_below: true,
+    });
+    const queued = await runMidnightOilJob({
+      job_id: "moil_custom",
+      auto_deposit: true,
+    });
+
+    expect(JSON.parse(mockFetch.mock.calls[1][1].body)).toEqual({
+      ceiling_cents: 425,
+      use_recommended: false,
+      force_below: true,
+    });
+    expect(mockFetch.mock.calls[2][1].headers).toEqual(
+      expect.objectContaining({
+        "X-Midnight-Oil-Spend-Consent": "secret-consent",
+      }),
+    );
+    expect(JSON.parse(mockFetch.mock.calls[2][1].body)).toEqual(
+      expect.objectContaining({
+        job_id: "moil_custom",
+        auto_deposit: true,
+        force_offline: true,
+      }),
+    );
+    expect(queued).toEqual(
+      expect.objectContaining({
+        queued: true,
+        queue_state: "queued",
+        operation_id: "operation-custom",
+        status: "queued",
+        spent_usd: 0,
+        spawn_ids: [],
+      }),
+    );
+    expect(JSON.stringify(queued)).not.toContain("secret-consent");
+    expect(mockFetch.mock.calls[2][0]).not.toContain("secret-consent");
+    expect(mockFetch.mock.calls[2][1].body).not.toContain("secret-consent");
+    await expect(
+      runMidnightOilJob({ job_id: "moil_custom" }),
+    ).rejects.toThrow(/fresh in-memory spend consent/);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("rejects sub-cent custom authority before issuing consent", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        job_id: "moil_fractional",
+        goals: ["g"],
+        duration_minutes: 60,
+        status: "awaiting_approval",
+        recommended_price_ceiling_usd: 3.6,
+        view_format: "html",
+        runnable: false,
+      }),
+    });
+    await expect(
+      approveMidnightOilCeiling({
+        job_id: "moil_fractional",
+        ceiling_usd: 1.001,
+      }),
+    ).rejects.toThrow(/two decimal places/);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects sub-cent values even inside the former float tolerance", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({
+        job_id: "moil_tiny_fraction",
+        goals: ["g"],
+        duration_minutes: 60,
+        status: "awaiting_approval",
+        recommended_price_ceiling_usd: 3.6,
+        view_format: "html",
+        runnable: false,
+      }),
+    });
+    await expect(
+      approveMidnightOilCeiling({
+        job_id: "moil_tiny_fraction",
+        ceiling_usd: 1.0000000005,
+      }),
+    ).rejects.toThrow(/two decimal places/);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards definitively rejected consent so the job can be reapproved", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_id: "moil_expired",
+          goals: ["g"],
+          duration_minutes: 60,
+          status: "awaiting_approval",
+          recommended_price_ceiling_usd: 3.6,
+          view_format: "html",
+          runnable: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "expired-on-server",
+          operation_id: "operation-expired",
+          ceiling_cents: 360,
+          issued_at_ms: Date.now() - 1_000,
+          expires_at_ms: Date.now() + 60_000,
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 403 });
+    await approveMidnightOilCeiling({
+      job_id: "moil_expired",
+      use_recommended: true,
+    });
+    await expect(
+      runMidnightOilJob({ job_id: "moil_expired" }),
+    ).rejects.toThrow(/expired; approve again/);
+    await expect(
+      runMidnightOilJob({ job_id: "moil_expired" }),
+    ).rejects.toThrow(/fresh in-memory spend consent/);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("discards consent after a definitive non-403 client rejection", async () => {
+    mockFetch
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          job_id: "moil_conflict",
+          goals: ["g"],
+          duration_minutes: 60,
+          status: "awaiting_approval",
+          recommended_price_ceiling_usd: 3.6,
+          view_format: "html",
+          runnable: false,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          token: "conflicted-consent",
+          operation_id: "operation-conflict",
+          ceiling_cents: 360,
+          issued_at_ms: Date.now() - 1_000,
+          expires_at_ms: Date.now() + 60_000,
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        text: async () => "operation replay options conflict",
+      });
+    await approveMidnightOilCeiling({
+      job_id: "moil_conflict",
+      use_recommended: true,
+    });
+    await expect(
+      runMidnightOilJob({ job_id: "moil_conflict" }),
+    ).rejects.toThrow(/API 409/);
+    await expect(
+      runMidnightOilJob({ job_id: "moil_conflict" }),
+    ).rejects.toThrow(/fresh in-memory spend consent/);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it("getMidnightOilJob fetches by id", async () => {

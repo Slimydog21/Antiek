@@ -44,15 +44,14 @@ from substrate.midnight_oil.spend_consent import (
     MAX_CEILING_CENTS,
     ConsentReceipt,
     ConsentRejected,
+    ConsentRejection,
     JobConsentConfig,
     SpendConsentStore,
     decode_and_verify,
 )
 
 midnight_oil_router = APIRouter(prefix="/midnight-oil", tags=["midnight-oil"])
-midnight_oil_preflight_router = APIRouter(
-    prefix="/research/midnight-oil", tags=["deep-research"]
-)
+midnight_oil_preflight_router = APIRouter(prefix="/research/midnight-oil", tags=["deep-research"])
 _DEPENDENCIES = "midnight_oil_dependencies"
 CONSENT_TTL_MS = 15 * 60 * 1000
 
@@ -211,9 +210,7 @@ class RunBody(BaseModel):
     force_offline: StrictBool = False
 
 
-def _owner_payload(
-    job: Any, *, live_plan: LiveExecutionPlan | None = None
-) -> dict[str, object]:
+def _owner_payload(job: Any, *, live_plan: LiveExecutionPlan | None = None) -> dict[str, object]:
     recommended_cents = int(
         (Decimal(str(job.recommended_price_ceiling_usd)) * 100).to_integral_value(
             rounding=ROUND_FLOOR
@@ -230,21 +227,13 @@ def _owner_payload(
         "recommended_ceiling_cents": recommended_cents,
         "display_usd": job.recommended_price_ceiling_usd,
         "live_plan_hash": None if live_plan is None else live_plan.plan_hash,
-        "live_allowed_routes": (
-            [] if live_plan is None else list(live_plan.allowed_routes)
-        ),
-        "live_projected_max_cents": (
-            None if live_plan is None else live_plan.projected_max_cents
-        ),
-        "live_source_policy": (
-            [] if live_plan is None else list(live_plan.source_policy)
-        ),
+        "live_allowed_routes": ([] if live_plan is None else list(live_plan.allowed_routes)),
+        "live_projected_max_cents": (None if live_plan is None else live_plan.projected_max_cents),
+        "live_source_policy": ([] if live_plan is None else list(live_plan.source_policy)),
         "live_dispatch_config_hash": (
             None if live_plan is None else live_plan.dispatch_config_hash
         ),
-        "live_max_input_bytes": (
-            None if live_plan is None else live_plan.max_input_bytes
-        ),
+        "live_max_input_bytes": (None if live_plan is None else live_plan.max_input_bytes),
     }
 
 
@@ -409,8 +398,6 @@ def post_spend_consent(
 ) -> dict[str, Any]:
     deps, row = _owned(request, job_id)
     owner = _owner(request)
-    if row.operation_state is not OperationState.NONE:
-        raise HTTPException(status_code=409, detail="job already has spend consent")
     try:
         config = _config(row)
         recommended = _recommended_cents(row)
@@ -433,6 +420,47 @@ def post_spend_consent(
         raise HTTPException(status_code=400, detail="ceiling is below the recommendation")
     if not 1 <= ceiling <= MAX_CEILING_CENTS:
         raise HTTPException(status_code=400, detail="ceiling_cents is outside authority bounds")
+
+    renewing_expired = False
+    if row.operation_state is OperationState.CONSENT_ISSUED:
+        if (
+            row.approved_ceiling_cents != ceiling
+            or row.operation_id is None
+            or row.consent_receipt_id is None
+        ):
+            raise HTTPException(status_code=409, detail="job already has different spend consent")
+        try:
+            recovery_now = deps.clock_ms()
+            token, receipt = deps.consents.recover_unclaimed(
+                receipt_id=row.consent_receipt_id,
+                expected_operator_id=owner,
+                expected_config=config,
+                expected_operation_id=row.operation_id,
+                expected_ceiling_cents=ceiling,
+                now_ms=recovery_now,
+                verification_keys=deps.verification_keys,
+            )
+        except ConsentRejected as exc:
+            if exc.reason is ConsentRejection.EXPIRED and row.consent_claimed_at_ms is None:
+                renewing_expired = True
+            else:
+                raise HTTPException(
+                    status_code=409,
+                    detail="existing spend consent cannot be recovered",
+                    headers={"Cache-Control": "no-store"},
+                ) from None
+        else:
+            response.headers["Cache-Control"] = "no-store"
+            return {
+                "token": token,
+                "operation_id": receipt.operation_id,
+                "ceiling_cents": receipt.ceiling_cents,
+                "issued_at_ms": receipt.issued_at_ms,
+                "expires_at_ms": receipt.expires_at_ms,
+                "recovered": True,
+            }
+    if row.operation_state is not OperationState.NONE and not renewing_expired:
+        raise HTTPException(status_code=409, detail="job already has spend consent")
 
     try:
         now = deps.clock_ms()
@@ -460,17 +488,25 @@ def post_spend_consent(
             signing_key=deps.signing_key,
         )
         receipt: ConsentReceipt = decode_and_verify(token, verification_keys=deps.verification_keys)
-        published = deps.owner_jobs.publish_consent(
-            owner_user_id=owner,
-            job_id=job_id,
-            expected_version=row.state_version,
-            operation_id=operation_id,
-            approved_ceiling_cents=ceiling,
-            consent_receipt_id=receipt.receipt_id,
-            consent_config_hash=receipt.config_hash,
-            consent_issued_at_ms=receipt.issued_at_ms,
-            consent_expires_at_ms=receipt.expires_at_ms,
+        publish = (
+            deps.owner_jobs.replace_expired_consent
+            if renewing_expired
+            else deps.owner_jobs.publish_consent
         )
+        publish_kwargs: dict[str, Any] = {
+            "owner_user_id": owner,
+            "job_id": job_id,
+            "expected_version": row.state_version,
+            "operation_id": operation_id,
+            "approved_ceiling_cents": ceiling,
+            "consent_receipt_id": receipt.receipt_id,
+            "consent_config_hash": receipt.config_hash,
+            "consent_issued_at_ms": receipt.issued_at_ms,
+            "consent_expires_at_ms": receipt.expires_at_ms,
+        }
+        if renewing_expired:
+            publish_kwargs["now_ms"] = now
+        published = publish(**publish_kwargs)
     except Exception:
         raise HTTPException(
             status_code=503,
@@ -490,12 +526,13 @@ def post_spend_consent(
         "ceiling_cents": ceiling,
         "issued_at_ms": receipt.issued_at_ms,
         "expires_at_ms": receipt.expires_at_ms,
+        "renewed": renewing_expired,
     }
 
 
 @midnight_oil_router.get("/jobs/{job_id}")
 def get_job_route(request: Request, job_id: str) -> dict[str, Any]:
-    deps, _ = _owned(request, job_id)
+    deps, authority = _owned(request, job_id)
     job = get_job(job_id, store=deps.jobs)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
@@ -506,9 +543,18 @@ def get_job_route(request: Request, job_id: str) -> dict[str, Any]:
         "model_id": job.model_id,
         "research_tier": job.research_tier,
         "fanout_depth": int(job.fanout_depth),
-        "status": job.status,
+        "status": (
+            job.status
+            if authority.operation_state is OperationState.NONE
+            else authority.operation_state.value
+        ),
+        "operation_state": authority.operation_state.value,
         "recommended_price_ceiling_usd": job.recommended_price_ceiling_usd,
-        "approved_ceiling_usd": job.approved_ceiling_usd,
+        "approved_ceiling_usd": (
+            None
+            if authority.approved_ceiling_cents is None
+            else authority.approved_ceiling_cents / 100
+        ),
         "force_below_recommended": job.force_below_recommended,
         "asset_id": job.asset_id,
         "spawn_ids": list(job.spawn_ids),
@@ -640,6 +686,12 @@ def post_run(
         queued = deps.operation_queue.get(claim.receipt.operation_id)
     except Exception:
         raise _run_error(503, "operation queue is unavailable") from None
+    requested_options: dict[str, object] = {
+        "max_steps": body.max_steps,
+        "auto_deposit": body.auto_deposit,
+        "draft_combined": body.draft_combined,
+        "force_offline": body.force_offline,
+    }
     if current.operation_state is OperationState.QUEUED and queued is None:
         try:
             queued, _ = deps.operation_queue.enqueue_once(
@@ -647,21 +699,17 @@ def post_run(
                 owner_user_id=owner,
                 job_id=body.job_id,
                 enqueued_at_ms=now,
-                options={
-                    "max_steps": body.max_steps,
-                    "auto_deposit": body.auto_deposit,
-                    "draft_combined": body.draft_combined,
-                    "force_offline": body.force_offline,
-                },
+                options=requested_options,
             )
         except ValueError:
             raise _run_error(409, "operation queue conflicts with authority") from None
         except Exception:
             raise _run_error(503, "operation enqueue is unavailable") from None
-    elif queued is not None and (
-        queued.owner_user_id != owner or queued.job_id != body.job_id
-    ):
-        raise _run_error(409, "operation queue conflicts with authority")
+    elif queued is not None:
+        if queued.owner_user_id != owner or queued.job_id != body.job_id:
+            raise _run_error(409, "operation queue conflicts with authority")
+        if queued.options != requested_options:
+            raise _run_error(409, "operation replay options conflict with durable queue")
     return {
         "job_id": body.job_id,
         "operation_id": claim.receipt.operation_id,

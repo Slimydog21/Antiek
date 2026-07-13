@@ -77,6 +77,7 @@ export type MidnightOilJobResponse = {
   /** Residual (ada): fan-out depth used in ceiling formula (default 3). */
   fanout_depth?: number | null;
   status: string;
+  operation_state?: string;
   recommended_price_ceiling_usd: number;
   approved_ceiling_usd?: number | null;
   force_below_recommended?: boolean;
@@ -86,6 +87,33 @@ export type MidnightOilJobResponse = {
   runnable: boolean;
   html?: string;
 };
+
+type SpendConsentResponse = {
+  token: string;
+  operation_id: string;
+  ceiling_cents: number;
+  issued_at_ms: number;
+  expires_at_ms: number;
+};
+
+type PendingConsent = {
+  token: string;
+  ceilingCents: number;
+  expiresAtMs: number;
+  attempted: boolean;
+  job: MidnightOilJobResponse;
+};
+
+// Consent is bearer authority and intentionally lives only in page memory.
+// Never persist it to localStorage, sessionStorage, URLs, logs, or UI state.
+const pendingConsentByJob = new Map<string, PendingConsent>();
+
+export class MidnightOilConsentExpiredError extends Error {
+  constructor() {
+    super("Midnight Oil spend consent expired; approve again");
+    this.name = "MidnightOilConsentExpiredError";
+  }
+}
 
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
@@ -136,12 +164,45 @@ export async function approveMidnightOilCeiling(body: {
   use_recommended?: boolean;
   force_below?: boolean;
 }): Promise<MidnightOilJobResponse> {
-  const res = await apiFetch(`${API_BASE}/midnight-oil/approve`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+  const job = await getMidnightOilJob(body.job_id);
+  let ceilingCents: number | null = null;
+  if (!body.use_recommended) {
+    const usd = body.ceiling_usd;
+    if (typeof usd !== "number" || !Number.isFinite(usd) || usd <= 0) {
+      throw new Error("custom Midnight Oil ceiling must be a positive USD amount");
+    }
+    const roundedUsd = Math.round(usd * 100) / 100;
+    if (usd !== roundedUsd) {
+      throw new Error("custom Midnight Oil ceiling supports at most two decimal places");
+    }
+    ceilingCents = Math.round(roundedUsd * 100);
+  }
+  const res = await apiFetch(
+    `${API_BASE}/midnight-oil/jobs/${encodeURIComponent(body.job_id)}/spend-consent`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ceiling_cents: ceilingCents,
+        use_recommended: Boolean(body.use_recommended),
+        force_below: Boolean(body.force_below),
+      }),
+    },
+  );
+  const consent = await readJson<SpendConsentResponse>(res);
+  pendingConsentByJob.set(body.job_id, {
+    token: consent.token,
+    ceilingCents: consent.ceiling_cents,
+    expiresAtMs: consent.expires_at_ms,
+    attempted: false,
+    job,
   });
-  return readJson<MidnightOilJobResponse>(res);
+  return {
+    ...job,
+    status: "approved",
+    approved_ceiling_usd: consent.ceiling_cents / 100,
+    runnable: true,
+  };
 }
 
 export async function getMidnightOilJob(
@@ -223,6 +284,10 @@ export type MidnightOilRunResponse = {
   notes_list?: string[];
   html?: string | null;
   deposit?: MidnightOilDepositResponse | null;
+  /** Durable queue acknowledgement; execution occurs in the worker process. */
+  queued?: boolean;
+  operation_id?: string;
+  queue_state?: string;
 };
 
 export async function runMidnightOilJob(body: {
@@ -232,16 +297,75 @@ export async function runMidnightOilJob(body: {
   auto_deposit?: boolean;
   draft_combined?: boolean;
 }): Promise<MidnightOilRunResponse> {
+  const consent = pendingConsentByJob.get(body.job_id);
+  if (!consent) {
+    throw new Error("Midnight Oil run requires fresh in-memory spend consent");
+  }
+  if (!consent.attempted && Date.now() >= consent.expiresAtMs) {
+    pendingConsentByJob.delete(body.job_id);
+    throw new MidnightOilConsentExpiredError();
+  }
+  // Retain the token after an ambiguous failure so the exact bearer can repair
+  // claim→CAS or CAS→enqueue. It is deleted only after an authoritative reply.
+  consent.attempted = true;
   const res = await apiFetch(`${API_BASE}/midnight-oil/run`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Midnight-Oil-Spend-Consent": consent.token,
+    },
     body: JSON.stringify({
       job_id: body.job_id,
       max_steps: body.max_steps ?? null,
       spent_per_goal: body.spent_per_goal ?? 0.05,
       auto_deposit: Boolean(body.auto_deposit),
       draft_combined: body.draft_combined ?? true,
+      force_offline: true,
     }),
   });
-  return readJson<MidnightOilRunResponse>(res);
+  if (!res.ok && res.status >= 400 && res.status < 500) {
+    // Definitive client/authority rejection is not an ambiguous network/5xx
+    // outcome. Never extend bearer lifetime after the server has rejected it.
+    pendingConsentByJob.delete(body.job_id);
+    if (res.status === 403) {
+      throw new MidnightOilConsentExpiredError();
+    }
+  }
+  const queued = await readJson<{
+    job_id: string;
+    operation_id: string;
+    state: string;
+  }>(res);
+  pendingConsentByJob.delete(body.job_id);
+  const state = queued.state;
+  const isQueued = state === "queued";
+  const isPending = state === "queued" || state === "running";
+  return {
+    job_id: queued.job_id,
+    status: state,
+    spent_usd: 0,
+    approved_ceiling_usd: consent.ceilingCents / 100,
+    spawn_ids: [],
+    goals_total: consent.job.goals.length,
+    steps_cap: body.max_steps ?? 0,
+    elapsed_ms: 0,
+    view_format: "html",
+    runnable: false,
+    offline: true,
+    live_step: false,
+    notes: isPending
+      ? `Durable operation is ${state}; the worker has not reported a terminal result yet.`
+      : `Durable operation replay converged at terminal state ${state}.`,
+    notes_list: [
+      "Spend consent claimed once and operation durably queued.",
+      "Execution and optional deposit occur in the worker process; refresh job status before claiming completion.",
+    ],
+    html: isPending
+      ? "<p>Midnight Oil execution is pending.</p>"
+      : "<p>Midnight Oil execution reached a terminal state.</p>",
+    deposit: null,
+    queued: isQueued,
+    operation_id: queued.operation_id,
+    queue_state: queued.state,
+  };
 }

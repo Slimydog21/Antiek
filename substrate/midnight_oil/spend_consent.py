@@ -357,9 +357,7 @@ class SpendConsentStore:
                     connection.execute("ROLLBACK")
                     raise ConsentRejected(ConsentRejection.EXPIRED)
                 connection.execute("COMMIT")
-                return ClaimResult(
-                    receipt=receipt, claimed_now=False, claimed_at_ms=int(row[1])
-                )
+                return ClaimResult(receipt=receipt, claimed_now=False, claimed_at_ms=int(row[1]))
             if now_ms < receipt.issued_at_ms:
                 connection.execute("ROLLBACK")
                 raise ConsentRejected(ConsentRejection.NOT_YET_VALID)
@@ -372,6 +370,77 @@ class SpendConsentStore:
             )
             connection.execute("COMMIT")
         return ClaimResult(receipt=receipt, claimed_now=True, claimed_at_ms=now_ms)
+
+    def recover_unclaimed(
+        self,
+        *,
+        receipt_id: str,
+        expected_operator_id: str,
+        expected_config: JobConsentConfig,
+        expected_operation_id: str,
+        expected_ceiling_cents: int,
+        now_ms: int,
+        verification_keys: Mapping[str, bytes],
+    ) -> tuple[str, ConsentReceipt]:
+        """Reconstruct an unclaimed, unexpired token after a lost HTTP response.
+
+        The raw bearer is never stored. Recovery is limited to the authenticated
+        operation's exact durable bindings and verifies the reconstructed token
+        against the stored hash before returning it.
+        """
+        rid = _validate_text(receipt_id, maximum=64)
+        operator = _validate_text(expected_operator_id)
+        operation = _validate_text(expected_operation_id)
+        _validate_config(expected_config)
+        if type(expected_ceiling_cents) is not int or type(now_ms) is not int:
+            raise ConsentRejected(ConsentRejection.MALFORMED)
+        with self._connect() as connection:
+            row = connection.execute(
+                "SELECT operator_id, job_id, operation_id, config_hash, ceiling_cents, "
+                "issued_at_ms, expires_at_ms, nonce, key_id, token_hash, claimed_at_ms "
+                "FROM spend_consents WHERE receipt_id = ?",
+                (rid,),
+            ).fetchone()
+        if row is None:
+            raise ConsentRejected(ConsentRejection.UNKNOWN_RECEIPT)
+        receipt = ConsentReceipt(
+            receipt_id=rid,
+            operator_id=str(row[0]),
+            job_id=str(row[1]),
+            operation_id=str(row[2]),
+            config_hash=str(row[3]),
+            ceiling_cents=int(row[4]),
+            issued_at_ms=int(row[5]),
+            expires_at_ms=int(row[6]),
+            nonce=str(row[7]),
+            key_id=str(row[8]),
+        )
+        _validate_receipt(receipt)
+        if row[10] is not None:
+            raise ConsentRejected(ConsentRejection.CONFLICTING_REPLAY)
+        if now_ms < receipt.issued_at_ms:
+            raise ConsentRejected(ConsentRejection.NOT_YET_VALID)
+        if now_ms >= receipt.expires_at_ms:
+            raise ConsentRejected(ConsentRejection.EXPIRED)
+        bindings = (
+            (receipt.operator_id, operator, ConsentRejection.WRONG_OPERATOR),
+            (receipt.job_id, expected_config.job_id, ConsentRejection.WRONG_JOB),
+            (receipt.operation_id, operation, ConsentRejection.WRONG_OPERATION),
+            (receipt.config_hash, expected_config.canonical_hash(), ConsentRejection.CONFIG_DRIFT),
+        )
+        for actual, expected, rejection in bindings:
+            if not hmac.compare_digest(actual, expected):
+                raise ConsentRejected(rejection)
+        if receipt.ceiling_cents != expected_ceiling_cents:
+            raise ConsentRejected(ConsentRejection.CEILING_MISMATCH)
+        key = verification_keys.get(receipt.key_id)
+        if key is None:
+            raise ConsentRejected(ConsentRejection.UNKNOWN_KEY)
+        payload = _receipt_payload(receipt)
+        token = f"{_b64encode(payload)}.{_b64encode(_sign(payload, key))}"
+        if not hmac.compare_digest(hashlib.sha256(token.encode("ascii")).hexdigest(), str(row[9])):
+            raise ConsentRejected(ConsentRejection.CONFLICTING_REPLAY)
+        return token, receipt
 
 
 def decode_and_verify(token: str, *, verification_keys: Mapping[str, bytes]) -> ConsentReceipt:

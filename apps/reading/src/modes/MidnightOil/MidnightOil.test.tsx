@@ -92,6 +92,7 @@ const {
 }));
 
 vi.mock("../../api/midnightOil", () => ({
+  MidnightOilConsentExpiredError: class MidnightOilConsentExpiredError extends Error {},
   createMidnightOilJob,
   approveMidnightOilCeiling,
   depositMidnightOilJob,
@@ -1023,6 +1024,35 @@ describe("MidnightOil mode", () => {
       runnable: true,
       html: "<p>Approved</p>",
     });
+    runMidnightOilJob.mockResolvedValue({
+      job_id: "moil_dep",
+      status: "queued",
+      spent_usd: 0,
+      approved_ceiling_usd: 2.0,
+      spawn_ids: ["spn_1"],
+      goals_total: 1,
+      steps_cap: 1,
+      elapsed_ms: 1,
+      view_format: "html",
+      runnable: false,
+      offline: true,
+      live_step: false,
+      queued: true,
+      operation_id: "operation-dep",
+      queue_state: "queued",
+      deposit: null,
+    });
+    getMidnightOilJob.mockResolvedValue({
+      job_id: "moil_dep",
+      goals: ["Wrestle with twin notes"],
+      duration_minutes: 30,
+      status: "complete",
+      operation_state: "complete",
+      recommended_price_ceiling_usd: 2.0,
+      approved_ceiling_usd: 2.0,
+      view_format: "html",
+      runnable: false,
+    });
     depositMidnightOilJob.mockResolvedValue({
       job_id: "moil_dep",
       asset_id: "moil_asset_dep",
@@ -1058,9 +1088,16 @@ describe("MidnightOil mode", () => {
     fireEvent.click(
       screen.getByRole("button", { name: /approve at recommended/i }),
     );
-    await waitFor(() => {
-      expect(screen.getByTestId("moil-deposit")).toBeTruthy();
-    });
+    await waitFor(() => expect(screen.getByTestId("moil-run-offline")).toBeTruthy());
+    expect(screen.queryByTestId("moil-deposit")).toBeNull();
+    expect(screen.getByTestId("moil-deposit-pending").textContent).toMatch(/terminal state/i);
+    fireEvent.click(screen.getByTestId("moil-auto-deposit"));
+    fireEvent.click(screen.getByTestId("moil-run-offline"));
+    await waitFor(() => expect(screen.getByText("Worker queued")).toBeTruthy());
+    expect(screen.queryByTestId("moil-deposit")).toBeNull();
+    fireEvent.click(screen.getByTestId("moil-refresh-status"));
+    await waitFor(() => expect(screen.getByTestId("moil-deposit")).toBeTruthy());
+    expect(screen.queryByText("Worker queued")).toBeNull();
     openWindow.mockClear();
     expect(screen.getByTestId("moil-auto-open-deposit")).toBeTruthy();
     fireEvent.click(screen.getByTestId("moil-deposit"));

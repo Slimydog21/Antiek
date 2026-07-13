@@ -33,15 +33,17 @@ KEY = b"k" * 32
 
 
 def _client(tmp_path: Path) -> tuple[TestClient, MidnightOilDependencies]:
-    identifier_calls = {20: 0, 28: 0}
+    identifier_calls = {20: 0, 24: 0, 28: 0, 32: 0}
 
     def random_token(size: int) -> str:
-        if size in identifier_calls:
-            identifier_calls[size] += 1
+        identifier_calls[size] = identifier_calls.get(size, 0) + 1
+        if size in {20, 28}:
             stem = "job-owned" if size == 20 else "asset-owned"
             suffix = "" if identifier_calls[size] == 1 else f"-{identifier_calls[size]}"
             return f"{stem}{suffix}"
-        return "operation-csprng" if size == 24 else "nonce-csprng-value"
+        stem = "operation-csprng" if size == 24 else "nonce-csprng-value"
+        suffix = "" if identifier_calls[size] == 1 else f"-{identifier_calls[size]}"
+        return f"{stem}{suffix}"
 
     deps = MidnightOilDependencies(
         owner_jobs=MemoryOwnerStore(),
@@ -300,7 +302,7 @@ def test_ceiling_cents_rejects_noncanonical_values(tmp_path: Path, value: object
     assert response.status_code == 422
 
 
-def test_consent_is_bound_published_and_returned_once_no_store(
+def test_consent_is_bound_published_and_recoverable_without_raw_storage(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     client, deps = _client(tmp_path)
@@ -324,23 +326,53 @@ def test_consent_is_bound_published_and_returned_once_no_store(
     assert token not in caplog.text
     assert token not in created["html"]
     assert body["ceiling_cents"] == int(float(created["recommended_price_ceiling_usd"]) * 100)
-    assert (
-        client.post(
-            "/midnight-oil/jobs/job-owned/spend-consent",
-            headers={"x-test-user": "alice"},
-            json={"use_recommended": True},
-        ).status_code
-        == 409
-    )
-    with sqlite3.connect(tmp_path / "consents.sqlite3") as connection:
-        stored = repr(connection.execute("SELECT * FROM spend_consents").fetchall())
-    assert token not in stored
-    conflict = client.post(
+    recovered = client.post(
         "/midnight-oil/jobs/job-owned/spend-consent",
         headers={"x-test-user": "alice"},
         json={"use_recommended": True},
     )
-    assert token not in conflict.text
+    assert recovered.status_code == 200
+    assert recovered.headers["cache-control"] == "no-store"
+    assert recovered.json()["token"] == token
+    assert recovered.json()["recovered"] is True
+    with sqlite3.connect(tmp_path / "consents.sqlite3") as connection:
+        stored = repr(connection.execute("SELECT * FROM spend_consents").fetchall())
+    assert token not in stored
+    wrong_ceiling = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"ceiling_cents": body["ceiling_cents"] + 1},
+    )
+    assert wrong_ceiling.status_code == 409
+    assert token not in wrong_ceiling.text
+
+
+def test_expired_unclaimed_consent_is_replaced_by_fresh_exact_authority(
+    tmp_path: Path,
+) -> None:
+    client, deps = _client(tmp_path)
+    _create(client)
+    first = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    ).json()
+    object.__setattr__(deps, "clock_ms", lambda: first["expires_at_ms"])
+    renewed = client.post(
+        "/midnight-oil/jobs/job-owned/spend-consent",
+        headers={"x-test-user": "alice"},
+        json={"use_recommended": True},
+    )
+    assert renewed.status_code == 200, renewed.text
+    body = renewed.json()
+    assert body["renewed"] is True
+    assert body["token"] != first["token"]
+    assert body["operation_id"] != first["operation_id"]
+    row = deps.owner_jobs.get_job(owner_user_id="alice", job_id="job-owned")
+    assert row is not None
+    assert row.operation_state is OperationState.CONSENT_ISSUED
+    assert row.operation_id == body["operation_id"]
+    assert row.consent_claimed_at_ms is None
 
 
 def test_receipt_rejects_each_bound_config_mutation_and_key_time_failures(

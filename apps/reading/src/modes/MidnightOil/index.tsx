@@ -83,6 +83,8 @@ import {
   createMidnightOilJob,
   depositMidnightOilJob,
   fetchMidnightOilLiveStepStatus,
+  getMidnightOilJob,
+  MidnightOilConsentExpiredError,
   runMidnightOilJob,
   type MidnightOilDepositResponse,
   type MidnightOilJobResponse,
@@ -147,6 +149,23 @@ import {
 import { useWindows } from "../../workspace/windowsStore";
 import { composeDriverPromptText } from "../../lib/driverPromptText";
 import { sanitizeHostedHtml } from "../../lib/sanitizeHostedHtml";
+
+const MOIL_TERMINAL_STATES = new Set([
+  "complete",
+  "failed",
+  "step_capped",
+  "budget_halted",
+  "timed_out",
+  "failed_reconcile",
+]);
+
+const MOIL_EXECUTION_STATES = new Set([
+  "approved",
+  "consent_issued",
+  "queued",
+  "running",
+  ...MOIL_TERMINAL_STATES,
+]);
 
 /** HTML-only deposit open (floating | full). Returns window id or null. */
 export function openMidnightOilDepositWindow(
@@ -689,6 +708,42 @@ export default function MidnightOil() {
         // Residual (ex): auto-deposit path also auto-opens.
         maybeAutoOpenDeposit(result.deposit);
       }
+    } catch (err) {
+      if (err instanceof MidnightOilConsentExpiredError) {
+        setJob((current) =>
+          current
+            ? { ...current, status: "awaiting_approval", runnable: false }
+            : current,
+        );
+      }
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onRefreshJob() {
+    if (!job) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const refreshed = await getMidnightOilJob(job.job_id);
+      if (refreshed.view_format !== "html") {
+        throw new Error("Midnight Oil status view_format must be html");
+      }
+      setRunResult((current) =>
+        current && current.status === refreshed.status ? current : null,
+      );
+      setJob((current) => {
+        if (!current) return refreshed;
+        // A refresh must not erase a still-held page-memory bearer before its
+        // first dispatch. The server truthfully reports consent_issued but
+        // cannot know whether this tab retains that credential.
+        if (current.status === "approved" && refreshed.status === "consent_issued") {
+          return { ...current, ...refreshed, status: "approved", runnable: true };
+        }
+        return { ...current, ...refreshed };
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -1880,18 +1935,15 @@ export default function MidnightOil() {
             </div>
           ) : null}
 
-          {job.status === "approved" ||
-          job.status === "complete" ||
-          job.status === "running" ||
-          job.status === "timed_out" ||
-          job.status === "budget_halted" ? (
+          {MOIL_EXECUTION_STATES.has(job.status) ? (
             <div className="space-y-2 border rounded p-3">
               <p className="text-sm opacity-80">
-                Offline run simulates the autonomous swarm (one step per goal,
-                stub spend, no live multi-provider). Deposit lands HTML + twins
-                + progress. Live worker remains a separate future inject.
+                Dispatch claims the one-shot ceiling consent and durably queues
+                the offline autonomous worker. Refresh reports authoritative
+                progress; terminal results can land as HTML + twins. Live
+                multi-provider execution remains separately gated.
               </p>
-              {job.status === "approved" || job.status === "running" ? (
+              {job.status === "approved" ? (
                 <>
                   <label className="flex items-center gap-2 text-sm">
                     <input
@@ -1910,7 +1962,7 @@ export default function MidnightOil() {
                     data-runnable={String(Boolean(job.runnable))}
                     data-run-ready={String(
                       Boolean(job.runnable) &&
-                        (job.status === "approved" || job.status === "running"),
+                        job.status === "approved",
                     )}
                     data-job-status={job.status}
                     data-l4-live-step="deferred"
@@ -1918,20 +1970,27 @@ export default function MidnightOil() {
                     disabled={
                       busy ||
                       !job.runnable ||
-                      (job.status !== "approved" && job.status !== "running")
+                      job.status !== "approved"
                     }
                     title={
                       !job.runnable
                         ? "Job not runnable — approve a price ceiling first"
-                        : job.status === "running"
-                          ? "Continue offline worker step (L4 live multi-provider deferred)"
-                          : "Run offline worker (stub steps · L4 live deferred · never invent live swarm)"
+                        : "Queue offline worker (stub steps · L4 live deferred · never invent live swarm)"
                     }
                   >
                     {busy ? "Running…" : "Run offline worker"}
                   </button>
                 </>
               ) : null}
+              <button
+                type="button"
+                data-testid="moil-refresh-status"
+                onClick={() => void onRefreshJob()}
+                disabled={busy}
+                className="font-mono text-[11px] underline underline-offset-4"
+              >
+                Refresh worker status
+              </button>
               {/* Residual (ex): auto-open deposit HTML after deposit/auto-deposit. */}
               <label className="flex items-center gap-2 text-sm">
                 <input
@@ -1943,14 +2002,24 @@ export default function MidnightOil() {
                 />
                 Auto-open deposit HTML window
               </label>
-              <button
-                type="button"
-                data-testid="moil-deposit"
-                onClick={() => void onDeposit()}
-                disabled={busy}
-              >
-                {busy ? "Depositing…" : "Deposit results (HTML + twins)"}
-              </button>
+              {MOIL_TERMINAL_STATES.has(job.status) ? (
+                <button
+                  type="button"
+                  data-testid="moil-deposit"
+                  onClick={() => void onDeposit()}
+                  disabled={busy}
+                >
+                  {busy ? "Depositing…" : "Deposit results (HTML + twins)"}
+                </button>
+              ) : (
+                <p
+                  className="font-mono text-[11px] opacity-75"
+                  data-testid="moil-deposit-pending"
+                  role="status"
+                >
+                  Deposit unlocks after the durable worker reports a terminal state.
+                </p>
+              )}
             </div>
           ) : null}
 
@@ -1963,7 +2032,9 @@ export default function MidnightOil() {
               data-live-step={String(Boolean(runResult.live_step))}
             >
               <h3 className="font-medium">
-                {runResult.live_step
+                {runResult.queued
+                  ? "Worker queued"
+                  : runResult.live_step
                   ? "Live step run result"
                   : "Offline run result"}
               </h3>
