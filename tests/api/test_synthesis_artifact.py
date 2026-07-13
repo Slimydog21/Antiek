@@ -8,6 +8,9 @@ route wires it correctly and refuses a poisoned render.
 
 from __future__ import annotations
 
+import json
+
+import duckdb
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -41,6 +44,284 @@ def _client() -> TestClient:
     app = FastAPI()
     mod.register_synthesis_artifact_routes(app)
     return TestClient(app)
+
+
+def _insert_synthesis_fixture(tmp_path, thesis: object) -> str:
+    from substrate.graph.schema import init_database_at_path
+
+    db_path = str(tmp_path / "graph.duckdb")
+    init_database_at_path(db_path)
+    con = duckdb.connect(db_path)
+    try:
+        con.execute(
+            "INSERT INTO documents "
+            "(document_id, title, source_tier, document_type, content_class, ip_holder_id) "
+            "VALUES ('doc-cited', 'Cited source', 1, 'paper', 'public_domain', 'holder-a'), "
+            "('doc-unrelated', 'Unrelated source', 1, 'paper', 'personal_reading', 'holder-b')"
+        )
+        con.execute(
+            "INSERT INTO chunks (chunk_id, document_id, chunk_index, text) "
+            "VALUES ('chunk-cited', 'doc-cited', 0, 'Exact supporting passage')"
+        )
+        con.execute(
+            "INSERT INTO syntheses "
+            "(synthesis_id, target_question, synthesis_timestamp, status, "
+            "implicit_recommendation, thesis_text, thesis) "
+            "VALUES ('syn-resolve', 'What is supported?', CURRENT_TIMESTAMP, "
+            "'passed', 'proceed', 'A broader thesis.', ?)",
+            [json.dumps(thesis)],
+        )
+        con.execute(
+            "INSERT INTO synthesis_substrate_manifest (synthesis_id, entity_kind, entity_id) "
+            "VALUES ('syn-resolve', 'document', 'doc-unrelated'), "
+            "('syn-resolve', 'chunk', 'chunk-cited')"
+        )
+    finally:
+        con.close()
+    return db_path
+
+
+def _delivered_thesis(*, chunk_ids: list[str]) -> dict[str, object]:
+    return {
+        "thesis_summary": "A broader thesis.",
+        "implicit_recommendation": "proceed",
+        "thesis_components": [
+            {
+                "claim": "The cited claim holds.",
+                "confidence": "high",
+                "supporting_chunk_ids": chunk_ids,
+                "supporting_path_indices": [],
+                "confidence_basis": "The cited passage states it directly.",
+                "effective_source_tier": 1,
+                "hedging_required": False,
+            }
+        ],
+        "falsification_conditions": [],
+        "execution_risks": [],
+        "constraint_compliance": {
+            "hard_constraints_satisfied": True,
+            "soft_constraints_violated": [],
+            "violations_justified": [],
+        },
+        "reasoning_paths_used": [],
+        "conviction_level": 0.8,
+        "constraint_loop_status": "passed",
+        "constraint_loop_iterations": 1,
+    }
+
+
+def test_resolver_maps_claim_to_exact_manifest_chunk_only(tmp_path):
+    db_path = _insert_synthesis_fixture(tmp_path, _delivered_thesis(chunk_ids=["chunk-cited"]))
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert export.thesis_text == "A broader thesis."
+    assert [claim.statement for claim in export.claims] == ["The cited claim holds."]
+    assert [source.document_id for source in export.claims[0].sources] == ["doc-cited"]
+    assert export.claims[0].sources[0].locator == "/read/doc-cited?chunk=chunk-cited"
+    assert export.claims[0].sources[0].chunk_text == "Exact supporting passage"
+    assert export.attribution_manifest["document_ip_holders"]["doc-cited"] == "holder-a"
+    assert "doc-unrelated" not in export.attribution_manifest["document_ip_holders"]
+
+
+def test_resolver_takedown_override_never_embeds_chunk_text(tmp_path):
+    db_path = _insert_synthesis_fixture(tmp_path, _delivered_thesis(chunk_ids=["chunk-cited"]))
+    con = duckdb.connect(db_path)
+    try:
+        con.execute(
+            "INSERT INTO book_assets (document_id, taken_down) VALUES ('doc-cited', TRUE)"
+        )
+    finally:
+        con.close()
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert export.claims[0].sources[0].servable is False
+    assert "Exact supporting passage" not in json.dumps(mod.adapt_synthesis(export))
+
+
+def test_resolver_keeps_unpinned_chunk_citation_unsourced(tmp_path):
+    db_path = _insert_synthesis_fixture(
+        tmp_path, _delivered_thesis(chunk_ids=["chunk-not-in-manifest"])
+    )
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert len(export.claims) == 1
+    assert len(export.claims[0].sources) == 1
+    assert export.claims[0].sources[0].resolved is False
+
+
+def test_resolver_mixed_valid_and_unpinned_citations_stays_incomplete(tmp_path):
+    db_path = _insert_synthesis_fixture(
+        tmp_path,
+        _delivered_thesis(chunk_ids=["chunk-cited", "chunk-not-in-manifest"]),
+    )
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert [source.resolved for source in export.claims[0].sources] == [True, False]
+    doc_model = mod.adapt_synthesis(export)
+    assert doc_model["metadata"]["provenance"] == {
+        "fully_sourced": 0,
+        "total": 1,
+        "complete": False,
+        "warnings": [],
+    }
+
+
+def test_resolver_malformed_thesis_never_inherits_manifest_sources(tmp_path):
+    db_path = _insert_synthesis_fixture(tmp_path, {"thesis_components": "invalid"})
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert export.claims == []
+    assert export.provenance_warnings == [
+        "Archived synthesis payload could not be validated."
+    ]
+    assert mod.adapt_synthesis(export)["metadata"]["provenance"]["complete"] is False
+
+
+def test_resolver_preserves_duplicate_claim_components_separately(tmp_path):
+    thesis = _delivered_thesis(chunk_ids=["chunk-cited"])
+    components = thesis["thesis_components"]
+    assert isinstance(components, list)
+    component = components[0]
+    assert isinstance(component, dict)
+    thesis["thesis_components"] = [
+        component,
+        {**component, "supporting_chunk_ids": []},
+    ]
+    db_path = _insert_synthesis_fixture(tmp_path, thesis)
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert len(export.claims) == 2
+    assert [len(claim.sources) for claim in export.claims] == [1, 0]
+
+
+def test_resolver_preserves_path_only_component_provenance(tmp_path):
+    thesis = _delivered_thesis(chunk_ids=[])
+    components = thesis["thesis_components"]
+    assert isinstance(components, list) and isinstance(components[0], dict)
+    components[0]["supporting_path_indices"] = [0]
+    thesis["reasoning_paths_used"] = [
+        {
+            "path_node_ids": ["node-a", "node-b"],
+            "path_edge_ids": ["edge-a-b"],
+            "support_summary": "Node A provides a structural analogy for node B.",
+        }
+    ]
+    db_path = _insert_synthesis_fixture(tmp_path, thesis)
+    con = duckdb.connect(db_path)
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+            "VALUES ('node-a', 'Node A', 'entity', 'cross_domain'), "
+            "('node-b', 'Node B', 'entity', 'cross_domain')"
+        )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "source_tier, extraction_confidence, graph_scope) "
+            "VALUES ('edge-a-b', 'node-a', 'node-b', 'analogous_to', 1, 1.0, 'cross_domain')"
+        )
+        con.execute(
+            "INSERT INTO synthesis_substrate_manifest "
+            "(synthesis_id, entity_kind, entity_id) "
+            "VALUES ('syn-resolve', 'edge', 'edge-a-b')"
+        )
+    finally:
+        con.close()
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert export.claims[0].path_refs[0].node_ids == ["node-a", "node-b"]
+    assert export.claims[0].path_refs[0].manifest_verified is True
+    doc_model = mod.adapt_synthesis(export)
+    assert doc_model["metadata"]["provenance"]["complete"] is True
+    assert "Graph-path provenance 1" in json.dumps(doc_model)
+    assert "node-a → node-b" in json.dumps(doc_model, ensure_ascii=False)
+
+
+def test_resolver_negative_path_index_stays_unresolved(tmp_path):
+    thesis = _delivered_thesis(chunk_ids=[])
+    components = thesis["thesis_components"]
+    assert isinstance(components, list) and isinstance(components[0], dict)
+    components[0]["supporting_path_indices"] = [-1]
+    thesis["reasoning_paths_used"] = [
+        {
+            "path_node_ids": ["node-a", "node-b"],
+            "path_edge_ids": ["edge-a-b"],
+            "support_summary": "Node A provides a structural analogy for node B.",
+        }
+    ]
+    db_path = _insert_synthesis_fixture(tmp_path, thesis)
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert export.claims[0].path_refs[0].resolved is False
+    assert mod.adapt_synthesis(export)["metadata"]["provenance"]["complete"] is False
+
+
+def test_resolver_rejects_pinned_edge_with_mismatched_node_path(tmp_path):
+    thesis = _delivered_thesis(chunk_ids=[])
+    components = thesis["thesis_components"]
+    assert isinstance(components, list) and isinstance(components[0], dict)
+    components[0]["supporting_path_indices"] = [0]
+    thesis["reasoning_paths_used"] = [
+        {
+            "path_node_ids": ["node-b", "node-a"],
+            "path_edge_ids": ["edge-a-b"],
+            "support_summary": "The claimed direction reverses the stored graph edge.",
+        }
+    ]
+    db_path = _insert_synthesis_fixture(tmp_path, thesis)
+    con = duckdb.connect(db_path)
+    try:
+        con.execute(
+            "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
+            "VALUES ('node-a', 'Node A', 'entity', 'cross_domain'), "
+            "('node-b', 'Node B', 'entity', 'cross_domain')"
+        )
+        con.execute(
+            "INSERT INTO edges (edge_id, source_node_id, target_node_id, relation, "
+            "source_tier, extraction_confidence, graph_scope) "
+            "VALUES ('edge-a-b', 'node-a', 'node-b', 'analogous_to', 1, 1.0, 'cross_domain')"
+        )
+        con.execute(
+            "INSERT INTO synthesis_substrate_manifest "
+            "(synthesis_id, entity_kind, entity_id) "
+            "VALUES ('syn-resolve', 'edge', 'edge-a-b')"
+        )
+    finally:
+        con.close()
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert export.claims[0].path_refs[0].resolved is False
+
+
+def test_resolver_empty_component_claim_adds_warning(tmp_path):
+    thesis = _delivered_thesis(chunk_ids=["chunk-cited"])
+    components = thesis["thesis_components"]
+    assert isinstance(components, list) and isinstance(components[0], dict)
+    components[0]["claim"] = "   "
+    db_path = _insert_synthesis_fixture(tmp_path, thesis)
+
+    export = mod.resolve_synthesis_export("syn-resolve", db_path=db_path)
+
+    assert export is not None
+    assert export.claims == []
+    assert export.provenance_warnings == ["Thesis component 1 has empty claim text."]
 
 
 def test_allowed_synthesis_200_gate_clean(monkeypatch):

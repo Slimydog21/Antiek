@@ -62,11 +62,12 @@ class SourceRef:
     ip_holder_id: str | None
     locator: str | None = None
     chunk_text: str | None = None
+    taken_down: bool = False
 
     @property
     def servable(self) -> bool:
         # REUSED allowlist — the single source of rights truth.
-        return self.content_class in SERVABLE_CONTENT_CLASSES
+        return not self.taken_down and self.content_class in SERVABLE_CONTENT_CLASSES
 
     @property
     def resolved(self) -> bool:
@@ -75,13 +76,31 @@ class SourceRef:
 
 
 @dataclass(frozen=True)
+class PathRef:
+    index: int
+    node_ids: list[str] = field(default_factory=list)
+    edge_ids: list[str] = field(default_factory=list)
+    support_summary: str | None = None
+    manifest_verified: bool = False
+
+    @property
+    def resolved(self) -> bool:
+        return bool(self.node_ids) and self.manifest_verified
+
+
+@dataclass(frozen=True)
 class Claim:
     statement: str
     sources: list[SourceRef] = field(default_factory=list)
+    path_refs: list[PathRef] = field(default_factory=list)
 
     @property
     def fully_sourced(self) -> bool:
-        return bool(self.sources) and all(s.resolved for s in self.sources)
+        if self.sources:
+            return all(s.resolved for s in self.sources) and all(
+                path.resolved for path in self.path_refs
+            )
+        return bool(self.path_refs) and all(path.resolved for path in self.path_refs)
 
 
 @dataclass(frozen=True)
@@ -100,6 +119,7 @@ class SynthesisExport:
     parameters: dict[str, Any] = field(default_factory=dict)
     attribution_manifest: dict[str, Any] = field(default_factory=dict)
     claims: list[Claim] = field(default_factory=list)
+    provenance_warnings: list[str] = field(default_factory=list)
 
 
 # ── doc-model node builders (existing SPR-02 renderer node types) ──
@@ -169,15 +189,19 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
 
     total = len(export.claims)
     fully = sum(1 for c in export.claims if c.fully_sourced)
-    complete = total > 0 and fully == total
+    complete = total > 0 and fully == total and not export.provenance_warnings
 
     content: list[dict[str, Any]] = []
 
     # M4: honest provenance banner at the top when incomplete.
-    if not complete and total > 0:
+    if fully < total:
         content.append(
             _prose(f"Provenance incomplete — {fully} of {total} claims fully sourced.")
         )
+    elif export.thesis_text and total == 0 and not export.provenance_warnings:
+        content.append(_prose("Provenance incomplete: no evidence-grounded claims resolved."))
+    for warning in export.provenance_warnings:
+        content.append(_prose(f"Provenance warning: {warning}"))
 
     # A recommendation stat-chip (SPR-03 widget via the wired antiek_widget
     # seam) — the synthesis's OWN output, rights-safe (metadata, never
@@ -191,21 +215,37 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
             )
         )
 
-    # The synthesis's own output (operator-authored; not third-party text).
+    # The summary is derived prose, not another independently sourced claim.
     if export.thesis_text:
-        content.append(_claim_card(export.thesis_text))
+        content.append(_prose(f"Synthesis summary: {export.thesis_text}"))
 
     for claim in export.claims:
         content.append(_claim_card(claim.statement))
+        for path in claim.path_refs:
+            if path.resolved:
+                nodes = " → ".join(path.node_ids)
+                edges = ", ".join(path.edge_ids) or "none"
+                content.append(
+                    _prose(
+                        f"Graph-path provenance {path.index + 1}: "
+                        f"{path.support_summary or '(no summary)'} "
+                        f"[nodes: {nodes}; edges: {edges}]"
+                    )
+                )
+            else:
+                content.append(
+                    _prose(f"Graph-path provenance {path.index + 1}: (unresolved)")
+                )
         if not claim.sources:
-            content.append(_prose("(unsourced)"))
+            if not claim.path_refs:
+                content.append(_prose("(unsourced)"))
             continue
         for src in claim.sources:
             content.append(_cite_link(_source_label(src), src.locator))
             if src.servable and src.chunk_text:
                 # EMBED the quoted passage — servable only.
                 content.append(_note(src.chunk_text))
-            elif not src.servable:
+            elif src.resolved and not src.servable:
                 # CITE-ONLY: visible marker; the chunk text is NEVER emitted.
                 content.append(
                     _prose("(cite-only — full text withheld under the source's rights)")
@@ -250,6 +290,7 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
                 "fully_sourced": fully,
                 "total": total,
                 "complete": complete,
+                "warnings": list(export.provenance_warnings),
             },
         },
     }
@@ -257,6 +298,7 @@ def adapt_synthesis(export: SynthesisExport) -> dict[str, Any]:
 
 __all__ = [
     "Claim",
+    "PathRef",
     "RightsRefusal",
     "SourceRef",
     "SynthesisExport",

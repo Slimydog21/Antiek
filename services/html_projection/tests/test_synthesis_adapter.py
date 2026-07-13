@@ -12,6 +12,7 @@ import pytest
 
 from services.html_projection.adapters.synthesis import (
     Claim,
+    PathRef,
     RightsRefusal,
     SourceRef,
     SynthesisExport,
@@ -119,3 +120,75 @@ def test_rendered_html_also_hides_restricted_text():
     # Belt-and-braces: the visible HTML, not only the doc-model, omits it.
     dm = adapt_synthesis(_export(claims=[Claim("Claim A", [PERSONAL])]))
     assert "SECRET THIRD PARTY TEXT" not in render(dm, RenderContext())
+
+
+def test_thesis_without_resolved_evidence_is_visibly_incomplete():
+    dm = adapt_synthesis(_export(claims=[]))
+    assert "no evidence-grounded claims resolved" in json.dumps(dm)
+
+
+def test_thesis_summary_is_derived_prose_not_an_extra_claim_card():
+    dm = adapt_synthesis(_export(claims=[Claim("Claim A", [SERVABLE])]))
+    summary_nodes = [
+        node
+        for node in dm["content"]
+        if node.get("type") == "paragraph" and "Synthesis summary" in json.dumps(node)
+    ]
+    claim_cards = [
+        node for node in dm["content"] if node.get("type") == "antiek_claim_card"
+    ]
+    assert len(summary_nodes) == 1
+    assert [node["attrs"]["statement"] for node in claim_cards] == ["Claim A"]
+
+
+def test_unresolved_source_is_unsourced_not_rights_withheld():
+    unresolved = SourceRef(
+        document_id=None,
+        document_title="Unresolved chunk missing-1",
+        content_class=None,
+        ip_holder_id=None,
+    )
+    blob = json.dumps(adapt_synthesis(_export(claims=[Claim("Claim A", [unresolved])])))
+    assert "(unsourced)" in blob
+    assert "cite-only" not in blob
+
+
+def test_provenance_warning_prevents_complete_without_fabricating_claim():
+    dm = adapt_synthesis(
+        _export(
+            claims=[Claim("Claim A", [SERVABLE])],
+            provenance_warnings=["Archived synthesis payload could not be validated."],
+        )
+    )
+    assert dm["metadata"]["provenance"]["complete"] is False
+    assert "Provenance warning" in json.dumps(dm)
+
+
+def test_path_grounded_claim_is_complete_and_visibly_traced():
+    path = PathRef(
+        index=0,
+        node_ids=["node-a", "node-b"],
+        edge_ids=["edge-a-b"],
+        support_summary="Node A provides a structural analogy for node B.",
+        manifest_verified=True,
+    )
+    dm = adapt_synthesis(_export(claims=[Claim("Claim A", path_refs=[path])]))
+    assert dm["metadata"]["provenance"]["complete"] is True
+    assert "Graph-path provenance 1" in json.dumps(dm)
+    assert "node-a → node-b" in json.dumps(dm, ensure_ascii=False)
+    assert "edge-a-b" in json.dumps(dm)
+    assert "(unsourced)" not in json.dumps(dm)
+
+
+def test_takedown_override_blocks_servable_class_body():
+    taken_down = SourceRef(
+        document_id="doc-pd",
+        document_title="On Liberty",
+        content_class="public_domain",
+        ip_holder_id=None,
+        chunk_text="PURGED BODY",
+        taken_down=True,
+    )
+    blob = json.dumps(adapt_synthesis(_export(claims=[Claim("Claim A", [taken_down])])))
+    assert "PURGED BODY" not in blob
+    assert "cite-only" in blob
