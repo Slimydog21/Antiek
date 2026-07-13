@@ -160,7 +160,14 @@ def _load_registry() -> dict[str, UserModelRecord]:
             record = UserModelRecord.model_validate(entry)
         except ValidationError:
             continue
-        out[str(rid)] = record
+        record_id = str(rid)
+        # CREATE is the only authority that mints registry identities.  Apply
+        # its namespace and key/id invariants again on every read so a restored
+        # or externally corrupted sidecar cannot smuggle a default provider
+        # name into the live dispatch registry at boot.
+        if record_id != record.id or not record.id.startswith(_ID_PREFIX):
+            continue
+        out[record_id] = record
     return out
 
 
@@ -281,7 +288,12 @@ def reload_user_providers(app: FastAPI) -> set[str]:
     registry = _load_registry()
     present = {m.cred_id for m in list_credentials()}
     registered: set[str] = set()
-    for record in registry.values():
+    for record_id, record in registry.items():
+        # Defense in depth at the authority boundary: even if a future registry
+        # reader becomes more permissive, boot reload may only register names
+        # that CREATE could have minted.
+        if record_id != record.id or not record.id.startswith(_ID_PREFIX):
+            continue
         if not record.enabled or record.cred_ref not in present:
             continue
         register_provider(_make_provider(record))

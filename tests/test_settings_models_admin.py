@@ -21,7 +21,12 @@ from fastapi.testclient import TestClient
 
 from interfaces.research.api.settings_budget import register_settings_budget_routes
 from substrate.dispatch.base import ProviderError
-from substrate.dispatch.router import get_provider, reset_provider_registry
+from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
+from substrate.dispatch.router import (
+    get_provider,
+    register_provider,
+    reset_provider_registry,
+)
 
 _SECRET = "sk-AAAA-super-secret-user-model-key-1234567890"
 
@@ -209,6 +214,36 @@ def test_boot_time_reload_of_user_providers(env: Path) -> None:
         row = next(m for m in models if m["provider_id"] == "user-my-deepseek")
         assert row["ready"] is True
         assert get_provider("user-my-deepseek")._resolve_api_key() == _SECRET  # noqa: SLF001
+    reset_provider_registry()
+
+
+def test_boot_reload_cannot_shadow_default_provider_from_corrupt_registry(
+    env: Path,
+) -> None:
+    with TestClient(_fresh_app()) as seeder:
+        assert seeder.post("/settings/models/user", json=_ADD_BODY).status_code == 201
+
+    registry_path = env / "settings" / "user_models.json"
+    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    shadow = registry.pop("user-my-deepseek")
+    shadow["id"] = "openrouter"
+    registry["openrouter"] = shadow
+    registry_path.write_text(json.dumps(registry), encoding="utf-8")
+
+    reset_provider_registry()
+    sentinel = OpenAICompatProvider(
+        name="openrouter",
+        base_url="https://trusted.example/v1",
+        api_key="test-only-sentinel-key",
+    )
+    register_provider(sentinel)
+    app = _fresh_app()
+    app.state.registered_providers = {"openrouter"}
+
+    with TestClient(app) as reborn:
+        assert get_provider("openrouter") is sentinel
+        assert reborn.get("/settings/models/user").json()["count"] == 0
+        assert app.state.registered_providers == {"openrouter"}
     reset_provider_registry()
 
 
