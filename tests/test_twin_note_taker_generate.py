@@ -1,14 +1,10 @@
-"""Recursive twin note-taker generation core — contract tests.
-
-Pins the hard-to-vary honesty invariants for ask #4's keystone substrate. The
-module injects only the proposer; authorization is an Ed25519 receipt verified
-against server configuration. Tests use deterministic fakes and no dispatch.
-"""
+"""Contract tests for signed, spend-free twin materialization."""
 
 from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import json
 import os
 import sys
@@ -35,11 +31,12 @@ from substrate.twin_note_taker.generate import (  # noqa: E402
     AssetContent,
     ProposedInsight,
     ProposedQuestion,
-    TwinAuthorization,
     TwinDocument,
     TwinGenerationError,
+    TwinGenerationReceipt,
     TwinProposal,
     generate_twin,
+    proposal_receipt_hash,
 )
 
 CONTENT = (
@@ -47,114 +44,76 @@ CONTENT = (
     "by grounding claims in cited evidence, but the open question is whether the "
     "grounding survives distribution shift in the source corpus."
 )
+_SIGNING_KEY = SigningKey.generate()
+
+
+@pytest.fixture(autouse=True)
+def _configured_verify_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        AUTHORITY_VERIFY_KEY_ENV,
+        base64.b64encode(bytes(_SIGNING_KEY.verify_key)).decode("ascii"),
+    )
 
 
 def _asset(**overrides: Any) -> AssetContent:
-    base: dict[str, Any] = {
+    values: dict[str, Any] = {
         "asset_id": "asset-1",
         "title": "RAG and Hallucination",
         "content_text": CONTENT,
         "content_class": "book",
         "source_event_ids": ("evt-source-1",),
     }
-    base.update(overrides)
-    return AssetContent(**base)
+    values.update(overrides)
+    return AssetContent(**values)
 
 
-class _RecordingProposer:
-    """A deterministic fake TwinProposer that records invocations."""
-
-    def __init__(
-        self,
-        insights: tuple[ProposedInsight, ...] = (
-            ProposedInsight(text="RAG grounds claims in cited evidence.", source_asset_id=""),
-        ),
-        questions: tuple[ProposedQuestion, ...] = (
-            ProposedQuestion(text="Does grounding survive distribution shift?"),
-        ),
-        synthesis: str = "The chapter examines RAG's effect on hallucination.",
-    ):
-        self._insights = insights
-        self._questions = questions
-        self._synthesis = synthesis
-        self.calls = 0
-
-    def __call__(
-        self,
-        asset: AssetContent,
-        *,
-        authorization: TwinAuthorization,
-    ) -> TwinProposal:
-        self.calls += 1
-        self.last_asset = asset
-        self.last_authorization = authorization
-        return TwinProposal(
-            insights=self._insights,
-            questions=self._questions,
-            synthesis_excerpt=self._synthesis,
-        )
-
-
-_AUTH_SIGNING_KEY = SigningKey.generate()
-
-
-@pytest.fixture(autouse=True)
-def _configured_authority_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv(
-        AUTHORITY_VERIFY_KEY_ENV,
-        base64.b64encode(bytes(_AUTH_SIGNING_KEY.verify_key)).decode("ascii"),
-    )
-
-
-def _authorization_payload(
+def _proposal(
     *,
-    authorization_id: str,
-    account_id: str,
-    asset_id: str,
-    model_id: str,
-    budget_authority_id: str,
-    source_content_hash: str,
-    source_event_ids: tuple[str, ...],
-    expires_at_unix: int,
-) -> bytes:
-    return json.dumps(
-        {
-            "account_id": account_id,
-            "asset_id": asset_id,
-            "authorization_id": authorization_id,
-            "budget_authority_id": budget_authority_id,
-            "expires_at_unix": expires_at_unix,
-            "model_id": model_id,
-            "source_content_hash": source_content_hash,
-            "source_event_ids": list(source_event_ids),
-        },
-        sort_keys=True,
-        separators=(",", ":"),
-    ).encode("utf-8")
+    insights: tuple[ProposedInsight, ...] = (
+        ProposedInsight("RAG grounds claims in cited evidence.", ""),
+    ),
+    questions: tuple[ProposedQuestion, ...] = (
+        ProposedQuestion("Does grounding survive distribution shift?"),
+    ),
+    synthesis: str = "The chapter examines RAG's effect on hallucination.",
+) -> TwinProposal:
+    return TwinProposal(insights, questions, synthesis)
 
 
-def _authorization(
+def _receipt_payload(claims: dict[str, Any]) -> bytes:
+    serializable = dict(claims)
+    serializable["source_event_ids"] = list(serializable["source_event_ids"])
+    return json.dumps(serializable, sort_keys=True, separators=(",", ":")).encode()
+
+
+def _receipt(
+    asset: AssetContent,
+    proposal: TwinProposal,
     *,
-    asset_id: str = "asset-1",
+    account_id: str = "account-1",
     model_id: str = "m",
+    receipt_id: str = "receipt-1",
+    budget_authority_id: str = "hold-1",
     source_content_hash: str | None = None,
-    source_event_ids: tuple[str, ...] = ("evt-source-1",),
+    source_event_ids: tuple[str, ...] | None = None,
+    proposal_payload_hash: str | None = None,
     expires_at_unix: int = 4_000_000_000,
-    signing_key: SigningKey = _AUTH_SIGNING_KEY,
-) -> TwinAuthorization:
-    claims = {
-        "authorization_id": "auth-1",
-        "account_id": "account-1",
-        "asset_id": asset_id,
+    signing_key: SigningKey = _SIGNING_KEY,
+) -> TwinGenerationReceipt:
+    claims: dict[str, Any] = {
+        "receipt_id": receipt_id,
+        "account_id": account_id,
+        "asset_id": asset.asset_id,
         "model_id": model_id,
-        "budget_authority_id": "hold-1",
+        "budget_authority_id": budget_authority_id,
         "source_content_hash": source_content_hash
-        or hashlib.sha256(CONTENT.encode("utf-8")).hexdigest(),
-        "source_event_ids": source_event_ids,
+        or hashlib.sha256(asset.content_text.encode()).hexdigest(),
+        "source_event_ids": source_event_ids or asset.source_event_ids,
+        "proposal_payload_hash": proposal_payload_hash or proposal_receipt_hash(asset, proposal),
         "expires_at_unix": expires_at_unix,
     }
-    signature = signing_key.sign(_authorization_payload(**claims)).signature
-    return TwinAuthorization(
+    signature = signing_key.sign(_receipt_payload(claims)).signature
+    return TwinGenerationReceipt(
         **claims,
         signature=base64.b64encode(signature).decode("ascii"),
     )
@@ -162,424 +121,321 @@ def _authorization(
 
 def _generate(
     asset: AssetContent,
+    proposal: TwinProposal | None = None,
     *,
-    caller: _RecordingProposer | None = None,
+    account_id: str = "account-1",
     model_id: str = "m",
 ) -> TwinDocument:
+    completed = proposal or _proposal()
     return generate_twin(
         asset,
-        caller=caller or _RecordingProposer(),
         model_id=model_id,
-        authorization=_authorization(
-            asset_id=asset.asset_id,
-            model_id=model_id,
-            source_content_hash=hashlib.sha256(asset.content_text.encode("utf-8")).hexdigest(),
-            source_event_ids=asset.source_event_ids,
-        ),
+        authenticated_account_id=account_id,
+        proposal=completed,
+        receipt=_receipt(asset, completed, account_id=account_id, model_id=model_id),
     )
 
 
-# --- fail-closed validation ---
+def test_core_has_no_dispatch_seam() -> None:
+    assert "caller" not in inspect.signature(generate_twin).parameters
 
 
-def test_empty_asset_id_rejected() -> None:
-    with pytest.raises(TwinGenerationError, match="asset_id"):
-        generate_twin(_asset(asset_id="  "), caller=_RecordingProposer(), model_id="m")
-
-
-def test_empty_model_id_rejected() -> None:
-    with pytest.raises(TwinGenerationError, match="model_id"):
-        generate_twin(_asset(), caller=_RecordingProposer(), model_id="  ")
-
-
-def test_short_content_rejected_no_twin_from_nothing() -> None:
-    with pytest.raises(TwinGenerationError, match="too short"):
+@pytest.mark.parametrize(
+    ("asset", "model_id", "account_id", "message"),
+    [
+        (_asset(asset_id="  "), "m", "account-1", "asset_id"),
+        (_asset(), "  ", "account-1", "model_id"),
+        (_asset(), "m", "  ", "authenticated_account_id"),
+        (_asset(content_text="tiny"), "m", "account-1", "too short"),
+        (_asset(content_text="x" * (MAX_CONTENT_CHARS + 1)), "m", "account-1", "ceiling"),
+        (_asset(source_event_ids=()), "m", "account-1", "source_event_ids"),
+        (_asset(source_event_ids=("book-42",)), "m", "account-1", "source_event_ids"),
+    ],
+)
+def test_invalid_source_request_fails_closed(
+    asset: AssetContent, model_id: str, account_id: str, message: str
+) -> None:
+    with pytest.raises(TwinGenerationError, match=message):
         generate_twin(
-            _asset(content_text="tiny"),
-            caller=_RecordingProposer(),
-            model_id="m",
-        )
-
-
-def test_oversized_content_rejected() -> None:
-    with pytest.raises(TwinGenerationError, match="ceiling"):
-        generate_twin(
-            _asset(content_text="x" * (MAX_CONTENT_CHARS + 1)),
-            caller=_RecordingProposer(),
-            model_id="m",
+            asset,
+            model_id=model_id,
+            authenticated_account_id=account_id,
         )
 
 
 def test_surrounding_whitespace_cannot_bypass_raw_input_ceiling() -> None:
-    caller = _RecordingProposer()
     with pytest.raises(TwinGenerationError, match="ceiling"):
         generate_twin(
             _asset(content_text=(" " * MAX_CONTENT_CHARS) + CONTENT),
-            caller=caller,
             model_id="m",
+            authenticated_account_id="account-1",
         )
-    assert caller.calls == 0
 
 
-# --- authority gate: no verified receipt -> withheld, zero dispatch ---
-
-
-def test_no_authorization_withholds_and_never_dispatches() -> None:
-    caller = _RecordingProposer()
-    result = generate_twin(_asset(), caller=caller, model_id="m")
-
+def test_without_completed_proposal_returns_honest_withheld_twin() -> None:
+    result = generate_twin(_asset(), model_id="m", authenticated_account_id="account-1")
     assert result.withheld is True
-    assert result.authorization_id is None
-    assert result.budget_authority_id is None
-    assert caller.calls == 0
-    assert result.body.synthesis_withheld is True
+    assert result.receipt_id is None
+    assert result.account_id is None
     assert result.body.insights == []
     assert result.body.open_questions == []
+    assert result.body.synthesis_withheld is True
 
 
-def test_forged_authorization_rejected_without_dispatch() -> None:
-    caller = _RecordingProposer()
-    forged = _authorization(signing_key=SigningKey.generate())
+@pytest.mark.parametrize("proposal_present", [True, False])
+def test_proposal_and_receipt_must_arrive_together(proposal_present: bool) -> None:
+    asset = _asset()
+    proposal = _proposal()
+    with pytest.raises(TwinGenerationError, match="provided together"):
+        generate_twin(
+            asset,
+            model_id="m",
+            authenticated_account_id="account-1",
+            proposal=proposal if proposal_present else None,
+            receipt=None if proposal_present else _receipt(asset, proposal),
+        )
 
+
+def test_valid_receipt_materializes_advisory_non_graph_twin() -> None:
+    result = _generate(_asset())
+    assert result.withheld is False
+    assert result.receipt_id == "receipt-1"
+    assert result.account_id == "account-1"
+    assert result.budget_authority_id == "hold-1"
+    assert result.model_id == "m"
+    assert result.authority == TWIN_AUTHORITY
+    assert result.proposed_insights == ("RAG grounds claims in cited evidence.",)
+    assert result.proposed_questions == ("Does grounding survive distribution shift?",)
+    assert result.body.insights == []
+    assert result.body.open_questions == []
+    assert TWIN_AUTHORITY in result.body.agent_notes[0]
+    assert "Proposed question:" in result.body.agent_notes[-1]
+    assert result.body.source_event_ids == ["evt-source-1"]
+
+
+def test_forged_signature_is_rejected() -> None:
+    asset, proposal = _asset(), _proposal()
+    forged = _receipt(asset, proposal, signing_key=SigningKey.generate())
     with pytest.raises(TwinGenerationError, match="signature is invalid"):
-        generate_twin(_asset(), caller=caller, model_id="m", authorization=forged)
+        generate_twin(
+            asset,
+            model_id="m",
+            authenticated_account_id="account-1",
+            proposal=proposal,
+            receipt=forged,
+        )
 
-    assert caller.calls == 0
 
-
-@pytest.mark.parametrize("field", ["account_id", "budget_authority_id"])
-def test_signed_account_and_budget_claims_cannot_be_tampered(field: str) -> None:
-    caller = _RecordingProposer()
-    authorization = replace(_authorization(), **{field: "attacker-controlled"})
-
+def test_signed_budget_claim_cannot_be_tampered() -> None:
+    asset, proposal = _asset(), _proposal()
+    tampered = replace(_receipt(asset, proposal), budget_authority_id="attacker-hold")
     with pytest.raises(TwinGenerationError, match="signature is invalid"):
-        generate_twin(_asset(), caller=caller, model_id="m", authorization=authorization)
+        generate_twin(
+            asset,
+            model_id="m",
+            authenticated_account_id="account-1",
+            proposal=proposal,
+            receipt=tampered,
+        )
 
-    assert caller.calls == 0
+
+def test_receipt_is_bound_to_authenticated_account() -> None:
+    asset, proposal = _asset(), _proposal()
+    receipt = _receipt(asset, proposal, account_id="account-2")
+    with pytest.raises(TwinGenerationError, match="different authenticated account"):
+        generate_twin(
+            asset,
+            model_id="m",
+            authenticated_account_id="account-1",
+            proposal=proposal,
+            receipt=receipt,
+        )
 
 
 @pytest.mark.parametrize(
-    ("authorization", "message"),
+    ("receipt", "message"),
     [
-        (_authorization(asset_id="other"), "different asset"),
-        (_authorization(model_id="other"), "different model"),
-        (_authorization(source_content_hash="0" * 64), "different source revision"),
+        (_receipt(_asset(asset_id="other"), _proposal()), "different asset"),
+        (_receipt(_asset(), _proposal(), model_id="other"), "different model"),
         (
-            _authorization(source_event_ids=("evt-unrelated",)),
+            _receipt(_asset(), _proposal(), source_content_hash="0" * 64),
+            "different source revision",
+        ),
+        (
+            _receipt(_asset(), _proposal(), source_event_ids=("evt-unrelated",)),
             "different source events",
+        ),
+        (
+            _receipt(_asset(), _proposal(), proposal_payload_hash="0" * 64),
+            "different proposal",
         ),
     ],
 )
-def test_authorization_binding_rejected_before_verification(
-    authorization: TwinAuthorization, message: str
+def test_receipt_binding_substitution_is_rejected(
+    receipt: TwinGenerationReceipt, message: str
 ) -> None:
-    caller = _RecordingProposer()
-
     with pytest.raises(TwinGenerationError, match=message):
         generate_twin(
             _asset(),
-            caller=caller,
             model_id="m",
-            authorization=authorization,
+            authenticated_account_id="account-1",
+            proposal=_proposal(),
+            receipt=receipt,
         )
 
-    assert caller.calls == 0
 
-
-def test_missing_server_verify_key_rejected_without_dispatch(
+def test_missing_verify_key_and_expired_receipt_fail_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    caller = _RecordingProposer()
+    asset, proposal = _asset(), _proposal()
     monkeypatch.delenv(AUTHORITY_VERIFY_KEY_ENV)
     with pytest.raises(TwinGenerationError, match="not configured"):
-        generate_twin(_asset(), caller=caller, model_id="m", authorization=_authorization())
-    assert caller.calls == 0
-
-
-def test_expired_authorization_rejected_without_dispatch() -> None:
-    caller = _RecordingProposer()
+        generate_twin(
+            asset,
+            model_id="m",
+            authenticated_account_id="account-1",
+            proposal=proposal,
+            receipt=_receipt(asset, proposal),
+        )
+    monkeypatch.setenv(
+        AUTHORITY_VERIFY_KEY_ENV,
+        base64.b64encode(bytes(_SIGNING_KEY.verify_key)).decode(),
+    )
     with pytest.raises(TwinGenerationError, match="expired"):
         generate_twin(
-            _asset(),
-            caller=caller,
+            asset,
             model_id="m",
-            authorization=_authorization(expires_at_unix=1),
+            authenticated_account_id="account-1",
+            proposal=proposal,
+            receipt=_receipt(asset, proposal, expires_at_unix=1),
         )
-    assert caller.calls == 0
 
 
-# --- authorized generation ---
-
-
-def test_authorized_generation_produces_advisory_twin() -> None:
-    caller = _RecordingProposer()
-    result = _generate(_asset(), caller=caller)
-
-    assert result.withheld is False
-    assert result.authorization_id == "auth-1"
-    assert result.budget_authority_id == "hold-1"
-    assert caller.calls == 1
-    assert caller.last_authorization.authorization_id == "auth-1"
-    assert result.authority == TWIN_AUTHORITY
-    assert result.body.insights == []  # ungrounded proposals are not graph findings
-    assert result.proposed_insights == ("RAG grounds claims in cited evidence.",)
-    assert result.proposed_questions == ("Does grounding survive distribution shift?",)
-    assert result.body.open_questions == []  # proposals never enter graph collections
-    assert result.body.synthesis_withheld is False
-    assert result.body.synthesis_excerpt == (
-        "Advisory model summary: The chapter examines RAG's effect on hallucination."
+def test_whitespace_only_proposal_is_withheld_after_normalization() -> None:
+    proposal = _proposal(
+        insights=(ProposedInsight("  ", ""),),
+        questions=(ProposedQuestion("\n"),),
+        synthesis="\t",
     )
-    assert TWIN_AUTHORITY in result.body.agent_notes[0]
-    assert "Proposed question:" in result.body.agent_notes[-1]
-
-
-def test_empty_proposal_withheld_honestly() -> None:
-    caller = _RecordingProposer(insights=(), questions=(), synthesis="   ")
-    result = _generate(_asset(), caller=caller)
-
-    assert caller.calls == 1
-    assert result.withheld is True
-    assert result.body.insights == []
-    assert result.body.synthesis_withheld is True
-
-
-def test_whitespace_only_items_are_withheld_after_normalization() -> None:
-    caller = _RecordingProposer(
-        insights=(ProposedInsight(text="   ", source_asset_id=""),),
-        questions=(ProposedQuestion(text="\n\t"),),
-        synthesis=" ",
-    )
-    result = _generate(_asset(), caller=caller)
-
+    result = _generate(_asset(), proposal)
     assert result.withheld is True
     assert result.proposed_insights == ()
     assert result.proposed_questions == ()
 
 
-def test_model_identity_comes_from_verified_authorization() -> None:
-    result = _generate(_asset(), model_id="requested-model")
-    assert result.model_id == "requested-model"
-
-
-# --- provenance: real, never fabricated ---
-
-
-def test_insight_source_attributed_to_source_asset() -> None:
-    caller = _RecordingProposer(
-        insights=(ProposedInsight(text="A real claim.", source_asset_id=""),)
-    )
-    result = _generate(_asset(asset_id="book-42"), caller=caller)
-
-    assert result.body.source_event_ids == ["evt-source-1"]
-    assert result.proposed_insights == ("A real claim.",)
-    assert "Source asset: book-42" in result.body.agent_notes
-
-
-def test_matching_explicit_source_is_accepted() -> None:
-    caller = _RecordingProposer(
-        insights=(ProposedInsight(text="A real claim.", source_asset_id="book-42"),)
-    )
-    result = _generate(_asset(asset_id="book-42"), caller=caller)
-
-    assert result.proposed_insights == ("A real claim.",)
-
-
-def test_mismatched_explicit_source_is_rejected() -> None:
-    caller = _RecordingProposer(
-        insights=(ProposedInsight(text="A real claim.", source_asset_id="other-asset"),)
-    )
-
+def test_proposer_cannot_fabricate_another_source_asset() -> None:
+    asset = _asset(asset_id="book-42")
+    proposal = _proposal(insights=(ProposedInsight("Claim", "other-asset"),))
     with pytest.raises(TwinGenerationError, match="source_asset_id"):
-        _generate(_asset(asset_id="book-42"), caller=caller)
+        proposal_receipt_hash(asset, proposal)
 
 
-def test_twin_traces_to_source_asset() -> None:
-    result = _generate(_asset(asset_id="book-42", source_event_ids=("evt-book-ingested",)))
-
-    assert result.body.source_event_ids == ["evt-book-ingested"]
-    assert result.twin_investigation_id == "twin-book-42"
-
-
-@pytest.mark.parametrize("source_event_ids", [(), ("book-42",), ("evt-bad value",)])
-def test_missing_or_malformed_source_event_is_rejected_without_dispatch(
-    source_event_ids: tuple[str, ...],
-) -> None:
-    caller = _RecordingProposer()
-    with pytest.raises(TwinGenerationError, match="source_event_ids"):
-        generate_twin(
-            _asset(source_event_ids=source_event_ids),
-            caller=caller,
-            model_id="m",
-        )
-    assert caller.calls == 0
-
-
-def test_no_fabricated_insights_when_withheld() -> None:
-    result = generate_twin(_asset(), caller=_RecordingProposer(), model_id="m")
-
-    assert result.body.insights == []
-    assert result.proposed_insights == ()
-    assert result.body.open_questions == []
-    assert result.body.synthesis_withheld is True
-
-
-# --- content-addressed dedup ---
-
-
-def test_duplicate_insight_text_deduped() -> None:
-    caller = _RecordingProposer(
+def test_canonical_text_dedup_is_stable() -> None:
+    proposal = _proposal(
         insights=(
-            ProposedInsight(text="same claim", source_asset_id=""),
-            ProposedInsight(text="same claim", source_asset_id=""),
-            ProposedInsight(text="unique claim", source_asset_id=""),
+            ProposedInsight("Same   Claim", ""),
+            ProposedInsight(" same claim ", ""),
+            ProposedInsight("Different", ""),
         )
     )
-    result = _generate(_asset(), caller=caller)
-
-    texts = list(result.proposed_insights)
-    assert texts.count("same claim") == 1
-    assert "unique claim" in texts
-    assert len(result.proposed_insights) == 2
+    result = _generate(_asset(), proposal)
+    assert result.proposed_insights == ("Same   Claim", "Different")
 
 
-def test_empty_insight_text_dropped() -> None:
-    caller = _RecordingProposer(
-        insights=(
-            ProposedInsight(text="   ", source_asset_id=""),
-            ProposedInsight(text="real", source_asset_id=""),
-        )
-    )
-    result = _generate(_asset(), caller=caller)
-
-    assert result.proposed_insights == ("real",)
-
-
-def test_case_and_whitespace_variants_dedup_by_canonical_text() -> None:
-    caller = _RecordingProposer(
-        insights=(
-            ProposedInsight(text="Same   Claim", source_asset_id=""),
-            ProposedInsight(text=" same claim ", source_asset_id=""),
-        )
-    )
-    result = _generate(_asset(), caller=caller)
-    assert result.proposed_insights == ("Same   Claim",)
-    assert result.body.open_questions == []
-
-
-# --- idempotency ---
-
-
-def test_idempotent_for_same_input_and_caller() -> None:
-    asset = _asset()
-    caller = _RecordingProposer()
-    one = _generate(asset, caller=caller)
-    two = _generate(asset, caller=caller)
-
+def test_receipt_replay_is_pure_and_idempotent() -> None:
+    asset, proposal = _asset(), _proposal()
+    receipt = _receipt(asset, proposal)
+    kwargs = {
+        "model_id": "m",
+        "authenticated_account_id": "account-1",
+        "proposal": proposal,
+        "receipt": receipt,
+    }
+    one = generate_twin(asset, **kwargs)  # type: ignore[arg-type]
+    two = generate_twin(asset, **kwargs)  # type: ignore[arg-type]
+    assert one == two
     assert one.proposal_hash == two.proposal_hash
     assert one.body.content_hash() == two.body.content_hash()
 
 
-def test_proposal_hash_binds_source_revision_and_model() -> None:
-    caller = _RecordingProposer()
-    baseline = _generate(_asset(), caller=caller)
-    changed_source = _generate(
-        _asset(content_text=CONTENT + " A material revision."), caller=caller
-    )
-    changed_model = _generate(_asset(), caller=caller, model_id="other-model")
-    changed_raw_payload = _generate(_asset(content_text=f" {CONTENT} "), caller=caller)
-
-    assert baseline.proposal_hash != changed_source.proposal_hash
+def test_hashes_bind_exact_raw_source_and_model() -> None:
+    baseline = _generate(_asset())
+    changed_source = _generate(_asset(content_text=CONTENT + " Revision."))
+    changed_whitespace = _generate(_asset(content_text=f" {CONTENT} "))
+    changed_model = _generate(_asset(), model_id="other-model")
     assert baseline.source_content_hash != changed_source.source_content_hash
+    assert baseline.proposal_hash != changed_source.proposal_hash
+    assert baseline.proposal_hash != changed_whitespace.proposal_hash
     assert baseline.proposal_hash != changed_model.proposal_hash
-    assert baseline.source_content_hash != changed_raw_payload.source_content_hash
-    assert baseline.proposal_hash != changed_raw_payload.proposal_hash
 
 
-# --- output is the canonical model + HTML-native ---
-
-
-def test_output_is_canonical_research_artifact_body() -> None:
-    result = _generate(_asset())
-
-    assert isinstance(result.body, ResearchArtifactBody)
-    assert result.body.schema_version == 1
-
-
-def test_twin_renders_html_native_and_escapes() -> None:
+def test_html_is_escaped_and_proposals_never_render_as_graph_nodes() -> None:
     malicious = "<script>alert(1)</script>"
-    caller = _RecordingProposer(
-        insights=(ProposedInsight(text=malicious, source_asset_id=""),),
+    proposal = _proposal(
+        insights=(ProposedInsight(malicious, ""),),
+        questions=(ProposedQuestion(malicious),),
         synthesis=malicious,
     )
-    result = _generate(_asset(), caller=caller)
-
+    result = _generate(_asset(), proposal)
+    assert isinstance(result.body, ResearchArtifactBody)
     html_out = render_html(result.body)
-    assert "<script>alert(1)</script>" not in html_out
+    assert malicious not in html_out
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html_out
     assert 'data-kind="insight"' not in html_out
     assert 'data-kind="question"' not in html_out
-    assert "No insights in the graph yet." in html_out
     assert TWIN_AUTHORITY in html_out
 
 
 @pytest.mark.parametrize(
-    "caller",
+    "proposal",
     [
-        _RecordingProposer(
+        _proposal(
             insights=tuple(
-                ProposedInsight(text=f"insight {index}", source_asset_id="")
-                for index in range(MAX_INSIGHTS + 1)
+                ProposedInsight(f"insight {index}", "") for index in range(MAX_INSIGHTS + 1)
             )
         ),
-        _RecordingProposer(
+        _proposal(
             questions=tuple(
-                ProposedQuestion(text=f"question {index}") for index in range(MAX_QUESTIONS + 1)
+                ProposedQuestion(f"question {index}") for index in range(MAX_QUESTIONS + 1)
             )
         ),
-        _RecordingProposer(
-            insights=(
-                ProposedInsight(text="x" * (MAX_PROPOSAL_ITEM_CHARS + 1), source_asset_id=""),
-            )
-        ),
-        _RecordingProposer(synthesis="x" * (MAX_SYNTHESIS_CHARS + 1)),
+        _proposal(insights=(ProposedInsight("x" * (MAX_PROPOSAL_ITEM_CHARS + 1), ""),)),
+        _proposal(synthesis="x" * (MAX_SYNTHESIS_CHARS + 1)),
     ],
 )
-def test_untrusted_output_limits_fail_closed(caller: _RecordingProposer) -> None:
+def test_untrusted_output_limits_fail_closed(proposal: TwinProposal) -> None:
     with pytest.raises(TwinGenerationError, match="exceeds"):
-        _generate(_asset(), caller=caller)
+        proposal_receipt_hash(_asset(), proposal)
 
 
 def test_aggregate_output_limit_fails_closed() -> None:
-    caller = _RecordingProposer(
+    proposal = _proposal(
         insights=tuple(
-            ProposedInsight(
-                text=("x" * (MAX_PROPOSAL_ITEM_CHARS - 10)) + f"{index:010d}",
-                source_asset_id="",
-            )
+            ProposedInsight(("x" * (MAX_PROPOSAL_ITEM_CHARS - 10)) + f"{index:010d}", "")
             for index in range(21)
         ),
         questions=(),
         synthesis="",
     )
-
     with pytest.raises(TwinGenerationError, match="aggregate"):
-        _generate(_asset(), caller=caller)
+        proposal_receipt_hash(_asset(), proposal)
 
 
-def test_malformed_proposer_result_fails_closed() -> None:
-    class _MalformedProposer:
-        def __call__(
-            self,
-            asset: AssetContent,
-            *,
-            authorization: TwinAuthorization,
-        ):
-            return {"insights": []}
+def test_exact_builtin_types_prevent_overridable_string_bypasses() -> None:
+    class _LyingString(str):
+        def __len__(self) -> int:
+            return 1
 
-    with pytest.raises(TwinGenerationError, match="TwinProposal"):
+        def strip(self, chars: str | None = None) -> str:
+            return self
+
+    with pytest.raises(TwinGenerationError, match="exact strings"):
         generate_twin(
-            _asset(),
-            caller=_MalformedProposer(),  # type: ignore[arg-type]
+            _asset(content_text=_LyingString("x" * (MAX_CONTENT_CHARS + 1))),
             model_id="m",
-            authorization=_authorization(),
+            authenticated_account_id="account-1",
+        )
+    with pytest.raises(TwinGenerationError, match="exact strings"):
+        proposal_receipt_hash(
+            _asset(), _proposal(insights=(ProposedInsight(_LyingString("claim"), ""),))
         )
