@@ -233,3 +233,46 @@ def test_dedup_collapsed_count_is_honest():
     # 1 unique + 3 dups of "dup" → dedup_collapsed counts the collapses
     assert plan.dedup_collapsed == 2  # n3 and n4 collapse onto n2
     assert len(plan.promotable_insights) == 4  # all appear, marked
+
+
+# ---------------------------------------------------------------------------
+# Mirror-parity guard (turn-128 hardening).
+# ---------------------------------------------------------------------------
+from substrate.graph.insight_question import (  # noqa: E402
+    canonical_text as main_canonical_text,
+)
+from substrate.graph.ops import (  # noqa: E402
+    content_addressed_id as main_content_addressed_id,
+)
+
+_PARITY_CASES = [
+    "",
+    "simple text",
+    "  Leading   spaces  ",
+    "Mixed" "\t" "WHITESPACE" "\n" "Newlines",
+    "café résumé naïve",
+    "identical",
+    "IDENTICAL",
+]
+
+
+def test_canonical_text_mirror_matches_on_main_implementation():
+    for case in _PARITY_CASES:
+        assert canonical_text(case) == main_canonical_text(case), (
+            f"canonical_text mirror drifted for {case!r}: "
+            f"planner={canonical_text(case)!r} "
+            f"main={main_canonical_text(case)!r}"
+        )
+
+
+def test_predicted_node_id_matches_on_main_content_addressing():
+    from substrate.twin_note_taker.promotion_planner import predicted_node_id
+
+    for kind in ("insight", "question"):
+        for case in _PARITY_CASES:
+            expected = main_content_addressed_id(kind, main_canonical_text(case))
+            actual = predicted_node_id(kind, case)
+            assert actual == expected, (
+                f"predicted_node_id drifted for kind={kind!r} text={case!r}: "
+                f"planner={actual!r} main={expected!r}"
+            )
