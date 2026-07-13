@@ -83,16 +83,18 @@ advances to reconciled only after every ambiguous hold is resolved.
 
 ## Persistence
 
-Schema version 1 uses five STRICT tables: runs, paid holds, zero-cost attempts,
+Schema version 2 uses five STRICT tables: runs, paid holds, zero-cost attempts,
 immutable commands, and append-only events. Database CHECK constraints enforce
-USD, canonical observed values, bounded balances, run/hold terminal consistency,
-and `authorized + held <= ceiling`. Triggers reject command/event update or
-deletion. Reads verify persisted intent JSON against its hash and material
-columns.
+USD, explicit `hard_ceiling` mode, canonical observed values, bounded balances,
+run/hold terminal consistency, and `authorized + held <= ceiling`. Triggers
+reject command/event update or deletion. Reads verify persisted intent JSON
+against its hash and material columns.
 
-`application_id=0x52535044` and `user_version=1` identify the database. Initial
-schema creation is one transaction. Failure after any individual DDL statement
-rolls back to version zero with no research tables.
+`application_id=0x52535044` and `user_version=2` identify the database. Initial
+schema creation is one transaction. Version 1 migrates atomically by adding the
+explicit mode binding with the only historically valid value, `hard_ceiling`.
+Failure after any individual DDL statement rolls back to version zero with no
+research tables.
 
 ## Verification contract
 

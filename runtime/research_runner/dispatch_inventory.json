@@ -1,5 +1,14 @@
 [
   {
+    "seam_id": "cascade.session.launch",
+    "stage": "launch",
+    "source": "interfaces/research/api/cascade_routes.py",
+    "function": "_hard_ceiling_launch_receipt",
+    "call_symbol": "gateway.prepare_zero_cost",
+    "classification": "zero_cost_local",
+    "reason": "host-local task creation has no provider charge; its receipt is the durable proof that launch setup completed"
+  },
+  {
     "seam_id": "cascade.plan.decomposer",
     "stage": "pre_launch_plan",
     "source": "roles/cascade_planner/planner.py",
