@@ -59,6 +59,8 @@ export interface ModeEntry {
    * panel-only or built-but-not-yet-wired.
    */
   route?: string;
+  /** False when a route is real but meaningless inside the authenticated ⌘K palette. */
+  paletteVisible?: boolean;
   /**
    * If `shared`, a one-line reason it is cross-cutting rather than
    * force-fit into a workflow. Required for shared entries (enforced by
@@ -232,6 +234,15 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
       "Autonomous multi-goal deep-research swarm: goals (one per line · templates) + duration + fan-out → recommended price ceiling → explicit approve (HTML deliverable).",
     built: true,
     route: "/midnight-oil",
+  },
+  {
+    id: "KnowledgeGraph",
+    workflow: "research",
+    label: "Knowledge graph",
+    blurb:
+      "Trace distilled insights and questions through their relationships to exact source evidence.",
+    built: true,
+    route: "/knowledge-graph",
   },
 
   // ── READ ──────────────────────────────────────────────────────────
@@ -444,6 +455,7 @@ export const MODE_TAXONOMY: readonly ModeEntry[] = [
     blurb: "Magic-link login page.",
     built: true,
     route: "/login",
+    paletteVisible: false,
     sharedReason: "Auth gate — precedes any workflow; not part of one.",
   },
   {

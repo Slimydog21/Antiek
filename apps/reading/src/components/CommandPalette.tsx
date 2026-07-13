@@ -12,11 +12,13 @@ import {
 import { SHORTCUT_EVENTS } from "../workspace/shortcuts";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
+  MODE_TAXONOMY,
   WORKFLOWS,
   WORKFLOW_ORDER,
   workflowForPath,
   type Workflow,
 } from "../shell/workflowTaxonomy";
+import { buildTaxonomyRouteIndex } from "../shell/paletteRoutes";
 import {
   entryWorkflow as facetEntryWorkflow,
   rankEntries as facetRankEntries,
@@ -109,7 +111,7 @@ export type PaletteEntry =
   | PaletteParkedQuestion
   | PaletteAction;
 
-const ROUTE_INDEX: PaletteRoute[] = [
+const CURATED_ROUTE_INDEX: PaletteRoute[] = [
   {
     kind: "route",
     id: "route:research",
@@ -279,6 +281,13 @@ const ROUTE_INDEX: PaletteRoute[] = [
     path: "/cross-graph/citations",
   },
 ];
+
+// The taxonomy owns route inventory. Curated rows above may refine copy, but
+// cannot omit a newly shipped static mode or keep a retired route alive.
+const ROUTE_INDEX: PaletteRoute[] = buildTaxonomyRouteIndex(
+  CURATED_ROUTE_INDEX,
+  MODE_TAXONOMY,
+);
 
 /**
  * SPR-04 — decorate every route entry with its workflow facet, derived
