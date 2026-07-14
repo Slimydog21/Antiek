@@ -327,7 +327,9 @@ def _sign(
     evidence_id = "mmlocalzero_" + hashlib.sha256(_canonical(unsigned)).hexdigest()
     signed = {"evidence_id": evidence_id, **unsigned}
     mac = hmac.new(snapshot_key, _canonical(signed), hashlib.sha256).hexdigest()
-    return LocalZeroExternalCostEvidenceV1(**signed, snapshot_mac=mac)
+    return LocalZeroExternalCostEvidenceV1.model_validate(
+        {**signed, "snapshot_mac": mac}
+    )
 
 
 def _run_ids_are_deterministic(evidence: LocalZeroExternalCostEvidenceV1) -> bool:
