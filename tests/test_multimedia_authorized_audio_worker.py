@@ -187,6 +187,18 @@ def test_paid_audio_transforms_authority_registers_and_replays(tmp_path: Path) -
         ) == (source.chapter_id, plan_chapter.title, sequence, expected_start, expected_end)
         expected_start = expected_end
     assert expected_start == metadata.duration_seconds
+    assert all(claim.line_id and claim.evidence_sources for claim in metadata.learned_claims)
+    expected_documents = {
+        citation.document_id
+        for line in receipt.transformed_plan.script_lines
+        if line.evidence_derivation is not None
+        for citation in line.citations
+    }
+    assert {
+        source.document_id
+        for claim in metadata.learned_claims
+        for source in claim.evidence_sources
+    } == expected_documents
     first_calls = tuple(calls)
     times.append(datetime(2026, 7, 14, 1, tzinfo=UTC))
     replay = produce_authorized_audio(
