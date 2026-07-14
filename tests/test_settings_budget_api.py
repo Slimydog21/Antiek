@@ -16,7 +16,7 @@ from interfaces.research.api.settings_budget import (
     estimate_prompt_cost,
     read_operator_budget,
 )
-from orchestration.continuous.budget import DaemonBudget
+from orchestration.continuous.budget import DaemonBudget, _budget_path
 
 
 @pytest.fixture
@@ -78,6 +78,85 @@ def test_budget_default_cap_with_known_spend_sidecar(
     assert body["spent_status"] == "known"
     assert body["spent_usd"] == 1.25
     assert body["remaining_usd"] == 3.75
+
+
+@pytest.mark.parametrize(
+    ("operator_cap", "expected_remaining"),
+    [(200.0, 196.0), (2.0, 0.0)],
+)
+def test_budget_rebases_sidecar_spend_on_operator_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    operator_cap: float,
+    expected_remaining: float,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", str(operator_cap))
+
+    budget = read_operator_budget()
+
+    assert budget.daily_cap_usd == operator_cap
+    assert budget.spent_status == "known"
+    assert budget.spent_usd == 4.0
+    assert budget.remaining_usd == expected_remaining
+    assert budget.over_budget is (operator_cap < 4.0)
+    assert budget.over_budget_usd == max(0.0, 4.0 - operator_cap)
+
+
+def test_budget_spent_today_is_cap_independent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.5)
+
+    assert DaemonBudget(daily_cap_usd=200.0).spent_today() == 1.5
+    assert DaemonBudget(daily_cap_usd=1.0).spent_today() == 1.5
+
+
+@pytest.mark.parametrize("bad_spend", [None, -1.0, float("nan"), float("inf")])
+def test_budget_malformed_spend_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_spend: float | None,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if bad_spend is None:
+        del raw["spent_usd"]
+    else:
+        raw["spent_usd"] = bad_spend
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+    assert budget.over_budget is False
+    assert budget.over_budget_usd == 0.0
+
+
+def test_budget_misfiled_date_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["date_stamp"] = "2000-01-01"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
 
 
 def test_budget_operator_env_cap(

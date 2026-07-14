@@ -69,6 +69,8 @@ class BudgetResponse(BaseModel):
     daily_cap_usd: float | None = Field(ge=0, allow_inf_nan=False)
     spent_usd: float | None = Field(ge=0, allow_inf_nan=False)
     remaining_usd: float | None = Field(ge=0, allow_inf_nan=False)
+    over_budget: bool = False
+    over_budget_usd: float = Field(default=0, ge=0, allow_inf_nan=False)
     spent_status: SpentStatus
     cap_env: str | None
     notes: list[str] = Field(default_factory=list)
@@ -385,17 +387,20 @@ def read_operator_budget() -> BudgetResponse:
         )
 
     # Prefer daemon budget sidecar when present (shared daily spend signal).
-    # Crucial honesty detail: DaemonBudget.remaining_today() fabricates an
+    # Crucial honesty detail: DaemonBudget reads fabricate an
     # in-memory zero-spend snapshot when the file is absent. Settings is a
     # readout, not the daemon, so absence of the sidecar means unknown spend.
+    # When the sidecar exists, read cap-independent spend and apply the selected
+    # Settings cap here. The sidecar's daemon cap may differ from the operator
+    # cap; mixing those two baselines can falsely block prompts or permit spend.
     spent: float | None = None
     remaining: float | None = None
     spent_status: SpentStatus = "unknown"
     try:
         if _budget_path().is_file():
             bdg = DaemonBudget(daily_cap_usd=float(daily_cap))
-            remaining = float(bdg.remaining_today())
-            spent = max(0.0, float(daily_cap) - remaining)
+            spent = bdg.spent_today()
+            remaining = max(0.0, float(daily_cap) - spent)
             spent_status = "known"
             notes.append("spent sourced from continuous-daemon daily budget sidecar")
         else:
@@ -406,10 +411,16 @@ def read_operator_budget() -> BudgetResponse:
         spent_status = "unknown"
         notes.append(f"spent ledger unavailable: {type(exc).__name__}")
 
+    over_budget_usd = max(0.0, (spent or 0.0) - float(daily_cap))
+    if over_budget_usd:
+        notes.append(f"recorded spend is ${over_budget_usd:.2f} over the operator cap")
+
     return BudgetResponse(
         daily_cap_usd=daily_cap,
         spent_usd=spent,
         remaining_usd=remaining,
+        over_budget=over_budget_usd > 0,
+        over_budget_usd=over_budget_usd,
         spent_status=spent_status,
         cap_env=cap_env,
         notes=notes,

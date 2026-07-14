@@ -22,6 +22,7 @@ by virtue of the date stamp in the filename — no cron, no migration.
 from __future__ import annotations
 
 import json
+import math
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -95,11 +96,26 @@ def _read_snapshot(date_stamp: str, cap_usd: float) -> _BudgetSnapshot:
             date_stamp=date_stamp, spent_usd=0.0, spawn_count=0, cap_usd=cap_usd,
         )
     raw = json.loads(p.read_text())
+    if not isinstance(raw, dict):
+        raise ValueError("budget snapshot must be a JSON object")
+    if raw.get("date_stamp") != date_stamp:
+        raise ValueError("budget snapshot date does not match its requested UTC day")
+    if "spent_usd" not in raw or "spawn_count" not in raw or "cap_usd" not in raw:
+        raise ValueError("budget snapshot is missing required accounting fields")
+    spent_usd = float(raw["spent_usd"])
+    stored_cap_usd = float(raw["cap_usd"])
+    spawn_count = raw["spawn_count"]
+    if not math.isfinite(spent_usd) or spent_usd < 0:
+        raise ValueError("budget snapshot spend must be finite and non-negative")
+    if not math.isfinite(stored_cap_usd) or stored_cap_usd < 0:
+        raise ValueError("budget snapshot cap must be finite and non-negative")
+    if isinstance(spawn_count, bool) or not isinstance(spawn_count, int) or spawn_count < 0:
+        raise ValueError("budget snapshot spawn count must be a non-negative integer")
     return _BudgetSnapshot(
-        date_stamp=raw["date_stamp"],
-        spent_usd=float(raw.get("spent_usd", 0.0)),
-        spawn_count=int(raw.get("spawn_count", 0)),
-        cap_usd=float(raw.get("cap_usd", cap_usd)),
+        date_stamp=date_stamp,
+        spent_usd=spent_usd,
+        spawn_count=spawn_count,
+        cap_usd=stored_cap_usd,
     )
 
 
@@ -140,6 +156,16 @@ class DaemonBudget:
     def remaining_today(self, *, now: Optional[datetime] = None) -> float:
         snap = _read_snapshot(_utc_date_stamp(now), self.daily_cap_usd)
         return max(0.0, snap.cap_usd - snap.spent_usd)
+
+    def spent_today(self, *, now: datetime | None = None) -> float:
+        """Return recorded spend without folding it through a cap.
+
+        Read models may apply an operator cap that differs from the daemon cap
+        stored in the sidecar.  Such callers need the raw spend value so both
+        spent and remaining can be computed against the same current cap.
+        """
+        snap = _read_snapshot(_utc_date_stamp(now), self.daily_cap_usd)
+        return snap.spent_usd
 
     def reserve(
         self,
