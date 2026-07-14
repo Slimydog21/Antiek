@@ -2289,6 +2289,81 @@ class TestMigrationPrerequisites:
             with pytest.raises(ValueError, match="issuer rejected"):
                 issuer.commit(state=barrier, parent_fd=parent_fd)
 
+            barrier_handle.drain_terminal_only()
+            barrier_handle.close_and_revoke_all_writers()
+            barrier_handle.checkpoint_and_plant_test_all_mutators()
+            corpus = barrier_handle.seal_and_collect()
+            issuer_measured = support_checkpoint._collect_sealed_corpus(
+                support_checkpoint._issuer_root_path(root_fd),
+                json.loads(
+                    (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+                ),
+            )
+            assert issuer_measured == corpus
+            sealed_root_record = json.loads(
+                (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+            )
+            substituted_root_record = copy.deepcopy(sealed_root_record)
+            substituted_root_record["child_adapter_evidence"]["substitution"] = True
+            support_checkpoint._durable_write_json(
+                root.root_path / "legacy-root-state-v1.json", substituted_root_record
+            )
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(
+                    {
+                        **unsupported_sources_candidate,
+                        "source_manifest_sha256": corpus.source_manifest_sha256,
+                    }
+                )
+            support_checkpoint._durable_write_json(
+                root.root_path / "legacy-root-state-v1.json", sealed_root_record
+            )
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(unsupported_sources_candidate)
+            sources_candidate = {
+                **unsupported_sources_candidate,
+                "source_manifest_sha256": corpus.source_manifest_sha256,
+            }
+            sources = issuer.reserve(sources_candidate)
+            assert sources.source_manifest_sha256 == corpus.source_manifest_sha256
+            assert sources.witness_sha256 == barrier.witness_sha256
+            assert issuer.reserve(sources_candidate) == sources
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=sources,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=barrier.state_sha256,
+            )
+            sealed_child = support_checkpoint._child_path(
+                root.root_path, support_checkpoint._CHILD_ROLES[0]
+            )
+            sealed_child_bytes = sealed_child.read_bytes()
+            sealed_wal = Path(f"{sealed_child}-wal")
+            sealed_wal.write_bytes(b"")
+            sealed_wal.chmod(0o600)
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.commit(state=sources, parent_fd=parent_fd)
+            sealed_wal.unlink()
+            drift_fd = os.open(sealed_child, os.O_WRONLY)
+            try:
+                assert os.pwrite(drift_fd, b"X", 0) == 1
+                os.fsync(drift_fd)
+            finally:
+                os.close(drift_fd)
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.commit(state=sources, parent_fd=parent_fd)
+            restore_fd = os.open(sealed_child, os.O_WRONLY | os.O_TRUNC)
+            try:
+                view = memoryview(sealed_child_bytes)
+                while view:
+                    written = os.write(restore_fd, view)
+                    assert written > 0
+                    view = view[written:]
+                os.fsync(restore_fd)
+            finally:
+                os.close(restore_fd)
+            issuer.commit(state=sources, parent_fd=parent_fd)
+
             skipped_candidate = _issuer_candidate(
                 local_key,
                 target_parent_dev=parent_info.st_dev,
@@ -2300,13 +2375,13 @@ class TestMigrationPrerequisites:
                 lifecycle_phase="copy_prepared",
                 barrier_id=barrier.barrier_id,
                 freeze_nonce=barrier.freeze_nonce,
-                source_manifest_sha256="73" * 32,
+                source_manifest_sha256=sources.source_manifest_sha256,
                 copy_audit_sha256="74" * 32,
                 witness_sha256=barrier.witness_sha256,
                 phase_version=3,
                 issuer_sequence=3,
                 updated_at_ms=4,
-                previous_state_sha256=barrier.state_sha256,
+                previous_state_sha256=sources.state_sha256,
             )
             with pytest.raises(ValueError, match="issuer rejected"):
                 issuer.reserve(skipped_candidate)

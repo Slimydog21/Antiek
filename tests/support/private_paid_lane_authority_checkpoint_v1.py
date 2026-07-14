@@ -115,6 +115,7 @@ _ISSUER_CANDIDATE_FIELDS = frozenset(SignedMigrationLifecycleStateV1.model_field
     "witness_sha256",
 }
 _ISSUER_WITNESS_DOMAIN = b"antiek.midnight-oil.fixture-migration-root-witness.v1\0"
+_ISSUER_MAX_CHILD_BYTES = 64 * 1024 * 1024
 
 
 def _issuer_response(socket_: socket.socket, payload: bytes) -> None:
@@ -240,12 +241,183 @@ def _issuer_compatible_root_record(root_fd: int, phase: object) -> dict[str, obj
     record = _issuer_root_record(root_fd)
     if type(phase) is not str:
         raise ValueError("issuer lifecycle phase type")
-    expected_state = {"schema_only": "open", "barrier_acquired": "quiesced"}.get(phase)
+    expected_state = {
+        "schema_only": "open",
+        "barrier_acquired": "quiesced",
+        "sources_sealed": "sealed",
+    }.get(phase)
     if expected_state is None or record.get("state") != expected_state:
         raise ValueError("issuer unsupported or incompatible root phase")
     if phase == "schema_only" and record.get("barrier_id") is not None:
         raise ValueError("issuer schema root phase")
     return record
+
+
+def _issuer_root_path(root_fd: int) -> Path:
+    raw = fcntl.fcntl(root_fd, fcntl.F_GETPATH, b"\0" * 1024)
+    path = Path(os.fsdecode(raw.split(b"\0", 1)[0]))
+    info = path.stat()
+    opened = os.fstat(root_fd)
+    if (info.st_dev, info.st_ino) != (opened.st_dev, opened.st_ino):
+        raise ValueError("issuer root path identity")
+    return path
+
+
+def _collect_sealed_corpus(
+    root_path: Path, record: Mapping[str, object]
+) -> FrozenPaidLaneMigrationCorpusV1:
+    child_evidence = record.get("child_adapter_evidence")
+    if type(child_evidence) is not dict:
+        raise ValueError("sealed child evidence unavailable")
+    measurements = child_evidence.get("sealed_measurements")
+    if type(measurements) is not dict:
+        raise ValueError("sealed measurements unavailable")
+    barrier_id = record.get("barrier_id")
+    freeze_nonce = record.get("freeze_nonce")
+    acquired_at_ms = record.get("acquired_at_ms")
+    if (
+        type(barrier_id) is not str
+        or type(freeze_nonce) is not str
+        or type(acquired_at_ms) is not int
+    ):
+        raise ValueError("sealed corpus root pins")
+    with _issuer_child_snapshot(root_path) as snapshot_root:
+        measured_now = _measure_child_adapters(snapshot_root)
+        if measured_now != measurements:
+            raise ValueError("sealed source measurement drift")
+        extracted = _extract_child_migration_rows(snapshot_root)
+    source_stores: list[MigrationSourceStoreV1] = []
+    for role in _CHILD_ROLES:
+        measured = measurements.get(role)
+        if type(measured) is not dict:
+            raise ValueError("sealed role measurement unavailable")
+        row_counts = measured.get("row_counts")
+        if type(row_counts) is not list or any(
+            type(item) is not list
+            or len(item) != 2
+            or type(item[0]) is not str
+            or type(item[1]) is not int
+            or item[1] < 0
+            for item in row_counts
+        ):
+            raise ValueError("typed child migration extraction required")
+        if any(item[0] not in _MIGRATION_ROW_MODELS and item[1] != 0 for item in row_counts):
+            raise ValueError("non-migratable child rows remain")
+        contract_role = _contract_role(role)
+        owned_count = sum(
+            len(extracted[table])
+            for table in _MIGRATION_ROLE_SCHEMA_TABLES[contract_role]
+            if table in extracted
+        )
+        if owned_count != sum(item[1] for item in row_counts if item[0] in _MIGRATION_ROW_MODELS):
+            raise ValueError("typed child row count mismatch")
+        source_stores.append(
+            MigrationSourceStoreV1(
+                store_kind=contract_role,
+                store_id=role,
+                schema_sha256=str(measured["schema_sha256"]),
+                native_writer_barrier_id=barrier_id,
+                final_version=int(measured["final_version"]),
+                row_count=owned_count,
+                ordered_rows_sha256=str(measured["ordered_rows_sha256"]),
+            )
+        )
+    draft = FrozenPaidLaneMigrationCorpusV1.model_construct(
+        freeze_nonce=freeze_nonce,
+        quiesced_at_ms=acquired_at_ms,
+        drained_at_ms=acquired_at_ms,
+        sealed_at_ms=acquired_at_ms,
+        source_stores=tuple(sorted(source_stores, key=lambda item: item.store_kind)),
+        provider_capabilities_v4=extracted["provider_capabilities_v4"],
+        provider_revocation_heads=extracted["provider_revocation_heads"],
+        provider_revocation_current=extracted["provider_revocation_current"],
+        source_heads=extracted["source_heads"],
+        source_current=extracted["source_current"],
+        encrypted_source_bundles=extracted["encrypted_source_bundles"],
+        owner_operations=extracted["owner_operations"],
+        consent_claims=extracted["consent_claims"],
+        queue_leases=extracted["queue_leases"],
+        budget_accounts=extracted["budget_accounts"],
+        source_manifest_sha256="0" * 64,
+    )
+    return FrozenPaidLaneMigrationCorpusV1.model_validate(
+        {
+            **draft.model_dump(mode="python"),
+            "source_manifest_sha256": _migration_source_manifest_sha256(draft),
+        }
+    )
+
+
+@contextmanager
+def _issuer_child_snapshot(root_path: Path) -> Iterator[Path]:
+    with tempfile.TemporaryDirectory(prefix="antiek-sealed-snapshot-") as temporary:
+        snapshot_root = Path(temporary)
+        snapshot_root.chmod(0o700)
+        snapshot_children = snapshot_root / "children"
+        snapshot_children.mkdir(mode=0o700)
+        for role in _CHILD_ROLES:
+            source = _child_path(root_path, role)
+            _issuer_require_child_sidecars_absent(source)
+            before = source.lstat()
+            descriptor = os.open(source, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            try:
+                opened = os.fstat(descriptor)
+                if (
+                    not stat.S_ISREG(opened.st_mode)
+                    or opened.st_nlink != 1
+                    or (opened.st_mode & 0o777) != 0o600
+                    or opened.st_uid != os.getuid()
+                    or (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino)
+                    or opened.st_size > _ISSUER_MAX_CHILD_BYTES
+                ):
+                    raise ValueError("issuer child identity")
+                chunks: list[bytes] = []
+                remaining = opened.st_size
+                while remaining:
+                    chunk = os.read(descriptor, min(65_536, remaining))
+                    if not chunk:
+                        raise ValueError("issuer child short read")
+                    chunks.append(chunk)
+                    remaining -= len(chunk)
+                content = b"".join(chunks)
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                confirmed = bytearray()
+                while chunk := os.read(descriptor, 65_536):
+                    confirmed.extend(chunk)
+                    if len(confirmed) > _ISSUER_MAX_CHILD_BYTES:
+                        raise ValueError("issuer child reread bound")
+                after = source.lstat()
+                _issuer_require_child_sidecars_absent(source)
+                if (
+                    bytes(confirmed) != content
+                    or (after.st_dev, after.st_ino) != (opened.st_dev, opened.st_ino)
+                    or after.st_size != len(content)
+                ):
+                    raise ValueError("issuer child changed during snapshot")
+            finally:
+                os.close(descriptor)
+            destination = _child_path(snapshot_root, role)
+            output = os.open(destination, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                view = memoryview(content)
+                while view:
+                    written = os.write(output, view)
+                    if written <= 0:
+                        raise OSError("issuer snapshot short write")
+                    view = view[written:]
+            finally:
+                os.close(output)
+        yield snapshot_root
+
+
+def _issuer_require_child_sidecars_absent(source: Path) -> None:
+    for suffix in ("-wal", "-shm", "-journal"):
+        sidecar = Path(f"{source}{suffix}")
+        try:
+            sidecar.lstat()
+        except FileNotFoundError:
+            continue
+        raise ValueError("issuer child sidecar present")
 
 
 def _fixture_migration_lifecycle_issuer_main(
@@ -420,6 +592,15 @@ def _fixture_migration_lifecycle_issuer_main(
                                 or pending_state.freeze_nonce != compatible.get("freeze_nonce")
                             ):
                                 raise ValueError("issuer pending root authority")
+                            if pending_state.lifecycle_phase == "sources_sealed":
+                                corpus = _collect_sealed_corpus(
+                                    _issuer_root_path(bound_root_fd), compatible
+                                )
+                                if (
+                                    pending_state.source_manifest_sha256
+                                    != corpus.source_manifest_sha256
+                                ):
+                                    raise ValueError("issuer pending source manifest")
                         _issuer_response(
                             connection,
                             b"S" + _migration_lifecycle_state_document(pending_state),
@@ -440,6 +621,15 @@ def _fixture_migration_lifecycle_issuer_main(
                                 "barrier_id"
                             ) or candidate.get("freeze_nonce") != root_record.get("freeze_nonce"):
                                 raise ValueError("issuer barrier root phase")
+                            if phase == "sources_sealed":
+                                corpus = _collect_sealed_corpus(
+                                    _issuer_root_path(bound_root_fd), root_record
+                                )
+                                if (
+                                    candidate.get("source_manifest_sha256")
+                                    != corpus.source_manifest_sha256
+                                ):
+                                    raise ValueError("issuer source manifest")
                             witness_sha256 = _issuer_witness_sha256(
                                 root_record=root_record,
                                 target_parent_identity=(
@@ -501,6 +691,15 @@ def _fixture_migration_lifecycle_issuer_main(
                             or state_for_commit.freeze_nonce != compatible.get("freeze_nonce")
                         ):
                             raise ValueError("issuer commit root authority")
+                        if state_for_commit.lifecycle_phase == "sources_sealed":
+                            corpus = _collect_sealed_corpus(
+                                _issuer_root_path(bound_root_fd), compatible
+                            )
+                            if (
+                                state_for_commit.source_manifest_sha256
+                                != corpus.source_manifest_sha256
+                            ):
+                                raise ValueError("issuer commit source manifest")
                         durable = _read_signed_migration_lifecycle_state(
                             parent_fd=descriptor,
                             target_basename=target_basename,
@@ -1181,6 +1380,12 @@ def _audit_transition_evidence(record: dict[str, object]) -> None:
     expected_state = "open" if not evidence else evidence[-1]["next_state"]
     if record.get("state") != expected_state:
         raise ValueError("durable state/evidence mismatch")
+    if (
+        evidence
+        and evidence[-1].get("measured_state_sha256")
+        != hashlib.sha256(_canonical_json(record.get("child_adapter_evidence"))).hexdigest()
+    ):
+        raise ValueError("terminal transition measurement mismatch")
     revalidated = expected_index >= 7
     if record.get("sealed_sources_revalidated") is not revalidated:
         raise ValueError("sealed revalidation flag mismatch")
@@ -1458,76 +1663,7 @@ class QuarantinedSyntheticWriterBarrierV1:
     def seal_and_collect(self) -> FrozenPaidLaneMigrationCorpusV1:
         self._transition("seal_and_collect")
         record = _read_json_audited(self._root_path / _SUPPORT_ROOT_STATE)
-        child_evidence = record.get("child_adapter_evidence")
-        if type(child_evidence) is not dict:
-            raise ValueError("sealed child evidence unavailable")
-        measurements = child_evidence.get("sealed_measurements")
-        if type(measurements) is not dict:
-            raise ValueError("sealed measurements unavailable")
-        extracted = _extract_child_migration_rows(self._root_path)
-        source_stores: list[MigrationSourceStoreV1] = []
-        for role in _CHILD_ROLES:
-            measured = measurements.get(role)
-            if type(measured) is not dict:
-                raise ValueError("sealed role measurement unavailable")
-            row_counts = measured.get("row_counts")
-            if type(row_counts) is not list or any(
-                type(item) is not list
-                or len(item) != 2
-                or type(item[0]) is not str
-                or type(item[1]) is not int
-                or item[1] < 0
-                for item in row_counts
-            ):
-                raise ValueError("typed child migration extraction required")
-            if any(item[0] not in _MIGRATION_ROW_MODELS and item[1] != 0 for item in row_counts):
-                raise ValueError("non-migratable child rows remain")
-            contract_role = _contract_role(role)
-            owned_count = sum(
-                len(extracted[table])
-                for table in _MIGRATION_ROLE_SCHEMA_TABLES[contract_role]
-                if table in extracted
-            )
-            if owned_count != sum(
-                item[1] for item in row_counts if item[0] in _MIGRATION_ROW_MODELS
-            ):
-                raise ValueError("typed child row count mismatch")
-            source_stores.append(
-                MigrationSourceStoreV1(
-                    store_kind=contract_role,
-                    store_id=role,
-                    schema_sha256=str(measured["schema_sha256"]),
-                    native_writer_barrier_id=self.barrier_id,
-                    final_version=int(measured["final_version"]),
-                    row_count=owned_count,
-                    ordered_rows_sha256=str(measured["ordered_rows_sha256"]),
-                )
-            )
-        canonical_stores = tuple(sorted(source_stores, key=lambda item: item.store_kind))
-        draft = FrozenPaidLaneMigrationCorpusV1.model_construct(
-            freeze_nonce=self.freeze_nonce,
-            quiesced_at_ms=self.acquired_at_ms,
-            drained_at_ms=self.acquired_at_ms,
-            sealed_at_ms=self.acquired_at_ms,
-            source_stores=canonical_stores,
-            provider_capabilities_v4=extracted["provider_capabilities_v4"],
-            provider_revocation_heads=extracted["provider_revocation_heads"],
-            provider_revocation_current=extracted["provider_revocation_current"],
-            source_heads=extracted["source_heads"],
-            source_current=extracted["source_current"],
-            encrypted_source_bundles=extracted["encrypted_source_bundles"],
-            owner_operations=extracted["owner_operations"],
-            consent_claims=extracted["consent_claims"],
-            queue_leases=extracted["queue_leases"],
-            budget_accounts=extracted["budget_accounts"],
-            source_manifest_sha256="0" * 64,
-        )
-        return FrozenPaidLaneMigrationCorpusV1.model_validate(
-            {
-                **draft.model_dump(mode="python"),
-                "source_manifest_sha256": _migration_source_manifest_sha256(draft),
-            }
-        )
+        return _collect_sealed_corpus(self._root_path, record)
 
     def revalidate_sealed_sources(self) -> None:
         if self.state != "sealed" or self._creator_pid != os.getpid():
