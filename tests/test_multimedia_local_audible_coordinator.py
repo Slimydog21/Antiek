@@ -29,27 +29,6 @@ PRODUCTION_KEY = b"local-audible-coordinator-production-key"
 RECEIPT_KEY = b"local-audible-coordinator-receipt-key"
 
 
-def _ground(plan):  # noqa: ANN001, ANN202
-    authority = next(line.citations for line in plan.script_lines if line.citations)
-    authority_ids = tuple(citation.chunk_id for citation in authority)
-    values = plan.model_dump(mode="python")
-    lines = []
-    for line in plan.script_lines:
-        row = line.model_dump(mode="python")
-        if line.kind == "factual" and not line.citations:
-            row.update(citations=authority, unsourced_reason=None)
-        lines.append(type(line).model_validate(row))
-    chapters = []
-    for chapter in plan.chapters:
-        row = chapter.model_dump(mode="python")
-        row["source_chunk_ids"] = tuple(
-            dict.fromkeys((*chapter.source_chunk_ids, *authority_ids))
-        )
-        chapters.append(type(chapter).model_validate(row))
-    values.update(script_lines=tuple(lines), chapters=tuple(chapters), unsourced_line_ids=())
-    return type(plan).model_validate(values)
-
-
 class _Resolver:
     def __init__(self, artifacts):  # noqa: ANN001
         self.artifacts = artifacts
@@ -66,13 +45,15 @@ def _fixture(tmp_path: Path):  # noqa: ANN202
             target_minutes=15,
             mode="audio",
             route_policy="cheapest",
-            sources=("Frank Whittle patented a turbojet design in 1930.",),
+            sources=(
+                "Early jet engine history began with Frank Whittle's turbojet patent in 1930.",
+            ),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )
-    plan = _ground(draft.plan)
-    store.save(draft.model_copy(update={"plan": plan}), owner_id="owner-1")
     ready = store.approve_dry_run(draft.asset.asset_id, owner_id="owner-1")
+    plan = ready.plan
     requests = prepare_local_audible_span_requests(
         plan, asset_id=ready.asset.asset_id, revision_id=ready.asset.revision_id
     )
@@ -126,12 +107,14 @@ def test_full_local_audible_run_registers_and_exactly_replays(tmp_path: Path) ->
     assert first.cost_usd == 0 and first.registered
     record = store.get(request.asset_id, owner_id="owner-1")
     assert record.audio_production_link is not None
-    assert record.audio_production_link.receipt_sha256 == hashlib.sha256(
-        first.receipt.to_json().encode("ascii")
-    ).hexdigest()
-    assert coordinator.receipt_path(
-        request.asset_id, request.expected_revision_id
-    ).name == "receipt.json"
+    assert (
+        record.audio_production_link.receipt_sha256
+        == hashlib.sha256(first.receipt.to_json().encode("ascii")).hexdigest()
+    )
+    assert (
+        coordinator.receipt_path(request.asset_id, request.expected_revision_id).name
+        == "receipt.json"
+    )
     assert coordinator.produce(request, now=NOW) == first
 
 
@@ -243,9 +226,10 @@ def test_registered_audible_authority_link_fields_match_receipt(tmp_path: Path) 
     production = authority.receipt.production.manifest
     run = authority.receipt.audible_run.manifest
     link = authority.audio_production_link
-    assert link.receipt_sha256 == hashlib.sha256(
-        authority.receipt.to_json().encode("ascii")
-    ).hexdigest()
+    assert (
+        link.receipt_sha256
+        == hashlib.sha256(authority.receipt.to_json().encode("ascii")).hexdigest()
+    )
     assert link.audio_sha256 == production.output_sha256
     assert link.duration_seconds == production.duration_seconds
     assert link.chapter_ids == tuple(ch.chapter_id for ch in run.chapters)
@@ -267,9 +251,7 @@ def test_missing_table_does_not_create_database_for_audible_authority(tmp_path: 
         coordinator.registered_audible_authority(
             "owner-1", request.asset_id, request.expected_revision_id
         )
-    assert not any(
-        tmp_path.glob("*.write.lock")
-    ), "authority must not leave a write lock"
+    assert not any(tmp_path.glob("*.write.lock")), "authority must not leave a write lock"
 
 
 def test_duplicate_registered_audible_row_fails_closed(tmp_path: Path) -> None:
@@ -278,9 +260,7 @@ def test_duplicate_registered_audible_row_fails_closed(tmp_path: Path) -> None:
     import duckdb
 
     with duckdb.connect(str(tmp_path / "audible.duckdb")) as conn:
-        row = conn.execute(
-            "SELECT * FROM multimedia_local_audible_runs LIMIT 1"
-        ).fetchone()
+        row = conn.execute("SELECT * FROM multimedia_local_audible_runs LIMIT 1").fetchone()
         dup = list(row)
         dup[0] = "duplicate-run-id"
         conn.execute(
@@ -325,9 +305,7 @@ def test_bad_audible_mac_fails_authority(tmp_path: Path) -> None:
     import duckdb
 
     with duckdb.connect(str(tmp_path / "audible.duckdb")) as conn:
-        conn.execute(
-            "UPDATE multimedia_local_audible_runs SET row_mac=?", ["0" * 64]
-        )
+        conn.execute("UPDATE multimedia_local_audible_runs SET row_mac=?", ["0" * 64])
     with pytest.raises(LocalAudibleCoordinatorError, match="integrity"):
         coordinator.registered_audible_authority(
             "owner-1", request.asset_id, request.expected_revision_id
@@ -340,9 +318,11 @@ def test_tampered_production_fails_audible_authority(tmp_path: Path) -> None:
     import duckdb
 
     with duckdb.connect(str(tmp_path / "audible.duckdb"), read_only=True) as connection:
-        production_path = Path(connection.execute(
-            "SELECT production_path FROM multimedia_local_audible_runs"
-        ).fetchone()[0])
+        production_path = Path(
+            connection.execute(
+                "SELECT production_path FROM multimedia_local_audible_runs"
+            ).fetchone()[0]
+        )
     production_path.write_bytes(b"tampered")
     production_path.chmod(0o600)
     with pytest.raises(RuntimeError):
@@ -406,10 +386,12 @@ def test_audible_link_drift_fails_authority(
         revision_id=link.revision_id,
         receipt_sha256="0" * 64,
         audio_sha256=link.audio_sha256,
+        audio_size_bytes=link.audio_size_bytes,
         duration_seconds=link.duration_seconds,
         chapter_ids=link.chapter_ids,
         retention_marker_count=link.retention_marker_count,
         learned_claim_count=link.learned_claim_count,
+        source_count=link.source_count,
     )
     real_get = store.get
 

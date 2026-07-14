@@ -45,6 +45,8 @@ def _store(tmp_path: Path, *, mode: str = "video") -> tuple[MultimediaAssetStore
             target_minutes=15,
             mode=mode,
             route_policy="balanced",
+            sources=("Early production history is grounded in reviewed evidence.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )

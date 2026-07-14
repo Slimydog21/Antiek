@@ -12,9 +12,17 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 
 from roles.note_taker import DispatchDistiller, Distiller
+from substrate.multimedia.graph_evidence import (
+    CreateGroundedMultimediaDraftRequest,
+    MultimediaEvidenceSearchRequest,
+    MultimediaEvidenceSearchResult,
+    MultimediaGraphEvidence,
+    MultimediaGraphEvidenceUnavailable,
+    load_canonical_multimedia_chunks,
+)
 from substrate.multimedia.knowledge_finalization import (
     MultimediaKnowledgeFinalizationError,
     MultimediaKnowledgeFinalizationRequest,
@@ -91,6 +99,11 @@ from .multimedia_narration_authorization_routes import (
     multimedia_narration_authorization_router,
     multimedia_narration_authorization_runtime_from_environment,
 )
+from .multimedia_paid_audio_playback_routes import (
+    PaidAudioPlaybackRouteRuntime,
+    get_multimedia_paid_audio_playback_runtime,
+    multimedia_paid_audio_playback_router,
+)
 from .multimedia_playback_routes import (
     get_multimedia_playback_runtime,
     multimedia_playback_router,
@@ -105,6 +118,7 @@ from .multimedia_production_worker_runtime import (
 )
 from .multimedia_reconciliation_routes import (
     authenticated_multimedia_operator,
+    authenticated_multimedia_policy_tag,
     get_multimedia_reconciliation_runtime,
     multimedia_reconciliation_router,
     multimedia_reconciliation_runtime_from_environment,
@@ -150,6 +164,7 @@ multimedia_router.include_router(multimedia_reconciliation_router)
 multimedia_router.include_router(multimedia_local_router)
 multimedia_router.include_router(multimedia_local_audible_router)
 multimedia_router.include_router(multimedia_playback_router)
+multimedia_router.include_router(multimedia_paid_audio_playback_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
@@ -170,12 +185,45 @@ class MultimediaKnowledgeRuntime:
     embedding_provider: Any = None
 
 
+@dataclass(frozen=True)
+class MultimediaEvidenceRuntime:
+    db_path: str
+    embedding_provider_factory: Callable[[], Any]
+
+
 def get_store() -> MultimediaAssetStore:
     return _STORE
 
 
 def get_multimedia_knowledge_runtime() -> MultimediaKnowledgeRuntime:
     raise HTTPException(status_code=503, detail="multimedia knowledge runtime is unavailable")
+
+
+def get_multimedia_evidence_runtime() -> MultimediaEvidenceRuntime:
+    raise HTTPException(status_code=503, detail="multimedia evidence runtime is unavailable")
+
+
+def get_multimedia_evidence_runtime_optional() -> MultimediaEvidenceRuntime | None:
+    return None
+
+
+def multimedia_evidence_runtime_from_environment(
+    environ: dict[str, str] | None = None,
+) -> MultimediaEvidenceRuntime | None:
+    values = os.environ if environ is None else environ
+    enabled = values.get("ANTIEK_MULTIMEDIA_EVIDENCE_ENABLED", "").strip().lower()
+    db_path = values.get("ANTIEK_MULTIMEDIA_EVIDENCE_DB_PATH", "").strip()
+    if not any((enabled, db_path)):
+        return None
+    if enabled not in {"1", "true"} or not db_path:
+        raise RuntimeError("multimedia evidence configuration is incomplete")
+
+    def provider() -> Any:
+        from processing.embedding import default_embedding_provider
+
+        return default_embedding_provider()
+
+    return MultimediaEvidenceRuntime(db_path=db_path, embedding_provider_factory=provider)
 
 
 def multimedia_knowledge_runtime_from_environment(
@@ -222,6 +270,87 @@ def get_multimedia_asset(
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
+@multimedia_router.post(
+    "/assets/{asset_id}/evidence-search",
+    response_model=MultimediaEvidenceSearchResult,
+)
+def search_multimedia_asset_evidence(
+    asset_id: str,
+    request: Request,
+    payload: MultimediaEvidenceSearchRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaEvidenceRuntime = Depends(get_multimedia_evidence_runtime),
+) -> MultimediaEvidenceSearchResult:
+    try:
+        record = get_store().get(asset_id, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    if record.asset.revision_id != payload.expected_revision_id:
+        raise HTTPException(status_code=409, detail="multimedia evidence parent revision is stale")
+    query = " ".join(
+        part
+        for part in (
+            record.plan.request.topic,
+            record.plan.request.source_scope or "",
+            *record.plan.request.must_cover,
+        )
+        if part.strip()
+    )
+    query = " ".join(query.split())[:4096].rstrip()
+    try:
+        evidence = MultimediaGraphEvidence(
+            db_path=runtime.db_path,
+            embedding_provider=runtime.embedding_provider_factory(),
+        )
+        result = evidence.search(
+            owner_id=operator_id,
+            asset_id=asset_id,
+            revision_id=record.asset.revision_id,
+            query=query,
+            limit=payload.limit,
+            policy_tag=authenticated_multimedia_policy_tag(request),
+        )
+        current = get_store().get(asset_id, owner_id=operator_id)
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if current.asset.revision_id != payload.expected_revision_id:
+        raise HTTPException(status_code=409, detail="multimedia evidence parent revision is stale")
+    return result
+
+
+@multimedia_router.post(
+    "/assets/{asset_id}/grounded-drafts",
+    response_model=MultimediaAssetRecord,
+    status_code=201,
+)
+def create_grounded_multimedia_asset(
+    asset_id: str,
+    request: CreateGroundedMultimediaDraftRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaEvidenceRuntime = Depends(get_multimedia_evidence_runtime),
+) -> MultimediaAssetRecord:
+    try:
+        evidence = MultimediaGraphEvidence(
+            db_path=runtime.db_path,
+            embedding_provider=runtime.embedding_provider_factory(),
+        )
+        chunks = evidence.resolve(request.selections, owner_id=operator_id)
+        return get_store().create_grounded_draft(
+            asset_id,
+            expected_parent_revision_id=request.expected_parent_revision_id,
+            evidence=chunks,
+            owner_id=operator_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
 @multimedia_router.get("/assets/{asset_id}/jobs", response_model=MultimediaJobList)
 def list_multimedia_jobs(
     asset_id: str,
@@ -237,11 +366,39 @@ def list_multimedia_jobs(
 def approve_multimedia_dry_run(
     asset_id: str,
     operator_id: str = Depends(authenticated_multimedia_operator),
+    evidence_runtime: MultimediaEvidenceRuntime | None = Depends(
+        get_multimedia_evidence_runtime_optional
+    ),
 ) -> MultimediaAssetRecord:
     try:
-        return get_store().approve_dry_run(asset_id, owner_id=operator_id)
+        record = get_store().get(asset_id, owner_id=operator_id)
+        canonical_ids = tuple(
+            dict.fromkeys(
+                span.chunk_id
+                for line in record.plan.script_lines
+                if line.evidence_derivation is not None
+                for span in line.evidence_derivation.spans
+                if span.authority_kind == "canonical_graph"
+            )
+        )
+        canonical_chunks = (
+            load_canonical_multimedia_chunks(
+                evidence_runtime.db_path, canonical_ids, owner_id=operator_id
+            )
+            if canonical_ids and evidence_runtime is not None
+            else None
+        )
+        return get_store().approve_dry_run(
+            asset_id,
+            owner_id=operator_id,
+            canonical_chunks=canonical_chunks,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @multimedia_router.post(
@@ -279,9 +436,28 @@ def run_multimedia_hardening(
     asset_id: str,
     operator_id: str = Depends(authenticated_multimedia_operator),
     runtime: MultimediaHardeningRuntime = Depends(get_multimedia_hardening_runtime),
+    evidence_runtime: MultimediaEvidenceRuntime | None = Depends(
+        get_multimedia_evidence_runtime_optional
+    ),
 ) -> MultimediaAssetRecord:
     try:
         record = get_store().get(asset_id, owner_id=operator_id)
+        canonical_ids = tuple(
+            dict.fromkeys(
+                span.chunk_id
+                for line in record.plan.script_lines
+                if line.evidence_derivation is not None
+                for span in line.evidence_derivation.spans
+                if span.authority_kind == "canonical_graph"
+            )
+        )
+        canonical_chunks = (
+            load_canonical_multimedia_chunks(
+                evidence_runtime.db_path, canonical_ids, owner_id=operator_id
+            )
+            if canonical_ids and evidence_runtime is not None
+            else None
+        )
         now = runtime.clock()
         try:
             snapshot = build_multimedia_ship_cost_snapshot(
@@ -318,6 +494,7 @@ def run_multimedia_hardening(
             return get_store().run_hardening(
                 asset_id,
                 owner_id=operator_id,
+                canonical_chunks=canonical_chunks,
                 local_zero_cost_evidence=evidence,
                 snapshot_key=runtime.local_zero_snapshot_key,
             )
@@ -355,6 +532,7 @@ def run_multimedia_hardening(
         return get_store().run_hardening(
             asset_id,
             owner_id=operator_id,
+            canonical_chunks=canonical_chunks,
             cost_snapshot=snapshot,
             snapshot_key=runtime.snapshot_key,
         )
@@ -364,6 +542,10 @@ def run_multimedia_hardening(
         raise HTTPException(status_code=409, detail=exc.code) from exc
     except LocalZeroEvidenceUnavailable as exc:
         raise HTTPException(status_code=409, detail=exc.code) from exc
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @multimedia_router.post(
@@ -469,29 +651,31 @@ def register_multimedia_routes(app: FastAPI) -> None:
     if runtime is not None:
         runtime = replace(
             runtime,
-            asset_revision_resolver=lambda asset_id, operator_id: get_store()
-            .get(asset_id, owner_id=operator_id)
-            .asset.revision_id,
+            asset_revision_resolver=lambda asset_id, operator_id: (
+                get_store().get(asset_id, owner_id=operator_id).asset.revision_id
+            ),
         )
         app.dependency_overrides[get_multimedia_reconciliation_runtime] = lambda: runtime
     knowledge_runtime = multimedia_knowledge_runtime_from_environment()
     if knowledge_runtime is not None:
         app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
+    evidence_runtime = multimedia_evidence_runtime_from_environment()
+    if evidence_runtime is not None:
+        app.dependency_overrides[get_multimedia_evidence_runtime] = lambda: evidence_runtime
+        app.dependency_overrides[get_multimedia_evidence_runtime_optional] = lambda: (
+            evidence_runtime
+        )
     local_runtime = multimedia_local_runtime_from_environment(store=get_store())
     if local_runtime is not None:
-        app.dependency_overrides[get_multimedia_local_runtime_optional] = (
-            lambda: local_runtime
-        )
+        app.dependency_overrides[get_multimedia_local_runtime_optional] = lambda: local_runtime
         app.dependency_overrides[get_multimedia_local_runtime] = lambda: local_runtime
-    local_audible_runtime = multimedia_local_audible_runtime_from_environment(
-        store=get_store()
-    )
+    local_audible_runtime = multimedia_local_audible_runtime_from_environment(store=get_store())
     if local_audible_runtime is not None:
-        app.dependency_overrides[get_multimedia_local_audible_runtime_optional] = (
-            lambda: local_audible_runtime
+        app.dependency_overrides[get_multimedia_local_audible_runtime_optional] = lambda: (
+            local_audible_runtime
         )
-        app.dependency_overrides[get_multimedia_local_audible_runtime] = (
-            lambda: local_audible_runtime
+        app.dependency_overrides[get_multimedia_local_audible_runtime] = lambda: (
+            local_audible_runtime
         )
     production_worker_runtime = multimedia_production_worker_runtime_from_environment(
         store=get_store()
@@ -616,12 +800,14 @@ def register_multimedia_routes(app: FastAPI) -> None:
                 (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
                 record.production_link,
             ),
-            production_registrar=lambda asset_id, revision_id, operator_id: register_multimedia_production(
-                asset_id,
-                MultimediaProductionRegistrationRequest(expected_revision_id=revision_id),
-                owner_id=operator_id,
-                store=get_store(),
-                playback=playback,
+            production_registrar=lambda asset_id, revision_id, operator_id: (
+                register_multimedia_production(
+                    asset_id,
+                    MultimediaProductionRegistrationRequest(expected_revision_id=revision_id),
+                    owner_id=operator_id,
+                    store=get_store(),
+                    playback=playback,
+                )
             ),
         )
         app.dependency_overrides[get_multimedia_playback_runtime] = lambda: playback_runtime
@@ -629,55 +815,63 @@ def register_multimedia_routes(app: FastAPI) -> None:
         store=get_store()
     )
     if narration_runtime is not None:
-        app.dependency_overrides[get_multimedia_narration_authorization_runtime] = (
-            lambda: narration_runtime
+        app.dependency_overrides[get_multimedia_narration_authorization_runtime] = lambda: (
+            narration_runtime
         )
-    reviewed_visual_runtime = multimedia_reviewed_visual_runtime_from_environment(
-        store=get_store()
-    )
+    reviewed_visual_runtime = multimedia_reviewed_visual_runtime_from_environment(store=get_store())
     if reviewed_visual_runtime is not None:
-        app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = (
-            lambda: reviewed_visual_runtime
+        app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = lambda: (
+            reviewed_visual_runtime
+        )
+    if (
+        production_worker_runtime is not None
+        and production_worker_runtime.audio_playback is not None
+    ):
+        paid_audio_runtime = PaidAudioPlaybackRouteRuntime(
+            playback=production_worker_runtime.audio_playback,
+            asset_authority_resolver=lambda asset_id, operator_id: (
+                (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
+                record.audio_production_link,
+            ),
+        )
+        app.dependency_overrides[get_multimedia_paid_audio_playback_runtime] = lambda: (
+            paid_audio_runtime
         )
     tts_gateway_runtime = multimedia_tts_gateway_runtime_from_environment()
     if tts_gateway_runtime is not None:
-        app.dependency_overrides[get_multimedia_tts_gateway_runtime] = (
-            lambda: tts_gateway_runtime
-        )
+        app.dependency_overrides[get_multimedia_tts_gateway_runtime] = lambda: tts_gateway_runtime
     visual_authorization_runtime = multimedia_visual_authorization_runtime_from_environment(
         store=get_store()
     )
     if visual_authorization_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_authorization_runtime] = (
-            lambda: visual_authorization_runtime
+        app.dependency_overrides[get_multimedia_visual_authorization_runtime] = lambda: (
+            visual_authorization_runtime
         )
     visual_generation_runtime = multimedia_visual_generation_runtime_from_environment(
         store=get_store()
     )
     if visual_generation_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_generation_runtime] = (
-            lambda: visual_generation_runtime
+        app.dependency_overrides[get_multimedia_visual_generation_runtime] = lambda: (
+            visual_generation_runtime
         )
     visual_candidate_runtime = multimedia_visual_candidate_runtime_from_environment(
         store=get_store()
     )
     if visual_candidate_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_candidate_runtime] = (
-            lambda: visual_candidate_runtime
+        app.dependency_overrides[get_multimedia_visual_candidate_runtime] = lambda: (
+            visual_candidate_runtime
         )
-    visual_review_runtime = multimedia_visual_review_runtime_from_environment(
-        store=get_store()
-    )
+    visual_review_runtime = multimedia_visual_review_runtime_from_environment(store=get_store())
     if visual_review_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_review_runtime] = (
-            lambda: visual_review_runtime
+        app.dependency_overrides[get_multimedia_visual_review_runtime] = lambda: (
+            visual_review_runtime
         )
     visual_quality_runtime = multimedia_visual_quality_runtime_from_environment(
         store=get_store(), generation_runtime=visual_generation_runtime
     )
     if visual_quality_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_quality_runtime] = (
-            lambda: visual_quality_runtime
+        app.dependency_overrides[get_multimedia_visual_quality_runtime] = lambda: (
+            visual_quality_runtime
         )
 
 

@@ -21,12 +21,12 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from substrate.contracts.multimedia import (
     AssetKind,
@@ -46,10 +46,14 @@ from substrate.multimedia.paid_video_cost_authority import (
     verify_paid_registered_video_cost_authority,
 )
 from substrate.multimedia.planner import (
+    CanonicalEvidenceChunk,
     EvidenceChunk,
     MultimediaPlan,
     MultimediaPlanRequest,
     build_multimedia_plan,
+    validate_selected_arc_ids,
+    validate_source_excerpts,
+    verify_canonical_evidence_bytes,
 )
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
@@ -96,11 +100,24 @@ class CreateMultimediaDraftRequest(_ReadModelBase):
     target_minutes: int = Field(ge=15, le=45)
     mode: PlanMode = "hybrid"
     route_policy: RoutePolicy = "balanced"
+    source_scope: str | None = Field(default=None, max_length=512)
     sources: tuple[str, ...] = Field(default_factory=tuple)
     must_cover: tuple[str, ...] = Field(default_factory=tuple)
     avoid: tuple[str, ...] = Field(default_factory=tuple)
     audience: str = "curious generalist"
     style: str | None = None
+    depth: Literal["overview", "intermediate", "deep"] = "intermediate"
+    selected_arc_ids: tuple[str, ...] = Field(default_factory=tuple, max_length=4)
+
+    @field_validator("selected_arc_ids")
+    @classmethod
+    def selected_arcs_are_supported(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_selected_arc_ids(value)
+
+    @field_validator("sources")
+    @classmethod
+    def source_excerpts_are_bounded(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_source_excerpts(value)
 
 
 class SteeringRequest(_ReadModelBase):
@@ -228,10 +245,12 @@ class MultimediaAudioProductionLink(_ReadModelBase):
     revision_id: str = Field(min_length=1, max_length=128, pattern=_ASSET_ID.pattern)
     receipt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     audio_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    audio_size_bytes: int = Field(gt=0)
     duration_seconds: float = Field(gt=0, le=45 * 60)
     chapter_ids: tuple[str, ...] = Field(min_length=1, max_length=64)
     retention_marker_count: int = Field(ge=1, le=10_000)
     learned_claim_count: int = Field(ge=1, le=10_000)
+    source_count: int = Field(ge=1, le=10_000)
 
 
 class MultimediaAssetSummary(_ReadModelBase):
@@ -256,6 +275,7 @@ class MultimediaAssetRecord(_ReadModelBase):
     plan: MultimediaPlan
     mode: PlanMode
     style: str | None = None
+    derived_from_revision_id: str | None = None
     hardening_report: MultimediaHardeningReport | None = None
     latest_steering_intent: SteeringIntent | None = None
     jobs: tuple[MultimediaJobRecord, ...] = Field(default_factory=tuple)
@@ -363,10 +383,13 @@ class MultimediaAssetStore:
             target_minutes=request.target_minutes,
             mode=request.mode,
             route_policy=request.route_policy,
+            source_scope=request.source_scope,
             sources=request.sources,
             must_cover=request.must_cover,
             avoid=request.avoid,
             audience=request.audience,
+            depth=request.depth,
+            selected_arc_ids=request.selected_arc_ids,
         )
         plan = build_multimedia_plan(plan_request, _evidence_from_request(request))
         kind: AssetKind = "audio_experience" if request.mode == "audio" else "documentary_video"
@@ -382,12 +405,59 @@ class MultimediaAssetStore:
             revision_id=revision_id,
             manifest=plan.to_manifest(asset_id=asset_id, revision_id=revision_id),
         )
-        record = MultimediaAssetRecord(asset=asset, plan=plan, mode=request.mode, style=request.style)
+        record = MultimediaAssetRecord(
+            asset=asset, plan=plan, mode=request.mode, style=request.style
+        )
         with self._locked(exclusive=True):
             if self._path(owner_digest, asset_id).exists():
                 raise RuntimeError("multimedia asset identity collision")
             self._save_unlocked(record, owner_digest)
         return record
+
+    def create_grounded_draft(
+        self,
+        parent_asset_id: str,
+        *,
+        expected_parent_revision_id: str,
+        evidence: tuple[EvidenceChunk, ...],
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        chunk_ids = tuple(item.chunk_id for item in evidence)
+        if not evidence or len(evidence) > 20 or len(set(chunk_ids)) != len(chunk_ids):
+            raise ValueError("grounded multimedia drafts require bounded unique evidence")
+        owner_digest = _owner_digest(owner_id)
+        asset_id = f"mm-{uuid.uuid4().hex[:12]}"
+        revision_id = "rev-1"
+        with self._locked(exclusive=True):
+            parent = self._load_unlocked(parent_asset_id, owner_digest)
+            if parent.asset.revision_id != expected_parent_revision_id:
+                raise ValueError("multimedia evidence parent revision is stale")
+            request = parent.plan.request.model_copy(update={"sources": ()})
+            plan = build_multimedia_plan(request, evidence)
+            asset = MultimediaAssetContract(
+                asset_id=asset_id,
+                kind=parent.asset.kind,
+                title=parent.asset.title,
+                user_prompt=parent.asset.user_prompt,
+                status=MultimediaStatus.PLANNED,
+                route_policy=parent.asset.route_policy,
+                requested_duration_minutes=parent.asset.requested_duration_minutes,
+                owner_user_id=owner_digest,
+                parent_asset_id=parent.asset.asset_id,
+                revision_id=revision_id,
+                manifest=plan.to_manifest(asset_id=asset_id, revision_id=revision_id),
+            )
+            record = MultimediaAssetRecord(
+                asset=asset,
+                plan=plan,
+                mode=parent.mode,
+                style=parent.style,
+                derived_from_revision_id=parent.asset.revision_id,
+            )
+            if self._path(owner_digest, asset_id).exists():
+                raise RuntimeError("multimedia asset identity collision")
+            self._save_unlocked(record, owner_digest)
+            return record
 
     def list_assets(self, *, owner_id: str = _DEFAULT_OWNER_ID) -> MultimediaAssetList:
         owner_digest = _owner_digest(owner_id)
@@ -403,9 +473,7 @@ class MultimediaAssetStore:
         summaries = tuple(record.summary() for record in records)
         return MultimediaAssetList(assets=summaries, count=len(summaries))
 
-    def get(
-        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
-    ) -> MultimediaAssetRecord:
+    def get(self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=False):
             return self._load_unlocked(asset_id, owner_digest)
@@ -427,18 +495,41 @@ class MultimediaAssetStore:
             yield record
 
     def approve_dry_run(
-        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+        self,
+        asset_id: str,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+        canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
     ) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
             asset = record.asset
+            if record.plan.unsourced_line_ids:
+                raise ValueError("multimedia approval refuses unsourced factual narration")
+            verify_canonical_evidence_bytes(record.plan, canonical_chunks)
             if record.mode == "audio":
-                audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=asset.revision_id)
+                audio = assemble_audio_experience(
+                    record.plan,
+                    FakeTTSProvider(),
+                    asset_id=asset.asset_id,
+                    revision_id=asset.revision_id,
+                )
                 manifest = audio.manifest
             else:
-                audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=f"{asset.revision_id}-audio")
-                video = assemble_video_documentary(record.plan, audio, asset_id=asset.asset_id, revision_id=asset.revision_id)
+                audio = assemble_audio_experience(
+                    record.plan,
+                    FakeTTSProvider(),
+                    asset_id=asset.asset_id,
+                    revision_id=f"{asset.revision_id}-audio",
+                )
+                video = assemble_video_documentary(
+                    record.plan,
+                    audio,
+                    asset_id=asset.asset_id,
+                    revision_id=asset.revision_id,
+                    canonical_chunks=canonical_chunks,
+                )
                 manifest = video.manifest.model_copy(
                     update={
                         # The video manifest already contains audio cost rows.
@@ -446,7 +537,9 @@ class MultimediaAssetStore:
                         "transcript_file_id": audio.manifest.transcript_file_id,
                     }
                 )
-            approved = asset.model_copy(update={"status": MultimediaStatus.READY, "manifest": manifest})
+            approved = asset.model_copy(
+                update={"status": MultimediaStatus.READY, "manifest": manifest}
+            )
             updated = self._with_job(
                 record.model_copy(update={"asset": approved}),
                 kind="render",
@@ -520,9 +613,7 @@ class MultimediaAssetStore:
             }
             for key, expected in expected_claims.items():
                 if not hmac.compare_digest(str(claims.get(key, "")), str(expected)):
-                    raise SteeringPreviewConflict(
-                        "multimedia_steering_preview_content_mismatch"
-                    )
+                    raise SteeringPreviewConflict("multimedia_steering_preview_content_mismatch")
             expires_at = claims.get("expires_at_epoch_seconds")
             if not isinstance(expires_at, int) or expires_at <= int(self._clock()):
                 raise SteeringPreviewConflict("multimedia_steering_preview_expired")
@@ -608,6 +699,7 @@ class MultimediaAssetStore:
         asset_id: str,
         *,
         owner_id: str = _DEFAULT_OWNER_ID,
+        canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
         cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
         paid_registered_video_cost_authority: PaidRegisteredVideoCostAuthorityV1 | None = None,
         local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None,
@@ -676,9 +768,20 @@ class MultimediaAssetStore:
                         raise LocalZeroEvidenceConflict("evidence_conflict") from exc
                     raise MultimediaShipCostEvidenceConflict("evidence_conflict") from exc
             scenes: tuple[object, ...] = ()
-            if record.mode != "audio":
-                audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=record.asset.asset_id, revision_id=f"{record.asset.revision_id}-audio")
-                scenes = build_video_scenes(record.plan, audio)
+            if not record.plan.unsourced_line_ids:
+                verify_canonical_evidence_bytes(record.plan, canonical_chunks)
+            if record.mode != "audio" and not record.plan.unsourced_line_ids:
+                audio = assemble_audio_experience(
+                    record.plan,
+                    FakeTTSProvider(),
+                    asset_id=record.asset.asset_id,
+                    revision_id=f"{record.asset.revision_id}-audio",
+                )
+                scenes = build_video_scenes(
+                    record.plan,
+                    audio,
+                    canonical_chunks=canonical_chunks,
+                )
             report = evaluate_multimedia_asset(
                 record.asset,
                 scenes=scenes,
@@ -892,9 +995,7 @@ class MultimediaAssetStore:
         self._save_unlocked(updated, owner_digest)
         return updated
 
-    def list_jobs(
-        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
-    ) -> MultimediaJobList:
+    def list_jobs(self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID) -> MultimediaJobList:
         record = self.get(asset_id, owner_id=owner_id)
         jobs = tuple(sorted(record.jobs, key=lambda job: job.sequence))
         return MultimediaJobList(jobs=jobs, count=len(jobs))
@@ -925,16 +1026,12 @@ class MultimediaAssetStore:
         )
         return record.model_copy(update={"jobs": record.jobs + (job,)})
 
-    def save(
-        self, record: MultimediaAssetRecord, *, owner_id: str = _DEFAULT_OWNER_ID
-    ) -> None:
+    def save(self, record: MultimediaAssetRecord, *, owner_id: str = _DEFAULT_OWNER_ID) -> None:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             self._save_unlocked(record, owner_digest)
 
-    def load(
-        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
-    ) -> MultimediaAssetRecord:
+    def load(self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID) -> MultimediaAssetRecord:
         return self.get(asset_id, owner_id=owner_id)
 
     def migrate_legacy_assets(self, *, owner_id: str) -> int:
@@ -979,8 +1076,7 @@ class MultimediaAssetStore:
             record=record,
         )
         payload = (
-            envelope.model_dump_json(indent=2, exclude_computed_fields=True).encode("utf-8")
-            + b"\n"
+            envelope.model_dump_json(indent=2, exclude_computed_fields=True).encode("utf-8") + b"\n"
         )
         if len(payload) > _MAX_RECORD_BYTES:
             raise ValueError("multimedia asset record exceeds its byte bound")
@@ -1124,15 +1220,13 @@ def _steering_input_digest(request: SteeringRequest) -> str:
 
 
 def _revision_plan_digest(revision: RevisionPlan) -> str:
-    return hashlib.sha256(
-        _canonical_json(revision.model_dump(mode="json"))
-    ).hexdigest()
+    return hashlib.sha256(_canonical_json(revision.model_dump(mode="json"))).hexdigest()
 
 
 def _canonical_json(value: object) -> bytes:
-    return json.dumps(
-        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode(
+        "utf-8"
+    )
 
 
 def _base64url(value: bytes) -> str:
@@ -1175,9 +1269,7 @@ def _validate_production_link(record: MultimediaAssetRecord, owner_digest: str) 
         raise ValueError("multimedia audio production link identity conflicts")
 
 
-def _bind_record_owner(
-    record: MultimediaAssetRecord, owner_digest: str
-) -> MultimediaAssetRecord:
+def _bind_record_owner(record: MultimediaAssetRecord, owner_digest: str) -> MultimediaAssetRecord:
     return record.model_copy(
         update={"asset": record.asset.model_copy(update={"owner_user_id": owner_digest})}
     )
@@ -1270,13 +1362,13 @@ def _fsync_directory(path: Path) -> None:
 
 def _evidence_from_request(request: CreateMultimediaDraftRequest) -> tuple[EvidenceChunk, ...]:
     rows: list[EvidenceChunk] = []
-    for index, text in enumerate(request.sources or request.must_cover or (request.topic,)):
+    for index, text in enumerate(request.sources):
         rows.append(
             EvidenceChunk(
                 chunk_id=f"mm-src-{index}",
-                document_id=f"mm-doc-{index}",
-                title=f"Multimedia source {index + 1}",
-                section_path="operator brief",
+                document_id=f"operator-source-excerpt-{index}",
+                title=f"Operator-provided source excerpt {index + 1}",
+                section_path="operator-provided excerpt",
                 text=text,
             )
         )

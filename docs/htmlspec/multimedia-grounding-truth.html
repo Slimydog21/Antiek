@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Multimedia Grounding Truth</title>
+</head>
+<body>
+  <main>
+    <h1>Multimedia Grounding Truth</h1>
+    <p>Status: implemented as a narrow compatibility-preserving hardening sprint.</p>
+    <section>
+      <h2>Invariant</h2>
+      <p>Research intent is not evidence. Topic, must-cover instructions, and source-scope labels must never mint citations or satisfy the unsourced-claim guard.</p>
+    </section>
+    <section>
+      <h2>Contract</h2>
+      <ul>
+        <li><code>source_scope</code> records the operator's retrieval intent and survives persistence and reopen.</li>
+        <li><code>sources</code> remains a legacy input for explicit operator-provided excerpts only.</li>
+        <li>Explicit excerpts receive visibly synthetic operator-excerpt provenance.</li>
+        <li>Without evidence, factual lines remain unsourced and approval remains blocked.</li>
+      </ul>
+    </section>
+    <section>
+      <h2>Acceptance</h2>
+      <ol>
+        <li>A scope-only request returns no citations and reports weak source coverage.</li>
+        <li>An explicit excerpt can support citations identified as operator-provided.</li>
+        <li>The workstation sends <code>source_scope</code>, never a scope label in <code>sources</code>.</li>
+        <li>Malformed persisted scope data fails projection instead of being silently accepted.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Deferred</h2>
+      <p>Graph retrieval and evidence attachment remain separate future work. This sprint does not claim that descriptive scope text performs retrieval.</p>
+    </section>
+  </main>
+</body>
+</html>

@@ -54,6 +54,8 @@ def _store(tmp_path: Path, *, mode: str = "audio") -> tuple[MultimediaAssetStore
             target_minutes=15,
             mode=mode,
             route_policy="cheapest",
+            sources=("Verified audible production uses reviewed source evidence.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )

@@ -126,6 +126,8 @@ def test_registration_route_returns_only_the_registrar_bound_record() -> None:
                 target_minutes=15,
                 mode="video",
                 route_policy="balanced",
+                sources=("Early production history is grounded in reviewed evidence.",),
+                selected_arc_ids=("history",),
             ),
             owner_id="owner-1",
         )
