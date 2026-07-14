@@ -447,6 +447,122 @@ export interface MultimediaLocalAudiblePlayback {
 
 export type MultimediaPaidAudioPlayback = MultimediaLocalAudiblePlayback;
 
+// ── Cycle 22: listening progress ─────────────────────────────────
+
+export interface MultimediaListeningProgressResponse {
+  resume_available: boolean;
+  asset_id: string;
+  revision_id: string;
+  audio_sha256: string;
+  position_milliseconds: number;
+  duration_milliseconds: number;
+  completed: boolean;
+  session_id: string;
+  sequence: number;
+  updated_at: number;
+  applied: boolean | null;
+}
+
+export interface MultimediaListeningProgressCheckpoint {
+  revision_id: string;
+  position_milliseconds: number;
+  session_id: string;
+  sequence: number;
+}
+
+function isValidListeningProgressResponse(
+  result: MultimediaListeningProgressResponse,
+  assetId: string,
+  revisionId: string,
+  audioSha256: string,
+  durationMilliseconds: number,
+  expectedApplied: "read" | "write",
+): boolean {
+  if (
+    typeof result.resume_available !== "boolean" ||
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.audio_sha256 !== audioSha256 ||
+    !Number.isSafeInteger(result.position_milliseconds) || result.position_milliseconds < 0 ||
+    !Number.isSafeInteger(result.duration_milliseconds) || result.duration_milliseconds <= 0 ||
+    result.position_milliseconds > result.duration_milliseconds ||
+    typeof result.completed !== "boolean" ||
+    typeof result.session_id !== "string" ||
+    !Number.isSafeInteger(result.sequence) || result.sequence < 0 ||
+    result.duration_milliseconds !== durationMilliseconds ||
+    !Number.isFinite(result.updated_at) || result.updated_at < 0 ||
+    !(result.applied === null || typeof result.applied === "boolean")
+  ) return false;
+  if (
+    (expectedApplied === "read" && result.applied !== null) ||
+    (expectedApplied === "write" && typeof result.applied !== "boolean")
+  ) return false;
+  if (result.resume_available) {
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(result.session_id) || result.updated_at <= 0) return false;
+    if (result.completed !== (result.duration_milliseconds - result.position_milliseconds <= 5000)) return false;
+  } else if (
+    result.position_milliseconds !== 0 || result.completed || result.session_id !== "" ||
+    result.sequence !== 0 || result.updated_at !== 0 || result.applied !== null
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export async function getListeningProgress(
+  assetId: string,
+  revisionId: string,
+  audioSha256: string,
+  durationSeconds: number,
+): Promise<MultimediaListeningProgressResponse> {
+  const durationMilliseconds = Math.round(durationSeconds * 1000);
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/listening-progress?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_listening_progress_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_listening_progress_conflict");
+  if (resp.status === 503) throw new Error("multimedia_listening_progress_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET listening-progress: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaListeningProgressResponse;
+  if (!isValidListeningProgressResponse(
+    result, assetId, revisionId, audioSha256, durationMilliseconds, "read",
+  )) {
+    throw new Error("multimedia_listening_progress_identity_conflict");
+  }
+  return result;
+}
+
+export async function putListeningProgress(
+  assetId: string,
+  checkpoint: MultimediaListeningProgressCheckpoint,
+  audioSha256: string,
+  durationSeconds: number,
+  keepalive = false,
+): Promise<MultimediaListeningProgressResponse> {
+  const durationMilliseconds = Math.round(durationSeconds * 1000);
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/listening-progress`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(checkpoint),
+      keepalive,
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_listening_progress_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_listening_progress_conflict");
+  if (resp.status === 503) throw new Error("multimedia_listening_progress_runtime_unavailable");
+  if (!resp.ok) throw new Error(`PUT listening-progress: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaListeningProgressResponse;
+  if (!isValidListeningProgressResponse(
+    result, assetId, checkpoint.revision_id, audioSha256, durationMilliseconds, "write",
+  )) {
+    throw new Error("multimedia_listening_progress_identity_conflict");
+  }
+  return result;
+}
+
 function hasValidAudioTimeline(result: MultimediaLocalAudiblePlayback): boolean {
   if (!Array.isArray(result.chapters) || result.chapters.length !== result.chapter_ids.length) return false;
   let expectedStart = 0;

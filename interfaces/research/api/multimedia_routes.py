@@ -35,6 +35,11 @@ from substrate.multimedia.knowledge_finalization import (
     read_multimedia_twin_document,
     recover_multimedia_knowledge_finalization,
 )
+from substrate.multimedia.listening_progress import (
+    AudioIdentity,
+    ListeningProgressError,
+    ListeningProgressStore,
+)
 from substrate.multimedia.local_audible_coordinator import LocalAudibleCoordinator
 from substrate.multimedia.local_production_coordinator import (
     LocalVideoProductionCoordinator,
@@ -72,6 +77,11 @@ from .multimedia_hardening_routes import (
     MultimediaHardeningRuntime,
     get_multimedia_hardening_runtime,
     multimedia_hardening_runtime_from_environment,
+)
+from .multimedia_listening_progress_routes import (
+    get_listening_progress_runtime,
+    listening_progress_runtime,
+    multimedia_listening_progress_router,
 )
 from .multimedia_local_audible_routes import (
     get_multimedia_local_audible_runtime,
@@ -157,6 +167,7 @@ multimedia_router.include_router(multimedia_local_router)
 multimedia_router.include_router(multimedia_local_audible_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_paid_audio_playback_router)
+multimedia_router.include_router(multimedia_listening_progress_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
@@ -737,6 +748,31 @@ def register_multimedia_routes(app: FastAPI) -> None:
             app.dependency_overrides[get_multimedia_paid_audio_playback_runtime] = lambda: (
                 paid_audio_runtime
             )
+    # Listening progress: resolve audio identity from the store's audio_production_link
+    # or the local audible playback runtime.  Both local and paid audio use the same
+    # progress contract and store.
+    def _resolve_audio_identity(asset_id: str, operator_id: str) -> AudioIdentity:
+        record = get_store().get(asset_id, owner_id=operator_id)
+        if str(record.asset.kind) != "audio_experience" or record.mode != "audio":
+            raise ListeningProgressError("listening_progress_not_audio_asset")
+        link = record.audio_production_link
+        if link is None:
+            raise LookupError("listening progress audio identity unavailable")
+        return AudioIdentity(
+            revision_id=link.revision_id,
+            audio_sha256=link.audio_sha256,
+            duration_seconds=link.duration_seconds,
+            kind=str(record.asset.kind),
+            mode=record.mode,
+        )
+    # Always available — the store is always present; the audio_identity_resolver
+    # raises LookupError when the asset has no registered audio.
+    _lp_store = ListeningProgressStore(get_store().root)
+    lp_runtime = listening_progress_runtime(
+        store=_lp_store,
+        audio_identity_resolver=_resolve_audio_identity,
+    )
+    app.dependency_overrides[get_listening_progress_runtime] = lambda: lp_runtime
     tts_gateway_runtime = multimedia_tts_gateway_runtime_from_environment()
     if tts_gateway_runtime is not None:
         app.dependency_overrides[get_multimedia_tts_gateway_runtime] = lambda: tts_gateway_runtime
