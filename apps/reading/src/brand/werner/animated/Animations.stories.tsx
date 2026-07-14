@@ -115,6 +115,36 @@ export const ThinkingFidelity: Story = {
   ),
 };
 
+export const SleepingFidelity: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — authored sleeping fidelity
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        Reduced-motion stills prove the complete authored sleeping illustration
+        at each supported review size without timing-dependent capture.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[48, 96, 120].map((size) => (
+          <Cell
+            key={size}
+            label={`${size}px`}
+            hint="idle hold · authored private pose"
+            pose={
+              <WernerSleeping
+                size={size}
+                label={`Werner sleeping at ${size} pixels`}
+                reduced
+              />
+            }
+          />
+        ))}
+      </div>
+    </div>
+  ),
+};
+
 export const SemanticReactions: Story = {
   render: () => (
     <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
