@@ -156,6 +156,17 @@ def _build_epub(
     return buf.getvalue()
 
 
+def _epub_with_duplicate_member(name: str) -> bytes:
+    data = _build_epub()
+    source = zipfile.ZipFile(BytesIO(data))
+    output = BytesIO()
+    with source, zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as target:
+        for info in source.infolist():
+            target.writestr(info.filename, source.read(info.filename))
+        target.writestr(name, b"attacker-controlled duplicate")
+    return output.getvalue()
+
+
 # Compact danger predicate (mirrors the SPR-01 suite's browser model).
 _DANGER_MARKS = (
     "<script", "<iframe", "<svg", "<style", "onerror=", "onclick=",
@@ -293,6 +304,12 @@ def test_wrong_mimetype_fails_closed() -> None:
 def test_missing_container_fails_closed() -> None:
     with pytest.raises(MalformedEpubError):
         convert_epub_to_antiek_html(_build_epub(include_container=False))
+
+
+@pytest.mark.parametrize("name", ["META-INF/container.xml", "OEBPS/content.opf"])
+def test_duplicate_security_critical_member_fails_closed(name: str) -> None:
+    with pytest.raises(MalformedEpubError, match="duplicate archive member"):
+        convert_epub_to_antiek_html(_epub_with_duplicate_member(name))
 
 
 def test_dangling_spine_ref_fails_closed() -> None:

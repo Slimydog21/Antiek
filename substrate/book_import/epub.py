@@ -149,6 +149,13 @@ def _check_archive(zf: zipfile.ZipFile, limits: EpubLimits) -> set[str]:
     names: set[str] = set()
     for info in infos:
         _check_member_name(info.filename)
+        if info.filename in names:
+            # ZipFile resolves duplicate names by implementation-specific
+            # lookup order. Security-critical manifests and chapters must have
+            # one unambiguous byte source.
+            raise MalformedEpubError(
+                f"duplicate archive member {info.filename!r} is ambiguous"
+            )
         if info.file_size > limits.max_entry_bytes:
             raise ZipBombSuspectedError(
                 f"entry {info.filename!r} declares {info.file_size} bytes "

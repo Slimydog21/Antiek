@@ -1,11 +1,8 @@
 # WIRING.md — book-import SPR-01/SPR-02 honest boundary map
 
-Branch: `bi/book-import-spr01-02` (based on campaign branch @ `ccfd2b1f6`).
-This file records, per the spec's grounded corrections, every place where the
-new security floor / conversion engine is NOT yet wired into an existing code
-path — and exactly where the wire goes when the owning path lands or is
-touched by its owner. Nothing here is a receipt: each entry names a concrete
-call site and the one-line change it needs.
+This file records the production entrypoint that is wired and the remaining
+reader/event seams that still need explicit execution. A named future seam is
+not a receipt.
 
 ## Grounded finding (verified on this branch)
 
@@ -110,22 +107,14 @@ lane's scope.
 
 ## SPR-02 wiring points (epub → Antiek-HTML engine)
 
-### W5 — the import-funnel endpoints (#490/#492/#493, when they land)
+### W5 — production EPUB import entrypoint (wired)
 
-The receipt-only stubs (`/books/import/html-preflight`, `/conversion-review`,
-`/conversion-result`) are NOT on this branch either. When that lineage lands,
-the real job behind `/books/import/conversion-job` is a thin composition that
-already exists here:
-
-```python
-from substrate.book_import import convert_epub_to_antiek_html, publish_converted_book
-
-converted = convert_epub_to_antiek_html(operator_file_path)   # typed failures
-published = publish_converted_book(con, converted, investigation_id=..., content_class=<operator-declared>)
-```
-
-Keep the operator-file boundary: the converter takes a LOCAL path/bytes, never
-a URL fetch.
+`POST /books/import/epub` in `interfaces/research/api/books.py` streams a
+bounded `application/epub+zip` body, runs conversion and the single-writer
+publication transaction off the event loop, and returns only typed bounded
+failure reasons. It defaults to `personal_reading`; a publicly servable class
+must be explicit. The HTTP boundary accepts bytes only, never a caller path or
+URL, and owner-only imports cannot mint an external rights-holder account.
 
 ### W6 — `document.loaded` event: no `epub` media_type in the schema
 

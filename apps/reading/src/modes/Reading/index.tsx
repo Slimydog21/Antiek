@@ -133,6 +133,8 @@ export default function BookReader() {
   // see substrate/graph/insight_question.promote_from_marginalia_event). The
   // chunk anchor on the note is the SAME documented follow-up.
   const representativeChunkId: string | null = null;
+  const ownerReadable =
+    book?.servable_full_text === true || body?.reason === "owner_personal_reading";
 
   // source.read (SPR-07 M4) — fire ONCE per source per reading session on the
   // justified dwell threshold, reusing the focused-dwell clock the ad-impression
@@ -179,9 +181,9 @@ export default function BookReader() {
     (_range: Range, _text: string): SelectionProvenance => ({
       documentId,
       chunkId: representativeChunkId,
-      servable: book?.servable_full_text ?? false,
+      servable: ownerReadable,
     }),
-    [documentId, book?.servable_full_text],
+    [documentId, ownerReadable],
   );
 
   const selection = useFloatMenuSelection({
@@ -387,7 +389,7 @@ export default function BookReader() {
             </div>
           ) : (
             <>
-              {!book.servable_full_text && (
+              {!ownerReadable && (
                 <div className="text-[13px] border-edge border-sun rounded-md bg-sun/15 px-3 py-2 text-ink dark:text-bright">
                   {book.servability === "taken_down"
                     ? "This title has been removed and is no longer available to read."
@@ -429,6 +431,7 @@ export default function BookReader() {
                 ref={articleRef}
                 assetId={book.servable_full_text ? documentId : null}
                 text={page?.text ?? ""}
+                contentFormat={body.content_format ?? "text"}
               />
 
               {/* Per-page actions: voice note + spin a deep research. */}

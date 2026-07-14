@@ -252,11 +252,26 @@ def test_benign_structure_preserved() -> None:
         '<th colspan="2">',
         '<a href="#chapter-two">',
         '<a href="https://example.org/notes">',
-        '<img src="https://example.org/cover.png" alt="the cover" width="120" height="80" />',
-        '<img src="images/figure1.png" alt="relative figure" />',
+        '<img alt="the cover" width="120" height="80" />',
+        '<img alt="relative figure" />',
     ):
         assert fragment in cleaned, f"benign fragment lost: {fragment!r}"
     assert _audit(cleaned) == []
+    assert "example.org/cover.png" not in cleaned
+    assert "images/figure1.png" not in cleaned
+
+
+def test_images_cannot_trigger_network_or_same_origin_requests() -> None:
+    cleaned = sanitize_book_html(
+        '<img src="https://tracker.invalid/pixel" alt="remote">'
+        '<img src="/api/delete-session" alt="same origin">'
+        '<img src="//tracker.invalid/pixel" alt="scheme relative">'
+    )
+    assert cleaned == (
+        '<img alt="remote" /><img alt="same origin" />'
+        '<img alt="scheme relative" />'
+    )
+    assert "src=" not in cleaned
 
 
 def test_text_escaping_preserved_and_stable() -> None:
@@ -401,10 +416,8 @@ def test_unbalanced_drop_close_alone_is_noop() -> None:
 
 
 def test_suppression_stack_version_bumped() -> None:
-    """The F5 (1.1.0) and G9 (1.2.0) semantics changes are behavioural for
-    malformed foreign content — the pinned version must reflect the latest
-    (auditability contract)."""
-    assert SANITIZER_VERSION == "books-allowlist/1.2.0"
+    """The network-free image policy is a behavioral trust-contract change."""
+    assert SANITIZER_VERSION == "books-allowlist/1.3.0"
 
 
 # ---------------------------------------------------------------------------

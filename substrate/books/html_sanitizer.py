@@ -39,9 +39,10 @@ What is provably inert after sanitization (red-proof tests in
 - ``<script>``/``<style>``/``<noscript>``/``<template>``/``<iframe>``/
   ``<object>``/``<embed>``/``<svg>``/``<math>`` — dropped WITH their content.
 - every ``on*`` event-handler attribute — dropped (attribute allowlist).
-- ``javascript:`` / ``vbscript:`` / ``data:`` URLs in ``href``/``src`` —
-  dropped (scheme allowlist: http/https/relative/fragment only), including
-  control-character and entity-encoded mutations.
+- ``javascript:`` / ``vbscript:`` / ``data:`` URLs in links are dropped.
+  Image ``src`` is always removed: imported resources require a separately
+  attested, same-origin asset pipeline, and sanitized prose must not trigger
+  attacker-chosen network requests merely by being opened.
 - CSS vectors — ``style`` attributes and ``<style>`` blocks are dropped
   entirely, so ``expression(...)`` and ``url(javascript:...)`` cannot ride in.
 - comments, processing instructions, and declarations — dropped.
@@ -79,7 +80,7 @@ from urllib.parse import urlsplit
 # tag pops ONLY the exact stack top; a close for a container deeper in the
 # stack pops nothing (r1's pop-through repair could un-suppress content while
 # an inner drop-container was logically still open).
-SANITIZER_VERSION = "books-allowlist/1.2.0"
+SANITIZER_VERSION = "books-allowlist/1.3.0"
 
 # documents.metadata keys of the trusted-HTML contract. A serve path may emit
 # a stored body AS HTML only when is_trusted_sanitized(metadata) is True.
@@ -180,6 +181,11 @@ def _clean_attr(tag: str, name: str, value: str | None) -> str | None:
     """
     if value is None:
         return None  # boolean attributes have no place in book prose
+    if name == "src":
+        # A browser fetch is an active effect even when the response cannot
+        # execute script. Preserve the image's alt text/dimensions, but never
+        # let untrusted EPUB markup phone home or issue same-origin GETs.
+        return None
     if name in _URL_ATTRS:
         return _safe_url(value)
     if name in _INT_ATTRS:
