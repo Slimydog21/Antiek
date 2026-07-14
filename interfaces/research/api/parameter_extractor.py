@@ -61,6 +61,7 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+from .research_tier_routing import persisted_research_tier_override  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -154,12 +155,17 @@ def _dispatch_and_parse(
     """Run one parameter_extractor dispatch + parse. Returns
     ``(result, policy_id)`` on success, ``(None, fallback_id)`` on
     failure."""
+    provider_override, model_override = persisted_research_tier_override(
+        event.investigation_id,
+    )
     try:
         result = dispatch(
             prompt,
             "parameter_extractor",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            provider_override=provider_override,
+            model_override=model_override,
         )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"

@@ -234,10 +234,10 @@ export async function getHealth(): Promise<{
 
 /**
  * SPR-01 M3 — the curated research tier. CLOSED two-value set offered ONLY
- * at the research entry (not a raw model dropdown anywhere). "fast" → MiMo
- * V2.5 Pro, "deep" → DeepSeek V4 Pro. The tier→provider map lives in ONE
- * place server-side (substrate/dispatch/research_tier.py); the client only
- * sends the chosen label. Mirrors the closed set in
+ * at the research entry (not a raw model dropdown anywhere). The
+ * tier→provider/model map lives in ONE place server-side
+ * (substrate/dispatch/research_tier.py); the client only sends the chosen
+ * label. Mirrors the closed set in
  * substrate/dispatch/research_tier.py:RESEARCH_TIERS.
  */
 export type ResearchTier = "fast" | "deep";

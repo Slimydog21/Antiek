@@ -61,6 +61,7 @@ from substrate.schemas import (  # noqa: E402
 )
 
 from .broadcast import EventBroadcaster  # noqa: E402 — after the sys.path bootstrap above
+from .research_tier_routing import persisted_research_tier_override  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -145,12 +146,17 @@ def _dispatch_and_parse(
     """Run one evidence_retriever dispatch + parse. Returns
     ``(EvidenceResult, policy_id)`` on success, ``(None, fallback_id)``
     on dispatch or parse failure."""
+    provider_override, model_override = persisted_research_tier_override(
+        event.investigation_id,
+    )
     try:
         result = dispatch(
             prompt,
             "evidence_retriever",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            provider_override=provider_override,
+            model_override=model_override,
         )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"
