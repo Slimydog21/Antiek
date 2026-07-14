@@ -225,10 +225,11 @@ def test_withheld_document_is_rejected() -> None:
     ("field", "value", "message"),
     [
         ("authority", "canonical", "advisory"),
-        ("receipt_id", None, "receipt_id"),
+        ("receipt_id", None, "exact strings"),
         ("source_content_hash", "bad", "sha256"),
         ("proposed_insights", ["forged"], "exact tuple"),
-        ("proposed_questions", (" padded ",), "canonical strings"),
+        ("proposed_insights", ("forged canonical text",), "no longer matches"),
+        ("proposed_questions", (" padded ",), "proposal item is invalid"),
     ],
 )
 def test_tampered_materialized_claims_fail_closed(

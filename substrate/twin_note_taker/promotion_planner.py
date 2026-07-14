@@ -39,6 +39,8 @@ from .generate import (
     MAX_TOTAL_PROPOSAL_CHARS,
     TWIN_AUTHORITY,
     TwinDocument,
+    TwinGenerationError,
+    verify_twin_document,
 )
 
 PromotionKind = Literal["insight", "question"]
@@ -178,6 +180,10 @@ def _sealed_value(cls: type[_T], **values: object) -> _T:  # noqa: UP047
 def _validate_document(document: TwinDocument) -> str:
     if type(document) is not TwinDocument:
         raise TwinPromotionError("documents must be exact TwinDocument values")
+    try:
+        verify_twin_document(document)
+    except TwinGenerationError as exc:
+        raise TwinPromotionError(str(exc)) from exc
     if type(document.withheld) is not bool or document.withheld:
         raise TwinPromotionError("withheld twins cannot enter a promotion plan")
     if document.authority != TWIN_AUTHORITY:

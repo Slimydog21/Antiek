@@ -27,6 +27,7 @@ from .generate import (
     generate_twin,
     proposal_receipt_hash,
     source_asset_receipt_hash,
+    verify_twin_document,
 )
 from .promotion_planner import (
     MAX_PROMOTION_DOCUMENTS,
@@ -106,4 +107,5 @@ __all__ = [
     "proposal_receipt_hash",
     "search_twins",
     "source_asset_receipt_hash",
+    "verify_twin_document",
 ]
