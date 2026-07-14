@@ -252,6 +252,9 @@ def emit_typed(
     policy_id: str | None = None,
     document_id: str | None = None,
     events_dir: str | None = None,
+    strict_write: bool = False,
+    event_id: str | None = None,
+    idempotent: bool = False,
 ) -> str | None:
     """Emit a typed event. ``action_type`` is derived from the payload's
     discriminator; the Event envelope validates that the payload matches a
@@ -267,7 +270,9 @@ def emit_typed(
     if _events_disabled():
         return None
 
-    event_id = _new_event_id()
+    if idempotent and event_id is None:
+        raise ValueError("idempotent typed emission requires an explicit event_id")
+    event_id = event_id or _new_event_id()
     # Construct the typed envelope; Pydantic validates the discriminator,
     # the wrestling document_id requirement, and the payload field types.
     # We intentionally do NOT _safe() this call — schema bugs should fail
@@ -290,7 +295,18 @@ def emit_typed(
 
     row = event.model_dump(mode="json")
     path = _jsonl_path(investigation_id, events_dir=events_dir)
-    _safe(_append_jsonl, path, row)
+    if idempotent and os.path.exists(path):
+        with open(path, encoding="utf-8") as existing:
+            for line in existing:
+                try:
+                    if json.loads(line).get("event_id") == event_id:
+                        return event_id
+                except (json.JSONDecodeError, AttributeError):
+                    continue
+    if strict_write:
+        _append_jsonl(path, row)
+    else:
+        _safe(_append_jsonl, path, row)
     return event_id
 
 
