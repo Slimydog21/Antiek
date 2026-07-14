@@ -6,6 +6,7 @@ planner/audio/video/steering/hardening seams without live provider spend.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -67,11 +68,13 @@ from substrate.multimedia.read_model import (
     SteeringPreviewRequest,
     SteeringPreviewResponse,
 )
+from substrate.multimedia.research_intent import ResearchIntentLedger
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
     MultimediaShipCostEvidenceUnavailable,
     build_multimedia_ship_cost_snapshot,
 )
+from substrate.multimedia.verified_playback import VerifiedPlaybackError
 
 from .multimedia_hardening_routes import (
     MultimediaHardeningRuntime,
@@ -125,6 +128,11 @@ from .multimedia_reconciliation_routes import (
     multimedia_reconciliation_router,
     multimedia_reconciliation_runtime_from_environment,
 )
+from .multimedia_research_intent_routes import (
+    ResearchIntentRouteRuntime,
+    get_multimedia_research_intent_runtime,
+    multimedia_research_intent_router,
+)
 from .multimedia_reviewed_visual_routes import (
     get_multimedia_reviewed_visual_runtime,
     multimedia_reviewed_visual_router,
@@ -168,6 +176,7 @@ multimedia_router.include_router(multimedia_local_audible_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_paid_audio_playback_router)
 multimedia_router.include_router(multimedia_listening_progress_router)
+multimedia_router.include_router(multimedia_research_intent_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
@@ -606,6 +615,58 @@ async def recover_multimedia_asset_knowledge_finalization(
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
+def _resolve_research_audio_authority(
+    *,
+    store: MultimediaAssetStore,
+    local_audible_runtime: Any,
+    production_worker_runtime: Any,
+    asset_id: str,
+    revision_id: str,
+    operator_id: str,
+):
+    try:
+        record = store.get(asset_id, owner_id=operator_id)
+    except (KeyError, ValueError) as exc:
+        raise LookupError("research intent authority is unavailable") from exc
+    if record.asset.revision_id != revision_id:
+        raise ValueError("research intent revision is not current")
+    link = record.audio_production_link
+    if link is None or link.revision_id != revision_id or link.asset_id != asset_id:
+        raise LookupError("research intent authority is unavailable")
+    try:
+        if record.asset.route_policy == "cheapest":
+            if local_audible_runtime is None:
+                raise LookupError("research intent authority is unavailable")
+            metadata = local_audible_runtime.playback.metadata(
+                asset_id=asset_id,
+                revision_id=revision_id,
+                owner_digest=link.owner_identity_digest,
+                plan=record.plan,
+            )
+        else:
+            if production_worker_runtime is None or production_worker_runtime.audio_playback is None:
+                raise LookupError("research intent authority is unavailable")
+            metadata = production_worker_runtime.audio_playback.metadata(
+                asset_id=asset_id,
+                revision_id=revision_id,
+                owner_digest=link.owner_identity_digest,
+            )
+    except VerifiedPlaybackError as exc:
+        raise LookupError("research intent authority is unavailable") from exc
+    if (
+        metadata.receipt_sha256 != link.receipt_sha256
+        or metadata.audio_sha256 != link.audio_sha256
+        or metadata.audio_size_bytes != link.audio_size_bytes
+        or metadata.duration_seconds != link.duration_seconds
+        or metadata.chapter_ids != link.chapter_ids
+        or metadata.retention_marker_count != link.retention_marker_count
+        or metadata.learned_claim_count != link.learned_claim_count
+        or metadata.source_count != link.source_count
+    ):
+        raise ValueError("research intent audio registration conflicts")
+    return metadata
+
+
 def register_multimedia_routes(app: FastAPI) -> None:
     legacy_owner = os.environ.get("ANTIEK_MULTIMEDIA_LEGACY_OWNER_ID", "").strip()
     if legacy_owner:
@@ -748,6 +809,34 @@ def register_multimedia_routes(app: FastAPI) -> None:
             app.dependency_overrides[get_multimedia_paid_audio_playback_runtime] = lambda: (
                 paid_audio_runtime
             )
+    def _owner_digest(operator_id: str) -> str:
+        encoded = operator_id.strip().encode("utf-8")
+        if not encoded or len(encoded) > 512 or any(byte < 32 or byte == 127 for byte in encoded):
+            raise ValueError("multimedia owner identity is invalid")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _resolve_research_audio(asset_id: str, revision_id: str, operator_id: str):
+        return _resolve_research_audio_authority(
+            store=get_store(),
+            local_audible_runtime=local_audible_runtime,
+            production_worker_runtime=production_worker_runtime,
+            asset_id=asset_id,
+            revision_id=revision_id,
+            operator_id=operator_id,
+        )
+
+    if local_audible_runtime is not None or (
+        production_worker_runtime is not None
+        and production_worker_runtime.audio_playback is not None
+    ):
+        research_intent_runtime = ResearchIntentRouteRuntime(
+            ledger=ResearchIntentLedger(get_store().root),
+            owner_digest_resolver=_owner_digest,
+            audio_authority_resolver=_resolve_research_audio,
+        )
+        app.dependency_overrides[get_multimedia_research_intent_runtime] = lambda: (
+            research_intent_runtime
+        )
     # Listening progress: resolve audio identity from the store's audio_production_link
     # or the local audible playback runtime.  Both local and paid audio use the same
     # progress contract and store.
