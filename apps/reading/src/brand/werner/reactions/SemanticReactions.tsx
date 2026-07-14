@@ -1,6 +1,7 @@
 import type { CSSProperties, ReactNode } from "react";
 
 import Werner, { type WernerMood } from "../../Werner";
+import WernerAuthoredPose from "../WernerAuthoredPose";
 import "./semantic-reactions.css";
 
 type SemanticReactionKind = "curious" | "happy" | "dizzy" | "hit";
@@ -109,12 +110,17 @@ function SemanticReaction({
       aria-label={LABEL[kind]}
       className={`werner-semantic werner-semantic--${kind}`}
       data-werner-reaction={kind}
+      data-werner-mood={MOOD[kind]}
       data-duration-ms={DURATION_MS[kind]}
       data-reduced={reduced ? "true" : "false"}
       style={style}
     >
       <span className="werner-semantic__mark" aria-hidden="true">
-        <Werner mood={MOOD[kind]} size={size} />
+        {kind === "curious" ? (
+          <WernerAuthoredPose pose="headTilt" size={size} />
+        ) : (
+          <Werner mood={MOOD[kind]} size={size} />
+        )}
       </span>
       {CHROME[kind]}
     </span>

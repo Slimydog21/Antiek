@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 
+import wernerHeadTilt from "./poses/werner_head_tilt_v1_transparent.png";
 import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
 
 /**
@@ -10,6 +11,7 @@ import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
  * pose files directly or substituting a semantically unrelated mood.
  */
 const AUTHORED_POSE = {
+  headTilt: wernerHeadTilt,
   sleeping: wernerSleeping,
 } as const;
 

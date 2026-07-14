@@ -38,7 +38,7 @@ under `prefers-reduced-motion: reduce`.
 ```text
 Werner.tsx                Canonical live mark and four-mood pose map.
 werner/
-  WernerAuthoredPose.tsx  Private authored-pose source map for wrappers.
+  WernerAuthoredPose.tsx  Private sleeping + head-tilt source map.
   animated/               Thin wrappers that compose Werner with motion.
     animations.css        Keyframes and the reduced-motion collapse.
     WernerThinking.tsx    Thinking pose + external aurora thinking dots.
@@ -74,6 +74,6 @@ fifth surface or mood is a brand decision, not an import.
 
 Authored animation poses are private illustration sources, not public moods.
 `WernerAuthoredPose.tsx` centralizes those sources so wrappers cannot import
-rasters ad hoc. Sleeping is live through that seam. Tobogganing remains a
-candidate until its baked speed marks can be separated from the overlapping
-body without duplicate effects.
+rasters ad hoc. Sleeping and curious head-tilt are live through that seam.
+Tobogganing remains a candidate until its baked speed marks can be separated
+from the overlapping body without duplicate effects.
