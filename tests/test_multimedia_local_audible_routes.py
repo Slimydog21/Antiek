@@ -24,6 +24,7 @@ from substrate.multimedia.local_audible_workstation import (
 from substrate.multimedia.read_model import MultimediaAudioProductionLink
 from substrate.multimedia.verified_audio_playback import (
     AudioChapterPlaybackMetadata,
+    AudioEvidenceSourceMetadata,
     AudioLearnedClaimMetadata,
     AudioPlaybackMetadata,
 )
@@ -80,7 +81,7 @@ class _Workstation:
 
 
 class _Playback:
-    def metadata(self, *, asset_id, revision_id, owner_digest):  # noqa: ANN001, ANN201
+    def metadata(self, *, asset_id, revision_id, owner_digest, plan):  # noqa: ANN001, ANN201
         return AudioPlaybackMetadata(
             asset_id=asset_id,
             revision_id=revision_id,
@@ -98,6 +99,10 @@ class _Playback:
                     claim_text="Verified claim",
                     source_count=1,
                     follow_up_prompt="Review the source.",
+                    line_id="chapter-1-line-0",
+                    evidence_sources=(_source(),),
+                    source_chunk_ids=("chunk-1",),
+                    evidence_status="verified_exact",
                 ),
             ),
             chapters=(
@@ -136,6 +141,7 @@ class _Store:
         return SimpleNamespace(
             asset=SimpleNamespace(revision_id="revision-1", owner_user_id=OWNER_DIGEST),
             audio_production_link=link,
+            plan=SimpleNamespace(),
         )
 
 
@@ -219,10 +225,25 @@ def test_registered_metadata_and_audio_range_are_private_and_link_verified() -> 
             "claim_text": "Verified claim",
             "source_count": 1,
             "follow_up_prompt": "Review the source.",
+            "line_id": "chapter-1-line-0",
+            "source_chunk_ids": ["chunk-1"],
+            "evidence_status": "verified_exact",
+            "evidence_sources": [
+                {
+                    "chunk_id": "chunk-1",
+                    "document_id": "doc-1",
+                    "locator": "History / Flow",
+                    "authority_kind": "canonical_graph",
+                    "chunk_sha256": "c" * 64,
+                    "start_utf8_byte": 4,
+                    "end_utf8_byte": 18,
+                    "span_sha256": "d" * 64,
+                    "exact_text": "Verified claim",
+                }
+            ],
         }
     ]
     assert "output_path" not in metadata.text and "manifest_mac" not in metadata.text
-    assert "source_chunk" not in metadata.text
     audio = client.get(
         "/multimedia/assets/asset-1/local-audible/playback/revision-1/audio",
         headers={"Range": "bytes=0-10"},
@@ -242,3 +263,17 @@ def test_absent_runtime_is_opaque_and_commands_are_503() -> None:
     )
     assert response.status_code == 503
     assert response.json() == {"detail": "local audible runtime is unavailable"}
+
+
+def _source() -> AudioEvidenceSourceMetadata:
+    return AudioEvidenceSourceMetadata(
+        chunk_id="chunk-1",
+        document_id="doc-1",
+        locator="History / Flow",
+        authority_kind="canonical_graph",
+        chunk_sha256="c" * 64,
+        start_utf8_byte=4,
+        end_utf8_byte=18,
+        span_sha256="d" * 64,
+        exact_text="Verified claim",
+    )

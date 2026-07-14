@@ -246,8 +246,11 @@ describe("multimedia API client", () => {
       chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 90 }],
       source_count: 1,
       learned_claims: [{
-        chapter_id: "chapter-1", claim_text: "Verified claim", source_count: 1,
-        follow_up_prompt: "Review the source.",
+        line_id: "chapter-1-line-0", chapter_id: "chapter-1", claim_text: "Verified claim", source_count: 1,
+        follow_up_prompt: "Review the source.", source_chunk_ids: ["chunk-1"], evidence_status: "verified_exact",
+        evidence_sources: [{ chunk_id: "chunk-1", document_id: "doc-1",
+          locator: "Flow", authority_kind: "canonical_graph", chunk_sha256: "c".repeat(64),
+          start_utf8_byte: 0, end_utf8_byte: 14, span_sha256: "d".repeat(64), exact_text: "Verified claim" }],
       }],
       audio_url: "/multimedia/assets/mm-1/local-audible/playback/rev-1/audio",
     };
@@ -264,6 +267,16 @@ describe("multimedia API client", () => {
     mockFetch().mockResolvedValueOnce(jsonResponse(200, {
       ...playback,
       chapters: [{ ...playback.chapters[0], end_offset_seconds: 89.998 }],
+    }));
+    await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
+      "playback_identity_conflict",
+    );
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...playback,
+      learned_claims: [{
+        ...playback.learned_claims[0],
+        evidence_sources: [{ ...playback.learned_claims[0].evidence_sources[0], exact_text: "Forged" }],
+      }],
     }));
     await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
       "playback_identity_conflict",
@@ -647,8 +660,11 @@ describe("multimedia API client", () => {
       audio_sha256: "a".repeat(64), audio_size_bytes: 10, duration_seconds: 12.5,
       chapter_ids: ["chapter-1"], retention_marker_count: 1, learned_claim_count: 1,
       chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 12.5 }],
-      source_count: 1, learned_claims: [{ chapter_id: "chapter-1", claim_text: "claim",
-        source_count: 1, follow_up_prompt: "Next?" }],
+      source_count: 1, learned_claims: [{ line_id: "chapter-1-line-0", chapter_id: "chapter-1", claim_text: "claim",
+        source_count: 1, follow_up_prompt: "Next?", source_chunk_ids: ["chunk-1"], evidence_status: "verified_exact",
+        evidence_sources: [{ chunk_id: "chunk-1", document_id: "doc-1",
+          locator: null, authority_kind: "operator_excerpt", chunk_sha256: "c".repeat(64), start_utf8_byte: 0,
+          end_utf8_byte: 5, span_sha256: "d".repeat(64), exact_text: "claim" }] }],
       audio_url: "/multimedia/assets/mm-1/audio-playback/rev-1/audio",
     }));
     expect((await getMultimediaPaidAudioPlayback("mm-1", "rev-1")).audio_url)
