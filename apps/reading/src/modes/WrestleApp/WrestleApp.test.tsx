@@ -2,16 +2,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ReactNode } from "react";
 
-const { ingestHostedDocument, fetchHostedDocument, postTypedEvent, routeParams } = vi.hoisted(
+const { ingestHostedDocument, fetchHostedDocument, postTypedEvent, routeParams, navigate } = vi.hoisted(
   () => ({
     ingestHostedDocument: vi.fn(),
     fetchHostedDocument: vi.fn(),
     postTypedEvent: vi.fn(),
     routeParams: {} as { documentId?: string },
+    navigate: vi.fn(),
   }),
 );
 
-vi.mock("react-router-dom", () => ({ useParams: () => routeParams }));
+vi.mock("react-router-dom", () => ({
+  useParams: () => routeParams,
+  useNavigate: () => navigate,
+}));
 vi.mock("../../api/hostedDocuments", () => ({
   ingestHostedDocument,
   fetchHostedDocument,
@@ -82,6 +86,7 @@ describe("WrestleApp canonical hosted transport", () => {
     ingestHostedDocument.mockReset().mockResolvedValue(readyReceipt);
     fetchHostedDocument.mockReset();
     postTypedEvent.mockReset().mockResolvedValue({ event_id: "evt-region" });
+    navigate.mockReset();
   });
 
   it("uploads to server ingest and renders canonical HTML without client document.loaded", async () => {
@@ -108,6 +113,92 @@ describe("WrestleApp canonical hosted transport", () => {
     expect(postTypedEvent).not.toHaveBeenCalled();
     expect(document.body.textContent).not.toContain("Load a PDF to wrestle");
     expect(document.querySelector("main")?.getAttribute("data-starter-count")).toBe("2");
+    expect(navigate).toHaveBeenCalledWith("/wrestle/hdoc_server_owned", {
+      replace: true,
+    });
+  });
+
+  it("shows an ingesting state and fences duplicate file selection", async () => {
+    let resolveReceipt!: (receipt: typeof readyReceipt) => void;
+    ingestHostedDocument.mockImplementation(
+      () => new Promise((resolve) => (resolveReceipt = resolve)),
+    );
+    render(<WrestleApp />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(["x"], "slow.pdf", { type: "application/pdf" })] },
+    });
+    expect((await screen.findByRole("status")).textContent).toMatch(/Extracting slow.pdf/);
+    expect(input.disabled).toBe(true);
+    await waitFor(() => expect(ingestHostedDocument).toHaveBeenCalledTimes(1));
+    resolveReceipt(readyReceipt);
+    expect(await screen.findByTestId("shared-hosted-html-document")).toBeTruthy();
+  });
+
+  it("retains a non-viewable extraction receipt without activating panels", async () => {
+    ingestHostedDocument.mockResolvedValue({
+      ...readyReceipt,
+      state: "non_viewable",
+      html: null,
+      document_loaded_event_id: null,
+      title: "Scanned archive",
+      source_format: "pdf",
+      word_count: 3,
+      non_viewable_reason: "below_minimum_viewable_words",
+    });
+    render(<WrestleApp />);
+    const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(input, {
+      target: { files: [new File(["x"], "scan.pdf", { type: "application/pdf" })] },
+    });
+    const receipt = await screen.findByTestId("wrestle-non-viewable-receipt");
+    expect(receipt.textContent).toContain("Scanned archive");
+    expect(receipt.textContent).toContain("PDF");
+    expect(receipt.textContent).toContain("3");
+    expect(receipt.textContent).toContain("below_minimum_viewable_words");
+    expect(document.querySelector("main")?.getAttribute("data-starter-count")).toBe("0");
+    expect(screen.queryByTestId("shared-hosted-html-document")).toBeNull();
+    expect(navigate).toHaveBeenCalledWith("/wrestle/hdoc_server_owned", {
+      replace: true,
+    });
+  });
+
+  it("shows route loading before rehydrating the server document", async () => {
+    routeParams.documentId = "hdoc_server_owned";
+    let resolveReceipt!: (receipt: typeof readyReceipt) => void;
+    fetchHostedDocument.mockImplementation(
+      () => new Promise((resolve) => (resolveReceipt = resolve)),
+    );
+    render(<WrestleApp />);
+    expect((await screen.findByRole("status")).textContent).toMatch(/Opening the hosted document/);
+    expect(document.querySelector("main")?.getAttribute("data-starter-count")).toBe("0");
+    resolveReceipt(readyReceipt);
+    expect(
+      (await screen.findByTestId("shared-hosted-html-document")).getAttribute(
+        "data-document-id",
+      ),
+    ).toBe("hdoc_server_owned");
+    expect(fetchHostedDocument).toHaveBeenCalledWith("hdoc_server_owned");
+    expect(ingestHostedDocument).not.toHaveBeenCalled();
+  });
+
+  it("rehydrates a durable non-viewable receipt from its server route", async () => {
+    routeParams.documentId = "hdoc_receipt";
+    fetchHostedDocument.mockResolvedValue({
+      ...readyReceipt,
+      document_id: "hdoc_receipt",
+      state: "non_viewable",
+      html: null,
+      title: "Receipt only",
+      source_format: "epub",
+      word_count: 0,
+      non_viewable_reason: "empty_extraction",
+    });
+    render(<WrestleApp />);
+    const receipt = await screen.findByTestId("wrestle-non-viewable-receipt");
+    expect(receipt.textContent).toContain("Receipt only");
+    expect(receipt.textContent).toContain("empty_extraction");
+    expect(document.querySelector("main")?.getAttribute("data-starter-count")).toBe("0");
   });
 
   it("emits only document.region_selected for a canonical HTML selection", async () => {
@@ -168,6 +259,41 @@ describe("WrestleApp canonical hosted transport", () => {
     expect(await screen.findByText(/hosted document API 403/)).toBeTruthy();
     expect(screen.queryByTestId("shared-hosted-html-document")).toBeNull();
     expect(document.querySelector("main")?.getAttribute("data-starter-count")).toBe("0");
+  });
+
+  it("ignores a stale route response after the document id changes", async () => {
+    const resolvers = new Map<string, (receipt: typeof readyReceipt) => void>();
+    fetchHostedDocument.mockImplementation(
+      (documentId: string) =>
+        new Promise((resolve) => resolvers.set(documentId, resolve)),
+    );
+    routeParams.documentId = "hdoc_first";
+    const view = render(<WrestleApp />);
+    await waitFor(() => expect(fetchHostedDocument).toHaveBeenCalledWith("hdoc_first"));
+
+    routeParams.documentId = "hdoc_second";
+    view.rerender(<WrestleApp />);
+    await waitFor(() => expect(fetchHostedDocument).toHaveBeenCalledWith("hdoc_second"));
+    resolvers.get("hdoc_second")?.({
+      ...readyReceipt,
+      document_id: "hdoc_second",
+      title: "Second",
+    });
+    expect(
+      (await screen.findByTestId("shared-hosted-html-document")).getAttribute(
+        "data-document-id",
+      ),
+    ).toBe("hdoc_second");
+
+    resolvers.get("hdoc_first")?.({
+      ...readyReceipt,
+      document_id: "hdoc_first",
+      title: "First",
+    });
+    await Promise.resolve();
+    expect(
+      screen.getByTestId("shared-hosted-html-document").getAttribute("data-document-id"),
+    ).toBe("hdoc_second");
   });
 
   it("surfaces a failed region event without discarding the hosted document", async () => {

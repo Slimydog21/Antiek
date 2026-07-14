@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
 import type { DocumentRegionSelectedPayload } from "../../generated/types";
@@ -39,6 +39,7 @@ const HostedHtmlDocumentHost = lazy(
  */
 export default function WrestleApp() {
   const params = useParams<{ documentId?: string }>();
+  const navigate = useNavigate();
   const routeDocumentId = params.documentId ?? null;
 
   // Read ?page= deep-link from Mode A's chunk-citation modal.
@@ -58,17 +59,22 @@ export default function WrestleApp() {
     return fresh;
   });
 
-  const [hosted, setHosted] = useState<HostedDocumentReceipt | null>(null);
-  const [documentId, setDocumentId] = useState<string | null>(null);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadState, setLoadState] = useState<WrestleLoadState>({ kind: "empty" });
+  const [interactionError, setInteractionError] = useState<string | null>(null);
   const loadVersion = useRef(0);
+  const adoptedReceipt = useRef<HostedDocumentReceipt | null>(null);
+
+  const hosted = loadState.kind === "ready" ? loadState.receipt : null;
+  const documentId = hosted?.document_id ?? null;
 
   const { events, status, reconnects } = useEventStream(investigationId);
 
   const onFileSelected = useCallback(
     async (file: File) => {
       const version = ++loadVersion.current;
-      setLoadError(null);
+      adoptedReceipt.current = null;
+      setInteractionError(null);
+      setLoadState({ kind: "loading", source: "upload", title: file.name });
       try {
         const receipt = await ingestHostedDocument({
           content_b64: await fileToBase64(file),
@@ -77,45 +83,58 @@ export default function WrestleApp() {
           title: file.name,
           intent: "user_owned",
         });
+        if (version !== loadVersion.current) return;
         if (receipt.state !== "ready" || !receipt.html?.trim()) {
-          throw new Error(
-            `Source retained as a non-viewable receipt: ${receipt.non_viewable_reason || "empty canonical HTML"}`,
-          );
+          adoptedReceipt.current = receipt;
+          setLoadState({ kind: "non_viewable", receipt });
+          navigate(`/wrestle/${encodeURIComponent(receipt.document_id)}`, {
+            replace: true,
+          });
+          return;
         }
-        if (version === loadVersion.current) {
-          setHosted(receipt);
-          setDocumentId(receipt.document_id);
-        }
+        adoptedReceipt.current = receipt;
+        setLoadState({ kind: "ready", receipt });
+        navigate(`/wrestle/${encodeURIComponent(receipt.document_id)}`, {
+          replace: true,
+        });
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
-        if (version === loadVersion.current) setLoadError(msg);
+        if (version === loadVersion.current) {
+          setLoadState({ kind: "error", message: msg });
+        }
       }
     },
-    [investigationId],
+    [investigationId, navigate],
   );
 
   useEffect(() => {
     const version = ++loadVersion.current;
-    setHosted(null);
-    setDocumentId(null);
-    setLoadError(null);
-    if (!routeDocumentId) return;
+    setInteractionError(null);
+    if (!routeDocumentId) {
+      adoptedReceipt.current = null;
+      setLoadState({ kind: "empty" });
+      return;
+    }
+    if (adoptedReceipt.current?.document_id === routeDocumentId) return;
+    adoptedReceipt.current = null;
+    setLoadState({ kind: "loading", source: "route", title: null });
     let cancelled = false;
     fetchHostedDocument(routeDocumentId)
       .then((receipt) => {
-        if (
-          !cancelled &&
-          version === loadVersion.current &&
-          receipt.state === "ready" &&
-          receipt.html
-        ) {
-          setHosted(receipt);
-          setDocumentId(receipt.document_id);
+        if (cancelled || version !== loadVersion.current) return;
+        adoptedReceipt.current = receipt;
+        if (receipt.state === "ready" && receipt.html?.trim()) {
+          setLoadState({ kind: "ready", receipt });
+        } else {
+          setLoadState({ kind: "non_viewable", receipt });
         }
       })
       .catch((error: unknown) => {
         if (!cancelled && version === loadVersion.current) {
-          setLoadError(error instanceof Error ? error.message : String(error));
+          setLoadState({
+            kind: "error",
+            message: error instanceof Error ? error.message : String(error),
+          });
         }
       });
     return () => {
@@ -144,7 +163,7 @@ export default function WrestleApp() {
           role: "user_agent",
         });
       } catch (error: unknown) {
-        setLoadError(
+        setInteractionError(
           `Highlight event failed: ${error instanceof Error ? error.message : String(error)}`,
         );
       }
@@ -194,12 +213,12 @@ export default function WrestleApp() {
     <PanelHost key={documentId ?? "empty"} starters={starters}>
       {hosted?.html && documentId ? (
         <div className="relative h-full overflow-auto bg-ice-2 dark:bg-space-2">
-          {loadError ? (
+          {interactionError ? (
             <div
               className="sticky top-0 z-10 bg-emperor px-3 py-2 text-xs font-mono text-white"
               role="alert"
             >
-              {loadError}
+              {interactionError}
             </div>
           ) : null}
           <Suspense
@@ -223,10 +242,15 @@ export default function WrestleApp() {
             />
           </Suspense>
         </div>
+      ) : loadState.kind === "non_viewable" ? (
+        <NonViewableReceipt
+          receipt={loadState.receipt}
+          onFileSelected={onFileSelected}
+        />
       ) : (
         <EmptyState
           onFileSelected={onFileSelected}
-          loadError={loadError}
+          loadState={loadState}
           investigationId={investigationId}
         />
       )}
@@ -236,11 +260,11 @@ export default function WrestleApp() {
 
 function EmptyState({
   onFileSelected,
-  loadError,
+  loadState,
   investigationId,
 }: {
   onFileSelected: (file: File) => void;
-  loadError: string | null;
+  loadState: WrestleLoadState;
   investigationId: string;
 }) {
   return (
@@ -253,22 +277,21 @@ function EmptyState({
           The trajectory feed will appear as a docked panel; cross-document
           bridges appear on the right.
         </p>
-        <label className="inline-flex">
-          <LemonButton variant="primary" size="lg" type="button" tabIndex={-1}>
-            Choose document…
-          </LemonButton>
-          <input
-            type="file"
-            accept="application/pdf,.epub,text/html,text/plain,text/markdown,.md"
-            className="hidden"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) onFileSelected(f);
-            }}
-          />
-        </label>
-        {loadError && (
-          <div className="text-xs font-mono text-emperor mt-4">{loadError}</div>
+        <DocumentPicker
+          onFileSelected={onFileSelected}
+          disabled={loadState.kind === "loading"}
+        />
+        {loadState.kind === "loading" && (
+          <p className="mt-4 text-xs font-mono text-ink dark:text-bright" role="status">
+            {loadState.source === "upload"
+              ? `Extracting ${loadState.title ?? "document"} into canonical HTML…`
+              : "Opening the hosted document…"}
+          </p>
+        )}
+        {loadState.kind === "error" && (
+          <div className="text-xs font-mono text-emperor mt-4" role="alert">
+            {loadState.message}
+          </div>
         )}
         <p className="mt-6 text-[11px] font-mono text-ink-mute dark:text-moonlight">
           investigation:{" "}
@@ -278,6 +301,83 @@ function EmptyState({
     </div>
   );
 }
+
+function NonViewableReceipt({
+  receipt,
+  onFileSelected,
+}: {
+  receipt: HostedDocumentReceipt;
+  onFileSelected: (file: File) => void;
+}) {
+  return (
+    <div className="h-full flex items-center justify-center bg-ice-2 dark:bg-space-2">
+      <section
+        className="max-w-md px-6 text-center text-ink dark:text-bright"
+        aria-labelledby="non-viewable-title"
+        data-testid="wrestle-non-viewable-receipt"
+      >
+        <h1 id="non-viewable-title" className="text-2xl font-serif mb-3">
+          This source was retained, but it isn’t viewable yet.
+        </h1>
+        <p className="text-sm font-serif text-shadow-1 dark:text-moonlight mb-4">
+          Antiek kept the extraction receipt without inventing an empty reading surface.
+        </p>
+        <dl className="mb-5 grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-left text-xs font-mono">
+          <dt className="text-ink-mute dark:text-moonlight">Title</dt>
+          <dd>{receipt.title}</dd>
+          <dt className="text-ink-mute dark:text-moonlight">Format</dt>
+          <dd>{receipt.source_format.toUpperCase()}</dd>
+          <dt className="text-ink-mute dark:text-moonlight">Words extracted</dt>
+          <dd>{receipt.word_count.toLocaleString()}</dd>
+          <dt className="text-ink-mute dark:text-moonlight">Reason</dt>
+          <dd>{receipt.non_viewable_reason ?? "No canonical HTML was produced."}</dd>
+        </dl>
+        <DocumentPicker onFileSelected={onFileSelected} label="Choose another document…" />
+      </section>
+    </div>
+  );
+}
+
+function DocumentPicker({
+  onFileSelected,
+  disabled = false,
+  label = "Choose document…",
+}: {
+  onFileSelected: (file: File) => void;
+  disabled?: boolean;
+  label?: string;
+}) {
+  return (
+    <label className={disabled ? "inline-flex cursor-wait opacity-60" : "inline-flex"}>
+          <LemonButton
+            variant="primary"
+            size="lg"
+            type="button"
+            tabIndex={-1}
+            disabled={disabled}
+          >
+            {label}
+          </LemonButton>
+          <input
+            type="file"
+            accept="application/pdf,.epub,text/html,text/plain,text/markdown,.md"
+            className="hidden"
+            disabled={disabled}
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) onFileSelected(f);
+            }}
+          />
+        </label>
+  );
+}
+
+type WrestleLoadState =
+  | { kind: "empty" }
+  | { kind: "loading"; source: "upload" | "route"; title: string | null }
+  | { kind: "ready"; receipt: HostedDocumentReceipt }
+  | { kind: "non_viewable"; receipt: HostedDocumentReceipt }
+  | { kind: "error"; message: string };
 
 function sourceFormat(file: File): string {
   const extension = file.name.split(".").pop()?.toLowerCase();
