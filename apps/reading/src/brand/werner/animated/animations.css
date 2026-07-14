@@ -50,6 +50,13 @@
 .werner-toboggan-speedlines {
   animation: werner-toboggan-speedlines 600ms ease-in-out infinite;
 }
+.werner-toboggan-static .werner-toboggan,
+.werner-toboggan-static .werner-toboggan-speedlines {
+  animation: none;
+}
+.werner-toboggan-static .werner-toboggan {
+  transform: rotate(0deg);
+}
 
 /* ─── Waddle cycle ───────────────────────────────────────────────── */
 @keyframes werner-waddle-body {

@@ -87,6 +87,46 @@ export const AllPoses: Story = {
   ),
 };
 
+export const TobogganSpinnerFidelity: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — toboggan spinner fidelity
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        Authored low-slide body at each critical size; reduced-motion
+        composition proves the complete still without timing-dependent capture.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+        {[24, 32, 64].map((size) => (
+          <Cell
+            key={size}
+            label={`${size}px`}
+            hint="authored body · speed lines"
+            pose={
+              <WernerTobogganSpinner
+                size={size}
+                label={`Werner tobogganing at ${size} pixels`}
+              />
+            }
+          />
+        ))}
+        <Cell
+          label="Reduced"
+          hint="prefers-reduced-motion"
+          pose={
+            <WernerTobogganSpinner
+              size={32}
+              label="Werner tobogganing (reduced motion)"
+              reduced
+            />
+          }
+        />
+      </div>
+    </div>
+  ),
+};
+
 export const ThinkingFidelity: Story = {
   render: () => (
     <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">

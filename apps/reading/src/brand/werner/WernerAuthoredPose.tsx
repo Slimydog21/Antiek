@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import wernerHeadTilt from "./poses/werner_head_tilt_v1_transparent.png";
 import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
+import wernerTobogganingBody from "./poses/werner_tobogganing_body_v2_transparent.png";
 import wernerWaking from "./poses/werner_waking_v1_transparent.png";
 
 /**
@@ -10,10 +11,16 @@ import wernerWaking from "./poses/werner_waking_v1_transparent.png";
  * These are not product moods. `Werner.tsx` retains the complete four-mood
  * public contract; this private vocabulary prevents wrappers from importing
  * pose files directly or substituting a semantically unrelated mood.
+ *
+ * `tobogganing` is the identity-preserving clean body derived from the
+ * ChatGPT Image source (SPR-23). Only the body component is used — speed
+ * streaks, snow puffs, and ground shadow from the source are separated into
+ * code-native SVG/CSS in WernerTobogganSpinner.
  */
 const AUTHORED_POSE = {
   headTilt: wernerHeadTilt,
   sleeping: wernerSleeping,
+  tobogganing: wernerTobogganingBody,
   waking: wernerWaking,
 } as const;
 

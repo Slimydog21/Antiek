@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WERNER-ACT SPR-23 — Authored toboggan pose</title>
+    <style>
+      body { max-width: 74rem; margin: auto; padding: 2rem; font: 16px/1.55 system-ui,sans-serif; background: #fafaf7; color: #151515; }
+      header, section { border: 2px solid; border-radius: 6px; padding: 1.4rem; margin-bottom: 1.4rem; background: white; box-shadow: 4px 4px 0 #151515; }
+      h1, h2 { line-height: 1.15; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid; padding: .65rem; text-align: left; vertical-align: top; }
+      code { font-family: ui-monospace,monospace; }
+      .tag { display: inline-block; border: 1px solid; border-radius: 999px; padding: .15rem .55rem; background: #f9bd2b; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p><a href="index.html">Werner activity system</a> · SPR-23 · Wave 23</p>
+      <h1>Let the authored pose carry the motion it was drawn for</h1>
+      <p>Replace the generic idle-body loading approximation with one private authored low-slide pose, while keeping every speed effect separable and code-native.</p>
+      <span class="tag">Implemented</span> <span class="tag">ChatGPT Image edit</span>
+    </header>
+    <section>
+      <h2>Falsified premise</h2>
+      <table>
+        <tr><th>Claim</th><th>Evidence</th><th>Decision</th></tr>
+        <tr><td>The existing spinner depicts authored tobogganing.</td><td>It renders the upright canonical idle body at 25% left/8% top over an invented SVG slat.</td><td>False. Preserve the wrapper contract; replace only its private body and remove the contradictory slat.</td></tr>
+        <tr><td>The authored source can be layered directly.</td><td>Its speed streaks, snow puffs, and ground shadow overlap the body component.</td><td>False. Preserve the provenance source; derive a new versioned clean body through an identity-preserving image edit.</td></tr>
+        <tr><td>Generated motion chrome is desirable.</td><td>Motion effects need deterministic timing, theming, and reduced-motion collapse.</td><td>False. ChatGPT Image owns body cleanup only; SVG/CSS continues to own speed.</td></tr>
+      </table>
+    </section>
+    <section>
+      <h2>Authority and composition</h2>
+      <ol>
+        <li><code>WernerAuthoredPose</code> is the only runtime importer of the new body asset.</li>
+        <li><code>WernerTobogganSpinner</code> renders exactly one authored body and one decorative SVG speed-line layer.</li>
+        <li>The invented sled slat is removed: the approved illustration is a belly-slide pose, and adding a vehicle changes its meaning.</li>
+        <li>The public four-mood Werner map is unchanged; <code>tobogganing</code> remains private animation vocabulary.</li>
+        <li>The status label remains the sole accessible name; body and effects remain decorative.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Acceptance gates</h2>
+      <ol>
+        <li>The new PNG has alpha, fully transparent borders, 20–30% opaque coverage, no magenta contamination at any nonzero alpha, and one connected bounded subject.</li>
+        <li>Source tests prove the private map is the sole import and the wrapper no longer imports or renders canonical idle Werner.</li>
+        <li>DOM tests prove one status, one authored body, one speed layer, no sled, and caller size/label propagation.</li>
+        <li>Motion retains the existing 1,200 ms six-step wobble and 600 ms speed flicker; reduced motion disables both and retains the complete still.</li>
+        <li>A deterministic Storybook plate proves 24, 32, and 64 px body fidelity and one reduced-motion composition.</li>
+        <li>Production build, focused tests, visual checks, hardenx, heterogeneous review, and exact-head remote checks are honest and green before qualification.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Withheld authority</h2>
+      <p>No fifth mood, product event, new loading surface, second mascot, stage position, cursor behavior, physics, network, spend, destructive source overwrite, merge, or deploy.</p>
+    </section>
+  </body>
+</html>
