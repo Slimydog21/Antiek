@@ -10,9 +10,14 @@ from __future__ import annotations
 from collections.abc import Iterable, Mapping
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from substrate.contracts.multimedia import MultimediaAssetContract, MultimediaStatus
+from substrate.multimedia.local_zero_cost_evidence import (
+    LocalZeroEvidenceUnavailable,
+    LocalZeroExternalCostEvidenceV1,
+    verify_local_zero_cost_evidence,
+)
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceUnavailable,
     MultimediaShipCostSnapshotV1,
@@ -48,6 +53,13 @@ class MultimediaHardeningReport(_HardeningBase):
     gates: tuple[GateResult, ...]
     residual_risks: tuple[str, ...] = Field(default_factory=tuple)
     cost_snapshot: MultimediaShipCostSnapshotV1 | None = None
+    local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None
+
+    @model_validator(mode="after")
+    def has_at_most_one_cost_authority(self) -> MultimediaHardeningReport:
+        if self.cost_snapshot is not None and self.local_zero_cost_evidence is not None:
+            raise ValueError("multimedia hardening report has multiple cost authorities")
+        return self
 
     @property
     def failed_gate_ids(self) -> tuple[str, ...]:
@@ -63,6 +75,7 @@ def evaluate_multimedia_asset(
     *,
     acknowledged_unsourced_line_ids: tuple[str, ...] = (),
     cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
+    local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None,
     snapshot_key: bytes | None = None,
     owner_id: str | None = None,
     scenes: Iterable[Any] = (),
@@ -82,6 +95,7 @@ def evaluate_multimedia_asset(
         _cost_gate(
             asset,
             cost_snapshot=cost_snapshot,
+            local_zero_cost_evidence=local_zero_cost_evidence,
             snapshot_key=snapshot_key,
             owner_id=owner_id,
         ),
@@ -105,6 +119,9 @@ def evaluate_multimedia_asset(
             "Custom voice likeness/licensing requires operator review before release.",
         ),
         cost_snapshot=(cost_snapshot if gates[1].status == "pass" else None),
+        local_zero_cost_evidence=(
+            local_zero_cost_evidence if gates[1].status == "pass" else None
+        ),
     )
 
 
@@ -149,29 +166,52 @@ def _cost_gate(
     asset: MultimediaAssetContract,
     *,
     cost_snapshot: MultimediaShipCostSnapshotV1 | None,
+    local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None,
     snapshot_key: bytes | None,
     owner_id: str | None,
 ) -> GateResult:
-    if cost_snapshot is None or snapshot_key is None or owner_id is None:
+    if snapshot_key is None or owner_id is None:
         finding = GateFinding(
             code="cost_evidence_unavailable",
             severity="error",
             message="Authoritative direct-provider cost evidence is unavailable.",
         )
         return GateResult(gate_id="cost_and_budget", status="fail", findings=(finding,))
-    try:
-        verify_multimedia_ship_cost_snapshot(
-            cost_snapshot,
-            snapshot_key=snapshot_key,
-            owner_id=owner_id,
-            asset_id=asset.asset_id,
-            revision_id=asset.revision_id,
+    if (cost_snapshot is None) == (local_zero_cost_evidence is None):
+        finding = GateFinding(
+            code="cost_evidence_ambiguous",
+            severity="error",
+            message="Exactly one authoritative cost evidence type is required.",
         )
-    except (MultimediaShipCostEvidenceUnavailable, TypeError, ValueError):
+        return GateResult(gate_id="cost_and_budget", status="fail", findings=(finding,))
+    try:
+        if cost_snapshot is not None:
+            verify_multimedia_ship_cost_snapshot(
+                cost_snapshot,
+                snapshot_key=snapshot_key,
+                owner_id=owner_id,
+                asset_id=asset.asset_id,
+                revision_id=asset.revision_id,
+            )
+        else:
+            assert local_zero_cost_evidence is not None
+            verify_local_zero_cost_evidence(
+                local_zero_cost_evidence,
+                snapshot_key=snapshot_key,
+                owner_id=owner_id,
+                asset_id=asset.asset_id,
+                revision_id=asset.revision_id,
+            )
+    except (
+        LocalZeroEvidenceUnavailable,
+        MultimediaShipCostEvidenceUnavailable,
+        TypeError,
+        ValueError,
+    ):
         finding = GateFinding(
             code="cost_evidence_invalid",
             severity="error",
-            message="Direct-provider cost evidence failed integrity or identity validation.",
+            message="Cost evidence failed integrity or identity validation.",
         )
         return GateResult(gate_id="cost_and_budget", status="fail", findings=(finding,))
     return GateResult(gate_id="cost_and_budget", status="pass")

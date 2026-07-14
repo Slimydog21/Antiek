@@ -28,6 +28,11 @@ from substrate.multimedia.local_source_card import (
 )
 from substrate.multimedia.local_tts import LocalTTSArtifact
 from substrate.multimedia.local_video_bridge import LocalSourceCardInput
+from substrate.multimedia.local_zero_cost_evidence import (
+    LocalZeroEvidenceConflict,
+    build_local_video_zero_cost_evidence,
+    verify_local_zero_cost_evidence,
+)
 from substrate.multimedia.planner import ChapterPlan, MultimediaPlan, MultimediaPlanRequest
 from substrate.multimedia.visual_selection import VerifiedVisualEvidence
 
@@ -73,7 +78,7 @@ class Store:
             asset=SimpleNamespace(
                 asset_id="asset-1", revision_id="revision-1", status="ready",
                 route_policy="cheapest", kind="documentary_video",
-                owner_user_id="a" * 64,
+                owner_user_id=hashlib.sha256(b"owner-1").hexdigest(),
             ),
             plan=plan,
             mode="hybrid",
@@ -393,3 +398,278 @@ def test_database_failure_is_not_misreported_as_missing(
     monkeypatch.setattr(coordinator_module, "connect_read", unavailable)
     with pytest.raises(LocalProductionCoordinatorError, match="database"):
         coordinator._load("missing")  # noqa: SLF001
+
+
+def test_registered_video_authority_reopens_full_chain(runtime) -> None:
+    video, request, store, _tmp = _video_runtime(runtime)
+    first = video.register(request, now=NOW)
+    authority = video.registered_video_authority("owner-1", "asset-1", "revision-1")
+    assert authority.receipt == first.receipt
+    assert authority.production_link is store.record.production_link
+    assert authority.narration_run_id == first.narration_run_id
+    assert authority.video_run_id == first.run_id
+    assert authority.asset_id == "asset-1"
+    assert authority.revision_id == "revision-1"
+
+
+def test_registered_video_authority_link_fields_match_receipt(runtime) -> None:
+    video, request, store, _tmp = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    authority = video.registered_video_authority("owner-1", "asset-1", "revision-1")
+    render = authority.receipt.render.manifest
+    narration = authority.receipt.narration.manifest
+    link = authority.production_link
+    assert link.receipt_sha256 == hashlib.sha256(
+        authority.receipt.to_json().encode()
+    ).hexdigest()
+    assert link.video_sha256 == render.output_sha256
+    assert link.audio_sha256 == narration.output_sha256
+    assert link.chapter_ids == render.chapter_ids
+    assert link.duration_seconds == render.duration_seconds
+    assert link.width_px == render.width_px
+    assert link.height_px == render.height_px
+
+
+def test_missing_table_does_not_create_database_for_video_authority(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    db_path = tmp_path / "runs.duckdb"
+    import duckdb
+
+    with duckdb.connect(str(db_path)) as conn:
+        conn.execute("DROP TABLE IF EXISTS multimedia_local_video_runs")
+    # Clean up write.lock left by register()
+    for lock in tmp_path.glob("*.write.lock"):
+        lock.unlink()
+    with pytest.raises(LocalProductionCoordinatorError, match="table is missing"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+    assert not any(
+        tmp_path.glob("*.write.lock")
+    ), "authority must not leave a write lock"
+
+
+def test_duplicate_registered_video_row_fails_closed(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    import duckdb as _duckdb
+
+    with _duckdb.connect(str(tmp_path / "runs.duckdb")) as conn:
+        row = conn.execute(
+            "SELECT * FROM multimedia_local_video_runs LIMIT 1"
+        ).fetchone()
+        dup = list(row)
+        dup[0] = "duplicate-run-id"
+        conn.execute(
+            "INSERT INTO multimedia_local_video_runs VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            dup,
+        )
+    with pytest.raises(LocalProductionCoordinatorError, match="multiple"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_missing_narration_row_fails_video_authority(
+    runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    import duckdb as _duckdb
+
+    with _duckdb.connect(str(tmp_path / "runs.duckdb")) as conn:
+        conn.execute("DELETE FROM multimedia_local_production_runs")
+    with pytest.raises(LocalProductionCoordinatorError, match="narration row is missing"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_wrong_narration_reference_fails_video_authority(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    import duckdb as _duckdb
+
+    with _duckdb.connect(str(tmp_path / "runs.duckdb")) as conn:
+        conn.execute(
+            "UPDATE multimedia_local_video_runs SET narration_run_id=?",
+            ["wrong-narration-id"],
+        )
+    with pytest.raises(LocalProductionCoordinatorError, match="integrity"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_incomplete_narration_state_fails_video_authority(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    import duckdb as _duckdb
+
+    with _duckdb.connect(str(tmp_path / "runs.duckdb")) as conn:
+        conn.execute(
+            "UPDATE multimedia_local_production_runs SET status='producing'"
+        )
+    with pytest.raises(LocalProductionCoordinatorError, match="narration is not terminal"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_bad_video_mac_fails_authority(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    import duckdb as _duckdb
+
+    with _duckdb.connect(str(tmp_path / "runs.duckdb")) as conn:
+        conn.execute(
+            "UPDATE multimedia_local_video_runs SET row_mac=?", ["0" * 64]
+        )
+    with pytest.raises(LocalProductionCoordinatorError, match="integrity"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_tampered_receipt_fails_video_authority(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    with duckdb.connect(str(tmp_path / "runs.duckdb"), read_only=True) as connection:
+        receipt_path = Path(connection.execute(
+            "SELECT receipt_path FROM multimedia_local_video_runs"
+        ).fetchone()[0])
+    receipt_path.write_text("tampered")
+    receipt_path.chmod(0o600)
+    with pytest.raises(RuntimeError):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_narration_manifest_tamper_fails_video_authority(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    with duckdb.connect(str(tmp_path / "runs.duckdb"), read_only=True) as connection:
+        path = Path(connection.execute(
+            "SELECT narration_manifest_path FROM multimedia_local_production_runs"
+        ).fetchone()[0])
+    path.write_text("tampered")
+    path.chmod(0o600)
+    with pytest.raises(RuntimeError):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_changed_executable_fails_video_authority(
+    runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video, request, _store, _tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    real = coordinator_module._executable  # noqa: SLF001
+
+    def changed(path: str) -> tuple[str, str]:
+        resolved, _digest = real(path)
+        return resolved, "0" * 64
+
+    monkeypatch.setattr(coordinator_module, "_executable", changed)
+    with pytest.raises(LocalProductionCoordinatorError, match="executable"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_video_media_tamper_fails_authority(runtime) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    first = video.register(request, now=NOW)
+    video_path = Path(first.receipt.render.manifest.output_path)
+    video_path.write_bytes(b"tampered")
+    video_path.chmod(0o600)
+    with pytest.raises(RuntimeError, match="digest"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_link_drift_fails_video_authority(runtime) -> None:
+    video, request, store, _tmp = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    authority = video.registered_video_authority("owner-1", "asset-1", "revision-1")
+    assert authority.production_link is not None
+    store.record.production_link = None
+    with pytest.raises(LocalProductionCoordinatorError, match="link"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+
+
+def test_stale_revision_fails_video_authority(runtime) -> None:
+    video, request, store, _tmp = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    # Simulate a stale revision by making the link revision disagree with
+    # what the authority caller expects.
+    original = store.record.production_link
+    stale = original.__class__(
+        owner_identity_digest=original.owner_identity_digest,
+        asset_id=original.asset_id,
+        revision_id="revision-2",
+        receipt_sha256=original.receipt_sha256,
+        video_sha256=original.video_sha256,
+        audio_sha256=original.audio_sha256,
+        duration_seconds=original.duration_seconds,
+        width_px=original.width_px,
+        height_px=original.height_px,
+        chapter_ids=original.chapter_ids,
+    )
+    store.record.production_link = stale
+    with pytest.raises(LocalProductionCoordinatorError, match="link identity"):
+        video.registered_video_authority("owner-1", "asset-1", "revision-1")
+    store.record.production_link = original
+
+
+def test_local_video_zero_evidence_binds_parent_and_narration_children(
+    runtime, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    video, request, _store, tmp_path = _video_runtime(runtime)
+    video.register(request, now=NOW)
+    with duckdb.connect(str(tmp_path / "runs.duckdb")) as connection:
+        connection.execute(
+            "CREATE TABLE multimedia_provider_executions "
+            "(operator_id TEXT, asset_id TEXT, revision_id TEXT)"
+        )
+    evidence = build_local_video_zero_cost_evidence(
+        coordinator=video,
+        db_path=str(tmp_path / "runs.duckdb"),
+        snapshot_key=b"local-zero-snapshot-key-material-32",
+        owner_id="owner-1",
+        asset_id="asset-1",
+        revision_id="revision-1",
+        now=NOW,
+    )
+    assert tuple(row.role for row in evidence.authorities) == (
+        "local_narration",
+        "local_video",
+    )
+    assert "revision-1" in evidence.excluded_revision_ids
+    assert any(value.startswith("tts-") for value in evidence.excluded_revision_ids)
+    assert evidence.provider_execution_count == evidence.external_cost_cents == 0
+    verify_local_zero_cost_evidence(
+        evidence,
+        snapshot_key=b"local-zero-snapshot-key-material-32",
+        owner_id="owner-1",
+        asset_id="asset-1",
+        revision_id="revision-1",
+    )
+    unsorted = evidence.model_copy(
+        update={"excluded_revision_ids": tuple(reversed(evidence.excluded_revision_ids))}
+    )
+    with pytest.raises(RuntimeError, match="evidence_unavailable"):
+        verify_local_zero_cost_evidence(
+            unsorted,
+            snapshot_key=b"local-zero-snapshot-key-material-32",
+            owner_id="owner-1",
+            asset_id="asset-1",
+            revision_id="revision-1",
+        )
+    child = next(value for value in evidence.excluded_revision_ids if value != "revision-1")
+    real_authority = video.registered_video_authority
+
+    def authority_then_paid_row(owner_id: str, asset_id: str, revision_id: str):  # noqa: ANN202
+        authority = real_authority(owner_id, asset_id, revision_id)
+        with duckdb.connect(str(tmp_path / "runs.duckdb")) as connection:
+            connection.execute(
+                "INSERT INTO multimedia_provider_executions VALUES (?, ?, ?)",
+                ["owner-1", "asset-1", child],
+            )
+        return authority
+
+    monkeypatch.setattr(video, "registered_video_authority", authority_then_paid_row)
+    with pytest.raises(LocalZeroEvidenceConflict, match="evidence_conflict"):
+        build_local_video_zero_cost_evidence(
+            coordinator=video,
+            db_path=str(tmp_path / "runs.duckdb"),
+            snapshot_key=b"local-zero-snapshot-key-material-32",
+            owner_id="owner-1",
+            asset_id="asset-1",
+            revision_id="revision-1",
+            now=NOW,
+        )

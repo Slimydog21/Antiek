@@ -48,7 +48,7 @@ from .production_registration import (
     MultimediaProductionRegistrationRequest,
     register_multimedia_production,
 )
-from .read_model import MultimediaAssetStore
+from .read_model import MultimediaAssetStore, MultimediaProductionLink
 from .verified_playback import VerifiedPlaybackRuntime
 from .visual_selection import EvidenceVerifier
 
@@ -121,6 +121,28 @@ class LocalVideoRunArtifact:
     receipt: EducationalVideoReceipt
     cost_usd: float = 0.0
     registered: bool = False
+
+
+@dataclass(frozen=True)
+class VideoAuthority:
+    """Immutable internal authority over one registered video production chain."""
+
+    narration_run_id: str
+    video_run_id: str
+    owner_digest: str
+    asset_id: str
+    revision_id: str
+    narration_input_digest: str
+    narration_config_digest: str
+    narration_artifact_digest: str
+    narration_updated_at: str
+    video_input_digest: str
+    video_config_digest: str
+    video_artifact_digest: str
+    receipt_digest: str
+    video_updated_at: str
+    receipt: EducationalVideoReceipt
+    production_link: MultimediaProductionLink
 
 
 class LocalProductionCoordinator:
@@ -463,6 +485,21 @@ class LocalVideoProductionCoordinator:
             )
         ).hexdigest()
 
+    def assert_independent_snapshot_key(self, snapshot_key: bytes) -> None:
+        """Reject reuse of any key that authenticates the local video chain."""
+        keys = (
+            self._narration._key,
+            self._narration._narration_key,
+            self._visual_key,
+            self._evidence_key,
+            self._render_key,
+            self._receipt_key,
+        )
+        if not isinstance(snapshot_key, bytes) or len(snapshot_key) < 32:
+            raise ValueError("local zero snapshot key is invalid")
+        if any(hmac.compare_digest(snapshot_key, key) for key in keys):
+            raise ValueError("local zero snapshot key must be independent")
+
     def produce(
         self, request: LocalVideoRunRequest, *, now: datetime
     ) -> LocalVideoRunArtifact:
@@ -587,6 +624,208 @@ class LocalVideoProductionCoordinator:
             config_digest=artifact.config_digest,
             receipt=artifact.receipt,
             registered=True,
+        )
+
+    def registered_video_authority(
+        self, owner_id: str, asset_id: str, revision_id: str
+    ) -> VideoAuthority:
+        """Discover the one registered video row and verify the full chain.
+
+        Raises :class:`LocalProductionCoordinatorError` with
+        ``evidence_unavailable`` when the row is missing or in a nonterminal
+        state, and ``evidence_conflict`` when any verification fails.
+        """
+        self._narration._verify_executables()
+        try:
+            record = self._narration._store.get(asset_id, owner_id=owner_id)
+        except (KeyError, ValueError) as exc:
+            raise LocalProductionCoordinatorError(
+                "video authority asset is unavailable: evidence_unavailable"
+            ) from exc
+        asset = record.asset
+        if (
+            asset.revision_id != revision_id
+            or str(asset.status) != "ready"
+            or str(asset.route_policy) != "cheapest"
+            or record.mode == "audio"
+            or str(asset.kind) == "audio_experience"
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority requires the current ready cheapest video revision"
+            )
+        owner_digest = str(asset.owner_user_id)
+        row = self._find_registered_row(owner_digest, asset_id, revision_id)
+        if len(row) != 15:
+            raise LocalProductionCoordinatorError(
+                "video authority row shape is unsupported: evidence_unavailable"
+            )
+        narration_run_id = str(row[1])
+        video_run_id = str(row[0])
+        self._verify_row_mac(row)
+        expected_id = _video_run_id(
+            narration_run_id, owner_digest, str(row[5]), self._config_digest
+        )
+        if video_run_id != expected_id or str(row[6]) != self._config_digest:
+            raise LocalProductionCoordinatorError(
+                "video authority deterministic identity failed"
+            )
+        narration_row = self._narration._load(narration_run_id)
+        if narration_row is None or len(narration_row) != 12:
+            raise LocalProductionCoordinatorError(
+                "video authority referenced narration row is missing"
+            )
+        if str(narration_row[6]) != "narration_succeeded":
+            raise LocalProductionCoordinatorError(
+                "video authority referenced narration is not terminal"
+            )
+        if (
+            not isinstance(narration_row[11], str)
+            or not hmac.compare_digest(
+                narration_row[11], _mac(list(narration_row[:11]), self._narration._key)
+            )
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority narration row MAC failed"
+            )
+        expected_narr_run = _run_id(
+            owner_digest, str(narration_row[4]), self._narration._config_digest
+        )
+        if (
+            str(narration_row[0]) != expected_narr_run
+            or str(narration_row[1]) != owner_digest
+            or str(narration_row[2]) != asset_id
+            or str(narration_row[3]) != revision_id
+            or str(narration_row[5]) != self._narration._config_digest
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority narration identity failed"
+            )
+        receipt_path = Path(str(row[10]))
+        receipt_payload = _read_private(receipt_path)
+        if not hmac.compare_digest(
+            hashlib.sha256(receipt_payload).hexdigest(), str(row[11])
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority receipt file digest failed"
+            )
+        receipt = EducationalVideoReceipt.reopen_from_file(
+            str(receipt_path),
+            self._receipt_key,
+            self._narration._narration_key,
+            self._visual_key,
+            self._render_key,
+        )
+        if receipt.asset_id != asset_id or receipt.revision_id != revision_id:
+            raise LocalProductionCoordinatorError(
+                "video authority receipt identity failed"
+            )
+        narration_path = Path(str(narration_row[7]))
+        narration_payload = _read_private(narration_path)
+        render_path = Path(str(row[8]))
+        render_payload = _read_private(render_path)
+        if (
+            not hmac.compare_digest(
+                hashlib.sha256(narration_payload).hexdigest(), str(narration_row[8])
+            )
+            or narration_payload != receipt.narration.to_json().encode()
+            or not hmac.compare_digest(
+                hashlib.sha256(render_payload).hexdigest(), str(row[9])
+            )
+            or render_payload != receipt.render.to_json().encode()
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority production manifests conflict"
+            )
+        if record.production_link is None:
+            raise LocalProductionCoordinatorError(
+                "video authority production link is missing"
+            )
+        link = record.production_link
+        if (
+            link.owner_identity_digest != owner_digest
+            or link.asset_id != asset_id
+            or link.revision_id != revision_id
+            or link.receipt_sha256 != str(row[11])
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority link identity failed"
+            )
+        render = receipt.render.manifest
+        narration = receipt.narration.manifest
+        expected_video_sha = render.output_sha256
+        expected_audio_sha = narration.output_sha256
+        if (
+            link.video_sha256 != expected_video_sha
+            or link.audio_sha256 != expected_audio_sha
+            or link.chapter_ids != render.chapter_ids
+            or link.duration_seconds != render.duration_seconds
+            or link.width_px != render.width_px
+            or link.height_px != render.height_px
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority link receipt values failed"
+            )
+        fresh_video = self._load(video_run_id)
+        if (
+            fresh_video is None
+            or len(fresh_video) != 15
+            or list(fresh_video[:14]) != list(row[:14])
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority row changed during verification"
+            )
+        self._verify_row_mac(fresh_video)
+        fresh_narr = self._narration._load(narration_run_id)
+        if fresh_narr is None or list(fresh_narr) != list(narration_row):
+            raise LocalProductionCoordinatorError(
+                "video authority narration row changed during verification"
+            )
+        try:
+            fresh_record = self._narration._store.get(asset_id, owner_id=owner_id)
+        except (KeyError, ValueError) as exc:
+            raise LocalProductionCoordinatorError(
+                "video authority asset disappeared during verification: evidence_conflict"
+            ) from exc
+        if fresh_record.production_link != link:
+            raise LocalProductionCoordinatorError(
+                "video authority production link changed during verification"
+            )
+        fresh_receipt_payload = _read_private(receipt_path)
+        fresh_narration_payload = _read_private(narration_path)
+        fresh_render_payload = _read_private(render_path)
+        fresh_receipt = EducationalVideoReceipt.reopen_from_file(
+            str(receipt_path),
+            self._receipt_key,
+            self._narration._narration_key,
+            self._visual_key,
+            self._render_key,
+        )
+        if (
+            fresh_receipt_payload != receipt_payload
+            or fresh_narration_payload != narration_payload
+            or fresh_render_payload != render_payload
+            or fresh_receipt != receipt
+        ):
+            raise LocalProductionCoordinatorError(
+                "video authority files changed during verification"
+            )
+        return VideoAuthority(
+            narration_run_id=narration_run_id,
+            video_run_id=video_run_id,
+            owner_digest=owner_digest,
+            asset_id=asset_id,
+            revision_id=revision_id,
+            narration_input_digest=str(narration_row[4]),
+            narration_config_digest=str(narration_row[5]),
+            narration_artifact_digest=str(narration_row[8]),
+            narration_updated_at=str(narration_row[10]),
+            video_input_digest=str(row[5]),
+            video_config_digest=str(row[6]),
+            video_artifact_digest=str(row[9]),
+            receipt_digest=str(row[11]),
+            video_updated_at=str(row[13]),
+            receipt=receipt,
+            production_link=link,
         )
 
     def _resume_existing(
@@ -813,6 +1052,42 @@ class LocalVideoProductionCoordinator:
             f"{request.narration.asset_id}-{request.narration.expected_revision_id}"
         ) / "render.json"
 
+    def _find_registered_row(
+        self, owner_digest: str, asset_id: str, revision_id: str
+    ) -> DatabaseRow:
+        if not Path(self._narration._db_path).exists():
+            raise LocalProductionCoordinatorError(
+                "video authority database is unavailable: evidence_unavailable"
+            )
+        try:
+            with connect_read(self._narration._db_path) as connection:
+                try:
+                    rows = connection.execute(
+                        "SELECT * FROM multimedia_local_video_runs "
+                        "WHERE owner_digest=? AND asset_id=? AND revision_id=? "
+                        "AND status='registered'",
+                        [owner_digest, asset_id, revision_id],
+                    ).fetchall()
+                except duckdb.CatalogException:
+                    raise LocalProductionCoordinatorError(
+                        "video authority table is missing: evidence_unavailable"
+                    ) from None
+        except LocalProductionCoordinatorError:
+            raise
+        except Exception as exc:
+            raise LocalProductionCoordinatorError(
+                "video authority database is unavailable: evidence_unavailable"
+            ) from exc
+        if len(rows) == 0:
+            raise LocalProductionCoordinatorError(
+                "video authority registered row is missing: evidence_unavailable"
+            )
+        if len(rows) > 1:
+            raise LocalProductionCoordinatorError(
+                "video authority has multiple registered rows: evidence_unavailable"
+            )
+        return rows[0]
+
     def _load(self, run_id: str) -> DatabaseRow | None:
         if not Path(self._narration._db_path).exists():
             return None
@@ -945,4 +1220,5 @@ __all__ = [
     "LocalVideoProductionCoordinator",
     "LocalVideoRunArtifact",
     "LocalVideoRunRequest",
+    "VideoAuthority",
 ]

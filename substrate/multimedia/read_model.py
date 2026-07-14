@@ -36,6 +36,11 @@ from substrate.contracts.multimedia import (
 )
 from substrate.multimedia.audio_assembly import assemble_audio_experience
 from substrate.multimedia.hardening import MultimediaHardeningReport, evaluate_multimedia_asset
+from substrate.multimedia.local_provider_exclusion import LocalZeroEvidenceConflict
+from substrate.multimedia.local_zero_cost_evidence import (
+    LocalZeroExternalCostEvidenceV1,
+    verify_local_zero_cost_evidence,
+)
 from substrate.multimedia.planner import (
     EvidenceChunk,
     MultimediaPlan,
@@ -600,23 +605,38 @@ class MultimediaAssetStore:
         *,
         owner_id: str = _DEFAULT_OWNER_ID,
         cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
+        local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None,
         snapshot_key: bytes | None = None,
     ) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
-            if cost_snapshot is not None:
+            if cost_snapshot is not None and local_zero_cost_evidence is not None:
+                raise LocalZeroEvidenceConflict("evidence_conflict")
+            if cost_snapshot is not None or local_zero_cost_evidence is not None:
                 try:
                     if snapshot_key is None:
                         raise ValueError("snapshot key is unavailable")
-                    verify_multimedia_ship_cost_snapshot(
-                        cost_snapshot,
-                        snapshot_key=snapshot_key,
-                        owner_id=owner_id,
-                        asset_id=record.asset.asset_id,
-                        revision_id=record.asset.revision_id,
-                    )
+                    if cost_snapshot is not None:
+                        verify_multimedia_ship_cost_snapshot(
+                            cost_snapshot,
+                            snapshot_key=snapshot_key,
+                            owner_id=owner_id,
+                            asset_id=record.asset.asset_id,
+                            revision_id=record.asset.revision_id,
+                        )
+                    else:
+                        assert local_zero_cost_evidence is not None
+                        verify_local_zero_cost_evidence(
+                            local_zero_cost_evidence,
+                            snapshot_key=snapshot_key,
+                            owner_id=owner_id,
+                            asset_id=record.asset.asset_id,
+                            revision_id=record.asset.revision_id,
+                        )
                 except (TypeError, ValueError, RuntimeError) as exc:
+                    if local_zero_cost_evidence is not None:
+                        raise LocalZeroEvidenceConflict("evidence_conflict") from exc
                     raise MultimediaShipCostEvidenceConflict("evidence_conflict") from exc
             scenes: tuple[object, ...] = ()
             if record.mode != "audio":
@@ -626,6 +646,7 @@ class MultimediaAssetStore:
                 record.asset,
                 scenes=scenes,
                 cost_snapshot=cost_snapshot,
+                local_zero_cost_evidence=local_zero_cost_evidence,
                 snapshot_key=snapshot_key,
                 owner_id=owner_id,
             )

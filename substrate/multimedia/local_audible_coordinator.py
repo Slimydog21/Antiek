@@ -35,7 +35,7 @@ from .local_audible_production import (
 )
 from .local_audible_tts import PreparedAudibleSpanTTSRequest
 from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
-from .read_model import MultimediaAssetStore
+from .read_model import MultimediaAssetStore, MultimediaAudioProductionLink
 from .verified_audio_playback import VerifiedAudioPlaybackRuntime
 
 _DDL = """
@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS multimedia_local_audible_runs (
  receipt_path TEXT NOT NULL, receipt_sha256 TEXT NOT NULL,
  created_at TEXT NOT NULL, updated_at TEXT NOT NULL, row_mac TEXT NOT NULL)
 """
+
+_MAX_RECEIPT_BYTES = 8 * 1024 * 1024
 
 AudibleRunStatus = Literal[
     "producing",
@@ -81,6 +83,23 @@ class LocalAudibleRunResult:
     receipt: AudibleExperienceReceipt
     cost_usd: float = 0.0
     registered: bool = True
+
+
+@dataclass(frozen=True)
+class AudibleAuthority:
+    """Immutable internal authority over one registered audio production chain."""
+
+    run_id: str
+    owner_digest: str
+    asset_id: str
+    revision_id: str
+    input_digest: str
+    config_digest: str
+    artifact_digest: str
+    receipt_digest: str
+    updated_at: str
+    receipt: AudibleExperienceReceipt
+    audio_production_link: MultimediaAudioProductionLink
 
 
 class LocalAudibleCoordinator:
@@ -140,6 +159,16 @@ class LocalAudibleCoordinator:
                 }
             )
         ).hexdigest()
+
+    def assert_independent_snapshot_key(self, snapshot_key: bytes) -> None:
+        """Reject reuse of any key that authenticates the local audio chain."""
+        if not isinstance(snapshot_key, bytes) or len(snapshot_key) < 32:
+            raise ValueError("local zero snapshot key is invalid")
+        if any(
+            hmac.compare_digest(snapshot_key, key)
+            for key in (self._key, self._production_key, self._receipt_key)
+        ):
+            raise ValueError("local zero snapshot key must be independent")
 
     def produce(
         self, request: LocalAudibleRunRequest, *, now: datetime
@@ -246,6 +275,155 @@ class LocalAudibleCoordinator:
         ):
             raise LocalAudibleCoordinatorError("stored local audible integrity failed")
         return Path(str(row[9]))
+
+    def registered_audible_authority(
+        self, owner_id: str, asset_id: str, revision_id: str
+    ) -> AudibleAuthority:
+        """Discover the one registered audible row and verify the full chain.
+
+        Raises :class:`LocalAudibleCoordinatorError` with
+        ``evidence_unavailable`` when the row is missing or in a nonterminal
+        state, and ``evidence_conflict`` when any verification fails.
+        """
+        self._verify_executables()
+        try:
+            record = self._store.get(asset_id, owner_id=owner_id)
+        except (KeyError, ValueError) as exc:
+            raise LocalAudibleCoordinatorError(
+                "audible authority asset is unavailable: evidence_unavailable"
+            ) from exc
+        asset = record.asset
+        if (
+            asset.revision_id != revision_id
+            or str(asset.status) != "ready"
+            or str(asset.route_policy) != "cheapest"
+            or record.mode != "audio"
+            or str(asset.kind) != "audio_experience"
+        ):
+            raise LocalAudibleCoordinatorError(
+                "audible authority requires the current ready cheapest audio revision"
+            )
+        owner_digest = str(asset.owner_user_id)
+        row = self._find_registered_row(owner_digest, asset_id, revision_id)
+        if len(row) != 14:
+            raise LocalAudibleCoordinatorError(
+                "audible authority row shape is unsupported: evidence_unavailable"
+            )
+        run_id = str(row[0])
+        self._verify_row_mac(row)
+        expected_id = _run_id(owner_digest, str(row[4]), self._config_digest)
+        if run_id != expected_id or str(row[5]) != self._config_digest:
+            raise LocalAudibleCoordinatorError(
+                "audible authority deterministic identity failed"
+            )
+        receipt_path = Path(str(row[9]))
+        receipt_payload = _read_private(receipt_path, _MAX_RECEIPT_BYTES)
+        if not hmac.compare_digest(
+            hashlib.sha256(receipt_payload).hexdigest(), str(row[10])
+        ):
+            raise LocalAudibleCoordinatorError(
+                "audible authority receipt file digest failed"
+            )
+        receipt = AudibleExperienceReceipt.reopen_from_file(
+            receipt_path,
+            signing_key=self._receipt_key,
+            production_integrity_key=self._production_key,
+        )
+        if receipt.asset_id != asset_id or receipt.revision_id != revision_id:
+            raise LocalAudibleCoordinatorError(
+                "audible authority receipt identity failed"
+            )
+        if receipt.owner_digest != owner_digest:
+            raise LocalAudibleCoordinatorError(
+                "audible authority receipt owner identity failed"
+            )
+        if receipt.production.manifest.input_digest != str(row[4]):
+            raise LocalAudibleCoordinatorError(
+                "audible authority production input digest failed"
+            )
+        production_path = Path(str(row[7]))
+        production_payload = _read_private(production_path, 4 * 1024 * 1024)
+        if (
+            not hmac.compare_digest(_sha(production_payload), str(row[8]))
+            or production_payload != receipt.production.to_json().encode("ascii")
+        ):
+            raise LocalAudibleCoordinatorError(
+                "audible authority production manifest conflicts"
+            )
+        if record.audio_production_link is None:
+            raise LocalAudibleCoordinatorError(
+                "audible authority audio production link is missing"
+            )
+        link = record.audio_production_link
+        if (
+            link.owner_identity_digest != owner_digest
+            or link.asset_id != asset_id
+            or link.revision_id != revision_id
+            or link.receipt_sha256 != str(row[10])
+        ):
+            raise LocalAudibleCoordinatorError(
+                "audible authority link identity failed"
+            )
+        production = receipt.production.manifest
+        run = receipt.audible_run.manifest
+        if (
+            link.audio_sha256 != production.output_sha256
+            or link.duration_seconds != production.duration_seconds
+            or link.chapter_ids != tuple(ch.chapter_id for ch in run.chapters)
+            or link.retention_marker_count != len(run.retention_markers)
+            or link.learned_claim_count != len(run.learned_claims)
+        ):
+            raise LocalAudibleCoordinatorError(
+                "audible authority link receipt values failed"
+            )
+        fresh_row = self._load(run_id)
+        if (
+            fresh_row is None
+            or len(fresh_row) != 14
+            or list(fresh_row[:13]) != list(row[:13])
+        ):
+            raise LocalAudibleCoordinatorError(
+                "audible authority row changed during verification"
+            )
+        self._verify_row_mac(fresh_row)
+        try:
+            fresh_record = self._store.get(asset_id, owner_id=owner_id)
+        except (KeyError, ValueError) as exc:
+            raise LocalAudibleCoordinatorError(
+                "audible authority asset disappeared during verification: evidence_conflict"
+            ) from exc
+        if fresh_record.audio_production_link != link:
+            raise LocalAudibleCoordinatorError(
+                "audible authority audio production link changed during verification"
+            )
+        fresh_receipt_payload = _read_private(receipt_path, _MAX_RECEIPT_BYTES)
+        fresh_production_payload = _read_private(production_path, 4 * 1024 * 1024)
+        fresh_receipt = AudibleExperienceReceipt.reopen_from_file(
+            receipt_path,
+            signing_key=self._receipt_key,
+            production_integrity_key=self._production_key,
+        )
+        if (
+            fresh_receipt_payload != receipt_payload
+            or fresh_production_payload != production_payload
+            or fresh_receipt != receipt
+        ):
+            raise LocalAudibleCoordinatorError(
+                "audible authority files changed during verification"
+            )
+        return AudibleAuthority(
+            run_id=run_id,
+            owner_digest=owner_digest,
+            asset_id=asset_id,
+            revision_id=revision_id,
+            input_digest=str(row[4]),
+            config_digest=self._config_digest,
+            artifact_digest=str(row[8]),
+            receipt_digest=str(row[10]),
+            updated_at=str(row[12]),
+            receipt=receipt,
+            audio_production_link=link,
+        )
 
     def _receipt_and_register(
         self,
@@ -522,6 +700,42 @@ class LocalAudibleCoordinator:
         except Exception as exc:
             raise LocalAudibleCoordinatorError("local audible database is unavailable") from exc
 
+    def _find_registered_row(
+        self, owner_digest: str, asset_id: str, revision_id: str
+    ) -> DatabaseRow:
+        if not Path(self._db_path).exists():
+            raise LocalAudibleCoordinatorError(
+                "audible authority database is unavailable: evidence_unavailable"
+            )
+        try:
+            with connect_read(self._db_path) as connection:
+                try:
+                    rows = connection.execute(
+                        "SELECT * FROM multimedia_local_audible_runs "
+                        "WHERE owner_digest=? AND asset_id=? AND revision_id=? "
+                        "AND status='registered'",
+                        [owner_digest, asset_id, revision_id],
+                    ).fetchall()
+                except duckdb.CatalogException:
+                    raise LocalAudibleCoordinatorError(
+                        "audible authority table is missing: evidence_unavailable"
+                    ) from None
+        except LocalAudibleCoordinatorError:
+            raise
+        except Exception as exc:
+            raise LocalAudibleCoordinatorError(
+                "audible authority database is unavailable: evidence_unavailable"
+            ) from exc
+        if len(rows) == 0:
+            raise LocalAudibleCoordinatorError(
+                "audible authority registered row is missing: evidence_unavailable"
+            )
+        if len(rows) > 1:
+            raise LocalAudibleCoordinatorError(
+                "audible authority has multiple registered rows: evidence_unavailable"
+            )
+        return rows[0]
+
     def _verify_row(
         self,
         row: DatabaseRow,
@@ -541,6 +755,13 @@ class LocalAudibleCoordinator:
                 self._config_digest,
             ]
             or not isinstance(row[13], str)
+            or not hmac.compare_digest(row[13], _mac(list(row[:13]), self._key))
+        ):
+            raise LocalAudibleCoordinatorError("stored local audible integrity failed")
+
+    def _verify_row_mac(self, row: DatabaseRow) -> None:
+        if (
+            not isinstance(row[13], str)
             or not hmac.compare_digest(row[13], _mac(list(row[:13]), self._key))
         ):
             raise LocalAudibleCoordinatorError("stored local audible integrity failed")
@@ -654,6 +875,7 @@ def _timestamp(value: datetime) -> str:
 
 
 __all__ = [
+    "AudibleAuthority",
     "LocalAudibleCoordinator",
     "LocalAudibleCoordinatorError",
     "LocalAudibleOutcomeUnknown",

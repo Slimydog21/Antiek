@@ -9,7 +9,8 @@ from __future__ import annotations
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from typing import Any
+from datetime import datetime
+from typing import Any, cast
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 
@@ -25,6 +26,18 @@ from substrate.multimedia.knowledge_finalization import (
     inspect_multimedia_knowledge_finalization,
     read_multimedia_twin_document,
     recover_multimedia_knowledge_finalization,
+)
+from substrate.multimedia.local_audible_coordinator import LocalAudibleCoordinator
+from substrate.multimedia.local_production_coordinator import (
+    LocalVideoProductionCoordinator,
+)
+from substrate.multimedia.local_provider_exclusion import (
+    LocalZeroEvidenceUnavailable,
+)
+from substrate.multimedia.local_zero_cost_evidence import (
+    LocalZeroExternalCostEvidenceV1,
+    build_local_audio_zero_cost_evidence,
+    build_local_video_zero_cost_evidence,
 )
 from substrate.multimedia.production_registration import (
     MultimediaProductionRegistrationRequest,
@@ -42,6 +55,7 @@ from substrate.multimedia.read_model import (
     SteeringPreviewResponse,
 )
 from substrate.multimedia.ship_cost_snapshot import (
+    MultimediaShipCostEvidenceConflict,
     MultimediaShipCostEvidenceUnavailable,
     build_multimedia_ship_cost_snapshot,
 )
@@ -261,15 +275,39 @@ def run_multimedia_hardening(
 ) -> MultimediaAssetRecord:
     try:
         record = get_store().get(asset_id, owner_id=operator_id)
-        snapshot = build_multimedia_ship_cost_snapshot(
-            db_path=runtime.db_path,
-            signing_key=runtime.signing_key,
-            snapshot_key=runtime.snapshot_key,
-            owner_id=operator_id,
-            asset_id=record.asset.asset_id,
-            revision_id=record.asset.revision_id,
-            now=runtime.clock(),
-        )
+        now = runtime.clock()
+        try:
+            snapshot = build_multimedia_ship_cost_snapshot(
+                db_path=runtime.db_path,
+                signing_key=runtime.signing_key,
+                snapshot_key=runtime.snapshot_key,
+                owner_id=operator_id,
+                asset_id=record.asset.asset_id,
+                revision_id=record.asset.revision_id,
+                now=now,
+            )
+        except MultimediaShipCostEvidenceConflict:
+            raise
+        except MultimediaShipCostEvidenceUnavailable:
+            backend = (
+                runtime.local_audio_backend
+                if record.mode == "audio" or str(record.asset.kind) == "audio_experience"
+                else runtime.local_video_backend
+            )
+            if backend is None or runtime.local_zero_snapshot_key is None:
+                raise LocalZeroEvidenceUnavailable("evidence_unavailable") from None
+            evidence = backend(
+                owner_id=operator_id,
+                asset_id=record.asset.asset_id,
+                revision_id=record.asset.revision_id,
+                now=now,
+            )
+            return get_store().run_hardening(
+                asset_id,
+                owner_id=operator_id,
+                local_zero_cost_evidence=evidence,
+                snapshot_key=runtime.local_zero_snapshot_key,
+            )
         return get_store().run_hardening(
             asset_id,
             owner_id=operator_id,
@@ -279,6 +317,8 @@ def run_multimedia_hardening(
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
     except MultimediaShipCostEvidenceUnavailable as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+    except LocalZeroEvidenceUnavailable as exc:
         raise HTTPException(status_code=409, detail=exc.code) from exc
 
 
@@ -393,9 +433,6 @@ def register_multimedia_routes(app: FastAPI) -> None:
     knowledge_runtime = multimedia_knowledge_runtime_from_environment()
     if knowledge_runtime is not None:
         app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
-    hardening_runtime = multimedia_hardening_runtime_from_environment()
-    if hardening_runtime is not None:
-        app.dependency_overrides[get_multimedia_hardening_runtime] = lambda: hardening_runtime
     local_runtime = multimedia_local_runtime_from_environment(store=get_store())
     if local_runtime is not None:
         app.dependency_overrides[get_multimedia_local_runtime_optional] = (
@@ -412,6 +449,61 @@ def register_multimedia_routes(app: FastAPI) -> None:
         app.dependency_overrides[get_multimedia_local_audible_runtime] = (
             lambda: local_audible_runtime
         )
+    hardening_runtime = multimedia_hardening_runtime_from_environment()
+    if hardening_runtime is not None:
+        local_zero_key = hardening_runtime.local_zero_snapshot_key
+        hardening_db_path = hardening_runtime.db_path
+        video_coordinator = (
+            cast(LocalVideoProductionCoordinator, local_runtime.video)
+            if local_runtime is not None and local_zero_key is not None
+            else None
+        )
+        audio_coordinator = (
+            cast(LocalAudibleCoordinator, local_audible_runtime.workstation.production)
+            if local_audible_runtime is not None and local_zero_key is not None
+            else None
+        )
+        if video_coordinator is not None:
+            assert local_zero_key is not None
+            video_coordinator.assert_independent_snapshot_key(local_zero_key)
+        if audio_coordinator is not None:
+            assert local_zero_key is not None
+            audio_coordinator.assert_independent_snapshot_key(local_zero_key)
+
+        def video_backend(
+            *, owner_id: str, asset_id: str, revision_id: str, now: datetime
+        ) -> LocalZeroExternalCostEvidenceV1:
+            assert video_coordinator is not None and local_zero_key is not None
+            return build_local_video_zero_cost_evidence(
+                coordinator=video_coordinator,
+                db_path=hardening_db_path,
+                snapshot_key=local_zero_key,
+                owner_id=owner_id,
+                asset_id=asset_id,
+                revision_id=revision_id,
+                now=now,
+            )
+
+        def audio_backend(
+            *, owner_id: str, asset_id: str, revision_id: str, now: datetime
+        ) -> LocalZeroExternalCostEvidenceV1:
+            assert audio_coordinator is not None and local_zero_key is not None
+            return build_local_audio_zero_cost_evidence(
+                coordinator=audio_coordinator,
+                db_path=hardening_db_path,
+                snapshot_key=local_zero_key,
+                owner_id=owner_id,
+                asset_id=asset_id,
+                revision_id=revision_id,
+                now=now,
+            )
+
+        hardening_runtime = replace(
+            hardening_runtime,
+            local_video_backend=video_backend if video_coordinator is not None else None,
+            local_audio_backend=audio_backend if audio_coordinator is not None else None,
+        )
+        app.dependency_overrides[get_multimedia_hardening_runtime] = lambda: hardening_runtime
     playback_runtime = multimedia_playback_runtime_from_environment()
     if playback_runtime is not None:
         playback = playback_runtime.playback

@@ -8,6 +8,7 @@ from interfaces.research.api.multimedia_hardening_routes import (
 
 SIGNING_HEX = (b"provider-execution-signing-domain-1").hex()
 SNAPSHOT_HEX = (b"ship-cost-snapshot-signing-domain-2").hex()
+LOCAL_ZERO_HEX = (b"local-zero-snapshot-signing-domain-3").hex()
 
 
 def test_hardening_runtime_is_optional_only_when_entirely_unconfigured() -> None:
@@ -29,7 +30,24 @@ def test_hardening_runtime_requires_independent_strong_keys() -> None:
     assert runtime is not None
     assert runtime.signing_key != runtime.snapshot_key
 
+    local_runtime = multimedia_hardening_runtime_from_environment(
+        {**base, "ANTIEK_MULTIMEDIA_HARDENING_LOCAL_ZERO_KEY_HEX": LOCAL_ZERO_HEX}
+    )
+    assert local_runtime is not None
+    assert local_runtime.local_zero_snapshot_key is not None
+    assert len(
+        {
+            local_runtime.signing_key,
+            local_runtime.snapshot_key,
+            local_runtime.local_zero_snapshot_key,
+        }
+    ) == 3
+
     with pytest.raises(RuntimeError, match="independent"):
         multimedia_hardening_runtime_from_environment(
             {**base, "ANTIEK_MULTIMEDIA_HARDENING_SNAPSHOT_KEY_HEX": SIGNING_HEX}
+        )
+    with pytest.raises(RuntimeError, match="independent"):
+        multimedia_hardening_runtime_from_environment(
+            {**base, "ANTIEK_MULTIMEDIA_HARDENING_LOCAL_ZERO_KEY_HEX": SIGNING_HEX}
         )
