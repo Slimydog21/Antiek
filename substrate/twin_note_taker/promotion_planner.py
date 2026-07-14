@@ -1,234 +1,325 @@
-"""Twin → graph promotion planner — the recursion in "recursive note-taker" (ask #4).
+"""Pure, bounded promotion plans derived only from sealed twin documents.
 
-The operator's vision (ask #4): *"...every information asset created on my
-platform has a twin document with all the insights and questions proposed by that
-information document written by an LLM... then that substrate of information can
-be merged, referenced, and leveraged in combining contexts or doing intelligent
-search over my dream of an infinite information platform."* The twin's output
-must not just sit in a document — it must become part of the searchable knowledge
-GRAPH so it informs ALL future prompts (via context-pack retrieval). This module
-is the pure PLANNER that decides which twin findings are eligible for graph
-promotion and computes their content-addressed node_ids — the bridge that makes
-the twin substrate RECURSIVE.
+Twin notes are model proposals, not graph truth.  This module therefore emits
+an advisory plan and never writes to the graph.  The only accepted source is an
+exact, materialized :class:`TwinDocument`; callers cannot supply findings or
+provenance separately from the signed generation boundary.
 
-**Why a planner, not a writer.** The sanctioned graph writers
-(``graph/insight_question.py::promote_insight`` / ``promote_question``) require a
-write-locked DB connection. The pure layer never holds one (the bench/twin
-doctrine: pure layer never dispatches or commits). This module computes the
-PROMOTION PLAN — which findings to promote, their pre-computed node_ids, dedup
-groups, and provenance — using the EXACT same content-addressed scheme the writers
-use, so the plan is execution-faithful: the node_id the planner computes IS the
-node_id ``promote_insight`` will assign. The authority layer (behind operator
-consent) executes the plan via the existing writers.
+The execution contract is deliberately narrow.  A non-empty batch is restricted
+to one signed account.  A consumer may pass canonical entries to
+``promote_insight`` / ``promote_question`` only with the plan's account-derived
+``identity_scope`` and ``owner_user_id``, plus ``dedup=False``.  Under those
+arguments the writers' content-addressed identifiers equal each entry's
+``node_id``.  An executor must abort if a writer ever returns a different
+identifier.  Semantic dedup is a different operation because it can return an
+existing survivor identifier.
 
-**The content-addressed guarantee (load-bearing).** ``content_addressed_id(node_type,
-canonical_text(text))`` is a pure SHA-256 → 16-hex function
-(``graph/ops.py:77``). So the planner can deterministically predict the node_id
-WITHOUT the DB. This means:
-
-  * **Dedup is visible before execution.** Two twins producing the same insight
-    text map to the SAME node_id — the plan shows them as one dedup group, so the
-    authority layer promotes once, not twice (idempotent by construction).
-  * **The plan is execution-faithful.** No surprise node_ids at write time; what
-    the operator approves is what lands.
-  * **Cross-asset reuse is structural.** The same insight surfaced by two
-    different assets' twins resolves to the same graph node — exactly the
-    "referenced and leveraged" the operator named.
-
-**Honesty rules (load-bearing):**
-
-  * **Advisory authority.** The plan is a RECOMMENDATION; the authority layer
-    (operator consent) decides what promotes. No auto-promotion — an LLM-proposed
-    insight entering the permanent knowledge graph is an operator decision.
-  * **Blank/whitespace texts are filtered, never promoted.** An empty insight is
-    not an insight; promoting one would pollute the graph. Filtered with a count.
-  * **canonical_text normalization is mirrored.** The planner applies the SAME
-    ``canonical_text`` transform (whitespace collapse, lowercase per the on-main
-    implementation) the writers use, so dedup is exact, not approximate.
-  * **Provenance is real.** Every eligible promotion carries its source
-    ``asset_id`` + ``investigation_id`` + the twin role that proposed it — a
-    promoted node is always traceable to the twin that surfaced it.
-  * **Dedup is counted honestly.** A finding that collapses with an existing
-    eligible finding in the SAME plan is marked ``dedup_of`` (not dropped
-    silently) so the operator sees the reuse signal.
+Repeated canonical text remains auditable in ``duplicate_observations`` but is
+not executable a second time.  This makes "promote once" structural rather than
+an instruction a downstream loop can accidentally ignore.
 """
 
 from __future__ import annotations
 
-import hashlib
+import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Literal, TypeVar, final
+
+from substrate.graph.insight_question import (
+    canonical_text,
+    insight_node_id,
+    question_node_id,
+)
+
+from .generate import (
+    MAX_IDENTIFIER_CHARS,
+    MAX_INSIGHTS,
+    MAX_PROPOSAL_ITEM_CHARS,
+    MAX_QUESTIONS,
+    MAX_TOTAL_PROPOSAL_CHARS,
+    TWIN_AUTHORITY,
+    TwinDocument,
+)
+
+PromotionKind = Literal["insight", "question"]
+
+MAX_PROMOTION_DOCUMENTS = 100
+MAX_PROMOTION_FINDINGS = MAX_PROMOTION_DOCUMENTS * (MAX_INSIGHTS + MAX_QUESTIONS)
+MAX_PROMOTION_TOTAL_CHARS = 5_000_000
+
+_VALID_KINDS = frozenset({"insight", "question"})
+_SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
+_T = TypeVar("_T")
 
 
 class TwinPromotionError(ValueError):
     """A promotion-planning input violates a load-bearing invariant."""
 
 
-class _TwinFinding(Protocol):
-    """A twin-generated insight or question (ArtifactInsight/ArtifactQuestion shape)."""
-
-    text: str
-    node_id: str
-
-
-class _TwinAsset(Protocol):
-    """A twin-bearing asset (ResearchArtifactBody shape)."""
-
-    investigation_id: str
+def _canonical_identifier(name: str, value: object) -> str:
+    if type(value) is not str:
+        raise TwinPromotionError(f"{name} must be an exact string")
+    if len(value) > MAX_IDENTIFIER_CHARS or not value or value != value.strip():
+        raise TwinPromotionError(f"{name} must be canonical and within its ceiling")
+    return value
 
 
+def _sha256(name: str, value: object) -> str:
+    if type(value) is not str or not _SHA256_RE.fullmatch(value):
+        raise TwinPromotionError(f"{name} must be a canonical sha256 digest")
+    return value
 
 
-def canonical_text(text: str) -> str:
-    """Mirror of ``graph/insight_question.canonical_text`` — ``" ".join(lower.split())``.
+def predicted_node_id(kind: str, text: str, *, identity_scope: str) -> str:
+    """Return the exact default writer ID for a bounded, non-blank finding.
 
-    Kept here (not imported) so the planner is zero-dependency (pure, testable in
-    isolation). If the on-main canonical_text changes, this mirror MUST change
-    too — they must agree for execution-faithfulness.
+    This prediction is execution-faithful only under the plan's explicit
+    ``identity_scope`` and ``semantic_dedup=False`` contract.
     """
-    return " ".join(text.lower().split())
+
+    if type(kind) is not str or kind not in _VALID_KINDS:
+        raise TwinPromotionError("kind must be exactly 'insight' or 'question'")
+    if type(text) is not str:
+        raise TwinPromotionError("text must be an exact string")
+    if len(text) > MAX_PROPOSAL_ITEM_CHARS or not text.strip():
+        raise TwinPromotionError("text must be non-blank and within its ceiling")
+    scope = _canonical_identifier("identity_scope", identity_scope)
+    if kind == "insight":
+        return insight_node_id(text, identity_scope=scope)
+    return question_node_id(text, identity_scope=scope)
 
 
-def _content_addressed_id(node_type: str, content: str, n: int = 16) -> str:
-    """Mirror of ``graph/ops.content_addressed_id`` — ``f"{node_type}-{sha256[:n]}"``.
-
-    The prefix IS part of the returned id (``insight-<hash>`` vs
-    ``question-<hash>``); only ``content`` is hashed. So an insight and a question
-    with the same text get DIFFERENT node_ids (different prefix) despite sharing a
-    hash. Same drift contract as ``canonical_text``.
-    """
-    h = hashlib.sha256(content.encode("utf-8")).hexdigest()[:n]
-    return f"{node_type}-{h}"
-
-
-def predicted_node_id(kind: str, text: str) -> str:
-    """The node_id ``promote_insight``/``promote_question`` WILL assign.
-
-    Pure: no DB. ``kind`` is ``"insight"`` or ``"question"``. This is the
-    execution-faithfulness guarantee — the planner predicts the exact id.
-    """
-    if kind not in ("insight", "question"):
-        raise TwinPromotionError(
-            f"kind {kind!r} must be 'insight' or 'question'"
-        )
-    return _content_addressed_id(kind, canonical_text(text))
-
-
-@dataclass(frozen=True)
-class PromotableFinding:
-    """One twin finding eligible for graph promotion, with its predicted node_id."""
-
-    kind: str  # "insight" | "question"
-    text: str
-    predicted_node_id: str
-    source_asset_id: str
-    source_investigation_id: str
-    dedup_of: str | None = None  # predicted_node_id of the canonical finding, if a dup
-
-
-@dataclass(frozen=True)
-class TwinPromotionPlan:
-    """The pure plan for promoting a twin's findings into the knowledge graph.
-
-    Advisory: the authority layer (operator consent) decides what actually
-    promotes, via the existing ``promote_insight``/``promote_question`` writers.
-    """
+@final
+@dataclass(frozen=True, init=False)
+class PromotionSource:
+    """Signed generation claims carried with one advisory finding."""
 
     asset_id: str
-    investigation_id: str
-    promotable_insights: tuple[PromotableFinding, ...]
-    promotable_questions: tuple[PromotableFinding, ...]
-    blank_filtered: int
-    dedup_collapsed: int
+    account_id: str
+    twin_investigation_id: str
+    authority: str
+    model_id: str
+    receipt_id: str
+    budget_authority_id: str
+    source_content_hash: str
+    proposal_hash: str
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise TwinPromotionError("PromotionSource values come only from sealed twins")
+
+
+@final
+@dataclass(frozen=True, init=False)
+class PromotableFinding:
+    """One canonical finding that may be executed exactly once."""
+
+    kind: PromotionKind
+    text: str
+    node_id: str
+    source: PromotionSource
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise TwinPromotionError("PromotableFinding values come only from promotion plans")
+
+
+@final
+@dataclass(frozen=True, init=False)
+class DuplicateObservation:
+    """A repeated proposal retained for audit, never for execution."""
+
+    kind: PromotionKind
+    text: str
+    node_id: str
+    duplicate_of_node_id: str
+    source: PromotionSource
+    canonical_source_asset_id: str
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise TwinPromotionError("DuplicateObservation values come only from promotion plans")
+
+
+@final
+@dataclass(frozen=True, init=False)
+class TwinPromotionPlan:
+    """Immutable advisory batch with an explicit graph-writer contract."""
+
+    canonical_insights: tuple[PromotableFinding, ...]
+    canonical_questions: tuple[PromotableFinding, ...]
+    duplicate_observations: tuple[DuplicateObservation, ...]
+    document_count: int
+    identity_scope: str | None
+    owner_user_id: str | None
+    semantic_dedup: bool
+    authority: str
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise TwinPromotionError("construct plans with plan_twin_promotion")
 
     @property
     def total_promotable(self) -> int:
-        return len(self.promotable_insights) + len(self.promotable_questions)
+        return len(self.canonical_insights) + len(self.canonical_questions)
+
+    @property
+    def duplicates_observed(self) -> int:
+        return len(self.duplicate_observations)
 
     @property
     def is_empty(self) -> bool:
         return self.total_promotable == 0
 
 
-def _plan_kind(
-    findings: list[_TwinFinding],
-    kind: str,
-    asset_id: str,
-    investigation_id: str,
-    seen_node_ids: dict[str, PromotableFinding],
-) -> tuple[list[PromotableFinding], int, int]:
-    """Plan promotions for one kind (insight/question). Mutates ``seen_node_ids``."""
-    promotable: list[PromotableFinding] = []
-    blank = 0
-    dedup = 0
-    for finding in findings:
-        raw = getattr(finding, "text", "") or ""
-        if not raw.strip():
-            blank += 1
-            continue
-        nid = predicted_node_id(kind, raw)
-        if nid in seen_node_ids:
-            # collapses with an already-eligible finding (same canonical text)
-            promotable.append(
-                PromotableFinding(
-                    kind=kind,
-                    text=raw,
-                    predicted_node_id=nid,
-                    source_asset_id=asset_id,
-                    source_investigation_id=investigation_id,
-                    dedup_of=seen_node_ids[nid].predicted_node_id,
-                )
-            )
-            dedup += 1
-        else:
-            entry = PromotableFinding(
-                kind=kind,
-                text=raw,
-                predicted_node_id=nid,
-                source_asset_id=asset_id,
-                source_investigation_id=investigation_id,
-            )
-            seen_node_ids[nid] = entry
-            promotable.append(entry)
-    return promotable, blank, dedup
+def _sealed_value(cls: type[_T], **values: object) -> _T:  # noqa: UP047
+    value: _T = object.__new__(cls)
+    for name, item in values.items():
+        object.__setattr__(value, name, item)
+    return value
+
+
+def _validate_document(document: TwinDocument) -> str:
+    if type(document) is not TwinDocument:
+        raise TwinPromotionError("documents must be exact TwinDocument values")
+    if type(document.withheld) is not bool or document.withheld:
+        raise TwinPromotionError("withheld twins cannot enter a promotion plan")
+    if document.authority != TWIN_AUTHORITY:
+        raise TwinPromotionError("twin authority must remain advisory")
+    _canonical_identifier("asset_id", document.asset_id)
+    account_id = _canonical_identifier("account_id", document.account_id)
+    _canonical_identifier("twin_investigation_id", document.twin_investigation_id)
+    _canonical_identifier("model_id", document.model_id)
+    _canonical_identifier("receipt_id", document.receipt_id)
+    _canonical_identifier("budget_authority_id", document.budget_authority_id)
+    _sha256("source_content_hash", document.source_content_hash)
+    _sha256("proposal_hash", document.proposal_hash)
+    if type(document.proposed_insights) is not tuple:
+        raise TwinPromotionError("proposed insights must be an exact tuple")
+    if type(document.proposed_questions) is not tuple:
+        raise TwinPromotionError("proposed questions must be an exact tuple")
+    if len(document.proposed_insights) > MAX_INSIGHTS:
+        raise TwinPromotionError("twin exceeds the insight count ceiling")
+    if len(document.proposed_questions) > MAX_QUESTIONS:
+        raise TwinPromotionError("twin exceeds the question count ceiling")
+    total_chars = 0
+    for text in (*document.proposed_insights, *document.proposed_questions):
+        if type(text) is not str:
+            raise TwinPromotionError("twin items must be exact strings")
+        if len(text) > MAX_PROPOSAL_ITEM_CHARS:
+            raise TwinPromotionError("twin item exceeds the per-item ceiling")
+        if not text or text != text.strip():
+            raise TwinPromotionError("twin items must be non-empty canonical strings")
+        total_chars += len(text)
+    if total_chars > MAX_TOTAL_PROPOSAL_CHARS:
+        raise TwinPromotionError("twin items exceed the signed aggregate ceiling")
+    return account_id
+
+
+def _source(document: TwinDocument, *, account_id: str) -> PromotionSource:
+    return _sealed_value(
+        PromotionSource,
+        asset_id=document.asset_id,
+        account_id=account_id,
+        twin_investigation_id=document.twin_investigation_id,
+        authority=document.authority,
+        model_id=document.model_id,
+        receipt_id=document.receipt_id,
+        budget_authority_id=document.budget_authority_id,
+        source_content_hash=document.source_content_hash,
+        proposal_hash=document.proposal_hash,
+    )
+
+
+def _finding(
+    *, kind: PromotionKind, text: str, source: PromotionSource
+) -> PromotableFinding:
+    return _sealed_value(
+        PromotableFinding,
+        kind=kind,
+        text=text,
+        node_id=predicted_node_id(kind, text, identity_scope=source.account_id),
+        source=source,
+    )
 
 
 def plan_twin_promotion(
-    *,
-    asset_id: str,
-    investigation_id: str,
-    insights: list[_TwinFinding],
-    open_questions: list[_TwinFinding],
+    documents: list[TwinDocument] | tuple[TwinDocument, ...],
+    /,
 ) -> TwinPromotionPlan:
-    """Plan the graph promotion of one twin asset's findings. Pure, advisory.
+    """Build a bounded promote-once plan from signed twin documents only."""
 
-    Returns a ``TwinPromotionPlan`` with each finding's predicted (content-
-    addressed) node_id, dedup groups, and blank-filter counts. The authority
-    layer executes eligible promotions via ``promote_insight``/``promote_question``
-    behind operator consent.
-    """
-    if not asset_id.strip() or not investigation_id.strip():
-        raise TwinPromotionError(
-            "asset_id and investigation_id must be non-empty (provenance is load-bearing)"
+    if type(documents) not in (list, tuple):
+        raise TwinPromotionError("documents must be an exact list or tuple")
+    if len(documents) > MAX_PROMOTION_DOCUMENTS:
+        raise TwinPromotionError("document count exceeds the promotion ceiling")
+    snapshot = tuple(documents)
+
+    canonical: dict[str, PromotableFinding] = {}
+    insights: list[PromotableFinding] = []
+    questions: list[PromotableFinding] = []
+    duplicates: list[DuplicateObservation] = []
+    finding_count = 0
+    total_chars = 0
+    account_id: str | None = None
+
+    for document in snapshot:
+        document_account_id = _validate_document(document)
+        if account_id is None:
+            account_id = document_account_id
+        elif document_account_id != account_id:
+            raise TwinPromotionError("promotion batches must contain exactly one account")
+        source = _source(document, account_id=document_account_id)
+        collections: tuple[tuple[PromotionKind, tuple[str, ...]], ...] = (
+            ("insight", document.proposed_insights),
+            ("question", document.proposed_questions),
         )
-    seen: dict[str, PromotableFinding] = {}
-    ins, blank_i, dedup_i = _plan_kind(insights, "insight", asset_id, investigation_id, seen)
-    qs, blank_q, dedup_q = _plan_kind(open_questions, "question", asset_id, investigation_id, seen)
-    return TwinPromotionPlan(
-        asset_id=asset_id,
-        investigation_id=investigation_id,
-        promotable_insights=tuple(ins),
-        promotable_questions=tuple(qs),
-        blank_filtered=blank_i + blank_q,
-        dedup_collapsed=dedup_i + dedup_q,
+        for kind, texts in collections:
+            for text in texts:
+                finding_count += 1
+                total_chars += len(text)
+                if finding_count > MAX_PROMOTION_FINDINGS:
+                    raise TwinPromotionError("finding count exceeds the promotion ceiling")
+                if total_chars > MAX_PROMOTION_TOTAL_CHARS:
+                    raise TwinPromotionError("twin text exceeds the batch promotion ceiling")
+                candidate = _finding(kind=kind, text=text, source=source)
+                prior = canonical.get(candidate.node_id)
+                if prior is not None:
+                    duplicates.append(
+                        _sealed_value(
+                            DuplicateObservation,
+                            kind=kind,
+                            text=text,
+                            node_id=candidate.node_id,
+                            duplicate_of_node_id=prior.node_id,
+                            source=source,
+                            canonical_source_asset_id=prior.source.asset_id,
+                        )
+                    )
+                    continue
+                canonical[candidate.node_id] = candidate
+                (insights if kind == "insight" else questions).append(candidate)
+
+    return _sealed_value(
+        TwinPromotionPlan,
+        canonical_insights=tuple(insights),
+        canonical_questions=tuple(questions),
+        duplicate_observations=tuple(duplicates),
+        document_count=len(snapshot),
+        identity_scope=account_id,
+        owner_user_id=account_id,
+        semantic_dedup=False,
+        authority="advisory",
     )
 
 
 __all__ = [
-    "TwinPromotionError",
+    "MAX_PROMOTION_DOCUMENTS",
+    "MAX_PROMOTION_FINDINGS",
+    "MAX_PROMOTION_TOTAL_CHARS",
+    "DuplicateObservation",
+    "PromotionKind",
+    "PromotionSource",
     "PromotableFinding",
+    "TwinPromotionError",
     "TwinPromotionPlan",
     "canonical_text",
-    "predicted_node_id",
     "plan_twin_promotion",
+    "predicted_node_id",
 ]

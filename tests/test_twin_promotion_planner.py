@@ -1,278 +1,293 @@
-"""Tests for substrate/twin_note_taker/promotion_planner.py — twin → graph (ask #4)."""
+"""Authority, identity, bounds, and promote-once tests for twin promotion plans."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import base64
+import hashlib
+import json
+from dataclasses import FrozenInstanceError
 
 import pytest
+from nacl.signing import SigningKey
 
+import substrate.twin_note_taker.promotion_planner as planner_module
+from substrate.graph.insight_question import insight_node_id, question_node_id
+from substrate.twin_note_taker.generate import (
+    AUTHORITY_VERIFY_KEY_ENV,
+    TWIN_AUTHORITY,
+    AssetContent,
+    ProposedInsight,
+    ProposedQuestion,
+    TwinDocument,
+    TwinGenerationReceipt,
+    TwinProposal,
+    generate_twin,
+    proposal_receipt_hash,
+    source_asset_receipt_hash,
+)
 from substrate.twin_note_taker.promotion_planner import (
+    DuplicateObservation,
     PromotableFinding,
+    PromotionSource,
     TwinPromotionError,
     TwinPromotionPlan,
-    canonical_text,
     plan_twin_promotion,
     predicted_node_id,
 )
 
+_SIGNING_KEY = SigningKey.generate()
+_CONTENT = (
+    "A sufficiently long source explains how signed advisory twin notes can seed "
+    "questions without silently becoming canonical graph truth."
+)
 
-@dataclass
-class FakeFinding:
-    node_id: str
-    text: str
 
-
-def _plan(insights=(), questions=(), asset="asset-7", inv="inv-1"):
-    return plan_twin_promotion(
-        asset_id=asset,
-        investigation_id=inv,
-        insights=list(insights),
-        open_questions=list(questions),
+@pytest.fixture(autouse=True)
+def _verify_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv(
+        AUTHORITY_VERIFY_KEY_ENV,
+        base64.b64encode(bytes(_SIGNING_KEY.verify_key)).decode("ascii"),
     )
 
 
-# ---------------------------------------------------------------------------
-# execution-faithfulness: predicted_node_id is deterministic content-addressed
-# ---------------------------------------------------------------------------
+def _receipt_payload(claims: dict[str, object]) -> bytes:
+    value = dict(claims)
+    source_event_ids = value["source_event_ids"]
+    assert isinstance(source_event_ids, tuple)
+    value["source_event_ids"] = list(source_event_ids)
+    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
 
 
-def test_predicted_node_id_deterministic():
-    a = predicted_node_id("insight", "attention scales quadratically")
-    b = predicted_node_id("insight", "attention scales quadratically")
-    assert a == b
-    assert a.startswith("insight-")  # prefix IS part of the id
-    assert len(a.split("-")[1]) == 16  # SHA-256 truncated to 16 hex
+def _document(
+    asset_id: str,
+    *,
+    insights: tuple[str, ...] = ("Signed twin insight",),
+    questions: tuple[str, ...] = ("What evidence would falsify it?",),
+    model_id: str = "model-1",
+    account_id: str = "account-1",
+) -> TwinDocument:
+    asset = AssetContent(
+        asset_id=asset_id,
+        title=f"Source {asset_id}",
+        content_text=f"{_CONTENT} {asset_id}",
+        content_class="research",
+        source_event_ids=(f"evt-{asset_id}",),
+    )
+    proposal = TwinProposal(
+        insights=tuple(ProposedInsight(text, "") for text in insights),
+        questions=tuple(ProposedQuestion(text) for text in questions),
+        synthesis_excerpt="A bounded advisory synthesis.",
+    )
+    claims: dict[str, object] = {
+        "receipt_id": f"receipt-{asset_id}",
+        "account_id": account_id,
+        "asset_id": asset_id,
+        "model_id": model_id,
+        "budget_authority_id": f"hold-{asset_id}",
+        "source_content_hash": hashlib.sha256(asset.content_text.encode()).hexdigest(),
+        "source_asset_hash": source_asset_receipt_hash(asset),
+        "source_event_ids": asset.source_event_ids,
+        "proposal_payload_hash": proposal_receipt_hash(asset, proposal),
+        "expires_at_unix": 4_000_000_000,
+    }
+    signature = _SIGNING_KEY.sign(_receipt_payload(claims)).signature
+    receipt = TwinGenerationReceipt(
+        **claims,  # type: ignore[arg-type]
+        signature=base64.b64encode(signature).decode("ascii"),
+    )
+    return generate_twin(
+        asset,
+        model_id=model_id,
+        authenticated_account_id=account_id,
+        proposal=proposal,
+        receipt=receipt,
+    )
 
 
-def test_predicted_node_id_insight_vs_question_differ():
-    a = predicted_node_id("insight", "same text")
-    b = predicted_node_id("question", "same text")
-    assert a != b
+def test_plan_accepts_only_exact_collection_of_exact_sealed_documents() -> None:
+    document = _document("asset-1")
+    assert plan_twin_promotion([document]).document_count == 1
+    assert plan_twin_promotion((document,)).document_count == 1
+    with pytest.raises(TwinPromotionError, match="list or tuple"):
+        plan_twin_promotion(iter((document,)))  # type: ignore[arg-type]
+    with pytest.raises(TwinPromotionError, match="exact TwinDocument"):
+        plan_twin_promotion([object()])  # type: ignore[list-item]
 
 
-def test_predicted_node_id_bad_kind_rejected():
-    with pytest.raises(TwinPromotionError):
-        predicted_node_id("bogus", "text")
+def test_raw_findings_and_caller_provenance_are_not_api_inputs() -> None:
+    with pytest.raises(TypeError):
+        plan_twin_promotion(  # type: ignore[call-arg]
+            asset_id="forged", insights=[], open_questions=[]
+        )
 
 
-def test_canonical_text_normalizes():
-    assert canonical_text("  Hello   WORLD  ") == "hello world"
-    assert canonical_text("A\n\nB") == "a b"
+def test_signed_claims_are_derived_from_document() -> None:
+    document = _document("asset-claims", model_id="model-audit")
+    finding = plan_twin_promotion([document]).canonical_insights[0]
+    assert finding.source.asset_id == document.asset_id
+    assert finding.source.account_id == document.account_id
+    assert finding.source.twin_investigation_id == document.twin_investigation_id
+    assert finding.source.authority == TWIN_AUTHORITY
+    assert finding.source.model_id == "model-audit"
+    assert finding.source.receipt_id == document.receipt_id
+    assert finding.source.budget_authority_id == document.budget_authority_id
+    assert finding.source.source_content_hash == document.source_content_hash
+    assert finding.source.proposal_hash == document.proposal_hash
 
 
-# ---------------------------------------------------------------------------
-# basic planning
-# ---------------------------------------------------------------------------
+def test_output_constructors_are_closed() -> None:
+    for cls in (PromotionSource, PromotableFinding, DuplicateObservation, TwinPromotionPlan):
+        with pytest.raises(TwinPromotionError):
+            cls()
 
 
-def test_plan_one_insight():
-    plan = _plan(insights=[FakeFinding("n1", "transformers are powerful")])
+def test_execution_contract_and_node_ids_match_default_writers() -> None:
+    document = _document(
+        "asset-id",
+        insights=("  Mixed   CASE insight  ",),
+        questions=("Same question?",),
+    )
+    plan = plan_twin_promotion([document])
+    assert plan.authority == "advisory"
+    assert plan.identity_scope == "account-1"
+    assert plan.owner_user_id == "account-1"
+    assert plan.semantic_dedup is False
+    insight = plan.canonical_insights[0]
+    question = plan.canonical_questions[0]
+    assert insight.node_id == insight_node_id(insight.text, identity_scope="account-1")
+    assert question.node_id == question_node_id(question.text, identity_scope="account-1")
+    assert (
+        predicted_node_id("insight", insight.text, identity_scope="account-1")
+        == insight.node_id
+    )
+    assert (
+        predicted_node_id("question", question.text, identity_scope="account-1")
+        == question.node_id
+    )
+
+
+def test_cross_document_duplicates_are_observations_not_promotions() -> None:
+    first = _document("asset-first", insights=("Shared   finding",), questions=())
+    second = _document("asset-second", insights=(" shared finding ",), questions=())
+    plan = plan_twin_promotion([first, second])
     assert plan.total_promotable == 1
-    assert len(plan.promotable_insights) == 1
-    f = plan.promotable_insights[0]
-    assert f.kind == "insight"
-    assert f.source_asset_id == "asset-7"
-    assert f.source_investigation_id == "inv-1"
-    assert f.dedup_of is None
-    assert f.predicted_node_id == predicted_node_id("insight", "transformers are powerful")
+    assert len(plan.canonical_insights) == 1
+    assert plan.duplicates_observed == 1
+    duplicate = plan.duplicate_observations[0]
+    canonical = plan.canonical_insights[0]
+    assert duplicate.node_id == canonical.node_id
+    assert duplicate.duplicate_of_node_id == canonical.node_id
+    assert duplicate.source.asset_id == "asset-second"
+    assert duplicate.canonical_source_asset_id == "asset-first"
+    assert all(type(item) is PromotableFinding for item in plan.canonical_insights)
 
 
-def test_plan_questions_and_insights():
-    plan = _plan(
-        insights=[FakeFinding("n1", "alpha")],
-        questions=[FakeFinding("q1", "what next?")],
+def test_same_text_across_kinds_remains_two_canonical_nodes() -> None:
+    document = _document(
+        "asset-kinds", insights=("Same text",), questions=("Same text",)
     )
-    assert len(plan.promotable_insights) == 1
-    assert len(plan.promotable_questions) == 1
-    assert plan.promotable_questions[0].kind == "question"
+    plan = plan_twin_promotion([document])
+    assert plan.total_promotable == 2
+    assert plan.canonical_insights[0].node_id != plan.canonical_questions[0].node_id
+    assert plan.duplicate_observations == ()
 
 
-def test_empty_plan_is_empty():
-    plan = _plan()
-    assert plan.is_empty is True
-    assert plan.total_promotable == 0
+def test_empty_batch_is_an_honest_immutable_plan() -> None:
+    plan = plan_twin_promotion([])
+    assert plan.is_empty
+    assert plan.document_count == 0
+    assert plan.identity_scope is None
+    assert plan.owner_user_id is None
+    assert plan.canonical_insights == ()
+    assert plan.canonical_questions == ()
+    assert plan.duplicate_observations == ()
+    with pytest.raises(FrozenInstanceError):
+        plan.authority = "canonical"  # type: ignore[misc]
 
 
-# ---------------------------------------------------------------------------
-# blank filtering — never promote empty
-# ---------------------------------------------------------------------------
-
-
-def test_blank_texts_filtered():
-    plan = _plan(
-        insights=[
-            FakeFinding("n1", "   "),
-            FakeFinding("n2", ""),
-            FakeFinding("n3", "real insight"),
-        ]
+def test_withheld_document_is_rejected() -> None:
+    asset = AssetContent(
+        asset_id="asset-withheld",
+        title="Withheld",
+        content_text=_CONTENT,
+        content_class="research",
+        source_event_ids=("evt-withheld",),
     )
-    assert len(plan.promotable_insights) == 1
-    assert plan.promotable_insights[0].text == "real insight"
-    assert plan.blank_filtered == 2
-
-
-# ---------------------------------------------------------------------------
-# content-addressed dedup — same canonical text = same node_id
-# ---------------------------------------------------------------------------
-
-
-def test_dedup_same_text_within_insights():
-    plan = _plan(
-        insights=[
-            FakeFinding("n1", "attention scales"),
-            FakeFinding("n2", "attention scales"),  # same canonical text
-        ]
+    withheld = generate_twin(
+        asset, model_id="model-1", authenticated_account_id="account-1"
     )
-    assert len(plan.promotable_insights) == 2  # both appear
-    # but the second is marked dedup_of the first
-    canonical = plan.promotable_insights[0]
-    dup = plan.promotable_insights[1]
-    assert canonical.dedup_of is None
-    assert dup.dedup_of == canonical.predicted_node_id
-    assert canonical.predicted_node_id == dup.predicted_node_id
-    assert plan.dedup_collapsed == 1
+    assert withheld.withheld
+    with pytest.raises(TwinPromotionError, match="withheld"):
+        plan_twin_promotion([withheld])
 
 
-def test_dedup_across_whitespace_normalization():
-    # "Attention   Scales" and "attention scales" canonicalize to the same node_id
-    plan = _plan(
-        insights=[
-            FakeFinding("n1", "Attention   Scales"),
-            FakeFinding("n2", "attention scales"),
-        ]
-    )
-    assert plan.promotable_insights[0].predicted_node_id == plan.promotable_insights[1].predicted_node_id
-    assert plan.dedup_collapsed == 1
-
-
-def test_dedup_across_insights_and_questions_not_merged():
-    # an insight and a question with the same text get DIFFERENT node_ids
-    # (different kind prefix) — they do not dedup
-    plan = _plan(
-        insights=[FakeFinding("n1", "same text")],
-        questions=[FakeFinding("q1", "same text")],
-    )
-    assert len(plan.promotable_insights) == 1
-    assert len(plan.promotable_questions) == 1
-    assert plan.promotable_insights[0].predicted_node_id != plan.promotable_questions[0].predicted_node_id
-    assert plan.dedup_collapsed == 0
-
-
-# ---------------------------------------------------------------------------
-# provenance — every promotion traceable
-# ---------------------------------------------------------------------------
-
-
-def test_provenance_carried():
-    plan = _plan(
-        insights=[FakeFinding("n1", "x")],
-        asset="asset-42",
-        inv="inv-99",
-    )
-    f = plan.promotable_insights[0]
-    assert f.source_asset_id == "asset-42"
-    assert f.source_investigation_id == "inv-99"
-
-
-def test_empty_provenance_rejected():
-    with pytest.raises(TwinPromotionError):
-        plan_twin_promotion(
-            asset_id="  ", investigation_id="inv", insights=[], open_questions=[]
-        )
-    with pytest.raises(TwinPromotionError):
-        plan_twin_promotion(
-            asset_id="a", investigation_id="  ", insights=[], open_questions=[]
-        )
-
-
-# ---------------------------------------------------------------------------
-# advisory authority — plan is data, no execution
-# ---------------------------------------------------------------------------
-
-
-def test_plan_is_frozen_value():
-    plan = _plan(insights=[FakeFinding("n1", "x")])
-    assert isinstance(plan, TwinPromotionPlan)
-    assert isinstance(plan.promotable_insights, tuple)
-    assert isinstance(plan.promotable_insights[0], PromotableFinding)
-
-
-def test_plan_is_pure_idempotent():
-    args = dict(
-        asset_id="a", investigation_id="i",
-        insights=[FakeFinding("n1", "x")],
-        open_questions=[],
-    )
-    assert plan_twin_promotion(**args) == plan_twin_promotion(**args)
-
-
-# ---------------------------------------------------------------------------
-# cross-asset reuse — the recursion signal
-# ---------------------------------------------------------------------------
-
-
-def test_same_insight_from_different_assets_same_node_id():
-    plan_a = _plan(insights=[FakeFinding("n1", "shared insight")], asset="a1", inv="i1")
-    plan_b = _plan(insights=[FakeFinding("n2", "shared insight")], asset="a2", inv="i2")
-    # content-addressed: same text → same node_id, regardless of source asset
-    assert plan_a.promotable_insights[0].predicted_node_id == plan_b.promotable_insights[0].predicted_node_id
-    # but provenance differs
-    assert plan_a.promotable_insights[0].source_asset_id == "a1"
-    assert plan_b.promotable_insights[0].source_asset_id == "a2"
-
-
-def test_dedup_collapsed_count_is_honest():
-    plan = _plan(
-        insights=[
-            FakeFinding("n1", "unique"),
-            FakeFinding("n2", "dup"),
-            FakeFinding("n3", "dup"),
-            FakeFinding("n4", "dup"),
-        ]
-    )
-    # 1 unique + 3 dups of "dup" → dedup_collapsed counts the collapses
-    assert plan.dedup_collapsed == 2  # n3 and n4 collapse onto n2
-    assert len(plan.promotable_insights) == 4  # all appear, marked
-
-
-# ---------------------------------------------------------------------------
-# Mirror-parity guard (turn-128 hardening).
-# ---------------------------------------------------------------------------
-from substrate.graph.insight_question import (  # noqa: E402
-    canonical_text as main_canonical_text,
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("authority", "canonical", "advisory"),
+        ("receipt_id", None, "receipt_id"),
+        ("source_content_hash", "bad", "sha256"),
+        ("proposed_insights", ["forged"], "exact tuple"),
+        ("proposed_questions", (" padded ",), "canonical strings"),
+    ],
 )
-from substrate.graph.ops import (  # noqa: E402
-    content_addressed_id as main_content_addressed_id,
+def test_tampered_materialized_claims_fail_closed(
+    field: str, value: object, message: str
+) -> None:
+    document = _document("asset-tamper")
+    object.__setattr__(document, field, value)
+    with pytest.raises(TwinPromotionError, match=message):
+        plan_twin_promotion([document])
+
+
+def test_document_count_and_batch_bounds_apply_before_work(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    document = _document("asset-bounds")
+    with pytest.raises(TwinPromotionError, match="document count"):
+        plan_twin_promotion([document] * (planner_module.MAX_PROMOTION_DOCUMENTS + 1))
+
+    monkeypatch.setattr(planner_module, "MAX_PROMOTION_FINDINGS", 1)
+    with pytest.raises(TwinPromotionError, match="finding count"):
+        plan_twin_promotion([document])
+
+    monkeypatch.setattr(planner_module, "MAX_PROMOTION_FINDINGS", 10)
+    monkeypatch.setattr(planner_module, "MAX_PROMOTION_TOTAL_CHARS", 1)
+    with pytest.raises(TwinPromotionError, match="batch promotion"):
+        plan_twin_promotion([document])
+
+
+def test_mixed_account_batch_is_rejected_before_cross_account_dedup() -> None:
+    first = _document("asset-private-a", account_id="account-a")
+    second = _document("asset-private-b", account_id="account-b")
+    with pytest.raises(TwinPromotionError, match="exactly one account"):
+        plan_twin_promotion([first, second])
+    assert predicted_node_id(
+        "insight", "same", identity_scope="account-a"
+    ) != predicted_node_id("insight", "same", identity_scope="account-b")
+
+
+@pytest.mark.parametrize(
+    ("kind", "text"),
+    [
+        ("bogus", "text"),
+        ("insight", ""),
+        ("question", "   "),
+        ("insight", 1),
+    ],
 )
-
-_PARITY_CASES = [
-    "",
-    "simple text",
-    "  Leading   spaces  ",
-    "Mixed" "\t" "WHITESPACE" "\n" "Newlines",
-    "café résumé naïve",
-    "identical",
-    "IDENTICAL",
-]
+def test_predicted_node_id_is_type_closed_and_nonblank(
+    kind: object, text: object
+) -> None:
+    with pytest.raises(TwinPromotionError):
+        predicted_node_id(kind, text, identity_scope="account-1")  # type: ignore[arg-type]
 
 
-def test_canonical_text_mirror_matches_on_main_implementation():
-    for case in _PARITY_CASES:
-        assert canonical_text(case) == main_canonical_text(case), (
-            f"canonical_text mirror drifted for {case!r}: "
-            f"planner={canonical_text(case)!r} "
-            f"main={main_canonical_text(case)!r}"
-        )
-
-
-def test_predicted_node_id_matches_on_main_content_addressing():
-    from substrate.twin_note_taker.promotion_planner import predicted_node_id
-
-    for kind in ("insight", "question"):
-        for case in _PARITY_CASES:
-            expected = main_content_addressed_id(kind, main_canonical_text(case))
-            actual = predicted_node_id(kind, case)
-            assert actual == expected, (
-                f"predicted_node_id drifted for kind={kind!r} text={case!r}: "
-                f"planner={actual!r} main={expected!r}"
-            )
+def test_plan_order_and_first_canonical_source_are_deterministic() -> None:
+    a = _document("asset-a", insights=("One", "Shared"), questions=("Q one",))
+    b = _document("asset-b", insights=("shared", "Two"), questions=("Q two",))
+    first = plan_twin_promotion([a, b])
+    second = plan_twin_promotion([a, b])
+    assert first == second
+    assert tuple(item.text for item in first.canonical_insights) == ("One", "Shared", "Two")
+    assert first.duplicate_observations[0].canonical_source_asset_id == "asset-a"
