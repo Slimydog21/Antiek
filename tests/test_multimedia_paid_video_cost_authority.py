@@ -257,6 +257,8 @@ def test_registered_paid_video_endpoint_persists_one_compound_family(
             "target_minutes": 15,
             "mode": "video",
             "route_policy": "balanced",
+            "sources": ["Jet propulsion history is grounded in reviewed evidence."],
+            "selected_arc_ids": ["history"],
         },
     ).json()
     asset = created["asset"]
@@ -310,6 +312,8 @@ def test_projection_failure_never_falls_back_and_registered_paid_audio_is_refuse
             "target_minutes": 15,
             "mode": "video",
             "route_policy": "balanced",
+            "sources": ["Jet propulsion history is grounded in reviewed evidence."],
+            "selected_arc_ids": ["history"],
         },
     ).json()["asset"]
     client.post(f"/multimedia/assets/{created['asset_id']}/approve-dry-run")
@@ -377,6 +381,8 @@ def test_direct_unavailable_registered_paid_video_never_calls_local_fallback(
             "target_minutes": 15,
             "mode": "video",
             "route_policy": "balanced",
+            "sources": ["Jet propulsion history is grounded in reviewed evidence."],
+            "selected_arc_ids": ["history"],
         },
     ).json()["asset"]
     client.post(f"/multimedia/assets/{created['asset_id']}/approve-dry-run")
@@ -416,6 +422,8 @@ def test_direct_unavailable_registered_paid_video_never_calls_local_fallback(
             "target_minutes": 15,
             "mode": "audio",
             "route_policy": "balanced",
+            "sources": ["Jet propulsion history is grounded in reviewed evidence."],
+            "selected_arc_ids": ["history"],
         },
     ).json()["asset"]
     client.post(f"/multimedia/assets/{audio['asset_id']}/approve-dry-run")
@@ -425,12 +433,14 @@ def test_direct_unavailable_registered_paid_video_never_calls_local_fallback(
             owner_identity_digest=hashlib.sha256(b"alice").hexdigest(),
             asset_id=audio["asset_id"],
             revision_id=audio["revision_id"],
-            receipt_sha256="d" * 64,
-            audio_sha256="e" * 64,
-            duration_seconds=90,
-            chapter_ids=("chapter-1",),
-            retention_marker_count=1,
-            learned_claim_count=1,
+                receipt_sha256="d" * 64,
+                audio_sha256="e" * 64,
+                audio_size_bytes=4096,
+                duration_seconds=90,
+                chapter_ids=("chapter-1",),
+                retention_marker_count=1,
+                learned_claim_count=1,
+                source_count=1,
         ),
         expected_revision_id=audio["revision_id"],
         owner_id="alice",
