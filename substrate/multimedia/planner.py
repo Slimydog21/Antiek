@@ -75,6 +75,20 @@ _STOPWORDS = frozenset({
 })
 
 
+def validate_selected_arc_ids(values: tuple[str, ...]) -> tuple[str, ...]:
+    """Validate ordered operator coverage choices at every input boundary."""
+
+    if any(not arc.strip() for arc in values):
+        raise ValueError("selected_arc_ids cannot contain empty values")
+    if len(set(values)) != len(values):
+        raise ValueError("selected_arc_ids cannot contain duplicates")
+    supported = {arc_id for arc_id, _, _ in _DEFAULT_ARCS}
+    unknown = sorted(set(values) - supported)
+    if unknown:
+        raise ValueError(f"unsupported selected_arc_ids: {', '.join(unknown)}")
+    return values
+
+
 class _PlannerBase(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -114,8 +128,7 @@ class MultimediaPlanRequest(_PlannerBase):
 
     @model_validator(mode="after")
     def selected_arcs_are_non_empty(self) -> MultimediaPlanRequest:
-        if any(not arc.strip() for arc in self.selected_arc_ids):
-            raise ValueError("selected_arc_ids cannot contain empty values")
+        validate_selected_arc_ids(self.selected_arc_ids)
         return self
 
 

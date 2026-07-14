@@ -4,7 +4,7 @@ import type { MultimediaPlanWire } from "../../api/multimedia";
 import { projectMultimediaPlan } from "./planProjection";
 
 const PLAN: MultimediaPlanWire = {
-  request: { topic: "Chip packaging", target_minutes: 15, mode: "video", route_policy: "balanced" },
+  request: { topic: "Chip packaging", target_minutes: 15, mode: "video", route_policy: "balanced", depth: "intermediate", selected_arc_ids: [] },
   suggestions: [{
     arc_id: "mechanism",
     title: "Packaging mechanism",
@@ -105,6 +105,8 @@ describe("projectMultimediaPlan", () => {
     [{}, "chapters"],
     [{ ...PLAN, chapters: [] }, "grounding"],
     [{ ...PLAN, script_lines: [] }, "scene identity"],
+    [{ ...PLAN, suggestions: [...PLAN.suggestions, PLAN.suggestions[0]] }, "coverage selection"],
+    [{ ...PLAN, chosen_arc_ids: ["unknown"] }, "coverage selection"],
     [{ ...PLAN, scenes: [{ ...PLAN.scenes[0], chapter_id: "missing" }] }, "narration provenance"],
     [{ ...PLAN, unsourced_line_ids: ["missing"] }, "ledger conflicts"],
   ])("rejects malformed persisted plan %#", (value, message) => {

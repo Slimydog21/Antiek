@@ -2,6 +2,7 @@ import { API_BASE, apiFetch } from "../lib/api";
 
 export type MultimediaMode = "video" | "audio" | "hybrid";
 export type MultimediaRoutePolicy = "cheapest" | "balanced" | "highest_quality";
+export type MultimediaDepth = "overview" | "intermediate" | "deep";
 export type MultimediaKind = "information_video" | "documentary_video" | "audio_experience";
 export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
 export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
@@ -16,6 +17,8 @@ export interface CreateMultimediaDraftRequest {
   avoid?: string[];
   audience?: string;
   style?: string | null;
+  depth?: MultimediaDepth;
+  selected_arc_ids?: string[];
 }
 
 export interface MultimediaAssetSummary {
@@ -245,6 +248,8 @@ export interface MultimediaPlanWire {
     target_minutes: number;
     mode: MultimediaMode;
     route_policy: MultimediaRoutePolicy;
+    depth?: MultimediaDepth;
+    selected_arc_ids?: string[];
   };
   suggestions: Array<{
     arc_id: string;

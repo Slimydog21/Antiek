@@ -142,6 +142,28 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
     assert listed.assets[0].hardening_status == hardened.hardening_report.ship_status
 
 
+def test_store_persists_operator_depth_and_exact_coverage_selection(tmp_path):
+    store = MultimediaAssetStore(tmp_path)
+    draft = store.create_draft(
+        CreateMultimediaDraftRequest(
+            topic="widebody aircraft economics",
+            target_minutes=30,
+            depth="deep",
+            selected_arc_ids=("comparison", "mechanism"),
+        )
+    )
+
+    assert draft.plan.request.depth == "deep"
+    assert draft.plan.request.selected_arc_ids == ("comparison", "mechanism")
+    assert draft.plan.chosen_arc_ids == ("comparison", "mechanism")
+    assert {chapter.arc_id for chapter in draft.plan.chapters} >= {
+        "comparison",
+        "mechanism",
+    }
+    reopened = store.get(draft.asset.asset_id)
+    assert reopened.plan.chosen_arc_ids == ("comparison", "mechanism")
+
+
 def test_store_persists_raw_and_corrected_voice_steering(tmp_path: Path) -> None:
     store = MultimediaAssetStore(tmp_path)
     draft = store.create_draft(
@@ -496,6 +518,16 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     client = TestClient(app)
     assert client.get("/multimedia/assets").status_code == 401
     client.headers.update({"x-test-auth": "yes", "x-test-user": "owner-a"})
+
+    invalid_coverage = client.post(
+        "/multimedia/assets",
+        json={
+            "topic": "swept wing history",
+            "target_minutes": 20,
+            "selected_arc_ids": ["history", "history"],
+        },
+    )
+    assert invalid_coverage.status_code == 422
 
     created = client.post(
         "/multimedia/assets",

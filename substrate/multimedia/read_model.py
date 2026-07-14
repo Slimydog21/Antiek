@@ -26,7 +26,7 @@ from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from substrate.contracts.multimedia import (
     AssetKind,
@@ -46,6 +46,7 @@ from substrate.multimedia.planner import (
     MultimediaPlan,
     MultimediaPlanRequest,
     build_multimedia_plan,
+    validate_selected_arc_ids,
 )
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
@@ -97,6 +98,13 @@ class CreateMultimediaDraftRequest(_ReadModelBase):
     avoid: tuple[str, ...] = Field(default_factory=tuple)
     audience: str = "curious generalist"
     style: str | None = None
+    depth: Literal["overview", "intermediate", "deep"] = "intermediate"
+    selected_arc_ids: tuple[str, ...] = Field(default_factory=tuple, max_length=4)
+
+    @field_validator("selected_arc_ids")
+    @classmethod
+    def selected_arcs_are_supported(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_selected_arc_ids(value)
 
 
 class SteeringRequest(_ReadModelBase):
@@ -363,6 +371,8 @@ class MultimediaAssetStore:
             must_cover=request.must_cover,
             avoid=request.avoid,
             audience=request.audience,
+            depth=request.depth,
+            selected_arc_ids=request.selected_arc_ids,
         )
         plan = build_multimedia_plan(plan_request, _evidence_from_request(request))
         kind: AssetKind = "audio_experience" if request.mode == "audio" else "documentary_video"
