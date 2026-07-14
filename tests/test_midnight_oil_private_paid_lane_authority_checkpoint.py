@@ -18,6 +18,7 @@ import textwrap
 import threading
 import time
 import weakref
+from array import array
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -282,6 +283,61 @@ def _attempt_inherited_issuer_close(connection: socket.socket) -> None:
         connection.shutdown(socket.SHUT_WR)
         connection.recv(16)
     connection.close()
+
+
+def _attempt_child_recovery_admission(
+    socket_path: str,
+    ticket: checkpoint_module.SignedMigrationRecoveryTicketV1,
+    pins: checkpoint_module.Epoch0RecoveryAuthorityPinsV1,
+    verification_key: checkpoint_module.VerificationKeyV1,
+    root_fd: int,
+    parent_fd: int,
+    target_fd: int,
+    result_fd: int,
+) -> None:
+    try:
+        request = _canonical_json(
+            {
+                "command": "recover_open",
+                "ticket_sha256": ticket.ticket_sha256,
+                "issuer_generation_nonce": ticket.issuer_generation_nonce,
+                "caller_boot_nonce": "91" * 32,
+                "handle_nonce": "92" * 32,
+                "authority_pins": pins.model_dump(mode="json"),
+            }
+        )
+        responses: list[bytes] = []
+        for _ in range(2):
+            connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                connection.connect(socket_path)
+                rights = array("i", (root_fd, parent_fd, target_fd))
+                assert connection.sendmsg(
+                    [request],
+                    [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights.tobytes())],
+                ) == len(request)
+                connection.shutdown(socket.SHUT_WR)
+                parts: list[bytes] = []
+                while chunk := connection.recv(65_536):
+                    parts.append(chunk)
+                responses.append(b"".join(parts))
+            finally:
+                connection.close()
+        assert responses[0] == responses[1]
+        assert responses[0][:1] == b"R"
+        parsed = checkpoint_module._parse_strict_json(responses[0][1:], 131_072)
+        signature_hex = parsed["signature_ed25519"]
+        assert type(signature_hex) is str
+        admission = checkpoint_module.SignedEpoch0RecoveryAdmissionV1.model_validate(
+            {**parsed, "signature_ed25519": bytes.fromhex(signature_hex)}
+        )
+        checkpoint_module._verify_signed_epoch0_recovery_admission(admission, verification_key)
+        assert admission.authenticated_peer_pid == os.getpid()
+        os.write(result_fd, b"1")
+    except BaseException:
+        os.write(result_fd, b"0")
+    finally:
+        os.close(result_fd)
 
 
 def _reopen_precutover(case: Any) -> PrivatePaidLaneEligibilityCheckpointStoreV1:
@@ -2771,16 +2827,29 @@ class TestMigrationPrerequisites:
                     )
                     == copied
                 )
-                admission = issuer.recover_open(
-                    root_fd=root_fd,
-                    parent_fd=parent_fd,
-                    target_fd=target_fd,
-                    authority_pins=recovery_pins,
-                    caller_boot_nonce="91" * 32,
-                    handle_nonce="92" * 32,
-                )
-                assert admission.authority_pins == recovery_pins
-                assert (
+                result_read, result_write = os.pipe()
+                recovery_child = os.fork()
+                if recovery_child == 0:
+                    os.close(result_read)
+                    _attempt_child_recovery_admission(
+                        issuer._socket_path,
+                        issuer.recovery_ticket,
+                        recovery_pins,
+                        issuer.verification_key,
+                        root_fd,
+                        parent_fd,
+                        target_fd,
+                        result_write,
+                    )
+                    os._exit(0)
+                os.close(result_write)
+                try:
+                    assert os.read(result_read, 1) == b"1"
+                finally:
+                    os.close(result_read)
+                _, recovery_status = os.waitpid(recovery_child, 0)
+                assert os.waitstatus_to_exitcode(recovery_status) == 0
+                with pytest.raises(ValueError, match="issuer rejected"):
                     issuer.recover_open(
                         root_fd=root_fd,
                         parent_fd=parent_fd,
@@ -2789,8 +2858,6 @@ class TestMigrationPrerequisites:
                         caller_boot_nonce="91" * 32,
                         handle_nonce="92" * 32,
                     )
-                    == admission
-                )
                 admission_replacement = tmp_path / "admission-replacement.sqlite3"
                 admission_replacement.write_bytes(target.read_bytes())
                 admission_replacement.chmod(0o600)
@@ -2910,14 +2977,17 @@ class TestMigrationPrerequisites:
         delegated = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
             delegated.connect(issuer._socket_path)
-            child = multiprocessing.get_context("fork").Process(
-                target=_attempt_inherited_issuer_close,
-                args=(delegated,),
-            )
-            child.start()
+            child = os.fork()
+            if child == 0:
+                _attempt_inherited_issuer_close(delegated)
+                os._exit(0)
             delegated.close()
-            child.join(timeout=5)
-            assert child.exitcode == 0
+            _, child_status = os.waitpid(child, 0)
+            assert os.waitstatus_to_exitcode(child_status) == 0
+            assert issuer._process.is_alive()
+            assert issuer._supervisor_process.is_alive()
+            issuer._supervisor_process.terminate()
+            issuer._supervisor_process.join(timeout=5)
             issuer._process.join(timeout=5)
             assert not issuer._process.is_alive()
         finally:

@@ -660,6 +660,15 @@ def _issuer_observed_copy(
     return _copy_audit_sha256(audit)
 
 
+def _fixture_issuer_supervisor_main(handshake: Connection) -> None:
+    try:
+        handshake.send(os.getpid())
+    finally:
+        handshake.close()
+    while True:
+        time.sleep(60)
+
+
 def _issuer_authenticate_recovery_descriptors(
     *,
     root_fd: int,
@@ -700,6 +709,7 @@ def _issuer_authenticate_recovery_descriptors(
 
 def _fixture_migration_lifecycle_issuer_main(
     socket_path: str,
+    supervisor_pid: int,
     authorized_pid: int,
     handshake: Connection,
     provider_capability_verification_keys: tuple[VerificationKeyV1, ...],
@@ -729,15 +739,35 @@ def _fixture_migration_lifecycle_issuer_main(
     copy_completed = False
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     process_watch = select.kqueue()
+    active_store_revoked = False
+
+    def supervisor_exited() -> bool:
+        nonlocal active_store_revoked
+        supervisor_is_gone = False
+        for event in process_watch.control(None, 8, 0):
+            if event.ident == supervisor_pid and event.fflags & select.KQ_NOTE_EXIT:
+                supervisor_is_gone = True
+            if event.ident == authorized_pid and event.fflags & (
+                select.KQ_NOTE_EXIT | select.KQ_NOTE_FORK
+            ):
+                active_store_revoked = True
+        return supervisor_is_gone
+
     try:
         process_watch.control(
             [
+                select.kevent(
+                    supervisor_pid,
+                    filter=select.KQ_FILTER_PROC,
+                    flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE,
+                    fflags=select.KQ_NOTE_EXIT,
+                ),
                 select.kevent(
                     authorized_pid,
                     filter=select.KQ_FILTER_PROC,
                     flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE,
                     fflags=select.KQ_NOTE_EXIT | select.KQ_NOTE_FORK,
-                )
+                ),
             ],
             0,
             0,
@@ -749,7 +779,7 @@ def _fixture_migration_lifecycle_issuer_main(
         handshake.send((key_id, public_key))
         handshake.close()
         while True:
-            if process_watch.control(None, 1, 0):
+            if supervisor_exited():
                 return
             try:
                 connection, _ = listener.accept()
@@ -766,11 +796,11 @@ def _fixture_migration_lifecycle_issuer_main(
                             _ISSUER_MAX_PACKET + 1,
                             socket.CMSG_SPACE(array("i").itemsize * 3),
                         )
-                        if process_watch.control(None, 1, 0):
+                        if supervisor_exited():
                             return
                         break
                     except TimeoutError:
-                        if process_watch.control(None, 1, 0):
+                        if supervisor_exited():
                             return
                 received_descriptors = _issuer_received_descriptors(ancillary)
                 if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC):
@@ -781,23 +811,27 @@ def _fixture_migration_lifecycle_issuer_main(
                     try:
                         chunk = connection.recv(65_536)
                     except TimeoutError:
-                        if process_watch.control(None, 1, 0):
+                        if supervisor_exited():
                             return
                         continue
                     if not chunk:
                         break
-                    if process_watch.control(None, 1, 0):
+                    if supervisor_exited():
                         return
                     total += len(chunk)
                     if total > _ISSUER_MAX_PACKET:
                         raise ValueError("issuer request bound")
                     chunks.append(chunk)
-                if process_watch.control(None, 1, 0):
+                if supervisor_exited():
                     return
                 packet = b"".join(chunks)
                 request = _parse_strict_json(packet, _ISSUER_MAX_PACKET)
                 command = request.get("command")
-                if peer_pid != authorized_pid and command != "recover_open":
+                if supervisor_exited():
+                    return
+                if (
+                    peer_pid != authorized_pid or active_store_revoked
+                ) and command != "recover_open":
                     raise ValueError("issuer peer pid")
                 if command == "bind":
                     if (
@@ -1404,6 +1438,7 @@ class FixtureMigrationLifecycleIssuerV1:
     _process: BaseProcess
     _socket_path: str
     _socket_root: Path
+    _supervisor_process: BaseProcess
     recovery_ticket: SignedMigrationRecoveryTicketV1
     verification_key: VerificationKeyV1
 
@@ -1414,6 +1449,7 @@ class FixtureMigrationLifecycleIssuerV1:
         "_process",
         "_socket_path",
         "_socket_root",
+        "_supervisor_process",
         "recovery_ticket",
         "verification_key",
     )
@@ -1439,28 +1475,59 @@ class FixtureMigrationLifecycleIssuerV1:
         expected_contract_sha256: str,
     ) -> FixtureMigrationLifecycleIssuerV1:
         context = multiprocessing.get_context("spawn")
-        receive_handshake, send_handshake = context.Pipe(duplex=False)
-        socket_root = Path(tempfile.mkdtemp(prefix="antiek-issuer-"))
-        socket_root.chmod(0o700)
-        socket_path = os.fspath(socket_root / _ISSUER_WITNESS_SOCKET_NAME)
-        process = context.Process(
-            target=_fixture_migration_lifecycle_issuer_main,
-            args=(
-                socket_path,
-                os.getpid(),
-                send_handshake,
-                provider_capability_verification_keys,
-                provider_revocation_verification_keys,
-                source_head_verification_keys,
-                provider_revocation_floor_pins,
-                source_floor_pins,
-                expected_target_store_id,
-                expected_semantic_source_sha256,
-                expected_contract_sha256,
-            ),
-            daemon=True,
+        supervisor_receive, supervisor_send = context.Pipe(duplex=False)
+        supervisor_process = context.Process(
+            target=_fixture_issuer_supervisor_main,
+            args=(supervisor_send,),
+            daemon=False,
         )
         try:
+            supervisor_process.start()
+            supervisor_send.close()
+            if not supervisor_receive.poll(5):
+                raise TimeoutError("issuer supervisor handshake timeout")
+            supervisor_pid = supervisor_receive.recv()
+            if type(supervisor_pid) is not int or supervisor_pid != supervisor_process.pid:
+                raise ValueError("issuer supervisor handshake")
+        except Exception:
+            supervisor_send.close()
+            supervisor_receive.close()
+            if supervisor_process.pid is not None:
+                if supervisor_process.is_alive():
+                    supervisor_process.terminate()
+                supervisor_process.join(timeout=5)
+            raise
+        finally:
+            supervisor_receive.close()
+            supervisor_send.close()
+        receive_handshake: Connection | None = None
+        send_handshake: Connection | None = None
+        socket_root: Path | None = None
+        socket_path: str | None = None
+        process: BaseProcess | None = None
+        try:
+            receive_handshake, send_handshake = context.Pipe(duplex=False)
+            socket_root = Path(tempfile.mkdtemp(prefix="antiek-issuer-"))
+            socket_root.chmod(0o700)
+            socket_path = os.fspath(socket_root / _ISSUER_WITNESS_SOCKET_NAME)
+            process = context.Process(
+                target=_fixture_migration_lifecycle_issuer_main,
+                args=(
+                    socket_path,
+                    supervisor_pid,
+                    os.getpid(),
+                    send_handshake,
+                    provider_capability_verification_keys,
+                    provider_revocation_verification_keys,
+                    source_head_verification_keys,
+                    provider_revocation_floor_pins,
+                    source_floor_pins,
+                    expected_target_store_id,
+                    expected_semantic_source_sha256,
+                    expected_contract_sha256,
+                ),
+                daemon=True,
+            )
             process.start()
             send_handshake.close()
             if not receive_handshake.poll(5):
@@ -1477,16 +1544,26 @@ class FixtureMigrationLifecycleIssuerV1:
             if len(public_key) != 32:
                 raise ValueError("issuer public key")
         except Exception:
-            if process.pid is not None:
+            if process is not None and process.pid is not None:
                 if process.is_alive():
                     process.terminate()
                 process.join(timeout=5)
-            (socket_root / _ISSUER_WITNESS_SOCKET_NAME).unlink(missing_ok=True)
-            socket_root.rmdir()
+            if socket_root is not None:
+                (socket_root / _ISSUER_WITNESS_SOCKET_NAME).unlink(missing_ok=True)
+                with suppress(OSError):
+                    socket_root.rmdir()
+            if supervisor_process.is_alive():
+                supervisor_process.terminate()
+            supervisor_process.join(timeout=5)
             raise
         finally:
-            receive_handshake.close()
-            send_handshake.close()
+            if receive_handshake is not None:
+                receive_handshake.close()
+            if send_handshake is not None:
+                send_handshake.close()
+        assert process is not None
+        assert socket_path is not None
+        assert socket_root is not None
         issuer = object.__new__(cls)
         object.__setattr__(issuer, "_boot_nonce", secrets.token_bytes(32))
         object.__setattr__(issuer, "_creator_pid", os.getpid())
@@ -1494,6 +1571,7 @@ class FixtureMigrationLifecycleIssuerV1:
         object.__setattr__(issuer, "_process", process)
         object.__setattr__(issuer, "_socket_path", socket_path)
         object.__setattr__(issuer, "_socket_root", socket_root)
+        object.__setattr__(issuer, "_supervisor_process", supervisor_process)
         object.__setattr__(
             issuer,
             "verification_key",
@@ -1705,10 +1783,16 @@ class FixtureMigrationLifecycleIssuerV1:
         with self._lock:
             try:
                 if self._process.is_alive():
-                    response = self._request(_canonical_json({"command": "close"}))
-                    if response != b"C":
-                        raise ValueError("issuer close response")
+                    try:
+                        response = self._request(_canonical_json({"command": "close"}))
+                        if response != b"C":
+                            raise ValueError("issuer close response")
+                    except OSError, ValueError:
+                        pass
             finally:
+                if self._supervisor_process.is_alive():
+                    self._supervisor_process.terminate()
+                self._supervisor_process.join(timeout=5)
                 self._process.join(timeout=5)
                 if self._process.is_alive():
                     self._process.terminate()
