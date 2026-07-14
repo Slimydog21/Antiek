@@ -47,19 +47,38 @@ and the composer UI (Slices C/D) consume this; neither re-derives.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
-from typing import Literal, Protocol, runtime_checkable
+from decimal import Decimal
+from typing import Literal, Protocol, cast, runtime_checkable
 
-from runtime.research_runner.protocol import CostProjection
+from runtime.research_runner.protocol import CostProjection, ProjectionDisposition
 from substrate.dispatch.advisory_decision import (
     DecisionCandidate,
-    DecisionResult,
     DecisionTask,
     rank_model_candidates,
 )
 
 PricingStatus = Literal["known", "unknown"]
 QualityBasis = Literal["measured", "static_prior"]
+
+_DECISION_TASKS = frozenset(
+    {
+        "deep_research",
+        "research_synthesis",
+        "reading",
+        "twin_note",
+        "writing",
+        "multimedia",
+        "general",
+    }
+)
+_MAX_CANDIDATES = 256
+_MAX_IDENTITY_CHARS = 256
+_MAX_TIER_CHARS = 64
+_MAX_BUDGET_USD = 1_000_000_000_000.0
+_MAX_BENCHMARK_SAMPLES = 1_000_000_000
+_PROJECTION_UNAVAILABLE_ERRORS = (LookupError, OSError)
 
 
 @runtime_checkable
@@ -71,11 +90,10 @@ class ProjectionResolver(Protocol):
     resolver pure (no catalog, no dispatch, no file I/O).
     """
 
-    def __call__(self, provider: str, model: str) -> CostProjection:
-        ...
+    def __call__(self, provider: str, model: str) -> CostProjection: ...
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class BudgetSnapshot:
     """The budget the projection is measured against. ``None`` = unmeasurable.
 
@@ -86,8 +104,12 @@ class BudgetSnapshot:
     daily_cap_usd: float | None
     spent_usd: float | None
 
+    def __post_init__(self) -> None:
+        _optional_money(self.daily_cap_usd, "daily_cap_usd")
+        _optional_money(self.spent_usd, "spent_usd")
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, slots=True)
 class ComposerCandidateView:
     """One ranked candidate as the composer/decision-tree tab renders it."""
 
@@ -102,8 +124,33 @@ class ComposerCandidateView:
     estimated_usd_low: float | None
     estimated_usd_high: float | None
 
+    def __post_init__(self) -> None:
+        if isinstance(self.rank, bool) or not isinstance(self.rank, int) or self.rank < 1:
+            raise ValueError("candidate rank must be a positive integer")
+        _bounded_text(self.tier, "tier", _MAX_TIER_CHARS)
+        _bounded_text(self.provider, "provider", _MAX_IDENTITY_CHARS)
+        _bounded_text(self.model, "model", _MAX_IDENTITY_CHARS)
+        if type(self.quality_score) is not float or not math.isfinite(self.quality_score):
+            raise ValueError("quality_score must be a finite float")
+        if not 0.0 <= self.quality_score <= 1.0:
+            raise ValueError("quality_score must be between zero and one")
+        if self.quality_basis not in {"measured", "static_prior"}:
+            raise ValueError("quality_basis is invalid")
+        if type(self.eligible) is not bool:
+            raise TypeError("eligible must be a bool")
+        if self.pricing_status not in {"known", "unknown"}:
+            raise ValueError("pricing_status is invalid")
+        _validate_price_bounds(self.estimated_usd_low, self.estimated_usd_high)
+        expected_status = (
+            "known"
+            if self.estimated_usd_low is not None and self.estimated_usd_high is not None
+            else "unknown"
+        )
+        if self.pricing_status != expected_status:
+            raise ValueError("pricing_status conflicts with candidate price bounds")
 
-@dataclass(frozen=True)
+
+@dataclass(frozen=True, slots=True)
 class ComposerModelProjection:
     """The single composer-facing projection for one prompt's model decision."""
 
@@ -120,6 +167,160 @@ class ComposerModelProjection:
     authority: str
     notes: tuple[str, ...]
 
+    def __post_init__(self) -> None:
+        if self.task not in _DECISION_TASKS:
+            raise ValueError("task is invalid")
+        if self.authority != "advisory_explanatory":
+            raise ValueError("projection authority must remain advisory_explanatory")
+        if type(self.ranked_candidates) is not tuple or not self.ranked_candidates:
+            raise ValueError("ranked_candidates must be a non-empty tuple")
+        if len(self.ranked_candidates) > _MAX_CANDIDATES:
+            raise ValueError("ranked_candidates exceeds the projection contract")
+        for candidate in self.ranked_candidates:
+            if type(candidate) is not ComposerCandidateView:
+                raise TypeError("ranked candidate must be ComposerCandidateView")
+            candidate.__post_init__()
+        if [candidate.rank for candidate in self.ranked_candidates] != list(
+            range(1, len(self.ranked_candidates) + 1)
+        ):
+            raise ValueError("ranked candidate ranks must be contiguous and ordered")
+        if len({(row.provider, row.model) for row in self.ranked_candidates}) != len(
+            self.ranked_candidates
+        ):
+            raise ValueError("ranked candidate identities must be unique")
+        if self.recommended_tier is not None:
+            _bounded_text(self.recommended_tier, "recommended_tier", _MAX_TIER_CHARS)
+            if self.recommended_tier not in {
+                row.tier for row in self.ranked_candidates if row.eligible
+            }:
+                raise ValueError("recommended_tier must identify an eligible ranked candidate")
+        if type(self.budget) is not BudgetSnapshot:
+            raise TypeError("budget must be BudgetSnapshot")
+        self.budget.__post_init__()
+        _optional_money(self.remaining_usd, "remaining_usd")
+        expected_remaining = _remaining(self.budget)
+        if self.remaining_usd != expected_remaining:
+            raise ValueError("remaining_usd conflicts with the budget snapshot")
+        if (self.chosen_provider is None) != (self.chosen_model is None):
+            raise ValueError("chosen provider and model must be present together")
+        if self.chosen_provider is not None:
+            _bounded_text(self.chosen_provider, "chosen_provider", _MAX_IDENTITY_CHARS)
+            assert self.chosen_model is not None
+            _bounded_text(self.chosen_model, "chosen_model", _MAX_IDENTITY_CHARS)
+        chosen_view = next(
+            (
+                row
+                for row in self.ranked_candidates
+                if row.provider == self.chosen_provider and row.model == self.chosen_model
+            ),
+            None,
+        )
+        if self.chosen_provider is not None and chosen_view is None:
+            raise ValueError("chosen route must identify one ranked candidate")
+        if self.chosen_projection is not None:
+            _validate_projection(
+                self.chosen_projection,
+                provider=self.chosen_provider,
+                model=self.chosen_model,
+            )
+        if self.would_exceed_budget is not None and type(self.would_exceed_budget) is not bool:
+            raise TypeError("would_exceed_budget must be bool or None")
+        if self.pricing_status not in {"known", "unknown"}:
+            raise ValueError("pricing_status is invalid")
+        expected_pricing = "unknown" if chosen_view is None else chosen_view.pricing_status
+        if self.pricing_status != expected_pricing:
+            raise ValueError("pricing_status conflicts with the chosen candidate")
+        expected_exceeds = _would_exceed(
+            self.chosen_projection,
+            _remaining_decimal(self.budget),
+        )
+        if self.would_exceed_budget is not expected_exceeds:
+            raise ValueError("would_exceed_budget conflicts with projection and budget")
+        if type(self.notes) is not tuple or not self.notes or len(self.notes) > 16:
+            raise ValueError("notes must be a non-empty bounded tuple")
+        for note in self.notes:
+            _bounded_text(note, "note", 512)
+
+
+def _bounded_text(value: object, name: str, maximum: int) -> str:
+    if type(value) is not str:
+        raise TypeError(f"{name} must be a string")
+    if not value.strip() or value != value.strip() or len(value) > maximum:
+        raise ValueError(f"{name} must be non-empty, trimmed, and at most {maximum} characters")
+    return value
+
+
+def _optional_money(value: object, name: str) -> float | None:
+    if value is None:
+        return None
+    if type(value) is not float:
+        raise TypeError(f"{name} must be a float or None")
+    if not math.isfinite(value) or value < 0.0 or value > _MAX_BUDGET_USD:
+        raise ValueError(f"{name} must be finite and between zero and {_MAX_BUDGET_USD:g}")
+    return value
+
+
+def _validate_price_bounds(low: object, high: object) -> None:
+    if (low is None) != (high is None):
+        raise ValueError("candidate price bounds must both be present or both be unknown")
+    if low is None:
+        return
+    low_value = _optional_money(low, "estimated_usd_low")
+    high_value = _optional_money(high, "estimated_usd_high")
+    assert low_value is not None and high_value is not None
+    if low_value > high_value:
+        raise ValueError("estimated_usd_low cannot exceed estimated_usd_high")
+
+
+def _validate_candidate(candidate: object) -> DecisionCandidate:
+    if type(candidate) is not DecisionCandidate:
+        raise TypeError("candidate must be an exact DecisionCandidate")
+    validated = cast(DecisionCandidate, candidate)
+    _bounded_text(validated.tier, "tier", _MAX_TIER_CHARS)
+    _bounded_text(validated.provider, "provider", _MAX_IDENTITY_CHARS)
+    _bounded_text(validated.model, "model", _MAX_IDENTITY_CHARS)
+    if type(validated.ready) is not bool:
+        raise TypeError("candidate ready must be a bool")
+    if (
+        validated.would_exceed_budget is not None
+        and type(validated.would_exceed_budget) is not bool
+    ):
+        raise TypeError("candidate would_exceed_budget must be bool or None")
+    _validate_price_bounds(validated.estimated_usd_low, validated.estimated_usd_high)
+    benchmark = validated.benchmark_score
+    samples = validated.benchmark_samples
+    if (benchmark is None) != (samples is None):
+        raise ValueError("benchmark score and sample count must be present together")
+    if benchmark is not None:
+        if type(benchmark) is not float or not math.isfinite(benchmark):
+            raise ValueError("benchmark_score must be a finite float")
+        if not 0.0 <= benchmark <= 1.0:
+            raise ValueError("benchmark_score must be between zero and one")
+        if (
+            isinstance(samples, bool)
+            or not isinstance(samples, int)
+            or not 1 <= samples <= _MAX_BENCHMARK_SAMPLES
+        ):
+            raise ValueError("benchmark_samples must be a bounded positive integer")
+    return validated
+
+
+def _validate_projection(
+    projection: object, *, provider: str | None, model: str | None
+) -> CostProjection:
+    if type(projection) is not CostProjection:
+        raise TypeError("projector must return an exact CostProjection")
+    validated = cast(CostProjection, projection)
+    try:
+        validated.__post_init__()
+    except AttributeError as exc:
+        raise ValueError("projector returned an incomplete CostProjection") from exc
+    if provider is None or model is None:
+        raise ValueError("a projection requires an explicit chosen route")
+    if validated.provider != provider or validated.model != model:
+        raise ValueError("projector returned a projection for a different route")
+    return validated
+
 
 def _pricing_status(candidate: DecisionCandidate) -> PricingStatus:
     """Known iff both cost bounds are present; else unknown (never $0.00)."""
@@ -129,10 +330,20 @@ def _pricing_status(candidate: DecisionCandidate) -> PricingStatus:
 
 
 def _remaining(budget: BudgetSnapshot) -> float | None:
-    """Remaining = cap − spent. None when either is unmeasurable."""
+    """Remaining = max(0, cap − spent). None when either is unmeasurable."""
+    remaining = _remaining_decimal(budget)
+    if remaining is None:
+        return None
+    return float(remaining)
+
+
+def _remaining_decimal(budget: BudgetSnapshot) -> Decimal | None:
+    budget.__post_init__()
     if budget.daily_cap_usd is None or budget.spent_usd is None:
         return None
-    return budget.daily_cap_usd - budget.spent_usd
+    cap = Decimal(str(budget.daily_cap_usd))
+    spent = Decimal(str(budget.spent_usd))
+    return max(Decimal(0), cap - spent)
 
 
 def resolve_composer_projection(
@@ -142,19 +353,35 @@ def resolve_composer_projection(
     budget: BudgetSnapshot,
     chosen: tuple[str, str] | None,
     project: ProjectionResolver,
-    ranking: DecisionResult | None = None,
 ) -> ComposerModelProjection:
     """Compose the advisory ranking + the authoritative projection into one view.
 
     ``chosen`` is the explicit operator choice as ``(provider, model)``; ``None`` is
     the curated-default fallback (no explicit choice projected). ``project`` resolves
     the authoritative ``CostProjection`` for the chosen candidate only (the ranked
-    list carries advisory pricing for the rest). ``ranking`` defaults to
-    ``rank_model_candidates(task, candidates)``; injectable for hermetic tests.
+    list carries advisory pricing for the rest). Ranking is always derived here from
+    the exact validated candidate tuple; callers cannot inject a conflicting result.
     """
-    decision: DecisionResult = ranking if ranking is not None else rank_model_candidates(
-        task, candidates
-    )
+    if task not in _DECISION_TASKS:
+        raise ValueError("task is invalid")
+    if type(candidates) is not tuple or not 1 <= len(candidates) <= _MAX_CANDIDATES:
+        raise ValueError(f"candidates must be a tuple with 1 to {_MAX_CANDIDATES} entries")
+    validated_candidates = tuple(_validate_candidate(candidate) for candidate in candidates)
+    identities = [(candidate.provider, candidate.model) for candidate in validated_candidates]
+    if len(identities) != len(set(identities)):
+        raise ValueError("candidate provider/model identities must be unique")
+    if type(budget) is not BudgetSnapshot:
+        raise TypeError("budget must be an exact BudgetSnapshot")
+    budget.__post_init__()
+    if chosen is not None:
+        if type(chosen) is not tuple or len(chosen) != 2:
+            raise TypeError("chosen must be a provider/model tuple or None")
+        _bounded_text(chosen[0], "chosen provider", _MAX_IDENTITY_CHARS)
+        _bounded_text(chosen[1], "chosen model", _MAX_IDENTITY_CHARS)
+    if not callable(project):
+        raise TypeError("project must be callable")
+
+    decision = rank_model_candidates(task, validated_candidates)
 
     ranked_views: tuple[ComposerCandidateView, ...] = tuple(
         ComposerCandidateView(
@@ -172,7 +399,8 @@ def resolve_composer_projection(
         for ranked in decision.ranked
     )
 
-    remaining = _remaining(budget)
+    remaining_decimal = _remaining_decimal(budget)
+    remaining = None if remaining_decimal is None else float(remaining_decimal)
     notes: list[str] = ["authority=advisory_explanatory — server re-validates at execution"]
 
     chosen_view: ComposerCandidateView | None = None
@@ -198,13 +426,23 @@ def resolve_composer_projection(
     else:
         chosen_pricing_status = chosen_view.pricing_status
         try:
-            chosen_projection = project(chosen_view.provider, chosen_view.model)
-        except Exception:  # noqa: BLE001 — projector failure is honest-unknown, not a crash
+            projected = project(chosen_view.provider, chosen_view.model)
+        except _PROJECTION_UNAVAILABLE_ERRORS:
             chosen_projection = None
             notes.append(
-                "projection resolver raised — chosen_projection withheld (unknown, not $0.00)"
+                "projection source unavailable — chosen_projection withheld (unknown, not $0.00)"
             )
-        would_exceed = _would_exceed(chosen_projection, remaining)
+        else:
+            chosen_projection = _validate_projection(
+                projected,
+                provider=chosen_view.provider,
+                model=chosen_view.model,
+            )
+        would_exceed = _would_exceed(chosen_projection, remaining_decimal)
+        if chosen_projection is not None and (
+            chosen_projection.disposition is ProjectionDisposition.INELIGIBLE
+        ):
+            notes.append("chosen route is ineligible — projection explains refusal only")
         if would_exceed is True:
             notes.append("would_exceed_budget=true — this prompt would cross the ceiling")
         elif would_exceed is False:
@@ -228,9 +466,7 @@ def resolve_composer_projection(
     )
 
 
-def _would_exceed(
-    projection: CostProjection | None, remaining: float | None
-) -> bool | None:
+def _would_exceed(projection: CostProjection | None, remaining: Decimal | None) -> bool | None:
     """Derive the over-budget verdict from the authoritative projection.
 
     Server-side ``maximum_cost_usd`` vs ``remaining`` — never client rate math.
@@ -238,7 +474,14 @@ def _would_exceed(
     """
     if projection is None or remaining is None:
         return None
-    return float(projection.maximum_cost_usd) > remaining
+    projection = _validate_projection(
+        projection,
+        provider=projection.provider,
+        model=projection.model,
+    )
+    if projection.disposition is ProjectionDisposition.INELIGIBLE:
+        return None
+    return bool(projection.maximum_cost_usd > remaining)
 
 
 __all__ = [
