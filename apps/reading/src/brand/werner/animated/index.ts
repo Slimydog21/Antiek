@@ -1,9 +1,9 @@
 /**
  * Werner animated pose suite (brand § 10).
  *
- * Each export is a pure SVG React component with CSS-keyframe
- * animations defined in `./animations.css` (auto-imported by every
- * pose). Reduced-motion fallbacks are baked into the same CSS file.
+ * Each export is a React pose composition—canonical raster identity with
+ * code-native props where needed—and uses CSS keyframes from `animations.css`.
+ * Reduced-motion fallbacks are baked into the same CSS file.
  *
  * Usage pattern:
  *   <WernerTobogganSpinner size={32} label="Streaming investigation…" />
@@ -16,4 +16,5 @@ export { default as WernerTobogganSpinner } from "./WernerTobogganSpinner";
 export { default as WernerThinking } from "./WernerThinking";
 export { default as WernerCaughtAFish } from "./WernerCaughtAFish";
 export { default as WernerSleeping } from "./WernerSleeping";
+export { default as WernerWaking } from "./WernerWaking";
 export { default as WernerWaddle } from "./WernerWaddle";

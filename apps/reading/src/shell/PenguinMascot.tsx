@@ -1,10 +1,19 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { useNavigate } from "react-router-dom";
 
 import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { WernerSleeping } from "../brand/werner/animated";
 import {
+  createStationRestLifecycle,
   createWernerStage,
   EmoteView,
   installChoreography,
@@ -13,10 +22,13 @@ import {
   stationAmbientClass,
   useMouseFollow,
   useStationActivity,
+  useStationInstrumentSuspended,
   wernerIceFishingCursor,
   type EmoteKind,
   type StageHost,
   type WernerStageController,
+  type StationRestLifecycle,
+  type StationRestPhase,
   WernerRig,
 } from "../werner";
 import "../werner/waddle.css";
@@ -101,6 +113,9 @@ const MASCOT_SIZE = 64;
  *  station promptly after a bump. */
 const STATION_RETURN_MS = 900;
 
+const loadWernerWaking = () => import("../brand/werner/animated/WernerWaking");
+const LazyWernerWaking = lazy(loadWernerWaking);
+
 /** Where the Penguin's station is when first shown — lower-left, out of the way
  *  of the main composer but clearly in reach. Recomputed against the live
  *  viewport on mount so it is never seeded off-screen on a small window. */
@@ -121,6 +136,15 @@ function initialMascotPos(): { x: number; y: number } {
 export function PenguinMascot() {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
+  const stationInstrumentSuspended = useStationInstrumentSuspended();
+  const [restPhase, setRestPhase] = useState<StationRestPhase>("suspended");
+  const restPhaseRef = useRef<StationRestPhase>("suspended");
+  restPhaseRef.current = restPhase;
+  const restLifecycleRef = useRef<StationRestLifecycle | null>(null);
+
+  useEffect(() => {
+    if (restPhase === "sleeping") void loadWernerWaking();
+  }, [restPhase]);
 
   // The active (default) station activity. With one registered activity
   // (ice-fishing) this is always it; SPR-03 will make "active" switchable. The
@@ -153,6 +177,36 @@ export function PenguinMascot() {
   const gagRaf = useRef<number | null>(null);
   // Cleanup timer for the return-home stroll after a directed excursion.
   const returnTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    const lifecycle = createStationRestLifecycle((phase) => {
+      restPhaseRef.current = phase;
+      setRestPhase(phase);
+    });
+    restLifecycleRef.current = lifecycle;
+    const noteInteraction = () => lifecycle.noteInteraction();
+    const suspendWhenHidden = () => {
+      if (document.hidden) lifecycle.setEligible(false);
+    };
+    const interactionEvents = [
+      "pointerdown",
+      "keydown",
+      "wheel",
+      "input",
+    ] as const;
+    for (const type of interactionEvents) {
+      window.addEventListener(type, noteInteraction, true);
+    }
+    document.addEventListener("visibilitychange", suspendWhenHidden);
+    return () => {
+      for (const type of interactionEvents) {
+        window.removeEventListener(type, noteInteraction, true);
+      }
+      document.removeEventListener("visibilitychange", suspendWhenHidden);
+      lifecycle.dispose();
+      restLifecycleRef.current = null;
+    };
+  }, []);
 
   // The lagged/live cursor read seam. Under the station it is used ONLY to read
   // pointerIdle (does the own-hole gag own Werner right now?) — the bait + line
@@ -305,12 +359,10 @@ export function PenguinMascot() {
   // so nothing to fish).
   useEffect(() => {
     const { activeClass, idleClass } = activeActivity.ambient;
-    if (
-      reduceMotion ||
-      (!activeClass && !idleClass) ||
-      typeof window === "undefined"
-    )
+    if (reduceMotion || typeof window === "undefined") {
+      restLifecycleRef.current?.setEligible(false);
       return;
+    }
 
     // The idle-gag class comes from the active activity (ice-fishing's
     // idleClass is the `werner-fishing` gag), not a hard-coded literal — so an
@@ -326,6 +378,15 @@ export function PenguinMascot() {
 
     const tick = () => {
       const reading = follow.read();
+      const lifecycleEligible =
+        !reduceMotion &&
+        !stationInstrumentSuspended &&
+        !reading.tabHidden &&
+        !dragStart.current &&
+        !roamPaused.current &&
+        !returningHome.current &&
+        emoteRef.current === null;
+      restLifecycleRef.current?.setEligible(lifecycleEligible);
       applyAmbientClass(
         stationAmbientClass({
           activeClass,
@@ -335,7 +396,8 @@ export function PenguinMascot() {
           dragging: Boolean(dragStart.current),
           directedTravel: roamPaused.current,
           returningHome: returningHome.current,
-          productEmote: emoteRef.current !== null,
+          productEmote:
+            emoteRef.current !== null || restPhaseRef.current !== "active",
           reducedMotion: reduceMotion,
           activityEnabled:
             activeActivity.id !== "ice-fishing" || wernerIceFishingCursor,
@@ -346,6 +408,7 @@ export function PenguinMascot() {
     gagRaf.current = window.requestAnimationFrame(tick);
 
     return () => {
+      restLifecycleRef.current?.setEligible(false);
       if (gagRaf.current !== null) {
         window.cancelAnimationFrame(gagRaf.current);
         gagRaf.current = null;
@@ -355,7 +418,7 @@ export function PenguinMascot() {
       // Werner mid-cast with the loop class on.
       if (appliedClass) bobRef.current?.classList.remove(appliedClass);
     };
-  }, [reduceMotion, follow, activeActivity]);
+  }, [reduceMotion, follow, activeActivity, stationInstrumentSuspended]);
 
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
   // Created ONCE (empty deps). Its StageHost reuses this component's stroll /
@@ -589,6 +652,7 @@ export function PenguinMascot() {
       type="button"
       data-testid="penguin-mascot"
       data-werner-emote={emote ?? "none"}
+      data-werner-rest-phase={restPhase}
       aria-label="Project — click to float the project tree, double-click to open"
       title="Project · click to float · double-click to open · drag to move"
       onPointerDown={onPointerDown}
@@ -634,9 +698,29 @@ export function PenguinMascot() {
             `werner-fishing` gag animates. The rig owns no motion source; it
             consumes the class signals this bob span carries. Hidden behind the
             emote overlay when one is playing so we don't stack penguins. */}
-        <span style={{ visibility: emote ? "hidden" : "visible" }}>
+        <span
+          style={{
+            visibility:
+              emote || restPhase === "sleeping" || restPhase === "waking"
+                ? "hidden"
+                : "visible",
+          }}
+        >
           <WernerRig size={MASCOT_SIZE} label="Project" />
         </span>
+        {!emote && restPhase === "sleeping" ? (
+          <span aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+            <WernerSleeping size={MASCOT_SIZE} label="" />
+          </span>
+        ) : !emote && restPhase === "waking" ? (
+          <span aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+            <Suspense
+              fallback={<WernerSleeping size={MASCOT_SIZE} label="" reduced />}
+            >
+              <LazyWernerWaking size={MASCOT_SIZE} />
+            </Suspense>
+          </span>
+        ) : null}
         {/* The active emote (SPR-05) — an existing animated Werner mark mapped to
             the emote kind, overlaid on the mascot. Keyed by kind so a one-shot
             mark remounts (restarts) per fire. EmoteView renders a STILL pose

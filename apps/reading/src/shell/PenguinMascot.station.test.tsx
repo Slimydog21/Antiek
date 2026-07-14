@@ -40,6 +40,8 @@ vi.mock("../werner/iceFishingFlags", () => ({
 import { PenguinMascot } from "./PenguinMascot";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { emitWernerExperience } from "../werner";
+import { STATION_LONG_REST_MS, STATION_WAKE_MS } from "../werner";
+import { acquireStationInstrumentSuspension } from "../werner/stationInstrumentSuspension";
 
 const s = () => useWorkspace.getState();
 
@@ -109,6 +111,163 @@ function advanceFrames(totalMs: number) {
 }
 
 describe("PenguinMascot — the fixed station (flag on)", () => {
+  it("keeps fishing as short idle, then runs one persistent sleep-to-wake episode", async () => {
+    const { container } = mount();
+    advanceFrames(2_600);
+    expect(container.querySelector(".werner-fishing")).toBeTruthy();
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeNull();
+
+    advanceFrames(STATION_LONG_REST_MS - 2_600 + 32);
+    expect(container.querySelector(".werner-fishing")).toBeNull();
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeTruthy();
+
+    act(() => {
+      window.dispatchEvent(
+        new PointerEvent("pointerdown", { clientX: 100, clientY: 100 }),
+      );
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(
+      container.querySelector('[data-werner-authored-pose="waking"]'),
+    ).toBeTruthy();
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeNull();
+    advanceFrames(STATION_WAKE_MS);
+    expect(
+      container.querySelector('[data-werner-authored-pose="waking"]'),
+    ).toBeNull();
+  });
+
+  it("treats arcade play as suspension and requires a fresh rest epoch", () => {
+    const { container } = mount();
+    advanceFrames(STATION_LONG_REST_MS - 100);
+    let release = () => {};
+    act(() => {
+      release = acquireStationInstrumentSuspension("test-arcade");
+    });
+    advanceFrames(200);
+    expect(screen.getByTestId("penguin-mascot").dataset.wernerRestPhase).toBe(
+      "suspended",
+    );
+    act(() => release());
+    advanceFrames(STATION_LONG_REST_MS - 32);
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeNull();
+    advanceFrames(64);
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeTruthy();
+  });
+
+  it("does not accrue hidden-tab time or wake merely on visibility return", () => {
+    const { container } = mount();
+    advanceFrames(STATION_LONG_REST_MS - 100);
+    Object.defineProperty(document, "hidden", {
+      value: true,
+      configurable: true,
+    });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    advanceFrames(10_000);
+    Object.defineProperty(document, "hidden", {
+      value: false,
+      configurable: true,
+    });
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    advanceFrames(32);
+    expect(screen.getByTestId("penguin-mascot").dataset.wernerRestPhase).toBe(
+      "active",
+    );
+    expect(
+      container.querySelector('[data-werner-authored-pose="waking"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeNull();
+  });
+
+  it("lets a foreground product emote preempt persistent sleep", () => {
+    const { container } = mount();
+    advanceFrames(STATION_LONG_REST_MS + 32);
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeTruthy();
+    act(() => emitWernerExperience("highlight"));
+    advanceFrames(32);
+    expect(screen.getByTestId("penguin-mascot").dataset.wernerEmote).toBe(
+      "curious",
+    );
+    expect(screen.getByTestId("penguin-mascot").dataset.wernerRestPhase).toBe(
+      "suspended",
+    );
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeNull();
+  });
+
+  it("observes keyboard presence without swallowing the downstream event", () => {
+    const downstream = vi.fn();
+    window.addEventListener("keydown", downstream, true);
+    const { container } = mount();
+    advanceFrames(STATION_LONG_REST_MS + 32);
+    act(() =>
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" })),
+    );
+    expect(downstream).toHaveBeenCalledOnce();
+    expect(screen.getByTestId("penguin-mascot").dataset.wernerRestPhase).toBe(
+      "waking",
+    );
+    expect(container.querySelector("[data-werner-authored-pose]")).toBeTruthy();
+    window.removeEventListener("keydown", downstream, true);
+  });
+
+  it("keeps one accessible project control and decorative lifecycle art", () => {
+    const { container } = mount();
+    advanceFrames(STATION_LONG_REST_MS + 32);
+    expect(
+      screen.getAllByRole("button", {
+        name: "Project — click to float the project tree, double-click to open",
+      }),
+    ).toHaveLength(1);
+    expect(screen.queryAllByRole("img")).toHaveLength(0);
+    expect(
+      container.querySelectorAll('img:not([aria-hidden="true"])'),
+    ).toHaveLength(0);
+  });
+
+  it("never enters decorative long rest under reduced motion", () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (q: string) => ({
+        matches: q.includes("prefers-reduced-motion"),
+        media: q,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }),
+    });
+    const { container } = mount();
+    advanceFrames(STATION_LONG_REST_MS + 1_000);
+    expect(screen.getByTestId("penguin-mascot").dataset.wernerRestPhase).toBe(
+      "suspended",
+    );
+    expect(
+      container.querySelector('[data-werner-authored-pose="sleeping"]'),
+    ).toBeNull();
+    expect(
+      container.querySelector('[data-werner-authored-pose="waking"]'),
+    ).toBeNull();
+  });
+
   it("does NOT follow the cursor — a pointermove leaves Werner's position untouched", () => {
     mount();
     const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;

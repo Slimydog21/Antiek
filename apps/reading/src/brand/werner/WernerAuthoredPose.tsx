@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import wernerHeadTilt from "./poses/werner_head_tilt_v1_transparent.png";
 import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
+import wernerWaking from "./poses/werner_waking_v1_transparent.png";
 
 /**
  * Authored illustration poses used inside sanctioned animated wrappers.
@@ -13,6 +14,7 @@ import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
 const AUTHORED_POSE = {
   headTilt: wernerHeadTilt,
   sleeping: wernerSleeping,
+  waking: wernerWaking,
 } as const;
 
 type Props = {
