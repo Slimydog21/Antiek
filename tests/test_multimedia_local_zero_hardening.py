@@ -83,6 +83,66 @@ def _audio_evidence(
     return LocalZeroExternalCostEvidenceV1(**signed, snapshot_mac=mac)
 
 
+def _video_evidence(
+    *, owner_id: str, asset_id: str, revision_id: str
+) -> LocalZeroExternalCostEvidenceV1:
+    owner_digest = hashlib.sha256(owner_id.encode()).hexdigest()
+    narration_input = "6" * 64
+    narration_config = "7" * 64
+    narration_id = "mmlocalrun_" + hashlib.sha256(
+        f"{owner_digest}\0{narration_input}\0{narration_config}".encode()
+    ).hexdigest()
+    video_input = "8" * 64
+    video_config = "9" * 64
+    video_id = "mmlocalvideo_" + hashlib.sha256(
+        f"{narration_id}\0{owner_digest}\0{video_input}\0{video_config}".encode()
+    ).hexdigest()
+    authorities = (
+        LocalZeroRunAuthorityV1(
+            role="local_narration",
+            run_id=narration_id,
+            input_digest=narration_input,
+            config_digest=narration_config,
+            terminal_status="narration_succeeded",
+            artifact_digest="a" * 64,
+            updated_at="2026-07-13T00:00:00Z",
+        ),
+        LocalZeroRunAuthorityV1(
+            role="local_video",
+            run_id=video_id,
+            input_digest=video_input,
+            config_digest=video_config,
+            terminal_status="registered",
+            artifact_digest="b" * 64,
+            receipt_digest="c" * 64,
+            updated_at="2026-07-13T00:00:00Z",
+        ),
+    )
+    unsigned = {
+        "schema_version": "antiek.local-zero-external-cost-evidence.v1",
+        "owner_identity_digest": owner_digest,
+        "asset_id": asset_id,
+        "revision_id": revision_id,
+        "generated_at_cutoff": "2026-07-13T00:00:00Z",
+        "run_kind": "video",
+        "basis": "local_registered_zero_external_provider_charge",
+        "authorities": tuple(row.model_dump(mode="json") for row in authorities),
+        "production_receipt_digest": "c" * 64,
+        "current_link_digest": "d" * 64,
+        "excluded_revision_ids": tuple(sorted((revision_id, "tts-" + "e" * 32))),
+        "provider_execution_count": 0,
+        "external_cost_cents": 0,
+        "limitation": (
+            "Zero external provider charge is limited to the exact parent revision and "
+            "deterministic narration child revisions represented by this registered local video."
+        ),
+    }
+    evidence_id = "mmlocalzero_" + hashlib.sha256(_canonical(unsigned)).hexdigest()
+    signed = {"evidence_id": evidence_id, **unsigned}
+    mac = hmac.new(LOCAL_KEY, _canonical(signed), hashlib.sha256).hexdigest()
+    return LocalZeroExternalCostEvidenceV1(**signed, snapshot_mac=mac)
+
+
 def _client(
     tmp_path, monkeypatch: pytest.MonkeyPatch, *, video_backend=None, audio_backend=None
 ):  # noqa: ANN001, ANN202
@@ -141,6 +201,32 @@ def test_api_paid_unavailable_falls_back_to_selected_audio_backend(
     assert calls == 1
     assert report["cost_snapshot"] is None
     assert report["local_zero_cost_evidence"]["external_cost_cents"] == 0
+
+
+def test_api_paid_unavailable_falls_back_to_selected_video_backend(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:  # noqa: ANN001
+    calls = 0
+
+    def video_backend(*, owner_id, asset_id, revision_id, now):  # noqa: ANN001, ANN202
+        nonlocal calls
+        calls += 1
+        assert now == NOW
+        return _video_evidence(
+            owner_id=owner_id, asset_id=asset_id, revision_id=revision_id
+        )
+
+    client, _store = _client(tmp_path, monkeypatch, video_backend=video_backend)
+    created = client.post(
+        "/multimedia/assets",
+        json={"topic": "jet history", "target_minutes": 15, "mode": "video"},
+    ).json()
+    response = client.post(f"/multimedia/assets/{created['asset']['asset_id']}/hardening")
+    assert response.status_code == 200
+    report = response.json()["hardening_report"]
+    assert calls == 1
+    assert report["cost_snapshot"] is None
+    assert report["local_zero_cost_evidence"]["run_kind"] == "video"
 
 
 def test_audio_asset_does_not_consult_video_backend(
