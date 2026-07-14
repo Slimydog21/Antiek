@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from dataclasses import asdict, dataclass
 from typing import Literal
 
@@ -26,7 +26,7 @@ _PRIVATE = {"Cache-Control": "private, no-store"}
 
 
 class _PrivateNoStoreRoute(APIRoute):
-    def get_route_handler(self):
+    def get_route_handler(self) -> Callable[[Request], Awaitable[Response]]:
         handler = super().get_route_handler()
 
         async def private_handler(request: Request) -> Response:

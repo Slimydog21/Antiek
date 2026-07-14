@@ -74,6 +74,7 @@ from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceUnavailable,
     build_multimedia_ship_cost_snapshot,
 )
+from substrate.multimedia.verified_audio_playback import AudioPlaybackMetadata
 from substrate.multimedia.verified_playback import VerifiedPlaybackError
 
 from .multimedia_hardening_routes import (
@@ -623,7 +624,7 @@ def _resolve_research_audio_authority(
     asset_id: str,
     revision_id: str,
     operator_id: str,
-):
+) -> AudioPlaybackMetadata:
     try:
         record = store.get(asset_id, owner_id=operator_id)
     except (KeyError, ValueError) as exc:
@@ -815,7 +816,9 @@ def register_multimedia_routes(app: FastAPI) -> None:
             raise ValueError("multimedia owner identity is invalid")
         return hashlib.sha256(encoded).hexdigest()
 
-    def _resolve_research_audio(asset_id: str, revision_id: str, operator_id: str):
+    def _resolve_research_audio(
+        asset_id: str, revision_id: str, operator_id: str
+    ) -> AudioPlaybackMetadata:
         return _resolve_research_audio_authority(
             store=get_store(),
             local_audible_runtime=local_audible_runtime,
