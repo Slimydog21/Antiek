@@ -5,10 +5,13 @@ from pathlib import Path
 
 import duckdb
 import pytest
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.testclient import TestClient
 
 from interfaces.research.api import multimedia_routes
+from interfaces.research.api.multimedia_reconciliation_routes import (
+    authenticated_multimedia_policy_tag,
+)
 from processing.embedding import EmbeddingProvider
 from substrate.multimedia.graph_evidence import (
     MultimediaEvidenceSearchRequest,
@@ -73,6 +76,20 @@ def _service(graph: Path) -> MultimediaGraphEvidence:
     return MultimediaGraphEvidence(db_path=str(graph), embedding_provider=StubEmbedding())
 
 
+def test_privileged_search_policy_is_resolved_from_authenticated_request_state() -> None:
+    request = Request({"type": "http"})
+    request.state.auth_method = "bearer_token"
+    request.state.user_id = "owner-1"
+    assert authenticated_multimedia_policy_tag(request) == "operator_only"
+
+    unauthenticated = Request({"type": "http"})
+    unauthenticated.state.auth_method = "unauthenticated_local"
+    unauthenticated.state.user_id = "owner-1"
+    with pytest.raises(HTTPException) as exc_info:
+        authenticated_multimedia_policy_tag(unauthenticated)
+    assert exc_info.value.status_code == 401
+
+
 def test_search_is_owner_scoped_and_resolve_is_digest_bound(graph: Path) -> None:
     result = _service(graph).search(
         owner_id="owner-1",
@@ -80,6 +97,7 @@ def test_search_is_owner_scoped_and_resolve_is_digest_bound(graph: Path) -> None
         revision_id="rev-1",
         query="aircraft engine market",
         limit=12,
+        policy_tag="operator_only",
     )
 
     assert {candidate.chunk_id for candidate in result.candidates} == {
@@ -133,6 +151,7 @@ def test_grounded_draft_is_a_separate_parent_linked_asset(graph: Path, tmp_path:
         revision_id=parent.asset.revision_id,
         query="aircraft engine market",
         limit=12,
+        policy_tag="operator_only",
     )
     evidence = _service(graph).resolve(
         tuple(

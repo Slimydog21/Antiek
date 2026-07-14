@@ -82,6 +82,7 @@ class MultimediaGraphEvidence:
         revision_id: str,
         query: str,
         limit: int,
+        policy_tag: str,
     ) -> MultimediaEvidenceSearchResult:
         query = " ".join(query.split())
         if not query or len(query) > 4096:
@@ -108,7 +109,7 @@ class MultimediaGraphEvidence:
                     model=self.embedding_provider,
                     top_k=limit,
                     document_ids=document_ids,
-                    policy_tag="operator_only",
+                    policy_tag=policy_tag,
                     owner_user_id=owner_id,
                 )
                 hit_ids = tuple(str(hit["chunk_id"]) for hit in result["results"])
