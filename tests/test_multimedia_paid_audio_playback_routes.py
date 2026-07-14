@@ -13,6 +13,7 @@ from interfaces.research.api.multimedia_paid_audio_playback_routes import (
 )
 from substrate.multimedia.read_model import MultimediaAudioProductionLink
 from substrate.multimedia.verified_audio_playback import (
+    AudioChapterPlaybackMetadata,
     AudioLearnedClaimMetadata,
     AudioPlaybackMetadata,
 )
@@ -35,6 +36,7 @@ class FakePlayback:
             1,
             1,
             (AudioLearnedClaimMetadata("ch-1", "claim", 1, "Next?"),),
+            (AudioChapterPlaybackMetadata("ch-1", "Flow", 0, 0, 12.5),),
         )
 
     def read(self, *, asset_id: str, revision_id: str, owner_digest: str, range_header: str | None):
@@ -91,6 +93,15 @@ def test_paid_audio_metadata_and_ranges_are_owner_revision_and_link_bound() -> N
     )
     assert metadata.status_code == 200
     assert metadata.json()["audio_url"] == "/multimedia/assets/mm-1/audio-playback/rev-1/audio"
+    assert metadata.json()["chapters"] == [
+        {
+            "chapter_id": "ch-1",
+            "title": "Flow",
+            "sequence": 0,
+            "start_offset_seconds": 0.0,
+            "end_offset_seconds": 12.5,
+        }
+    ]
     partial = client.get(
         "/api/multimedia/assets/mm-1/audio-playback/rev-1/audio", headers={"Range": "bytes=2-4"}
     )

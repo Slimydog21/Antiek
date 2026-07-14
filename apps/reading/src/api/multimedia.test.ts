@@ -243,6 +243,7 @@ describe("multimedia API client", () => {
       asset_id: "mm-1", revision_id: "rev-1", receipt_sha256: "a".repeat(64),
       audio_sha256: "b".repeat(64), audio_size_bytes: 100, duration_seconds: 90,
       chapter_ids: ["chapter-1"], retention_marker_count: 2, learned_claim_count: 1,
+      chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 90 }],
       source_count: 1,
       learned_claims: [{
         chapter_id: "chapter-1", claim_text: "Verified claim", source_count: 1,
@@ -256,6 +257,13 @@ describe("multimedia API client", () => {
     );
     mockFetch().mockResolvedValueOnce(jsonResponse(200, {
       ...playback, audio_url: "/tmp/forged.wav",
+    }));
+    await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
+      "playback_identity_conflict",
+    );
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...playback,
+      chapters: [{ ...playback.chapters[0], end_offset_seconds: 89.998 }],
     }));
     await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
       "playback_identity_conflict",
@@ -638,6 +646,7 @@ describe("multimedia API client", () => {
       asset_id: "mm-1", revision_id: "rev-1", receipt_sha256: "c".repeat(64),
       audio_sha256: "a".repeat(64), audio_size_bytes: 10, duration_seconds: 12.5,
       chapter_ids: ["chapter-1"], retention_marker_count: 1, learned_claim_count: 1,
+      chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 12.5 }],
       source_count: 1, learned_claims: [{ chapter_id: "chapter-1", claim_text: "claim",
         source_count: 1, follow_up_prompt: "Next?" }],
       audio_url: "/multimedia/assets/mm-1/audio-playback/rev-1/audio",

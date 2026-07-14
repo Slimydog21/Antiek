@@ -412,6 +412,13 @@ export interface MultimediaLocalAudiblePlayback {
   audio_size_bytes: number;
   duration_seconds: number;
   chapter_ids: string[];
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    sequence: number;
+    start_offset_seconds: number;
+    end_offset_seconds: number;
+  }>;
   retention_marker_count: number;
   learned_claim_count: number;
   source_count: number;
@@ -425,6 +432,30 @@ export interface MultimediaLocalAudiblePlayback {
 }
 
 export type MultimediaPaidAudioPlayback = MultimediaLocalAudiblePlayback;
+
+function hasValidAudioTimeline(result: MultimediaLocalAudiblePlayback): boolean {
+  if (!Array.isArray(result.chapters) || result.chapters.length !== result.chapter_ids.length) return false;
+  let expectedStart = 0;
+  const ids = new Set<string>();
+  const sequences = new Set<number>();
+  for (let index = 0; index < result.chapters.length; index += 1) {
+    const chapter = result.chapters[index];
+    if (
+      !chapter || typeof chapter.chapter_id !== "string" || !chapter.chapter_id ||
+      typeof chapter.title !== "string" || !chapter.title.trim() ||
+      !Number.isSafeInteger(chapter.sequence) || chapter.sequence !== index ||
+      ids.has(chapter.chapter_id) || sequences.has(chapter.sequence) ||
+      chapter.chapter_id !== result.chapter_ids[index] ||
+      !Number.isFinite(chapter.start_offset_seconds) || !Number.isFinite(chapter.end_offset_seconds) ||
+      chapter.start_offset_seconds < 0 || chapter.end_offset_seconds <= chapter.start_offset_seconds ||
+      Math.abs(chapter.start_offset_seconds - expectedStart) > 0.001
+    ) return false;
+    ids.add(chapter.chapter_id);
+    sequences.add(chapter.sequence);
+    expectedStart = chapter.end_offset_seconds;
+  }
+  return Math.abs(expectedStart - result.duration_seconds) <= 0.001;
+}
 
 export interface MultimediaNarrationAuthorization {
   chapter_id: string;
@@ -962,6 +993,7 @@ export async function getMultimediaLocalAudiblePlayback(
     !Number.isSafeInteger(result.audio_size_bytes) || result.audio_size_bytes <= 0 ||
     !Array.isArray(result.chapter_ids) || result.chapter_ids.length < 1 ||
     new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !hasValidAudioTimeline(result) ||
     !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
     !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
     !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
@@ -998,10 +1030,15 @@ export async function getMultimediaPaidAudioPlayback(
     result.duration_seconds <= 0 || !Number.isSafeInteger(result.audio_size_bytes) ||
     result.audio_size_bytes <= 0 || !Array.isArray(result.chapter_ids) ||
     result.chapter_ids.length < 1 || new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !hasValidAudioTimeline(result) ||
     !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
     !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
     !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
-    !Array.isArray(result.learned_claims) || result.learned_claims.length !== result.learned_claim_count
+    !Array.isArray(result.learned_claims) || result.learned_claims.length !== result.learned_claim_count ||
+    result.learned_claims.some((claim) =>
+      !result.chapter_ids.includes(claim.chapter_id) || !claim.claim_text ||
+      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 || !claim.follow_up_prompt
+    )
   ) throw new Error("multimedia_paid_audio_playback_identity_conflict");
   return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
 }

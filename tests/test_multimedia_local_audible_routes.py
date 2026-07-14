@@ -23,6 +23,7 @@ from substrate.multimedia.local_audible_workstation import (
 )
 from substrate.multimedia.read_model import MultimediaAudioProductionLink
 from substrate.multimedia.verified_audio_playback import (
+    AudioChapterPlaybackMetadata,
     AudioLearnedClaimMetadata,
     AudioPlaybackMetadata,
 )
@@ -98,6 +99,9 @@ class _Playback:
                     source_count=1,
                     follow_up_prompt="Review the source.",
                 ),
+            ),
+            chapters=(
+                AudioChapterPlaybackMetadata("chapter-1", "Flow", 0, 0, 10),
             ),
         )
 
@@ -200,6 +204,15 @@ def test_registered_metadata_and_audio_range_are_private_and_link_verified() -> 
     )
     assert metadata.status_code == 200
     assert metadata.json()["audio_url"].endswith("/revision-1/audio")
+    assert metadata.json()["chapters"] == [
+        {
+            "chapter_id": "chapter-1",
+            "title": "Flow",
+            "sequence": 0,
+            "start_offset_seconds": 0.0,
+            "end_offset_seconds": 10.0,
+        }
+    ]
     assert metadata.json()["learned_claims"] == [
         {
             "chapter_id": "chapter-1",

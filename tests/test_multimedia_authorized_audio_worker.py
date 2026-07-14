@@ -163,6 +163,30 @@ def test_paid_audio_transforms_authority_registers_and_replays(tmp_path: Path) -
     assert receipt.schema_version == "antiek.paid-audio-receipt.v1"
     assert receipt.transformed_plan.grounding_contract == "audible_transform_v1"
     assert receipt.retention_markers and receipt.learned_claims
+    metadata = audio_playback.metadata(
+        asset_id=ready.asset.asset_id,
+        revision_id=ready.asset.revision_id,
+        owner_digest=first.audio_production_link.owner_identity_digest,
+    )
+    expected_start = 0.0
+    for sequence, (chapter, source, plan_chapter) in enumerate(
+        zip(
+            metadata.chapters,
+            receipt.narration.manifest.sources,
+            receipt.transformed_plan.chapters,
+            strict=True,
+        )
+    ):
+        expected_end = round(expected_start + source.duration_seconds, 3)
+        assert (
+            chapter.chapter_id,
+            chapter.title,
+            chapter.sequence,
+            chapter.start_offset_seconds,
+            chapter.end_offset_seconds,
+        ) == (source.chapter_id, plan_chapter.title, sequence, expected_start, expected_end)
+        expected_start = expected_end
+    assert expected_start == metadata.duration_seconds
     first_calls = tuple(calls)
     times.append(datetime(2026, 7, 14, 1, tzinfo=UTC))
     replay = produce_authorized_audio(

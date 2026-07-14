@@ -40,6 +40,7 @@ import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
 import { LocalProductionPanel } from "./LocalProductionPanel";
 import { LocalAudiblePanel } from "./LocalAudiblePanel";
+import { ActiveListeningPlayer } from "./ActiveListeningPlayer";
 import { VisualReviewPanel } from "./VisualReviewPanel";
 import { VoiceSteeringInput } from "./VoiceSteeringInput";
 import { projectMultimediaPlan } from "./planProjection";
@@ -1529,7 +1530,7 @@ export default function Multimedia() {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="space-y-3">
-                  <div className="flex aspect-video items-center justify-center overflow-hidden rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1">
+                  <div className={`flex items-center justify-center rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1 ${playback && "chapters" in playback ? "overflow-visible" : "aspect-video overflow-hidden"}`}>
                     {playbackLoading ? (
                       <p className="font-mono text-[12px] uppercase text-moonlight" role="status">Verifying media...</p>
                     ) : playback && playerView === "video" && "video_url" in playback ? (
@@ -1542,6 +1543,8 @@ export default function Multimedia() {
                         className="h-full w-full bg-black object-contain"
                         aria-label={`Video playback for ${selectedRecord?.asset.title ?? "multimedia asset"}`}
                       />
+                    ) : playback && "chapters" in playback ? (
+                      <ActiveListeningPlayer playback={playback} title={selectedRecord?.asset.title ?? "multimedia asset"} />
                     ) : playback ? (
                       <audio
                         key={`${playback.revision_id}-audio`}
