@@ -13,6 +13,7 @@ import {
 import { WorkflowStub } from "./WorkflowStub";
 import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
 import { ResearchObservatoryAtmosphere } from "./atmosphere/ResearchObservatoryAtmosphere";
+import { WriteScriptoriumAtmosphere } from "./atmosphere/WriteScriptoriumAtmosphere";
 import type { Thread, ThreadHop } from "./threadModel";
 
 /**
@@ -265,12 +266,16 @@ export function SceneChrome({
           we keep the blur+frost, which is already legible on a frozen frame.
           A maintainer may raise the scrim alpha if a future busier scene
           drops contrast; the seam is this one className. */}
-      {wf === "research" ? (
+      {wf === "research" || wf === "write" ? (
         <div
           data-scene-chrome-body=""
           className="relative flex-1 min-h-0 overflow-hidden"
         >
-          <ResearchObservatoryAtmosphere />
+          {wf === "research" ? (
+            <ResearchObservatoryAtmosphere />
+          ) : (
+            <WriteScriptoriumAtmosphere />
+          )}
           <div
             data-scene-chrome-content=""
             className="relative z-10 h-full bg-glass backdrop-blur-glass"
