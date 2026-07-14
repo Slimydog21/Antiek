@@ -15,6 +15,7 @@ import type {
   MultimediaLocalCapability,
 } from "../../api/multimedia";
 import { LemonButton } from "../../components/lemon";
+import { ActiveListeningPlayer } from "./ActiveListeningPlayer";
 
 type Pending = "capability" | "prepare" | "produce" | "recover" | "playback" | null;
 
@@ -30,7 +31,6 @@ export function LocalAudiblePanel({
   const [prepared, setPrepared] = useState<MultimediaLocalAudiblePreparedSet | null>(null);
   const [playback, setPlayback] = useState<MultimediaLocalAudiblePlayback | null>(null);
   const [pending, setPending] = useState<Pending>("capability");
-  const [claimsOpen, setClaimsOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const assetId = record.asset.asset_id;
   const revisionId = record.asset.revision_id;
@@ -40,7 +40,6 @@ export function LocalAudiblePanel({
     setCapability(null);
     setPrepared(null);
     setPlayback(null);
-    setClaimsOpen(false);
     setPending("capability");
     setError(null);
     getMultimediaLocalAudibleCapability()
@@ -184,39 +183,10 @@ export function LocalAudiblePanel({
           {pending === "playback" && <p className="mt-3 font-mono text-[11px] text-shadow-2">Verifying audio...</p>}
           {playback && (
             <div className="mt-4 border-t border-rule pt-4 dark:border-charcoal-1">
-              <audio
-                controls
-                crossOrigin="use-credentials"
-                preload="metadata"
-                src={playback.audio_url}
-                className="w-full"
-                aria-label={`Audio playback for ${record.asset.title}`}
-              />
+              <ActiveListeningPlayer playback={playback} title={record.asset.title} />
               <p className="mt-2 font-mono text-[11px] text-shadow-2 dark:text-moonlight">
                 {playback.chapter_ids.length} chapters · {playback.retention_marker_count} retention beats · {playback.learned_claim_count} learned claims
               </p>
-              <LemonButton
-                className="mt-3"
-                size="sm"
-                variant="secondary"
-                aria-expanded={claimsOpen}
-                onClick={() => setClaimsOpen((value) => !value)}
-              >
-                {claimsOpen ? "Close learned claims" : "Review learned claims"}
-              </LemonButton>
-              {claimsOpen && (
-                <div className="mt-3 border-y border-rule dark:border-charcoal-1">
-                  {playback.learned_claims.map((claim, index) => (
-                    <div key={`${claim.chapter_id}-${index}`} className="border-b border-rule py-3 last:border-b-0 dark:border-charcoal-1">
-                      <p className="text-[13px] text-ink dark:text-bright">{claim.claim_text}</p>
-                      <p className="mt-1 font-mono text-[11px] text-shadow-2 dark:text-moonlight">
-                        {claim.source_count} {claim.source_count === 1 ? "source" : "sources"}
-                      </p>
-                      <p className="mt-2 text-[12px] text-shadow-1 dark:text-moonlight">{claim.follow_up_prompt}</p>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
           )}
         </>

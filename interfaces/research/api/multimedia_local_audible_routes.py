@@ -57,6 +57,16 @@ class LocalAudibleLearnedClaimResponse(BaseModel):
     follow_up_prompt: str
 
 
+class AudioChapterPlaybackResponse(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chapter_id: str
+    title: str
+    sequence: int
+    start_offset_seconds: float = Field(ge=0, allow_inf_nan=False)
+    end_offset_seconds: float = Field(gt=0, allow_inf_nan=False)
+
+
 class LocalAudiblePlaybackResponse(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -71,6 +81,7 @@ class LocalAudiblePlaybackResponse(BaseModel):
     learned_claim_count: int
     source_count: int
     learned_claims: tuple[LocalAudibleLearnedClaimResponse, ...]
+    chapters: tuple[AudioChapterPlaybackResponse, ...]
     audio_url: str
 
 
@@ -199,6 +210,7 @@ def get_local_audible_playback(
         raise HTTPException(status_code=409, detail="local audible registration conflicts")
     values = dict(metadata.__dict__)
     values["learned_claims"] = tuple(claim.__dict__ for claim in metadata.learned_claims)
+    values["chapters"] = tuple(chapter.__dict__ for chapter in metadata.chapters)
     return LocalAudiblePlaybackResponse(
         **values,
         audio_url=f"/multimedia/assets/{asset_id}/local-audible/playback/{revision_id}/audio",

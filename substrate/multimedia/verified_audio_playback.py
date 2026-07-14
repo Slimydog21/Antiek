@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import math
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -28,6 +29,15 @@ class AudioLearnedClaimMetadata:
 
 
 @dataclass(frozen=True)
+class AudioChapterPlaybackMetadata:
+    chapter_id: str
+    title: str
+    sequence: int
+    start_offset_seconds: float
+    end_offset_seconds: float
+
+
+@dataclass(frozen=True)
 class AudioPlaybackMetadata:
     asset_id: str
     revision_id: str
@@ -40,6 +50,40 @@ class AudioPlaybackMetadata:
     learned_claim_count: int
     source_count: int
     learned_claims: tuple[AudioLearnedClaimMetadata, ...]
+    chapters: tuple[AudioChapterPlaybackMetadata, ...] = ()
+
+
+def validate_audio_chapters(
+    chapters: tuple[AudioChapterPlaybackMetadata, ...],
+    *,
+    chapter_ids: tuple[str, ...],
+    duration_seconds: float,
+) -> tuple[AudioChapterPlaybackMetadata, ...]:
+    """Validate one complete, ordered projection against its verified authority."""
+    if not chapters or not math.isfinite(duration_seconds) or duration_seconds <= 0:
+        raise VerifiedPlaybackError("audio chapter timeline is invalid")
+    if tuple(row.chapter_id for row in chapters) != chapter_ids:
+        raise VerifiedPlaybackError("audio chapter order conflicts")
+    if len(set(chapter_ids)) != len(chapter_ids):
+        raise VerifiedPlaybackError("audio chapter ids are duplicated")
+    expected_start = 0.0
+    for expected_sequence, chapter in enumerate(chapters):
+        if (
+            not chapter.chapter_id
+            or not chapter.title
+            or chapter.sequence != expected_sequence
+            or not chapter.title.strip()
+            or not math.isfinite(chapter.start_offset_seconds)
+            or not math.isfinite(chapter.end_offset_seconds)
+            or chapter.start_offset_seconds < 0
+            or chapter.end_offset_seconds <= chapter.start_offset_seconds
+            or abs(chapter.start_offset_seconds - expected_start) > 0.001
+        ):
+            raise VerifiedPlaybackError("audio chapter timeline is invalid")
+        expected_start = chapter.end_offset_seconds
+    if abs(expected_start - duration_seconds) > 0.001:
+        raise VerifiedPlaybackError("audio chapter duration conflicts")
+    return chapters
 
 
 @dataclass(frozen=True)
@@ -64,6 +108,21 @@ class VerifiedAudioPlaybackRuntime:
         receipt = self._receipt(asset_id, revision_id, owner_digest)
         production = receipt.production.manifest
         run = receipt.audible_run.manifest
+        chapter_ids = tuple(chapter.chapter_id for chapter in run.chapters)
+        chapters = validate_audio_chapters(
+            tuple(
+                AudioChapterPlaybackMetadata(
+                    chapter_id=chapter.chapter_id,
+                    title=chapter.title,
+                    sequence=chapter.sequence,
+                    start_offset_seconds=chapter.start_offset_seconds,
+                    end_offset_seconds=chapter.end_offset_seconds,
+                )
+                for chapter in run.chapters
+            ),
+            chapter_ids=chapter_ids,
+            duration_seconds=production.duration_seconds,
+        )
         return AudioPlaybackMetadata(
             asset_id=asset_id,
             revision_id=revision_id,
@@ -73,7 +132,7 @@ class VerifiedAudioPlaybackRuntime:
                 production.output_path, production.output_sha256
             ),
             duration_seconds=production.duration_seconds,
-            chapter_ids=tuple(chapter.chapter_id for chapter in run.chapters),
+            chapter_ids=chapter_ids,
             retention_marker_count=len(run.retention_markers),
             learned_claim_count=len(run.learned_claims),
             source_count=len(
@@ -92,6 +151,7 @@ class VerifiedAudioPlaybackRuntime:
                 )
                 for claim in run.learned_claims
             ),
+            chapters=chapters,
         )
 
     def read(
@@ -156,8 +216,10 @@ class VerifiedAudioPlaybackRuntime:
 
 __all__ = [
     "AudioPlaybackMetadata",
+    "AudioChapterPlaybackMetadata",
     "AudioLearnedClaimMetadata",
     "UnsatisfiableMediaRange",
     "VerifiedAudioPlaybackRuntime",
     "VerifiedPlaybackError",
+    "validate_audio_chapters",
 ]

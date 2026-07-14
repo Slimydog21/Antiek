@@ -276,6 +276,25 @@ def test_verified_audio_metadata_and_ranges_are_owner_bound(tmp_path: Path) -> N
     assert metadata.chapter_ids == tuple(
         row.chapter_id for row in inputs.audible_run.manifest.chapters
     )
+    assert tuple(
+        (
+            row.chapter_id,
+            row.title,
+            row.sequence,
+            row.start_offset_seconds,
+            row.end_offset_seconds,
+        )
+        for row in metadata.chapters
+    ) == tuple(
+        (
+            row.chapter_id,
+            row.title,
+            row.sequence,
+            row.start_offset_seconds,
+            row.end_offset_seconds,
+        )
+        for row in inputs.audible_run.manifest.chapters
+    )
     assert metadata.retention_marker_count and metadata.learned_claim_count
     result = runtime.read(
         asset_id="asset-1",

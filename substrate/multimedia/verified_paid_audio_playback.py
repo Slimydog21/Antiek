@@ -6,7 +6,12 @@ import hashlib
 from dataclasses import dataclass
 
 from .paid_audio_receipt import PaidAudioReceipt, paid_audio_receipt_path
-from .verified_audio_playback import AudioLearnedClaimMetadata, AudioPlaybackMetadata
+from .verified_audio_playback import (
+    AudioChapterPlaybackMetadata,
+    AudioLearnedClaimMetadata,
+    AudioPlaybackMetadata,
+    validate_audio_chapters,
+)
 from .verified_playback import (
     MediaByteRange,
     VerifiedPlaybackError,
@@ -43,6 +48,27 @@ class VerifiedPaidAudioPlaybackRuntime:
     def metadata(self, *, asset_id: str, revision_id: str, owner_digest: str) -> AudioPlaybackMetadata:
         receipt = self._receipt(asset_id, revision_id, owner_digest)
         manifest = receipt.narration.manifest
+        chapter_ids = tuple(row.chapter_id for row in receipt.chapters)
+        titles = {row.chapter_id: row.title for row in receipt.transformed_plan.chapters}
+        start = 0.0
+        projected: list[AudioChapterPlaybackMetadata] = []
+        for sequence, source in enumerate(manifest.sources):
+            end = round(start + source.duration_seconds, 3)
+            projected.append(
+                AudioChapterPlaybackMetadata(
+                    chapter_id=source.chapter_id,
+                    title=titles[source.chapter_id],
+                    sequence=sequence,
+                    start_offset_seconds=start,
+                    end_offset_seconds=end,
+                )
+            )
+            start = end
+        chapters = validate_audio_chapters(
+            tuple(projected),
+            chapter_ids=chapter_ids,
+            duration_seconds=manifest.duration_seconds,
+        )
         return AudioPlaybackMetadata(
             asset_id=asset_id,
             revision_id=revision_id,
@@ -50,7 +76,7 @@ class VerifiedPaidAudioPlaybackRuntime:
             audio_sha256=manifest.output_sha256,
             audio_size_bytes=_verified_size(manifest.output_path, manifest.output_sha256),
             duration_seconds=manifest.duration_seconds,
-            chapter_ids=tuple(row.chapter_id for row in receipt.chapters),
+            chapter_ids=chapter_ids,
             retention_marker_count=len(receipt.retention_markers),
             learned_claim_count=len(receipt.learned_claims),
             source_count=len(receipt.source_chunk_ids),
@@ -63,6 +89,7 @@ class VerifiedPaidAudioPlaybackRuntime:
                 )
                 for row in receipt.learned_claims
             ),
+            chapters=chapters,
         )
 
     def read(
