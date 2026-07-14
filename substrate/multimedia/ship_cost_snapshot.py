@@ -178,6 +178,38 @@ def verify_multimedia_ship_cost_snapshot(
     _timestamp(datetime.fromisoformat(snapshot.generated_at_cutoff.replace("Z", "+00:00")))
 
 
+def validate_settled_execution(
+    connection: Any,
+    *,
+    execution_id: str,
+    signing_key: bytes,
+    owner_id: str,
+    asset_id: str,
+    revision_id: str,
+    cutoff: str,
+) -> MultimediaShipCostExecutionV1:
+    """Validate one exact execution through MAC, settlement, and accounting closure.
+
+    This is the bounded exact-execution helper reused by production_cost_closure
+    so settlement accounting is not duplicated.
+    """
+    row = connection.execute(
+        "SELECT * FROM multimedia_provider_executions WHERE execution_id=?",
+        [execution_id],
+    ).fetchone()
+    if row is None:
+        raise MultimediaShipCostEvidenceUnavailable("evidence_unavailable")
+    return _execution_evidence(
+        connection,
+        row=tuple(row),
+        signing_key=signing_key,
+        owner_id=owner_id,
+        asset_id=asset_id,
+        revision_id=revision_id,
+        cutoff=cutoff,
+    )
+
+
 def _execution_evidence(
     connection: Any,
     *,
@@ -199,6 +231,22 @@ def _execution_evidence(
         or record.status is not ProviderExecutionStatus.SUCCEEDED
     ):
         raise MultimediaShipCostEvidenceConflict("evidence_conflict")
+    return _validate_execution_accounting(
+        connection,
+        record=record,
+        authorization_signature=row[2],
+        cutoff=cutoff,
+    )
+
+
+def _validate_execution_accounting(
+    connection: Any,
+    *,
+    record: Any,
+    authorization_signature: object,
+    cutoff: str,
+) -> MultimediaShipCostExecutionV1:
+    """Validate claim, hold, and reservation accounting for one execution."""
     claim_rows = connection.execute(
         "SELECT signature,status,actual_cents,settled_at FROM "
         "multimedia_execution_authorization_claims WHERE authorization_id=?",
@@ -224,7 +272,7 @@ def _execution_evidence(
     settled = _db_timestamp(settled_at)
     updated = _db_timestamp(record.updated_at)
     if (
-        signature != row[2]
+        signature != authorization_signature
         or claim_status != "settled"
         or hold_state != "settled"
         or reservation_status != "exhausted"
@@ -308,5 +356,6 @@ __all__ = [
     "MultimediaShipCostExecutionV1",
     "MultimediaShipCostSnapshotV1",
     "build_multimedia_ship_cost_snapshot",
+    "validate_settled_execution",
     "verify_multimedia_ship_cost_snapshot",
 ]
