@@ -19,6 +19,7 @@ vi.mock("../../api/multimedia", () => ({
   getMultimediaLocalAudiblePlayback: vi.fn(),
   getListeningProgress: vi.fn(),
   inspectMultimediaLocalAudible: vi.fn(),
+  prepareResearchIntent: vi.fn(),
   prepareMultimediaLocalAudible: vi.fn(),
   produceMultimediaLocalAudible: vi.fn(),
   recoverMultimediaLocalAudible: vi.fn(),
