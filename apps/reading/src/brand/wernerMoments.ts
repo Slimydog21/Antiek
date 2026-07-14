@@ -101,7 +101,10 @@ export function momentForTransition(
     return withSettle(MOMENT_BY_ID.nightfall, next);
   }
 
-  if (from === "night" && to === "day") {
+  // Exact night → dawn: the civil-time crossing into dawn from the dark
+  // band. night → day (skipping dawn) returns null — the user never saw
+  // the dawn window. day → dawn and initial dawn also return null.
+  if (prev.dayPart === "night" && next.dayPart === "dawn") {
     return withSettle(MOMENT_BY_ID.daybreak, next);
   }
 

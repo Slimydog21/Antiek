@@ -12,6 +12,7 @@ import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { WernerSleeping } from "../brand/werner/animated";
+import type { SceneMomentCue } from "../scene/useDawnCue";
 import {
   createStationRestLifecycle,
   createWernerStage,
@@ -29,6 +30,7 @@ import {
   type WernerStageController,
   type StationRestLifecycle,
   type StationRestPhase,
+  STATION_WAKE_MS,
   WernerRig,
 } from "../werner";
 import "../werner/waddle.css";
@@ -133,7 +135,15 @@ function initialMascotPos(): { x: number; y: number } {
   );
 }
 
-export function PenguinMascot() {
+export function PenguinMascot({
+  sceneBeat,
+  onDawnBeatEnd,
+}: {
+  /** One-way opaque dawn cue from Scene (SPR-22). Transient — consumed on read. */
+  sceneBeat?: SceneMomentCue | null;
+  /** Called when the dawn beat ends (timer expiry or preempt). */
+  onDawnBeatEnd?: (sequence: number) => void;
+} = {}) {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
   const stationInstrumentSuspended = useStationInstrumentSuspended();
@@ -142,9 +152,39 @@ export function PenguinMascot() {
   restPhaseRef.current = restPhase;
   const restLifecycleRef = useRef<StationRestLifecycle | null>(null);
 
+  // SPR-22 — scene dawn beat state machine (separate from StationRestPhase).
+  // Consumed at most once per cue; preempted when foreground is occupied.
+  const [dawnBeatActive, setDawnBeatActive] = useState(false);
+  const dawnBeatActiveRef = useRef(false);
+  dawnBeatActiveRef.current = dawnBeatActive;
+  const dawnTimerRef = useRef<number | null>(null);
+  const activeDawnSequenceRef = useRef<number | null>(null);
+  const handledDawnSequenceRef = useRef(0);
+  const onDawnBeatEndRef = useRef(onDawnBeatEnd);
+  onDawnBeatEndRef.current = onDawnBeatEnd;
+
+  const finishDawnBeat = useCallback(() => {
+    const sequence = activeDawnSequenceRef.current;
+    if (sequence === null) return;
+    activeDawnSequenceRef.current = null;
+    dawnBeatActiveRef.current = false;
+    if (dawnTimerRef.current !== null) {
+      window.clearTimeout(dawnTimerRef.current);
+      dawnTimerRef.current = null;
+    }
+    setDawnBeatActive(false);
+    onDawnBeatEndRef.current?.(sequence);
+  }, []);
+
   useEffect(() => {
     if (restPhase === "sleeping") void loadWernerWaking();
   }, [restPhase]);
+
+  // Preload the waking artwork when the dawn beat starts (same artwork
+  // shared with long-rest waking; never StationRestPhase).
+  useEffect(() => {
+    if (sceneBeat) void loadWernerWaking();
+  }, [sceneBeat]);
 
   // The active (default) station activity. With one registered activity
   // (ice-fishing) this is always it; SPR-03 will make "active" switchable. The
@@ -234,6 +274,50 @@ export function PenguinMascot() {
   // back on station). The gag stands down for this window too, so an idle pointer
   // can't stack the own-hole fishing cartoon onto the walk-home gait.
   const returningHome = useRef(false);
+
+  useEffect(() => {
+    if (!sceneBeat || sceneBeat.sequence <= handledDawnSequenceRef.current) return;
+    handledDawnSequenceRef.current = sceneBeat.sequence;
+    if (
+      stationInstrumentSuspended ||
+      emoteRef.current !== null ||
+      dragStart.current !== null ||
+      roamPaused.current ||
+      returningHome.current ||
+      restPhaseRef.current === "waking"
+    ) {
+      onDawnBeatEndRef.current?.(sceneBeat.sequence);
+      return;
+    }
+    finishDawnBeat();
+    activeDawnSequenceRef.current = sceneBeat.sequence;
+    dawnBeatActiveRef.current = true;
+    setDawnBeatActive(true);
+    dawnTimerRef.current = window.setTimeout(finishDawnBeat, STATION_WAKE_MS);
+  }, [finishDawnBeat, sceneBeat, stationInstrumentSuspended]);
+
+  useEffect(() => {
+    if (
+      dawnBeatActiveRef.current &&
+      (stationInstrumentSuspended ||
+        emote !== null ||
+        restPhase === "waking")
+    ) {
+      finishDawnBeat();
+    }
+  }, [emote, finishDawnBeat, restPhase, stationInstrumentSuspended]);
+
+  useEffect(
+    () => () => {
+      if (dawnTimerRef.current !== null) {
+        window.clearTimeout(dawnTimerRef.current);
+        dawnTimerRef.current = null;
+      }
+      activeDawnSequenceRef.current = null;
+      dawnBeatActiveRef.current = false;
+    },
+    [],
+  );
   // The imperative controller (the SPR-10 seam). Created once; its StageHost
   // reuses THIS component's position + stroll rather than forking a second one.
   const stageRef = useRef<WernerStageController | null>(null);
@@ -378,13 +462,17 @@ export function PenguinMascot() {
 
     const tick = () => {
       const reading = follow.read();
+      const foregroundBusy =
+        emoteRef.current !== null ||
+        dragStart.current !== null ||
+        roamPaused.current ||
+        returningHome.current;
+      if (foregroundBusy) finishDawnBeat();
       const lifecycleEligible =
         !reduceMotion &&
         !stationInstrumentSuspended &&
         !reading.tabHidden &&
-        !dragStart.current &&
-        !roamPaused.current &&
-        !returningHome.current &&
+        !foregroundBusy &&
         emoteRef.current === null;
       restLifecycleRef.current?.setEligible(lifecycleEligible);
       applyAmbientClass(
@@ -397,7 +485,9 @@ export function PenguinMascot() {
           directedTravel: roamPaused.current,
           returningHome: returningHome.current,
           productEmote:
-            emoteRef.current !== null || restPhaseRef.current !== "active",
+            emoteRef.current !== null ||
+            restPhaseRef.current !== "active" ||
+            dawnBeatActiveRef.current,
           reducedMotion: reduceMotion,
           activityEnabled:
             activeActivity.id !== "ice-fishing" || wernerIceFishingCursor,
@@ -418,7 +508,13 @@ export function PenguinMascot() {
       // Werner mid-cast with the loop class on.
       if (appliedClass) bobRef.current?.classList.remove(appliedClass);
     };
-  }, [reduceMotion, follow, activeActivity, stationInstrumentSuspended]);
+  }, [
+    reduceMotion,
+    follow,
+    activeActivity,
+    stationInstrumentSuspended,
+    finishDawnBeat,
+  ]);
 
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
   // Created ONCE (empty deps). Its StageHost reuses this component's stroll /
@@ -445,7 +541,10 @@ export function PenguinMascot() {
       setFollowing: () => {},
       setRoamPaused: (paused) => {
         roamPaused.current = paused;
-        if (paused) return;
+        if (paused) {
+          finishDawnBeat();
+          return;
+        }
         // A directed excursion just ended (the stage walked Werner to a button
         // and bumped it), OR the stage froze (freeze() calls this to reset the
         // pause flag). Guarded so a drag/new excursion that began mid-return wins.
@@ -546,6 +645,7 @@ export function PenguinMascot() {
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.currentTarget.setPointerCapture(e.pointerId);
+      finishDawnBeat();
       dragStart.current = { x: e.clientX, y: e.clientY };
       moved.current = false;
       // Hand the position to the pointer: kill any in-flight stroll transition +
@@ -566,7 +666,7 @@ export function PenguinMascot() {
       }
       returningHome.current = false;
     },
-    [reduceMotion],
+    [finishDawnBeat, reduceMotion],
   );
 
   const onPointerMove = useCallback(
@@ -653,6 +753,7 @@ export function PenguinMascot() {
       data-testid="penguin-mascot"
       data-werner-emote={emote ?? "none"}
       data-werner-rest-phase={restPhase}
+      data-werner-scene-beat={dawnBeatActive ? sceneBeat?.moment : "none"}
       aria-label="Project — click to float the project tree, double-click to open"
       title="Project · click to float · double-click to open · drag to move"
       onPointerDown={onPointerDown}
@@ -701,24 +802,35 @@ export function PenguinMascot() {
         <span
           style={{
             visibility:
-              emote || restPhase === "sleeping" || restPhase === "waking"
+              emote ||
+              restPhase === "sleeping" ||
+              restPhase === "waking" ||
+              dawnBeatActive
                 ? "hidden"
                 : "visible",
           }}
         >
           <WernerRig size={MASCOT_SIZE} label="Project" />
         </span>
-        {!emote && restPhase === "sleeping" ? (
-          <span aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
-            <WernerSleeping size={MASCOT_SIZE} label="" />
-          </span>
-        ) : !emote && restPhase === "waking" ? (
+        {!emote && restPhase === "waking" ? (
           <span aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
             <Suspense
               fallback={<WernerSleeping size={MASCOT_SIZE} label="" reduced />}
             >
-              <LazyWernerWaking size={MASCOT_SIZE} />
+              <LazyWernerWaking size={MASCOT_SIZE} reduced={reduceMotion} />
             </Suspense>
+          </span>
+        ) : !emote && dawnBeatActive && !stationInstrumentSuspended ? (
+          <span aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+            <Suspense
+              fallback={<WernerSleeping size={MASCOT_SIZE} label="" reduced />}
+            >
+              <LazyWernerWaking size={MASCOT_SIZE} reduced={reduceMotion} />
+            </Suspense>
+          </span>
+        ) : !emote && restPhase === "sleeping" ? (
+          <span aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
+            <WernerSleeping size={MASCOT_SIZE} label="" />
           </span>
         ) : null}
         {/* The active emote (SPR-05) — an existing animated Werner mark mapped to
