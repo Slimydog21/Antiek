@@ -17,10 +17,12 @@ from substrate.multimedia.knowledge_finalization import (
     finalize_multimedia_knowledge,
 )
 from substrate.multimedia.read_model import (
+    ApplySteeringPreviewRequest,
     CreateMultimediaDraftRequest,
     MultimediaAssetStore,
     MultimediaKnowledgeLink,
-    SteeringRequest,
+    SteeringPreviewConflict,
+    SteeringPreviewRequest,
 )
 
 
@@ -249,9 +251,18 @@ def test_link_cas_conflict_and_steering_clear_stale_link(tmp_path) -> None:
             expected_revision_id=ready.asset.revision_id,
             owner_id="owner-a",
         )
-    steered = store.apply_steering(
+    steering = SteeringPreviewRequest(
+        expected_parent_revision_id=ready.asset.revision_id,
+        prompt="go deeper on engines in chapter 2",
+    )
+    preview = store.preview_steering(ready.asset.asset_id, steering, owner_id="owner-a")
+    assert preview.status == "ready"
+    steered = store.apply_steering_preview(
         ready.asset.asset_id,
-        SteeringRequest(prompt="go deeper on engines in chapter 2"),
+        ApplySteeringPreviewRequest(
+            **steering.model_dump(),
+            preview_token=preview.preview_token,
+        ),
         owner_id="owner-a",
     )
     assert steered.knowledge_link is None
@@ -289,10 +300,16 @@ async def test_concurrent_finalization_invokes_one_distiller(tmp_path, monkeypat
         )
     )
     assert await asyncio.to_thread(started.wait, 5)
-    with pytest.raises(ValueError, match="finalization is in progress"):
-        store.apply_steering(
+    with pytest.raises(
+        SteeringPreviewConflict,
+        match="multimedia_knowledge_finalization_in_progress",
+    ):
+        store.preview_steering(
             ready.asset.asset_id,
-            SteeringRequest(prompt="go deeper on engines in chapter 2"),
+            SteeringPreviewRequest(
+                expected_parent_revision_id=ready.asset.revision_id,
+                prompt="go deeper on engines in chapter 2",
+            ),
             owner_id="owner-a",
         )
     second_factory = _Factory()
