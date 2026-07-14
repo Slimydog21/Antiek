@@ -267,6 +267,7 @@ class MultimediaAssetRecord(_ReadModelBase):
     plan: MultimediaPlan
     mode: PlanMode
     style: str | None = None
+    derived_from_revision_id: str | None = None
     hardening_report: MultimediaHardeningReport | None = None
     latest_steering_intent: SteeringIntent | None = None
     jobs: tuple[MultimediaJobRecord, ...] = Field(default_factory=tuple)
@@ -402,6 +403,51 @@ class MultimediaAssetStore:
                 raise RuntimeError("multimedia asset identity collision")
             self._save_unlocked(record, owner_digest)
         return record
+
+    def create_grounded_draft(
+        self,
+        parent_asset_id: str,
+        *,
+        expected_parent_revision_id: str,
+        evidence: tuple[EvidenceChunk, ...],
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> MultimediaAssetRecord:
+        chunk_ids = tuple(item.chunk_id for item in evidence)
+        if not evidence or len(evidence) > 20 or len(set(chunk_ids)) != len(chunk_ids):
+            raise ValueError("grounded multimedia drafts require bounded unique evidence")
+        owner_digest = _owner_digest(owner_id)
+        asset_id = f"mm-{uuid.uuid4().hex[:12]}"
+        revision_id = "rev-1"
+        with self._locked(exclusive=True):
+            parent = self._load_unlocked(parent_asset_id, owner_digest)
+            if parent.asset.revision_id != expected_parent_revision_id:
+                raise ValueError("multimedia evidence parent revision is stale")
+            request = parent.plan.request.model_copy(update={"sources": ()})
+            plan = build_multimedia_plan(request, evidence)
+            asset = MultimediaAssetContract(
+                asset_id=asset_id,
+                kind=parent.asset.kind,
+                title=parent.asset.title,
+                user_prompt=parent.asset.user_prompt,
+                status=MultimediaStatus.PLANNED,
+                route_policy=parent.asset.route_policy,
+                requested_duration_minutes=parent.asset.requested_duration_minutes,
+                owner_user_id=owner_digest,
+                parent_asset_id=parent.asset.asset_id,
+                revision_id=revision_id,
+                manifest=plan.to_manifest(asset_id=asset_id, revision_id=revision_id),
+            )
+            record = MultimediaAssetRecord(
+                asset=asset,
+                plan=plan,
+                mode=parent.mode,
+                style=parent.style,
+                derived_from_revision_id=parent.asset.revision_id,
+            )
+            if self._path(owner_digest, asset_id).exists():
+                raise RuntimeError("multimedia asset identity collision")
+            self._save_unlocked(record, owner_digest)
+            return record
 
     def list_assets(self, *, owner_id: str = _DEFAULT_OWNER_ID) -> MultimediaAssetList:
         owner_digest = _owner_digest(owner_id)

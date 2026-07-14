@@ -92,6 +92,23 @@ export interface MultimediaAssetList {
   count: number;
 }
 
+export interface MultimediaEvidenceCandidate {
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  section_path: string | null;
+  excerpt: string;
+  text_sha256: string;
+  similarity: number;
+}
+
+export interface MultimediaEvidenceSearchResult {
+  asset_id: string;
+  revision_id: string;
+  query: string;
+  candidates: MultimediaEvidenceCandidate[];
+}
+
 export interface GateResult {
   gate_id: string;
   status: "pass" | "fail" | "manual";
@@ -115,12 +132,14 @@ export interface MultimediaAssetRecord {
     title: string;
     route_policy: MultimediaRoutePolicy;
     requested_duration_minutes: number;
+    parent_asset_id?: string | null;
     parent_revision_id?: string | null;
     steering_event_id?: string | null;
     manifest: unknown;
   };
   plan: unknown;
   mode: MultimediaMode;
+  derived_from_revision_id?: string | null;
   style: string | null;
   hardening_report: MultimediaHardeningReport | null;
   latest_steering_intent: unknown | null;
@@ -579,6 +598,76 @@ export async function getMultimediaAsset(assetId: string): Promise<MultimediaAss
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function searchMultimediaEvidence(
+  assetId: string,
+  revisionId: string,
+  limit = 12,
+): Promise<MultimediaEvidenceSearchResult> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/evidence-search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expected_revision_id: revisionId, limit }),
+  });
+  if (resp.status === 409) throw new Error("multimedia_evidence_conflict");
+  if (resp.status === 503) throw new Error("multimedia_evidence_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST multimedia evidence-search: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaEvidenceSearchResult;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    typeof result.query !== "string" ||
+    !result.query ||
+    !Array.isArray(result.candidates) ||
+    result.candidates.length > 20 ||
+    result.candidates.some((candidate) => !validEvidenceCandidate(candidate)) ||
+    new Set(result.candidates.map((candidate) => candidate.chunk_id)).size !== result.candidates.length
+  ) {
+    throw new Error("multimedia_evidence_identity_conflict");
+  }
+  return result;
+}
+
+export async function createGroundedMultimediaDraft(
+  assetId: string,
+  revisionId: string,
+  candidates: MultimediaEvidenceCandidate[],
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/grounded-drafts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expected_parent_revision_id: revisionId,
+      selections: candidates.map(({ chunk_id, text_sha256 }) => ({ chunk_id, text_sha256 })),
+    }),
+  });
+  if (resp.status === 409) throw new Error("multimedia_evidence_conflict");
+  if (resp.status === 503) throw new Error("multimedia_evidence_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST multimedia grounded-drafts: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaAssetRecord;
+  if (
+    result.asset.parent_asset_id !== assetId ||
+    result.derived_from_revision_id !== revisionId ||
+    result.asset.asset_id === assetId
+  ) {
+    throw new Error("multimedia_evidence_identity_conflict");
+  }
+  return result;
+}
+
+function validEvidenceCandidate(candidate: MultimediaEvidenceCandidate): boolean {
+  return Boolean(
+    candidate &&
+    typeof candidate.chunk_id === "string" && candidate.chunk_id &&
+    typeof candidate.document_id === "string" && candidate.document_id &&
+    typeof candidate.document_title === "string" && candidate.document_title &&
+    (candidate.section_path === null || typeof candidate.section_path === "string") &&
+    typeof candidate.excerpt === "string" && candidate.excerpt &&
+    typeof candidate.text_sha256 === "string" && /^[0-9a-f]{64}$/.test(candidate.text_sha256) &&
+    typeof candidate.similarity === "number" && Number.isFinite(candidate.similarity) &&
+    candidate.similarity >= -1 && candidate.similarity <= 1
+  );
 }
 
 export async function getMultimediaPlayback(
