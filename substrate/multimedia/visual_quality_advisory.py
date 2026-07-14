@@ -506,17 +506,19 @@ class VisualQualityAdvisoryRegistry:
                         continue
                     candidate_rows = sorted(
                         candidates_by_execution.get(execution.execution_id, []),
-                        key=lambda candidate: int(candidate[2]),
+                        key=_candidate_ordinal,
                     )
                     materialized: list[str] = []
                     for candidate_row in candidate_rows:
-                        receipt_row = receipts_by_candidate.get(str(candidate_row[0]))
-                        if receipt_row is None:
+                        matched_receipt_row = receipts_by_candidate.get(str(candidate_row[0]))
+                        if matched_receipt_row is None:
                             continue
-                        if _parse_timestamp(str(receipt_row[7])) > cutoff:
+                        if _parse_timestamp(str(matched_receipt_row[7])) > cutoff:
                             continue
                         # Validate bytes against the receipt already read in this snapshot.
-                        _verify_receipt_bytes(_receipt_from_row(receipt_row, self._key))
+                        _verify_receipt_bytes(
+                            _receipt_from_row(matched_receipt_row, self._key)
+                        )
                         materialized.append(str(candidate_row[0]))
                     if not materialized:
                         exclusions["without_materialized_candidates"] += 1
@@ -774,6 +776,12 @@ def _verify_candidate_row(row: Any, execution_id: str, key: bytes) -> None:
         or not hmac.compare_digest(row[5], _evidence_mac(key, list(row[:5])))
     ):
         raise VisualQualityAdvisoryIntegrityError("visual quality candidate integrity failed")
+
+
+def _candidate_ordinal(row: tuple[object, ...]) -> int:
+    if len(row) < 3 or not isinstance(row[2], int):
+        raise VisualQualityAdvisoryIntegrityError("visual quality candidate ordinal is invalid")
+    return row[2]
 
 
 def _receipt_from_row(row: Any, key: bytes) -> ArtifactQuarantineReceipt:
