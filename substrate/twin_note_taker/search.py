@@ -24,6 +24,8 @@ from .generate import (
     MAX_QUESTIONS,
     TWIN_AUTHORITY,
     TwinDocument,
+    TwinGenerationError,
+    verify_twin_document,
 )
 
 SearchKind = Literal["insight", "question"]
@@ -216,6 +218,10 @@ class TwinIndex:
     def _validate_document(document: TwinDocument) -> None:
         if type(document) is not TwinDocument:
             raise TwinSearchError("documents must be exact TwinDocument values")
+        try:
+            verify_twin_document(document)
+        except TwinGenerationError as exc:
+            raise TwinSearchError(str(exc)) from exc
         if type(document.withheld) is not bool or document.withheld:
             raise TwinSearchError("withheld twins cannot enter the search index")
         if document.authority != TWIN_AUTHORITY:
