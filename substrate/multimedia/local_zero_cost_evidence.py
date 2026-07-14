@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import re
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -245,12 +246,13 @@ def verify_local_zero_cost_evidence(
     scope_is_exact_shape = (
         evidence.excluded_revision_ids == (revision,)
         if evidence.run_kind == "audio"
-        else revision in evidence.excluded_revision_ids
-        and len(evidence.excluded_revision_ids) >= 2
-        and all(
-            value == revision
-            or (value.startswith("tts-") and len(value) == 36)
-            for value in evidence.excluded_revision_ids
+        else (
+            revision in evidence.excluded_revision_ids
+            and len(evidence.excluded_revision_ids) >= 2
+            and all(
+                value == revision or re.fullmatch(r"tts-[0-9a-f]{32}", value)
+                for value in evidence.excluded_revision_ids
+            )
         )
     )
     receipt_authority = evidence.authorities[-1].receipt_digest if roles == expected_roles else None
@@ -397,7 +399,13 @@ def _timestamp(value: datetime) -> str:
 
 
 def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode()
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("ascii")
 
 
 __all__ = [

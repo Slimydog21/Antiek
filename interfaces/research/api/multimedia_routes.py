@@ -473,7 +473,8 @@ def register_multimedia_routes(app: FastAPI) -> None:
         def video_backend(
             *, owner_id: str, asset_id: str, revision_id: str, now: datetime
         ) -> LocalZeroExternalCostEvidenceV1:
-            assert video_coordinator is not None and local_zero_key is not None
+            if video_coordinator is None or local_zero_key is None:
+                raise RuntimeError("local video evidence backend is unavailable")
             return build_local_video_zero_cost_evidence(
                 coordinator=video_coordinator,
                 db_path=hardening_db_path,
@@ -487,7 +488,8 @@ def register_multimedia_routes(app: FastAPI) -> None:
         def audio_backend(
             *, owner_id: str, asset_id: str, revision_id: str, now: datetime
         ) -> LocalZeroExternalCostEvidenceV1:
-            assert audio_coordinator is not None and local_zero_key is not None
+            if audio_coordinator is None or local_zero_key is None:
+                raise RuntimeError("local audio evidence backend is unavailable")
             return build_local_audio_zero_cost_evidence(
                 coordinator=audio_coordinator,
                 db_path=hardening_db_path,

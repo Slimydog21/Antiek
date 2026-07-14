@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS multimedia_local_video_runs (
  receipt_sha256 TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
  row_mac TEXT NOT NULL)
 """
+_NARRATION_ROW_COLUMNS = 12
+_VIDEO_ROW_COLUMNS = 15
 
 
 class LocalProductionCoordinatorError(RuntimeError):
@@ -655,7 +657,7 @@ class LocalVideoProductionCoordinator:
             )
         owner_digest = str(asset.owner_user_id)
         row = self._find_registered_row(owner_digest, asset_id, revision_id)
-        if len(row) != 15:
+        if len(row) != _VIDEO_ROW_COLUMNS:
             raise LocalProductionCoordinatorError(
                 "video authority row shape is unsupported: evidence_unavailable"
             )
@@ -670,7 +672,7 @@ class LocalVideoProductionCoordinator:
                 "video authority deterministic identity failed"
             )
         narration_row = self._narration._load(narration_run_id)
-        if narration_row is None or len(narration_row) != 12:
+        if narration_row is None or len(narration_row) != _NARRATION_ROW_COLUMNS:
             raise LocalProductionCoordinatorError(
                 "video authority referenced narration row is missing"
             )
@@ -768,7 +770,7 @@ class LocalVideoProductionCoordinator:
         fresh_video = self._load(video_run_id)
         if (
             fresh_video is None
-            or len(fresh_video) != 15
+            or len(fresh_video) != _VIDEO_ROW_COLUMNS
             or list(fresh_video[:14]) != list(row[:14])
         ):
             raise LocalProductionCoordinatorError(

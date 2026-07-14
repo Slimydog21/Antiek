@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS multimedia_local_audible_runs (
 """
 
 _MAX_RECEIPT_BYTES = 8 * 1024 * 1024
+_AUDIBLE_ROW_COLUMNS = 14
 
 AudibleRunStatus = Literal[
     "producing",
@@ -305,7 +306,7 @@ class LocalAudibleCoordinator:
             )
         owner_digest = str(asset.owner_user_id)
         row = self._find_registered_row(owner_digest, asset_id, revision_id)
-        if len(row) != 14:
+        if len(row) != _AUDIBLE_ROW_COLUMNS:
             raise LocalAudibleCoordinatorError(
                 "audible authority row shape is unsupported: evidence_unavailable"
             )
@@ -379,7 +380,7 @@ class LocalAudibleCoordinator:
         fresh_row = self._load(run_id)
         if (
             fresh_row is None
-            or len(fresh_row) != 14
+            or len(fresh_row) != _AUDIBLE_ROW_COLUMNS
             or list(fresh_row[:13]) != list(row[:13])
         ):
             raise LocalAudibleCoordinatorError(

@@ -650,6 +650,17 @@ def test_local_video_zero_evidence_binds_parent_and_narration_children(
             asset_id="asset-1",
             revision_id="revision-1",
         )
+    malformed_scope = evidence.model_copy(
+        update={"excluded_revision_ids": tuple(sorted(("revision-1", "tts-" + "x" * 32)))}
+    )
+    with pytest.raises(RuntimeError, match="evidence_unavailable"):
+        verify_local_zero_cost_evidence(
+            malformed_scope,
+            snapshot_key=b"local-zero-snapshot-key-material-32",
+            owner_id="owner-1",
+            asset_id="asset-1",
+            revision_id="revision-1",
+        )
     child = next(value for value in evidence.excluded_revision_ids if value != "revision-1")
     real_authority = video.registered_video_authority
 

@@ -30,7 +30,13 @@ LOCAL_KEY = b"local-zero-signing-key-material-32"
 
 
 def _canonical(value: object) -> bytes:
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(
+        value,
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        allow_nan=False,
+    ).encode("ascii")
 
 
 def _audio_evidence(
@@ -137,11 +143,14 @@ def test_api_paid_unavailable_falls_back_to_selected_audio_backend(
     assert report["local_zero_cost_evidence"]["external_cost_cents"] == 0
 
 
-def test_api_wrong_backend_kind_is_unavailable(
+def test_audio_asset_does_not_consult_video_backend(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:  # noqa: ANN001
+    def video_backend(**_kwargs):  # noqa: ANN003, ANN202
+        raise AssertionError("audio hardening must not consult the video backend")
+
     client, _store = _client(
-        tmp_path, monkeypatch, video_backend=lambda **_kwargs: None
+        tmp_path, monkeypatch, video_backend=video_backend
     )
     created = client.post(
         "/multimedia/assets",
