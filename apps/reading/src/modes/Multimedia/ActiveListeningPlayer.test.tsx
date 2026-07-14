@@ -13,7 +13,13 @@ const playback: MultimediaLocalAudiblePlayback = {
     { chapter_id: "two", title: "The mechanism", sequence: 1, start_offset_seconds: 20, end_offset_seconds: 45 },
   ],
   retention_marker_count: 2, learned_claim_count: 1, source_count: 1,
-  learned_claims: [{ chapter_id: "two", claim_text: "Lift changes with airflow.", source_count: 1, follow_up_prompt: "Recall the mechanism." }],
+  learned_claims: [{
+    line_id: "two-line-0", chapter_id: "two", claim_text: "Lift changes with airflow.", source_count: 1,
+    follow_up_prompt: "Recall the mechanism.", source_chunk_ids: ["chunk-1"], evidence_status: "verified_exact",
+    evidence_sources: [{ chunk_id: "chunk-1", document_id: "doc-flight",
+      locator: "Aerodynamics / Lift", authority_kind: "canonical_graph", chunk_sha256: "c".repeat(64),
+      start_utf8_byte: 0, end_utf8_byte: 26, span_sha256: "d".repeat(64), exact_text: "Lift changes with airflow." }],
+  }],
   audio_url: "/audio.wav",
 };
 
@@ -54,6 +60,23 @@ describe("ActiveListeningPlayer", () => {
     fireEvent.click(screen.getByRole("button", { name: "Review learned claims" }));
     expect(screen.getByText("Lift changes with airflow.")).toBeTruthy();
     expect(screen.getByText(/Recall the mechanism/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Inspect evidence" }));
+    expect(screen.getByText("Canonical graph")).toBeTruthy();
+    expect(screen.getByText("doc-flight")).toBeTruthy();
+    expect(screen.getByLabelText("Evidence for Lift changes with airflow.")).toBeTruthy();
+  });
+
+  it("keeps legacy receipts playable without claiming an exact excerpt", () => {
+    render(<ActiveListeningPlayer playback={{
+      ...playback,
+      learned_claims: [{
+        ...playback.learned_claims[0], evidence_status: "unavailable_legacy", evidence_sources: [],
+      }],
+    }} title="Legacy lesson" />);
+    fireEvent.click(screen.getByRole("button", { name: "Review learned claims" }));
+    expect(screen.getByText(/exact excerpt unavailable/)).toBeTruthy();
+    expect(screen.getByText(/Evidence records: chunk-1/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Inspect evidence" })).toBeNull();
   });
 
   it("registers Media Session actions and clears owned state", () => {

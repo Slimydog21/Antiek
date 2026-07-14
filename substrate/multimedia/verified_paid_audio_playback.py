@@ -8,8 +8,8 @@ from dataclasses import dataclass
 from .paid_audio_receipt import PaidAudioReceipt, paid_audio_receipt_path
 from .verified_audio_playback import (
     AudioChapterPlaybackMetadata,
-    AudioLearnedClaimMetadata,
     AudioPlaybackMetadata,
+    project_audio_claims_for_plan,
     validate_audio_chapters,
 )
 from .verified_playback import (
@@ -80,14 +80,8 @@ class VerifiedPaidAudioPlaybackRuntime:
             retention_marker_count=len(receipt.retention_markers),
             learned_claim_count=len(receipt.learned_claims),
             source_count=len(receipt.source_chunk_ids),
-            learned_claims=tuple(
-                AudioLearnedClaimMetadata(
-                    chapter_id=row.chapter_id,
-                    claim_text=row.claim_text,
-                    source_count=len(row.source_chunk_ids),
-                    follow_up_prompt=row.follow_up_prompt,
-                )
-                for row in receipt.learned_claims
+            learned_claims=project_audio_claims_for_plan(
+                receipt.learned_claims, plan=receipt.transformed_plan
             ),
             chapters=chapters,
         )

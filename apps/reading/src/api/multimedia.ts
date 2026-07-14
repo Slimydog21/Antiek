@@ -423,10 +423,24 @@ export interface MultimediaLocalAudiblePlayback {
   learned_claim_count: number;
   source_count: number;
   learned_claims: Array<{
+    line_id: string;
     chapter_id: string;
     claim_text: string;
     source_count: number;
     follow_up_prompt: string;
+    source_chunk_ids: string[];
+    evidence_status: "verified_exact" | "unavailable_legacy";
+    evidence_sources: Array<{
+      chunk_id: string;
+      document_id: string;
+      locator: string | null;
+      authority_kind: "canonical_graph" | "operator_excerpt";
+      chunk_sha256: string;
+      start_utf8_byte: number;
+      end_utf8_byte: number;
+      span_sha256: string;
+      exact_text: string;
+    }>;
   }>;
   audio_url: string;
 }
@@ -455,6 +469,43 @@ function hasValidAudioTimeline(result: MultimediaLocalAudiblePlayback): boolean 
     expectedStart = chapter.end_offset_seconds;
   }
   return Math.abs(expectedStart - result.duration_seconds) <= 0.001;
+}
+
+function hasValidAudioClaims(result: MultimediaLocalAudiblePlayback): boolean {
+  if (!Array.isArray(result.learned_claims) || result.learned_claims.length !== result.learned_claim_count) return false;
+  const lineIds = new Set<string>();
+  return result.learned_claims.every((claim) => {
+    if (
+      !claim || typeof claim.line_id !== "string" || !claim.line_id || lineIds.has(claim.line_id) ||
+      !result.chapter_ids.includes(claim.chapter_id) || typeof claim.claim_text !== "string" || !claim.claim_text ||
+      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 ||
+      typeof claim.follow_up_prompt !== "string" || !claim.follow_up_prompt ||
+      !Array.isArray(claim.source_chunk_ids) || claim.source_chunk_ids.length !== claim.source_count ||
+      new Set(claim.source_chunk_ids).size !== claim.source_chunk_ids.length ||
+      claim.source_chunk_ids.some((chunkId) => typeof chunkId !== "string" || !chunkId) ||
+      (claim.evidence_status !== "verified_exact" && claim.evidence_status !== "unavailable_legacy") ||
+      !Array.isArray(claim.evidence_sources) ||
+      (claim.evidence_status === "verified_exact" && claim.evidence_sources.length !== claim.source_count) ||
+      (claim.evidence_status === "unavailable_legacy" && claim.evidence_sources.length !== 0)
+    ) return false;
+    lineIds.add(claim.line_id);
+    const chunks = new Set<string>();
+    return claim.evidence_sources.every((source, index) => {
+      if (!source || chunks.has(source.chunk_id) || source.chunk_id !== claim.source_chunk_ids[index]) return false;
+      chunks.add(source.chunk_id);
+      return (
+        typeof source.chunk_id === "string" && source.chunk_id.length > 0 && source.chunk_id.length <= 128 &&
+        typeof source.document_id === "string" && source.document_id.length > 0 && source.document_id.length <= 128 &&
+        (source.locator === null || (typeof source.locator === "string" && source.locator.length <= 1024)) &&
+        (source.authority_kind === "canonical_graph" || source.authority_kind === "operator_excerpt") &&
+        /^[0-9a-f]{64}$/.test(source.chunk_sha256) && /^[0-9a-f]{64}$/.test(source.span_sha256) &&
+        Number.isSafeInteger(source.start_utf8_byte) && Number.isSafeInteger(source.end_utf8_byte) &&
+        source.start_utf8_byte >= 0 && source.end_utf8_byte > source.start_utf8_byte &&
+        typeof source.exact_text === "string" && source.exact_text === claim.claim_text &&
+        new TextEncoder().encode(source.exact_text).length === source.end_utf8_byte - source.start_utf8_byte
+      );
+    });
+  });
 }
 
 export interface MultimediaNarrationAuthorization {
@@ -997,13 +1048,7 @@ export async function getMultimediaLocalAudiblePlayback(
     !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
     !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
     !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
-    !Array.isArray(result.learned_claims) ||
-    result.learned_claims.length !== result.learned_claim_count ||
-    result.learned_claims.some((claim) =>
-      !result.chapter_ids.includes(claim.chapter_id) || !claim.claim_text ||
-      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 ||
-      !claim.follow_up_prompt
-    )
+    !hasValidAudioClaims(result)
   ) {
     throw new Error("multimedia_local_audible_playback_identity_conflict");
   }
@@ -1034,11 +1079,7 @@ export async function getMultimediaPaidAudioPlayback(
     !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
     !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
     !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
-    !Array.isArray(result.learned_claims) || result.learned_claims.length !== result.learned_claim_count ||
-    result.learned_claims.some((claim) =>
-      !result.chapter_ids.includes(claim.chapter_id) || !claim.claim_text ||
-      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 || !claim.follow_up_prompt
-    )
+    !hasValidAudioClaims(result)
   ) throw new Error("multimedia_paid_audio_playback_identity_conflict");
   return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
 }

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from typing import BinaryIO
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
@@ -15,7 +15,10 @@ from substrate.multimedia.verified_audio_playback import AudioPlaybackMetadata
 from substrate.multimedia.verified_paid_audio_playback import VerifiedPaidAudioPlaybackRuntime
 from substrate.multimedia.verified_playback import UnsatisfiableMediaRange, VerifiedPlaybackError
 
-from .multimedia_local_audible_routes import AudioChapterPlaybackResponse
+from .multimedia_local_audible_routes import (
+    AudioChapterPlaybackResponse,
+    LocalAudibleLearnedClaimResponse,
+)
 from .multimedia_reconciliation_routes import authenticated_multimedia_operator
 
 
@@ -32,7 +35,7 @@ class PaidAudioPlaybackResponse(BaseModel):
     retention_marker_count: int
     learned_claim_count: int
     source_count: int
-    learned_claims: tuple[dict[str, object], ...]
+    learned_claims: tuple[LocalAudibleLearnedClaimResponse, ...]
     chapters: tuple[AudioChapterPlaybackResponse, ...]
     audio_url: str
 
@@ -70,7 +73,7 @@ def get_paid_audio_playback(
         ) from exc
     _assert_link(metadata, link)
     values = dict(metadata.__dict__)
-    values["learned_claims"] = tuple(claim.__dict__ for claim in metadata.learned_claims)
+    values["learned_claims"] = tuple(asdict(claim) for claim in metadata.learned_claims)
     values["chapters"] = tuple(chapter.__dict__ for chapter in metadata.chapters)
     return PaidAudioPlaybackResponse(
         **values,

@@ -23,6 +23,7 @@ export function ActiveListeningPlayer({
   const [currentTime, setCurrentTime] = useState(0);
   const [speed, setSpeed] = useState<number>(1);
   const [claimsOpen, setClaimsOpen] = useState(false);
+  const [evidenceLineId, setEvidenceLineId] = useState<string | null>(null);
   const currentIndex = useMemo(() => {
     const index = playback.chapters.findIndex(
       (chapter) => currentTime >= chapter.start_offset_seconds && currentTime < chapter.end_offset_seconds,
@@ -53,6 +54,7 @@ export function ActiveListeningPlayer({
     setCurrentTime(0);
     setSpeed(1);
     setClaimsOpen(false);
+    setEvidenceLineId(null);
   }, [playback.asset_id, playback.revision_id, playback.audio_url]);
 
   useEffect(() => {
@@ -184,9 +186,48 @@ export function ActiveListeningPlayer({
           if (!claims.length) return null;
           return <section key={chapter.chapter_id} className="mt-3 border-t border-rule pt-3 dark:border-charcoal-1">
             <h4 className="font-mono text-[11px] font-semibold">{chapter.title}</h4>
-            {claims.map((claim, index) => <div key={`${chapter.chapter_id}-${index}`} className="mt-2 text-[12px]">
+            {claims.map((claim) => <div key={claim.line_id} className="mt-2 text-[12px]">
               <p>{claim.claim_text}</p>
               <p className="mt-1 text-shadow-1 dark:text-moonlight">{claim.follow_up_prompt} · {claim.source_count} {claim.source_count === 1 ? "source" : "sources"}</p>
+              {claim.evidence_status === "verified_exact" ? <LemonButton
+                className="mt-2"
+                size="sm"
+                variant="tertiary"
+                aria-expanded={evidenceLineId === claim.line_id}
+                onClick={() => setEvidenceLineId((current) => current === claim.line_id ? null : claim.line_id)}
+              >
+                {evidenceLineId === claim.line_id ? "Close evidence" : "Inspect evidence"}
+              </LemonButton> : (
+                <div className="mt-2 border-y border-rule py-2 dark:border-charcoal-1">
+                  <p className="text-[11px] text-shadow-1 dark:text-moonlight">Legacy receipt · exact excerpt unavailable</p>
+                  <p className="mt-1 font-mono text-[10px] text-shadow-2">Evidence records: {claim.source_chunk_ids.join(", ")}</p>
+                </div>
+              )}
+              {evidenceLineId === claim.line_id && (
+                <div className="mt-2 border-y border-rule dark:border-charcoal-1" aria-label={`Evidence for ${claim.claim_text}`}>
+                  {claim.evidence_sources.map((source) => (
+                    <article key={source.chunk_id} className="py-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-mono text-[10px] font-semibold uppercase text-shadow-1 dark:text-moonlight">
+                          {source.authority_kind === "canonical_graph" ? "Canonical graph" : "Operator excerpt"}
+                        </p>
+                        <p className="font-mono text-[10px] text-shadow-2">{source.document_id}</p>
+                      </div>
+                      {source.locator && <p className="mt-1 font-mono text-[10px] text-shadow-2">{source.locator}</p>}
+                      <blockquote className="mt-2 border-l-2 border-sun pl-3 text-[12px] leading-5">{source.exact_text}</blockquote>
+                      <details className="mt-2 text-[10px] text-shadow-2">
+                        <summary className="cursor-pointer font-mono">Authority details</summary>
+                        <dl className="mt-1 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-1 font-mono">
+                          <dt>Chunk</dt><dd className="truncate">{source.chunk_id}</dd>
+                          <dt>Bytes</dt><dd>{source.start_utf8_byte}–{source.end_utf8_byte}</dd>
+                          <dt>Chunk SHA</dt><dd className="truncate">{source.chunk_sha256}</dd>
+                          <dt>Span SHA</dt><dd className="truncate">{source.span_sha256}</dd>
+                        </dl>
+                      </details>
+                    </article>
+                  ))}
+                </div>
+              )}
             </div>)}
           </section>;
         })}
