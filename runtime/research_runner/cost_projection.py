@@ -20,6 +20,7 @@ from .protocol import (
     ProjectionIneligibility,
     ProjectionRate,
 )
+from .provider_qualification import require_paid_catalog_qualifications
 
 _INVENTORY_PATH = Path(__file__).with_name("dispatch_inventory.json")
 _MAX_PROJECTED_USD = Decimal("1000000000")
@@ -310,6 +311,17 @@ def _server_catalog() -> tuple[CostCatalogEntry, ...]:
     never_stale = datetime.max.replace(tzinfo=UTC)
     local_entries = (
         CostCatalogEntry(
+            seam_id="cascade.operator.spend_approval",
+            provider="antiek",
+            model="operator-authority",
+            operation="approve",
+            rates=(UnitRate(BillingUnit.LOCAL_OPERATION, Decimal(0)),),
+            snapshot="antiek-local-v1",
+            expires_at=never_stale,
+            paid_service=False,
+            assumptions=("operator approval is recorded locally and has no provider charge",),
+        ),
+        CostCatalogEntry(
             seam_id="cascade.session.launch",
             provider="antiek",
             model="host-local",
@@ -400,7 +412,9 @@ def _server_catalog() -> tuple[CostCatalogEntry, ...]:
     return (*local_entries, exa, *llm_entries)
 
 
-SERVER_COST_PROJECTOR = CostProjector(_server_catalog())
+_SERVER_CATALOG = _server_catalog()
+require_paid_catalog_qualifications(_SERVER_CATALOG)
+SERVER_COST_PROJECTOR = CostProjector(_SERVER_CATALOG)
 
 
 def project_cascade_cost(

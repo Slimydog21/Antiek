@@ -22,13 +22,19 @@ composer UI (Slice C/D). This route is a THIN HTTP adapter over the pure resolve
 
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any, Literal
+from decimal import Decimal
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, FastAPI, HTTPException
-from pydantic import BaseModel, ConfigDict, Field
+import yaml
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from interfaces.research.api.settings_budget import read_operator_budget
+from interfaces.research.api.settings_budget import (
+    BudgetResponse,
+    ModelDecisionRequest,
+    build_model_decision_candidates,
+    read_operator_budget,
+)
 from runtime.research_runner.cost_projection import project_cascade_cost
 from runtime.research_runner.protocol import (
     BillingUnit,
@@ -36,9 +42,13 @@ from runtime.research_runner.protocol import (
     CostProjection,
     CostProjectionRequest,
 )
-from substrate.dispatch.advisory_decision import DecisionCandidate
+from substrate.dispatch.advisory_decision import (
+    DecisionCandidate,
+    rank_model_candidates,
+)
 from substrate.dispatch.composer_model_projection import (
     BudgetSnapshot,
+    ComposerModelProjection,
     ProjectionResolver,
     resolve_composer_projection,
 )
@@ -58,6 +68,7 @@ def _unit(value: str) -> BillingUnit:
     except KeyError as exc:  # pragma: no cover — the Literal body makes this unreachable
         raise ValueError(f"unknown usage unit {value!r}") from exc
 
+
 UsageUnit = Literal["call", "input_token", "output_token", "http_request", "local_operation"]
 DecisionTaskName = Literal[
     "deep_research",
@@ -73,32 +84,16 @@ DecisionTaskName = Literal[
 class BoundedUsageBody(BaseModel):
     """The operator's enforced maximum usage for this prompt. Rates are NOT here."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     unit: UsageUnit
     maximum: int = Field(ge=0, le=10_000_000)
 
 
-class CandidateBody(BaseModel):
-    """One candidate the server ranks. Cost estimates are advisory (may be null)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    tier: str = Field(min_length=1, max_length=64)
-    provider: str = Field(min_length=1, max_length=128)
-    model: str = Field(min_length=1, max_length=128)
-    ready: bool = Field(strict=True)
-    estimated_usd_low: float | None = Field(default=None, ge=0.0)
-    estimated_usd_high: float | None = Field(default=None, ge=0.0)
-    would_exceed_budget: bool | None = None
-    benchmark_score: float | None = Field(default=None, ge=0.0, le=1.0)
-    benchmark_samples: int | None = Field(default=None, ge=0)
-
-
 class ChoiceBody(BaseModel):
     """The operator's explicit per-prompt model choice (optional — curated default if absent)."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     provider: str = Field(min_length=1, max_length=128)
     model: str = Field(min_length=1, max_length=128)
@@ -107,55 +102,112 @@ class ChoiceBody(BaseModel):
 class ComposerProjectionRequest(BaseModel):
     """A composer's request for its per-prompt model projection."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     task: DecisionTaskName
-    candidates: list[CandidateBody] = Field(min_length=1)
-    bounded_usage: list[BoundedUsageBody] = Field(min_length=1)
+    bounded_usage: list[BoundedUsageBody] = Field(min_length=1, max_length=5)
     choice: ChoiceBody | None = None
     operation: str = Field(default="deep_research", min_length=1, max_length=64)
     seam_id: str = Field(default="composer", min_length=1, max_length=128)
 
+    @model_validator(mode="after")
+    def usage_is_unique_and_matches_decision_bounds(self) -> ComposerProjectionRequest:
+        for name, value in (
+            ("operation", self.operation),
+            ("seam_id", self.seam_id),
+        ):
+            if value != value.strip():
+                raise ValueError(f"{name} must be trimmed")
+        if self.choice is not None:
+            for name, value in (
+                ("choice provider", self.choice.provider),
+                ("choice model", self.choice.model),
+            ):
+                if value != value.strip():
+                    raise ValueError(f"{name} must be trimmed")
+        units = [usage.unit for usage in self.bounded_usage]
+        if len(units) != len(set(units)):
+            raise ValueError("bounded usage units must be unique")
+        if not any(usage.maximum > 0 for usage in self.bounded_usage):
+            raise ValueError("bounded usage must include at least one positive maximum")
+        by_unit = {usage.unit: usage.maximum for usage in self.bounded_usage}
+        if by_unit.get("input_token", 0) > 2_500_000:
+            raise ValueError("input_token maximum exceeds the decision projection contract")
+        if by_unit.get("output_token", 0) > 1_000_000:
+            raise ValueError("output_token maximum exceeds the decision projection contract")
+        return self
 
-# Injectable so tests can swap the budget readout (production reads the daemon budget
-# sidecar via settings_budget.read_operator_budget — one source of truth shared with the
-# Settings page, so the composer bar and the Settings bar never disagree).
-_BUDGET_READ: Callable[[], object] | None = None
+
+def read_composer_projection_budget() -> BudgetResponse:
+    """FastAPI dependency for the Settings-owned operator budget snapshot."""
+    return read_operator_budget()
 
 
-def set_composer_projection_budget_read(
-    read: Callable[[], object] | None,
-) -> None:
-    """Inject a budget-read callable (tests); None restores the production readout."""
-    global _BUDGET_READ
-    _BUDGET_READ = read
-
-
-def _budget_snapshot() -> BudgetSnapshot:
+def _budget_snapshot(budget: object) -> BudgetSnapshot:
     """Read the operator budget honestly — None when a value is unmeasurable.
 
     Reuses ``read_operator_budget`` (the Settings source) so the composer bar and the
     Settings bar share one source of truth. ``spent_usd`` is ``None`` when the daemon
     sidecar is absent (honest unknown-spend), never fabricated ``0.0``.
     """
-    budget = _BUDGET_READ() if _BUDGET_READ is not None else read_operator_budget()
-    cap = getattr(budget, "daily_cap_usd", None)
-    spent = getattr(budget, "spent_usd", None)
-    return BudgetSnapshot(daily_cap_usd=cap, spent_usd=spent)
-
-
-def _to_candidate(body: CandidateBody) -> DecisionCandidate:
-    return DecisionCandidate(
-        tier=body.tier,
-        provider=body.provider,
-        model=body.model,
-        ready=body.ready,
-        estimated_usd_low=body.estimated_usd_low,
-        estimated_usd_high=body.estimated_usd_high,
-        would_exceed_budget=body.would_exceed_budget,
-        benchmark_score=body.benchmark_score,
-        benchmark_samples=body.benchmark_samples,
+    if type(budget) is not BudgetResponse:
+        raise TypeError("budget source returned an invalid value")
+    # Rebuild the value so forged/mutated model instances cannot cross this boundary.
+    validated = BudgetResponse.model_validate(budget.model_dump())
+    snapshot = BudgetSnapshot(
+        daily_cap_usd=validated.daily_cap_usd,
+        spent_usd=validated.spent_usd,
     )
+    if validated.spent_status == "known":
+        if (
+            validated.daily_cap_usd is None
+            or validated.spent_usd is None
+            or validated.remaining_usd is None
+        ):
+            raise ValueError("known budget spend requires cap, spent, and remaining values")
+        expected = max(
+            Decimal(0),
+            Decimal(str(validated.daily_cap_usd)) - Decimal(str(validated.spent_usd)),
+        )
+        if Decimal(str(validated.remaining_usd)) != expected:
+            raise ValueError("budget remaining conflicts with cap and spend")
+    elif validated.spent_status == "unknown":
+        if validated.spent_usd is not None or validated.remaining_usd is not None:
+            raise ValueError("unknown budget spend cannot claim spent or remaining values")
+    elif validated.daily_cap_usd is not None or validated.remaining_usd is not None:
+        raise ValueError("no-cap budget status cannot claim cap or remaining values")
+    return snapshot
+
+
+def _server_candidates(
+    request: Request,
+    body: ComposerProjectionRequest,
+    budget: BudgetResponse,
+) -> tuple[DecisionCandidate, ...]:
+    """Resolve candidates from server config/registration/bench state only."""
+    usage = {item.unit: item.maximum for item in body.bounded_usage}
+    source_candidates = build_model_decision_candidates(
+        request,
+        ModelDecisionRequest(
+            task=body.task,
+            input_chars=usage.get("input_token", 0) * 4,
+            expected_output_tokens=usage.get("output_token", 0),
+        ),
+        budget=budget,
+    )
+    decision = rank_model_candidates(body.task, source_candidates)
+    candidates: list[DecisionCandidate] = []
+    seen_routes: set[tuple[str, str]] = set()
+    for row in decision.ranked:
+        candidate = row.candidate
+        route = (candidate.provider, candidate.model)
+        if route in seen_routes:
+            continue
+        seen_routes.add(route)
+        candidates.append(candidate)
+    if not candidates:
+        raise ValueError("server model decision returned no candidates")
+    return tuple(candidates)
 
 
 def _make_projector(
@@ -186,13 +238,25 @@ def _make_projector(
 
 @composer_projection_router.post("/resolve")
 def resolve_projection(
+    request: Request,
     req: ComposerProjectionRequest,
+    budget_readout: Annotated[BudgetResponse, Depends(read_composer_projection_budget)],
 ) -> dict[str, Any]:
     """Resolve the per-prompt model projection. Advisory — never authorizes."""
-    candidates = tuple(_to_candidate(c) for c in req.candidates)
-    budget = _budget_snapshot()
+    try:
+        budget = _budget_snapshot(budget_readout)
+        candidates = _server_candidates(request, req, budget_readout)
+    except (ValueError, TypeError, OSError, yaml.YAMLError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="composer model decision source is unavailable",
+        ) from exc
     projector = _make_projector(req)
     choice = (req.choice.provider, req.choice.model) if req.choice is not None else None
+    if choice is not None and choice not in {
+        (candidate.provider, candidate.model) for candidate in candidates
+    }:
+        raise HTTPException(status_code=400, detail="chosen model route is unavailable")
     try:
         projection = resolve_composer_projection(
             task=req.task,
@@ -202,12 +266,21 @@ def resolve_projection(
             project=projector,
         )
     except (ValueError, TypeError) as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=503,
+            detail="composer projection could not be resolved",
+        ) from exc
     return _serialize(projection)
 
 
-def _serialize(projection: Any) -> dict[str, Any]:
-    """Serialize the projection to JSON. The CostProjection's Decimal fields become floats."""
+def _serialize(projection: ComposerModelProjection) -> dict[str, Any]:
+    """Serialize a revalidated projection without losing Decimal precision.
+
+    ``chosen_projection.maximum_cost_usd`` is a canonical Decimal string, not
+    a JSON number.  This preserves values outside IEEE-754's finite range;
+    consumers may use ``reservation_cents`` for an integer-cent display/hold.
+    """
+    projection.__post_init__()
     chosen_projection = projection.chosen_projection
     chosen_serialized: dict[str, Any] | None = None
     if chosen_projection is not None:
@@ -216,7 +289,7 @@ def _serialize(projection: Any) -> dict[str, Any]:
             "provider": chosen_projection.provider,
             "model": chosen_projection.model,
             "operation": chosen_projection.operation,
-            "maximum_cost_usd": float(chosen_projection.maximum_cost_usd),
+            "maximum_cost_usd": str(chosen_projection.maximum_cost_usd),
             "reservation_cents": chosen_projection.reservation_cents,
             "disposition": str(chosen_projection.disposition.value),
             "ineligibility": (
@@ -264,6 +337,6 @@ def register_composer_projection_routes(app: FastAPI) -> None:
 
 __all__ = [
     "composer_projection_router",
+    "read_composer_projection_budget",
     "register_composer_projection_routes",
-    "set_composer_projection_budget_read",
 ]

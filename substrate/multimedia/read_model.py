@@ -8,20 +8,25 @@ JSON-backed records.
 
 from __future__ import annotations
 
+import base64
 import fcntl
 import hashlib
+import hmac
+import json
 import os
 import re
+import secrets
 import stat
 import tempfile
 import threading
+import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from substrate.contracts.multimedia import (
     AssetKind,
@@ -37,8 +42,17 @@ from substrate.multimedia.planner import (
     MultimediaPlanRequest,
     build_multimedia_plan,
 )
+from substrate.multimedia.ship_cost_snapshot import (
+    MultimediaShipCostEvidenceConflict,
+    MultimediaShipCostSnapshotV1,
+    verify_multimedia_ship_cost_snapshot,
+)
 from substrate.multimedia.steering import (
+    RevisionChange,
+    RevisionPlan,
+    SegmentReuse,
     SteeringIntent,
+    SteeringOperation,
     SteeringTranscript,
     build_revision_asset,
     parse_steering_prompt,
@@ -58,6 +72,10 @@ _OWNER_DIGEST = re.compile(r"^[0-9a-f]{64}$")
 _ASSET_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _MAX_RECORD_BYTES = 32 * 1024 * 1024
 _MAX_ACCOUNT_ASSETS = 1_000
+_MAX_STEERING_TEXT_LENGTH = 8 * 1024
+_PREVIEW_TOKEN_VERSION = 1
+_DEFAULT_PREVIEW_TTL_SECONDS = 10 * 60
+_EPHEMERAL_PREVIEW_SIGNING_KEY = secrets.token_bytes(32)
 
 
 class _ReadModelBase(BaseModel):
@@ -77,9 +95,66 @@ class CreateMultimediaDraftRequest(_ReadModelBase):
 
 
 class SteeringRequest(_ReadModelBase):
-    prompt: str = Field(min_length=1)
-    raw_voice_transcript: str | None = None
-    corrected_voice_transcript: str | None = None
+    prompt: str = Field(min_length=1, max_length=_MAX_STEERING_TEXT_LENGTH)
+    raw_voice_transcript: str | None = Field(default=None, max_length=_MAX_STEERING_TEXT_LENGTH)
+    corrected_voice_transcript: str | None = Field(
+        default=None, max_length=_MAX_STEERING_TEXT_LENGTH
+    )
+
+    @model_validator(mode="after")
+    def voice_content_is_coherent(self) -> SteeringRequest:
+        if not self.prompt.strip():
+            raise ValueError("steering prompt must contain non-whitespace text")
+        if self.raw_voice_transcript is not None and not self.raw_voice_transcript.strip():
+            raise ValueError("raw voice transcript must contain non-whitespace text")
+        if self.corrected_voice_transcript is not None:
+            if self.raw_voice_transcript is None:
+                raise ValueError("corrected voice transcript requires a raw voice transcript")
+            if not self.corrected_voice_transcript.strip():
+                raise ValueError("corrected voice transcript must contain non-whitespace text")
+        return self
+
+
+class SteeringPreviewRequest(SteeringRequest):
+    expected_parent_revision_id: str = Field(
+        min_length=1, max_length=128, pattern=_ASSET_ID.pattern
+    )
+
+
+class ApplySteeringPreviewRequest(SteeringPreviewRequest):
+    preview_token: str = Field(min_length=1, max_length=4096)
+
+
+class SteeringPreviewClarification(_ReadModelBase):
+    status: Literal["needs_clarification"] = "needs_clarification"
+    asset_id: str
+    parent_revision_id: str
+    intent: SteeringIntent
+
+
+class SteeringPreviewReady(_ReadModelBase):
+    status: Literal["ready"] = "ready"
+    asset_id: str
+    parent_revision_id: str
+    proposed_revision_id: str
+    route_policy: RoutePolicy
+    intent: SteeringIntent
+    operations: tuple[SteeringOperation, ...]
+    affected_segment_ids: tuple[str, ...]
+    segment_reuse: tuple[SegmentReuse, ...]
+    changes: tuple[RevisionChange, ...]
+    estimated_cost_delta_usd: float = Field(ge=0)
+    preview_token: str
+    expires_at_epoch_seconds: int
+
+
+SteeringPreviewResponse = SteeringPreviewClarification | SteeringPreviewReady
+
+
+class SteeringPreviewConflict(ValueError):
+    def __init__(self, code: str) -> None:
+        self.code = code
+        super().__init__(code)
 
 
 class MultimediaJobRecord(_ReadModelBase):
@@ -229,7 +304,14 @@ class MultimediaAssetStore:
     caller; only ``migrate_legacy_assets`` can assign it to an explicit owner.
     """
 
-    def __init__(self, root: str | os.PathLike[str] | None = None) -> None:
+    def __init__(
+        self,
+        root: str | os.PathLike[str] | None = None,
+        *,
+        preview_signing_key: bytes | None = None,
+        clock: Callable[[], float] = time.time,
+        preview_ttl_seconds: int = _DEFAULT_PREVIEW_TTL_SECONDS,
+    ) -> None:
         default_root = Path(tempfile.gettempdir()) / "antiek-multimedia-assets"
         if root is not None:
             self.root = Path(root)
@@ -246,6 +328,17 @@ class MultimediaAssetStore:
         os.chmod(self._accounts, 0o700)
         self._thread_lock = threading.RLock()
         self._lock_path = self.root / ".store.lock"
+        self._preview_signing_key = (
+            preview_signing_key
+            if preview_signing_key is not None
+            else _preview_signing_key_from_environment()
+        )
+        if len(self._preview_signing_key) < 32:
+            raise ValueError("multimedia steering preview signing key must be at least 32 bytes")
+        if preview_ttl_seconds < 1:
+            raise ValueError("multimedia steering preview TTL must be positive")
+        self._clock = clock
+        self._preview_ttl_seconds = preview_ttl_seconds
 
     def create_draft(
         self,
@@ -308,6 +401,22 @@ class MultimediaAssetStore:
         with self._locked(exclusive=False):
             return self._load_unlocked(asset_id, owner_digest)
 
+    @contextmanager
+    def guard_revision(
+        self,
+        asset_id: str,
+        expected_revision_id: str,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> Iterator[MultimediaAssetRecord]:
+        """Hold a shared store lock while a caller binds work to one revision."""
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=False):
+            record = self._load_unlocked(asset_id, owner_digest)
+            if record.asset.revision_id != expected_revision_id:
+                raise ValueError("multimedia asset revision is stale")
+            yield record
+
     def approve_dry_run(
         self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
     ) -> MultimediaAssetRecord:
@@ -339,27 +448,82 @@ class MultimediaAssetStore:
             self._save_unlocked(updated, owner_digest)
             return updated
 
-    def apply_steering(
+    def preview_steering(
         self,
         asset_id: str,
-        request: SteeringRequest,
+        request: SteeringPreviewRequest,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> SteeringPreviewResponse:
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=False):
+            record = self._load_unlocked(asset_id, owner_digest)
+            self._guard_steering_parent(record, request.expected_parent_revision_id)
+            intent, revision = _steering_plan(record, request)
+            if revision is None:
+                return SteeringPreviewClarification(
+                    asset_id=asset_id,
+                    parent_revision_id=record.asset.revision_id,
+                    intent=intent,
+                )
+            expires_at = int(self._clock()) + self._preview_ttl_seconds
+            token = self._sign_preview_authority(
+                owner_digest=owner_digest,
+                asset_id=asset_id,
+                parent_revision_id=record.asset.revision_id,
+                request=request,
+                plan_digest=_revision_plan_digest(revision),
+                expires_at=expires_at,
+            )
+            return SteeringPreviewReady(
+                asset_id=asset_id,
+                parent_revision_id=record.asset.revision_id,
+                proposed_revision_id=revision.revision_id,
+                route_policy=revision.route_policy,
+                intent=intent,
+                operations=intent.operations,
+                affected_segment_ids=revision.affected_segment_ids,
+                segment_reuse=revision.segment_reuse,
+                changes=revision.changes,
+                estimated_cost_delta_usd=revision.estimated_cost_delta_usd,
+                preview_token=token,
+                expires_at_epoch_seconds=expires_at,
+            )
+
+    def apply_steering_preview(
+        self,
+        asset_id: str,
+        request: ApplySteeringPreviewRequest,
         *,
         owner_id: str = _DEFAULT_OWNER_ID,
     ) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
-            if record.knowledge_finalization_revision_id is not None:
-                raise ValueError("multimedia knowledge finalization is in progress")
-            transcript = None
-            if request.raw_voice_transcript:
-                transcript = SteeringTranscript(
-                    transcript_id=f"voice-{uuid.uuid4().hex[:8]}",
-                    raw_text=request.raw_voice_transcript,
-                    corrected_text=request.corrected_voice_transcript,
-                )
-            intent = parse_steering_prompt(request.prompt, record.asset.manifest, transcript=transcript)
-            revision = plan_revision(record.asset, intent)
+            self._guard_steering_parent(record, request.expected_parent_revision_id)
+            claims = self._verify_preview_authority(request.preview_token)
+            expected_claims = {
+                "version": _PREVIEW_TOKEN_VERSION,
+                "owner_identity_digest": owner_digest,
+                "asset_id": asset_id,
+                "parent_revision_id": request.expected_parent_revision_id,
+                "input_digest": _steering_input_digest(request),
+            }
+            for key, expected in expected_claims.items():
+                if not hmac.compare_digest(str(claims.get(key, "")), str(expected)):
+                    raise SteeringPreviewConflict(
+                        "multimedia_steering_preview_content_mismatch"
+                    )
+            expires_at = claims.get("expires_at_epoch_seconds")
+            if not isinstance(expires_at, int) or expires_at <= int(self._clock()):
+                raise SteeringPreviewConflict("multimedia_steering_preview_expired")
+            intent, revision = _steering_plan(record, request)
+            if revision is None:
+                raise SteeringPreviewConflict("multimedia_steering_preview_not_ready")
+            if not hmac.compare_digest(
+                str(claims.get("plan_digest", "")), _revision_plan_digest(revision)
+            ):
+                raise SteeringPreviewConflict("multimedia_steering_preview_plan_mismatch")
             child = build_revision_asset(record.asset, revision)
             updated = self._with_job(
                 record.model_copy(
@@ -375,22 +539,96 @@ class MultimediaAssetStore:
                 kind="steering",
                 status="succeeded",
                 progress_percent=100,
-                message="Steering prompt planned as a child revision.",
+                message="Reviewed steering preview applied as a child revision.",
             )
             self._save_unlocked(updated, owner_digest)
             return updated
 
+    @staticmethod
+    def _guard_steering_parent(
+        record: MultimediaAssetRecord, expected_parent_revision_id: str
+    ) -> None:
+        if record.knowledge_finalization_revision_id is not None:
+            raise SteeringPreviewConflict("multimedia_knowledge_finalization_in_progress")
+        if record.asset.revision_id != expected_parent_revision_id:
+            raise SteeringPreviewConflict("multimedia_steering_stale_parent")
+
+    def _sign_preview_authority(
+        self,
+        *,
+        owner_digest: str,
+        asset_id: str,
+        parent_revision_id: str,
+        request: SteeringPreviewRequest,
+        plan_digest: str,
+        expires_at: int,
+    ) -> str:
+        claims = {
+            "version": _PREVIEW_TOKEN_VERSION,
+            "owner_identity_digest": owner_digest,
+            "asset_id": asset_id,
+            "parent_revision_id": parent_revision_id,
+            "input_digest": _steering_input_digest(request),
+            "plan_digest": plan_digest,
+            "expires_at_epoch_seconds": expires_at,
+        }
+        payload = _canonical_json(claims)
+        signature = hmac.digest(self._preview_signing_key, payload, "sha256")
+        return f"{_base64url(payload)}.{_base64url(signature)}"
+
+    def _verify_preview_authority(self, token: str) -> dict[str, object]:
+        try:
+            payload_encoded, signature_encoded = token.split(".", 1)
+            payload = _base64url_decode(payload_encoded)
+            signature = _base64url_decode(signature_encoded)
+        except (ValueError, TypeError) as exc:
+            raise SteeringPreviewConflict("multimedia_steering_preview_content_mismatch") from exc
+        expected_signature = hmac.digest(self._preview_signing_key, payload, "sha256")
+        if not hmac.compare_digest(signature, expected_signature):
+            raise SteeringPreviewConflict("multimedia_steering_preview_content_mismatch")
+        try:
+            claims = json.loads(payload)
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise SteeringPreviewConflict("multimedia_steering_preview_content_mismatch") from exc
+        if not isinstance(claims, dict):
+            raise SteeringPreviewConflict("multimedia_steering_preview_content_mismatch")
+        return claims
+
     def run_hardening(
-        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+        self,
+        asset_id: str,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+        cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
+        snapshot_key: bytes | None = None,
     ) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
+            if cost_snapshot is not None:
+                try:
+                    if snapshot_key is None:
+                        raise ValueError("snapshot key is unavailable")
+                    verify_multimedia_ship_cost_snapshot(
+                        cost_snapshot,
+                        snapshot_key=snapshot_key,
+                        owner_id=owner_id,
+                        asset_id=record.asset.asset_id,
+                        revision_id=record.asset.revision_id,
+                    )
+                except (TypeError, ValueError, RuntimeError) as exc:
+                    raise MultimediaShipCostEvidenceConflict("evidence_conflict") from exc
             scenes: tuple[object, ...] = ()
             if record.mode != "audio":
                 audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=record.asset.asset_id, revision_id=f"{record.asset.revision_id}-audio")
                 scenes = build_video_scenes(record.plan, audio)
-            report = evaluate_multimedia_asset(record.asset, scenes=scenes)
+            report = evaluate_multimedia_asset(
+                record.asset,
+                scenes=scenes,
+                cost_snapshot=cost_snapshot,
+                snapshot_key=snapshot_key,
+                owner_id=owner_id,
+            )
             updated = self._with_job(
                 record.model_copy(update={"hardening_report": report}),
                 kind="hardening",
@@ -762,6 +1000,83 @@ class MultimediaAssetStore:
                 os.close(descriptor)
 
 
+def _preview_signing_key_from_environment() -> bytes:
+    encoded = os.environ.get("ANTIEK_MULTIMEDIA_STEERING_PREVIEW_KEY_HEX", "").strip()
+    if encoded:
+        try:
+            key = bytes.fromhex(encoded)
+        except ValueError as exc:
+            raise ValueError("multimedia steering preview signing key is invalid") from exc
+        if len(key) < 32:
+            raise ValueError("multimedia steering preview signing key must be at least 32 bytes")
+        return key
+    auth_secret = os.environ.get("ANTIEK_AUTH_SECRET", "").strip()
+    if auth_secret:
+        return hmac.digest(
+            auth_secret.encode("utf-8"), b"antiek.multimedia.steering-preview.v1", "sha256"
+        )
+    return _EPHEMERAL_PREVIEW_SIGNING_KEY
+
+
+def _steering_plan(
+    record: MultimediaAssetRecord, request: SteeringRequest
+) -> tuple[SteeringIntent, RevisionPlan | None]:
+    transcript = None
+    if request.raw_voice_transcript is not None:
+        transcript_digest = hashlib.sha256(
+            _canonical_json(
+                {
+                    "raw_voice_transcript": request.raw_voice_transcript,
+                    "corrected_voice_transcript": request.corrected_voice_transcript,
+                }
+            )
+        ).hexdigest()[:16]
+        transcript = SteeringTranscript(
+            transcript_id=f"voice-{transcript_digest}",
+            raw_text=request.raw_voice_transcript,
+            corrected_text=request.corrected_voice_transcript,
+        )
+    intent = parse_steering_prompt(request.prompt, record.asset.manifest, transcript=transcript)
+    if intent.status == "needs_clarification":
+        return intent, None
+    return intent, plan_revision(record.asset, intent)
+
+
+def _steering_input_digest(request: SteeringRequest) -> str:
+    return hashlib.sha256(
+        _canonical_json(
+            {
+                "prompt": request.prompt,
+                "raw_voice_transcript": request.raw_voice_transcript,
+                "corrected_voice_transcript": request.corrected_voice_transcript,
+            }
+        )
+    ).hexdigest()
+
+
+def _revision_plan_digest(revision: RevisionPlan) -> str:
+    return hashlib.sha256(
+        _canonical_json(revision.model_dump(mode="json"))
+    ).hexdigest()
+
+
+def _canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")
+
+
+def _base64url(value: bytes) -> str:
+    return base64.urlsafe_b64encode(value).rstrip(b"=").decode("ascii")
+
+
+def _base64url_decode(value: str) -> bytes:
+    if not value or len(value) > 4096:
+        raise ValueError("invalid base64url value")
+    padding = "=" * (-len(value) % 4)
+    return base64.b64decode(value + padding, altchars=b"-_", validate=True)
+
+
 def _owner_digest(owner_id: str) -> str:
     if not isinstance(owner_id, str):
         raise ValueError("multimedia owner identity is invalid")
@@ -905,6 +1220,7 @@ def _title(topic: str) -> str:
 
 
 __all__ = [
+    "ApplySteeringPreviewRequest",
     "CreateMultimediaDraftRequest",
     "MultimediaAssetList",
     "MultimediaAssetRecord",
@@ -912,5 +1228,10 @@ __all__ = [
     "MultimediaAssetSummary",
     "MultimediaJobList",
     "MultimediaJobRecord",
+    "SteeringPreviewClarification",
+    "SteeringPreviewConflict",
+    "SteeringPreviewReady",
+    "SteeringPreviewRequest",
+    "SteeringPreviewResponse",
     "SteeringRequest",
 ]

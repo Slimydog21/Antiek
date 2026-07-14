@@ -1043,7 +1043,10 @@ def _ensure_schema(ctx: WriteContext) -> None:
     ctx.execute(_RECOVERY_EVIDENCE_DDL)
 
 
-def _record(row: tuple[object, ...], *, signing_key: bytes) -> ProviderExecutionRecord:
+def provider_execution_record_from_row(
+    row: tuple[object, ...], *, signing_key: bytes
+) -> ProviderExecutionRecord:
+    """Validate and decode a persisted provider execution row."""
     try:
         if len(row) != 22 or not isinstance(row[21], str):
             raise ValueError("provider execution row shape is invalid")
@@ -1084,6 +1087,10 @@ def _record(row: tuple[object, ...], *, signing_key: bytes) -> ProviderExecution
     if record.execution_id != expected_id:
         raise ProviderExecutionIntegrityError("provider execution identity is corrupt")
     return record
+
+
+# Private compatibility alias for existing operational readers.
+_record = provider_execution_record_from_row
 
 
 def _record_mac(signing_key: bytes, values: list[object]) -> str:
@@ -1295,6 +1302,7 @@ __all__ = [
     "charge_and_mark_submission_unknown",
     "get_provider_execution",
     "mark_submission_outcome_unknown",
+    "provider_execution_record_from_row",
     "record_external_recovery_evidence",
     "record_provider_observation",
     "request_provider_cancellation",

@@ -10,9 +10,10 @@ from substrate.multimedia.audio_production_registration import (
     register_multimedia_audio_production,
 )
 from substrate.multimedia.read_model import (
+    ApplySteeringPreviewRequest,
     CreateMultimediaDraftRequest,
     MultimediaAssetStore,
-    SteeringRequest,
+    SteeringPreviewRequest,
 )
 from substrate.multimedia.verified_audio_playback import (
     AudioLearnedClaimMetadata,
@@ -83,9 +84,18 @@ def test_audio_registration_attaches_exact_metadata_replays_and_steering_clears(
         playback=_Playback(),  # type: ignore[arg-type]
     )
     assert replay.audio_production_link == first.audio_production_link
-    steered = store.apply_steering(
+    steering = SteeringPreviewRequest(
+        expected_parent_revision_id=first.asset.revision_id,
+        prompt="go deeper on engines in chapter 2",
+    )
+    preview = store.preview_steering(asset_id, steering, owner_id="owner-1")
+    assert preview.status == "ready"
+    steered = store.apply_steering_preview(
         asset_id,
-        SteeringRequest(prompt="go deeper on engines in chapter 2"),
+        ApplySteeringPreviewRequest(
+            **steering.model_dump(),
+            preview_token=preview.preview_token,
+        ),
         owner_id="owner-1",
     )
     assert steered.audio_production_link is None
