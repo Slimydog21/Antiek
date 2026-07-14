@@ -16,6 +16,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 
 from roles.note_taker import DispatchDistiller, Distiller
+from substrate.multimedia.authorized_production_worker import AuthorizedProductionRuntime
 from substrate.multimedia.graph_evidence import (
     CreateGroundedMultimediaDraftRequest,
     MultimediaEvidenceSearchRequest,
@@ -93,6 +94,7 @@ from .multimedia_local_audible_routes import (
     multimedia_local_audible_router,
 )
 from .multimedia_local_audible_runtime import (
+    MultimediaLocalAudibleRuntime,
     multimedia_local_audible_runtime_from_environment,
 )
 from .multimedia_local_routes import (
@@ -622,8 +624,8 @@ async def recover_multimedia_asset_knowledge_finalization(
 def _resolve_research_audio_authority(
     *,
     store: MultimediaAssetStore,
-    local_audible_runtime: Any,
-    production_worker_runtime: Any,
+    local_audible_runtime: MultimediaLocalAudibleRuntime | None,
+    production_worker_runtime: AuthorizedProductionRuntime | None,
     asset_id: str,
     revision_id: str,
     operator_id: str,
