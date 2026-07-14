@@ -71,7 +71,7 @@ def _strip_chrome(soup: BeautifulSoup) -> None:
     sidebar."""
     for tag in soup.find_all(list(_STRIP_TAGS)):
         tag.decompose()
-    for el in soup.find_all(attrs={"role": True}):
+    for el in soup.find_all(role=True):
         if el.get("role") in _STRIP_ROLES:
             el.decompose()
 
@@ -85,7 +85,7 @@ def _pick_main(soup: BeautifulSoup) -> Tag:
     main = soup.find("main")
     if main and len(main.get_text(strip=True)) > 100:
         return main
-    role_main = soup.find(attrs={"role": "main"})
+    role_main = soup.find(role="main")
     if role_main and len(role_main.get_text(strip=True)) > 100:
         return role_main
 
@@ -107,35 +107,39 @@ def _pick_main(soup: BeautifulSoup) -> Tag:
 
 
 def _resolve_title(soup: BeautifulSoup) -> str | None:
-    og = soup.find("meta", attrs={"property": "og:title"})
+    og = soup.find("meta", property="og:title")
     if og and og.get("content"):
-        return og["content"].strip()
+        content = og["content"]
+        return content.strip() if isinstance(content, str) else None
     title = soup.find("title")
     if title and title.get_text(strip=True):
-        return title.get_text(strip=True)
+        text = title.get_text(strip=True)
+        return text if isinstance(text, str) else None
     h1 = soup.find("h1")
     if h1 and h1.get_text(strip=True):
-        return h1.get_text(strip=True)
+        text = h1.get_text(strip=True)
+        return text if isinstance(text, str) else None
     return None
 
 
 def _resolve_author(soup: BeautifulSoup) -> str | None:
-    for sel in [
-        {"name": "author"},
-        {"property": "article:author"},
-        {"name": "byl"},  # NYT
-    ]:
-        meta = soup.find("meta", attrs=sel)
+    for meta in (
+        soup.find("meta", attrs={"name": "author"}),
+        soup.find("meta", property="article:author"),
+        soup.find("meta", attrs={"name": "byl"}),  # NYT
+    ):
         if meta and meta.get("content"):
-            return meta["content"].strip()
-    sch = soup.find(attrs={"itemprop": "author"})
+            content = meta["content"]
+            return content.strip() if isinstance(content, str) else None
+    sch = soup.find(itemprop="author")
     if sch:
-        name = sch.find(attrs={"itemprop": "name"})
+        name = sch.find(itemprop="name")
         if name and name.get_text(strip=True):
-            return name.get_text(strip=True)
+            text = name.get_text(strip=True)
+            return text if isinstance(text, str) else None
         txt = sch.get_text(strip=True)
         if txt:
-            return txt
+            return txt if isinstance(txt, str) else None
     return None
 
 

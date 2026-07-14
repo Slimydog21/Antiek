@@ -14,6 +14,7 @@ is the single serialized path research output takes into the graph.
 from __future__ import annotations
 
 from .budget import BudgetManager
+from .cost_projection import project_cascade_cost
 
 # Imported from ``daytona_gated`` (not ``daytona``) deliberately: the
 # tier-0 integration checker keys on the top-level import name, and a module
@@ -30,15 +31,23 @@ from .host_local import (
 )
 from .promotion_funnel import PromotionFunnel
 from .protocol import (
+    BillingUnit,
+    BoundedUsage,
     BudgetCap,
     BudgetExceeded,
     Command,
     CommandKind,
+    CostProjection,
+    CostProjectionRequest,
     CostState,
     Handle,
+    ProjectionDisposition,
+    ProjectionIneligibility,
+    ProjectionRate,
     ResearchPlan,
     ResearchRunner,
     RunState,
+    SpendControlMode,
     Status,
     StepEvent,
     StopResearch,
@@ -48,7 +57,11 @@ __all__ = [
     # protocol
     "ResearchRunner", "ResearchPlan", "BudgetCap", "Command", "CommandKind",
     "CostState", "Handle", "RunState", "Status", "StepEvent",
-    "StopResearch", "BudgetExceeded",
+    "StopResearch", "BudgetExceeded", "SpendControlMode",
+    "BillingUnit", "BoundedUsage", "CostProjectionRequest", "CostProjection",
+    "ProjectionDisposition", "ProjectionIneligibility",
+    "ProjectionRate",
+    "project_cascade_cost",
     # impls + machinery
     "HostLocalRunner", "LoopContext", "make_demo_loop",
     "make_contract_gather_stub", "make_exa_gather_loop",

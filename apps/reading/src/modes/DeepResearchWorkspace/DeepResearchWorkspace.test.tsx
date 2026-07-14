@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import type { PlanTree, ResearchStatus } from "../../api/research";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import HardCeilingEvidence from "./HardCeilingEvidence";
 
 afterEach(() => cleanup());
 
@@ -76,6 +77,63 @@ describe("ResearchPanel — steer controls", () => {
     render(<ResearchPanel research={{ ...running, state: "paused" }} costUsd={0} onSteer={onSteer} />);
     fireEvent.click(screen.getByRole("button", { name: "Resume" }));
     expect(onSteer).toHaveBeenCalledWith("resume");
+  });
+});
+
+describe("HardCeilingEvidence — server-owned balances", () => {
+  it("keeps unresolved holds visible and offers status reconciliation, not retry", () => {
+    render(
+      <HardCeilingEvidence
+        sessionId="session-1"
+        snapshot={{
+          currency: "USD",
+          approval_revision: 2,
+          authority_digest: "a".repeat(64),
+          ceiling_cents: 500,
+          authorized_spent_cents: 125,
+          observed_provider_spend_cents: 140,
+          held_cents: 200,
+          available_cents: 175,
+          run_state: "closed_unresolved",
+          ceiling_breached: false,
+          unknown_outcome_count: 1,
+          blocked_stages: [],
+        }}
+      />,
+    );
+    expect(screen.getByText("$5.00")).toBeTruthy();
+    expect(screen.getByText("$1.25")).toBeTruthy();
+    expect(screen.getByText("$1.40")).toBeTruthy();
+    expect(screen.getByText("$2.00")).toBeTruthy();
+    expect(screen.getByText("$1.75")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Check provider status" })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /retry/i })).toBeNull();
+    expect(screen.getByText(/will not be released without provider evidence/i)).toBeTruthy();
+  });
+
+  it("surfaces provider billing above Antiek's authorization as a breach", () => {
+    render(
+      <HardCeilingEvidence
+        sessionId="session-breached"
+        snapshot={{
+          currency: "USD",
+          approval_revision: 2,
+          authority_digest: "b".repeat(64),
+          ceiling_cents: 500,
+          authorized_spent_cents: 500,
+          observed_provider_spend_cents: 575,
+          held_cents: 0,
+          available_cents: 0,
+          run_state: "ceiling_breached",
+          ceiling_breached: true,
+          unknown_outcome_count: 0,
+          blocked_stages: [],
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("alert").textContent).toMatch(/exceeded its reserved maximum/i);
+    expect(screen.getByText("$5.75")).toBeTruthy();
   });
 });
 

@@ -1450,6 +1450,7 @@ def create_app(
         "/health",
         "/auth/request",
         "/auth/callback",
+        "/auth/claim",
         "/auth/passkey/status",
         "/auth/passkey/login/options",
         "/auth/passkey/login/verify",
@@ -1463,6 +1464,8 @@ def create_app(
         # public by design so any MCP client can verify the tool
         # hashes without an account.
         "/.well-known/mcp-tools.json",
+        # Machine-to-machine multimedia gateway verifies its own fixed bearer.
+        "/multimedia/tts-gateway/synthesize",
     }
     _OPERATOR_TOKEN_ENV = "ANTIEK_OPERATOR_TOKEN"
     _OPERATOR_EMAIL_ENV = "ANTIEK_OPERATOR_EMAIL"
@@ -1481,6 +1484,19 @@ def create_app(
         expected_st_client_id = os.environ.get(
             _OPERATOR_SERVICE_TOKEN_CLIENT_ID_ENV, "",
         ).strip().lower()
+        if request.url.path == "/multimedia/tts-gateway/synthesize":
+            declared_length = request.headers.get("Content-Length")
+            try:
+                bounded = declared_length is not None and 1 <= int(declared_length) <= 512 * 1024
+            except ValueError:
+                bounded = False
+            if not bounded:
+                from fastapi.responses import JSONResponse
+
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": "TTS gateway request body is invalid"},
+                )
         if not expected_token and not operator_emails and not expected_st_client_id:
             # Enforcement disabled. Existing tests + local dev
             # work unchanged. The request still acquires a default
@@ -1848,17 +1864,20 @@ def create_app(
             ) = _probe_flywheel()
             app.state._flywheel_probed = True
         duckdb_health = app.state.duckdb_health
+        registered_providers = {
+            str(provider)
+            for provider in getattr(app.state, "registered_providers", set())
+        }
+        from .settings_budget import route_ready_provider_ids
+
+        route_ready_providers = route_ready_provider_ids(registered_providers)
         return HealthResponse(
             status="ok",
             param_version=ANTIEK_PARAM_VERSION,
             schema_version=EVENT_SCHEMA_VERSION,
             subscriber_count=bus.subscriber_count,
-            registered_providers=sorted(
-                getattr(app.state, "registered_providers", set())
-            ),
-            providers_ready=bool(
-                getattr(app.state, "registered_providers", set())
-            ),
+            registered_providers=sorted(registered_providers),
+            providers_ready=bool(route_ready_providers),
             build_sha=getattr(app.state, "build_sha", "unknown"),
             flywheel_ready=getattr(app.state, "flywheel_ready", False),
             knowledge_reuse_count=getattr(app.state, "knowledge_reuse_count", 0),
