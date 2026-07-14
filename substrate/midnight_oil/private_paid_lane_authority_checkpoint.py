@@ -8,6 +8,7 @@ checkpoint, sink or transport authority.
 from __future__ import annotations
 
 import ast
+import fcntl
 import hashlib
 import hmac
 import inspect
@@ -20,7 +21,7 @@ import stat
 import struct
 import threading
 from collections.abc import Mapping
-from contextlib import AbstractContextManager, closing
+from contextlib import AbstractContextManager, closing, suppress
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Literal, Never, Protocol, cast
@@ -123,7 +124,7 @@ _STORE_ID: re.Pattern[str] = re.compile(r"^mpstore1_[0-9a-f]{64}$")
 _SOURCE_BUNDLE_ID: re.Pattern[str] = re.compile(r"^opsbs1_[0-9a-f]{64}$")
 _SOURCE_SELECTOR: re.Pattern[str] = re.compile(r"^opsbs1_[0-9a-f]{64}$")
 _EFFECT_BLIND: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")
-_MIGRATION_BASENAME: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]{1,220}$")
+_MIGRATION_BASENAME: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]{1,160}$")
 
 # ---------------------------------------------------------------------------
 # Domain constants
@@ -2932,6 +2933,296 @@ def _verify_migration_lifecycle_transition(
         old is not None and old != new for old, new in zip(prior_pins, successor_pins, strict=True)
     ):
         raise ValueError("migration lifecycle pin changed")
+
+
+_MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES = 65_536
+
+
+def _migration_lifecycle_state_basename(target_basename: str) -> str:
+    if not _MIGRATION_BASENAME.fullmatch(target_basename) or target_basename in {".", ".."}:
+        raise ValueError("migration lifecycle target basename")
+    basename = f".{target_basename}.migration-state-v1.json"
+    if len(basename.encode()) > 255:
+        raise ValueError("migration lifecycle state basename")
+    return basename
+
+
+def _migration_lifecycle_state_document(state: SignedMigrationLifecycleStateV1) -> bytes:
+    if type(state) is not SignedMigrationLifecycleStateV1:
+        raise ValueError("migration lifecycle document type")
+    state = SignedMigrationLifecycleStateV1.model_validate(state.model_dump(mode="python"))
+    material = state.model_dump(mode="python")
+    material["signature_ed25519"] = state.signature_ed25519.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES:
+        raise ValueError("migration lifecycle document bound")
+    return encoded
+
+
+def _parse_migration_lifecycle_state_document(
+    document: bytes, verification_key: VerificationKeyV1
+) -> SignedMigrationLifecycleStateV1:
+    parsed = _parse_strict_json(document, _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES)
+    signature = parsed.get("signature_ed25519")
+    if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+        raise ValueError("migration lifecycle signature encoding")
+    parsed["signature_ed25519"] = bytes.fromhex(signature)
+    state = SignedMigrationLifecycleStateV1.model_validate(parsed)
+    if document != _migration_lifecycle_state_document(state):
+        raise ValueError("migration lifecycle document not canonical")
+    _verify_signed_migration_lifecycle_state(state, verification_key)
+    return state
+
+
+def _migration_lifecycle_parent_identity(parent_fd: int) -> tuple[int, int]:
+    if type(parent_fd) is not int or parent_fd < 0:
+        raise ValueError("migration lifecycle parent descriptor")
+    info = os.fstat(parent_fd)
+    if (
+        not stat.S_ISDIR(info.st_mode)
+        or info.st_uid != os.getuid()
+        or stat.S_IMODE(info.st_mode) != 0o700
+    ):
+        raise ValueError("migration lifecycle parent identity")
+    return int(info.st_dev), int(info.st_ino)
+
+
+def _migration_lifecycle_entry_identity(parent_fd: int, basename: str) -> tuple[int, int] | None:
+    try:
+        info = os.stat(basename, dir_fd=parent_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_uid != os.getuid()
+        or info.st_nlink != 1
+        or stat.S_IMODE(info.st_mode) != 0o600
+    ):
+        raise ValueError("migration lifecycle target identity")
+    return int(info.st_dev), int(info.st_ino)
+
+
+def _verify_migration_lifecycle_target_state(
+    parent_fd: int, state: SignedMigrationLifecycleStateV1
+) -> None:
+    expected = (state.target_dev, state.target_ino)
+    target = _migration_lifecycle_entry_identity(parent_fd, state.target_basename)
+    tombstone = _migration_lifecycle_entry_identity(parent_fd, state.tombstone_basename)
+    if state.lifecycle_phase.startswith("abort_"):
+        for suffix in ("-wal", "-shm", "-journal"):
+            try:
+                os.stat(
+                    f"{state.target_basename}{suffix}",
+                    dir_fd=parent_fd,
+                    follow_symlinks=False,
+                )
+            except FileNotFoundError:
+                continue
+            else:
+                raise ValueError("migration lifecycle sqlite sidecar remains")
+    before_abort = {
+        "schema_only",
+        "barrier_acquired",
+        "sources_sealed",
+        "copy_prepared",
+        "copied_epoch0",
+    }
+    if state.lifecycle_phase in before_abort:
+        accepted = target == expected and tombstone is None
+    elif state.lifecycle_phase == "abort_prepared":
+        accepted = (target == expected and tombstone is None) or (
+            target is None and tombstone == expected
+        )
+    elif state.lifecycle_phase == "abort_renamed_to_tombstone":
+        accepted = target is None and tombstone == expected
+    elif state.lifecycle_phase == "abort_rename_fsynced":
+        accepted = target is None and tombstone in {None, expected}
+    else:
+        accepted = target is None and tombstone is None
+    if not accepted:
+        raise ValueError("migration lifecycle target phase mismatch")
+
+
+def _migration_lifecycle_temporary_basenames(
+    parent_fd: int, target_basename: str
+) -> tuple[str, ...]:
+    prefix = f".{target_basename}.migration-state-v1."
+    return tuple(
+        sorted(
+            name
+            for name in os.listdir(parent_fd)
+            if name.startswith(prefix)
+            and name.endswith(".tmp")
+            and re.fullmatch(r"[0-9a-f]{24}", name[len(prefix) : -4])
+        )
+    )
+
+
+def _cleanup_migration_lifecycle_temporaries(parent_fd: int, target_basename: str) -> None:
+    removed = False
+    for basename in _migration_lifecycle_temporary_basenames(parent_fd, target_basename):
+        info = os.stat(basename, dir_fd=parent_fd, follow_symlinks=False)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_nlink != 1
+            or stat.S_IMODE(info.st_mode) != 0o600
+        ):
+            raise ValueError("migration lifecycle temporary identity")
+        os.unlink(basename, dir_fd=parent_fd)
+        removed = True
+    if removed:
+        os.fsync(parent_fd)
+
+
+def _read_signed_migration_lifecycle_state(
+    *, parent_fd: int, target_basename: str, verification_key: VerificationKeyV1
+) -> SignedMigrationLifecycleStateV1:
+    parent_identity = _migration_lifecycle_parent_identity(parent_fd)
+    state_basename = _migration_lifecycle_state_basename(target_basename)
+    path_info = os.stat(state_basename, dir_fd=parent_fd, follow_symlinks=False)
+    if (
+        not stat.S_ISREG(path_info.st_mode)
+        or path_info.st_uid != os.getuid()
+        or path_info.st_nlink != 1
+        or stat.S_IMODE(path_info.st_mode) != 0o600
+        or not 0 < path_info.st_size <= _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES
+    ):
+        raise ValueError("migration lifecycle state file identity")
+    descriptor = os.open(
+        state_basename, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0), dir_fd=parent_fd
+    )
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (path_info.st_dev, path_info.st_ino):
+            raise ValueError("migration lifecycle state changed during open")
+        chunks: list[bytes] = []
+        remaining = _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES + 1
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        document = b"".join(chunks)
+        after = os.fstat(descriptor)
+        if (
+            len(document) != opened.st_size
+            or len(document) > _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES
+            or (after.st_dev, after.st_ino, after.st_size)
+            != (opened.st_dev, opened.st_ino, opened.st_size)
+        ):
+            raise ValueError("migration lifecycle state changed during read")
+    finally:
+        os.close(descriptor)
+    state = _parse_migration_lifecycle_state_document(document, verification_key)
+    if (
+        state.target_parent_dev,
+        state.target_parent_ino,
+    ) != parent_identity or state.target_basename != target_basename:
+        raise ValueError("migration lifecycle state parent mismatch")
+    if _migration_lifecycle_temporary_basenames(parent_fd, target_basename):
+        raise ValueError("migration lifecycle orphan temporary")
+    _verify_migration_lifecycle_target_state(parent_fd, state)
+    return state
+
+
+def _persist_signed_migration_lifecycle_state(
+    *,
+    parent_fd: int,
+    state: SignedMigrationLifecycleStateV1,
+    verification_key: VerificationKeyV1,
+    expected_prior_state_sha256: str | None,
+) -> SignedMigrationLifecycleStateV1:
+    parent_identity = _migration_lifecycle_parent_identity(parent_fd)
+    if (
+        type(state) is not SignedMigrationLifecycleStateV1
+        or (state.target_parent_dev, state.target_parent_ino) != parent_identity
+    ):
+        raise ValueError("migration lifecycle persistence parent mismatch")
+    _verify_signed_migration_lifecycle_state(state, verification_key)
+    state_basename = _migration_lifecycle_state_basename(state.target_basename)
+    locked_parent_fd = os.open(
+        ".",
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=parent_fd,
+    )
+    try:
+        locked_parent_identity = _migration_lifecycle_parent_identity(locked_parent_fd)
+    except Exception:
+        os.close(locked_parent_fd)
+        raise
+    if locked_parent_identity != parent_identity:
+        os.close(locked_parent_fd)
+        raise ValueError("migration lifecycle locked parent mismatch")
+    temporary_basename: str | None = None
+    try:
+        fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+        _cleanup_migration_lifecycle_temporaries(locked_parent_fd, state.target_basename)
+        _verify_migration_lifecycle_target_state(locked_parent_fd, state)
+        if expected_prior_state_sha256 is None:
+            try:
+                os.stat(state_basename, dir_fd=locked_parent_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                pass
+            else:
+                raise ValueError("migration lifecycle genesis already exists")
+            _verify_migration_lifecycle_genesis(state, verification_key)
+        else:
+            if not _HEX64.fullmatch(expected_prior_state_sha256):
+                raise ValueError("migration lifecycle expected prior hash")
+            prior = _read_signed_migration_lifecycle_state(
+                parent_fd=locked_parent_fd,
+                target_basename=state.target_basename,
+                verification_key=verification_key,
+            )
+            if prior.state_sha256 != expected_prior_state_sha256:
+                raise ValueError("migration lifecycle compare-and-swap mismatch")
+            _verify_migration_lifecycle_transition(prior, state, verification_key)
+        encoded = _migration_lifecycle_state_document(state)
+        temporary_basename = (
+            f".{state.target_basename}.migration-state-v1.{secrets.token_hex(12)}.tmp"
+        )
+        temporary_fd = os.open(
+            temporary_basename,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=locked_parent_fd,
+        )
+        try:
+            os.fchmod(temporary_fd, 0o600)
+            view = memoryview(encoded)
+            while view:
+                written = os.write(temporary_fd, view)
+                if written <= 0:
+                    raise OSError("short migration lifecycle state write")
+                view = view[written:]
+            os.fsync(temporary_fd)
+        finally:
+            os.close(temporary_fd)
+        os.rename(
+            temporary_basename,
+            state_basename,
+            src_dir_fd=locked_parent_fd,
+            dst_dir_fd=locked_parent_fd,
+        )
+        temporary_basename = None
+        os.fsync(locked_parent_fd)
+        persisted = _read_signed_migration_lifecycle_state(
+            parent_fd=locked_parent_fd,
+            target_basename=state.target_basename,
+            verification_key=verification_key,
+        )
+        if persisted != state:
+            raise ValueError("migration lifecycle persistence mismatch")
+        return persisted
+    finally:
+        if temporary_basename is not None:
+            with suppress(FileNotFoundError):
+                os.unlink(temporary_basename, dir_fd=locked_parent_fd)
+                os.fsync(locked_parent_fd)
+        fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+        os.close(locked_parent_fd)
 
 
 def _verify_signed_cutover_marker(

@@ -1809,6 +1809,325 @@ class TestMigrationPrerequisites:
                 genesis, changed_identity, verification_key
             )
 
+    def test_migration_lifecycle_journal_durable_cas_and_canonical_reopen(
+        self, tmp_path: Path
+    ) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"j" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        target = tmp_path / "paid-lane.sqlite3"
+        target.write_bytes(b"sqlite-target-placeholder")
+        target.chmod(0o600)
+        target_info = target.stat()
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        try:
+            parent_info = os.fstat(parent_fd)
+            genesis = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+            )
+            persisted = checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=genesis,
+                verification_key=verification_key,
+                expected_prior_state_sha256=None,
+            )
+            assert persisted == genesis
+            assert (
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+                == genesis
+            )
+            state_path = tmp_path / checkpoint_module._migration_lifecycle_state_basename(
+                target.name
+            )
+            assert state_path.stat().st_mode & 0o777 == 0o600
+            document = state_path.read_bytes()
+            assert document == checkpoint_module._migration_lifecycle_state_document(genesis)
+            assert json.loads(document)["signature_ed25519"] == genesis.signature_ed25519.hex()
+            with pytest.raises(ValueError, match="genesis already exists"):
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=genesis,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=None,
+                )
+
+            barrier = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                lifecycle_phase="barrier_acquired",
+                barrier_id=checkpoint_module._migration_barrier_id("51" * 32),
+                freeze_nonce="51" * 32,
+                witness_sha256="52" * 32,
+                phase_version=1,
+                issuer_sequence=1,
+                updated_at_ms=2,
+                previous_state_sha256=genesis.state_sha256,
+            )
+            assert (
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=barrier,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=genesis.state_sha256,
+                )
+                == barrier
+            )
+            sealed = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                lifecycle_phase="sources_sealed",
+                barrier_id=barrier.barrier_id,
+                freeze_nonce=barrier.freeze_nonce,
+                source_manifest_sha256="53" * 32,
+                witness_sha256=barrier.witness_sha256,
+                phase_version=2,
+                issuer_sequence=2,
+                updated_at_ms=3,
+                previous_state_sha256=barrier.state_sha256,
+            )
+            with pytest.raises(ValueError, match="compare-and-swap mismatch"):
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=sealed,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=genesis.state_sha256,
+                )
+            assert (
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+                == barrier
+            )
+        finally:
+            os.close(parent_fd)
+
+    def test_migration_lifecycle_journal_rejects_file_and_parent_substitution(
+        self, tmp_path: Path
+    ) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"p" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        target = tmp_path / "paid-lane.sqlite3"
+        target.write_bytes(b"sqlite-target-placeholder")
+        target.chmod(0o600)
+        target_info = target.stat()
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        try:
+            parent_info = os.fstat(parent_fd)
+            genesis = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+            )
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=genesis,
+                verification_key=verification_key,
+                expected_prior_state_sha256=None,
+            )
+            state_path = tmp_path / checkpoint_module._migration_lifecycle_state_basename(
+                target.name
+            )
+            state_path.chmod(0o644)
+            with pytest.raises(ValueError, match="state file identity"):
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+            state_path.chmod(0o600)
+            alias = tmp_path / "state-hardlink"
+            os.link(state_path, alias)
+            with pytest.raises(ValueError, match="state file identity"):
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+            alias.unlink()
+            original_target_info = target.stat()
+            replacement = tmp_path / "replacement-target.sqlite3"
+            replacement.write_bytes(b"replacement-target")
+            replacement.chmod(0o600)
+            assert replacement.stat().st_ino != original_target_info.st_ino
+            os.replace(replacement, target)
+            with pytest.raises(ValueError, match="target phase mismatch"):
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+            target.unlink()
+            os.close(os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
+            replacement_info = target.stat()
+            wrong_parent = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino + 1,
+                target_dev=replacement_info.st_dev,
+                target_ino=replacement_info.st_ino,
+            )
+            with pytest.raises(ValueError, match="persistence parent mismatch"):
+                checkpoint_module._persist_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    state=wrong_parent,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=genesis.state_sha256,
+                )
+            noncanonical = checkpoint_module._migration_lifecycle_state_document(genesis) + b"\n"
+            with pytest.raises(ValueError, match="not canonical"):
+                checkpoint_module._parse_migration_lifecycle_state_document(
+                    noncanonical, verification_key
+                )
+            tmp_path.chmod(0o777)
+            with pytest.raises(ValueError, match="parent identity"):
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+            tmp_path.chmod(0o700)
+        finally:
+            os.close(parent_fd)
+
+    def test_migration_lifecycle_journal_cleans_crash_temp_and_serializes_successors(
+        self, tmp_path: Path
+    ) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"c" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        target = tmp_path / "paid-lane.sqlite3"
+        target.write_bytes(b"sqlite-target-placeholder")
+        target.chmod(0o600)
+        target_info = target.stat()
+        setup_fd = os.open(tmp_path, os.O_RDONLY)
+        try:
+            parent_info = os.fstat(setup_fd)
+            genesis = _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+            )
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=setup_fd,
+                state=genesis,
+                verification_key=verification_key,
+                expected_prior_state_sha256=None,
+            )
+        finally:
+            os.close(setup_fd)
+        orphan = tmp_path / f".{target.name}.migration-state-v1.{'ab' * 12}.tmp"
+        orphan.write_bytes(b"crash-prefix")
+        orphan.chmod(0o600)
+        read_fd = os.open(tmp_path, os.O_RDONLY)
+        try:
+            with pytest.raises(ValueError, match="orphan temporary"):
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=read_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+        finally:
+            os.close(read_fd)
+
+        successors = tuple(
+            _signed_lifecycle_state(
+                private_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                lifecycle_phase="barrier_acquired",
+                barrier_id=checkpoint_module._migration_barrier_id(freeze),
+                freeze_nonce=freeze,
+                witness_sha256=witness,
+                phase_version=1,
+                issuer_sequence=1,
+                updated_at_ms=2,
+                previous_state_sha256=genesis.state_sha256,
+            )
+            for freeze, witness in (("61" * 32, "62" * 32), ("63" * 32, "64" * 32))
+        )
+
+        shared_parent_fd = os.open(tmp_path, os.O_RDONLY)
+        start_read, start_write = os.pipe()
+        result_read, result_write = os.pipe()
+        children: list[int] = []
+        for successor in successors:
+            child = os.fork()
+            if child == 0:
+                try:
+                    os.close(start_write)
+                    os.close(result_read)
+                    if os.read(start_read, 1) != b"s":
+                        os._exit(2)
+                    try:
+                        checkpoint_module._persist_signed_migration_lifecycle_state(
+                            parent_fd=shared_parent_fd,
+                            state=successor,
+                            verification_key=verification_key,
+                            expected_prior_state_sha256=genesis.state_sha256,
+                        )
+                    except ValueError:
+                        os.write(result_write, b"0")
+                    else:
+                        os.write(result_write, b"1")
+                    os._exit(0)
+                except BaseException:
+                    os._exit(3)
+            children.append(child)
+        os.close(start_read)
+        os.close(result_write)
+        reaped: set[int] = set()
+        try:
+            os.write(start_write, b"ss")
+            outcome_parts: list[bytes] = []
+            while sum(len(part) for part in outcome_parts) < 2:
+                part = os.read(result_read, 2)
+                if not part:
+                    break
+                outcome_parts.append(part)
+            outcomes = b"".join(outcome_parts)
+            assert sorted(outcomes) == [ord("0"), ord("1")]
+            for child in children:
+                _, status = os.waitpid(child, 0)
+                reaped.add(child)
+                assert os.waitstatus_to_exitcode(status) == 0
+        finally:
+            for child in children:
+                if child not in reaped:
+                    os.waitpid(child, 0)
+            os.close(start_write)
+            os.close(result_read)
+            os.close(shared_parent_fd)
+        assert not orphan.exists()
+
     def test_closed_corpus_model_has_exact_top_level_fields(self) -> None:
         assert tuple(FrozenPaidLaneMigrationCorpusV1.model_fields) == (
             "schema_version",
