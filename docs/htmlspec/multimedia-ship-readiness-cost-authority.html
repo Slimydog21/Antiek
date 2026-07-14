@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Antiek Multimedia Ship-Readiness Cost Authority</title>
+  <style>
+    :root { color-scheme: light; --ink:#17201d; --muted:#59655f; --line:#cbd5cf; --paper:#f7f9f7; --accent:#006d5b; --warn:#9b3f21; }
+    * { box-sizing:border-box; } body { margin:0; background:var(--paper); color:var(--ink); font:15px/1.55 ui-sans-serif,system-ui,sans-serif; }
+    main { width:min(1040px,calc(100% - 32px)); margin:32px auto 72px; } h1 { font-size:32px; margin:0 0 8px; } h2 { font-size:21px; margin:32px 0 10px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+    h3 { font-size:16px; margin:20px 0 6px; } p,li { max-width:88ch; } code { background:#e9eeeb; padding:1px 4px; } table { width:100%; border-collapse:collapse; }
+    th,td { text-align:left; vertical-align:top; border:1px solid var(--line); padding:8px; } th { background:#e9eeeb; } .lede { font-size:18px; color:var(--muted); }
+    .truth { border-left:4px solid var(--warn); padding:10px 14px; background:#fff; } .go { color:var(--accent); font-weight:700; } a { color:var(--accent); }
+  </style>
+</head>
+<body><main>
+  <h1>Multimedia Ship-Readiness Cost Authority</h1>
+  <p class="lede">Replace caller-supplied cost assertions and manifest estimates with immutable, owner-scoped evidence projected from Antiek's existing signed execution and ledger authorities.</p>
+
+  <section><h2>Decision</h2>
+    <p class="truth"><strong>Do not build a second multimedia ledger.</strong> Provider execution, settlement, production receipts, local-run receipts, quality telemetry, and rights review remain distinct authorities. Ship hardening consumes a read-only evidence projection and cannot authorize, settle, route, render, or publish.</p>
+    <p>The v1 projection is generated at the current time and persisted as an immutable snapshot. It does not claim arbitrary historical reconstruction because provider execution rows are updated in place. It does not infer zero cost from missing rows. It does not invent a revision budget from manifest estimates or execution ceilings.</p>
+  </section>
+
+  <section><h2>Current contradiction</h2>
+    <ul>
+      <li><code>evaluate_multimedia_asset</code> accepts optional floating-point <code>budget_usd</code> and <code>actual_cost_usd</code>.</li>
+      <li>The real <code>run_hardening</code> path supplies neither and can pass from descriptive manifest rows.</li>
+      <li>Signed provider executions, authorization claims, call holds, and reservations already own accounting truth.</li>
+      <li>Local coordinators and production receipts own explicit local completion; absence of provider rows owns nothing.</li>
+      <li>The manual rights/publication gate and the visual quality advisory are intentionally separate.</li>
+    </ul>
+  </section>
+
+  <section><h2>Program</h2><table>
+    <thead><tr><th>Sprint</th><th>Deliverable</th><th>Boundary</th><th>Status</th></tr></thead>
+    <tbody>
+      <tr><td><a href="multimedia-ship-readiness-provider-snapshot.html">MSR-01</a></td><td>Direct paid-execution accounting snapshot and hardening integration</td><td>Exact owner/asset/revision; current-time snapshot</td><td class="go">Execute now</td></tr>
+      <tr><td><a href="multimedia-ship-readiness-production-closure.html">MSR-02</a></td><td>Final production receipt to selected visual and narration-child execution closure</td><td>Byte-producing authorities only; no guess by revision</td><td>Specified</td></tr>
+      <tr><td><a href="multimedia-ship-readiness-local-zero.html">MSR-03</a></td><td>MAC-verified local video/audio zero-external-cost evidence</td><td>Completed local runs only; missing rows remain unavailable</td><td>Specified</td></tr>
+    </tbody>
+  </table></section>
+
+  <section><h2>Global invariants</h2><ol>
+    <li>All authoritative money is integer cents. Manifest floats remain estimates only.</li>
+    <li>Authenticated owner, asset, and exact revision bind every snapshot and constituent row.</li>
+    <li>Callers cannot supply execution IDs, totals, rates, settlement states, or local-zero claims.</li>
+    <li>Every execution is counted once by verified execution ID; contradiction fails the snapshot.</li>
+    <li>Missing, corrupt, unsettled, outcome-unknown, failed, cancelled, or post-cutoff accounting blocks readiness.</li>
+    <li>Zero external cost requires a completed MAC-verified local production authority.</li>
+    <li>A snapshot is immutable evidence generated at one instant, not an arbitrary historical query.</li>
+    <li>Hardening performs no provider call, reconciliation wake, reservation, settlement, route mutation, production, or publication.</li>
+    <li><code>rights_and_publication</code> remains manual. Quality advice remains advisory.</li>
+    <li>Existing hardening reports without v1 evidence are historical and non-authoritative.</li>
+  </ol></section>
+
+  <section><h2>Five-values bar</h2>
+    <p><strong>Intellectual honesty:</strong> unsupported production closure is reported as unavailable, never zero. <strong>Fairness:</strong> descriptive manifest costs remain visible as estimates without being mislabeled as settlement. <strong>Rigor:</strong> MAC, signature, hold, reservation, owner, revision, timestamp, uniqueness, and total invariants are mechanically tested. <strong>Diligence:</strong> paid direct, narration-child, selected visual, sourced visual, diagram, local video, and local audible paths are classified. <strong>Defensibility:</strong> each report names its schema, evidence ID, cutoff, basis, rows, and exact limitation.</p>
+  </section>
+
+  <section><h2>Non-goals</h2><p>No provider-invoice actual-cost claim; current Krea success is ceiling-settled. No aggregate revision-budget authority. No arbitrary past-state reconstruction. No billing dispute/refund workflow. No automatic quality gate. No rights inference. No autonomous publishing.</p></section>
+</main></body></html>

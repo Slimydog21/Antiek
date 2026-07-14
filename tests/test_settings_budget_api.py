@@ -94,6 +94,21 @@ def test_budget_operator_env_cap(
     assert body["cap_env"] == "ANTIEK_OPERATOR_BUDGET_USD"
 
 
+@pytest.mark.parametrize("invalid_cap", ["nan", "inf", "-1"])
+def test_budget_invalid_numeric_env_is_ignored(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_cap: str,
+) -> None:
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", invalid_cap)
+    response = client.get("/settings/budget")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daily_cap_usd"] == 5.0
+    assert body["cap_env"] is None
+    assert any("finite and non-negative" in note for note in body["notes"])
+
+
 def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) -> None:
     # Current dispatch config uses 0.0 placeholder rates — must NOT invent $.
     r = client.post(
@@ -128,6 +143,24 @@ def test_model_decision_uses_server_inventory_and_honest_static_basis(
     assert all(row["eligible"] is False for row in body["candidates"])
     assert all(row["quality_basis"] == "static_prior" for row in body["candidates"])
     assert all(row["estimated_usd_high"] is None for row in body["candidates"])
+
+
+def test_composer_projection_route_is_mounted_on_production_app(client: TestClient) -> None:
+    response = client.post(
+        "/settings/composer-projection/resolve",
+        json={
+            "task": "deep_research",
+            "bounded_usage": [
+                {"unit": "input_token", "maximum": 1_000},
+                {"unit": "output_token", "maximum": 500},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["authority"] == "advisory_explanatory"
+    assert body["ranked_candidates"]
+    assert body["budget"]["spent_usd"] is None
 
 
 def test_model_decision_prefers_valid_server_owned_benchmark(
@@ -380,7 +413,5 @@ def test_estimate_with_synthetic_pricing(
 
 
 def test_caddy_allowlist_includes_settings() -> None:
-    caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(
-        encoding="utf-8"
-    )
+    caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(encoding="utf-8")
     assert "/settings*" in caddy

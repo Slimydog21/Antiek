@@ -86,6 +86,13 @@ from .playback import (
     SourceCard,
     build_playback_read_model,
 )
+from .production_cost_closure import (
+    ProductionByteConstituentV1,
+    ProductionByteProjectionV1,
+    ProductionCostClosure,
+    build_production_byte_cost_closure,
+    verify_production_byte_projection,
+)
 from .production_registration import (
     MultimediaProductionRegistrationError,
     MultimediaProductionRegistrationRequest,
@@ -118,6 +125,15 @@ from .reviewed_visual_registry import (
     VisualCandidateBinding,
     get_reviewed_visuals,
     register_reviewed_visuals,
+)
+from .ship_cost_snapshot import (
+    MultimediaShipCostEvidenceConflict,
+    MultimediaShipCostEvidenceUnavailable,
+    MultimediaShipCostExecutionV1,
+    MultimediaShipCostSnapshotV1,
+    build_multimedia_ship_cost_snapshot,
+    validate_settled_execution,
+    verify_multimedia_ship_cost_snapshot,
 )
 from .steering import (
     RevisionPlan,
@@ -224,6 +240,19 @@ __all__ = [
     "MultimediaHardeningReport",
     "ShipStatus",
     "evaluate_multimedia_asset",
+    "MultimediaShipCostEvidenceConflict",
+    "MultimediaShipCostEvidenceUnavailable",
+    "MultimediaShipCostExecutionV1",
+    "MultimediaShipCostSnapshotV1",
+    "build_multimedia_ship_cost_snapshot",
+    "validate_settled_execution",
+    "verify_multimedia_ship_cost_snapshot",
+    # MSR-02 production-byte cost closure
+    "ProductionByteConstituentV1",
+    "ProductionByteProjectionV1",
+    "ProductionCostClosure",
+    "build_production_byte_cost_closure",
+    "verify_production_byte_projection",
     # HTML knowledge-asset projection
     "MultimediaInformationAsset",
     "MultimediaInformationAssetError",

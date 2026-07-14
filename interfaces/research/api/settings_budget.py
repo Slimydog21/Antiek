@@ -15,6 +15,7 @@ Honesty rules (load-bearing):
 from __future__ import annotations
 
 import json
+import math
 import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -65,9 +66,9 @@ class ModelsResponse(BaseModel):
 
 
 class BudgetResponse(BaseModel):
-    daily_cap_usd: float | None
-    spent_usd: float | None
-    remaining_usd: float | None
+    daily_cap_usd: float | None = Field(ge=0, allow_inf_nan=False)
+    spent_usd: float | None = Field(ge=0, allow_inf_nan=False)
+    remaining_usd: float | None = Field(ge=0, allow_inf_nan=False)
     spent_status: SpentStatus
     cap_env: str | None
     notes: list[str] = Field(default_factory=list)
@@ -364,7 +365,11 @@ def read_operator_budget() -> BudgetResponse:
         if raw is None or raw.strip() == "":
             continue
         try:
-            daily_cap = float(raw)
+            parsed_cap = float(raw)
+            if not math.isfinite(parsed_cap) or parsed_cap < 0:
+                notes.append(f"{env_name} must be finite and non-negative; ignored")
+                continue
+            daily_cap = parsed_cap
             cap_env = env_name
             break
         except ValueError:
@@ -479,17 +484,24 @@ def _effective_tier_route(
     return primary[0], primary[1], False
 
 
-def build_model_decision(
+def _model_decision_inputs(
     request: Request,
     req: ModelDecisionRequest,
-) -> ModelDecisionResponse:
-    """Build one advisory decision from server-owned state only."""
+    *,
+    budget: BudgetResponse | None = None,
+) -> tuple[
+    tuple[DecisionCandidate, ...],
+    BudgetResponse,
+    BenchmarkReport | None,
+    list[str],
+]:
+    """Return the raw server-owned candidates and their shared context."""
     cfg = _load_dispatch_config()
     tiers = cfg.get("tiers")
     if not isinstance(tiers, dict):
         tiers = {}
     ready_ids = _registered_provider_ids(request)
-    budget = read_operator_budget()
+    resolved_budget = budget if budget is not None else read_operator_budget()
     report, notes = _read_benchmark_report()
     measured: dict[tuple[DecisionTask, str, str, str], BenchmarkMeasurement] = {}
     if report is not None:
@@ -514,7 +526,7 @@ def build_model_decision(
                 input_chars=req.input_chars,
                 expected_output_tokens=req.expected_output_tokens,
             ),
-            budget=budget,
+            budget=resolved_budget,
         )
         measurement = measured.get((req.task, tier_name, provider, model))
         candidates.append(
@@ -531,13 +543,49 @@ def build_model_decision(
             )
         )
 
-    result = rank_model_candidates(req.task, tuple(candidates))
+    return tuple(candidates), resolved_budget, report, notes
+
+
+def build_model_decision_candidates(
+    request: Request,
+    req: ModelDecisionRequest,
+    *,
+    budget: BudgetResponse | None = None,
+) -> tuple[DecisionCandidate, ...]:
+    """Build unranked candidates from config, provider, budget, and bench state.
+
+    This is the server-owned input seam for adapters that compose the model
+    decision with another view.  Scores are raw benchmark measurements here;
+    callers must pass them through ``rank_model_candidates`` exactly once.
+    """
+    candidates, _, _, _ = _model_decision_inputs(request, req, budget=budget)
+    return candidates
+
+
+def build_model_decision(
+    request: Request,
+    req: ModelDecisionRequest,
+    *,
+    budget: BudgetResponse | None = None,
+) -> ModelDecisionResponse:
+    """Build one advisory decision from server-owned state only.
+
+    ``budget`` lets another server adapter compose this decision with an
+    authoritative projection from the exact same snapshot.  Ordinary callers
+    omit it and retain the Settings endpoint's existing read behavior.
+    """
+    candidates, resolved_budget, report, notes = _model_decision_inputs(
+        request,
+        req,
+        budget=budget,
+    )
+    result = rank_model_candidates(req.task, candidates)
     used_measurement = any(row.quality_basis == "measured" for row in result.ranked)
     if report is not None and not used_measurement:
         notes.append("Antiek-bench has no matching measurement for this task and route set")
-    if not ready_ids:
+    if not any(candidate.ready for candidate in candidates):
         notes.append("No text-model provider is registered at boot; no tier is eligible")
-    if budget.remaining_usd is None:
+    if resolved_budget.remaining_usd is None:
         notes.append("Remaining budget is unknown; budget eligibility is not asserted")
     return ModelDecisionResponse(
         task=req.task,
@@ -650,6 +698,7 @@ __all__ = [
     "PromptCostEstimateResponse",
     "estimate_prompt_cost",
     "build_model_decision",
+    "build_model_decision_candidates",
     "read_operator_budget",
     "register_settings_budget_routes",
     "settings_router",

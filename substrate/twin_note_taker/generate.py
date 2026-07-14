@@ -42,6 +42,7 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from typing import cast
 
 from nacl.exceptions import BadSignatureError
 from nacl.signing import VerifyKey
@@ -145,7 +146,7 @@ class TwinGenerationReceipt:
     signature: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class TwinDocument:
     """The generated twin: a ResearchArtifactBody twin + honest accounting."""
 
@@ -161,12 +162,28 @@ class TwinDocument:
     receipt_id: str | None
     budget_authority_id: str | None
     source_content_hash: str
+    source_asset_hash: str | None
+    source_event_ids: tuple[str, ...]
+    proposal_payload_hash: str | None
+    receipt_expires_at_unix: int | None
+    receipt_signature: str | None
+    synthesis_excerpt: str
     proposal_hash: str  # sha256 over canonical proposals (idempotency)
+
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise TwinGenerationError("TwinDocument values are created only by generate_twin")
 
     @property
     def body(self) -> ResearchArtifactBody:
         """Return a detached body so callers cannot mutate signed document state."""
         return ResearchArtifactBody.model_validate_json(self._body_json)
+
+
+def _materialized_document(**values: object) -> TwinDocument:
+    document = object.__new__(TwinDocument)
+    for name, value in values.items():
+        object.__setattr__(document, name, value)
+    return document
 
 
 @dataclass(frozen=True)
@@ -336,16 +353,14 @@ def _receipt_payload(receipt: TwinGenerationReceipt) -> bytes:
     return json.dumps(claims, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def _verify_receipt(receipt: TwinGenerationReceipt) -> None:
-    """Verify completion evidence against server configuration."""
+def _verify_receipt_signature(receipt: TwinGenerationReceipt) -> None:
+    """Verify signed completion claims without reapplying the dispatch expiry."""
     raw_key = os.environ.get(AUTHORITY_VERIFY_KEY_ENV, "")
     if len(raw_key) > MAX_SIGNATURE_CHARS:
         raise TwinGenerationError("twin receipt verification key exceeds its ceiling")
     encoded_key = raw_key.strip()
     if not encoded_key:
         raise TwinGenerationError("twin receipt verification key is not configured")
-    if receipt.expires_at_unix <= int(time.time()):
-        raise TwinGenerationError("twin generation receipt has expired")
     try:
         verify_key = VerifyKey(base64.b64decode(encoded_key, validate=True))
         signature = base64.b64decode(receipt.signature, validate=True)
@@ -354,15 +369,37 @@ def _verify_receipt(receipt: TwinGenerationReceipt) -> None:
         raise TwinGenerationError("twin generation receipt signature is invalid") from exc
 
 
+def _verify_receipt(receipt: TwinGenerationReceipt) -> None:
+    """Verify completion evidence at the live materialization boundary."""
+    if receipt.expires_at_unix <= int(time.time()):
+        raise TwinGenerationError("twin generation receipt has expired")
+    _verify_receipt_signature(receipt)
+
+
 def _canonical_proposal_hash(
     asset: AssetContent,
     proposal: _NormalizedProposal,
     *,
     model_id: str,
 ) -> str:
+    return _document_proposal_hash(
+        asset_id=asset.asset_id,
+        source_asset_hash=_source_asset_hash(asset),
+        model_id=model_id,
+        proposal=proposal,
+    )
+
+
+def _document_proposal_hash(
+    *,
+    asset_id: str,
+    source_asset_hash: str,
+    model_id: str,
+    proposal: _NormalizedProposal,
+) -> str:
     payload = {
-        "asset_id": asset.asset_id,
-        "source_asset_hash": _source_asset_hash(asset),
+        "asset_id": asset_id,
+        "source_asset_hash": source_asset_hash,
         "model_id": model_id,
         "insights": list(proposal.insights),
         "questions": list(proposal.questions),
@@ -370,6 +407,127 @@ def _canonical_proposal_hash(
     }
     blob = json.dumps(payload, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()
+
+
+def verify_twin_document(document: TwinDocument) -> None:
+    """Re-verify every planner/search-relevant field against signed claims.
+
+    ``frozen=True`` prevents ordinary assignment but is not an authenticity
+    boundary in Python.  This verification catches canonical-looking mutation
+    via ``object.__setattr__`` before advisory text can be searched or promoted.
+    Receipt expiry gates dispatch/materialization, not later use of an artifact
+    that was validly materialized, so this path verifies the signature only.
+    """
+
+    if type(document) is not TwinDocument:
+        raise TwinGenerationError("document must be an exact TwinDocument value")
+    if type(document.withheld) is not bool or document.withheld:
+        raise TwinGenerationError("withheld twins have no signed materialization")
+    exact_strings = (
+        document.asset_id,
+        document.account_id,
+        document.model_id,
+        document.receipt_id,
+        document.budget_authority_id,
+        document.source_content_hash,
+        document.source_asset_hash,
+        document.proposal_payload_hash,
+        document.receipt_signature,
+        document.synthesis_excerpt,
+        document.proposal_hash,
+    )
+    if not all(type(value) is str for value in exact_strings):
+        raise TwinGenerationError("materialized twin claims must be exact strings")
+    if document.authority != TWIN_AUTHORITY:
+        raise TwinGenerationError("materialized twin authority must remain advisory")
+    identifiers = (
+        document.asset_id,
+        document.account_id,
+        document.model_id,
+        document.receipt_id,
+        document.budget_authority_id,
+    )
+    if any(
+        not value or len(value) > MAX_IDENTIFIER_CHARS or value != value.strip()
+        for value in identifiers
+    ):
+        raise TwinGenerationError("materialized twin identifiers are invalid")
+    if document.twin_investigation_id != f"twin-{document.asset_id}":
+        raise TwinGenerationError("materialized twin investigation identity is invalid")
+    hashes = (
+        document.source_content_hash,
+        cast(str, document.source_asset_hash),
+        cast(str, document.proposal_payload_hash),
+        document.proposal_hash,
+    )
+    if any(not _SHA256_RE.fullmatch(value) for value in hashes):
+        raise TwinGenerationError("materialized twin hashes must be canonical sha256 digests")
+    if not document.receipt_signature or len(document.receipt_signature) > MAX_SIGNATURE_CHARS:
+        raise TwinGenerationError("materialized twin signature exceeds its ceiling")
+    if type(document.receipt_expires_at_unix) is not int:
+        raise TwinGenerationError("materialized twin expiry must be an exact integer")
+    if not 0 < document.receipt_expires_at_unix <= MAX_EXPIRY_UNIX:
+        raise TwinGenerationError("materialized twin expiry exceeds its timestamp range")
+    if type(document.source_event_ids) is not tuple or any(
+        type(event_id) is not str for event_id in document.source_event_ids
+    ):
+        raise TwinGenerationError("materialized twin source events must be exact strings")
+    if not document.source_event_ids or len(document.source_event_ids) > MAX_SOURCE_EVENTS:
+        raise TwinGenerationError("materialized twin source events exceed their count ceiling")
+    if any(
+        len(event_id) > MAX_EVENT_ID_CHARS or not _EVENT_ID_RE.fullmatch(event_id)
+        for event_id in document.source_event_ids
+    ):
+        raise TwinGenerationError("materialized twin source event is invalid")
+    if type(document.proposed_insights) is not tuple or type(document.proposed_questions) is not tuple:
+        raise TwinGenerationError("materialized twin proposals must be exact tuples")
+    if len(document.proposed_insights) > MAX_INSIGHTS or len(document.proposed_questions) > MAX_QUESTIONS:
+        raise TwinGenerationError("materialized twin proposal count exceeds its ceiling")
+    if any(
+        type(text) is not str
+        for text in (*document.proposed_insights, *document.proposed_questions)
+    ):
+        raise TwinGenerationError("materialized twin proposal items must be exact strings")
+    proposal_texts = (*document.proposed_insights, *document.proposed_questions)
+    if any(
+        not text or text != text.strip() or len(text) > MAX_PROPOSAL_ITEM_CHARS
+        for text in proposal_texts
+    ):
+        raise TwinGenerationError("materialized twin proposal item is invalid")
+    if len(document.synthesis_excerpt) > MAX_SYNTHESIS_CHARS:
+        raise TwinGenerationError("materialized twin synthesis exceeds its ceiling")
+    if sum(len(text) for text in proposal_texts) + len(document.synthesis_excerpt) > MAX_TOTAL_PROPOSAL_CHARS:
+        raise TwinGenerationError("materialized twin proposal exceeds its aggregate ceiling")
+
+    receipt = TwinGenerationReceipt(
+        receipt_id=cast(str, document.receipt_id),
+        account_id=cast(str, document.account_id),
+        asset_id=document.asset_id,
+        model_id=document.model_id,
+        budget_authority_id=cast(str, document.budget_authority_id),
+        source_content_hash=document.source_content_hash,
+        source_asset_hash=cast(str, document.source_asset_hash),
+        source_event_ids=document.source_event_ids,
+        proposal_payload_hash=cast(str, document.proposal_payload_hash),
+        expires_at_unix=document.receipt_expires_at_unix,
+        signature=document.receipt_signature,
+    )
+    _verify_receipt_signature(receipt)
+    proposal = _NormalizedProposal(
+        insights=document.proposed_insights,
+        questions=document.proposed_questions,
+        synthesis_excerpt=document.synthesis_excerpt,
+    )
+    if document.proposal_payload_hash != _normalized_payload_hash(proposal):
+        raise TwinGenerationError("materialized twin proposal no longer matches its receipt")
+    expected_proposal_hash = _document_proposal_hash(
+        asset_id=document.asset_id,
+        source_asset_hash=cast(str, document.source_asset_hash),
+        model_id=document.model_id,
+        proposal=proposal,
+    )
+    if document.proposal_hash != expected_proposal_hash:
+        raise TwinGenerationError("materialized twin proposal hash is invalid")
 
 
 def _normalize_proposal(asset: AssetContent, proposal: TwinProposal) -> _NormalizedProposal:
@@ -553,6 +711,10 @@ def generate_twin(
     account_id: str | None = None
     receipt_id: str | None = None
     budget_authority_id: str | None = None
+    source_asset_hash: str | None = None
+    proposal_payload_hash: str | None = None
+    receipt_expires_at_unix: int | None = None
+    receipt_signature: str | None = None
 
     if (proposal is None) != (receipt is None):
         raise TwinGenerationError("proposal and completion receipt must be provided together")
@@ -601,13 +763,17 @@ def generate_twin(
         account_id = evidence.account_id
         receipt_id = evidence.receipt_id
         budget_authority_id = evidence.budget_authority_id
+        source_asset_hash = evidence.source_asset_hash
+        proposal_payload_hash = evidence.proposal_payload_hash
+        receipt_expires_at_unix = evidence.expires_at_unix
+        receipt_signature = evidence.signature
 
     withheld = not bool(normalized.insights or normalized.questions or normalized.synthesis_excerpt)
     body = _build_body(source, normalized, withheld=withheld)
     source_content_hash = _source_content_hash(source)
     proposal_hash = _canonical_proposal_hash(source, normalized, model_id=model_id)
 
-    return TwinDocument(
+    return _materialized_document(
         asset_id=source.asset_id,
         twin_investigation_id=body.investigation_id,
         _body_json=body.model_dump_json(),
@@ -620,6 +786,12 @@ def generate_twin(
         receipt_id=receipt_id,
         budget_authority_id=budget_authority_id,
         source_content_hash=source_content_hash,
+        source_asset_hash=source_asset_hash,
+        source_event_ids=source.source_event_ids,
+        proposal_payload_hash=proposal_payload_hash,
+        receipt_expires_at_unix=receipt_expires_at_unix,
+        receipt_signature=receipt_signature,
+        synthesis_excerpt=normalized.synthesis_excerpt,
         proposal_hash=proposal_hash,
     )
 
@@ -651,4 +823,5 @@ __all__ = [
     "generate_twin",
     "proposal_receipt_hash",
     "source_asset_receipt_hash",
+    "verify_twin_document",
 ]
