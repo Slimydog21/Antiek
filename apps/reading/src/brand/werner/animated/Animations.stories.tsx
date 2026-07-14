@@ -86,6 +86,35 @@ export const AllPoses: Story = {
   ),
 };
 
+export const ThinkingFidelity: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — thinking fidelity
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        One canonical thinking pose and one accessible status at each supported
+        size; external aurora dots keep ongoing work readable at rail scale.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[24, 40, 64].map((size) => (
+          <Cell
+            key={size}
+            label={`${size}px`}
+            hint="AI working · canonical thinking mood"
+            pose={
+              <WernerThinking
+                size={size}
+                label={`Werner thinking at ${size} pixels`}
+              />
+            }
+          />
+        ))}
+      </div>
+    </div>
+  ),
+};
+
 export const SemanticReactions: Story = {
   render: () => (
     <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
@@ -124,7 +153,7 @@ export const SemanticReactions: Story = {
 
 /* U-02 — the canonical single-component moods at the three critical sizes.
    16 px tests favicon legibility. 28 px is the rail. 120 px proves
-   expression. The same SVG source serves both fidelities. */
+   expression. The same canonical raster mapping serves every size. */
 const moods: WernerMood[] = ["idle", "thinking", "empty", "celebrate"];
 const sizes = [16, 28, 120];
 

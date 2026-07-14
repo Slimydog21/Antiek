@@ -10,6 +10,7 @@ import path from "node:path";
 
 import Werner from "./Werner";
 import WernerSleeping from "./werner/animated/WernerSleeping";
+import WernerThinking from "./werner/animated/WernerThinking";
 import { WernerDizzy } from "./werner/reactions";
 
 afterEach(cleanup);
@@ -27,6 +28,23 @@ describe("Werner mark", () => {
 
   it("throws in dev on a mood outside the four", () => {
     expect(() => render(<Werner mood={"party" as never} />)).toThrow();
+  });
+
+  it("keeps the public thinking state semantically honest and accessible", () => {
+    const thinking = render(
+      <WernerThinking size={40} label="Tracing the evidence" />,
+    );
+    const status = thinking.getByRole("status", {
+      name: "Tracing the evidence",
+    });
+    const thinkingSrc = status.querySelector("img")?.getAttribute("src");
+    expect(thinkingSrc).toBeTruthy();
+    expect(status.querySelectorAll('[aria-hidden="true"]')).toHaveLength(5);
+
+    const idle = render(<Werner mood="idle" size={40} />);
+    expect(thinkingSrc).not.toBe(
+      idle.container.querySelector("img")?.getAttribute("src"),
+    );
   });
 
   it("corrects only the radically small-in-frame empty pose", () => {
