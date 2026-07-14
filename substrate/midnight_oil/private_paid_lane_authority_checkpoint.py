@@ -3016,6 +3016,93 @@ def _copy_audit_observed_target_v1(
     return expected
 
 
+def _reconcile_copy_prepared_target_v1(
+    connection: sqlite3.Connection,
+    *,
+    corpus: FrozenPaidLaneMigrationCorpusV1,
+    expected_copy_audit_sha256: str,
+    target_store_id: str,
+    semantic_source_sha256: str,
+    contract_sha256: str,
+    provider_capability_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_verification_keys: tuple[VerificationKeyV1, ...],
+    source_head_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
+    source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+) -> tuple[CopyAuditV1, bool]:
+    if type(connection) is not sqlite3.Connection or not connection.in_transaction:
+        raise ValueError("copy target transaction state")
+    intent = _copy_audit_intent_v1(
+        corpus=corpus,
+        target_store_id=target_store_id,
+        semantic_source_sha256=semantic_source_sha256,
+        contract_sha256=contract_sha256,
+        provider_capability_verification_keys=provider_capability_verification_keys,
+        provider_revocation_verification_keys=provider_revocation_verification_keys,
+        source_head_verification_keys=source_head_verification_keys,
+        provider_revocation_floor_pins=provider_revocation_floor_pins,
+        source_floor_pins=source_floor_pins,
+    )
+    if _copy_audit_sha256(intent) != expected_copy_audit_sha256:
+        raise ValueError("copy target audit intent")
+    _audit_schema(connection)
+    singleton = connection.execute(
+        "SELECT singleton,schema_version,migration_epoch,store_id,"
+        "semantic_source_sha256,contract_sha256,cutover_marker_sha256,created_at_ms "
+        "FROM paid_lane_schema"
+    ).fetchall()
+    if singleton != [(1, 1, 0, target_store_id, semantic_source_sha256, contract_sha256, None, 0)]:
+        raise ValueError("copy target singleton")
+    for table_name in (
+        "logical_effects",
+        "paid_admissions",
+        "budget_holds",
+        "paid_attempts",
+        "paid_effect_transitions",
+        "paid_attempt_events",
+        "migration_cutover_proof",
+    ):
+        if connection.execute(f"SELECT 1 FROM {table_name} LIMIT 1").fetchone() is not None:
+            raise ValueError("copy target runtime row")
+    populated_tables = tuple(
+        table_name
+        for table_name in _COPY_TABLE_ORDER_FIELDS
+        if connection.execute(f"SELECT 1 FROM {table_name} LIMIT 1").fetchone() is not None
+    )
+    copied = not populated_tables
+    if copied:
+        for table_name in _COPY_TABLE_ORDER_FIELDS:
+            for row in getattr(corpus, table_name):
+                columns = tuple(type(row).model_fields)
+                values = tuple(
+                    value.hex()
+                    if isinstance(value, bytes) and column == "signature_ed25519"
+                    else value
+                    for column in columns
+                    for value in (getattr(row, column),)
+                )
+                connection.execute(
+                    f"INSERT INTO {table_name} ({','.join(columns)}) "
+                    f"VALUES ({','.join('?' for _ in columns)})",
+                    values,
+                )
+    audit = _copy_audit_observed_target_v1(
+        connection,
+        corpus=corpus,
+        target_store_id=target_store_id,
+        semantic_source_sha256=semantic_source_sha256,
+        contract_sha256=contract_sha256,
+        provider_capability_verification_keys=provider_capability_verification_keys,
+        provider_revocation_verification_keys=provider_revocation_verification_keys,
+        source_head_verification_keys=source_head_verification_keys,
+        provider_revocation_floor_pins=provider_revocation_floor_pins,
+        source_floor_pins=source_floor_pins,
+    )
+    if audit != intent:
+        raise ValueError("copy target audit mismatch")
+    return audit, copied
+
+
 class SignedCutoverMarkerV1(_Closed):
     schema_version: Literal[1] = 1
     target_store_id: str

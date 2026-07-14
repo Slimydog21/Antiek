@@ -15,6 +15,8 @@ import pickle
 import socket
 import sqlite3
 import textwrap
+import threading
+import time
 import weakref
 from contextlib import suppress
 from pathlib import Path
@@ -2239,6 +2241,7 @@ class TestMigrationPrerequisites:
             writer_inventory=support_checkpoint._CHILD_ROLES,
             source_store_identities=support_checkpoint._CHILD_ROLES,
             now_ms=1,
+            typed_rows=support_checkpoint.fixture_genesis_migration_rows(),
         )
         root_record = json.loads(
             (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
@@ -2250,11 +2253,11 @@ class TestMigrationPrerequisites:
             root_fd=root_fd,
             parent_fd=parent_fd,
             target_basename=target.name,
-            provider_capability_verification_keys=(),
-            provider_revocation_verification_keys=(),
-            source_head_verification_keys=(),
-            provider_revocation_floor_pins=(),
-            source_floor_pins=(),
+            provider_capability_verification_keys=support_checkpoint.capability_verification_keys(),
+            provider_revocation_verification_keys=support_checkpoint.revocation_verification_keys(),
+            source_head_verification_keys=support_checkpoint.source_head_verification_keys(),
+            provider_revocation_floor_pins=support_checkpoint.provider_revocation_floor_pins(),
+            source_floor_pins=support_checkpoint.source_floor_pins(),
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
         )
@@ -2378,11 +2381,11 @@ class TestMigrationPrerequisites:
                 target_store_id=STORE_ID,
                 semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
                 contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
-                provider_capability_verification_keys=(),
-                provider_revocation_verification_keys=(),
-                source_head_verification_keys=(),
-                provider_revocation_floor_pins=(),
-                source_floor_pins=(),
+                provider_capability_verification_keys=support_checkpoint.capability_verification_keys(),
+                provider_revocation_verification_keys=support_checkpoint.revocation_verification_keys(),
+                source_head_verification_keys=support_checkpoint.source_head_verification_keys(),
+                provider_revocation_floor_pins=support_checkpoint.provider_revocation_floor_pins(),
+                source_floor_pins=support_checkpoint.source_floor_pins(),
             )
             assert sum(copy_intent.table_row_counts.model_dump().values()) == 1 + sum(
                 len(getattr(corpus, table_name))
@@ -2529,6 +2532,74 @@ class TestMigrationPrerequisites:
             )
             issuer.commit(state=prepared, parent_fd=parent_fd)
             issuer.commit(state=prepared, parent_fd=parent_fd)
+            target_connection = sqlite3.connect(target, timeout=0.1)
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                    target_connection.execute("BEGIN IMMEDIATE")
+            finally:
+                target_connection.close()
+            copied_candidate = {
+                **prepared_candidate,
+                "lifecycle_phase": "copied_epoch0",
+                "phase_version": 4,
+                "issuer_sequence": 4,
+                "updated_at_ms": 5,
+                "previous_state_sha256": prepared.state_sha256,
+            }
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(copied_candidate)
+            copy_errors: list[BaseException] = []
+
+            def lose_copy_reacquisition() -> None:
+                try:
+                    issuer.copy_epoch0(
+                        prepared_state=prepared,
+                        test_post_commit_pause_ms=500,
+                    )
+                except BaseException as error:
+                    copy_errors.append(error)
+
+            copy_thread = threading.Thread(target=lose_copy_reacquisition)
+            copy_thread.start()
+            competing_writer = sqlite3.connect(target, timeout=0.01)
+            deadline = time.monotonic() + 2
+            try:
+                while True:
+                    try:
+                        competing_writer.execute("BEGIN IMMEDIATE")
+                        break
+                    except sqlite3.OperationalError:
+                        if time.monotonic() >= deadline:
+                            raise
+                time.sleep(0.8)
+                competing_writer.execute("ROLLBACK")
+            finally:
+                competing_writer.close()
+            copy_thread.join(timeout=2)
+            assert not copy_thread.is_alive()
+            assert len(copy_errors) == 1
+            assert isinstance(copy_errors[0], ValueError)
+            assert issuer.copy_epoch0(prepared_state=prepared) is False
+            copied = issuer.reserve(copied_candidate)
+            assert copied.copy_audit_sha256 == prepared.copy_audit_sha256
+            assert copied.source_manifest_sha256 == prepared.source_manifest_sha256
+            assert copied.witness_sha256 == prepared.witness_sha256
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.commit(state=copied, parent_fd=parent_fd)
+            target_connection = sqlite3.connect(target, timeout=0.1)
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                    target_connection.execute("BEGIN IMMEDIATE")
+            finally:
+                target_connection.close()
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=copied,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=prepared.state_sha256,
+            )
+            issuer.commit(state=copied, parent_fd=parent_fd)
+            issuer.commit(state=copied, parent_fd=parent_fd)
             target_connection = sqlite3.connect(target, timeout=0.1)
             try:
                 target_connection.execute("BEGIN IMMEDIATE")
@@ -2844,6 +2915,96 @@ class TestMigrationPrerequisites:
                 ciphertext_length=16,
                 ciphertext=b"x" * 16,
             )
+
+    def test_copy_reconciler_is_atomic_idempotent_and_rejects_partial_target(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "copy-reconcile.sqlite3"
+        _initialize_schema_only_copy_target(target)
+        corpus = _migration_corpus_from_rows(support_checkpoint.fixture_genesis_migration_rows())
+        authority = {
+            "provider_capability_verification_keys": support_checkpoint.capability_verification_keys(),
+            "provider_revocation_verification_keys": support_checkpoint.revocation_verification_keys(),
+            "source_head_verification_keys": support_checkpoint.source_head_verification_keys(),
+            "provider_revocation_floor_pins": support_checkpoint.provider_revocation_floor_pins(),
+            "source_floor_pins": support_checkpoint.source_floor_pins(),
+        }
+        intent = checkpoint_module._copy_audit_intent_v1(
+            corpus=corpus,
+            target_store_id=STORE_ID,
+            semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            **authority,
+        )
+        audit_sha256 = checkpoint_module._copy_audit_sha256(intent)
+        connection = sqlite3.connect(target, isolation_level=None)
+        try:
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=5000")
+            connection.execute("PRAGMA temp_store=MEMORY")
+            connection.execute(f"PRAGMA max_page_count={checkpoint_module.MAX_DB_PAGES}")
+            connection.execute("BEGIN IMMEDIATE")
+            first, inserted = checkpoint_module._reconcile_copy_prepared_target_v1(
+                connection,
+                corpus=corpus,
+                expected_copy_audit_sha256=audit_sha256,
+                target_store_id=STORE_ID,
+                semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                **authority,
+            )
+            assert first == intent
+            assert inserted is True
+            connection.execute("ROLLBACK")
+            assert all(
+                connection.execute(f"SELECT count(*) FROM {table_name}").fetchone() == (0,)
+                for table_name in checkpoint_module._COPY_TABLE_ORDER_FIELDS
+            )
+
+            connection.execute("BEGIN IMMEDIATE")
+            committed, inserted = checkpoint_module._reconcile_copy_prepared_target_v1(
+                connection,
+                corpus=corpus,
+                expected_copy_audit_sha256=audit_sha256,
+                target_store_id=STORE_ID,
+                semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                **authority,
+            )
+            assert committed == intent
+            assert inserted is True
+            connection.execute("COMMIT")
+
+            connection.execute("BEGIN IMMEDIATE")
+            replayed, inserted = checkpoint_module._reconcile_copy_prepared_target_v1(
+                connection,
+                corpus=corpus,
+                expected_copy_audit_sha256=audit_sha256,
+                target_store_id=STORE_ID,
+                semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                **authority,
+            )
+            assert replayed == intent
+            assert inserted is False
+            connection.execute("COMMIT")
+
+            connection.execute("DELETE FROM source_current")
+            connection.execute("BEGIN IMMEDIATE")
+            with pytest.raises(ValueError, match="copy target row mismatch"):
+                checkpoint_module._reconcile_copy_prepared_target_v1(
+                    connection,
+                    corpus=corpus,
+                    expected_copy_audit_sha256=audit_sha256,
+                    target_store_id=STORE_ID,
+                    semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                    contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                    **authority,
+                )
+            connection.execute("ROLLBACK")
+            assert connection.execute("SELECT count(*) FROM source_current").fetchone() == (0,)
+        finally:
+            connection.close()
 
     def test_migration_binary_encoding_and_exact_source_aad(self) -> None:
         assert checkpoint_module._bounded_migration_bytes(b"\x80\xff", bound=20) == (

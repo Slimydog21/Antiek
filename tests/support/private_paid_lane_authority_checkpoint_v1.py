@@ -72,6 +72,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _canonical_json,
     _capability_v4_document_sha256,
     _copy_audit_intent_v1,
+    _copy_audit_observed_target_v1,
     _copy_audit_sha256,
     _migration_barrier_id,
     _migration_encode,
@@ -87,6 +88,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _parse_migration_lifecycle_state_document,
     _parse_strict_json,
     _read_signed_migration_lifecycle_state,
+    _reconcile_copy_prepared_target_v1,
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
@@ -250,6 +252,7 @@ def _issuer_compatible_root_record(root_fd: int, phase: object) -> dict[str, obj
         "barrier_acquired": "quiesced",
         "sources_sealed": "sealed",
         "copy_prepared": "sealed",
+        "copied_epoch0": "sealed",
     }.get(phase)
     if expected_state is None or record.get("state") != expected_state:
         raise ValueError("issuer unsupported or incompatible root phase")
@@ -603,6 +606,50 @@ def _issuer_copy_intent(
     return _copy_audit_sha256(audit)
 
 
+def _issuer_observed_copy(
+    *,
+    target_fd: int,
+    target_lease: sqlite3.Connection,
+    corpus: FrozenPaidLaneMigrationCorpusV1,
+    provider_capability_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_verification_keys: tuple[VerificationKeyV1, ...],
+    source_head_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
+    source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+    expected_target_store_id: str,
+    expected_semantic_source_sha256: str,
+    expected_contract_sha256: str,
+) -> str:
+    with _issuer_target_snapshot(target_fd, target_lease) as target_path:
+        connection = sqlite3.connect(f"{target_path.as_uri()}?mode=ro", uri=True)
+        try:
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=5000")
+            connection.execute("PRAGMA temp_store=MEMORY")
+            connection.execute(f"PRAGMA max_page_count={MAX_DB_PAGES}")
+            connection.execute("BEGIN")
+            audit = _copy_audit_observed_target_v1(
+                connection,
+                corpus=corpus,
+                target_store_id=expected_target_store_id,
+                semantic_source_sha256=expected_semantic_source_sha256,
+                contract_sha256=expected_contract_sha256,
+                provider_capability_verification_keys=provider_capability_verification_keys,
+                provider_revocation_verification_keys=provider_revocation_verification_keys,
+                source_head_verification_keys=source_head_verification_keys,
+                provider_revocation_floor_pins=provider_revocation_floor_pins,
+                source_floor_pins=source_floor_pins,
+            )
+            connection.execute("COMMIT")
+        except BaseException:
+            with suppress(sqlite3.Error):
+                connection.execute("ROLLBACK")
+            raise
+        finally:
+            connection.close()
+    return _copy_audit_sha256(audit)
+
+
 def _fixture_migration_lifecycle_issuer_main(
     socket_path: str,
     authorized_pid: int,
@@ -626,6 +673,7 @@ def _fixture_migration_lifecycle_issuer_main(
     bound_target_fd: int | None = None
     target_lease: sqlite3.Connection | None = None
     bound_identity: dict[str, object] | None = None
+    copy_completed = False
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     process_watch = select.kqueue()
     try:
@@ -774,6 +822,109 @@ def _fixture_migration_lifecycle_issuer_main(
                         raise ValueError("issuer close descriptor")
                     _issuer_response(connection, b"C")
                     return
+                if command == "copy_epoch0":
+                    if (
+                        bound_root_fd is None
+                        or bound_target_fd is None
+                        or committed is None
+                        or pending_state is not None
+                        or received_descriptors
+                        or set(request)
+                        != {
+                            "command",
+                            "prepared_state_sha256",
+                            "test_post_commit_pause_ms",
+                        }
+                        or request["prepared_state_sha256"] != committed.state_sha256
+                        or committed.lifecycle_phase != "copy_prepared"
+                        or type(request["test_post_commit_pause_ms"]) is not int
+                        or not 0 <= request["test_post_commit_pause_ms"] <= 1_000
+                    ):
+                        raise ValueError("issuer copy command state")
+                    with _issuer_transition_lock(bound_root_fd):
+                        if target_lease is None:
+                            target_lease = _issuer_acquire_target_lease(bound_target_fd)
+                        compatible = _issuer_compatible_root_record(
+                            bound_root_fd, committed.lifecycle_phase
+                        )
+                        corpus = _collect_sealed_corpus(
+                            _issuer_root_path(bound_root_fd), compatible
+                        )
+                        if (
+                            committed.source_manifest_sha256 != corpus.source_manifest_sha256
+                            or committed.copy_audit_sha256 is None
+                        ):
+                            raise ValueError("issuer copy command corpus")
+                        first_execution = not copy_completed
+                        try:
+                            audit, _ = _reconcile_copy_prepared_target_v1(
+                                target_lease,
+                                corpus=corpus,
+                                expected_copy_audit_sha256=committed.copy_audit_sha256,
+                                target_store_id=committed.target_store_id,
+                                semantic_source_sha256=expected_semantic_source_sha256,
+                                contract_sha256=expected_contract_sha256,
+                                provider_capability_verification_keys=provider_capability_verification_keys,
+                                provider_revocation_verification_keys=provider_revocation_verification_keys,
+                                source_head_verification_keys=source_head_verification_keys,
+                                provider_revocation_floor_pins=provider_revocation_floor_pins,
+                                source_floor_pins=source_floor_pins,
+                            )
+                            target_lease.execute("COMMIT")
+                            copy_completed = True
+                            pause_ms = request["test_post_commit_pause_ms"]
+                            if pause_ms:
+                                target_lease.execute("PRAGMA busy_timeout=50")
+                                time.sleep(pause_ms / 1_000)
+                            target_lease.execute("BEGIN IMMEDIATE")
+                            confirmed, confirmed_copied = _reconcile_copy_prepared_target_v1(
+                                target_lease,
+                                corpus=corpus,
+                                expected_copy_audit_sha256=committed.copy_audit_sha256,
+                                target_store_id=committed.target_store_id,
+                                semantic_source_sha256=expected_semantic_source_sha256,
+                                contract_sha256=expected_contract_sha256,
+                                provider_capability_verification_keys=provider_capability_verification_keys,
+                                provider_revocation_verification_keys=provider_revocation_verification_keys,
+                                source_head_verification_keys=source_head_verification_keys,
+                                provider_revocation_floor_pins=provider_revocation_floor_pins,
+                                source_floor_pins=source_floor_pins,
+                            )
+                            has_corpus_rows = any(
+                                getattr(corpus, table_name)
+                                for table_name in (
+                                    "provider_capabilities_v4",
+                                    "provider_revocation_heads",
+                                    "provider_revocation_current",
+                                    "source_heads",
+                                    "source_current",
+                                    "encrypted_source_bundles",
+                                    "owner_operations",
+                                    "consent_claims",
+                                    "queue_leases",
+                                    "budget_accounts",
+                                )
+                            )
+                            if confirmed != audit or (has_corpus_rows and confirmed_copied):
+                                raise ValueError("issuer copy command confirmation")
+                            copied = first_execution
+                        except BaseException:
+                            with suppress(sqlite3.Error):
+                                target_lease.execute("ROLLBACK")
+                            if not target_lease.in_transaction:
+                                try:
+                                    target_lease.execute("BEGIN IMMEDIATE")
+                                except BaseException:
+                                    target_lease.close()
+                                    target_lease = None
+                            raise
+                    _issuer_response(
+                        connection,
+                        b"Y"
+                        + _copy_audit_sha256(audit).encode("ascii")
+                        + (b"1" if copied else b"0"),
+                    )
+                    continue
                 if command == "reserve":
                     if (
                         bound_root_fd is None
@@ -801,6 +952,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             if pending_state.lifecycle_phase in {
                                 "sources_sealed",
                                 "copy_prepared",
+                                "copied_epoch0",
                             }:
                                 corpus = _collect_sealed_corpus(
                                     _issuer_root_path(bound_root_fd), compatible
@@ -810,10 +962,22 @@ def _fixture_migration_lifecycle_issuer_main(
                                     != corpus.source_manifest_sha256
                                 ):
                                     raise ValueError("issuer pending source manifest")
-                                if pending_state.lifecycle_phase == "copy_prepared":
-                                    if bound_target_fd is None or target_lease is None:
+                                if pending_state.lifecycle_phase in {
+                                    "copy_prepared",
+                                    "copied_epoch0",
+                                }:
+                                    if bound_target_fd is None:
                                         raise ValueError("issuer pending target custody")
-                                    expected_audit = _issuer_copy_intent(
+                                    if target_lease is None:
+                                        if pending_state.lifecycle_phase != "copied_epoch0":
+                                            raise ValueError("issuer pending target lease")
+                                        target_lease = _issuer_acquire_target_lease(bound_target_fd)
+                                    copy_measure = (
+                                        _issuer_copy_intent
+                                        if pending_state.lifecycle_phase == "copy_prepared"
+                                        else _issuer_observed_copy
+                                    )
+                                    expected_audit = copy_measure(
                                         target_fd=bound_target_fd,
                                         target_lease=target_lease,
                                         corpus=corpus,
@@ -848,7 +1012,11 @@ def _fixture_migration_lifecycle_issuer_main(
                                 "barrier_id"
                             ) or candidate.get("freeze_nonce") != root_record.get("freeze_nonce"):
                                 raise ValueError("issuer barrier root phase")
-                            if phase in {"sources_sealed", "copy_prepared"}:
+                            if phase in {
+                                "sources_sealed",
+                                "copy_prepared",
+                                "copied_epoch0",
+                            }:
                                 corpus = _collect_sealed_corpus(
                                     _issuer_root_path(bound_root_fd), root_record
                                 )
@@ -857,13 +1025,21 @@ def _fixture_migration_lifecycle_issuer_main(
                                     != corpus.source_manifest_sha256
                                 ):
                                     raise ValueError("issuer source manifest")
-                                if phase == "copy_prepared":
+                                if phase in {"copy_prepared", "copied_epoch0"}:
                                     if bound_target_fd is None:
                                         raise ValueError("issuer target custody")
-                                    if target_lease is not None:
-                                        raise ValueError("issuer target lease state")
-                                    target_lease = _issuer_acquire_target_lease(bound_target_fd)
-                                    expected_audit = _issuer_copy_intent(
+                                    if phase == "copy_prepared":
+                                        if target_lease is not None:
+                                            raise ValueError("issuer target lease state")
+                                        target_lease = _issuer_acquire_target_lease(bound_target_fd)
+                                    elif target_lease is None:
+                                        target_lease = _issuer_acquire_target_lease(bound_target_fd)
+                                    copy_measure = (
+                                        _issuer_copy_intent
+                                        if phase == "copy_prepared"
+                                        else _issuer_observed_copy
+                                    )
+                                    expected_audit = copy_measure(
                                         target_fd=bound_target_fd,
                                         target_lease=target_lease,
                                         corpus=corpus,
@@ -943,6 +1119,7 @@ def _fixture_migration_lifecycle_issuer_main(
                         if state_for_commit.lifecycle_phase in {
                             "sources_sealed",
                             "copy_prepared",
+                            "copied_epoch0",
                         }:
                             corpus = _collect_sealed_corpus(
                                 _issuer_root_path(bound_root_fd), compatible
@@ -952,14 +1129,23 @@ def _fixture_migration_lifecycle_issuer_main(
                                 != corpus.source_manifest_sha256
                             ):
                                 raise ValueError("issuer commit source manifest")
-                            if state_for_commit.lifecycle_phase == "copy_prepared":
+                            if state_for_commit.lifecycle_phase in {
+                                "copy_prepared",
+                                "copied_epoch0",
+                            }:
                                 if bound_target_fd is None:
                                     raise ValueError("issuer commit target custody")
                                 if target_lease is None:
                                     if pending_state is not None:
                                         raise ValueError("issuer commit target lease")
                                     target_lease = _issuer_acquire_target_lease(bound_target_fd)
-                                expected_audit = _issuer_copy_intent(
+                                copy_measure = (
+                                    _issuer_copy_intent
+                                    if state_for_commit.lifecycle_phase == "copy_prepared"
+                                    and not copy_completed
+                                    else _issuer_observed_copy
+                                )
+                                expected_audit = copy_measure(
                                     target_fd=bound_target_fd,
                                     target_lease=target_lease,
                                     corpus=corpus,
@@ -993,7 +1179,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             committed = pending_state
                             pending_candidate = None
                             pending_state = None
-                        release_copy_lease = state_for_commit.lifecycle_phase == "copy_prepared"
+                        release_copy_lease = state_for_commit.lifecycle_phase == "copied_epoch0"
                     if release_copy_lease:
                         if target_lease is None:
                             raise ValueError("issuer committed target lease")
@@ -1003,7 +1189,11 @@ def _fixture_migration_lifecycle_issuer_main(
                     continue
                 raise ValueError("issuer command")
             except Exception:
-                if target_lease is not None and pending_state is None:
+                if (
+                    target_lease is not None
+                    and pending_state is None
+                    and (committed is None or committed.lifecycle_phase != "copy_prepared")
+                ):
                     _issuer_release_target_lease(target_lease)
                     target_lease = None
                 _issuer_response(connection, b"E")
@@ -1237,6 +1427,35 @@ class FixtureMigrationLifecycleIssuerV1:
             response = self._request(request, (parent_fd,))
         if response != b"A" + state.state_sha256.encode("ascii"):
             raise ValueError("issuer commit response")
+
+    def copy_epoch0(
+        self,
+        *,
+        prepared_state: SignedMigrationLifecycleStateV1,
+        test_post_commit_pause_ms: int = 0,
+    ) -> bool:
+        self._validate_client()
+        if (
+            type(prepared_state) is not SignedMigrationLifecycleStateV1
+            or prepared_state.lifecycle_phase != "copy_prepared"
+            or prepared_state.copy_audit_sha256 is None
+            or type(test_post_commit_pause_ms) is not int
+            or not 0 <= test_post_commit_pause_ms <= 1_000
+        ):
+            raise ValueError("issuer copy prepared state")
+        request = _canonical_json(
+            {
+                "command": "copy_epoch0",
+                "prepared_state_sha256": prepared_state.state_sha256,
+                "test_post_commit_pause_ms": test_post_commit_pause_ms,
+            }
+        )
+        with self._lock:
+            response = self._request(request)
+        expected_prefix = b"Y" + prepared_state.copy_audit_sha256.encode("ascii")
+        if response not in {expected_prefix + b"0", expected_prefix + b"1"}:
+            raise ValueError("issuer copy response")
+        return response[-1:] == b"1"
 
     def close(self) -> None:
         self._validate_client()
