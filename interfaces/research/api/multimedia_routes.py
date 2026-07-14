@@ -41,7 +41,16 @@ from substrate.multimedia.read_model import (
     SteeringPreviewRequest,
     SteeringPreviewResponse,
 )
+from substrate.multimedia.ship_cost_snapshot import (
+    MultimediaShipCostEvidenceUnavailable,
+    build_multimedia_ship_cost_snapshot,
+)
 
+from .multimedia_hardening_routes import (
+    MultimediaHardeningRuntime,
+    get_multimedia_hardening_runtime,
+    multimedia_hardening_runtime_from_environment,
+)
 from .multimedia_local_audible_routes import (
     get_multimedia_local_audible_runtime,
     get_multimedia_local_audible_runtime_optional,
@@ -248,11 +257,29 @@ def steer_multimedia_asset(
 def run_multimedia_hardening(
     asset_id: str,
     operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaHardeningRuntime = Depends(get_multimedia_hardening_runtime),
 ) -> MultimediaAssetRecord:
     try:
-        return get_store().run_hardening(asset_id, owner_id=operator_id)
+        record = get_store().get(asset_id, owner_id=operator_id)
+        snapshot = build_multimedia_ship_cost_snapshot(
+            db_path=runtime.db_path,
+            signing_key=runtime.signing_key,
+            snapshot_key=runtime.snapshot_key,
+            owner_id=operator_id,
+            asset_id=record.asset.asset_id,
+            revision_id=record.asset.revision_id,
+            now=runtime.clock(),
+        )
+        return get_store().run_hardening(
+            asset_id,
+            owner_id=operator_id,
+            cost_snapshot=snapshot,
+            snapshot_key=runtime.snapshot_key,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    except MultimediaShipCostEvidenceUnavailable as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
 
 
 @multimedia_router.post(
@@ -366,6 +393,9 @@ def register_multimedia_routes(app: FastAPI) -> None:
     knowledge_runtime = multimedia_knowledge_runtime_from_environment()
     if knowledge_runtime is not None:
         app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
+    hardening_runtime = multimedia_hardening_runtime_from_environment()
+    if hardening_runtime is not None:
+        app.dependency_overrides[get_multimedia_hardening_runtime] = lambda: hardening_runtime
     local_runtime = multimedia_local_runtime_from_environment(store=get_store())
     if local_runtime is not None:
         app.dependency_overrides[get_multimedia_local_runtime_optional] = (
