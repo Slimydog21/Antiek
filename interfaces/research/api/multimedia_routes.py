@@ -104,6 +104,11 @@ from .multimedia_visual_generation_routes import (
     multimedia_visual_generation_router,
     multimedia_visual_generation_runtime_from_environment,
 )
+from .multimedia_visual_quality_routes import (
+    get_multimedia_visual_quality_runtime,
+    multimedia_visual_quality_router,
+    multimedia_visual_quality_runtime_from_environment,
+)
 from .multimedia_visual_review_routes import (
     get_multimedia_visual_review_runtime,
     multimedia_visual_review_router,
@@ -123,6 +128,7 @@ multimedia_router.include_router(multimedia_visual_authorization_router)
 multimedia_router.include_router(multimedia_visual_generation_router)
 multimedia_router.include_router(multimedia_visual_candidate_router)
 multimedia_router.include_router(multimedia_visual_review_router)
+multimedia_router.include_router(multimedia_visual_quality_router)
 _STORE = MultimediaAssetStore()
 
 
@@ -447,6 +453,13 @@ def register_multimedia_routes(app: FastAPI) -> None:
     if visual_review_runtime is not None:
         app.dependency_overrides[get_multimedia_visual_review_runtime] = (
             lambda: visual_review_runtime
+        )
+    visual_quality_runtime = multimedia_visual_quality_runtime_from_environment(
+        store=get_store(), generation_runtime=visual_generation_runtime
+    )
+    if visual_quality_runtime is not None:
+        app.dependency_overrides[get_multimedia_visual_quality_runtime] = (
+            lambda: visual_quality_runtime
         )
 
 

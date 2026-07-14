@@ -396,6 +396,22 @@ class MultimediaAssetStore:
         with self._locked(exclusive=False):
             return self._load_unlocked(asset_id, owner_digest)
 
+    @contextmanager
+    def guard_revision(
+        self,
+        asset_id: str,
+        expected_revision_id: str,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+    ) -> Iterator[MultimediaAssetRecord]:
+        """Hold a shared store lock while a caller binds work to one revision."""
+        owner_digest = _owner_digest(owner_id)
+        with self._locked(exclusive=False):
+            record = self._load_unlocked(asset_id, owner_digest)
+            if record.asset.revision_id != expected_revision_id:
+                raise ValueError("multimedia asset revision is stale")
+            yield record
+
     def approve_dry_run(
         self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
     ) -> MultimediaAssetRecord:
