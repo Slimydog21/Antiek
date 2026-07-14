@@ -23,17 +23,21 @@ const {
   createPlanMock,
   editPlanMock,
   approvePlanMock,
+  approveSpendMock,
   launchPlanMock,
   getBudgetDefaultsMock,
   getPlanMock,
+  getSpendPreviewMock,
   getSessionMock,
 } = vi.hoisted(() => ({
   createPlanMock: vi.fn(),
   editPlanMock: vi.fn(),
   approvePlanMock: vi.fn(),
+  approveSpendMock: vi.fn(),
   launchPlanMock: vi.fn(),
   getBudgetDefaultsMock: vi.fn(),
   getPlanMock: vi.fn(),
+  getSpendPreviewMock: vi.fn(),
   getSessionMock: vi.fn(),
 }));
 
@@ -44,9 +48,11 @@ vi.mock("../../api/research", async (orig) => {
     createPlan: createPlanMock,
     editPlan: editPlanMock,
     approvePlan: approvePlanMock,
+    approveSpend: approveSpendMock,
     launchPlan: launchPlanMock,
     getBudgetDefaults: getBudgetDefaultsMock,
     getPlan: getPlanMock,
+    getSpendPreview: getSpendPreviewMock,
     getSession: getSessionMock,
   };
 });
@@ -89,11 +95,23 @@ beforeEach(() => {
   createPlanMock.mockReset();
   editPlanMock.mockReset();
   approvePlanMock.mockReset();
+  approveSpendMock.mockReset();
   launchPlanMock.mockReset();
   getBudgetDefaultsMock.mockReset();
   getPlanMock.mockReset();
+  getSpendPreviewMock.mockReset();
   getSessionMock.mockReset();
   getBudgetDefaultsMock.mockResolvedValue({ per_research_cost_usd: 0.5, per_research_max_steps: 50 });
+  getSpendPreviewMock.mockResolvedValue({
+    spend_mode: "hard_ceiling",
+    currency: "USD",
+    amount_cents: 150,
+    eligible: false,
+    reasons: ["This automatically generated plan is stop-limit only."],
+    authority_digest: null,
+    approval_revision: 1,
+    assumptions: [],
+  });
 });
 afterEach(() => cleanup());
 
@@ -173,6 +191,81 @@ describe("CascadeProposal — propose the sub-question tree (M1)", () => {
 });
 
 describe("CascadeProposal — trim + gated launch (M2)", () => {
+  it("binds hard-mode approval to the exact server-issued authority", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    getSpendPreviewMock.mockResolvedValue({
+      spend_mode: "hard_ceiling",
+      currency: "USD",
+      amount_cents: 150,
+      eligible: true,
+      reasons: [],
+      authority_digest: null,
+      approval_revision: 1,
+      assumptions: [],
+    });
+    approvePlanMock.mockResolvedValue({});
+    approveSpendMock.mockResolvedValue({
+      spend_mode: "hard_ceiling",
+      currency: "USD",
+      amount_cents: 150,
+      eligible: true,
+      reasons: [],
+      authority_digest: "a".repeat(64),
+      approval_revision: 1,
+      assumptions: [],
+    });
+    launchPlanMock.mockResolvedValue({
+      session_id: "session-hard",
+      researches: [],
+      aggregate_cap_usd: null,
+    });
+    const { onLaunched } = renderProposal();
+    const hardMode = await screen.findByRole("button", { name: "Hard ceiling" });
+    await waitFor(() => expect((hardMode as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(hardMode);
+    const approval = await screen.findByRole("checkbox", {
+      name: /approve a \$1\.50 hard authorized-spend ceiling/i,
+    });
+    fireEvent.click(approval);
+    await waitFor(() => expect((approval as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: /Start 3 researches/i }));
+    await waitFor(() =>
+      expect(launchPlanMock).toHaveBeenCalledWith("q-pn-root", {
+        spend_mode: "hard_ceiling",
+        hard_ceiling_usd: "1.50",
+        authority_digest: "a".repeat(64),
+      }),
+    );
+    expect(approvePlanMock).toHaveBeenCalledOnce();
+    expect(approveSpendMock).toHaveBeenCalledWith("q-pn-root", "1.50");
+    expect(onLaunched).toHaveBeenCalledWith("session-hard");
+  });
+
+  it("revokes hard authority synchronously when the ceiling changes", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    getSpendPreviewMock.mockResolvedValue({
+      spend_mode: "hard_ceiling", currency: "USD", amount_cents: 150,
+      eligible: true, reasons: [], authority_digest: null, approval_revision: 1, assumptions: [],
+    });
+    approvePlanMock.mockResolvedValue({});
+    approveSpendMock.mockResolvedValue({
+      spend_mode: "hard_ceiling", currency: "USD", amount_cents: 150,
+      eligible: true, reasons: [], authority_digest: "b".repeat(64), approval_revision: 1, assumptions: [],
+    });
+    renderProposal();
+    const hardMode = await screen.findByRole("button", { name: "Hard ceiling" });
+    await waitFor(() => expect((hardMode as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(hardMode);
+    const approval = await screen.findByRole("checkbox", { name: /hard authorized-spend ceiling/i });
+    fireEvent.click(approval);
+    await waitFor(() => expect((approval as HTMLInputElement).checked).toBe(true));
+    fireEvent.change(screen.getByRole("spinbutton", { name: "Authorized spend ceiling" }), {
+      target: { value: "2.00" },
+    });
+    expect((approval as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("button", { name: /Start 3 researches/i }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it("removes a sub-question through the SPR-05 edit contract", async () => {
     createPlanMock.mockResolvedValue(CREATE_RESP);
     const reduced: PlanResponse = {
@@ -193,7 +286,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
       ),
     );
     await waitFor(() => expect(screen.queryByText(/chokepoints replace oil/i)).toBeNull());
-    const revisedApproval = screen.getByRole("checkbox", { name: /approve a \$1\.00 aggregate stop limit/i });
+    const revisedApproval = await screen.findByRole("checkbox", { name: /approve a \$1\.00 aggregate stop limit/i });
     expect((revisedApproval as HTMLInputElement).checked).toBe(false);
     expect((screen.getByRole("button", { name: /Start 2 researches/i }) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -229,7 +322,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     });
     await screen.findByRole("button", { name: /Start 2 researches/i });
     expect(
-      (screen.getByRole("checkbox", {
+      (await screen.findByRole("checkbox", {
         name: /approve a \$1\.00 aggregate stop limit/i,
       }) as HTMLInputElement).checked,
     ).toBe(false);
@@ -345,6 +438,45 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     expect(createPlanMock).toHaveBeenCalledOnce();
   });
 
+  it("replays the exact hard authority after a launch response is lost", async () => {
+    createPlanMock.mockResolvedValue(CREATE_RESP);
+    getSpendPreviewMock.mockResolvedValue({
+      spend_mode: "hard_ceiling", currency: "USD", amount_cents: 150,
+      eligible: true, reasons: [], authority_digest: null, recovery_session_id: null,
+      approval_revision: 1, assumptions: [],
+    });
+    approvePlanMock.mockResolvedValue({});
+    approveSpendMock.mockResolvedValue({
+      spend_mode: "hard_ceiling", currency: "USD", amount_cents: 150,
+      eligible: true, reasons: [], authority_digest: "c".repeat(64),
+      recovery_session_id: "session-q-pn-root-hard-server-issued",
+      approval_revision: 1, assumptions: [],
+    });
+    launchPlanMock.mockRejectedValueOnce(new TypeError("Failed to fetch")).mockResolvedValue({
+      session_id: "session-q-pn-root-hard-server-issued",
+      researches: [],
+      aggregate_cap_usd: null,
+    });
+    const { onLaunched } = renderProposal();
+    const hardMode = await screen.findByRole("button", { name: "Hard ceiling" });
+    await waitFor(() => expect((hardMode as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(hardMode);
+    const approval = await screen.findByRole("checkbox", { name: /hard authorized-spend ceiling/i });
+    fireEvent.click(approval);
+    await waitFor(() => expect((approval as HTMLInputElement).checked).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: /Start 3 researches/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Check launch status" }));
+
+    await waitFor(() => expect(launchPlanMock).toHaveBeenCalledTimes(2));
+    expect(launchPlanMock).toHaveBeenLastCalledWith("q-pn-root", {
+      spend_mode: "hard_ceiling",
+      hard_ceiling_usd: "1.50",
+      authority_digest: "c".repeat(64),
+    });
+    expect(getSessionMock).not.toHaveBeenCalled();
+    expect(onLaunched).toHaveBeenCalledWith("session-q-pn-root-hard-server-issued");
+  });
+
   it("reloads the plan when approval fails before launch", async () => {
     createPlanMock.mockResolvedValue(CREATE_RESP);
     approvePlanMock.mockRejectedValue(new TypeError("Failed to fetch"));
@@ -406,7 +538,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     expect((launch as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.change(ceiling, { target: { value: "2.25" } });
-    const updatedApproval = screen.getByRole("checkbox", { name: /approve a \$2\.25 aggregate stop limit/i });
+    const updatedApproval = await screen.findByRole("checkbox", { name: /approve a \$2\.25 aggregate stop limit/i });
     expect((updatedApproval as HTMLInputElement).disabled).toBe(false);
     fireEvent.click(updatedApproval);
     expect((launch as HTMLButtonElement).disabled).toBe(false);

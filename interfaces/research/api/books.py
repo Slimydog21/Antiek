@@ -24,11 +24,12 @@ with the single writer.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import threading
 from typing import Literal, cast
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
@@ -333,6 +334,28 @@ class BookListResponse(BaseModel):
     count: int
 
 
+BookImportContentClass = Literal[
+    "public_domain",
+    "opt_in_licensed",
+    "source_declared_open",
+    "user_owned",
+    "user_public_contribution",
+    "restricted_pending_opt_in",
+    "personal_reading",
+]
+
+
+class BookImportResponse(BaseModel):
+    document_id: str
+    was_new: bool
+    chunk_count: int
+    content_class: str | None
+    servability: str
+    title: str | None
+    source_format: Literal["epub"] = "epub"
+    content_format: Literal["html"] = "html"
+
+
 class CuratedBookResponse(BaseModel):
     document_id: str
     title: str | None
@@ -402,6 +425,25 @@ class FullTextResponse(BaseModel):
     ad_eligible: bool = False
     canonical_url: str | None = None
     license: str | None = None
+    content_format: Literal["text", "html"] = "text"
+
+
+def _full_text_response(result: ServeResult) -> FullTextResponse:
+    return FullTextResponse(
+        document_id=result.document_id,
+        servable=result.servable,
+        servability=result.servability.value if result.servability else None,
+        full_text=result.full_text,
+        snippet=result.snippet,
+        title=result.title,
+        author=result.author,
+        reason=result.reason,
+        tier=result.tier,
+        ad_eligible=result.ad_eligible,
+        canonical_url=result.canonical_url,
+        license=result.license,
+        content_format=result.content_format,
+    )
 
 
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
@@ -624,9 +666,6 @@ def register_book_routes(app: FastAPI) -> None:
             if status == "servable":
                 assets = list_book_assets(con, servable_only=True)
             else:
-                # "gated" and "all" both list non-taken-down books; the
-                # servability flag on each lets the caller filter. We never
-                # widen to taken-down books on a public listing.
                 assets = list_book_assets(con, servable_only=False)
                 if status == "gated":
                     assets = [a for a in assets if not a.servable_full_text]
@@ -662,6 +701,98 @@ def register_book_routes(app: FastAPI) -> None:
                 )
                 for c in curated
             ],
+        )
+
+    @app.post(
+        "/books/import/epub",
+        response_model=BookImportResponse,
+        status_code=201,
+        tags=["books"],
+    )
+    async def import_epub(
+        request: Request,
+        content_class: BookImportContentClass = Query(default="personal_reading"),
+        rights_holder_name: str | None = Query(default=None, min_length=1, max_length=256),
+        license_basis: str | None = Query(default=None, min_length=1, max_length=1024),
+    ) -> BookImportResponse:
+        """Import one operator-held EPUB through the bounded conversion engine.
+
+        The request body is the EPUB bytes, not a path or URL. The default is
+        owner-only ``personal_reading``; making a title publicly servable is an
+        explicit rights declaration. Conversion and the DuckDB transaction run
+        off the event loop, under the repository's single-writer coordinator.
+        """
+        from runtime.db_lock import connect_write
+        from substrate.book_import import (
+            DEFAULT_LIMITS,
+            BookImportError,
+            PublishedBookImport,
+            RepublishRightsChangeError,
+            StoredBodyMismatchError,
+            ZipBombSuspectedError,
+            convert_epub_to_antiek_html,
+            publish_converted_book,
+        )
+
+        if content_class in {"personal_reading", "user_owned"} and rights_holder_name:
+            raise HTTPException(
+                status_code=422, detail="owner_only_import_cannot_create_rights_holder"
+            )
+        media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if media_type not in {"application/epub+zip", "application/octet-stream"}:
+            raise HTTPException(status_code=415, detail="epub_content_type_required")
+        declared = request.headers.get("content-length")
+        if declared is not None:
+            try:
+                declared_size = int(declared)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid_content_length") from exc
+            if declared_size <= 0:
+                raise HTTPException(status_code=400, detail="empty_epub")
+            if declared_size > DEFAULT_LIMITS.max_container_bytes:
+                raise HTTPException(status_code=413, detail="epub_too_large")
+
+        chunks: list[bytes] = []
+        received = 0
+        async for chunk in request.stream():
+            received += len(chunk)
+            if received > DEFAULT_LIMITS.max_container_bytes:
+                raise HTTPException(status_code=413, detail="epub_too_large")
+            chunks.append(chunk)
+        if received == 0:
+            raise HTTPException(status_code=400, detail="empty_epub")
+        payload = b"".join(chunks)
+
+        def convert_and_publish() -> PublishedBookImport:
+            converted = convert_epub_to_antiek_html(payload)
+            con = connect_write(_resolve_db_path(), purpose="books/import/epub")
+            try:
+                return publish_converted_book(
+                    con,
+                    converted,
+                    content_class=content_class,
+                    rights_holder_name=rights_holder_name,
+                    license_basis=license_basis,
+                )
+            finally:
+                con.close()
+
+        try:
+            published = await asyncio.to_thread(convert_and_publish)
+        except ZipBombSuspectedError as exc:
+            raise HTTPException(status_code=413, detail=exc.reason) from None
+        except (RepublishRightsChangeError, StoredBodyMismatchError) as exc:
+            raise HTTPException(status_code=409, detail=exc.reason) from None
+        except BookImportError as exc:
+            raise HTTPException(status_code=422, detail=exc.reason) from None
+
+        return BookImportResponse(
+            document_id=published.document_id,
+            was_new=published.was_new,
+            chunk_count=published.chunk_count,
+            content_class=published.content_class,
+            servability=published.servability,
+            title=published.title,
         )
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
@@ -703,20 +834,37 @@ def register_book_routes(app: FastAPI) -> None:
         # Defensively isolated: a failure in the audit layer must never break the
         # serve (wrap + log), and the audit write takes its own write lock.
         _record_arxiv_serve_audit(db, document_id, result)
-        return FullTextResponse(
-            document_id=result.document_id,
-            servable=result.servable,
-            servability=result.servability.value if result.servability else None,
-            full_text=result.full_text,
-            snippet=result.snippet,
-            title=result.title,
-            author=result.author,
-            reason=result.reason,
-            tier=result.tier,
-            ad_eligible=result.ad_eligible,
-            canonical_url=result.canonical_url,
-            license=result.license,
-        )
+        return _full_text_response(result)
+
+    @app.get(
+        "/books/{document_id}/owner-full-text",
+        response_model=FullTextResponse,
+        tags=["books"],
+    )
+    async def get_owner_book_full_text(
+        document_id: str, request: Request
+    ) -> FullTextResponse:
+        """Serve personal-reading bytes only on the proven owner path.
+
+        The public ``/full-text`` contract remains byte-for-byte narrow. This
+        explicit endpoint resolves the same hardened owner signal used by
+        context/research retrieval and never marks private bytes servable or
+        ad-eligible.
+        """
+        from runtime.db_lock import connect_read
+
+        if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
+            raise HTTPException(status_code=403, detail="owner_read_required")
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            result = serve_full_text_guarded(con, document_id, owner=True)
+        finally:
+            con.close()
+        if not result.found:
+            raise HTTPException(status_code=404, detail="book_not_found")
+        _record_arxiv_serve_audit(db, document_id, result)
+        return _full_text_response(result)
 
     @app.post(
         "/books/{document_id}/ad-impressions",
