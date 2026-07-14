@@ -1,7 +1,5 @@
-import { useEffect, useRef } from "react";
-
 import type { SceneMood } from "./mood";
-import { momentForTransition } from "../brand/wernerMoments";
+import { useSceneMomentCue } from "./useSceneMomentCue";
 
 export interface SceneMomentCue {
   sequence: number;
@@ -33,18 +31,9 @@ export function useDawnCue(
   mood: SceneMood,
   onTransition?: (cue: SceneMomentCue) => void,
 ): void {
-  const previousRef = useRef<SceneMood | null>(null);
-  const sequenceRef = useRef(0);
-
-  useEffect(() => {
-    const prev = previousRef.current;
-    // momentForTransition returns null for: null prev (mount), same mood,
-    // weather-only, night→day, day→dawn — all non-dawn or non-transition.
-    const moment = momentForTransition(prev, mood);
-    if (moment?.id === "daybreak") {
-      sequenceRef.current += 1;
-      onTransition?.({ sequence: sequenceRef.current, moment: "daybreak" });
+  useSceneMomentCue(mood, (cue) => {
+    if (cue.moment === "daybreak") {
+      onTransition?.({ sequence: cue.sequence, moment: "daybreak" });
     }
-    previousRef.current = mood;
-  }, [mood, onTransition]);
+  });
 }

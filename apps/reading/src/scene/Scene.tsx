@@ -2,7 +2,7 @@ import type { SceneMood } from "./mood";
 import { useDerivedSceneMood } from "./useDerivedSceneMood";
 import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
-import { useDawnCue, type SceneMomentCue } from "./useDawnCue";
+import { useSceneMomentCue, type SceneMomentCue } from "./useSceneMomentCue";
 import type { SceneFetcher } from "../krea/useKreaScene";
 import { useKreaStatus } from "../krea/useKreaStatus";
 import { Peaks } from "./layers/Peaks";
@@ -59,10 +59,10 @@ export interface SceneProps {
    *  clock's own reduced-motion detection. */
   reducedMotion?: boolean;
   /**
-   * One-way typed callback: Scene detects a committed `night → dawn` mood
-   * transition and transports the cue to the shell. The shell passes it to
+   * One-way typed callback: Scene detects committed authored mood transitions
+   * (`night → dawn`, first `non-dusk → dusk`) and transports the cue to the shell. The shell passes it to
    * PenguinMascot, the sole foreground arbiter. Scene never emits a false
-   * cue on mount, StrictMode, identical rerender, explicit mood override,
+   * cue on mount, StrictMode, identical rerender, weather-only change, explicit mood override,
    * or unmount. (SPR-22)
    */
   onWernerMoment?: (cue: SceneMomentCue) => void;
@@ -101,7 +101,7 @@ function DerivedScene({
   onWernerMoment,
 }: Omit<SceneProps, "mood">) {
   const mood = useDerivedSceneMood();
-  useDawnCue(mood, onWernerMoment);
+  useSceneMomentCue(mood, onWernerMoment);
   return (
     <SceneContent
       mood={mood}

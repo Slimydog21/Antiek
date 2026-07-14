@@ -17,4 +17,5 @@ export { default as WernerThinking } from "./WernerThinking";
 export { default as WernerCaughtAFish } from "./WernerCaughtAFish";
 export { default as WernerSleeping } from "./WernerSleeping";
 export { default as WernerWaking } from "./WernerWaking";
+export { default as WernerDuskGaze } from "./WernerDuskGaze";
 export { default as WernerWaddle } from "./WernerWaddle";

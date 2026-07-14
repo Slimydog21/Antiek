@@ -86,6 +86,7 @@ const STORIES: string[] = [
   "design-moodboard--outlined-card",
   // Werner brand
   "brand-werner-animations--all-poses",
+  "brand-werner-dusk-gaze-spr-29--fidelity-plate",
   // SPR-06 — the igloo home mark (the M4 home control's mark).
   "brand-werner-igloomark-spr-06--on-rail-button",
   // SPR-06 — the restructured shell (bottom nav) + the bottom rail itself.
