@@ -24,9 +24,9 @@ import { fieldSeed } from "../field";
  * mode-track through the tokens.
  */
 
-/** Per-daypart sky gradient, expressed purely in design-token Tailwind classes.
- *  Day = bright ice ramp; night = deep space ramp. dawn/dusk reserved (map to
- *  day/night tints today — same tokens, ready for a future time source). */
+/** Per-daypart sky gradient. Dawn/dusk intentionally share their OS band's
+ * token ramp today; their distinct seeded ridges and Krea keys still make the
+ * semantic transition real without inventing an unreviewed colour system. */
 function skyClass(mood: SceneMood): string {
   switch (mood.dayPart) {
     case "night":
@@ -47,9 +47,15 @@ function skyClass(mood: SceneMood): string {
 function peakFill(mood: SceneMood, band: number): string {
   const night = mood.dayPart === "night" || mood.dayPart === "dusk";
   if (night) {
-    return ["fill-charcoal-2", "fill-charcoal-1", "fill-space-1"][band] ?? "fill-space-1";
+    return (
+      ["fill-charcoal-2", "fill-charcoal-1", "fill-space-1"][band] ??
+      "fill-space-1"
+    );
   }
-  return ["fill-glacial-1", "fill-glacial-2", "fill-shadow-1"][band] ?? "fill-shadow-1";
+  return (
+    ["fill-glacial-1", "fill-glacial-2", "fill-shadow-1"][band] ??
+    "fill-shadow-1"
+  );
 }
 
 export interface ProceduralSkyProps {

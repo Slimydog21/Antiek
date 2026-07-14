@@ -93,9 +93,11 @@ reduced-motion** — i.e. the procedural rung. Covered by automated tests:
 - **Penguin reduced-motion:** in-place emote instead of a screen-crossing waddle;
   ambient roam frozen — `PenguinMascot.test.tsx` (51/51 with `src/werner`).
 
-The full `{day,night} × {motion,reduced-motion} × {online+key, offline,
+The full `{dawn,day,dusk,night} × {motion,reduced-motion} × {online+key, offline,
 over-budget}` **visual** matrix needs a real browser and is an **operator/e2e**
-step (the logic of each cell is unit-covered above).
+step; this cycle does not claim every cross-product cell is unit-covered. The
+procedural four-mood fallback itself has deterministic Lost Pixel baselines at
+768, 1024, and 1280 px in `Scene / Daypart Fidelity / Four Bounded Moods`.
 
 ## Performance budget (degradation order — documented; FPS operator-measured)
 
@@ -130,10 +132,13 @@ never 500), and a cache. The frontend consumes this via `useKreaScene` and
 degrades to procedural on any of those signals (see degradation order above).
 
 **Projected cost envelope (assumptions stated, for operator sign-off):** Krea
-art refreshes **only on mood change** (day↔night, weather) — not per frame, not
-per render (asserted: 120 same-mood renders → 1 fetch). At ~\$0.04/image and a
-single operator toggling day/night a handful of times per session, real spend is
-a few cents/day, hard-capped by the daily budget. **The operator must confirm
+art refreshes **only on semantic mood change** (OS theme, a bounded local-time
+daypart edge, or weather) — not per frame, not per render (asserted: 120
+same-mood renders → 1 production-effect fetch; React development StrictMode can
+probe the existing effect twice). Automatic dawn/dusk edges can add at most two
+requests per continuously visible day in the active OS band, in addition to
+operator theme changes. At ~\$0.04/image this remains behind the daily hard cap,
+but **the operator must confirm
 the actual envelope once a real key is set** (image price + cap are operator
 config). Until then the scene is fully procedural and free.
 
@@ -150,7 +155,7 @@ config). Until then the scene is fully procedural and free.
 | Mouse-track @~5s + emotes + waddle to clicked/hotkeyed button | **yes** | SPR-05 5s-lagged follow + SPR-10 PRODUCT_ACTIVATE waddle; click≡hotkey is structural (one event) |
 | Transparent ad-bordered multi-windows (terminals) | **yes** | SPR-09 — drag/resize/expand/restore/close, multi-window store (cap 8), house-fallback ad border |
 | Real AI-generated background art refreshing | **operator-gated** | needs `KREA_API_TOKEN`; procedural is the complete default, Krea is an additive sky overlay |
-| dawn/dusk dayparts | **partial** | palettes + prompts wired, but the app only emits binary light/dark today; a future time source lights them up without changing the mapping contract |
+| dawn/dusk dayparts | **yes (bounded semantics/composition)** | OS light refines to dawn at local [05:30,08:00); OS dark refines to dusk at [17:00,20:00). Fixed brand windows, not astronomy; theme remains authoritative. Seeded geometry and Krea keys differ, while procedural dawn/day and dusk/night still share colour ramps. |
 
 ## Verified-by-test vs operator-only
 
@@ -166,8 +171,9 @@ config). Until then the scene is fully procedural and free.
 
 1. Set `KREA_API_TOKEN` (+ the daily-budget / rate-limit env from SPR-02) in the
    server environment.
-2. Load the app with a key; toggle OS light↔dark and confirm the **sky art
-   refreshes on mood change** (and only then), crossfading over the procedural sky.
+2. Load the app with a key; toggle OS light↔dark and cross a bounded local-time
+   edge; confirm the **sky art refreshes on semantic mood change** (and only
+   then), crossfading over the procedural sky.
 3. Confirm the procedural snow/clouds/penguin still read **on top** of the art.
 4. Drive usage to the daily cap and confirm the scene **falls back to procedural
    cleanly** (no errors, no blank) and the kill-switch forces fallback.
