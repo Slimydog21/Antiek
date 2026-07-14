@@ -52,6 +52,13 @@ initialization, focus and input do not wait on visual proof instrumentation.
 SPR-19 is now counted as implemented. The existing feature flag remains
 production-default-off; this transport grants no deployment authority.
 
+The legacy repository-wide visual sweep does not set `failOnDifference` and
+therefore cannot prove this adoption. CI now follows it with a three-shot
+story-ID-scoped gate that sets `failOnDifference=true`; any target delta reds
+the PR and activates the existing current/diff artifact upload. The normal
+workspace-demo exclusion also uses the actual Storybook `id` field rather than
+the not-yet-generated `shotName`, repairing its previously ineffective filter.
+
 ## Asset provenance
 
 The built-in ChatGPT Image tool generated the 1,586 × 992 master on 2026-07-14

@@ -66,6 +66,11 @@ jobs:
         # reason to re-swallow).
         run: npx lost-pixel
 
+      - name: Gate authored arcade field against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: deepresearch-research-wait-arcade--playing
+        run: npx lost-pixel
+
       - name: Upload diff artifacts on failure
         if: failure()
         uses: actions/upload-artifact@v7
