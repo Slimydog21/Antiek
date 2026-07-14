@@ -10,8 +10,9 @@ Pure planning + document assembly. No DuckDB writes, no cascade launch.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Literal, Sequence
+from typing import Literal
 
 from .note_twin import NoteTwin, TwinItem, build_note_twin, merge_twins, twin_to_markdown
 

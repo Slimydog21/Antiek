@@ -14,7 +14,6 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from dataclasses import asdict
 from pathlib import Path
 
 # Allow running from repo root or tools/

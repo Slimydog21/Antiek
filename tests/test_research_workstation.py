@@ -9,13 +9,12 @@ the behavior under test (same inputs → same twin_id).
 from __future__ import annotations
 
 import math
-import re
 
 import pytest
 
 from substrate.research_workstation import (
-    BudgetLimit,
     DEFAULT_RATE_CARD,
+    BudgetLimit,
     ModelRateCard,
     NoteTwin,
     ResearchInstance,
@@ -36,7 +35,6 @@ from substrate.research_workstation.midnight_oil import MidnightOilError
 from substrate.research_workstation.model_budget import BudgetError, estimate_tokens
 from substrate.research_workstation.note_twin import TwinItemError
 from substrate.research_workstation.research_merge import MergeError
-
 
 # ---------------------------------------------------------------------------
 # Note twin

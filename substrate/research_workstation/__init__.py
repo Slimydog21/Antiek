@@ -46,9 +46,9 @@ from .note_twin import (
     twin_to_markdown,
 )
 from .research_merge import (
+    MergedDocument,
     MergeMode,
     MergePlan,
-    MergedDocument,
     ResearchInstance,
     apply_merge_plan,
     plan_merge,

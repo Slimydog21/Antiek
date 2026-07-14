@@ -14,8 +14,9 @@ from __future__ import annotations
 
 import hashlib
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import Iterable, Literal, Sequence
+from typing import Literal
 
 TwinKind = Literal["insight", "open_question"]
 
@@ -65,7 +66,7 @@ class TwinItem:
             object.__setattr__(self, "source_quote", q or None)
         if not self.item_id:
             digest = hashlib.sha256(
-                f"{self.kind}\0{self.text}".encode("utf-8")
+                f"{self.kind}\0{self.text}".encode()
             ).hexdigest()[:16]
             object.__setattr__(self, "item_id", f"{self.kind[:3]}-{digest}")
 
@@ -102,7 +103,7 @@ def _fingerprint_source(source_text: str | None, items: Sequence[TwinItem]) -> s
 
 def _twin_id_for(asset_id: str, source_sha256: str) -> str:
     digest = hashlib.sha256(
-        f"{asset_id}\0{source_sha256}".encode("utf-8")
+        f"{asset_id}\0{source_sha256}".encode()
     ).hexdigest()[:20]
     return f"{_TWIN_ID_PREFIX}:{asset_id}:{digest}"
 
