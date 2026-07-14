@@ -59,8 +59,13 @@ beforeEach(() => {
     chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 90 }],
     source_count: 1, audio_url: "/multimedia/assets/mm-1/local-audible/playback/rev-1/audio",
     learned_claims: [{
-      chapter_id: "chapter-1", claim_text: "Whittle patented a turbojet design.",
-      source_count: 1, follow_up_prompt: "Review the source context.",
+      line_id: "chapter-1-line-0", chapter_id: "chapter-1", claim_text: "Whittle patented a turbojet design.",
+      source_count: 1, follow_up_prompt: "Review the source context.", source_chunk_ids: ["chunk-1"],
+      evidence_status: "verified_exact", evidence_sources: [{
+        chunk_id: "chunk-1", document_id: "doc-1", locator: "History", authority_kind: "canonical_graph",
+        chunk_sha256: "c".repeat(64), start_utf8_byte: 0, end_utf8_byte: 35,
+        span_sha256: "d".repeat(64), exact_text: "Whittle patented a turbojet design.",
+      }],
     }],
   });
 });

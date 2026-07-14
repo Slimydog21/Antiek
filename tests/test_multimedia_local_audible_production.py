@@ -270,7 +270,10 @@ def test_verified_audio_metadata_and_ranges_are_owner_bound(tmp_path: Path) -> N
         production_integrity_key=KEY,
     )
     metadata = runtime.metadata(
-        asset_id="asset-1", revision_id="revision-1", owner_digest=owner_digest
+        asset_id="asset-1",
+        revision_id="revision-1",
+        owner_digest=owner_digest,
+        plan=_plan(),
     )
     assert metadata.audio_sha256 == production.manifest.output_sha256
     assert metadata.chapter_ids == tuple(
@@ -296,6 +299,8 @@ def test_verified_audio_metadata_and_ranges_are_owner_bound(tmp_path: Path) -> N
         for row in inputs.audible_run.manifest.chapters
     )
     assert metadata.retention_marker_count and metadata.learned_claim_count
+    assert all(claim.line_id and claim.evidence_sources for claim in metadata.learned_claims)
+    assert metadata.learned_claims[0].evidence_sources[0].document_id == "doc-engines"
     result = runtime.read(
         asset_id="asset-1",
         revision_id="revision-1",

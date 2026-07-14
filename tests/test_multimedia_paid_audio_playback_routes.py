@@ -14,6 +14,7 @@ from interfaces.research.api.multimedia_paid_audio_playback_routes import (
 from substrate.multimedia.read_model import MultimediaAudioProductionLink
 from substrate.multimedia.verified_audio_playback import (
     AudioChapterPlaybackMetadata,
+    AudioEvidenceSourceMetadata,
     AudioLearnedClaimMetadata,
     AudioPlaybackMetadata,
 )
@@ -35,7 +36,30 @@ class FakePlayback:
             1,
             1,
             1,
-            (AudioLearnedClaimMetadata("ch-1", "claim", 1, "Next?"),),
+            (
+                AudioLearnedClaimMetadata(
+                    "ch-1",
+                    "claim",
+                    1,
+                    "Next?",
+                    "ch-1-line-0",
+                    (
+                        AudioEvidenceSourceMetadata(
+                            "chunk-1",
+                            "doc-1",
+                            "Flow",
+                            "canonical_graph",
+                            "b" * 64,
+                            0,
+                            5,
+                            "e" * 64,
+                            "claim",
+                        ),
+                    ),
+                    ("chunk-1",),
+                    "verified_exact",
+                ),
+            ),
             (AudioChapterPlaybackMetadata("ch-1", "Flow", 0, 0, 12.5),),
         )
 
@@ -102,6 +126,17 @@ def test_paid_audio_metadata_and_ranges_are_owner_revision_and_link_bound() -> N
             "end_offset_seconds": 12.5,
         }
     ]
+    assert metadata.json()["learned_claims"][0]["evidence_sources"][0] == {
+        "chunk_id": "chunk-1",
+        "document_id": "doc-1",
+        "locator": "Flow",
+        "authority_kind": "canonical_graph",
+        "chunk_sha256": "b" * 64,
+        "start_utf8_byte": 0,
+        "end_utf8_byte": 5,
+        "span_sha256": "e" * 64,
+        "exact_text": "claim",
+    }
     partial = client.get(
         "/api/multimedia/assets/mm-1/audio-playback/rev-1/audio", headers={"Range": "bytes=2-4"}
     )
