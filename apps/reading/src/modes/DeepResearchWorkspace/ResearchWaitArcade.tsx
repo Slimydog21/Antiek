@@ -2,12 +2,14 @@ import {
   lazy,
   Suspense,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type RefObject,
 } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
+import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
 import {
   RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
   deriveResearchWaitArcadeMode,
@@ -70,6 +72,16 @@ export default function ResearchWaitArcade({
     offerReady,
     optedIn,
   });
+
+  // The focused canvas becomes the pointer instrument during explicit play.
+  // Acquire before paint so the route-derived research lens cannot flash over
+  // the game; every state transition and unmount releases this ephemeral lease.
+  useLayoutEffect(() => {
+    if (mode !== "playing") return;
+    return acquireStationInstrumentSuspension(
+      `research-wait-arcade:${episodeId}`,
+    );
+  }, [episodeId, mode]);
 
   useEffect(() => {
     if (mode !== "offer" || !restoreOfferFocusRef.current) return;

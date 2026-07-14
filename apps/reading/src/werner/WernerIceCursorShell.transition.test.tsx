@@ -1,3 +1,4 @@
+import { useLayoutEffect } from "react";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { MemoryRouter, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +12,10 @@ vi.mock("./iceFishingFlags", () => ({
 
 import { StationInstrumentAtlas } from "./StationInstrumentAtlas.stories";
 import { WernerIceCursorShell } from "./WernerIceCursorShell";
+import {
+  acquireStationInstrumentSuspension,
+  useStationInstrumentSuspended,
+} from "./stationInstrumentSuspension";
 
 function TransitionHarness() {
   const navigate = useNavigate();
@@ -28,6 +33,22 @@ function TransitionHarness() {
       <WernerIceCursorShell />
     </>
   );
+}
+
+function LayoutPhaseCursorProbe({
+  onLayout,
+}: {
+  onLayout: (nativeCursorHidden: boolean) => void;
+}) {
+  useStationInstrumentSuspended();
+  useLayoutEffect(() => {
+    onLayout(
+      document.documentElement.classList.contains(
+        "werner-ice-cursor-hidden",
+      ),
+    );
+  });
+  return null;
 }
 
 beforeEach(() => {
@@ -55,6 +76,39 @@ afterEach(() => {
 });
 
 describe("Werner cursor shell route transitions", () => {
+  it("returns pointer authority to a focused game and restores the route instrument", () => {
+    const layoutStates: boolean[] = [];
+    const { getByTestId, queryByTestId } = render(
+      <MemoryRouter initialEntries={["/brainstorm"]}>
+        <WernerIceCursorShell />
+        <LayoutPhaseCursorProbe
+          onLayout={(nativeCursorHidden) => layoutStates.push(nativeCursorHidden)}
+        />
+      </MemoryRouter>,
+    );
+    expect(getByTestId("research-lens-cursor")).toBeTruthy();
+    expect(document.documentElement.classList).toContain(
+      "werner-ice-cursor-hidden",
+    );
+
+    let release = () => {};
+    act(() => {
+      release = acquireStationInstrumentSuspension("test-game");
+    });
+    expect(queryByTestId("research-lens-cursor")).toBeNull();
+    expect(document.documentElement.classList).not.toContain(
+      "werner-ice-cursor-hidden",
+    );
+    expect(layoutStates.at(-1)).toBe(false);
+
+    act(release);
+    expect(getByTestId("research-lens-cursor")).toBeTruthy();
+    expect(document.documentElement.classList).toContain(
+      "werner-ice-cursor-hidden",
+    );
+    expect(layoutStates.at(-1)).toBe(true);
+  });
+
   it("keeps exactly one workflow instrument and cleans activity markers", () => {
     const { container, getByRole, getByTestId, queryByTestId, unmount } =
       render(

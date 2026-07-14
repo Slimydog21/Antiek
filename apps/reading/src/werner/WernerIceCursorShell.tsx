@@ -1,7 +1,8 @@
-import { useEffect } from "react";
+import { useLayoutEffect } from "react";
 
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { wernerIceFishingCursor } from "./iceFishingFlags";
+import { useStationInstrumentSuspended } from "./stationInstrumentSuspension";
 import { useStationActivity } from "./useStationActivity";
 
 /**
@@ -15,15 +16,19 @@ import { useStationActivity } from "./useStationActivity";
  */
 export function WernerIceCursorShell() {
   const reduceMotion = usePrefersReducedMotion();
+  const instrumentSuspended = useStationInstrumentSuspended();
   const activity = useStationActivity();
   // The legacy flag gates ice fishing only. Research lens is a separate
   // activity and must remain available when production disables fishing.
   const enabledByActivity =
     activity.id !== "ice-fishing" || wernerIceFishingCursor;
-  const active = enabledByActivity && !reduceMotion;
+  const active = enabledByActivity && !reduceMotion && !instrumentSuspended;
   const Instrument = activity.instrument.render;
 
-  useEffect(() => {
+  // Keep DOM cursor authority in the same pre-paint phase as suspension leases.
+  // A passive effect can briefly leave both instruments absent while the root
+  // still hides the native cursor.
+  useLayoutEffect(() => {
     const root = document.documentElement;
     if (active) root.classList.add("werner-ice-cursor-hidden");
     else root.classList.remove("werner-ice-cursor-hidden");

@@ -30,6 +30,7 @@ vi.mock("./ResearchWaitArcadeGame", () => ({
 }));
 
 import ResearchWaitArcade from "./ResearchWaitArcade";
+import { isStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
 
 function cartridge() {
   return {
@@ -136,6 +137,7 @@ describe("ResearchWaitArcade", () => {
     const canvas = screen.getByTestId("research-wait-arcade-canvas");
     expect(createCartridge).toHaveBeenCalledTimes(1);
     expect(canvas).toBe(document.activeElement);
+    expect(isStationInstrumentSuspended()).toBe(true);
   });
 
   it.each(["Escape", "button"])(
@@ -158,6 +160,7 @@ describe("ResearchWaitArcade", () => {
       expect(screen.getByRole("button", { name: "Play while waiting" })).toBe(
         document.activeElement,
       );
+      expect(isStationInstrumentSuspended()).toBe(false);
     },
   );
 
@@ -168,6 +171,7 @@ describe("ResearchWaitArcade", () => {
     expect(createCartridge).toHaveBeenCalledTimes(1);
 
     rerender(<Host episodeId="same:2" after={8_000} />);
+    expect(isStationInstrumentSuspended()).toBe(false);
     expect(screen.queryByTestId("research-wait-arcade")).toBeNull();
     expect(screen.queryByTestId("research-wait-arcade-canvas")).toBeNull();
     act(() => vi.advanceTimersByTime(8_000));
@@ -195,6 +199,7 @@ describe("ResearchWaitArcade", () => {
       );
     });
     rerender(<ConditionalHost visible={false} />);
+    expect(isStationInstrumentSuspended()).toBe(false);
     expect(screen.getByRole("heading", { name: "Research monitor" })).toBe(
       document.activeElement,
     );
