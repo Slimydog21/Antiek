@@ -75,6 +75,19 @@ def test_coverage_suggestions_cite_graph_evidence_and_offer_alternates():
     assert plan.chosen_arc_ids == ("history", "mechanism")
 
 
+@pytest.mark.parametrize(
+    "selected",
+    [("history", "history"), ("history", "unsupported")],
+)
+def test_selected_coverage_arcs_reject_duplicate_or_unknown_ids(selected):
+    with pytest.raises(ValidationError):
+        MultimediaPlanRequest(
+            topic="Boeing 747",
+            target_minutes=30,
+            selected_arc_ids=selected,
+        )
+
+
 def test_duration_math_sums_to_requested_minutes_and_reports_cuts():
     request = MultimediaPlanRequest(
         topic="Boeing 747",

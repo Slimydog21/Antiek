@@ -24,6 +24,9 @@ export type ProjectedSource = {
 
 export type MultimediaPlanProjection = {
   suggestions: string[];
+  coverageOptions: Array<{ id: string; title: string; teaches: string; tradeoff: string; evidenceCount: number }>;
+  chosenArcIds: string[];
+  depth: "overview" | "intermediate" | "deep";
   omissions: string[];
   chapters: ProjectedChapter[];
   sources: ProjectedSource[];
@@ -46,18 +49,43 @@ export function projectMultimediaPlan(input: unknown): PlanProjectionResult {
   if (!Array.isArray(plan.unsourced_line_ids) || plan.chapters.length === 0) {
     return invalid("Plan grounding state is unavailable.");
   }
+  if (!plan.request) {
+    return invalid("Plan depth is unavailable.");
+  }
+  const depth = plan.request.depth ?? "intermediate";
+  if (!["overview", "intermediate", "deep"].includes(depth)) {
+    return invalid("Plan depth is unavailable.");
+  }
+  if (
+    !Array.isArray(plan.chosen_arc_ids) ||
+    plan.chosen_arc_ids.some((id) => typeof id !== "string" || !id) ||
+    new Set(plan.chosen_arc_ids).size !== plan.chosen_arc_ids.length
+  ) {
+    return invalid("Plan coverage selection conflicts.");
+  }
   if (
     plan.suggestions.some(
       (item) =>
         !item ||
         typeof item.title !== "string" ||
         typeof item.teaches !== "string" ||
-        typeof item.tradeoff !== "string",
+        typeof item.tradeoff !== "string" ||
+        typeof item.arc_id !== "string" ||
+        !item.arc_id ||
+        !Array.isArray(item.evidence) ||
+        item.evidence.some((citation) => !validCitation(citation)),
     ) ||
     plan.omissions.some((item) => typeof item !== "string") ||
     new Set(plan.unsourced_line_ids).size !== plan.unsourced_line_ids.length
   ) {
     return invalid("Plan review text or grounding identity conflicts.");
+  }
+  const suggestionArcIds = plan.suggestions.map((item) => item.arc_id);
+  if (
+    new Set(suggestionArcIds).size !== suggestionArcIds.length ||
+    plan.chosen_arc_ids.some((id) => !suggestionArcIds.includes(id))
+  ) {
+    return invalid("Plan coverage selection conflicts.");
   }
 
   const lines = new Map<string, MultimediaScriptLineWire>();
@@ -177,6 +205,15 @@ export function projectMultimediaPlan(input: unknown): PlanProjectionResult {
     ok: true,
     value: {
       suggestions: plan.suggestions.map((item) => `${item.title}: ${item.teaches} ${item.tradeoff}`),
+      coverageOptions: plan.suggestions.map((item) => ({
+        id: item.arc_id,
+        title: item.title,
+        teaches: item.teaches,
+        tradeoff: item.tradeoff,
+        evidenceCount: Array.isArray(item.evidence) ? item.evidence.length : 0,
+      })),
+      chosenArcIds: plan.chosen_arc_ids,
+      depth,
       omissions: plan.omissions,
       chapters,
       sources,

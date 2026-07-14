@@ -73,7 +73,7 @@ const mockProduceAuthorized = vi.mocked(produceAuthorizedMultimedia);
 const mockSteer = vi.mocked(steerMultimediaAsset);
 
 const serverPlan: MultimediaPlanWire = {
-  request: { topic: "Server plan", target_minutes: 30, mode: "video", route_policy: "balanced" },
+  request: { topic: "Server plan", target_minutes: 30, mode: "video", route_policy: "balanced", depth: "intermediate", selected_arc_ids: [] },
   suggestions: [{ arc_id: "mechanism", title: "Server coverage", teaches: "Learn only persisted content", evidence: [], tradeoff: "Server tradeoff" }],
   chosen_arc_ids: ["mechanism"],
   chapters: [
@@ -381,6 +381,27 @@ describe("Multimedia workstation", () => {
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
     const video = await screen.findByLabelText(/Video playback for/);
     expect(video.getAttribute("src")).toBe("/multimedia/assets/mm-1/playback/rev-1/video");
+  });
+
+  it("persists a focused draft from selected generated coverage", async () => {
+    const user = userEvent.setup();
+    await reviewPlan();
+
+    const coverage = screen.getByRole("checkbox", { name: "Include Server coverage" });
+    const focused = screen.getByRole("button", { name: "Create focused draft" });
+    expect((coverage as HTMLInputElement).checked).toBe(true);
+    await user.click(coverage);
+    expect(focused.getAttribute("disabled")).not.toBeNull();
+
+    await user.click(coverage);
+    await user.click(screen.getByRole("radio", { name: "deep" }));
+    await user.click(focused);
+
+    await waitFor(() => expect(mockCreate).toHaveBeenCalledTimes(2));
+    expect(mockCreate.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      depth: "deep",
+      selected_arc_ids: ["mechanism"],
+    }));
   });
 
   it("requires explicit ceiling acknowledgement before issuing narration authority", async () => {

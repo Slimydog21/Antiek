@@ -22,6 +22,7 @@ import type {
   CreateMultimediaDraftRequest,
   MultimediaAssetRecord,
   MultimediaAssetSummary,
+  MultimediaDepth,
   MultimediaLocalAudiblePlayback,
   MultimediaPlayback as MultimediaPlaybackRecord,
   MultimediaNarrationAuthorization,
@@ -202,6 +203,7 @@ export default function Multimedia() {
   const [duration, setDuration] = useState(30);
   const [customDuration, setCustomDuration] = useState("30");
   const [mode, setMode] = useState<Mode>("video");
+  const [depth, setDepth] = useState<MultimediaDepth>("intermediate");
   const [tier, setTier] = useState<RouteTier>("balanced");
   const [sourceScope, setSourceScope] = useState("Owned corpus + vetted web sources");
   const [style, setStyle] = useState("Asianometry-style explainer with restrained Ken Burns motion");
@@ -218,6 +220,7 @@ export default function Multimedia() {
   const [steeringPreview, setSteeringPreview] = useState<SteeringPreviewState | null>(null);
   const [assets, setAssets] = useState<MultimediaAssetSummary[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
+  const [selectedCoverageArcIds, setSelectedCoverageArcIds] = useState<string[]>([]);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
   const [knowledgeMutationPending, setKnowledgeMutationPending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -376,6 +379,7 @@ export default function Multimedia() {
   const planOmissions = projectedPlan?.omissions ?? (selectedRecord ? [] : OMISSIONS);
   const planSources = projectedPlan?.sources ?? (selectedRecord ? [] : SOURCES);
   const unsourcedClaims = projectedPlan?.unsourcedClaims ?? [];
+  const coverageOptions = projectedPlan?.coverageOptions ?? [];
 
   const activeChapter = planChapters.find((chapter) => chapter.id === activeChapterId) ?? planChapters[0];
   const selectedSource = planSources.find((source) => source.id === selectedSourceId) ?? planSources[0];
@@ -398,6 +402,15 @@ export default function Multimedia() {
     }
   }, [activeChapterId, planChapters, planSources, selectedSourceId]);
 
+  useEffect(() => {
+    if (!projectedPlan) {
+      setSelectedCoverageArcIds([]);
+      return;
+    }
+    setSelectedCoverageArcIds(projectedPlan.chosenArcIds);
+    setDepth(projectedPlan.depth);
+  }, [projectedPlan]);
+
   function setPreset(next: number) {
     setDuration(next);
     setCustomDuration(String(next));
@@ -416,7 +429,7 @@ export default function Multimedia() {
     setAssets(result.assets);
   }
 
-  async function generatePlan() {
+  async function createPlan(selectedArcIds: string[]) {
     if (knowledgeMutationPending) return;
     const request: CreateMultimediaDraftRequest = {
       topic,
@@ -427,6 +440,8 @@ export default function Multimedia() {
       must_cover: splitOperatorList(mustCover),
       audience: "curious generalist",
       style,
+      depth,
+      selected_arc_ids: selectedArcIds,
     };
     setPendingCommand("create");
     try {
@@ -449,6 +464,16 @@ export default function Multimedia() {
     } finally {
       setPendingCommand(null);
     }
+  }
+
+  function generatePlan() {
+    return createPlan([]);
+  }
+
+  function toggleCoverageArc(arcId: string) {
+    setSelectedCoverageArcIds((current) =>
+      current.includes(arcId) ? current.filter((id) => id !== arcId) : [...current, arcId],
+    );
   }
 
   async function reopenAsset(assetId: string) {
@@ -792,6 +817,21 @@ export default function Multimedia() {
               ))}
             </Fieldset>
 
+            <Fieldset label="Learning depth">
+              {(["overview", "intermediate", "deep"] as MultimediaDepth[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  role="radio"
+                  aria-checked={depth === item}
+                  onClick={() => setDepth(item)}
+                  className={segmentClass(depth === item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </Fieldset>
+
             <div>
               <p className="mb-2 font-mono text-[12px] text-shadow-2 dark:text-moonlight">Generation route</p>
               <div className="space-y-2">
@@ -927,7 +967,44 @@ export default function Multimedia() {
                 ) : (
                 <>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                  <InfoPanel title="Coverage suggestions" items={planSuggestions} testId="multimedia-suggestions" />
+                  <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1" data-testid="multimedia-suggestions">
+                    <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Coverage suggestions</p>
+                    {selectedRecord ? (
+                      <div className="mt-2 space-y-2">
+                        {coverageOptions.map((option) => {
+                          const selected = selectedCoverageArcIds.includes(option.id);
+                          return (
+                            <label key={option.id} className="flex cursor-pointer items-start gap-2 rounded border border-rule p-2 dark:border-charcoal-1">
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleCoverageArc(option.id)}
+                                aria-label={`Include ${option.title}`}
+                              />
+                              <span className="min-w-0 text-[12px] leading-snug text-ink dark:text-bright">
+                                <strong className="block">{option.title}</strong>
+                                <span className="block text-shadow-1 dark:text-moonlight">{option.teaches}</span>
+                                <span className="mt-1 block font-mono text-[10px] text-shadow-2 dark:text-moonlight">
+                                  {option.evidenceCount} cited source{option.evidenceCount === 1 ? "" : "s"} / {option.tradeoff}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                        <LemonButton
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={selectedCoverageArcIds.length === 0 || pendingCommand !== null || knowledgeMutationPending}
+                          onClick={() => createPlan(selectedCoverageArcIds)}
+                        >
+                          {pendingCommand === "create" ? "Creating..." : "Create focused draft"}
+                        </LemonButton>
+                      </div>
+                    ) : (
+                      <InfoList items={planSuggestions} />
+                    )}
+                  </section>
                   <InfoPanel title="Known omissions" items={planOmissions} testId="multimedia-omissions" />
                   <div className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
                     <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Render budget</p>
@@ -1458,6 +1535,14 @@ function InfoPanel({ title, items, testId }: { title: string; items: string[]; t
         ))}
       </ul>
     </section>
+  );
+}
+
+function InfoList({ items }: { items: string[] }) {
+  return (
+    <ul className="mt-2 space-y-1 text-[13px] leading-snug text-ink dark:text-bright">
+      {items.map((item) => <li key={item}>{item}</li>)}
+    </ul>
   );
 }
 
