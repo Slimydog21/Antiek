@@ -58,6 +58,19 @@ from .knowledge_registration import (
     get_multimedia_distillation_state,
     register_multimedia_with_twin,
 )
+from .local_provider_exclusion import (
+    LocalZeroEvidenceConflict,
+    LocalZeroEvidenceUnavailable,
+    ProviderExecutionExclusion,
+    exclude_provider_executions,
+)
+from .local_zero_cost_evidence import (
+    LocalZeroExternalCostEvidenceV1,
+    LocalZeroRunAuthorityV1,
+    build_local_audio_zero_cost_evidence,
+    build_local_video_zero_cost_evidence,
+    verify_local_zero_cost_evidence,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
@@ -253,6 +266,16 @@ __all__ = [
     "ProductionCostClosure",
     "build_production_byte_cost_closure",
     "verify_production_byte_projection",
+    # MSR-03 local zero external provider cost authority
+    "LocalZeroEvidenceConflict",
+    "LocalZeroEvidenceUnavailable",
+    "LocalZeroExternalCostEvidenceV1",
+    "LocalZeroRunAuthorityV1",
+    "ProviderExecutionExclusion",
+    "build_local_audio_zero_cost_evidence",
+    "build_local_video_zero_cost_evidence",
+    "exclude_provider_executions",
+    "verify_local_zero_cost_evidence",
     # HTML knowledge-asset projection
     "MultimediaInformationAsset",
     "MultimediaInformationAssetError",

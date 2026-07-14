@@ -88,13 +88,15 @@ def test_audio_without_authoritative_cost_evidence_is_blocked_and_keeps_manual_r
     assert any("Custom voice" in risk for risk in report.residual_risks)
 
 
-def test_legacy_hardening_report_without_cost_snapshot_still_reopens():
+def test_legacy_hardening_report_without_either_cost_authority_still_reopens():
     payload = evaluate_multimedia_asset(_audio_asset()).model_dump(mode="json")
     payload.pop("cost_snapshot")
+    payload.pop("local_zero_cost_evidence")
 
     reopened = MultimediaHardeningReport.model_validate(payload)
 
     assert reopened.cost_snapshot is None
+    assert reopened.local_zero_cost_evidence is None
 
 
 def test_unsourced_factual_claim_fails_without_acknowledgement():
