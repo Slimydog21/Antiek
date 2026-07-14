@@ -1,8 +1,46 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MultimediaLocalAudiblePlayback } from "../../api/multimedia";
 import { ActiveListeningPlayer } from "./ActiveListeningPlayer";
+
+vi.mock("../../api/multimedia", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../api/multimedia")>();
+  return {
+    ...actual,
+    getListeningProgress: vi.fn().mockResolvedValue({
+      resume_available: false,
+      asset_id: "asset-1",
+      revision_id: "revision-1",
+      audio_sha256: "b".repeat(64),
+      position_milliseconds: 0,
+      duration_milliseconds: 45000,
+      completed: false,
+      session_id: "",
+      sequence: 0,
+      updated_at: 0,
+      applied: null,
+    }),
+    putListeningProgress: vi.fn().mockResolvedValue({
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "revision-1",
+      audio_sha256: "b".repeat(64),
+      position_milliseconds: 0,
+      duration_milliseconds: 45000,
+      completed: false,
+      session_id: "test-session-id-12345678",
+      sequence: 1,
+      updated_at: 1000,
+      applied: true,
+    }),
+  };
+});
+
+import { getListeningProgress, putListeningProgress } from "../../api/multimedia";
+
+const mockGetProgress = vi.mocked(getListeningProgress);
+const mockPutProgress = vi.mocked(putListeningProgress);
 
 const playback: MultimediaLocalAudiblePlayback = {
   asset_id: "asset-1", revision_id: "revision-1", receipt_sha256: "a".repeat(64),
@@ -34,6 +72,32 @@ const mediaSession = {
 beforeEach(() => {
   handlers.clear();
   vi.clearAllMocks();
+  mockGetProgress.mockResolvedValue({
+    resume_available: false,
+    asset_id: "asset-1",
+    revision_id: "revision-1",
+    audio_sha256: "b".repeat(64),
+    position_milliseconds: 0,
+    duration_milliseconds: 45000,
+    completed: false,
+    session_id: "",
+    sequence: 0,
+    updated_at: 0,
+    applied: null,
+  });
+  mockPutProgress.mockResolvedValue({
+    resume_available: true,
+    asset_id: "asset-1",
+    revision_id: "revision-1",
+    audio_sha256: "b".repeat(64),
+    position_milliseconds: 0,
+    duration_milliseconds: 45000,
+    completed: false,
+    session_id: "test-session-id-12345678",
+    sequence: 1,
+    updated_at: 1000,
+    applied: true,
+  });
   Object.defineProperty(navigator, "mediaSession", { configurable: true, value: mediaSession });
   Object.defineProperty(window, "MediaMetadata", { configurable: true, value: class { constructor(value: unknown) { Object.assign(this, value); } } });
 });
@@ -131,5 +195,183 @@ describe("ActiveListeningPlayer", () => {
     fireEvent.play(firstAudio);
     fireEvent.play(second.getByLabelText("Audio playback for Second player"));
     expect(pauseFirst).toHaveBeenCalledOnce();
+  });
+});
+
+describe("ActiveListeningPlayer — listening progress", () => {
+  it("loads progress on mount and calls getListeningProgress", () => {
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    expect(mockGetProgress).toHaveBeenCalledWith("asset-1", "revision-1", "b".repeat(64), 45);
+  });
+
+  it("shows resumed banner when progress is available", async () => {
+    mockGetProgress.mockResolvedValueOnce({
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "revision-1",
+      audio_sha256: "b".repeat(64),
+      position_milliseconds: 20000,
+      duration_milliseconds: 45000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000,
+      applied: null,
+    });
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    await waitFor(() => {
+      expect(screen.getByText(/Resumed from/)).toBeTruthy();
+    });
+    expect(screen.getByRole("button", { name: "Start over" })).toBeTruthy();
+  });
+
+  it("shows previously completed banner when progress is complete", async () => {
+    mockGetProgress.mockResolvedValueOnce({
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "revision-1",
+      audio_sha256: "b".repeat(64),
+      position_milliseconds: 45000,
+      duration_milliseconds: 45000,
+      completed: true,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000,
+      applied: null,
+    });
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    await waitFor(() => {
+      expect(screen.getByText(/Previously completed/)).toBeTruthy();
+    });
+  });
+
+  it("shows no banner when progress is unavailable", async () => {
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    await waitFor(() => {
+      expect(mockGetProgress).toHaveBeenCalled();
+    });
+    // No resumed banner.
+    expect(screen.queryByText(/Resumed from/)).toBeNull();
+    expect(screen.queryByText(/Previously completed/)).toBeNull();
+  });
+
+  it("does not checkpoint while applying resume", () => {
+    mockGetProgress.mockResolvedValueOnce({
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "revision-1",
+      audio_sha256: "b".repeat(64),
+      position_milliseconds: 20000,
+      duration_milliseconds: 45000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000,
+      applied: null,
+    });
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    const audio = screen.getByLabelText("Audio playback for Flight lesson") as HTMLAudioElement;
+    // Time update during resume application should not trigger checkpoint.
+    fireEvent.timeUpdate(audio, { target: { currentTime: 20 } });
+    expect(mockPutProgress).not.toHaveBeenCalled();
+  });
+
+  it("shows restrained status on progress service failure", async () => {
+    mockGetProgress.mockRejectedValueOnce(new Error("network"));
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    await waitFor(() => {
+      expect(screen.getByText("Progress sync unavailable")).toBeTruthy();
+    });
+    expect(screen.getByLabelText("Audio playback for Flight lesson")).toBeTruthy();
+  });
+
+  it("invalidates pending loads on identity change", async () => {
+    const { rerender } = render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    expect(mockGetProgress).toHaveBeenCalledWith("asset-1", "revision-1", "b".repeat(64), 45);
+    // Change identity.
+    rerender(
+      <ActiveListeningPlayer playback={{ ...playback, asset_id: "asset-2" }} title="New lesson" />,
+    );
+    await waitFor(() => {
+      expect(mockGetProgress).toHaveBeenCalledWith("asset-2", "revision-1", "b".repeat(64), 45);
+    });
+  });
+
+  it("start over button seeks to zero and checkpoints", async () => {
+    mockGetProgress.mockResolvedValueOnce({
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "revision-1",
+      audio_sha256: "b".repeat(64),
+      position_milliseconds: 20000,
+      duration_milliseconds: 45000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000,
+      applied: null,
+    });
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    await waitFor(() => {
+      expect(screen.getByText(/Resumed from/)).toBeTruthy();
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Start over" }));
+    const audio = screen.getByLabelText("Audio playback for Flight lesson") as HTMLAudioElement;
+    expect(audio.currentTime).toBe(0);
+    await waitFor(() => expect(mockPutProgress).toHaveBeenCalled());
+  });
+
+  it("applies a late progress response after metadata is already ready", async () => {
+    let resolveProgress!: (value: Awaited<ReturnType<typeof getListeningProgress>>) => void;
+    mockGetProgress.mockReturnValueOnce(new Promise((resolve) => { resolveProgress = resolve; }));
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    const audio = screen.getByLabelText("Audio playback for Flight lesson") as HTMLAudioElement;
+    fireEvent.loadedMetadata(audio);
+    resolveProgress({
+      resume_available: true, asset_id: "asset-1", revision_id: "revision-1",
+      audio_sha256: "b".repeat(64), position_milliseconds: 20_000,
+      duration_milliseconds: 45_000, completed: false,
+      session_id: "abcdefghijklmnop", sequence: 1, updated_at: 1000, applied: null,
+    });
+    await waitFor(() => expect(audio.currentTime).toBe(20));
+    expect(mockPutProgress).not.toHaveBeenCalled();
+  });
+
+  it("does not checkpoint a passive time update before playback", async () => {
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    const audio = screen.getByLabelText("Audio playback for Flight lesson") as HTMLAudioElement;
+    await waitFor(() => expect(mockGetProgress).toHaveBeenCalled());
+    fireEvent.timeUpdate(audio, { target: { currentTime: 3 } });
+    expect(mockPutProgress).not.toHaveBeenCalled();
+  });
+
+  it("checkpoints the audio element's exact position on pause", async () => {
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    const audio = screen.getByLabelText("Audio playback for Flight lesson") as HTMLAudioElement;
+    await waitFor(() => expect(mockGetProgress).toHaveBeenCalled());
+    audio.currentTime = 17;
+    fireEvent.pause(audio);
+    await waitFor(() => expect(mockPutProgress).toHaveBeenCalledWith(
+      "asset-1",
+      expect.objectContaining({ position_milliseconds: 17_000 }),
+      "b".repeat(64),
+      45,
+    ));
+  });
+
+  it("uses a PUT keepalive checkpoint on page hide", async () => {
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    const audio = screen.getByLabelText("Audio playback for Flight lesson") as HTMLAudioElement;
+    await waitFor(() => expect(mockGetProgress).toHaveBeenCalled());
+    Object.defineProperty(audio, "paused", { configurable: true, value: false });
+    audio.currentTime = 11;
+    fireEvent(window, new Event("pagehide"));
+    await waitFor(() => expect(mockPutProgress).toHaveBeenCalledWith(
+      "asset-1",
+      expect.objectContaining({ position_milliseconds: 11_000 }),
+      "b".repeat(64),
+      45,
+      true,
+    ));
   });
 });
