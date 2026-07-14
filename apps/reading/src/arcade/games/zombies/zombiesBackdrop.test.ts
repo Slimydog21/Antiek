@@ -47,12 +47,23 @@ describe("Paperclip Zombies authored backdrop loader", () => {
     expect(image.onerror).toBeNull();
   });
 
-  it("rejects an invalid zero-size decode", () => {
+  it.each([
+    [0, 300],
+    [1, 1],
+    [479, 300],
+    [480, 299],
+    [960, 600],
+  ])("rejects an invalid %d x %d decode", (naturalWidth, naturalHeight) => {
     const target: ZombiesBackdropRef = { current: null };
     const image = fakeImage();
-    Object.defineProperty(image, "naturalWidth", { value: 0 });
-    loadZombiesBackdrop("/field.png", target, () => image);
+    Object.defineProperties(image, {
+      naturalWidth: { value: naturalWidth },
+      naturalHeight: { value: naturalHeight },
+    });
+    const onReady = vi.fn();
+    loadZombiesBackdrop("/field.png", target, () => image, onReady);
     image.onload?.(new Event("load"));
     expect(target.current).toBeNull();
+    expect(onReady).not.toHaveBeenCalled();
   });
 });

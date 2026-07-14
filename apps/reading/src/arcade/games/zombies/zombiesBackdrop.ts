@@ -4,6 +4,9 @@ export interface ZombiesBackdropRef {
 
 type BackdropImage = HTMLImageElement;
 
+const BACKDROP_WIDTH = 480;
+const BACKDROP_HEIGHT = 300;
+
 /**
  * Loads a bundled visual plate without owning game state. Until load succeeds,
  * the renderer keeps its complete procedural fallback. Late callbacks become
@@ -18,7 +21,11 @@ export function loadZombiesBackdrop(
   const image = createImage();
   let live = true;
   image.onload = () => {
-    if (live && image.naturalWidth > 0 && image.naturalHeight > 0) {
+    if (
+      live &&
+      image.naturalWidth === BACKDROP_WIDTH &&
+      image.naturalHeight === BACKDROP_HEIGHT
+    ) {
       target.current = image;
       onReady?.();
     }

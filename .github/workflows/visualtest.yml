@@ -1,15 +1,9 @@
 name: visualtest
 
-# S12 — Lost-Pixel as a CI blocker on the reading-app Storybook.
-#
-# Triggers when reading-app source or stories change. Blocks merge
-# until either:
-#   (a) every shot is within the 0.4 % per-shot threshold, OR
-#   (b) the PR commits the new baselines under
-#       apps/reading/.lostpixel/baseline/
-#
-# Local workflow: run `npm run visualtest:update` after a deliberate
-# visual change; commit the .png updates with the source diff.
+# Reading-app Storybook visual evidence. The authored arcade story owns a
+# blocking, byte-exact three-breakpoint gate. The legacy repository-wide sweep
+# remains advisory because LostPixel 3.22 exits zero for differences under this
+# repository's generateOnly:false configuration.
 
 on:
   pull_request:
