@@ -7,6 +7,7 @@ import {
   type,
 } from "../../../design/tokens";
 import type { Zombie, ZombiesPhase, ZombiesState } from "./logic";
+import type { ZombiesBackdropRef } from "./zombiesBackdrop";
 
 const HUD_HEIGHT = 20;
 const STATUS_HEIGHT = 28;
@@ -51,9 +52,10 @@ export function drawZombiesScene(
   state: ZombiesState,
   width: number,
   height: number,
+  backdrop?: ZombiesBackdropRef,
 ): void {
   const layout = zombiesVisualLayout(width, height);
-  drawField(c2d, width, height, layout);
+  drawField(c2d, width, height, layout, backdrop?.current ?? null);
   drawEvidenceTraces(c2d, state, width, layout);
   drawFort(c2d, state, layout);
   drawHud(c2d, state, width);
@@ -68,9 +70,25 @@ function drawField(
   width: number,
   height: number,
   layout: ZombiesVisualLayout,
+  backdrop: CanvasImageSource | null,
 ): void {
   c2d.fillStyle = surface.night[2];
   c2d.fillRect(0, 0, width, height);
+
+  if (backdrop) {
+    c2d.save();
+    c2d.beginPath();
+    c2d.rect(
+      layout.fortRight,
+      layout.fieldTop,
+      width - layout.fortRight,
+      layout.fieldBottom - layout.fieldTop,
+    );
+    c2d.clip();
+    c2d.drawImage(backdrop, 0, 0, width, height);
+    c2d.restore();
+    return;
+  }
 
   c2d.fillStyle = surface.night[3];
   const fieldHeight = Math.max(0, layout.fieldBottom - layout.fieldTop);

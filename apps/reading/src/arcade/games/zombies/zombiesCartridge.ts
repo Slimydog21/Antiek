@@ -1,11 +1,13 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
 import { createZombiesState, stepZombies, type ZombiesState } from "./logic";
 import { drawZombiesScene } from "./zombiesVisuals";
+import type { ZombiesBackdropRef } from "./zombiesBackdrop";
 
 /** BO1 arcade zombies–inspired wait easter egg (paperclip undead, wholesome). */
 export function createZombiesCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;
+  backdrop?: ZombiesBackdropRef;
 }): Cartridge {
   let state: ZombiesState | null = null;
   const reduced = Boolean(options?.reducedMotion);
@@ -49,7 +51,7 @@ export function createZombiesCartridge(options?: {
     render(c2d, ctx) {
       if (!state) return;
       c2d.clearRect(0, 0, ctx.width, ctx.height);
-      drawZombiesScene(c2d, state, ctx.width, ctx.height);
+      drawZombiesScene(c2d, state, ctx.width, ctx.height, options?.backdrop);
     },
     teardown() {
       state = null;
