@@ -72,6 +72,7 @@ def _ready(store: MultimediaAssetStore, *, owner: str = "owner-a"):
             mode="audio",
             route_policy="balanced",
             sources=("Swept wings delayed shock waves and changed aircraft design.",),
+            selected_arc_ids=("mechanism",),
         ),
         owner_id=owner,
     )
@@ -177,7 +178,12 @@ async def test_graph_complete_link_missing_replay_repairs_without_model(
 async def test_finalization_fails_closed_for_ack_revision_readiness_and_owner(tmp_path) -> None:
     store = MultimediaAssetStore(tmp_path / "assets")
     draft = store.create_draft(
-        CreateMultimediaDraftRequest(topic="Aircraft", target_minutes=15),
+            CreateMultimediaDraftRequest(
+                topic="Aircraft",
+                target_minutes=15,
+                sources=("Early aircraft history established the field.",),
+                selected_arc_ids=("history",),
+            ),
         owner_id="owner-a",
     )
     factory = _Factory()

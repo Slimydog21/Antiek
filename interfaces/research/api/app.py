@@ -3218,6 +3218,10 @@ def create_app(
         import json as _json
 
         import duckdb
+
+        from substrate.write.deliverable_sources import (
+            resolve_deliverable_sources,
+        )
         db = _resolve_db_path()
         con = duckdb.connect(db, read_only=True)
         try:
@@ -3249,6 +3253,15 @@ def create_app(
                 "FROM deliverable_sections WHERE deliverable_id = ? "
                 "ORDER BY section_index ASC", [deliverable_id],
             ).fetchall()
+            # GPW SPR-04 STRETCH: resolve the section provenance to the TITLES
+            # of the documents that ground this deliverable, and render them as
+            # a Sources section in the human-readable exports (the JSON bundle
+            # already carries the raw per-section provenance map). §9.0-gated:
+            # personal_reading / restricted documents are never named; a
+            # withheld source is indistinguishable from no source at all, so a
+            # public/monetized export cannot hint one exists. Resolved on THIS
+            # read_only connection; no second handle, single-writer untouched.
+            sources = resolve_deliverable_sources(con, deliverable_id)
         finally:
             con.close()
 
@@ -3268,6 +3281,14 @@ def create_app(
                 lines.append("")
                 lines.append((prose or "_(no prose yet)_").strip())
                 lines.append("")
+            if sources:
+                lines.append("## Sources")
+                lines.append("")
+                for src in sources:
+                    # Collapse internal whitespace so a title with a stray
+                    # newline can't break the list item onto its own line.
+                    lines.append(f"- {' '.join(src.split())}")
+                lines.append("")
             content = "\n".join(lines)
             return ExportFormat(
                 format="markdown", content=content,
@@ -3286,6 +3307,12 @@ def create_app(
                 lines.append(f"## {sec_title or f'Section {idx + 1}'}")
                 lines.append("")
                 lines.append((prose or "_(no prose yet)_").strip())
+                lines.append("")
+            if sources:
+                lines.append("## Sources")
+                lines.append("")
+                for src in sources:
+                    lines.append(f"- {' '.join(src.split())}")
                 lines.append("")
             content = "\n".join(lines)
             return ExportFormat(
@@ -3309,6 +3336,12 @@ def create_app(
                         parts.append(f"<p>{esc(para)}</p>")
                 else:
                     parts.append("<p><em>(no prose yet)</em></p>")
+            if sources:
+                parts.append("<h2>Sources</h2>")
+                parts.append("<ul>")
+                for src in sources:
+                    parts.append(f"<li>{esc(src)}</li>")
+                parts.append("</ul>")
             parts.append("</body></html>")
             content = "\n".join(parts)
             return ExportFormat(
@@ -3354,6 +3387,11 @@ def create_app(
                 "h2 { font-size: 14pt; margin-top: 1.6em; margin-bottom: 0.5em; }",
                 "p { margin: 0 0 0.8em 0; }",
                 ".kind { font-style: italic; color: #57534e; margin-bottom: 2em; }",
+                # GPW SPR-04 STRETCH: the Sources list starts a fresh page, as a
+                # reference section does in a printed memo.
+                "h2.sources { page-break-before: always; }",
+                "ul.sources { margin: 0.5em 0 0 0; padding-left: 1.4em; }",
+                "ul.sources li { margin: 0 0 0.4em 0; }",
                 "</style></head><body>",
                 f"<h1>{esc(title)}</h1>",
                 f"<p class='kind'>{esc(kind)}</p>",
@@ -3366,6 +3404,12 @@ def create_app(
                         html_parts.append(f"<p>{esc(para)}</p>")
                 else:
                     html_parts.append("<p><em>(no prose yet)</em></p>")
+            if sources:
+                html_parts.append("<h2 class='sources'>Sources</h2>")
+                html_parts.append("<ul class='sources'>")
+                for src in sources:
+                    html_parts.append(f"<li>{esc(src)}</li>")
+                html_parts.append("</ul>")
             html_parts.append("</body></html>")
             html_src = "\n".join(html_parts)
             buf = io.BytesIO()
@@ -3427,6 +3471,22 @@ def create_app(
                 )
                 book.add_item(chapter)
                 chapters.append(chapter)
+            if sources:
+                # GPW SPR-04 STRETCH: Sources as a final chapter, the natural
+                # EPUB structure (its own TOC entry + spine position). §9.0-gated
+                # titles only (personal_reading / restricted already excluded).
+                src_items = "".join(f"<li>{esc(s)}</li>" for s in sources)
+                sources_chapter = epub.EpubHtml(
+                    title="Sources",
+                    file_name="sources.xhtml",
+                    lang="en",
+                    content=(
+                        "<html><head><title>Sources</title></head>"
+                        f"<body><h2>Sources</h2><ul>{src_items}</ul></body></html>"
+                    ),
+                )
+                book.add_item(sources_chapter)
+                chapters.append(sources_chapter)
             book.toc = tuple(chapters)
             book.add_item(epub.EpubNcx())
             book.add_item(epub.EpubNav())
@@ -3468,6 +3528,14 @@ def create_app(
                 }
                 for idx, sec_title, prose, prov in json_secs
             ],
+            # GPW SPR-04 STRETCH: the resolved, §9.0-gated source-document
+            # TITLES grounding this deliverable (personal_reading / restricted
+            # excluded). The per-section ``prose_provenance`` above is the raw
+            # block-id X-ray; this is the human-readable Sources list the
+            # Markdown/HTML exports render, carried into the JSON bundle so a
+            # programmatic consumer gets the same named-source view without
+            # re-resolving the graph.
+            "sources": sources,
         }
         return ExportFormat(
             format="json", content=_json.dumps(bundle, indent=2),

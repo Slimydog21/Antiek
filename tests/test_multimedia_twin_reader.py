@@ -60,6 +60,7 @@ async def _finalized(tmp_path):
             topic="Wide-body aircraft economics",
             target_minutes=15,
             sources=("Capacity and route structure changed together.",),
+            selected_arc_ids=("consequences",),
         ),
         owner_id="owner-a",
     )

@@ -6,12 +6,13 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal
 
 from .audible_run import prepare_audible_run_plan
 from .narration import normalize_script
-from .planner import MultimediaPlan
+from .planner import CanonicalEvidenceChunk, MultimediaPlan
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
 _MAX_TEXT_BYTES = 256 * 1024
@@ -83,6 +84,7 @@ def prepare_local_audible_span_requests(
     speed: float = 1.0,
     sample_rate_hz: int = 24_000,
     channels: Literal[1, 2] = 1,
+    canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
 ) -> tuple[PreparedAudibleSpanTTSRequest, ...]:
     """Expand a plan into the exact cheapest-local calls needed by AudibleRun."""
     asset_id = _identifier("asset_id", asset_id)
@@ -95,7 +97,7 @@ def prepare_local_audible_span_requests(
     if not 8_000 <= sample_rate_hz <= 48_000 or channels not in {1, 2}:
         raise ValueError("audible span audio shape is invalid")
 
-    run_plan = prepare_audible_run_plan(plan)
+    run_plan = prepare_audible_run_plan(plan, canonical_chunks=canonical_chunks)
     chapter_ids = {chapter.chapter_id for chapter in run_plan.chapters}
     paragraphs = normalize_script(
         tuple(

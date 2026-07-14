@@ -34,36 +34,23 @@ NOW = datetime(2026, 7, 13, tzinfo=UTC)
 def _plan():
     plan = build_multimedia_plan(
         MultimediaPlanRequest(
-            topic="jet engine history", target_minutes=15, route_policy="cheapest"
+            topic="jet engine history",
+            target_minutes=15,
+            route_policy="cheapest",
+            selected_arc_ids=("history",),
         ),
         evidence=(
             EvidenceChunk(
                 chunk_id="chunk-whittle",
                 document_id="doc-engines",
-                text="Frank Whittle patented a turbojet design in 1930.",
+                text="Early jet engine history began with Frank Whittle's turbojet patent in 1930.",
                 title="Early turbojets",
                 section_path="history/whittle",
             ),
         ),
     )
-    authority = next(line.citations for line in plan.script_lines if line.citations)
-    source_ids = tuple(citation.chunk_id for citation in authority)
-    values = plan.model_dump(mode="python")
-    lines = []
-    for line in plan.script_lines:
-        row = line.model_dump(mode="python")
-        if line.kind == "factual" and not line.citations:
-            row.update(citations=authority, unsourced_reason=None)
-        lines.append(type(line).model_validate(row))
-    chapters = []
-    for chapter in plan.chapters:
-        row = chapter.model_dump(mode="python")
-        row["source_chunk_ids"] = tuple(
-            dict.fromkeys((*chapter.source_chunk_ids, *source_ids))
-        )
-        chapters.append(type(chapter).model_validate(row))
-    values.update(script_lines=tuple(lines), chapters=tuple(chapters), unsourced_line_ids=())
-    return type(plan).model_validate(values)
+    assert not plan.unsourced_line_ids
+    return plan
 
 
 class _Resolver:
@@ -288,6 +275,25 @@ def test_verified_audio_metadata_and_ranges_are_owner_bound(tmp_path: Path) -> N
     assert metadata.audio_sha256 == production.manifest.output_sha256
     assert metadata.chapter_ids == tuple(
         row.chapter_id for row in inputs.audible_run.manifest.chapters
+    )
+    assert tuple(
+        (
+            row.chapter_id,
+            row.title,
+            row.sequence,
+            row.start_offset_seconds,
+            row.end_offset_seconds,
+        )
+        for row in metadata.chapters
+    ) == tuple(
+        (
+            row.chapter_id,
+            row.title,
+            row.sequence,
+            row.start_offset_seconds,
+            row.end_offset_seconds,
+        )
+        for row in inputs.audible_run.manifest.chapters
     )
     assert metadata.retention_marker_count and metadata.learned_claim_count
     result = runtime.read(
