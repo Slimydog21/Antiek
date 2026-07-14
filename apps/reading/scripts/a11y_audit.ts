@@ -100,6 +100,9 @@ const STORIES: string[] = [
   // SPR-27 — Speak environment in isolation and through real SceneChrome.
   "shell-speak-listening-room-atmosphere-spr-27--html-authority-plate",
   "shell-speak-listening-room-atmosphere-spr-27--scene-chrome-integration",
+  // SPR-28 — Read environment in isolation and through real SceneChrome.
+  "shell-read-glacial-cloister-atmosphere-spr-28--html-authority-plate",
+  "shell-read-glacial-cloister-atmosphere-spr-28--scene-chrome-integration",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",

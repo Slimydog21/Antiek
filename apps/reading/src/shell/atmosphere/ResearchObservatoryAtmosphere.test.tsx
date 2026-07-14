@@ -49,24 +49,6 @@ describe("ResearchObservatoryAtmosphere (SPR-25)", () => {
     },
   );
 
-  it.each(["/library", "/wrestle"])(
-    "does not alter the non-Research body contract on %s",
-    (route) => {
-      const { container } = render(
-        <MemoryRouter initialEntries={[route]}>
-          <SceneChrome><p>Other workflow HTML</p></SceneChrome>
-        </MemoryRouter>,
-      );
-      expect(
-        container.querySelector("[data-research-observatory-atmosphere]"),
-      ).toBeNull();
-      expect(container.querySelector("[data-scene-chrome-body]")).toBeNull();
-      expect(container.querySelector("[data-scene-chrome-content]")).toBeNull();
-      const surface = container.querySelector("p")?.parentElement;
-      expect(surface?.className).toBe("flex-1 min-h-0 bg-glass backdrop-blur-glass");
-    },
-  );
-
   it("leaves shared routes bare", () => {
     const { getByText } = render(
       <MemoryRouter initialEntries={["/settings"]}>

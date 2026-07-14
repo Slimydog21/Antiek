@@ -13,6 +13,7 @@ import {
 import { WorkflowStub } from "./WorkflowStub";
 import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
 import { ResearchObservatoryAtmosphere } from "./atmosphere/ResearchObservatoryAtmosphere";
+import { ReadGlacialCloisterAtmosphere } from "./atmosphere/ReadGlacialCloisterAtmosphere";
 import { WriteScriptoriumAtmosphere } from "./atmosphere/WriteScriptoriumAtmosphere";
 import { SpeakListeningRoomAtmosphere } from "./atmosphere/SpeakListeningRoomAtmosphere";
 import type { Thread, ThreadHop } from "./threadModel";
@@ -126,6 +127,13 @@ const SCENES: Record<Exclude<Workflow, "shared">, SceneDef> = {
   },
 };
 
+const WORKFLOW_ATMOSPHERES = {
+  research: ResearchObservatoryAtmosphere,
+  read: ReadGlacialCloisterAtmosphere,
+  write: WriteScriptoriumAtmosphere,
+  speak: SpeakListeningRoomAtmosphere,
+} satisfies Record<Exclude<Workflow, "shared">, () => ReactNode>;
+
 export function SceneChrome({
   children,
   /**
@@ -156,6 +164,7 @@ export function SceneChrome({
 
   const meta = WORKFLOWS[wf];
   const scene = SCENES[wf];
+  const Atmosphere = WORKFLOW_ATMOSPHERES[wf];
   const built = workflowHasBuiltMode(wf);
 
   const runAction = (a: Action) => {
@@ -267,30 +276,18 @@ export function SceneChrome({
           we keep the blur+frost, which is already legible on a frozen frame.
           A maintainer may raise the scrim alpha if a future busier scene
           drops contrast; the seam is this one className. */}
-      {wf === "research" || wf === "write" || wf === "speak" ? (
+      <div
+        data-scene-chrome-body=""
+        className="relative flex-1 min-h-0 overflow-hidden"
+      >
+        <Atmosphere />
         <div
-          data-scene-chrome-body=""
-          className="relative flex-1 min-h-0 overflow-hidden"
+          data-scene-chrome-content=""
+          className="relative z-10 h-full bg-glass backdrop-blur-glass"
         >
-          {wf === "research" ? (
-            <ResearchObservatoryAtmosphere />
-          ) : wf === "write" ? (
-            <WriteScriptoriumAtmosphere />
-          ) : (
-            <SpeakListeningRoomAtmosphere />
-          )}
-          <div
-            data-scene-chrome-content=""
-            className="relative z-10 h-full bg-glass backdrop-blur-glass"
-          >
-            {built ? children : <WorkflowStub workflow={wf} />}
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 min-h-0 bg-glass backdrop-blur-glass">
           {built ? children : <WorkflowStub workflow={wf} />}
         </div>
-      )}
+      </div>
     </div>
   );
 }
