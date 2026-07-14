@@ -17,8 +17,8 @@ It exposes the substrate the Write spec's milestones reference as
   • draft generation (SPR-06): generate a section from its blocks (the
     no-blocks→gap + citation + gate contract; the live model call needs
     creative_writer in the dispatch config);
-  • trace-to-source (SPR-07): the trace TARGET (the gated-source-no-leak
-    gate). The reader that opens it is DRW SPR-10, still unbuilt;
+  • trace-to-source (SPR-07): gated target resolution plus the durable
+    Write→Read command/event used by the shared HTML reader;
   • pre-outline context window (SPR-08): promote a loose context to a
     structured outline.
 
@@ -56,7 +56,7 @@ from substrate.event_log import (
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.insight_question import insight_node_id
 from substrate.graph.ops import content_addressed_id
-from substrate.schemas.events import SeamReadToWritePayload
+from substrate.schemas.events import SeamReadToWritePayload, SeamWriteToReadPayload
 from substrate.write import block_search
 from substrate.write import folders as folders_mod
 from substrate.write.brainstorm_blocks import drivers_to_blocks
@@ -189,6 +189,10 @@ class ReadToWriteRequest(BaseModel):
     note_id: str = Field(..., min_length=1, max_length=200)
     target_section_id: str = Field(..., min_length=1)
     investigation_id: str = Field(..., min_length=1)
+
+
+class WriteToReadRequest(BaseModel):
+    deliverable_id: str = Field(..., min_length=1)
 
 
 class BrainstormBlocksRequest(BaseModel):
@@ -427,6 +431,128 @@ def get_trace_target(outline_block_id: str) -> dict[str, Any]:
         "document_id": target.document_id, "document_title": target.document_title,
         "chunk_ids": target.chunk_ids, "servability_status": target.servability_status,
         "detail": target.detail,
+    }
+
+
+_WRITE_TO_READ_COMMANDS_SQL = """
+CREATE TABLE IF NOT EXISTS write_to_read_handoff_commands (
+    command_id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    seam_event_id TEXT NOT NULL,
+    seam_emitted_at TEXT NOT NULL,
+    outline_block_id TEXT NOT NULL,
+    deliverable_id TEXT NOT NULL,
+    source_document_id TEXT NOT NULL,
+    source_region_id TEXT NOT NULL
+)
+"""
+
+
+@write_router.post("/blocks/{outline_block_id}/read-handoffs", status_code=201)
+def handoff_write_block_to_read(
+    outline_block_id: str,
+    req: WriteToReadRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    """Commit an explicit trace from a Write block into its readable source."""
+    require_event_persistence()
+    command_id = _validated_idempotency_key(idempotency_key)
+    fingerprint = content_addressed_id(
+        "cmd", f"write-to-read|{outline_block_id}|{req.deliverable_id}"
+    )
+    current_target = None
+    with _translate(), _write("write/read_handoff") as con:
+        con.execute(_WRITE_TO_READ_COMMANDS_SQL)
+        receipt = con.execute(
+            "SELECT fingerprint, seam_event_id, seam_emitted_at, "
+            "source_document_id, source_region_id "
+            "FROM write_to_read_handoff_commands WHERE command_id = ?",
+            [command_id],
+        ).fetchone()
+        if receipt is not None and receipt[0] != fingerprint:
+            raise HTTPException(
+                status_code=409,
+                detail="Idempotency-Key was already used for a different handoff",
+            )
+        owner = con.execute(
+            "SELECT 1 FROM outline_blocks b "
+            "JOIN deliverable_sections s ON s.section_id = b.section_id "
+            "WHERE b.outline_block_id = ? AND s.deliverable_id = ?",
+            [outline_block_id, req.deliverable_id],
+        ).fetchone()
+        if owner is None and receipt is None:
+            raise HTTPException(status_code=404, detail="outline block not found in piece")
+        if receipt is None:
+            current_target = resolve_trace_target(con, outline_block_id)
+            primary_chunk = (
+                current_target.chunk_ids[0] if current_target.chunk_ids else None
+            )
+            if (
+                not current_target.full_text_allowed
+                or not current_target.document_id
+                or not primary_chunk
+            ):
+                raise HTTPException(
+                    status_code=409,
+                    detail=current_target.detail or "source is not openable in Read",
+                )
+            seam_event_id = content_addressed_id("evt", f"write-to-read|{command_id}")
+            seam_emitted_at = datetime.now(UTC).isoformat()
+            con.execute(
+                "INSERT INTO write_to_read_handoff_commands VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    command_id,
+                    fingerprint,
+                    seam_event_id,
+                    seam_emitted_at,
+                    outline_block_id,
+                    req.deliverable_id,
+                    current_target.document_id,
+                    primary_chunk,
+                ],
+            )
+            source_document_id = current_target.document_id
+            source_region_id = primary_chunk
+        else:
+            seam_event_id, seam_emitted_at = receipt[1], receipt[2]
+            source_document_id, source_region_id = receipt[3], receipt[4]
+            if owner is not None:
+                current_target = resolve_trace_target(con, outline_block_id)
+
+    seam_event = prepare_typed_event(
+        req.deliverable_id,
+        SeamWriteToReadPayload(
+            entity_id=outline_block_id,
+            provenance_ref=outline_block_id,
+            source_document_id=source_document_id,
+            source_region_id=source_region_id,
+        ),
+        event_id=seam_event_id,
+        role="write_composition",
+        emitted_at=seam_emitted_at,
+        document_id=source_document_id,
+    )
+    append_event_once(seam_event)
+    if (
+        current_target is None
+        or not current_target.full_text_allowed
+        or current_target.document_id != source_document_id
+        or not current_target.chunk_ids
+        or current_target.chunk_ids[0] != source_region_id
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="source authority changed after this handoff was accepted",
+        )
+    return {
+        "kind": current_target.kind,
+        "full_text_allowed": current_target.full_text_allowed,
+        "document_id": current_target.document_id,
+        "document_title": current_target.document_title,
+        "chunk_ids": current_target.chunk_ids,
+        "servability_status": current_target.servability_status,
+        "detail": current_target.detail,
+        "seam_event_id": seam_event.event_id,
     }
 
 

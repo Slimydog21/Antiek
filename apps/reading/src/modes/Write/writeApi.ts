@@ -241,14 +241,66 @@ export function traceReaderPath(
   return `/read/${encodeURIComponent(target.document_id)}${query ? `?${query}` : ""}`;
 }
 
-/** Resolve a placed block's trace target (the source the citation chip
- * opens). Honest about gating: `full_text_allowed=false` for a gated source
- * (§9.0 no-leak). The shared reader that opens it is DRW SPR-10. */
+/** Read-only preview of a placed block's trace target. Product navigation uses
+ * `handoffWriteBlockToRead` so the durable seam is committed before opening. */
 export async function getTraceTarget(outlineBlockId: string): Promise<TraceTarget> {
   return _json<TraceTarget>(
     await apiFetch(`${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/trace`),
     "GET /write/blocks/{id}/trace",
   );
+}
+
+const pendingReadHandoffs = new Map<string, string>();
+const READ_HANDOFF_STORAGE_PREFIX = "antiek:write-to-read:";
+
+function readHandoffCommand(logicalCommand: string): string | null {
+  const inMemory = pendingReadHandoffs.get(logicalCommand);
+  if (inMemory) return inMemory;
+  try {
+    return globalThis.localStorage?.getItem(
+      `${READ_HANDOFF_STORAGE_PREFIX}${logicalCommand}`,
+    ) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function persistHandoffCommand(logicalCommand: string, commandId: string | null): void {
+  if (commandId) pendingReadHandoffs.set(logicalCommand, commandId);
+  else pendingReadHandoffs.delete(logicalCommand);
+  try {
+    const key = `${READ_HANDOFF_STORAGE_PREFIX}${logicalCommand}`;
+    if (commandId) globalThis.localStorage?.setItem(key, commandId);
+    else globalThis.localStorage?.removeItem(key);
+  } catch {
+    // Restricted storage still retains same-tab retry identity in memory.
+  }
+}
+
+export async function handoffWriteBlockToRead(
+  outlineBlockId: string,
+  deliverableId: string,
+): Promise<TraceTarget & { seam_event_id: string }> {
+  const logicalCommand = JSON.stringify([outlineBlockId, deliverableId]);
+  const commandId = readHandoffCommand(logicalCommand) ?? crypto.randomUUID();
+  persistHandoffCommand(logicalCommand, commandId);
+  const response = await apiFetch(
+    `${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/read-handoffs`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": commandId,
+      },
+      body: JSON.stringify({ deliverable_id: deliverableId }),
+    },
+  );
+  const result = await _json<TraceTarget & { seam_event_id: string }>(
+    response,
+    "POST /write/blocks/{id}/read-handoffs",
+  );
+  persistHandoffCommand(logicalCommand, null);
+  return result;
 }
 
 export interface PromoteResult {

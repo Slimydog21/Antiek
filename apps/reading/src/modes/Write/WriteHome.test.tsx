@@ -18,7 +18,7 @@ import type { TraceTarget } from "./writeApi";
  */
 
 const {
-  listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
+  listDeliverablesMock, handoffWriteBlockToReadMock, listInvestigationsMock,
   startInvestigationMock, createDeliverableMock, fetchHostedDocumentHtmlMock,
   createSectionMock, updateSectionProseMock, seedTwinNotesMock, getDeliverableMock,
   launchFloatingDeepResearchMock, hydratePublicationRefsMock, parsePublicationRefsMock,
@@ -26,7 +26,7 @@ const {
   fetchDepthTiersMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn<(...args: unknown[]) => unknown>(),
-  getTraceTargetMock: vi.fn<(...args: unknown[]) => unknown>(),
+  handoffWriteBlockToReadMock: vi.fn<(...args: unknown[]) => unknown>(),
   listInvestigationsMock: vi.fn<(...args: unknown[]) => unknown>(),
   startInvestigationMock: vi.fn<(...args: unknown[]) => unknown>(),
   createDeliverableMock: vi.fn<(...args: unknown[]) => unknown>(),
@@ -239,7 +239,7 @@ vi.mock("./BlockRepository", () => ({
 
 vi.mock("./writeApi", async (orig) => ({
   ...(await orig<typeof import("./writeApi")>()),
-  getTraceTarget: getTraceTargetMock,
+  handoffWriteBlockToRead: handoffWriteBlockToReadMock,
 }));
 
 import WriteHome from "./WriteHome";
@@ -247,7 +247,7 @@ import WriteHome from "./WriteHome";
 beforeEach(() => {
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   getDeliverableMock.mockReset().mockResolvedValue(null);
-  getTraceTargetMock.mockReset();
+  handoffWriteBlockToReadMock.mockReset();
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
   startInvestigationMock.mockReset().mockResolvedValue({
     investigation_id: "inv-spawned", status: "in_progress", start_event_id: "ev-1",
@@ -1502,9 +1502,8 @@ describe("WriteHome — the re-homed door", () => {
       servability_status: "servable",
       detail: null,
     };
-    getTraceTargetMock.mockResolvedValue(target);
-    mountAt("/write");
-    await screen.findByPlaceholderText(/what are you writing/i);
+    handoffWriteBlockToReadMock.mockResolvedValue(target);
+    mountAt("/write/dlv-1");
 
     emitTraceIntent({
       sectionId: "sec-1",
@@ -1514,25 +1513,16 @@ describe("WriteHome — the re-homed door", () => {
     });
     // The honest trip: a servable source opens the reader.
     await waitFor(() => expect(screen.getByText("READER")).toBeTruthy());
+    expect(handoffWriteBlockToReadMock).toHaveBeenCalledWith("oblk-1", "dlv-1");
     expect(screen.getByTestId("reader-location").textContent).toBe(
-      "/read/doc-1?chunk=c1",
+      "/read/doc-1?chunk=c1&return_write=dlv-1",
     );
   });
 
   it("falls back honestly (no dead page) when the source is gated/unreachable", async () => {
     const alertSpy = vi.spyOn(window, "alert").mockImplementation(() => {});
-    const gated: TraceTarget = {
-      kind: "document",
-      full_text_allowed: false, // the no-leak bit
-      document_id: "doc-gated",
-      document_title: "Gated Book",
-      chunk_ids: [],
-      servability_status: "restricted_pending_opt_in",
-      detail: "this source is gated",
-    };
-    getTraceTargetMock.mockResolvedValue(gated);
-    mountAt("/write");
-    await screen.findByPlaceholderText(/what are you writing/i);
+    handoffWriteBlockToReadMock.mockRejectedValue(new Error("this source is gated"));
+    mountAt("/write/dlv-1");
 
     emitTraceIntent({
       sectionId: "sec-1",

@@ -55,7 +55,7 @@ import {
   prepareHtmlDraftForWrite,
   type HtmlDraftImportPrepared,
 } from "./htmlDraftImport";
-import { getTraceTarget, traceReaderPath, type RepositoryHit } from "./writeApi";
+import { handoffWriteBlockToRead, traceReaderPath, type RepositoryHit } from "./writeApi";
 import { composeDriverPromptText } from "../../lib/driverPromptText";
 
 /**
@@ -361,10 +361,9 @@ export default function WriteHome() {
   }, [deliverableId, htmlDraftId]);
 
   // Trace-to-source (M4): when a citation chip in the editor is clicked it
-  // emits a decoupled intent (Editor/traceIntent.ts). The shared reader (DRW
-  // SPR-10) is still unbuilt, so we resolve the trace target and route to the
-  // book reader when the source is servable — with an honest fallback when it
-  // isn't reachable (gated source, no reader), never a broken trip.
+  // emits a decoupled intent (Editor/traceIntent.ts). Commit the durable seam,
+  // then route to the shared HTML reader only when current source authority
+  // permits it; gated or unavailable sources never become a side door.
   useEffect(() => {
     return onTraceIntent((intent) => {
       if (!intent.outlineBlockId) {
@@ -373,8 +372,16 @@ export default function WriteHome() {
       }
       void (async () => {
         try {
-          const target = await getTraceTarget(intent.outlineBlockId!);
-          const readerPath = traceReaderPath(target, deliverableId);
+          const pieceId = detail?.deliverable_id ?? deliverableId;
+          if (!pieceId) {
+            window.alert("Open the piece that owns this citation before tracing it.");
+            return;
+          }
+          const target = await handoffWriteBlockToRead(
+            intent.outlineBlockId!,
+            pieceId,
+          );
+          const readerPath = traceReaderPath(target, pieceId);
           if (readerPath) {
             navigate(readerPath);
           } else {
@@ -390,7 +397,7 @@ export default function WriteHome() {
         }
       })();
     });
-  }, [deliverableId, navigate]);
+  }, [deliverableId, detail?.deliverable_id, navigate]);
 
   // The "start a piece" action — the obvious way to begin (WX-01). SPR-09 M1:
   // it now runs title → project-type → connect-to-research, so a piece is

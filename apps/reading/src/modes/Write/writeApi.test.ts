@@ -16,10 +16,26 @@ vi.mock("../../lib/api", () => ({
   apiFetch,
 }));
 
-import { moveBlock, traceReaderPath, type TraceTarget } from "./writeApi";
+import {
+  handoffWriteBlockToRead,
+  moveBlock,
+  traceReaderPath,
+  type TraceTarget,
+} from "./writeApi";
 
 const COMMAND_1 = "00000000-0000-4000-8000-000000000001";
 const COMMAND_2 = "00000000-0000-4000-8000-000000000002";
+const storedCommands = new Map<string, string>();
+
+vi.stubGlobal("localStorage", {
+  get length() {
+    return storedCommands.size;
+  },
+  getItem: (key: string) => storedCommands.get(key) ?? null,
+  setItem: (key: string, value: string) => storedCommands.set(key, value),
+  removeItem: (key: string) => storedCommands.delete(key),
+  clear: () => storedCommands.clear(),
+});
 
 function response(status: number): Response {
   return new Response("{}", {
@@ -39,6 +55,7 @@ describe("moveBlock convergence", () => {
     vi.restoreAllMocks();
     apiFetch.mockReset();
     vi.spyOn(crypto, "randomUUID").mockReturnValue(COMMAND_1);
+    localStorage.clear();
   });
 
   it("reuses one command after a network rejection", async () => {
@@ -110,5 +127,57 @@ describe("traceReaderPath", () => {
 
   it("refuses a non-servable target", () => {
     expect(traceReaderPath({ ...target, full_text_allowed: false }, "dlv-1")).toBeNull();
+  });
+});
+
+describe("write-to-read command identity", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    apiFetch.mockReset();
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(COMMAND_1);
+    localStorage.clear();
+  });
+
+  it("reuses the command identity when the committed response is lost", async () => {
+    apiFetch.mockRejectedValueOnce(new TypeError("response lost"));
+    await expect(handoffWriteBlockToRead("block-1", "piece-1")).rejects.toThrow(
+      "response lost",
+    );
+    apiFetch.mockResolvedValueOnce(
+      new Response(
+        JSON.stringify({
+          kind: "source_span",
+          full_text_allowed: true,
+          document_id: "doc-1",
+          document_title: "Source",
+          chunk_ids: ["chunk-1"],
+          servability_status: "public_domain",
+          detail: null,
+          seam_event_id: "evt-1",
+        }),
+        { status: 201, headers: { "Content-Type": "application/json" } },
+      ),
+    );
+    await handoffWriteBlockToRead("block-1", "piece-1");
+    expect(commandKeys()).toEqual([COMMAND_1, COMMAND_1]);
+    expect(JSON.parse(apiFetch.mock.calls[1][1].body as string)).toEqual({
+      deliverable_id: "piece-1",
+    });
+  });
+
+  it("recovers retry identity from durable browser storage", async () => {
+    localStorage.setItem(
+      'antiek:write-to-read:["block-reload","piece-1"]',
+      COMMAND_2,
+    );
+    apiFetch.mockResolvedValueOnce(
+      new Response(JSON.stringify({ seam_event_id: "evt-1" }), {
+        status: 201,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await handoffWriteBlockToRead("block-reload", "piece-1");
+    expect(commandKeys()).toEqual([COMMAND_2]);
+    expect(localStorage.length).toBe(0);
   });
 });

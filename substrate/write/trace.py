@@ -17,11 +17,9 @@ servability gate. A brainstorm-originated block traces to its **session**
 (labeled, no invented document); a deleted source is **unavailable**,
 stated plainly.
 
-What is NOT here — and is honestly blocked on DRW SPR-10: the shared
-reading surface that *renders* the target (highlights + rabbit holes +
-return-to-writing). No Read/BookReader mode exists yet. This module
-computes the target; the reader that opens it is the downstream. The
-editor already emits the intent (``apps/reading/.../traceIntent.ts``).
+This module computes the authoritative target and enforces servability. The
+API command records the Write→Read seam before the shared HTML reader opens;
+rendering and return navigation remain downstream UI responsibilities.
 """
 
 from __future__ import annotations

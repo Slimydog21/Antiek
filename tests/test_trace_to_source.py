@@ -5,9 +5,9 @@ resolves to servable-snippet, NEVER gated full text — Write must not be a
 side door around Read's servability gate. Plus the brainstorm-source and
 dangling-source rules.
 
-The reader that OPENS the target (M2/M3 highlights + rabbit holes, M5
-return-to-writing + e2e) is blocked on the unbuilt DRW SPR-10 shared
-surface — not faked here. This covers the decision that protects the moat.
+These unit tests cover target resolution itself. Production command/event and
+shared-reader navigation coverage lives in ``test_write_to_read_handoff.py``
+and the reading app tests.
 """
 
 from __future__ import annotations

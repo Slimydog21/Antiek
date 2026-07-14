@@ -2,13 +2,9 @@
  * Trace-to-source intent (specs/write/ SPR-04 M3 ↔ SPR-07).
  *
  * Clicking a citation in the editor must not couple the editor to a
- * specific reader — the shared reading surface (DRW SPR-10 / Read book
- * reader) is the consumer, and it is still unbuilt. So the editor emits a
- * decoupled `write:trace-to-source` intent carrying the provenance
- * reference; SPR-07 wires a listener that resolves provenance
- * (substrate/write/provenance.py) and opens the shared reader. Until that
- * reader exists, the intent is still emitted and observable (and unit-
- * testable), so the editor side is complete and verifiable on its own.
+ * specific reader. It emits a decoupled `write:trace-to-source` intent;
+ * WriteHome commits the production seam command and opens the shared HTML
+ * reader only after the backend resolves current provenance and servability.
  */
 
 export const TRACE_INTENT_EVENT = "write:trace-to-source";
