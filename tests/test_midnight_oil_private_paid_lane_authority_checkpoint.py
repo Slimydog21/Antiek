@@ -1392,6 +1392,30 @@ class TestProductionWritersDeferred:
         assert not hasattr(open_function, "__wrapped__")
         assert open_function.__closure__ is None
 
+    def test_34e_authority_lifecycle_stays_syntactically_fail_closed(self) -> None:
+        deferred = (
+            "seal_frozen_fixture_corpus",
+            "copy_sealed_fixture_corpus",
+            "abort_uncut_checkpoint_root",
+            "recover_and_abort_uncut_checkpoint_root_after_restart",
+            "commit_fixture_cutover",
+            "resume_fixture_cutover_forward_only",
+        )
+        for name in deferred:
+            function = PrivatePaidLaneEligibilityCheckpointStoreV1.__dict__[name]
+            definition = ast.parse(textwrap.dedent(inspect.getsource(function))).body[0]
+            assert isinstance(definition, ast.FunctionDef)
+            assert len(definition.body) in (2, 3)
+            assert isinstance(definition.body[0], ast.Expr)
+            terminal = definition.body[-1]
+            assert isinstance(terminal, ast.Raise)
+            assert isinstance(terminal.exc, ast.Call)
+            assert isinstance(terminal.exc.func, ast.Name)
+            assert terminal.exc.func.id == "PrivatePaidLaneEligibilityCheckpointRejected"
+            assert not any(
+                isinstance(node, (ast.With, ast.Try, ast.Return)) for node in ast.walk(definition)
+            )
+
     def test_module_exposes_no_issuance_capability_and_mutation_cannot_authorize(self) -> None:
         assert not any(
             isinstance(value, weakref.WeakSet) for value in checkpoint_module.__dict__.values()
