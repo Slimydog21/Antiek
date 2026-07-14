@@ -24,6 +24,7 @@ from .audio_production_registration import (
     MultimediaAudioRegistrationRequest,
     register_multimedia_audio_production,
 )
+from .graph_evidence import load_canonical_multimedia_chunks
 from .local_audible_bridge import (
     LocalAudibleArtifactResolver,
     LocalAudibleInputs,
@@ -546,8 +547,27 @@ class LocalAudibleCoordinator:
                 "local audible run requires the current ready cheapest audio revision"
             )
         try:
+            canonical_ids = tuple(
+                dict.fromkeys(
+                    span.chunk_id
+                    for line in record.plan.script_lines
+                    if line.evidence_derivation is not None
+                    for span in line.evidence_derivation.spans
+                    if span.authority_kind == "canonical_graph"
+                )
+            )
+            canonical_chunks = (
+                load_canonical_multimedia_chunks(
+                    self._db_path, canonical_ids, owner_id=request.owner_id
+                )
+                if canonical_ids
+                else None
+            )
             inputs = compile_local_audible_inputs(
-                record.plan, request.span_requests, resolver=self._resolver
+                record.plan,
+                request.span_requests,
+                resolver=self._resolver,
+                canonical_chunks=canonical_chunks,
             )
         except Exception as exc:
             raise LocalAudibleCoordinatorError("local audible inputs are unavailable") from exc

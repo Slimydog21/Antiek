@@ -67,6 +67,7 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
             route_policy="cheapest",
             sources=("High-bypass engines changed long-haul economics.",),
             must_cover=("engine reliability",),
+            selected_arc_ids=("mechanism",),
         )
     )
 
@@ -591,6 +592,7 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
             "mode": "audio",
             "route_policy": "cheapest",
             "sources": ["Swept wings delayed shock waves and changed aircraft design."],
+            "selected_arc_ids": ["mechanism"],
         },
     )
     assert created.status_code == 201
@@ -688,6 +690,7 @@ def test_hybrid_approve_does_not_double_count_audio_cost_rows(tmp_path):
             mode="hybrid",
             route_policy="cheapest",
             sources=("High-bypass engines changed long-haul economics.",),
+            selected_arc_ids=("mechanism",),
         )
     )
     approved = store.approve_dry_run(draft.asset.asset_id)

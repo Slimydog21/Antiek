@@ -42,6 +42,7 @@ def _records(tmp_path):
             mode="audio",
             route_policy="balanced",
             sources=("High-bypass engines changed long-haul economics.",),
+            selected_arc_ids=("mechanism",),
         ),
         owner_id=" owner-a@example.test ",
     )

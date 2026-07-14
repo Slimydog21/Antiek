@@ -208,6 +208,11 @@ def test_http_search_review_and_ground_round_trip(graph: Path, tmp_path: Path, m
             db_path=str(graph), embedding_provider_factory=StubEmbedding
         )
     )
+    app.dependency_overrides[
+        multimedia_routes.get_multimedia_evidence_runtime_optional
+    ] = lambda: multimedia_routes.MultimediaEvidenceRuntime(
+        db_path=str(graph), embedding_provider_factory=StubEmbedding
+    )
     client = TestClient(app)
     created = client.post(
         "/multimedia/assets",
@@ -241,6 +246,26 @@ def test_http_search_review_and_ground_round_trip(graph: Path, tmp_path: Path, m
     }
     assert citation_documents <= {"doc-history", "doc-engine", "doc-market"}
     assert citation_documents
+    with duckdb.connect(str(graph), read_only=True) as connection:
+        canonical = {
+            str(chunk_id): str(text)
+            for chunk_id, text in connection.execute("SELECT chunk_id,text FROM chunks").fetchall()
+        }
+    assert body["plan"]["grounding_contract"] == "exact_extract_v2"
+    for line in body["plan"]["script_lines"]:
+        if not line["citations"]:
+            continue
+        derivation = line["evidence_derivation"]
+        assert derivation["recipe_version"] == "antiek.evidence-narration.v1"
+        span = derivation["spans"][0]
+        source_bytes = canonical[span["chunk_id"]].encode("utf-8")
+        assert source_bytes[span["start_utf8_byte"] : span["end_utf8_byte"]].decode(
+            "utf-8"
+        ) == line["text"]
+    approved = client.post(
+        f"/multimedia/assets/{body['asset']['asset_id']}/approve-dry-run"
+    )
+    assert approved.status_code == 200
 
 
     stale = client.post(

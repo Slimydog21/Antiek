@@ -17,6 +17,10 @@ from .educational_video_production import (
 )
 from .educational_video_receipt import issue as issue_educational_video_receipt
 from .execution_authorization import MultimediaExecutionAuthorizationV2
+from .graph_evidence import (
+    MultimediaGraphEvidenceUnavailable,
+    load_canonical_multimedia_chunks,
+)
 from .media_executables import DEFAULT_FFMPEG_PATH, DEFAULT_FFPROBE_PATH
 from .narration_production import NarrationProductionArtifact
 from .narration_run import (
@@ -24,6 +28,7 @@ from .narration_run import (
     prepare_narration_run,
     produce_narration_run,
 )
+from .planner import verify_canonical_evidence_bytes
 from .production_registration import (
     MultimediaProductionRegistrationRequest,
     register_multimedia_production,
@@ -156,6 +161,26 @@ def produce_authorized_multimedia(
         authorized = authorize_narration_run(prepared, authorizations)
     except ValueError as exc:
         raise AuthorizedProductionError(str(exc)) from exc
+    canonical_ids = tuple(
+        dict.fromkeys(
+            span.chunk_id
+            for line in record.plan.script_lines
+            if line.evidence_derivation is not None
+            for span in line.evidence_derivation.spans
+            if span.authority_kind == "canonical_graph"
+        )
+    )
+    try:
+        canonical_chunks = (
+            load_canonical_multimedia_chunks(
+                runtime.db_path, canonical_ids, owner_id=owner_id
+            )
+            if canonical_ids
+            else None
+        )
+        verify_canonical_evidence_bytes(record.plan, canonical_chunks)
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError, ValueError) as exc:
+        raise AuthorizedProductionError("canonical narration evidence is unavailable") from exc
     now = runtime.clock()
     narration = produce_narration_run(
         plan=record.plan,
@@ -193,7 +218,9 @@ def produce_authorized_multimedia(
         )
 
     audio = _audio_experience(current, narration)
-    base_scenes = build_video_scenes(current.plan, audio)
+    base_scenes = build_video_scenes(
+        current.plan, audio, canonical_chunks=canonical_chunks
+    )
     if tuple(scene.scene_id for scene in base_scenes) != reviewed.receipt.scene_ids:
         raise AuthorizedProductionError("reviewed visual scenes conflict with narration")
     scenes = tuple(

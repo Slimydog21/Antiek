@@ -13,7 +13,7 @@ from processing.embedding import EmbeddingProvider
 from runtime.db_lock import connect_read
 from substrate.graph.search import search
 
-from .planner import EvidenceChunk
+from .planner import CanonicalEvidenceChunk, EvidenceChunk
 
 _MAX_CANDIDATES = 20
 _MAX_OWNER_DOCUMENTS = 10_000
@@ -168,6 +168,7 @@ class MultimediaGraphEvidence:
                     title=title,
                     section_path=section_path or "source",
                     text=text,
+                    authority_kind="canonical_graph",
                 )
             )
         return tuple(evidence)
@@ -210,6 +211,29 @@ def _digest(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
+def load_canonical_multimedia_chunks(
+    db_path: str,
+    chunk_ids: tuple[str, ...],
+    *,
+    owner_id: str,
+) -> dict[str, CanonicalEvidenceChunk]:
+    """Reopen exact owner-scoped graph bytes for a production boundary."""
+
+    try:
+        with connect_read(db_path) as connection:
+            snapshots = _load_snapshots(connection, chunk_ids, owner_id=owner_id)
+    except (MultimediaGraphEvidenceUnavailable, ValueError):
+        raise
+    except Exception:
+        raise MultimediaGraphEvidenceUnavailable(
+            "canonical multimedia evidence is unavailable"
+        ) from None
+    return {
+        chunk_id: (snapshots[chunk_id][0], snapshots[chunk_id][3])
+        for chunk_id in chunk_ids
+    }
+
+
 __all__ = [
     "CreateGroundedMultimediaDraftRequest",
     "MultimediaEvidenceCandidate",
@@ -218,4 +242,5 @@ __all__ = [
     "MultimediaEvidenceSelection",
     "MultimediaGraphEvidence",
     "MultimediaGraphEvidenceUnavailable",
+    "load_canonical_multimedia_chunks",
 ]

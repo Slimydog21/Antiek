@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 from pydantic import ValidationError
 
@@ -11,6 +13,7 @@ from substrate.multimedia.planner import (
     MultimediaPlanRequest,
     StoryboardScene,
     build_multimedia_plan,
+    verify_canonical_evidence_bytes,
 )
 
 
@@ -113,6 +116,157 @@ def test_script_lines_are_grounded_or_flagged_before_render():
         line.line_id for line in plan.script_lines if line.kind == "factual" and not line.citations
     }
     assert any("weak source coverage" in omission for omission in plan.omissions)
+
+
+def test_new_plans_use_exact_bounded_evidence_extracts_for_factual_narration():
+    evidence = _evidence()
+    by_chunk = {chunk.chunk_id: chunk for chunk in evidence}
+
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(topic="Boeing 747", target_minutes=20), evidence
+    )
+
+    assert plan.grounding_contract == "exact_extract_v2"
+    sourced = [line for line in plan.script_lines if line.kind == "factual" and line.citations]
+    assert sourced
+    for line in sourced:
+        assert len(line.citations) == 1
+        citation = line.citations[0]
+        assert line.text in by_chunk[citation.chunk_id].text
+        assert len(line.text) <= 700
+        assert line.evidence_derivation is not None
+        span = line.evidence_derivation.spans[0]
+        assert span.chunk_id == citation.chunk_id
+        assert span.exact_text == line.text
+        assert span.span_sha256 == hashlib.sha256(line.text.encode("utf-8")).hexdigest()
+
+
+def test_exact_extract_plan_rejects_unbound_or_multi_source_factual_lines():
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(topic="Boeing 747", target_minutes=20), _evidence()
+    )
+    values = plan.model_dump(mode="python")
+    lines = list(values["script_lines"])
+    sourced_index = next(index for index, line in enumerate(lines) if line["citations"])
+    forged = dict(lines[sourced_index])
+    forged["evidence_derivation"] = None
+    lines[sourced_index] = forged
+    values["script_lines"] = tuple(lines)
+
+    with pytest.raises(ValidationError, match="exact_extract_v2"):
+        type(plan).model_validate(values)
+
+
+def test_verbatim_derivation_uses_canonical_utf8_byte_offsets():
+    text = "  مقدمة ✈️ with a combining e\u0301. " + "x" * 900
+    chunk = EvidenceChunk(chunk_id="unicode", document_id="doc", text=text)
+
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(
+            topic="Unicode aviation",
+            target_minutes=15,
+            selected_arc_ids=("history",),
+        ),
+        (chunk,),
+    )
+
+    line = next(row for row in plan.script_lines if row.citations)
+    assert line.evidence_derivation is not None
+    span = line.evidence_derivation.spans[0]
+    canonical = text.encode("utf-8")
+    assert canonical[span.start_utf8_byte : span.end_utf8_byte].decode("utf-8") == line.text
+
+
+def test_canonical_derivation_must_reopen_exact_graph_bytes_before_production():
+    source = "Early aviation history began with controlled glider experiments."
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(
+            topic="aviation", target_minutes=15, selected_arc_ids=("history",)
+        ),
+        (
+            EvidenceChunk(
+                chunk_id="canonical-history",
+                document_id="doc",
+                text=source,
+                authority_kind="canonical_graph",
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="canonical graph bytes"):
+        verify_canonical_evidence_bytes(plan, None)
+    verify_canonical_evidence_bytes(plan, {"canonical-history": ("doc", source)})
+    with pytest.raises(ValueError, match="digest drifted"):
+        verify_canonical_evidence_bytes(
+            plan, {"canonical-history": ("doc", source + " drift")}
+        )
+    with pytest.raises(ValueError, match="document identity drifted"):
+        verify_canonical_evidence_bytes(
+            plan, {"canonical-history": ("different-doc", source)}
+        )
+
+
+def test_operator_excerpt_derivation_is_explicitly_not_graph_authority():
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(
+            topic="aviation", target_minutes=15, selected_arc_ids=("history",)
+        ),
+        (
+            EvidenceChunk(
+                chunk_id="operator-history",
+                document_id="operator",
+                text="Early aviation history began with controlled glider experiments.",
+            ),
+        ),
+    )
+
+    spans = [
+        span
+        for line in plan.script_lines
+        if line.evidence_derivation is not None
+        for span in line.evidence_derivation.spans
+    ]
+    assert spans and {span.authority_kind for span in spans} == {"operator_excerpt"}
+    verify_canonical_evidence_bytes(plan, None)
+
+
+def test_planner_metadata_cannot_launder_itself_into_sourced_factual_text():
+    fabricated = "The aircraft reached Mach 99 in 1901."
+    evidence = (
+        EvidenceChunk(
+            chunk_id="history",
+            document_id="doc",
+            text="Early aviation history began with controlled glider experiments.",
+        ),
+    )
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(
+            topic=fabricated,
+            target_minutes=15,
+            must_cover=(fabricated,),
+            selected_arc_ids=("history",),
+        ),
+        evidence,
+    )
+
+    assert all(
+        fabricated not in line.text
+        for line in plan.script_lines
+        if line.kind == "factual" and line.citations
+    )
+
+
+def test_exact_extract_plan_rejects_broadened_chapter_and_scene_authority():
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(topic="Boeing 747", target_minutes=20), _evidence()
+    )
+    values = plan.model_dump(mode="python")
+    chapter = dict(values["chapters"][0])
+    chapter["source_chunk_ids"] = (*chapter["source_chunk_ids"], "unused-chunk")
+    values["chapters"] = (chapter, *values["chapters"][1:])
+
+    with pytest.raises(ValidationError, match="chapter source authority"):
+        type(plan).model_validate(values)
 
 
 def test_each_scene_has_information_purpose_not_decorative_filler():

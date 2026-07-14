@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Literal, Protocol, cast
 
@@ -19,7 +20,7 @@ from .local_audible_tts import (
     prepare_local_audible_span_requests,
 )
 from .local_tts import LocalTTSArtifact
-from .planner import MultimediaPlan
+from .planner import CanonicalEvidenceChunk, MultimediaPlan
 
 
 class LocalAudibleBridgeError(RuntimeError):
@@ -59,6 +60,7 @@ def compile_local_audible_inputs(
     requests: tuple[PreparedAudibleSpanTTSRequest, ...],
     *,
     resolver: LocalAudibleArtifactResolver,
+    canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
 ) -> LocalAudibleInputs:
     """Re-derive all span calls and compile timing from probed local WAVs."""
     if not requests or len(requests) > 4096 or plan.request.route_policy != "cheapest":
@@ -72,10 +74,11 @@ def compile_local_audible_inputs(
         speed=first.speed,
         sample_rate_hz=first.sample_rate_hz,
         channels=first.channels,
+        canonical_chunks=canonical_chunks,
     )
     if requests != expected:
         raise LocalAudibleBridgeError("local audible requests drifted from the canonical plan")
-    run_plan = prepare_audible_run_plan(plan)
+    run_plan = prepare_audible_run_plan(plan, canonical_chunks=canonical_chunks)
     lines = {line.line_id: line for line in run_plan.script_lines}
     chapter_rows: list[RunChapter] = []
     transcript_rows: list[RunTranscriptSpan] = []

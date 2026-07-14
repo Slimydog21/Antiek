@@ -21,7 +21,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager, suppress
 from pathlib import Path
 from typing import Literal
@@ -42,12 +42,14 @@ from substrate.multimedia.local_zero_cost_evidence import (
     verify_local_zero_cost_evidence,
 )
 from substrate.multimedia.planner import (
+    CanonicalEvidenceChunk,
     EvidenceChunk,
     MultimediaPlan,
     MultimediaPlanRequest,
     build_multimedia_plan,
     validate_selected_arc_ids,
     validate_source_excerpts,
+    verify_canonical_evidence_bytes,
 )
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
@@ -487,18 +489,31 @@ class MultimediaAssetStore:
             yield record
 
     def approve_dry_run(
-        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+        self,
+        asset_id: str,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+        canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
     ) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
             asset = record.asset
+            if record.plan.unsourced_line_ids:
+                raise ValueError("multimedia approval refuses unsourced factual narration")
+            verify_canonical_evidence_bytes(record.plan, canonical_chunks)
             if record.mode == "audio":
                 audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=asset.revision_id)
                 manifest = audio.manifest
             else:
                 audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=asset.asset_id, revision_id=f"{asset.revision_id}-audio")
-                video = assemble_video_documentary(record.plan, audio, asset_id=asset.asset_id, revision_id=asset.revision_id)
+                video = assemble_video_documentary(
+                    record.plan,
+                    audio,
+                    asset_id=asset.asset_id,
+                    revision_id=asset.revision_id,
+                    canonical_chunks=canonical_chunks,
+                )
                 manifest = video.manifest.model_copy(
                     update={
                         # The video manifest already contains audio cost rows.
@@ -668,6 +683,7 @@ class MultimediaAssetStore:
         asset_id: str,
         *,
         owner_id: str = _DEFAULT_OWNER_ID,
+        canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
         cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
         local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None,
         snapshot_key: bytes | None = None,
@@ -703,9 +719,15 @@ class MultimediaAssetStore:
                         raise LocalZeroEvidenceConflict("evidence_conflict") from exc
                     raise MultimediaShipCostEvidenceConflict("evidence_conflict") from exc
             scenes: tuple[object, ...] = ()
-            if record.mode != "audio":
+            if not record.plan.unsourced_line_ids:
+                verify_canonical_evidence_bytes(record.plan, canonical_chunks)
+            if record.mode != "audio" and not record.plan.unsourced_line_ids:
                 audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=record.asset.asset_id, revision_id=f"{record.asset.revision_id}-audio")
-                scenes = build_video_scenes(record.plan, audio)
+                scenes = build_video_scenes(
+                    record.plan,
+                    audio,
+                    canonical_chunks=canonical_chunks,
+                )
             report = evaluate_multimedia_asset(
                 record.asset,
                 scenes=scenes,

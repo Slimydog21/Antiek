@@ -24,12 +24,16 @@ from substrate.multimedia.tts import FakeTTSProvider, TTSRequest, TTSResult
 
 def _plan():
     plan = build_multimedia_plan(
-        MultimediaPlanRequest(topic="jet engine history", target_minutes=15),
+        MultimediaPlanRequest(
+            topic="jet engine history",
+            target_minutes=15,
+            selected_arc_ids=("history", "mechanism"),
+        ),
         evidence=(
             EvidenceChunk(
                 chunk_id="chunk-whittle",
                 document_id="doc-engines",
-                text="Frank Whittle patented a turbojet design in 1930.",
+                text="Early jet engine history began with Frank Whittle's turbojet patent in 1930.",
                 title="Early turbojets",
                 section_path="history/whittle",
             ),
@@ -42,25 +46,8 @@ def _plan():
             ),
         ),
     )
-    authority = next(line.citations for line in plan.script_lines if line.citations)
-    authority_ids = tuple(citation.chunk_id for citation in authority)
-    values = plan.model_dump(mode="python")
-    lines = []
-    for line in plan.script_lines:
-        row = line.model_dump(mode="python")
-        if line.kind == "factual" and not line.citations:
-            row["citations"] = authority
-            row["unsourced_reason"] = None
-        lines.append(type(line).model_validate(row))
-    values["script_lines"] = tuple(lines)
-    values["unsourced_line_ids"] = ()
-    chapters = []
-    for chapter in plan.chapters:
-        row = chapter.model_dump(mode="python")
-        row["source_chunk_ids"] = tuple(dict.fromkeys((*chapter.source_chunk_ids, *authority_ids)))
-        chapters.append(type(chapter).model_validate(row))
-    values["chapters"] = tuple(chapters)
-    return type(plan).model_validate(values)
+    assert not plan.unsourced_line_ids
+    return plan
 
 
 class _CountingTTS(FakeTTSProvider):
@@ -113,7 +100,10 @@ def test_transform_inserts_audible_markers_with_exact_inherited_authority() -> N
         remember = next(line for line in chapter_lines if line.line_id.endswith("-run-remember"))
         recap = next(line for line in chapter_lines if line.line_id.endswith("-run-recap"))
         assert remember.text == "Remember this. " + grounded[0].text
-        assert remember.citations == grounded[0].citations
+        assert tuple(c.chunk_id for c in remember.citations) == tuple(
+            c.chunk_id for c in grounded[0].citations
+        )
+        assert remember.evidence_derivation is None
         assert recap.text == "Chapter recap. " + " ".join(line.text for line in grounded)
         assert {citation.chunk_id for citation in recap.citations} == {
             citation.chunk_id for line in grounded for citation in line.citations
@@ -128,24 +118,41 @@ def test_no_sourced_claims_refuses_to_manufacture_retention_content() -> None:
         prepare_audible_run_plan(plan)
 
 
+def test_legacy_citation_presence_cannot_enter_new_audible_production() -> None:
+    plan = _plan().model_copy(update={"grounding_contract": "citation_presence_v1"})
+
+    with pytest.raises(ValueError, match="exact_extract_v2"):
+        prepare_audible_run_plan(plan)
+
+
 def test_unsourced_or_orphan_lines_fail_before_synthesis() -> None:
     plan = _plan()
     values = plan.model_dump(mode="python")
     lines = list(plan.script_lines)
     first = lines[0].model_dump(mode="python")
     first["citations"] = ()
+    first["evidence_derivation"] = None
     first["unsourced_reason"] = "not verified"
     lines[0] = type(lines[0]).model_validate(first)
-    values["script_lines"] = tuple(lines)
-    values["unsourced_line_ids"] = (lines[0].line_id,)
-    unsourced = type(plan).model_validate(values)
+    unsourced = plan.model_copy(
+        update={
+            "script_lines": tuple(lines),
+            "unsourced_line_ids": (lines[0].line_id,),
+        }
+    )
     with pytest.raises(ValueError, match="unsourced factual"):
         prepare_audible_run_plan(unsourced)
 
     values = plan.model_dump(mode="python")
     lines = list(plan.script_lines)
     orphan = lines[0].model_dump(mode="python")
-    orphan.update(line_id="orphan-line-0", sequence=len(lines), kind="transition", citations=())
+    orphan.update(
+        line_id="orphan-line-0",
+        sequence=len(lines),
+        kind="transition",
+        citations=(),
+        evidence_derivation=None,
+    )
     lines.append(type(lines[0]).model_validate(orphan))
     values["script_lines"] = tuple(lines)
     orphaned = type(plan).model_validate(values)
@@ -342,6 +349,7 @@ def test_sourced_transition_is_supported_but_not_presented_as_learned_claim() ->
         sequence=len(lines),
         kind="transition",
         text="The next source-backed section changes focus.",
+        evidence_derivation=None,
     )
     lines.append(type(lines[0]).model_validate(row))
     values["script_lines"] = tuple(lines)
