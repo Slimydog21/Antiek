@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getMultimediaLocalAudibleCapability,
   getMultimediaLocalAudiblePlayback,
+  getListeningProgress,
   inspectMultimediaLocalAudible,
   prepareMultimediaLocalAudible,
   produceMultimediaLocalAudible,
   recoverMultimediaLocalAudible,
+  putListeningProgress,
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord, MultimediaLocalAudiblePreparedSet } from "../../api/multimedia";
 import { LocalAudiblePanel } from "./LocalAudiblePanel";
@@ -15,10 +17,12 @@ import { LocalAudiblePanel } from "./LocalAudiblePanel";
 vi.mock("../../api/multimedia", () => ({
   getMultimediaLocalAudibleCapability: vi.fn(),
   getMultimediaLocalAudiblePlayback: vi.fn(),
+  getListeningProgress: vi.fn(),
   inspectMultimediaLocalAudible: vi.fn(),
   prepareMultimediaLocalAudible: vi.fn(),
   produceMultimediaLocalAudible: vi.fn(),
   recoverMultimediaLocalAudible: vi.fn(),
+  putListeningProgress: vi.fn(),
 }));
 
 const record: MultimediaAssetRecord = {
@@ -44,6 +48,13 @@ const prepared: MultimediaLocalAudiblePreparedSet = {
 };
 
 beforeEach(() => {
+  vi.mocked(getListeningProgress).mockResolvedValue({
+    resume_available: false, asset_id: "mm-1", revision_id: "rev-1",
+    audio_sha256: "b".repeat(64), position_milliseconds: 0,
+    duration_milliseconds: 90_000, completed: false, session_id: "",
+    sequence: 0, updated_at: 0, applied: null,
+  });
+  vi.mocked(putListeningProgress).mockRejectedValue(new Error("not expected"));
   vi.mocked(getMultimediaLocalAudibleCapability).mockResolvedValue({
     available: true, reason: "ready", route_policy: "cheapest", cost_usd: 0,
   });

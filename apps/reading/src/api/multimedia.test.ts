@@ -26,6 +26,7 @@ import {
   getMultimediaPaidAudioPlayback,
   getMultimediaPlayback,
   getNarrationRunReconciliation,
+  getListeningProgress,
   materializeMultimediaVisualCandidates,
   listMultimediaAssets,
   listMultimediaJobs,
@@ -41,6 +42,7 @@ import {
   previewMultimediaSteering,
   previewMultimediaVisualCandidate,
   manualGateIds,
+  putListeningProgress,
   runMultimediaHardening,
   registerMultimediaProduction,
   registerMultimediaReviewedVisuals,
@@ -716,5 +718,135 @@ describe("multimedia API client", () => {
       "/multimedia/narration-runs/run%201/reconciliation",
       expect.anything(),
     );
+  });
+
+  // ── Cycle 22: listening progress ──
+
+  it("getListeningProgress returns resume_available=false for no row", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: false,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 0,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "",
+      sequence: 0,
+      updated_at: 0,
+      applied: null,
+    }));
+    const result = await getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120);
+    expect(result.resume_available).toBe(false);
+    expect(result.position_milliseconds).toBe(0);
+  });
+
+  it("getListeningProgress returns resume data when available", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 30000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000.0,
+      applied: null,
+    }));
+    const result = await getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120);
+    expect(result.resume_available).toBe(true);
+    expect(result.position_milliseconds).toBe(30000);
+    expect(result.session_id).toBe("abcdefghijklmnop");
+  });
+
+  it("getListeningProgress throws typed error on 404", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "not found" }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_unavailable",
+    );
+  });
+
+  it("getListeningProgress throws typed error on 409", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "conflict" }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_conflict",
+    );
+  });
+
+  it("getListeningProgress rejects response with mismatched asset_id", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "wrong-asset",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 30000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000.0,
+      applied: null,
+    }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_identity_conflict",
+    );
+  });
+
+  it("getListeningProgress rejects contradictory completion state", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 119000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000.0,
+      applied: null,
+    }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_identity_conflict",
+    );
+  });
+
+  it("putListeningProgress sends checkpoint and returns stored projection", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 50000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 2,
+      updated_at: 2000.0,
+      applied: true,
+    }));
+    const result = await putListeningProgress("asset-1", {
+      revision_id: "rev-1",
+      position_milliseconds: 50000,
+      session_id: "abcdefghijklmnop",
+      sequence: 2,
+    }, "a".repeat(64), 120);
+    expect(result.resume_available).toBe(true);
+    expect(result.position_milliseconds).toBe(50000);
+    expect(result.sequence).toBe(2);
+  });
+
+  it("putListeningProgress throws typed error on 409", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "conflict" }));
+    await expect(
+      putListeningProgress("asset-1", {
+        revision_id: "rev-1",
+        position_milliseconds: 50000,
+        session_id: "abcdefghijklmnop",
+        sequence: 1,
+      }, "a".repeat(64), 120),
+    ).rejects.toThrow("multimedia_listening_progress_conflict");
   });
 });
