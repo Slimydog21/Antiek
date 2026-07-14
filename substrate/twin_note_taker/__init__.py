@@ -1,4 +1,4 @@
-"""Recursive twin note-taker — LLM-proposed insight/question twin per asset."""
+"""Recursive twin note-taker generation and advisory search substrates."""
 
 from .generate import (
     AUTHORITY_VERIFY_KEY_ENV,
@@ -28,6 +28,20 @@ from .generate import (
     proposal_receipt_hash,
     source_asset_receipt_hash,
 )
+from .search import (
+    MAX_QUERY_CHARS,
+    MAX_QUERY_TERMS,
+    MAX_SEARCH_DOCUMENTS,
+    MAX_SEARCH_LIMIT,
+    MAX_SEARCH_RECORDS,
+    MAX_SEARCH_TOTAL_CHARS,
+    SearchKind,
+    TwinIndex,
+    TwinSearchError,
+    TwinSearchHit,
+    TwinSearchRecord,
+    search_twins,
+)
 
 __all__ = [
     "AUTHORITY_VERIFY_KEY_ENV",
@@ -39,6 +53,12 @@ __all__ = [
     "MAX_INSIGHTS",
     "MAX_PROPOSAL_ITEM_CHARS",
     "MAX_QUESTIONS",
+    "MAX_QUERY_CHARS",
+    "MAX_QUERY_TERMS",
+    "MAX_SEARCH_DOCUMENTS",
+    "MAX_SEARCH_LIMIT",
+    "MAX_SEARCH_RECORDS",
+    "MAX_SEARCH_TOTAL_CHARS",
     "MAX_SIGNATURE_CHARS",
     "MAX_SOURCE_EVENTS",
     "MAX_SYNTHESIS_CHARS",
@@ -49,11 +69,17 @@ __all__ = [
     "AssetContent",
     "ProposedInsight",
     "ProposedQuestion",
+    "SearchKind",
     "TwinDocument",
     "TwinGenerationError",
     "TwinGenerationReceipt",
     "TwinProposal",
+    "TwinIndex",
+    "TwinSearchError",
+    "TwinSearchHit",
+    "TwinSearchRecord",
     "generate_twin",
     "proposal_receipt_hash",
+    "search_twins",
     "source_asset_receipt_hash",
 ]

@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
  * useVoiceRecorder (Read SPR-06) — minimal MediaRecorder wrapper that
@@ -25,6 +25,8 @@ export function useVoiceRecorder(): UseVoiceRecorder {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
+  const mountedRef = useRef(true);
+  const startAttemptRef = useRef(0);
 
   const stopTracks = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -32,11 +34,16 @@ export function useVoiceRecorder(): UseVoiceRecorder {
   }, []);
 
   const start = useCallback(async () => {
+    const attempt = ++startAttemptRef.current;
     setError(null);
     setBlob(null);
     chunksRef.current = [];
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (!mountedRef.current || attempt !== startAttemptRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       streamRef.current = stream;
       const rec = new MediaRecorder(stream);
       recorderRef.current = rec;
@@ -44,13 +51,16 @@ export function useVoiceRecorder(): UseVoiceRecorder {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
       rec.onstop = () => {
-        setBlob(new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" }));
-        setState("stopped");
+        if (mountedRef.current) {
+          setBlob(new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" }));
+          setState("stopped");
+        }
         stopTracks();
       };
       rec.start();
       setState("recording");
     } catch (e: unknown) {
+      if (!mountedRef.current || attempt !== startAttemptRef.current) return;
       stopTracks();
       // getUserMedia rejects with NotAllowedError on permission denial.
       const name = (e as { name?: string })?.name;
@@ -71,11 +81,25 @@ export function useVoiceRecorder(): UseVoiceRecorder {
   }, []);
 
   const reset = useCallback(() => {
+    startAttemptRef.current += 1;
     setState("idle");
     setError(null);
     setBlob(null);
     chunksRef.current = [];
   }, []);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      startAttemptRef.current += 1;
+      if (recorderRef.current && recorderRef.current.state !== "inactive") {
+        recorderRef.current.stop();
+      } else {
+        stopTracks();
+      }
+    };
+  }, [stopTracks]);
 
   return { state, error, blob, start, stop, reset };
 }

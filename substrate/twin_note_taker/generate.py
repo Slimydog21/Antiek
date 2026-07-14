@@ -145,7 +145,7 @@ class TwinGenerationReceipt:
     signature: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class TwinDocument:
     """The generated twin: a ResearchArtifactBody twin + honest accounting."""
 
@@ -163,10 +163,20 @@ class TwinDocument:
     source_content_hash: str
     proposal_hash: str  # sha256 over canonical proposals (idempotency)
 
+    def __init__(self, *_args: object, **_kwargs: object) -> None:
+        raise TwinGenerationError("TwinDocument values are created only by generate_twin")
+
     @property
     def body(self) -> ResearchArtifactBody:
         """Return a detached body so callers cannot mutate signed document state."""
         return ResearchArtifactBody.model_validate_json(self._body_json)
+
+
+def _materialized_document(**values: object) -> TwinDocument:
+    document = object.__new__(TwinDocument)
+    for name, value in values.items():
+        object.__setattr__(document, name, value)
+    return document
 
 
 @dataclass(frozen=True)
@@ -607,7 +617,7 @@ def generate_twin(
     source_content_hash = _source_content_hash(source)
     proposal_hash = _canonical_proposal_hash(source, normalized, model_id=model_id)
 
-    return TwinDocument(
+    return _materialized_document(
         asset_id=source.asset_id,
         twin_investigation_id=body.investigation_id,
         _body_json=body.model_dump_json(),

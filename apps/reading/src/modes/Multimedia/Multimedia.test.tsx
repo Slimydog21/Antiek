@@ -19,6 +19,23 @@ import {
 import type { MultimediaAssetRecord } from "../../api/multimedia";
 import type { MultimediaPlanWire } from "../../api/multimedia";
 
+vi.mock("./VoiceSteeringInput", () => ({
+  VoiceSteeringInput: ({ value, onChange, onTranscript, onBusyChange, onDiscardTranscript }: {
+    value: string;
+    onChange: (value: string) => void;
+    onTranscript: (value: string) => void;
+    onBusyChange: (value: boolean) => void;
+    onDiscardTranscript: () => void;
+  }) => (
+    <div>
+      <textarea aria-label="Steering prompt" value={value} onChange={(event) => onChange(event.target.value)} />
+      <button type="button" onClick={() => onTranscript("Go deeper on engines.")}>Use voice steer</button>
+      <button type="button" onClick={() => onBusyChange(true)}>Sim capture busy</button>
+      <button type="button" onClick={onDiscardTranscript}>Discard voice</button>
+    </div>
+  ),
+}));
+
 vi.mock("../../api/multimedia", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/multimedia")>();
   // Keep the real pure helpers (failedGateIds/manualGateIds derive from the
@@ -366,6 +383,7 @@ describe("Multimedia workstation", () => {
   });
 
   it("accumulates exact chapter authorities before producing", async () => {
+    const user = userEvent.setup();
     mockReviewedVisuals.mockResolvedValueOnce({
       set_id: "mmvset-test",
       asset_id: "mm-1",
@@ -383,12 +401,17 @@ describe("Multimedia workstation", () => {
     const produce = await screen.findByRole("button", { name: "Produce documentary" });
     expect(produce.getAttribute("disabled")).not.toBeNull();
 
-    fireEvent.click(screen.getByLabelText("Approve this maximum"));
-    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    const authorizeSelectedChapter = async () => {
+      await user.click(screen.getByLabelText("Approve this maximum"));
+      const authorize = screen.getByRole("button", { name: "Authorize narration" });
+      await waitFor(() => expect(authorize.getAttribute("disabled")).toBeNull());
+      await user.click(authorize);
+    };
+
+    await authorizeSelectedChapter();
     await screen.findByText("mmauth2-server-intro");
-    fireEvent.click(screen.getByRole("button", { name: "Select storyboard chapter 2" }));
-    fireEvent.click(screen.getByLabelText("Approve this maximum"));
-    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    await user.click(screen.getByRole("button", { name: "Select storyboard chapter 2" }));
+    await authorizeSelectedChapter();
     await screen.findByText("mmauth2-server-mechanism");
 
     await waitFor(() => expect(produce.getAttribute("disabled")).toBeNull());
@@ -501,13 +524,64 @@ describe("Multimedia workstation", () => {
     await reviewPlan();
 
     fireEvent.click(screen.getByRole("button", { name: "Apply steer" }));
-    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", expect.objectContaining({ prompt: expect.any(String) })));
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", { prompt: expect.any(String) }));
     expect(await screen.findByText(/mm-1 \/ rev-2/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Run hardening" }));
     await waitFor(() => expect(mockHarden).toHaveBeenCalledWith("mm-1"));
     expect(await screen.findByText(/Hardening: manual_review/)).toBeTruthy();
     expect(screen.getByText(/rights_and_publication/)).toBeTruthy();
+  });
+
+  it("persists raw and corrected voice steering only after explicit apply", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use voice steer" }));
+    expect(mockSteer).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Steering prompt"), {
+      target: { value: "Go deeper on engine reliability." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Apply steer" }));
+
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", {
+      prompt: "Go deeper on engine reliability.",
+      raw_voice_transcript: "Go deeper on engines.",
+      corrected_voice_transcript: "Go deeper on engine reliability.",
+    }));
+  });
+
+  it("omits a correction when the reviewed voice transcript is unchanged", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use voice steer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply steer" }));
+
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", {
+      prompt: "Go deeper on engines.",
+      raw_voice_transcript: "Go deeper on engines.",
+    }));
+  });
+
+  it("blocks Apply while microphone or transcription work is active", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sim capture busy" }));
+    const apply = screen.getByRole("button", { name: "Apply steer" }) as HTMLButtonElement;
+
+    expect(apply.disabled).toBe(true);
+    fireEvent.click(apply);
+    expect(mockSteer).not.toHaveBeenCalled();
+  });
+
+  it("returns a discarded voice transcript to an exact text-only payload", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use voice steer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard voice" }));
+    fireEvent.change(screen.getByLabelText("Steering prompt"), { target: { value: "typed replacement" } });
+    fireEvent.click(screen.getByRole("button", { name: "Apply steer" }));
+
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", { prompt: "typed replacement" }));
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {
