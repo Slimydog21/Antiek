@@ -124,6 +124,7 @@ _CHILD_ROLES = (
 
 _ISSUER_MAX_PACKET = 131_072
 _ISSUER_WITNESS_SOCKET_NAME = "issuer-v1.sock"
+_ISSUER_SESSION_FRAME_MAGIC = b"ARS1"
 _ISSUER_CANDIDATE_FIELDS = frozenset(SignedMigrationLifecycleStateV1.model_fields) - {
     "issuer_key_id",
     "state_sha256",
@@ -139,6 +140,52 @@ def _issuer_response(socket_: socket.socket, payload: bytes) -> None:
         raise ValueError("issuer response bound")
     with suppress(OSError):
         socket_.sendall(payload)
+
+
+def _issuer_session_frame(payload: bytes) -> bytes:
+    if not payload or len(payload) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer session frame bound")
+    return _ISSUER_SESSION_FRAME_MAGIC + struct.pack("!I", len(payload)) + payload
+
+
+def _issuer_session_receive_frame(
+    socket_: socket.socket, initial: bytes = b"", *, idle_poll: bool = False
+) -> bytes:
+    framed = bytearray(initial)
+    deadline = None if idle_poll and not framed else time.monotonic() + 5.0
+    while len(framed) < 8:
+        try:
+            chunk = socket_.recv(8 - len(framed))
+        except TimeoutError:
+            if deadline is None:
+                raise BlockingIOError("issuer session idle poll") from None
+            if time.monotonic() >= deadline:
+                raise
+            continue
+        if not chunk:
+            raise ValueError("issuer session frame header")
+        framed.extend(chunk)
+        if deadline is None:
+            deadline = time.monotonic() + 5.0
+    if bytes(framed[:4]) != _ISSUER_SESSION_FRAME_MAGIC:
+        raise ValueError("issuer session frame magic")
+    length = struct.unpack("!I", framed[4:8])[0]
+    if not 0 < length <= _ISSUER_MAX_PACKET:
+        raise ValueError("issuer session frame bound")
+    expected = 8 + length
+    if len(framed) > expected:
+        raise ValueError("issuer session frame trailing bytes")
+    while len(framed) < expected:
+        try:
+            chunk = socket_.recv(expected - len(framed))
+        except TimeoutError:
+            if deadline is None or time.monotonic() >= deadline:
+                raise
+            continue
+        if not chunk:
+            raise ValueError("issuer session frame truncated")
+        framed.extend(chunk)
+    return bytes(framed[8:])
 
 
 def _issuer_received_descriptors(ancillary: list[tuple[int, int, bytes]]) -> list[int]:
@@ -736,6 +783,7 @@ def _fixture_migration_lifecycle_issuer_main(
     recovery_ticket: SignedMigrationRecoveryTicketV1 | None = None
     recovery_admission_request: bytes | None = None
     recovery_admission: SignedEpoch0RecoveryAdmissionV1 | None = None
+    recovery_session_consumed = False
     copy_completed = False
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     process_watch = select.kqueue()
@@ -787,6 +835,7 @@ def _fixture_migration_lifecycle_issuer_main(
                 continue
             descriptor: int | None = None
             received_descriptors: list[int] = []
+            session_framed = False
             try:
                 peer_pid = struct.unpack("i", connection.getsockopt(0, 2, 4))[0]
                 connection.settimeout(0.1)
@@ -805,33 +854,40 @@ def _fixture_migration_lifecycle_issuer_main(
                 received_descriptors = _issuer_received_descriptors(ancillary)
                 if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC):
                     raise ValueError("issuer truncated request")
-                chunks = [first]
-                total = len(first)
-                while True:
-                    try:
-                        chunk = connection.recv(65_536)
-                    except TimeoutError:
+                session_framed = bool(first) and _ISSUER_SESSION_FRAME_MAGIC.startswith(first)
+                if len(first) >= len(_ISSUER_SESSION_FRAME_MAGIC):
+                    session_framed = first.startswith(_ISSUER_SESSION_FRAME_MAGIC)
+                if session_framed:
+                    packet = _issuer_session_receive_frame(connection, first)
+                else:
+                    chunks = [first]
+                    total = len(first)
+                    while True:
+                        try:
+                            chunk = connection.recv(65_536)
+                        except TimeoutError:
+                            if supervisor_exited():
+                                return
+                            continue
+                        if not chunk:
+                            break
                         if supervisor_exited():
                             return
-                        continue
-                    if not chunk:
-                        break
-                    if supervisor_exited():
-                        return
-                    total += len(chunk)
-                    if total > _ISSUER_MAX_PACKET:
-                        raise ValueError("issuer request bound")
-                    chunks.append(chunk)
+                        total += len(chunk)
+                        if total > _ISSUER_MAX_PACKET:
+                            raise ValueError("issuer request bound")
+                        chunks.append(chunk)
+                    packet = b"".join(chunks)
                 if supervisor_exited():
                     return
-                packet = b"".join(chunks)
                 request = _parse_strict_json(packet, _ISSUER_MAX_PACKET)
                 command = request.get("command")
                 if supervisor_exited():
                     return
-                if (
-                    peer_pid != authorized_pid or active_store_revoked
-                ) and command != "recover_open":
+                if (peer_pid != authorized_pid or active_store_revoked) and command not in {
+                    "recover_open",
+                    "recover_session_open",
+                }:
                     raise ValueError("issuer peer pid")
                 if command == "bind":
                     if (
@@ -943,7 +999,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             os.close(root_fd)
                         os.close(parent_fd)
                     continue
-                if command == "recover_open":
+                if command in {"recover_open", "recover_session_open"}:
                     if (
                         recovery_ticket is None
                         or set(request)
@@ -962,12 +1018,16 @@ def _fixture_migration_lifecycle_issuer_main(
                         or type(request["caller_boot_nonce"]) is not str
                         or type(request["handle_nonce"]) is not str
                         or type(request["authority_pins"]) is not dict
+                        or (command == "recover_session_open") != session_framed
+                        or (command == "recover_session_open" and not active_store_revoked)
+                        or (command == "recover_session_open" and recovery_session_consumed)
                     ):
                         raise ValueError("issuer recovery open envelope")
                     request_bytes = _canonical_json(request)
                     recovery_root_fd = received_descriptors.pop(0)
                     recovery_parent_fd = received_descriptors.pop(0)
                     recovery_target_fd = received_descriptors.pop(0)
+                    session_descriptors: list[int] = []
                     try:
                         pins = _issuer_authenticate_recovery_descriptors(
                             root_fd=recovery_root_fd,
@@ -977,6 +1037,17 @@ def _fixture_migration_lifecycle_issuer_main(
                             verification_key=verification_key,
                             raw_pins=request["authority_pins"],
                         )
+                        if command == "recover_session_open":
+                            for recovery_fd in (
+                                recovery_root_fd,
+                                recovery_parent_fd,
+                                recovery_target_fd,
+                            ):
+                                session_descriptor = fcntl.fcntl(
+                                    recovery_fd, fcntl.F_DUPFD_CLOEXEC, 0
+                                )
+                                session_descriptors.append(session_descriptor)
+                                received_descriptors.append(session_descriptor)
                     finally:
                         os.close(recovery_root_fd)
                         os.close(recovery_parent_fd)
@@ -1018,18 +1089,75 @@ def _fixture_migration_lifecycle_issuer_main(
                         recovery_admission_request = request_bytes
                     if recovery_admission is None:
                         raise ValueError("issuer recovery admission missing")
-                    _issuer_response(
-                        connection,
-                        b"R"
-                        + _canonical_json(
-                            {
-                                **recovery_admission.model_dump(
-                                    mode="python", exclude={"signature_ed25519"}
-                                ),
-                                "signature_ed25519": recovery_admission.signature_ed25519.hex(),
-                            }
-                        ),
+                    admission_response = b"R" + _canonical_json(
+                        {
+                            **recovery_admission.model_dump(
+                                mode="python", exclude={"signature_ed25519"}
+                            ),
+                            "signature_ed25519": recovery_admission.signature_ed25519.hex(),
+                        }
                     )
+                    if command == "recover_open":
+                        _issuer_response(connection, admission_response)
+                        continue
+                    recovery_session_consumed = True
+                    for session_descriptor in session_descriptors:
+                        received_descriptors.remove(session_descriptor)
+                    try:
+                        if len(session_descriptors) != 3:
+                            raise ValueError("issuer recovery session descriptors")
+                        session_root_fd, session_parent_fd, session_target_fd = session_descriptors
+                        connection.sendall(_issuer_session_frame(admission_response))
+                        while True:
+                            if supervisor_exited():
+                                return
+                            try:
+                                session_packet = _issuer_session_receive_frame(
+                                    connection, idle_poll=True
+                                )
+                            except BlockingIOError:
+                                continue
+                            except TimeoutError, ValueError:
+                                break
+                            session_request = _parse_strict_json(session_packet, _ISSUER_MAX_PACKET)
+                            session_command = session_request.get("command")
+                            if set(session_request) != {
+                                "command",
+                                "admission_sha256",
+                                "handle_nonce",
+                            } or (
+                                session_request["admission_sha256"]
+                                != recovery_admission.admission_sha256
+                                or session_request["handle_nonce"]
+                                != recovery_admission.handle_nonce
+                            ):
+                                raise ValueError("issuer recovery session correlation")
+                            if session_command == "session_ping":
+                                _issuer_authenticate_recovery_descriptors(
+                                    root_fd=session_root_fd,
+                                    parent_fd=session_parent_fd,
+                                    target_fd=session_target_fd,
+                                    ticket=recovery_ticket,
+                                    verification_key=verification_key,
+                                    raw_pins=request["authority_pins"],
+                                )
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"P" + recovery_admission.admission_sha256.encode("ascii")
+                                    )
+                                )
+                                continue
+                            if session_command == "session_close":
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"C" + recovery_admission.admission_sha256.encode("ascii")
+                                    )
+                                )
+                                break
+                            raise ValueError("issuer recovery session command")
+                    finally:
+                        for session_descriptor in session_descriptors:
+                            os.close(session_descriptor)
                     continue
                 if command == "close":
                     if received_descriptors:
@@ -1410,7 +1538,11 @@ def _fixture_migration_lifecycle_issuer_main(
                 ):
                     _issuer_release_target_lease(target_lease)
                     target_lease = None
-                _issuer_response(connection, b"E")
+                if session_framed:
+                    with suppress(OSError, ValueError):
+                        connection.sendall(_issuer_session_frame(b"E"))
+                else:
+                    _issuer_response(connection, b"E")
             finally:
                 if descriptor is not None:
                     os.close(descriptor)
@@ -1429,6 +1561,213 @@ def _fixture_migration_lifecycle_issuer_main(
             os.close(bound_target_fd)
         listener.close()
         Path(socket_path).unlink(missing_ok=True)
+
+
+class FixtureMigrationRecoverySessionV1:
+    _admission: SignedEpoch0RecoveryAdmissionV1
+    _boot_nonce: bytes
+    _closed: bool
+    _connection: socket.socket
+    _creator_pid: int
+    _descriptors: tuple[int, int, int]
+    _handle_nonce: str
+    _lock: threading.Lock
+    _ticket: SignedMigrationRecoveryTicketV1
+    _verification_key: VerificationKeyV1
+
+    __slots__ = (
+        "_admission",
+        "_boot_nonce",
+        "_closed",
+        "_connection",
+        "_creator_pid",
+        "_descriptors",
+        "_handle_nonce",
+        "_lock",
+        "_ticket",
+        "_verification_key",
+    )
+
+    def __init_subclass__(cls, **kwargs: object) -> Never:
+        del cls, kwargs
+        raise TypeError("fixture migration recovery session is final")
+
+    @classmethod
+    def open(
+        cls,
+        *,
+        socket_path: str,
+        expected_issuer_pid: int,
+        recovery_ticket: SignedMigrationRecoveryTicketV1,
+        verification_key: VerificationKeyV1,
+        root_fd: int,
+        parent_fd: int,
+        target_fd: int,
+        authority_pins: Epoch0RecoveryAuthorityPinsV1,
+    ) -> FixtureMigrationRecoverySessionV1:
+        if (
+            type(socket_path) is not str
+            or type(expected_issuer_pid) is not int
+            or type(recovery_ticket) is not SignedMigrationRecoveryTicketV1
+            or type(verification_key) is not VerificationKeyV1
+            or type(authority_pins) is not Epoch0RecoveryAuthorityPinsV1
+        ):
+            raise ValueError("fixture recovery session open values")
+        _verify_signed_migration_recovery_ticket(recovery_ticket, verification_key)
+        caller_boot_nonce = secrets.token_hex(32)
+        handle_nonce = secrets.token_hex(32)
+        request = _canonical_json(
+            {
+                "command": "recover_session_open",
+                "ticket_sha256": recovery_ticket.ticket_sha256,
+                "issuer_generation_nonce": recovery_ticket.issuer_generation_nonce,
+                "caller_boot_nonce": caller_boot_nonce,
+                "handle_nonce": handle_nonce,
+                "authority_pins": authority_pins.model_dump(mode="json"),
+            }
+        )
+        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        duplicates: list[int] = []
+        try:
+            for descriptor in (root_fd, parent_fd, target_fd):
+                duplicates.append(fcntl.fcntl(descriptor, fcntl.F_DUPFD_CLOEXEC, 0))
+            connection.settimeout(5.0)
+            connection.connect(socket_path)
+            peer_pid = struct.unpack("i", connection.getsockopt(0, 2, 4))[0]
+            if peer_pid != expected_issuer_pid:
+                raise ValueError("fixture recovery session issuer pid")
+            framed = _issuer_session_frame(request)
+            rights = array("i", duplicates)
+            if connection.sendmsg(
+                [framed],
+                [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights.tobytes())],
+            ) != len(framed):
+                raise OSError("short recovery session request")
+            response = _issuer_session_receive_frame(connection)
+            if response[:1] != b"R":
+                raise ValueError("fixture recovery session admission response")
+            parsed = _parse_strict_json(response[1:], _ISSUER_MAX_PACKET)
+            signature_hex = parsed.get("signature_ed25519")
+            if type(signature_hex) is not str:
+                raise ValueError("fixture recovery session admission signature")
+            admission = SignedEpoch0RecoveryAdmissionV1.model_validate(
+                {**parsed, "signature_ed25519": bytes.fromhex(signature_hex)}
+            )
+            _verify_signed_epoch0_recovery_admission(admission, verification_key)
+            if (
+                admission.ticket_sha256 != recovery_ticket.ticket_sha256
+                or admission.issuer_generation_nonce != recovery_ticket.issuer_generation_nonce
+                or admission.authenticated_peer_pid != os.getpid()
+                or admission.caller_boot_nonce != caller_boot_nonce
+                or admission.handle_nonce != handle_nonce
+                or admission.descriptor_mode != "target"
+                or admission.authority_pins != authority_pins
+            ):
+                raise ValueError("fixture recovery session admission correlation")
+            connection.settimeout(0.5)
+        except Exception:
+            connection.close()
+            for duplicate in duplicates:
+                os.close(duplicate)
+            raise
+        if len(duplicates) != 3:
+            raise AssertionError("fixture recovery session descriptors")
+        session = object.__new__(cls)
+        object.__setattr__(session, "_admission", admission)
+        object.__setattr__(session, "_boot_nonce", bytes.fromhex(caller_boot_nonce))
+        object.__setattr__(session, "_closed", False)
+        object.__setattr__(session, "_connection", connection)
+        object.__setattr__(session, "_creator_pid", os.getpid())
+        object.__setattr__(session, "_descriptors", tuple(duplicates))
+        object.__setattr__(session, "_handle_nonce", handle_nonce)
+        object.__setattr__(session, "_lock", threading.Lock())
+        object.__setattr__(session, "_ticket", recovery_ticket)
+        object.__setattr__(session, "_verification_key", verification_key)
+        return session
+
+    def __setattr__(self, name: str, value: object) -> Never:
+        del name, value
+        raise AttributeError("fixture migration recovery session is immutable")
+
+    def __reduce__(self) -> Never:
+        raise TypeError("fixture migration recovery session is process-bound")
+
+    def __copy__(self) -> Never:
+        raise TypeError("fixture migration recovery session cannot be copied")
+
+    def __deepcopy__(self, memo: object) -> Never:
+        del memo
+        raise TypeError("fixture migration recovery session cannot be copied")
+
+    def _validate(self) -> None:
+        if (
+            self._creator_pid != os.getpid()
+            or len(self._boot_nonce) != 32
+            or self._handle_nonce != self._admission.handle_nonce
+            or self._closed
+        ):
+            raise ValueError("fixture recovery session unavailable")
+
+    @property
+    def admission(self) -> SignedEpoch0RecoveryAdmissionV1:
+        self._validate()
+        return self._admission
+
+    @property
+    def authority_pins(self) -> Epoch0RecoveryAuthorityPinsV1:
+        self._validate()
+        return self._admission.authority_pins
+
+    def _close_local(self) -> None:
+        if self._closed:
+            return
+        object.__setattr__(self, "_closed", True)
+        self._connection.close()
+        for descriptor in self._descriptors:
+            with suppress(OSError):
+                os.close(descriptor)
+
+    def _live_request(self, command: Literal["session_ping", "session_close"]) -> bytes:
+        request = _canonical_json(
+            {
+                "command": command,
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+            }
+        )
+        self._connection.sendall(_issuer_session_frame(request))
+        return _issuer_session_receive_frame(self._connection)
+
+    def ping(self) -> None:
+        self._validate()
+        with self._lock:
+            try:
+                response = self._live_request("session_ping")
+                if response != b"P" + self._admission.admission_sha256.encode("ascii"):
+                    raise ValueError("fixture recovery session ping response")
+            except Exception:
+                self._close_local()
+                raise
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        if self._creator_pid != os.getpid():
+            self._close_local()
+            return
+        with self._lock:
+            try:
+                response = self._live_request("session_close")
+                if response != b"C" + self._admission.admission_sha256.encode("ascii"):
+                    raise ValueError("fixture recovery session close response")
+            except OSError, TimeoutError, ValueError:
+                pass
+            finally:
+                self._close_local()
+
+    def __del__(self) -> None:
+        with suppress(AttributeError, OSError):
+            self._close_local()
 
 
 class FixtureMigrationLifecycleIssuerV1:

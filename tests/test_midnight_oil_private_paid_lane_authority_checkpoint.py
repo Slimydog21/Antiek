@@ -18,7 +18,6 @@ import textwrap
 import threading
 import time
 import weakref
-from array import array
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -287,6 +286,7 @@ def _attempt_inherited_issuer_close(connection: socket.socket) -> None:
 
 def _attempt_child_recovery_admission(
     socket_path: str,
+    issuer_pid: int,
     ticket: checkpoint_module.SignedMigrationRecoveryTicketV1,
     pins: checkpoint_module.Epoch0RecoveryAuthorityPinsV1,
     verification_key: checkpoint_module.VerificationKeyV1,
@@ -296,44 +296,61 @@ def _attempt_child_recovery_admission(
     result_fd: int,
 ) -> None:
     try:
-        request = _canonical_json(
-            {
-                "command": "recover_open",
-                "ticket_sha256": ticket.ticket_sha256,
-                "issuer_generation_nonce": ticket.issuer_generation_nonce,
-                "caller_boot_nonce": "91" * 32,
-                "handle_nonce": "92" * 32,
-                "authority_pins": pins.model_dump(mode="json"),
-            }
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            authority_pins=pins,
         )
-        responses: list[bytes] = []
-        for _ in range(2):
-            connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            assert session.admission.authenticated_peer_pid == os.getpid()
+            assert session.authority_pins == pins
+            with pytest.raises(TypeError, match="cannot be copied"):
+                copy.copy(session)
+            with pytest.raises(TypeError, match="process-bound"):
+                pickle.dumps(session)
+            os.close(root_fd)
+            os.close(parent_fd)
+            os.close(target_fd)
+            session.ping()
+            time.sleep(5.2)
+            session.ping()
+            inherited_child = os.fork()
+            if inherited_child == 0:
+                try:
+                    with pytest.raises(ValueError, match="unavailable"):
+                        session.ping()
+                    session.close()
+                except BaseException:
+                    os._exit(1)
+                os._exit(0)
+            _, inherited_status = os.waitpid(inherited_child, 0)
+            assert os.waitstatus_to_exitcode(inherited_status) == 0
+            session.ping()
+            reopen_descriptors = tuple(os.dup(fd) for fd in session._descriptors)
+            session.close()
             try:
-                connection.connect(socket_path)
-                rights = array("i", (root_fd, parent_fd, target_fd))
-                assert connection.sendmsg(
-                    [request],
-                    [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights.tobytes())],
-                ) == len(request)
-                connection.shutdown(socket.SHUT_WR)
-                parts: list[bytes] = []
-                while chunk := connection.recv(65_536):
-                    parts.append(chunk)
-                responses.append(b"".join(parts))
+                with pytest.raises(ValueError):
+                    support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+                        socket_path=socket_path,
+                        expected_issuer_pid=issuer_pid,
+                        recovery_ticket=ticket,
+                        verification_key=verification_key,
+                        root_fd=reopen_descriptors[0],
+                        parent_fd=reopen_descriptors[1],
+                        target_fd=reopen_descriptors[2],
+                        authority_pins=pins,
+                    )
             finally:
-                connection.close()
-        assert responses[0] == responses[1]
-        assert responses[0][:1] == b"R"
-        parsed = checkpoint_module._parse_strict_json(responses[0][1:], 131_072)
-        signature_hex = parsed["signature_ed25519"]
-        assert type(signature_hex) is str
-        admission = checkpoint_module.SignedEpoch0RecoveryAdmissionV1.model_validate(
-            {**parsed, "signature_ed25519": bytes.fromhex(signature_hex)}
-        )
-        checkpoint_module._verify_signed_epoch0_recovery_admission(admission, verification_key)
-        assert admission.authenticated_peer_pid == os.getpid()
-        os.write(result_fd, b"1")
+                for descriptor in reopen_descriptors:
+                    os.close(descriptor)
+            os.write(result_fd, b"1")
+        finally:
+            session.close()
     except BaseException:
         os.write(result_fd, b"0")
     finally:
@@ -2828,11 +2845,27 @@ class TestMigrationPrerequisites:
                     == copied
                 )
                 result_read, result_write = os.pipe()
+                recovery_issuer_pid = issuer.process_id
+                with pytest.raises(ValueError):
+                    support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+                        socket_path=issuer._socket_path,
+                        expected_issuer_pid=recovery_issuer_pid,
+                        recovery_ticket=issuer.recovery_ticket,
+                        verification_key=issuer.verification_key,
+                        root_fd=root_fd,
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        authority_pins=recovery_pins,
+                    )
+                os.fstat(root_fd)
+                os.fstat(parent_fd)
+                os.fstat(target_fd)
                 recovery_child = os.fork()
                 if recovery_child == 0:
                     os.close(result_read)
                     _attempt_child_recovery_admission(
                         issuer._socket_path,
+                        recovery_issuer_pid,
                         issuer.recovery_ticket,
                         recovery_pins,
                         issuer.verification_key,
