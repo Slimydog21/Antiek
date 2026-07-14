@@ -92,6 +92,11 @@ from .multimedia_narration_authorization_routes import (
     multimedia_narration_authorization_router,
     multimedia_narration_authorization_runtime_from_environment,
 )
+from .multimedia_paid_audio_playback_routes import (
+    PaidAudioPlaybackRouteRuntime,
+    get_multimedia_paid_audio_playback_runtime,
+    multimedia_paid_audio_playback_router,
+)
 from .multimedia_playback_routes import (
     get_multimedia_playback_runtime,
     multimedia_playback_router,
@@ -151,6 +156,7 @@ multimedia_router.include_router(multimedia_reconciliation_router)
 multimedia_router.include_router(multimedia_local_router)
 multimedia_router.include_router(multimedia_local_audible_router)
 multimedia_router.include_router(multimedia_playback_router)
+multimedia_router.include_router(multimedia_paid_audio_playback_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
@@ -598,9 +604,9 @@ def register_multimedia_routes(app: FastAPI) -> None:
     if runtime is not None:
         runtime = replace(
             runtime,
-            asset_revision_resolver=lambda asset_id, operator_id: get_store()
-            .get(asset_id, owner_id=operator_id)
-            .asset.revision_id,
+            asset_revision_resolver=lambda asset_id, operator_id: (
+                get_store().get(asset_id, owner_id=operator_id).asset.revision_id
+            ),
         )
         app.dependency_overrides[get_multimedia_reconciliation_runtime] = lambda: runtime
     knowledge_runtime = multimedia_knowledge_runtime_from_environment()
@@ -609,24 +615,20 @@ def register_multimedia_routes(app: FastAPI) -> None:
     evidence_runtime = multimedia_evidence_runtime_from_environment()
     if evidence_runtime is not None:
         app.dependency_overrides[get_multimedia_evidence_runtime] = lambda: evidence_runtime
-        app.dependency_overrides[get_multimedia_evidence_runtime_optional] = (
-            lambda: evidence_runtime
+        app.dependency_overrides[get_multimedia_evidence_runtime_optional] = lambda: (
+            evidence_runtime
         )
     local_runtime = multimedia_local_runtime_from_environment(store=get_store())
     if local_runtime is not None:
-        app.dependency_overrides[get_multimedia_local_runtime_optional] = (
-            lambda: local_runtime
-        )
+        app.dependency_overrides[get_multimedia_local_runtime_optional] = lambda: local_runtime
         app.dependency_overrides[get_multimedia_local_runtime] = lambda: local_runtime
-    local_audible_runtime = multimedia_local_audible_runtime_from_environment(
-        store=get_store()
-    )
+    local_audible_runtime = multimedia_local_audible_runtime_from_environment(store=get_store())
     if local_audible_runtime is not None:
-        app.dependency_overrides[get_multimedia_local_audible_runtime_optional] = (
-            lambda: local_audible_runtime
+        app.dependency_overrides[get_multimedia_local_audible_runtime_optional] = lambda: (
+            local_audible_runtime
         )
-        app.dependency_overrides[get_multimedia_local_audible_runtime] = (
-            lambda: local_audible_runtime
+        app.dependency_overrides[get_multimedia_local_audible_runtime] = lambda: (
+            local_audible_runtime
         )
     hardening_runtime = multimedia_hardening_runtime_from_environment()
     if hardening_runtime is not None:
@@ -694,12 +696,14 @@ def register_multimedia_routes(app: FastAPI) -> None:
                 (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
                 record.production_link,
             ),
-            production_registrar=lambda asset_id, revision_id, operator_id: register_multimedia_production(
-                asset_id,
-                MultimediaProductionRegistrationRequest(expected_revision_id=revision_id),
-                owner_id=operator_id,
-                store=get_store(),
-                playback=playback,
+            production_registrar=lambda asset_id, revision_id, operator_id: (
+                register_multimedia_production(
+                    asset_id,
+                    MultimediaProductionRegistrationRequest(expected_revision_id=revision_id),
+                    owner_id=operator_id,
+                    store=get_store(),
+                    playback=playback,
+                )
             ),
         )
         app.dependency_overrides[get_multimedia_playback_runtime] = lambda: playback_runtime
@@ -707,62 +711,67 @@ def register_multimedia_routes(app: FastAPI) -> None:
         store=get_store()
     )
     if narration_runtime is not None:
-        app.dependency_overrides[get_multimedia_narration_authorization_runtime] = (
-            lambda: narration_runtime
+        app.dependency_overrides[get_multimedia_narration_authorization_runtime] = lambda: (
+            narration_runtime
         )
-    reviewed_visual_runtime = multimedia_reviewed_visual_runtime_from_environment(
-        store=get_store()
-    )
+    reviewed_visual_runtime = multimedia_reviewed_visual_runtime_from_environment(store=get_store())
     if reviewed_visual_runtime is not None:
-        app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = (
-            lambda: reviewed_visual_runtime
+        app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = lambda: (
+            reviewed_visual_runtime
         )
     production_worker_runtime = multimedia_production_worker_runtime_from_environment(
         store=get_store()
     )
     if production_worker_runtime is not None:
-        app.dependency_overrides[get_multimedia_production_worker_runtime] = (
-            lambda: production_worker_runtime
+        app.dependency_overrides[get_multimedia_production_worker_runtime] = lambda: (
+            production_worker_runtime
         )
+        if production_worker_runtime.audio_playback is not None:
+            paid_audio_runtime = PaidAudioPlaybackRouteRuntime(
+                playback=production_worker_runtime.audio_playback,
+                asset_authority_resolver=lambda asset_id, operator_id: (
+                    (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
+                    record.audio_production_link,
+                ),
+            )
+            app.dependency_overrides[get_multimedia_paid_audio_playback_runtime] = lambda: (
+                paid_audio_runtime
+            )
     tts_gateway_runtime = multimedia_tts_gateway_runtime_from_environment()
     if tts_gateway_runtime is not None:
-        app.dependency_overrides[get_multimedia_tts_gateway_runtime] = (
-            lambda: tts_gateway_runtime
-        )
+        app.dependency_overrides[get_multimedia_tts_gateway_runtime] = lambda: tts_gateway_runtime
     visual_authorization_runtime = multimedia_visual_authorization_runtime_from_environment(
         store=get_store()
     )
     if visual_authorization_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_authorization_runtime] = (
-            lambda: visual_authorization_runtime
+        app.dependency_overrides[get_multimedia_visual_authorization_runtime] = lambda: (
+            visual_authorization_runtime
         )
     visual_generation_runtime = multimedia_visual_generation_runtime_from_environment(
         store=get_store()
     )
     if visual_generation_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_generation_runtime] = (
-            lambda: visual_generation_runtime
+        app.dependency_overrides[get_multimedia_visual_generation_runtime] = lambda: (
+            visual_generation_runtime
         )
     visual_candidate_runtime = multimedia_visual_candidate_runtime_from_environment(
         store=get_store()
     )
     if visual_candidate_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_candidate_runtime] = (
-            lambda: visual_candidate_runtime
+        app.dependency_overrides[get_multimedia_visual_candidate_runtime] = lambda: (
+            visual_candidate_runtime
         )
-    visual_review_runtime = multimedia_visual_review_runtime_from_environment(
-        store=get_store()
-    )
+    visual_review_runtime = multimedia_visual_review_runtime_from_environment(store=get_store())
     if visual_review_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_review_runtime] = (
-            lambda: visual_review_runtime
+        app.dependency_overrides[get_multimedia_visual_review_runtime] = lambda: (
+            visual_review_runtime
         )
     visual_quality_runtime = multimedia_visual_quality_runtime_from_environment(
         store=get_store(), generation_runtime=visual_generation_runtime
     )
     if visual_quality_runtime is not None:
-        app.dependency_overrides[get_multimedia_visual_quality_runtime] = (
-            lambda: visual_quality_runtime
+        app.dependency_overrides[get_multimedia_visual_quality_runtime] = lambda: (
+            visual_quality_runtime
         )
 
 
