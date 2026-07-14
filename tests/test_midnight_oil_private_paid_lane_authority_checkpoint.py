@@ -1806,6 +1806,96 @@ class TestMigrationPrerequisites:
         assert reopened["state"] == "legacy_read_only"
         assert reopened["sealed_sources_revalidated"] is True
 
+    def test_support_barrier_extracts_typed_genesis_from_owning_children(
+        self, tmp_path: Path
+    ) -> None:
+        typed_rows = support_checkpoint.fixture_genesis_migration_rows()
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "legacy-typed-genesis",
+            root_id="legacy-typed-genesis",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+            typed_rows=typed_rows,
+        )
+        durable = json.loads(
+            (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        barrier = root.acquire_writer_barrier(
+            expected_root_id="legacy-typed-genesis",
+            expected_root_manifest_sha256=durable["root_manifest_sha256"],
+            expected_inventory_sha256=durable["inventory_sha256"],
+        )
+        barrier.deny_new_admission()
+        barrier.drain_terminal_only()
+        barrier.close_and_revoke_all_writers()
+        barrier.checkpoint_and_plant_test_all_mutators()
+        corpus = barrier.seal_and_collect()
+
+        assert corpus.provider_revocation_heads == typed_rows["provider_revocation_heads"]
+        assert corpus.provider_revocation_current == typed_rows["provider_revocation_current"]
+        assert corpus.source_heads == typed_rows["source_heads"]
+        assert corpus.source_current == typed_rows["source_current"]
+        assert {row.store_kind: row.row_count for row in corpus.source_stores} == {
+            "owner_private_source_v1": 2,
+            "paid_lane_fixture_v1": 0,
+            "provider_authority_v4": 2,
+        }
+        assert corpus.source_manifest_sha256 == checkpoint_module._migration_source_manifest_sha256(
+            corpus
+        )
+
+    def test_typed_child_genesis_rejects_unknown_collection_and_noncanonical_rows(
+        self, tmp_path: Path
+    ) -> None:
+        with pytest.raises(ValueError, match="unknown typed migration collection"):
+            SupportLegacyRootV1.create_new(
+                root_path=tmp_path / "legacy-unknown-typed",
+                root_id="legacy-unknown-typed",
+                writer_inventory=support_checkpoint._CHILD_ROLES,
+                source_store_identities=support_checkpoint._CHILD_ROLES,
+                now_ms=1,
+                typed_rows={"not_a_collection": ()},
+            )
+        rows = support_checkpoint.fixture_genesis_migration_rows()
+        duplicate = rows["source_heads"] * 2
+        with pytest.raises(ValueError, match="typed migration rows not canonical"):
+            SupportLegacyRootV1.create_new(
+                root_path=tmp_path / "legacy-duplicate-typed",
+                root_id="legacy-duplicate-typed",
+                writer_inventory=support_checkpoint._CHILD_ROLES,
+                source_store_identities=support_checkpoint._CHILD_ROLES,
+                now_ms=1,
+                typed_rows={**rows, "source_heads": duplicate},
+            )
+
+    def test_seal_rejects_nonempty_zero_only_paid_admission_history(self, tmp_path: Path) -> None:
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "legacy-live-admission",
+            root_id="legacy-live-admission",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+            typed_rows=support_checkpoint.fixture_genesis_migration_rows(),
+        )
+        paid_child = root.root_path / "children" / "paid-lane-fixture-v1.sqlite3"
+        with sqlite3.connect(paid_child) as connection:
+            connection.execute(
+                "INSERT INTO paid_admissions(id,payload) VALUES(?,?)",
+                ("existing-live-admission", b"must-not-be-omitted"),
+            )
+        durable = json.loads(
+            (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        barrier = root.acquire_writer_barrier(
+            expected_root_id="legacy-live-admission",
+            expected_root_manifest_sha256=durable["root_manifest_sha256"],
+            expected_inventory_sha256=durable["inventory_sha256"],
+        )
+        barrier.deny_new_admission()
+        with pytest.raises(ValueError, match="child work not drained"):
+            barrier.drain_terminal_only()
+
     def test_barrier_rejects_rewritten_state_and_post_seal_child_mutation(
         self, tmp_path: Path
     ) -> None:

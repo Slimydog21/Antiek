@@ -18,6 +18,7 @@ from types import TracebackType
 from typing import Literal, Never
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from pydantic import BaseModel
 
 from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _CAPABILITY_V4_SIGNATURE_DOMAIN,
@@ -30,26 +31,39 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _SCHEMA_SQL_V1,
     _SOURCE_SIGNATURE_DOMAIN,
     _SOURCE_STORE_ROWS_DOMAIN,
+    BudgetAccountMigrationRowV1,
+    ConsentClaimMigrationRowV1,
+    EncryptedSourceBundleMigrationRowV1,
     FrozenPaidLaneMigrationCorpusV1,
     MigrationSourceStoreV1,
     OpaqueSourceBundleRevisionV1,
+    OwnerOperationMigrationRowV1,
     OwnerPrivateSourceAuthoritySnapshotV1,
     OwnerPrivateSourceFloorPinV1,
     PrivatePaidLaneEligibilityCheckpointStoreV1,
+    ProviderCapabilityV4MigrationRowV1,
+    ProviderRevocationCurrentMigrationRowV1,
     ProviderRevocationFloorPinV1,
+    ProviderRevocationHeadMigrationRowV1,
     QuarantinedAbortUncutResultV1,
     QuarantinedSyntheticExternalPinRecordV1,
     QuarantinedSyntheticReadyRecordV1,
+    QueueLeaseMigrationRowV1,
     SignedProviderCapabilityV4FixtureV1,
     SignedProviderRevocationHeadFixtureV1,
     SignedSourceHeadFixtureV1,
+    SourceCurrentMigrationRowV1,
+    SourceHeadMigrationRowV1,
     VerificationKeyV1,
     _canonical_json,
     _capability_v4_document_sha256,
     _migration_barrier_id,
+    _migration_encode,
     _migration_role_schema_sha256,
     _migration_role_schema_sha256_from_connection,
     _migration_role_schema_sql,
+    _migration_row_sha256,
+    _migration_source_manifest_sha256,
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
@@ -71,6 +85,35 @@ _CHILD_ROLES = (
     "provider-authority-v4",
 )
 
+_MIGRATION_ROW_MODELS: dict[str, type[BaseModel]] = {
+    "provider_capabilities_v4": ProviderCapabilityV4MigrationRowV1,
+    "provider_revocation_heads": ProviderRevocationHeadMigrationRowV1,
+    "provider_revocation_current": ProviderRevocationCurrentMigrationRowV1,
+    "source_heads": SourceHeadMigrationRowV1,
+    "source_current": SourceCurrentMigrationRowV1,
+    "encrypted_source_bundles": EncryptedSourceBundleMigrationRowV1,
+    "owner_operations": OwnerOperationMigrationRowV1,
+    "consent_claims": ConsentClaimMigrationRowV1,
+    "queue_leases": QueueLeaseMigrationRowV1,
+    "budget_accounts": BudgetAccountMigrationRowV1,
+}
+_MIGRATION_ROW_KEY_FIELDS = {
+    "provider_capabilities_v4": ("capability_sha256",),
+    "provider_revocation_heads": ("registry_id", "owner_path_discriminator", "epoch"),
+    "provider_revocation_current": ("registry_id", "owner_path_discriminator"),
+    "source_heads": ("registry_id", "owner_path_discriminator", "epoch"),
+    "source_current": ("registry_id", "owner_path_discriminator"),
+    "encrypted_source_bundles": ("opaque_source_bundle_id",),
+    "owner_operations": ("owner_path_discriminator", "operation_id"),
+    "consent_claims": ("owner_path_discriminator", "consent_blind_id"),
+    "queue_leases": ("owner_path_discriminator", "queue_operation_id"),
+    "budget_accounts": (
+        "owner_path_discriminator",
+        "account_scope_blind_id",
+        "project_scope_blind_id",
+    ),
+}
+
 
 def _child_path(root: Path, role: str) -> Path:
     return root / "children" / f"{role}.sqlite3"
@@ -88,7 +131,12 @@ def _owned_child_tables(role: str) -> tuple[str, ...]:
     )
 
 
-def _initialize_child_adapters(root: Path) -> dict[str, object]:
+def _initialize_child_adapters(
+    root: Path, *, typed_rows: dict[str, tuple[BaseModel, ...]] | None = None
+) -> dict[str, object]:
+    supplied = {} if typed_rows is None else dict(typed_rows)
+    if set(supplied) - set(_MIGRATION_ROW_MODELS):
+        raise ValueError("unknown typed migration collection")
     children = root / "children"
     children.mkdir(mode=0o700)
     result: dict[str, object] = {}
@@ -109,12 +157,85 @@ def _initialize_child_adapters(root: Path) -> dict[str, object]:
                     f'INSERT INTO "{table}"(id,payload) VALUES(?,?)',
                     ("__sentinel__", b"sentinel"),
                 )
+                model_type = _MIGRATION_ROW_MODELS.get(table)
+                if model_type is None:
+                    if supplied.get(table):
+                        raise ValueError("non-migration table rows supplied")
+                    continue
+                rows = supplied.get(table, ())
+                key_fields = _MIGRATION_ROW_KEY_FIELDS[table]
+                typed = tuple(model_type.model_validate(row) for row in rows)
+                keys = tuple(tuple(getattr(row, field) for field in key_fields) for row in typed)
+                if keys != tuple(sorted(set(keys))):
+                    raise ValueError("typed migration rows not canonical")
+                for row in typed:
+                    connection.execute(
+                        f'INSERT INTO "{table}"(id,payload) VALUES(?,?)',
+                        (
+                            _migration_row_sha256(table, row),
+                            _canonical_json(_migration_encode(row)),
+                        ),
+                    )
             connection.commit()
         finally:
             connection.close()
         path.chmod(0o600)
         result[role] = os.fspath(path.relative_to(root))
     return result
+
+
+def _decode_child_rows(connection: sqlite3.Connection, table: str) -> tuple[BaseModel, ...]:
+    model_type = _MIGRATION_ROW_MODELS[table]
+    key_fields = _MIGRATION_ROW_KEY_FIELDS[table]
+    decoded: list[BaseModel] = []
+    for stored_id, payload in connection.execute(
+        f'SELECT id,payload FROM "{table}" WHERE id != ?', ("__sentinel__",)
+    ):
+        if type(stored_id) is not str or type(payload) is not bytes:
+            raise ValueError("typed child row storage mismatch")
+
+        def decode(value: object) -> object:
+            if (
+                type(value) is list
+                and len(value) == 2
+                and value[0] == "blob"
+                and type(value[1]) is str
+            ):
+                return bytes.fromhex(value[1])
+            if type(value) is list:
+                return [decode(item) for item in value]
+            if type(value) is dict:
+                return {str(key): decode(item) for key, item in value.items()}
+            return value
+
+        row = model_type.model_validate(decode(json.loads(payload)))
+        if payload != _canonical_json(_migration_encode(row)):
+            raise ValueError("typed child row encoding mismatch")
+        if stored_id != _migration_row_sha256(table, row):
+            raise ValueError("typed child row id mismatch")
+        decoded.append(row)
+    rows = tuple(sorted(decoded, key=lambda row: tuple(getattr(row, key) for key in key_fields)))
+    keys = tuple(tuple(getattr(row, field) for field in key_fields) for row in rows)
+    if keys != tuple(sorted(set(keys))):
+        raise ValueError("typed child row key collision")
+    return rows
+
+
+def _extract_child_migration_rows(root: Path) -> dict[str, tuple[BaseModel, ...]]:
+    extracted: dict[str, tuple[BaseModel, ...]] = {}
+    for role in _CHILD_ROLES:
+        connection = sqlite3.connect(
+            f"file:{_child_path(root, role)}?mode=ro&immutable=1", uri=True
+        )
+        try:
+            for table in _owned_child_tables(role):
+                if table in _MIGRATION_ROW_MODELS:
+                    extracted[table] = _decode_child_rows(connection, table)
+        finally:
+            connection.close()
+    if set(extracted) != set(_MIGRATION_ROW_MODELS):
+        raise ValueError("typed child collection roster mismatch")
+    return extracted
 
 
 def _measure_child_adapters(root: Path) -> dict[str, object]:
@@ -164,13 +285,21 @@ def _measure_child_adapters(root: Path) -> dict[str, object]:
                 )
             ]
             row_counts = []
+            ordered_role_rows: list[list[str]] = []
             for table in _owned_child_tables(role):
-                count_row = connection.execute(
-                    f'SELECT COUNT(*) FROM "{table}" WHERE id != ?', ("__sentinel__",)
-                ).fetchone()
-                if count_row is None:
-                    raise ValueError("child row count unavailable")
-                row_counts.append([table, int(count_row[0])])
+                if table in _MIGRATION_ROW_MODELS:
+                    rows = _decode_child_rows(connection, table)
+                    row_counts.append([table, len(rows)])
+                    ordered_role_rows.extend(
+                        [table, _migration_row_sha256(table, row)] for row in rows
+                    )
+                else:
+                    count_row = connection.execute(
+                        f'SELECT COUNT(*) FROM "{table}" WHERE id != ?', ("__sentinel__",)
+                    ).fetchone()
+                    if count_row is None:
+                        raise ValueError("child row count unavailable")
+                    row_counts.append([table, int(count_row[0])])
             actual_schema_sha256 = _migration_role_schema_sha256_from_connection(
                 connection,
                 _contract_role(role),
@@ -191,7 +320,7 @@ def _measure_child_adapters(root: Path) -> dict[str, object]:
             _SOURCE_STORE_ROWS_DOMAIN
             + len(role_bytes).to_bytes(4, "big")
             + role_bytes
-            + _canonical_json([])
+            + _canonical_json(ordered_role_rows)
         ).hexdigest()
         material = {
             "role": role,
@@ -433,20 +562,28 @@ def _execute_synthetic_transition(root: Path, record: dict[str, object], operati
                 connection.close()
         evidence["admission_denied"] = True
     elif operation == "drain_terminal_only":
-        for path in paths:
+        for role, path in zip(_CHILD_ROLES, paths, strict=True):
             connection = sqlite3.connect(path)
             try:
                 row = connection.execute(
                     "SELECT active_invocations,open_accounting_cents FROM adapter_state"
                 ).fetchone()
-                if row == (0, 0):
+                zero_only_rows = 0
+                if role == "paid-lane-fixture-v1":
+                    result = connection.execute(
+                        "SELECT COUNT(*) FROM paid_admissions WHERE id != ?", ("__sentinel__",)
+                    ).fetchone()
+                    if result is None:
+                        raise ValueError("paid admission drain count unavailable")
+                    zero_only_rows = int(result[0])
+                if row == (0, 0) and zero_only_rows == 0:
                     connection.execute(
                         "UPDATE adapter_state SET version=version+1 WHERE singleton=1"
                     )
                     connection.commit()
             finally:
                 connection.close()
-            if row != (0, 0):
+            if row != (0, 0) or zero_only_rows != 0:
                 raise ValueError("child work not drained")
         evidence["drain_verified"] = True
     elif operation == "close_and_revoke_all_writers":
@@ -665,6 +802,7 @@ class QuarantinedSyntheticWriterBarrierV1:
         measurements = child_evidence.get("sealed_measurements")
         if type(measurements) is not dict:
             raise ValueError("sealed measurements unavailable")
+        extracted = _extract_child_migration_rows(self._root_path)
         source_stores: list[MigrationSourceStoreV1] = []
         for role in _CHILD_ROLES:
             measured = measurements.get(role)
@@ -672,10 +810,26 @@ class QuarantinedSyntheticWriterBarrierV1:
                 raise ValueError("sealed role measurement unavailable")
             row_counts = measured.get("row_counts")
             if type(row_counts) is not list or any(
-                type(item) is not list or len(item) != 2 or item[1] != 0 for item in row_counts
+                type(item) is not list
+                or len(item) != 2
+                or type(item[0]) is not str
+                or type(item[1]) is not int
+                or item[1] < 0
+                for item in row_counts
             ):
                 raise ValueError("typed child migration extraction required")
+            if any(item[0] not in _MIGRATION_ROW_MODELS and item[1] != 0 for item in row_counts):
+                raise ValueError("non-migratable child rows remain")
             contract_role = _contract_role(role)
+            owned_count = sum(
+                len(extracted[table])
+                for table in _MIGRATION_ROLE_SCHEMA_TABLES[contract_role]
+                if table in extracted
+            )
+            if owned_count != sum(
+                item[1] for item in row_counts if item[0] in _MIGRATION_ROW_MODELS
+            ):
+                raise ValueError("typed child row count mismatch")
             source_stores.append(
                 MigrationSourceStoreV1(
                     store_kind=contract_role,
@@ -683,52 +837,34 @@ class QuarantinedSyntheticWriterBarrierV1:
                     schema_sha256=str(measured["schema_sha256"]),
                     native_writer_barrier_id=self.barrier_id,
                     final_version=int(measured["final_version"]),
-                    row_count=0,
+                    row_count=owned_count,
                     ordered_rows_sha256=str(measured["ordered_rows_sha256"]),
                 )
             )
         canonical_stores = tuple(sorted(source_stores, key=lambda item: item.store_kind))
-        manifest = hashlib.sha256(
-            b"antiek.midnight-oil.private-paid-source-manifest.v1\0"
-            + _canonical_json(
-                {
-                    "schema_version": 1,
-                    "freeze_nonce": self.freeze_nonce,
-                    "quiesced_at_ms": self.acquired_at_ms,
-                    "drained_at_ms": self.acquired_at_ms,
-                    "sealed_at_ms": self.acquired_at_ms,
-                    "source_stores": [row.model_dump(mode="json") for row in canonical_stores],
-                    "collections": [
-                        {
-                            "table_name": name,
-                            "row_count": 0,
-                            "ordered_row_sha256s": [],
-                        }
-                        for name in sorted(
-                            (
-                                "provider_capabilities_v4",
-                                "provider_revocation_heads",
-                                "provider_revocation_current",
-                                "source_heads",
-                                "source_current",
-                                "encrypted_source_bundles",
-                                "owner_operations",
-                                "consent_claims",
-                                "queue_leases",
-                                "budget_accounts",
-                            )
-                        )
-                    ],
-                }
-            )
-        ).hexdigest()
-        return FrozenPaidLaneMigrationCorpusV1(
+        draft = FrozenPaidLaneMigrationCorpusV1.model_construct(
             freeze_nonce=self.freeze_nonce,
             quiesced_at_ms=self.acquired_at_ms,
             drained_at_ms=self.acquired_at_ms,
             sealed_at_ms=self.acquired_at_ms,
             source_stores=canonical_stores,
-            source_manifest_sha256=manifest,
+            provider_capabilities_v4=extracted["provider_capabilities_v4"],
+            provider_revocation_heads=extracted["provider_revocation_heads"],
+            provider_revocation_current=extracted["provider_revocation_current"],
+            source_heads=extracted["source_heads"],
+            source_current=extracted["source_current"],
+            encrypted_source_bundles=extracted["encrypted_source_bundles"],
+            owner_operations=extracted["owner_operations"],
+            consent_claims=extracted["consent_claims"],
+            queue_leases=extracted["queue_leases"],
+            budget_accounts=extracted["budget_accounts"],
+            source_manifest_sha256="0" * 64,
+        )
+        return FrozenPaidLaneMigrationCorpusV1.model_validate(
+            {
+                **draft.model_dump(mode="python"),
+                "source_manifest_sha256": _migration_source_manifest_sha256(draft),
+            }
         )
 
     def revalidate_sealed_sources(self) -> None:
@@ -890,6 +1026,7 @@ class QuarantinedSyntheticLegacyRootV1:
         writer_inventory: tuple[str, ...],
         source_store_identities: tuple[str, ...],
         now_ms: int,
+        typed_rows: dict[str, tuple[BaseModel, ...]] | None = None,
     ) -> QuarantinedSyntheticLegacyRootV1:
         if writer_inventory != _CHILD_ROLES:
             raise ValueError("writer inventory must exactly name child roles")
@@ -912,7 +1049,7 @@ class QuarantinedSyntheticLegacyRootV1:
             "state": "open",
             "transition_evidence": [],
             "sealed_sources_revalidated": False,
-            "child_adapters": _initialize_child_adapters(root),
+            "child_adapters": _initialize_child_adapters(root, typed_rows=typed_rows),
             "child_adapter_evidence": {
                 "admission_denied": False,
                 "drain_verified": False,
@@ -1635,6 +1772,66 @@ class PrivatePaidLaneCheckpointCase:
     store: PrivatePaidLaneEligibilityCheckpointStoreV1
     genesis_source_head: SignedSourceHeadFixtureV1
     uses_quarantined_raw_sql_genesis_scaffolding: Literal[True]
+
+
+def fixture_genesis_migration_rows() -> dict[str, tuple[BaseModel, ...]]:
+    revocation = fixture_revocation_head(epoch=0, issued_at_ms=0)
+    source = fixture_source_head(epoch=0, previous_head_sha256="0" * 64, issued_at_ms=0)
+    return {
+        "provider_revocation_heads": (
+            ProviderRevocationHeadMigrationRowV1(
+                head_sha256=revocation.head_sha256,
+                registry_id=revocation.registry_id,
+                owner_path_discriminator=revocation.owner_path_discriminator,
+                epoch=revocation.epoch,
+                predecessor_head_sha256=revocation.predecessor_head_sha256,
+                issued_at_ms=revocation.issued_at_ms,
+                revoked_capability_hashes_json=_canonical_json(
+                    list(revocation.revoked_capability_sha256s)
+                ),
+                key_id=revocation.key_id,
+                document_json=_canonical_json(revocation.model_dump(mode="json")),
+                signature_ed25519=bytes.fromhex(revocation.signature_ed25519),
+            ),
+        ),
+        "provider_revocation_current": (
+            ProviderRevocationCurrentMigrationRowV1(
+                registry_id=revocation.registry_id,
+                owner_path_discriminator=revocation.owner_path_discriminator,
+                head_sha256=revocation.head_sha256,
+                epoch=0,
+                state_version=1,
+                updated_at_ms=0,
+            ),
+        ),
+        "source_heads": (
+            SourceHeadMigrationRowV1(
+                head_sha256=source.head_sha256,
+                registry_id=source.registry_id,
+                owner_path_discriminator=source.owner_path_discriminator,
+                epoch=source.epoch,
+                previous_head_sha256=source.previous_head_sha256,
+                issued_at_ms=source.issued_at_ms,
+                active_bundle_revisions_json=_canonical_json(
+                    [row.model_dump(mode="json") for row in source.snapshot.active_bundle_revisions]
+                ),
+                snapshot_json=_canonical_json(source.snapshot.model_dump(mode="json")),
+                key_id=source.key_id,
+                document_json=_canonical_json(source.model_dump(mode="json")),
+                signature_ed25519=bytes.fromhex(source.signature_ed25519),
+            ),
+        ),
+        "source_current": (
+            SourceCurrentMigrationRowV1(
+                registry_id=source.registry_id,
+                owner_path_discriminator=source.owner_path_discriminator,
+                head_sha256=source.head_sha256,
+                epoch=0,
+                state_version=1,
+                updated_at_ms=0,
+            ),
+        ),
+    }
 
 
 def fixture_store_case(
