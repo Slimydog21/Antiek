@@ -95,6 +95,34 @@ def _schema_row_count(connection: sqlite3.Connection) -> int:
     return int(row[0])
 
 
+def _initialize_schema_only_copy_target(path: Path) -> None:
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("PRAGMA journal_mode=WAL")
+        connection.execute("PRAGMA synchronous=FULL")
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute("PRAGMA busy_timeout=5000")
+        connection.execute("PRAGMA temp_store=MEMORY")
+        connection.execute("PRAGMA page_size=4096")
+        connection.execute(f"PRAGMA max_page_count={checkpoint_module.MAX_DB_PAGES}")
+        connection.executescript(checkpoint_module._SCHEMA_SQL_V1)
+        connection.execute(
+            "INSERT INTO paid_lane_schema "
+            "(singleton,schema_version,migration_epoch,store_id,semantic_source_sha256,"
+            "contract_sha256,cutover_marker_sha256,created_at_ms) "
+            "VALUES (1,1,0,?,?,?,NULL,0)",
+            (
+                STORE_ID,
+                checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            ),
+        )
+        connection.commit()
+        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    finally:
+        connection.close()
+
+
 def _empty_migration_source_stores() -> tuple[MigrationSourceStoreV1, ...]:
     domain = b"antiek.midnight-oil.private-paid-source-store-ordered-rows.v1\0"
     stores = []
@@ -2202,7 +2230,7 @@ class TestMigrationPrerequisites:
         self, tmp_path: Path
     ) -> None:
         target = tmp_path / "paid-lane.sqlite3"
-        target.write_bytes(b"sqlite-target-placeholder")
+        _initialize_schema_only_copy_target(target)
         target.chmod(0o600)
         target_info = target.stat()
         root = SupportLegacyRootV1.create_new(
@@ -2222,6 +2250,13 @@ class TestMigrationPrerequisites:
             root_fd=root_fd,
             parent_fd=parent_fd,
             target_basename=target.name,
+            provider_capability_verification_keys=(),
+            provider_revocation_verification_keys=(),
+            source_head_verification_keys=(),
+            provider_revocation_floor_pins=(),
+            source_floor_pins=(),
+            expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
         )
         try:
             parent_info = os.fstat(parent_fd)
@@ -2456,6 +2491,50 @@ class TestMigrationPrerequisites:
             )
             with pytest.raises(ValueError, match="issuer rejected"):
                 issuer.reserve(skipped_candidate)
+            prepared_candidate = {
+                **skipped_candidate,
+                "copy_audit_sha256": checkpoint_module._copy_audit_sha256(copy_intent),
+            }
+            target_wal = Path(f"{target}-wal")
+            target_wal.write_bytes(b"")
+            target_wal.chmod(0o600)
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(prepared_candidate)
+            target_wal.unlink()
+            prepared = issuer.reserve(prepared_candidate)
+            assert prepared.copy_audit_sha256 == checkpoint_module._copy_audit_sha256(copy_intent)
+            assert issuer.reserve(prepared_candidate) == prepared
+            target_connection = sqlite3.connect(target, timeout=0.1)
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                    target_connection.execute(
+                        "UPDATE paid_lane_schema SET contract_sha256=? WHERE singleton=1",
+                        ("ee" * 32,),
+                    )
+            finally:
+                target_connection.close()
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.commit(state=prepared, parent_fd=parent_fd)
+            target_connection = sqlite3.connect(target, timeout=0.1)
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+                    target_connection.execute("BEGIN IMMEDIATE")
+            finally:
+                target_connection.close()
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=prepared,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=sources.state_sha256,
+            )
+            issuer.commit(state=prepared, parent_fd=parent_fd)
+            issuer.commit(state=prepared, parent_fd=parent_fd)
+            target_connection = sqlite3.connect(target, timeout=0.1)
+            try:
+                target_connection.execute("BEGIN IMMEDIATE")
+                target_connection.execute("ROLLBACK")
+            finally:
+                target_connection.close()
         finally:
             issuer.close()
             os.close(root_fd)
@@ -2480,6 +2559,13 @@ class TestMigrationPrerequisites:
             root_fd=root_fd,
             parent_fd=parent_fd,
             target_basename=target.name,
+            provider_capability_verification_keys=(),
+            provider_revocation_verification_keys=(),
+            source_head_verification_keys=(),
+            provider_revocation_floor_pins=(),
+            source_floor_pins=(),
+            expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
         )
         delegated = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         try:
