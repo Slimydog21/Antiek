@@ -34,6 +34,7 @@ import os
 import tempfile
 
 import pytest
+from starlette.requests import Request
 
 import interfaces.research.api.cascade_routes as cr
 from orchestration.cascade_session import (
@@ -64,6 +65,10 @@ class _FakeEmbedding:
     def encode(self, text: str) -> list[float]:
         d = hashlib.sha256(text.encode()).digest()
         return [b / 255.0 for b in d[: self.dimension]]
+
+
+def _request() -> Request:
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": []})
 
 
 class _Dec:
@@ -211,7 +216,7 @@ async def test_session_status_exposes_failed_synthesis_tail(env):
     # Register in the live registry so session_status takes the live branch.
     cr._SESSIONS[session.session_id] = session
     try:
-        resp = await cr.session_status(session.session_id)
+        resp = await cr.session_status(session.session_id, _request())
     finally:
         cr._SESSIONS.pop(session.session_id, None)
 
@@ -252,7 +257,7 @@ async def test_session_status_happy_path_no_error(env, monkeypatch):
 
     cr._SESSIONS[session.session_id] = session
     try:
-        resp = await cr.session_status(session.session_id)
+        resp = await cr.session_status(session.session_id, _request())
     finally:
         cr._SESSIONS.pop(session.session_id, None)
 

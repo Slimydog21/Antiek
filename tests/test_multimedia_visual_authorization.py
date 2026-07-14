@@ -26,7 +26,8 @@ def _ready(tmp_path: Path, *, route: str = "balanced", mode: str = "video"):
         CreateMultimediaDraftRequest(
             topic="Aircraft manufacturing history", target_minutes=15,
             mode=mode, route_policy=route,
-            sources=("Grounded aircraft factory evidence.",),
+            sources=("Grounded aircraft manufacturing system evidence.",),
+            selected_arc_ids=("mechanism",),
         ),
         owner_id="owner-1",
     )
