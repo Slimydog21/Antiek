@@ -20,6 +20,12 @@ Rendered target and HP-pip legibility is not proven. The in-app browser exposed
 no controllable tab, and Lost Pixel 3.22 ignored the attempted shot filter,
 started all 726 captures, then hit the known unrelated AISidecar exception
 before the arcade story. The run was stopped and no baseline was accepted.
+The first remote PR run then reported zero diff because it photographed the
+exact-host procedural fallback before the asynchronously loaded authored plate
+became ready. That green result is rejected as evidence. The Playing story now
+waits for a DOM readiness signal emitted only after the loader validates and
+installs the bundled image; production game initialization, focus and input do
+not wait on that signal.
 SPR-19 therefore remains visual-acceptance pending, is not counted among the
 implemented sprints, and must not be merged until scoped 768/1024/1280 playing
 captures prove contrast or the plate is revised. The existing feature flag is

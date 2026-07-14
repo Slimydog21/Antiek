@@ -27,6 +27,9 @@ export const Offer: Story = {
 
 export const Playing: Story = {
   render: (args) => <CursorPolicyPreview {...args} playing />,
+  parameters: {
+    lostpixel: { waitForSelector: '[data-backdrop-ready="true"]' },
+  },
 };
 
 /** Story-only proof harness; production receives no preview bypass. */

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { loadZombiesBackdrop, type ZombiesBackdropRef } from "./zombiesBackdrop";
 
@@ -16,11 +16,19 @@ describe("Paperclip Zombies authored backdrop loader", () => {
   it("keeps fallback authority until a valid bundled image loads", () => {
     const target: ZombiesBackdropRef = { current: null };
     const image = fakeImage();
-    const dispose = loadZombiesBackdrop("/field.png", target, () => image);
+    const onReady = vi.fn();
+    const dispose = loadZombiesBackdrop(
+      "/field.png",
+      target,
+      () => image,
+      onReady,
+    );
     expect(target.current).toBeNull();
+    expect(onReady).not.toHaveBeenCalled();
     expect(image.src).toBe("/field.png");
     image.onload?.(new Event("load"));
     expect(target.current).toBe(image);
+    expect(onReady).toHaveBeenCalledTimes(1);
     dispose();
     expect(target.current).toBeNull();
   });

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { ArcadeMount } from "../../arcade/engine/ArcadeMount";
 import backdropUrl from "../../arcade/games/zombies/assets/paperclip_zombies_night_archive_v1.jpg";
@@ -16,18 +16,25 @@ export default function ResearchWaitArcadeGame() {
     [],
   );
   const shellRef = useRef<HTMLDivElement | null>(null);
+  const [backdropReady, setBackdropReady] = useState(false);
 
   useEffect(() => {
     shellRef.current?.querySelector<HTMLCanvasElement>("canvas")?.focus();
   }, []);
 
   useEffect(
-    () => loadZombiesBackdrop(backdropUrl, backdropRef.current),
+    () =>
+      loadZombiesBackdrop(
+        backdropUrl,
+        backdropRef.current,
+        undefined,
+        () => setBackdropReady(true),
+      ),
     [],
   );
 
   return (
-    <div ref={shellRef}>
+    <div ref={shellRef} data-backdrop-ready={backdropReady}>
       <ArcadeMount
         cartridge={cartridge}
         width={480}

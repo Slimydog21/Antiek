@@ -13,12 +13,14 @@ export function loadZombiesBackdrop(
   source: string,
   target: ZombiesBackdropRef,
   createImage: () => BackdropImage = () => new Image(),
+  onReady?: () => void,
 ): () => void {
   const image = createImage();
   let live = true;
   image.onload = () => {
     if (live && image.naturalWidth > 0 && image.naturalHeight > 0) {
       target.current = image;
+      onReady?.();
     }
   };
   image.onerror = () => {
