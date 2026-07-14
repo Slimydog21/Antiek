@@ -74,6 +74,7 @@ def register_book(
     cover_uri: str | None = None,
     provenance: str | None = None,
     license_basis: str | None = None,
+    emit_servability_audit: bool = True,
 ) -> BookAsset:
     """Register an already-inserted book document as a Read-workflow book.
 
@@ -138,7 +139,7 @@ def register_book(
     # Audit the servability transition iff it actually moved.
     prev_status = servability_of(prev_content_class, taken_down=False)
     new_status = servability_of(resolved_class, taken_down=False)
-    if prev_status != new_status:
+    if emit_servability_audit and prev_status != new_status:
         emit_typed(
             SYSTEM_INVESTIGATION_ID,
             BookServabilityChangedPayload(
