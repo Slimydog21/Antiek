@@ -40,6 +40,13 @@ vi.mock("../../lib/api", async (orig) => ({
 
 import Speak from "./index";
 
+const wernerListeners = new Set<EventListener>();
+
+function listenForWerner(listener: EventListener): void {
+  wernerListeners.add(listener);
+  window.addEventListener("antiek:werner-experience", listener);
+}
+
 beforeEach(() => {
   api.getProject.mockReset().mockResolvedValue({
     id: "p1", name: "Grandma Rosa", willBePublic: false, subjectStatusWord: "deceased",
@@ -71,7 +78,16 @@ beforeEach(() => {
     }),
   });
 });
-afterEach(cleanup);
+afterEach(() => {
+  try {
+    cleanup();
+  } finally {
+    for (const listener of wernerListeners) {
+      window.removeEventListener("antiek:werner-experience", listener);
+    }
+    wernerListeners.clear();
+  }
+});
 
 function mount() {
   return render(
@@ -84,6 +100,50 @@ function mount() {
 }
 
 describe("Speak project page", () => {
+  it("reacts only after an email invitation is committed", async () => {
+    let resolveInvite!: () => void;
+    api.inviteByEmail.mockReturnValue(
+      new Promise<void>((resolve) => { resolveInvite = resolve; }),
+    );
+    const seen: string[] = [];
+    const listener = (event: Event) => {
+      seen.push((event as CustomEvent).detail?.experience);
+    };
+    listenForWerner(listener);
+
+    mount();
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByText(/or invite someone by email/i));
+    fireEvent.change(screen.getByPlaceholderText("friend@example.com"), {
+      target: { value: "friend@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+    expect(api.inviteByEmail).toHaveBeenCalledWith("p1", "friend@example.com");
+    expect(seen).toEqual([]);
+
+    resolveInvite();
+    await waitFor(() => expect(seen).toEqual(["speak_invite_committed"]));
+  });
+
+  it("stays silent when an email invitation is rejected", async () => {
+    api.inviteByEmail.mockRejectedValue(new Error("invite refused"));
+    const seen: string[] = [];
+    const listener = (event: Event) => {
+      seen.push((event as CustomEvent).detail?.experience);
+    };
+    listenForWerner(listener);
+
+    mount();
+    await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByText(/or invite someone by email/i));
+    fireEvent.change(screen.getByPlaceholderText("friend@example.com"), {
+      target: { value: "friend@example.com" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+    await screen.findByText("invite refused");
+    expect(seen).toEqual([]);
+  });
+
   it("lands as a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", async () => {
     // Audit §3 item 3 classifies the Speak project page landing-glass: the scene
     // shows through the margins. A refactor back to an opaque body / variant=solid

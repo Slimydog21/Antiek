@@ -23,6 +23,7 @@ import {
 import { VOICE_STATE_LABELS } from "../../lib/speakVocab";
 import GlassSurface from "../../shell/GlassSurface";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { notifySpeakInviteCommitted } from "../../werner/shellExperienceSignals";
 import Invites from "./Invites";
 import SpeakSettings from "./SpeakSettings";
 
@@ -148,6 +149,7 @@ export default function Speak() {
     if (!projectId) return;
     try {
       await inviteByEmail(projectId, email);
+      notifySpeakInviteCommitted();
       track("speak_invite_sent", { project_id: projectId });
       await reload();
     } catch (e: unknown) {
