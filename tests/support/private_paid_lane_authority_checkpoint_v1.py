@@ -51,6 +51,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     ConsentClaimMigrationRowV1,
     EncryptedSourceBundleMigrationRowV1,
     Epoch0RecoveryAuthorityPinsV1,
+    Epoch0RecoveryCopyCompletionV1,
     FrozenPaidLaneMigrationCorpusV1,
     MigrationSourceStoreV1,
     OpaqueSourceBundleRevisionV1,
@@ -79,6 +80,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _authenticate_epoch0_recovery_state_v1,
     _canonical_json,
     _capability_v4_document_sha256,
+    _confirm_signed_migration_lifecycle_state_durable,
     _copy_audit_intent_v1,
     _copy_audit_observed_target_v1,
     _copy_audit_sha256,
@@ -95,11 +97,13 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _migration_source_manifest_sha256,
     _parse_migration_lifecycle_state_document,
     _parse_strict_json,
+    _persist_signed_migration_lifecycle_state,
     _read_signed_migration_lifecycle_state,
     _reconcile_copy_prepared_target_v1,
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
+    _verify_epoch0_recovery_copy_completion_v1,
     _verify_migration_lifecycle_genesis,
     _verify_migration_lifecycle_transition,
     _verify_signed_epoch0_recovery_admission,
@@ -186,6 +190,55 @@ def _issuer_session_receive_frame(
             raise ValueError("issuer session frame truncated")
         framed.extend(chunk)
     return bytes(framed[8:])
+
+
+def _issuer_recovery_copy_completion_document(
+    completion: Epoch0RecoveryCopyCompletionV1,
+) -> bytes:
+    material = completion.model_dump(mode="python")
+    for state_field in ("prepared_state", "copied_state"):
+        state = cast(dict[str, object], material[state_field])
+        signature = state.get("signature_ed25519")
+        if type(signature) is not bytes:
+            raise ValueError("issuer recovery copy completion signature")
+        state["signature_ed25519"] = signature.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer recovery copy completion bound")
+    return encoded
+
+
+def _parse_issuer_recovery_copy_completion_document(
+    document: bytes,
+) -> Epoch0RecoveryCopyCompletionV1:
+    material = _parse_strict_json(document, _ISSUER_MAX_PACKET)
+    for state_field in ("prepared_state", "copied_state"):
+        state = material.get(state_field)
+        if type(state) is not dict:
+            raise ValueError("issuer recovery copy completion state")
+        signature = state.get("signature_ed25519")
+        if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+            raise ValueError("issuer recovery copy completion signature")
+        state["signature_ed25519"] = bytes.fromhex(signature)
+    copy_audit = material.get("copy_audit")
+    if type(copy_audit) is not dict:
+        raise ValueError("issuer recovery copy completion audit")
+    ordered_hashes = copy_audit.get("ordered_table_row_sha256s")
+    foreign_keys = copy_audit.get("foreign_key_check_rows")
+    if type(ordered_hashes) is not list or type(foreign_keys) is not list:
+        raise ValueError("issuer recovery copy completion audit tuples")
+    copy_audit["ordered_table_row_sha256s"] = tuple(
+        (entry[0], tuple(entry[1]))
+        for entry in ordered_hashes
+        if type(entry) is list and len(entry) == 2 and type(entry[1]) is list
+    )
+    copy_audit["foreign_key_check_rows"] = tuple(
+        tuple(row) for row in foreign_keys if type(row) is list
+    )
+    completion = Epoch0RecoveryCopyCompletionV1.model_validate(material)
+    if document != _issuer_recovery_copy_completion_document(completion):
+        raise ValueError("issuer recovery copy completion canonical")
+    return completion
 
 
 def _issuer_received_descriptors(ancillary: list[tuple[int, int, bytes]]) -> list[int]:
@@ -783,6 +836,7 @@ def _fixture_migration_lifecycle_issuer_main(
     recovery_ticket: SignedMigrationRecoveryTicketV1 | None = None
     recovery_admission_request: bytes | None = None
     recovery_admission: SignedEpoch0RecoveryAdmissionV1 | None = None
+    recovery_copy_completion: Epoch0RecoveryCopyCompletionV1 | None = None
     recovery_session_consumed = False
     copy_completed = False
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -800,6 +854,186 @@ def _fixture_migration_lifecycle_issuer_main(
             ):
                 active_store_revoked = True
         return supervisor_is_gone
+
+    def recover_copy_prepared_epoch0(
+        *,
+        session_root_fd: int,
+        session_parent_fd: int,
+        session_target_fd: int,
+        expected_prepared_state_sha256: str,
+        expected_pins: Epoch0RecoveryAuthorityPinsV1,
+    ) -> Epoch0RecoveryCopyCompletionV1:
+        nonlocal committed, copy_completed, pending_candidate, pending_state
+        nonlocal recovery_copy_completion, target_lease
+        if (
+            committed is None
+            or bound_root_fd is None
+            or bound_target_fd is None
+            or pending_state is not None
+            or expected_pins.lifecycle_phase != "copy_prepared"
+            or expected_pins.state_sha256 != expected_prepared_state_sha256
+        ):
+            raise ValueError("issuer recovery copy phase")
+        durable = _read_signed_migration_lifecycle_state(
+            parent_fd=session_parent_fd,
+            target_basename=expected_pins.target_basename,
+            verification_key=verification_key,
+        )
+        if (
+            recovery_copy_completion is not None
+            and durable == recovery_copy_completion.copied_state
+        ):
+            durable = _confirm_signed_migration_lifecycle_state_durable(
+                parent_fd=session_parent_fd,
+                expected_state=recovery_copy_completion.copied_state,
+                verification_key=verification_key,
+            )
+            if target_lease is None:
+                target_lease = _issuer_acquire_target_lease(session_target_fd)
+            compatible = _issuer_compatible_root_record(session_root_fd, durable.lifecycle_phase)
+            corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
+            observed_sha256 = _issuer_observed_copy(
+                target_fd=session_target_fd,
+                target_lease=target_lease,
+                corpus=corpus,
+                provider_capability_verification_keys=provider_capability_verification_keys,
+                provider_revocation_verification_keys=provider_revocation_verification_keys,
+                source_head_verification_keys=source_head_verification_keys,
+                provider_revocation_floor_pins=provider_revocation_floor_pins,
+                source_floor_pins=source_floor_pins,
+                expected_target_store_id=durable.target_store_id,
+                expected_semantic_source_sha256=expected_semantic_source_sha256,
+                expected_contract_sha256=expected_contract_sha256,
+            )
+            if observed_sha256 != durable.copy_audit_sha256:
+                raise ValueError("issuer recovery copied replay target")
+            committed = durable
+            _issuer_release_target_lease(target_lease)
+            target_lease = None
+            return recovery_copy_completion
+        if (
+            recovery_copy_completion is not None
+            and durable != recovery_copy_completion.prepared_state
+        ):
+            raise ValueError("issuer recovery copied replay journal")
+        if (
+            committed.lifecycle_phase != "copy_prepared"
+            or committed.state_sha256 != expected_prepared_state_sha256
+            or durable != committed
+        ):
+            raise ValueError("issuer recovery prepared journal")
+        prepared = committed
+        with _issuer_transition_lock(session_root_fd):
+            compatible = _issuer_compatible_root_record(session_root_fd, prepared.lifecycle_phase)
+            corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
+            if (
+                corpus.source_manifest_sha256 != prepared.source_manifest_sha256
+                or prepared.copy_audit_sha256 is None
+            ):
+                raise ValueError("issuer recovery prepared corpus")
+            if target_lease is None:
+                target_lease = _issuer_acquire_target_lease(session_target_fd)
+            try:
+                audit, copied = _reconcile_copy_prepared_target_v1(
+                    target_lease,
+                    corpus=corpus,
+                    expected_copy_audit_sha256=prepared.copy_audit_sha256,
+                    target_store_id=prepared.target_store_id,
+                    semantic_source_sha256=expected_semantic_source_sha256,
+                    contract_sha256=expected_contract_sha256,
+                    provider_capability_verification_keys=provider_capability_verification_keys,
+                    provider_revocation_verification_keys=provider_revocation_verification_keys,
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                )
+                target_lease.execute("COMMIT")
+                copy_completed = True
+                target_lease.execute("BEGIN IMMEDIATE")
+                confirmed, confirmed_copied = _reconcile_copy_prepared_target_v1(
+                    target_lease,
+                    corpus=corpus,
+                    expected_copy_audit_sha256=prepared.copy_audit_sha256,
+                    target_store_id=prepared.target_store_id,
+                    semantic_source_sha256=expected_semantic_source_sha256,
+                    contract_sha256=expected_contract_sha256,
+                    provider_capability_verification_keys=provider_capability_verification_keys,
+                    provider_revocation_verification_keys=provider_revocation_verification_keys,
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                )
+                if confirmed != audit or confirmed_copied:
+                    raise ValueError("issuer recovery copy confirmation")
+                del copied
+            except BaseException:
+                with suppress(sqlite3.Error):
+                    target_lease.execute("ROLLBACK")
+                if not target_lease.in_transaction:
+                    try:
+                        target_lease.execute("BEGIN IMMEDIATE")
+                    except BaseException:
+                        target_lease.close()
+                        target_lease = None
+                raise
+            if recovery_copy_completion is None:
+                material = prepared.model_dump(
+                    mode="python",
+                    exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                )
+                material.update(
+                    {
+                        "lifecycle_phase": "copied_epoch0",
+                        "phase_version": 4,
+                        "issuer_sequence": 4,
+                        "updated_at_ms": max(prepared.updated_at_ms, time.time_ns() // 1_000_000),
+                        "previous_state_sha256": prepared.state_sha256,
+                        "issuer_key_id": key_id,
+                    }
+                )
+                state_sha256 = _migration_lifecycle_state_sha256(material)
+                material["state_sha256"] = state_sha256
+                material["signature_ed25519"] = private_key.sign(
+                    _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                )
+                copied_state = SignedMigrationLifecycleStateV1.model_validate(material)
+                _verify_migration_lifecycle_transition(prepared, copied_state, verification_key)
+                recovery_copy_completion = Epoch0RecoveryCopyCompletionV1(
+                    prepared_state=prepared,
+                    copied_state=copied_state,
+                    copy_audit=confirmed,
+                )
+            else:
+                copied_state = recovery_copy_completion.copied_state
+                if (
+                    recovery_copy_completion.prepared_state != prepared
+                    or recovery_copy_completion.copy_audit != confirmed
+                ):
+                    raise ValueError("issuer recovery copy cached completion")
+            _verify_epoch0_recovery_copy_completion_v1(
+                recovery_copy_completion,
+                issuer_verification_key=verification_key,
+                expected_prepared_pins=expected_pins,
+            )
+            _persist_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                state=copied_state,
+                verification_key=verification_key,
+                expected_prior_state_sha256=prepared.state_sha256,
+            )
+            reread = _read_signed_migration_lifecycle_state(
+                parent_fd=session_parent_fd,
+                target_basename=prepared.target_basename,
+                verification_key=verification_key,
+            )
+            if reread != copied_state:
+                raise ValueError("issuer recovery copied journal reread")
+            committed = copied_state
+            pending_candidate = None
+            pending_state = None
+            _issuer_release_target_lease(target_lease)
+            target_lease = None
+            return recovery_copy_completion
 
     try:
         process_watch.control(
@@ -1121,11 +1355,17 @@ def _fixture_migration_lifecycle_issuer_main(
                                 break
                             session_request = _parse_strict_json(session_packet, _ISSUER_MAX_PACKET)
                             session_command = session_request.get("command")
-                            if set(session_request) != {
+                            common_fields = {
                                 "command",
                                 "admission_sha256",
                                 "handle_nonce",
-                            } or (
+                            }
+                            expected_fields = (
+                                common_fields | {"expected_prepared_state_sha256"}
+                                if session_command == "session_recover_copy_prepared_epoch0"
+                                else common_fields
+                            )
+                            if set(session_request) != expected_fields or (
                                 session_request["admission_sha256"]
                                 != recovery_admission.admission_sha256
                                 or session_request["handle_nonce"]
@@ -1144,6 +1384,43 @@ def _fixture_migration_lifecycle_issuer_main(
                                 connection.sendall(
                                     _issuer_session_frame(
                                         b"P" + recovery_admission.admission_sha256.encode("ascii")
+                                    )
+                                )
+                                continue
+                            if session_command == "session_recover_copy_prepared_epoch0":
+                                expected_prepared_state_sha256 = session_request.get(
+                                    "expected_prepared_state_sha256"
+                                )
+                                if type(
+                                    expected_prepared_state_sha256
+                                ) is not str or not re.fullmatch(
+                                    r"[0-9a-f]{64}", expected_prepared_state_sha256
+                                ):
+                                    raise ValueError("issuer recovery copy expected state")
+                                try:
+                                    _issuer_authenticate_recovery_descriptors(
+                                        root_fd=session_root_fd,
+                                        parent_fd=session_parent_fd,
+                                        target_fd=session_target_fd,
+                                        ticket=recovery_ticket,
+                                        verification_key=verification_key,
+                                        raw_pins=request["authority_pins"],
+                                    )
+                                    completion = recover_copy_prepared_epoch0(
+                                        session_root_fd=session_root_fd,
+                                        session_parent_fd=session_parent_fd,
+                                        session_target_fd=session_target_fd,
+                                        expected_prepared_state_sha256=(
+                                            expected_prepared_state_sha256
+                                        ),
+                                        expected_pins=recovery_admission.authority_pins,
+                                    )
+                                except Exception:
+                                    connection.sendall(_issuer_session_frame(b"E"))
+                                    continue
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"Y" + _issuer_recovery_copy_completion_document(completion)
                                     )
                                 )
                                 continue
@@ -1748,6 +2025,47 @@ class FixtureMigrationRecoverySessionV1:
             except Exception:
                 self._close_local()
                 raise
+
+    def recover_copy_prepared_epoch0(
+        self, *, expected_prepared_state_sha256: str
+    ) -> Epoch0RecoveryCopyCompletionV1:
+        self._validate()
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", expected_prepared_state_sha256)
+            or self._admission.authority_pins.lifecycle_phase != "copy_prepared"
+            or self._admission.authority_pins.state_sha256 != expected_prepared_state_sha256
+        ):
+            raise ValueError("fixture recovery copy prepared state")
+        request = _canonical_json(
+            {
+                "command": "session_recover_copy_prepared_epoch0",
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+                "expected_prepared_state_sha256": expected_prepared_state_sha256,
+            }
+        )
+        with self._lock:
+            try:
+                self._connection.sendall(_issuer_session_frame(request))
+                response = _issuer_session_receive_frame(self._connection)
+            except Exception:
+                self._close_local()
+                raise
+            if response == b"E":
+                raise ValueError("fixture recovery copy rejected")
+            try:
+                if response[:1] != b"Y":
+                    raise ValueError("fixture recovery copy response")
+                completion = _parse_issuer_recovery_copy_completion_document(response[1:])
+                _verify_epoch0_recovery_copy_completion_v1(
+                    completion,
+                    issuer_verification_key=self._verification_key,
+                    expected_prepared_pins=self._admission.authority_pins,
+                )
+            except Exception:
+                self._close_local()
+                raise
+            return completion
 
     def close(self) -> None:
         if self._closed:

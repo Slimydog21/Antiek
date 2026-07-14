@@ -409,6 +409,61 @@ def _attempt_child_recovery_session_death(
         os.close(result_fd)
 
 
+def _attempt_child_recovery_copy(
+    socket_path: str,
+    issuer_pid: int,
+    ticket: checkpoint_module.SignedMigrationRecoveryTicketV1,
+    prepared: checkpoint_module.SignedMigrationLifecycleStateV1,
+    pins: checkpoint_module.Epoch0RecoveryAuthorityPinsV1,
+    verification_key: checkpoint_module.VerificationKeyV1,
+    root_fd: int,
+    parent_fd: int,
+    target_fd: int,
+    result_fd: int,
+) -> None:
+    try:
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            authority_pins=pins,
+        )
+        try:
+            completion = session.recover_copy_prepared_epoch0(
+                expected_prepared_state_sha256=prepared.state_sha256
+            )
+            checkpoint_module._verify_epoch0_recovery_copy_completion_v1(
+                completion,
+                issuer_verification_key=verification_key,
+                expected_prepared_pins=pins,
+            )
+            assert completion.prepared_state == prepared
+            assert completion.copied_state.lifecycle_phase == "copied_epoch0"
+            assert completion.copy_audit.source_manifest_sha256 == pins.source_manifest_sha256
+        finally:
+            session.close()
+        with pytest.raises(ValueError):
+            support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+                socket_path=socket_path,
+                expected_issuer_pid=issuer_pid,
+                recovery_ticket=ticket,
+                verification_key=verification_key,
+                root_fd=root_fd,
+                parent_fd=parent_fd,
+                target_fd=target_fd,
+                authority_pins=pins,
+            )
+        os.write(result_fd, b"1")
+    except BaseException:
+        os.write(result_fd, b"0")
+    finally:
+        os.close(result_fd)
+
+
 def _reopen_precutover(case: Any) -> PrivatePaidLaneEligibilityCheckpointStoreV1:
     semantic = compute_private_paid_lane_semantic_sha256()
     return PrivatePaidLaneEligibilityCheckpointStoreV1.open(
@@ -2864,38 +2919,9 @@ class TestMigrationPrerequisites:
             assert len(copy_errors) == 1
             assert isinstance(copy_errors[0], ValueError)
             assert issuer.copy_epoch0(prepared_state=prepared) is False
-            copied = issuer.reserve(copied_candidate)
-            assert copied.copy_audit_sha256 == prepared.copy_audit_sha256
-            assert copied.source_manifest_sha256 == prepared.source_manifest_sha256
-            assert copied.witness_sha256 == prepared.witness_sha256
-            with pytest.raises(ValueError, match="issuer rejected"):
-                issuer.commit(state=copied, parent_fd=parent_fd)
-            target_connection = sqlite3.connect(target, timeout=0.1)
-            try:
-                with pytest.raises(sqlite3.OperationalError, match="database is locked"):
-                    target_connection.execute("BEGIN IMMEDIATE")
-            finally:
-                target_connection.close()
-            checkpoint_module._persist_signed_migration_lifecycle_state(
-                parent_fd=parent_fd,
-                state=copied,
-                verification_key=issuer.verification_key,
-                expected_prior_state_sha256=prepared.state_sha256,
-            )
-            issuer.commit(state=copied, parent_fd=parent_fd)
-            issuer.commit(state=copied, parent_fd=parent_fd)
             target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             try:
-                recovery_pins = _recovery_pins(copied)
-                assert (
-                    checkpoint_module._authenticate_epoch0_recovery_state_v1(
-                        parent_fd=parent_fd,
-                        target_fd=target_fd,
-                        verification_key=issuer.verification_key,
-                        expected=recovery_pins,
-                    )
-                    == copied
-                )
+                recovery_pins = _recovery_pins(prepared)
                 result_read, result_write = os.pipe()
                 recovery_issuer_pid = issuer.process_id
                 with pytest.raises(ValueError):
@@ -2915,10 +2941,11 @@ class TestMigrationPrerequisites:
                 recovery_child = os.fork()
                 if recovery_child == 0:
                     os.close(result_read)
-                    _attempt_child_recovery_admission(
+                    _attempt_child_recovery_copy(
                         issuer._socket_path,
                         recovery_issuer_pid,
                         issuer.recovery_ticket,
+                        prepared,
                         recovery_pins,
                         issuer.verification_key,
                         root_fd,
@@ -2934,6 +2961,68 @@ class TestMigrationPrerequisites:
                     os.close(result_read)
                 _, recovery_status = os.waitpid(recovery_child, 0)
                 assert os.waitstatus_to_exitcode(recovery_status) == 0
+                copied = checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=issuer.verification_key,
+                )
+                checkpoint_module._verify_migration_lifecycle_transition(
+                    prepared, copied, issuer.verification_key
+                )
+                assert (
+                    checkpoint_module._confirm_signed_migration_lifecycle_state_durable(
+                        parent_fd=parent_fd,
+                        expected_state=copied,
+                        verification_key=issuer.verification_key,
+                    )
+                    == copied
+                )
+                assert copied.lifecycle_phase == "copied_epoch0"
+                assert copied.copy_audit_sha256 == prepared.copy_audit_sha256
+                assert copied.source_manifest_sha256 == prepared.source_manifest_sha256
+                assert copied.witness_sha256 == prepared.witness_sha256
+                recovery_completion = checkpoint_module.Epoch0RecoveryCopyCompletionV1(
+                    prepared_state=prepared,
+                    copied_state=copied,
+                    copy_audit=copy_intent,
+                )
+                checkpoint_module._verify_epoch0_recovery_copy_completion_v1(
+                    recovery_completion,
+                    issuer_verification_key=issuer.verification_key,
+                    expected_prepared_pins=recovery_pins,
+                )
+                with pytest.raises(ValueError):
+                    checkpoint_module._verify_epoch0_recovery_copy_completion_v1(
+                        checkpoint_module.Epoch0RecoveryCopyCompletionV1(
+                            prepared_state=copied,
+                            copied_state=prepared,
+                            copy_audit=copy_intent,
+                        ),
+                        issuer_verification_key=issuer.verification_key,
+                        expected_prepared_pins=recovery_pins,
+                    )
+                with pytest.raises(ValueError, match="mismatch"):
+                    checkpoint_module._verify_epoch0_recovery_copy_completion_v1(
+                        recovery_completion.model_copy(
+                            update={
+                                "copy_audit": copy_intent.model_copy(
+                                    update={"source_manifest_sha256": "fa" * 32}
+                                )
+                            }
+                        ),
+                        issuer_verification_key=issuer.verification_key,
+                        expected_prepared_pins=recovery_pins,
+                    )
+                copied_recovery_pins = _recovery_pins(copied)
+                assert (
+                    checkpoint_module._authenticate_epoch0_recovery_state_v1(
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        verification_key=issuer.verification_key,
+                        expected=copied_recovery_pins,
+                    )
+                    == copied
+                )
                 with pytest.raises(ValueError, match="issuer rejected"):
                     issuer.recover_open(
                         root_fd=root_fd,
@@ -2973,7 +3062,9 @@ class TestMigrationPrerequisites:
                         parent_fd=parent_fd,
                         target_fd=target_fd,
                         verification_key=issuer.verification_key,
-                        expected=recovery_pins.model_copy(update={"state_sha256": "ff" * 32}),
+                        expected=copied_recovery_pins.model_copy(
+                            update={"state_sha256": "ff" * 32}
+                        ),
                     )
                 wrong_recovery_key = checkpoint_module.VerificationKeyV1(
                     key_id=issuer.verification_key.key_id,
@@ -2984,14 +3075,14 @@ class TestMigrationPrerequisites:
                         parent_fd=parent_fd,
                         target_fd=target_fd,
                         verification_key=wrong_recovery_key,
-                        expected=recovery_pins,
+                        expected=copied_recovery_pins,
                     )
                 with pytest.raises(ValueError, match="parent identity"):
                     checkpoint_module._authenticate_epoch0_recovery_state_v1(
                         parent_fd=root_fd,
                         target_fd=target_fd,
                         verification_key=issuer.verification_key,
-                        expected=recovery_pins,
+                        expected=copied_recovery_pins,
                     )
                 _adversarial_rewrite_lifecycle_state(parent_fd, prepared)
                 try:
@@ -3000,7 +3091,7 @@ class TestMigrationPrerequisites:
                             parent_fd=parent_fd,
                             target_fd=target_fd,
                             verification_key=issuer.verification_key,
-                            expected=recovery_pins,
+                            expected=copied_recovery_pins,
                         )
                 finally:
                     _adversarial_rewrite_lifecycle_state(parent_fd, copied)
@@ -3014,7 +3105,7 @@ class TestMigrationPrerequisites:
                             parent_fd=parent_fd,
                             target_fd=replacement_fd,
                             verification_key=issuer.verification_key,
-                            expected=recovery_pins,
+                            expected=copied_recovery_pins,
                         )
                 finally:
                     os.close(replacement_fd)

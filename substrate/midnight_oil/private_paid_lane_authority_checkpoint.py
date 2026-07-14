@@ -3464,6 +3464,22 @@ class SignedEpoch0RecoveryAdmissionV1(_Closed):
         return self
 
 
+class Epoch0RecoveryCopyCompletionV1(_Closed):
+    schema_version: Literal[1] = 1
+    prepared_state: SignedMigrationLifecycleStateV1
+    copied_state: SignedMigrationLifecycleStateV1
+    copy_audit: CopyAuditV1
+    synthetic_fixture_eligibility_only: Literal[True] = True
+    live_migration_verified: Literal[False] = False
+    user_accounting_effect: Literal[False] = False
+    transport_reachable: Literal[False] = False
+    confers_execution_authority: Literal[False] = False
+    confers_checkpoint_authority: Literal[False] = False
+    confers_sink_authority: Literal[False] = False
+    confers_transition_authority: Literal[False] = False
+    production_consumer_enabled: Literal[False] = False
+
+
 def _verify_signed_migration_recovery_ticket(
     ticket: SignedMigrationRecoveryTicketV1, verification_key: VerificationKeyV1
 ) -> None:
@@ -3591,6 +3607,63 @@ def _verify_migration_lifecycle_transition(
         old is not None and old != new for old, new in zip(prior_pins, successor_pins, strict=True)
     ):
         raise ValueError("migration lifecycle pin changed")
+
+
+def _verify_epoch0_recovery_copy_completion_v1(
+    completion: Epoch0RecoveryCopyCompletionV1,
+    *,
+    issuer_verification_key: VerificationKeyV1,
+    expected_prepared_pins: Epoch0RecoveryAuthorityPinsV1,
+) -> None:
+    if (
+        type(completion) is not Epoch0RecoveryCopyCompletionV1
+        or type(issuer_verification_key) is not VerificationKeyV1
+        or type(expected_prepared_pins) is not Epoch0RecoveryAuthorityPinsV1
+        or expected_prepared_pins.lifecycle_phase != "copy_prepared"
+    ):
+        raise ValueError("epoch0 recovery copy completion type")
+    completion = Epoch0RecoveryCopyCompletionV1.model_validate(completion.model_dump(mode="python"))
+    prepared = completion.prepared_state
+    copied = completion.copied_state
+    audit = completion.copy_audit
+    _verify_signed_migration_lifecycle_state(prepared, issuer_verification_key)
+    _verify_migration_lifecycle_transition(prepared, copied, issuer_verification_key)
+    prepared_pins = Epoch0RecoveryAuthorityPinsV1.model_validate(
+        {
+            "target_store_id": prepared.target_store_id,
+            "root_id": prepared.root_id,
+            "root_manifest_sha256": prepared.root_manifest_sha256,
+            "target_parent_dev": prepared.target_parent_dev,
+            "target_parent_ino": prepared.target_parent_ino,
+            "target_basename": prepared.target_basename,
+            "target_dev": prepared.target_dev,
+            "target_ino": prepared.target_ino,
+            "lifecycle_phase": prepared.lifecycle_phase,
+            "phase_version": prepared.phase_version,
+            "issuer_sequence": prepared.issuer_sequence,
+            "state_sha256": prepared.state_sha256,
+            "barrier_id": prepared.barrier_id,
+            "freeze_nonce": prepared.freeze_nonce,
+            "source_manifest_sha256": prepared.source_manifest_sha256,
+            "copy_audit_sha256": prepared.copy_audit_sha256,
+            "witness_sha256": prepared.witness_sha256,
+        }
+    )
+    audit_sha256 = _copy_audit_sha256(audit)
+    if (
+        prepared_pins != expected_prepared_pins
+        or prepared.lifecycle_phase != "copy_prepared"
+        or copied.lifecycle_phase != "copied_epoch0"
+        or copied.phase_version != 4
+        or copied.issuer_sequence != 4
+        or prepared.copy_audit_sha256 != audit_sha256
+        or copied.copy_audit_sha256 != audit_sha256
+        or prepared.source_manifest_sha256 != audit.source_manifest_sha256
+        or copied.source_manifest_sha256 != audit.source_manifest_sha256
+        or prepared.target_store_id != audit.target_store_id
+        or copied.target_store_id != audit.target_store_id
+    ):
+        raise ValueError("epoch0 recovery copy completion mismatch")
 
 
 _MAX_MIGRATION_LIFECYCLE_DOCUMENT_BYTES = 65_536
@@ -3958,6 +4031,52 @@ def _persist_signed_migration_lifecycle_state(
                 os.unlink(temporary_basename, dir_fd=locked_parent_fd)
                 os.fsync(locked_parent_fd)
         fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+        os.close(locked_parent_fd)
+
+
+def _confirm_signed_migration_lifecycle_state_durable(
+    *,
+    parent_fd: int,
+    expected_state: SignedMigrationLifecycleStateV1,
+    verification_key: VerificationKeyV1,
+) -> SignedMigrationLifecycleStateV1:
+    parent_identity = _migration_lifecycle_parent_identity(parent_fd)
+    if (
+        type(expected_state) is not SignedMigrationLifecycleStateV1
+        or (expected_state.target_parent_dev, expected_state.target_parent_ino) != parent_identity
+    ):
+        raise ValueError("migration lifecycle durability parent mismatch")
+    _verify_signed_migration_lifecycle_state(expected_state, verification_key)
+    locked_parent_fd = os.open(
+        ".",
+        os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=parent_fd,
+    )
+    try:
+        if _migration_lifecycle_parent_identity(locked_parent_fd) != parent_identity:
+            raise ValueError("migration lifecycle durability locked parent mismatch")
+        fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+        _cleanup_migration_lifecycle_temporaries(locked_parent_fd, expected_state.target_basename)
+        _verify_migration_lifecycle_target_state(locked_parent_fd, expected_state)
+        observed = _read_signed_migration_lifecycle_state(
+            parent_fd=locked_parent_fd,
+            target_basename=expected_state.target_basename,
+            verification_key=verification_key,
+        )
+        if observed != expected_state:
+            raise ValueError("migration lifecycle durability state mismatch")
+        os.fsync(locked_parent_fd)
+        confirmed = _read_signed_migration_lifecycle_state(
+            parent_fd=locked_parent_fd,
+            target_basename=expected_state.target_basename,
+            verification_key=verification_key,
+        )
+        if confirmed != expected_state:
+            raise ValueError("migration lifecycle durability reread mismatch")
+        return confirmed
+    finally:
+        with suppress(OSError):
+            fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
         os.close(locked_parent_fd)
 
 
