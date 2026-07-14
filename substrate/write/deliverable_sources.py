@@ -15,10 +15,9 @@ This module does exactly that, and nothing more surfacing-sensitive:
 * It emits document **titles only** — never bodies, never node labels.
 * It drops any source whose resolved document ``content_class`` is
   withheld from a non-privileged (public / attribution-eligible) surface,
-  reusing the SAME ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES`` union the
-  public chunk-search gate (``substrate/graph/retrieval_gate.py``) and
-  ``compute_attribution_for_synthesis`` use, so the three surfaces can
-  never drift apart (master-spec §9.0). A withheld source is therefore
+  reusing the public canonical ``is_chunk_body_withheld`` policy predicate
+  from ``substrate/graph/retrieval_gate.py`` so the surfaces cannot drift
+  apart (master-spec §9.0). A withheld source is therefore
   **indistinguishable from no source at all** — the required §9.0
   posture: an export must not even hint that a ``personal_reading``
   document exists.
@@ -43,14 +42,12 @@ from typing import Any
 
 import duckdb
 
-# The canonical §9.0 exclusion union (restricted_pending_opt_in ∪
-# personal_reading). Importing it — rather than re-listing the classes —
-# is deliberate: this Sources surface must gate identically to the public
-# chunk-search gate and to compute_attribution_for_synthesis, and a shared
-# constant is the only way they cannot drift.
-from substrate.graph.retrieval_gate import (
-    _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES,
-)
+# The canonical §9.0 predicate covers restricted_pending_opt_in and
+# personal_reading. Calling it rather than importing its private backing set or
+# re-listing classes keeps this export surface on the supported policy seam.
+from substrate.graph.retrieval_gate import is_chunk_body_withheld
+
+_RESOLUTION_BATCH_SIZE = 500
 
 
 def _paragraph_sort_key(key: str) -> tuple[int, Any]:
@@ -67,59 +64,48 @@ def _paragraph_sort_key(key: str) -> tuple[int, Any]:
         return (1, key)
 
 
-def _resolve_block_to_document(
-    con: duckdb.DuckDBPyConnection, block_id: str
-) -> str | None:
-    """Resolve one provenance ``block_id`` (a graph node id) to its
-    grounding ``source_document_id``, or ``None``.
+def _resolve_blocks_to_documents(
+    con: duckdb.DuckDBPyConnection,
+    block_ids: list[str],
+) -> dict[str, str]:
+    """Resolve many block IDs without an export-time N+1 query cascade.
 
     Mirrors the canonical two-tier resolver in
-    ``substrate/graph/insight_question.py`` (``_scoped_existing_units``):
-    the node's ``metadata.source_document_id`` first, then a
-    ``supported_by`` edge's ``source_document_id`` as a fallback. Keeping
-    the fallback scoped to ``relation = 'supported_by'`` matters — it is
-    the grounding relation; following, say, a ``duplicate_of`` edge could
-    reach a document that does NOT ground this prose (and, per GPW SPR-02,
-    duplicate_of edges can cross rights boundaries). If that canonical
-    resolver ever changes, this must change with it.
+    ``substrate.graph.insight_question``: node metadata first, then a
+    ``supported_by`` edge. Other relations are never followed because they do
+    not establish grounding and can cross rights boundaries. The edge query is
+    deterministically ordered so ``setdefault`` chooses the lexicographically
+    first grounding document when several exist. Unknown/user-authored block
+    IDs simply contribute no source.
+    """
+    resolved: dict[str, str] = {}
+    for start in range(0, len(block_ids), _RESOLUTION_BATCH_SIZE):
+        batch = block_ids[start : start + _RESOLUTION_BATCH_SIZE]
+        placeholders = ",".join("?" for _ in batch)
+        node_rows = con.execute(
+            f"SELECT node_id, metadata FROM nodes WHERE node_id IN ({placeholders})",
+            batch,
+        ).fetchall()
+        for node_id, metadata_raw in node_rows:
+            if not metadata_raw:
+                continue
+            try:
+                metadata = _json.loads(metadata_raw)
+            except (TypeError, ValueError):
+                continue
+            if isinstance(metadata, dict) and metadata.get("source_document_id"):
+                resolved[str(node_id)] = str(metadata["source_document_id"])
 
-    A ``block_id`` that is not a graph node (a user-authored
-    ``outline_block_id``), or a node with no grounding document, resolves
-    to ``None`` — user-authored prose has no external source to cite, and
-    that is not an error.
-
-    Precedence is metadata-then-edge and returns on the first hit. The
-    deposit path (``insight_question.py``) writes the SAME
-    ``source_document_id`` into node metadata and onto the ``supported_by``
-    edges, so the two agree in practice; if they ever diverged (a node
-    re-grounded post-deposit) this would name the metadata doc and could
-    under-attribute an eligible edge doc. That errs toward naming FEWER
-    sources, never toward naming a withheld one — the §9.0-safe direction."""
-    row = con.execute(
-        "SELECT metadata FROM nodes WHERE node_id = ?", [block_id]
-    ).fetchone()
-    if row is not None and row[0]:
-        try:
-            meta = _json.loads(row[0])
-        except (TypeError, ValueError):
-            meta = {}
-        if isinstance(meta, dict):
-            doc = meta.get("source_document_id")
-            if doc:
-                return str(doc)
-    edge = con.execute(
-        "SELECT source_document_id FROM edges "
-        "WHERE source_node_id = ? AND relation = 'supported_by' "
-        "AND source_document_id IS NOT NULL "
-        # ORDER BY (the canonical resolver's LIMIT 1 has none) makes the
-        # choice deterministic when a node has several supported_by edges to
-        # different grounding docs — a stable export beats an arbitrary one.
-        "ORDER BY source_document_id LIMIT 1",
-        [block_id],
-    ).fetchone()
-    if edge is not None and edge[0]:
-        return str(edge[0])
-    return None
+        edge_rows = con.execute(
+            "SELECT source_node_id, source_document_id FROM edges "
+            f"WHERE source_node_id IN ({placeholders}) "
+            "AND relation = 'supported_by' AND source_document_id IS NOT NULL "
+            "ORDER BY source_node_id, source_document_id",
+            batch,
+        ).fetchall()
+        for node_id, document_id in edge_rows:
+            resolved.setdefault(str(node_id), str(document_id))
+    return resolved
 
 
 def resolve_deliverable_sources(
@@ -133,10 +119,10 @@ def resolve_deliverable_sources(
     document is named **once** even if cited across many paragraphs or
     sections. The list is safe to render into a public / monetized export:
 
-    * a document whose ``content_class`` is in
-      ``_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES`` (``personal_reading``
-      or ``restricted_pending_opt_in``) is dropped — never named, never
-      counted, indistinguishable from having no source;
+    * a document whose ``content_class`` the canonical non-privileged policy
+      withholds (including ``personal_reading`` and
+      ``restricted_pending_opt_in``) is dropped — never named, never counted,
+      indistinguishable from having no source;
     * a document with an empty / NULL title is dropped — we never
       fabricate a title, and an "Untitled" bullet would be noise (and
       could imply a source exists without naming it).
@@ -177,10 +163,11 @@ def resolve_deliverable_sources(
         return []
 
     # Pass 2: resolve blocks -> documents (first-appearance, de-duplicated).
+    block_to_doc = _resolve_blocks_to_documents(con, ordered_block_ids)
     ordered_doc_ids: list[str] = []
     seen_docs: set[str] = set()
     for b in ordered_block_ids:
-        doc = _resolve_block_to_document(con, b)
+        doc = block_to_doc.get(b)
         if doc and doc not in seen_docs:
             seen_docs.add(doc)
             ordered_doc_ids.append(doc)
@@ -200,7 +187,8 @@ def resolve_deliverable_sources(
 
     titles: list[str] = []
     for doc in ordered_doc_ids:
-        if doc_cc.get(doc) in _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES:
+        withheld, _ = is_chunk_body_withheld(doc_cc.get(doc))
+        if withheld:
             continue  # §9.0: personal_reading / restricted is never named
         title = (doc_title.get(doc) or "").strip()
         if not title:
