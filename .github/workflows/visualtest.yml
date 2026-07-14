@@ -54,26 +54,31 @@ jobs:
         env:
           LOSTPIXEL_STORY_ID: deepresearch-research-wait-arcade--playing
         run: |
+          for width in 768 1024 1280; do
+            plate=".lostpixel/baseline/deep-research-research-wait-arcade--playing__[w${width}px].png"
+            if [ ! -s "$plate" ]; then
+              echo "::error file=${plate}::Missing canonical authored arcade baseline"
+              exit 1
+            fi
+          done
           npx lost-pixel
+          for width in 768 1024 1280; do
+            plate=".lostpixel/current/deep-research-research-wait-arcade--playing__[w${width}px].png"
+            if [ ! -s "$plate" ]; then
+              echo "::error file=${plate}::Missing authored arcade capture"
+              exit 1
+            fi
+          done
           if find .lostpixel/diff -type f -print -quit | grep -q .; then
             echo "::error::Authored arcade field differs from its canonical baselines"
             exit 1
           fi
 
       - name: Run Lost-Pixel against committed baselines (informational)
-        # BLOCKING (AGH SPR-04 G2): the reconsider-if that made this
-        # informational — "baselines committed under
-        # apps/reading/.lostpixel/baseline/" (ci-informational-gates.md §3) —
-        # is now MET: 381 baseline PNGs are committed there and
-        # lostpixel.config.ts sets imagePathBaseline + generateOnly:false, so
-        # the gate compares current renders against a real committed baseline.
-        # Un-swallowed: the step's exit code is now lost-pixel's own, so a real
-        # visual regression reds the PR (which is the point). A legitimate
-        # visual change lands its own updated baseline PNGs (npm run
-        # visualtest:update) in the same PR — the same discipline as the token
-        # baselines. If this PR's own run reds, the committed baselines are
-        # stale and need an operator re-approval (an honest signal, not a
-        # reason to re-swallow).
+        # LostPixel 3.22 exits zero for differences in this repository's
+        # generateOnly:false mode, so this legacy portfolio sweep is evidence,
+        # not a merge gate. Bounded critical stories must own an explicit
+        # shell-level assertion like the authored arcade gate above.
         run: npx lost-pixel
 
       - name: Upload diff artifacts on failure

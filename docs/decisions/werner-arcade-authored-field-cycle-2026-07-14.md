@@ -53,11 +53,13 @@ SPR-19 is now counted as implemented. The existing feature flag remains
 production-default-off; this transport grants no deployment authority.
 
 The legacy repository-wide visual sweep does not set `failOnDifference` and
-therefore cannot prove this adoption. CI now follows it with a three-shot
-story-ID-scoped gate that sets `failOnDifference=true`; any target delta reds
-the PR and activates the existing current/diff artifact upload. The normal
-workspace-demo exclusion also uses the actual Storybook `id` field rather than
-the not-yet-generated `shotName`, repairing its previously ineffective filter.
+therefore cannot prove this adoption. CI now runs a three-shot story-ID-scoped
+gate before that sweep. It requires every named canonical baseline before
+capture, every named current plate after capture, and an empty diff directory;
+missing evidence or any target delta reds the PR and activates the existing
+current/diff artifact upload. The normal workspace-demo exclusion also uses
+the actual Storybook `id` field rather than the not-yet-generated `shotName`,
+repairing its previously ineffective filter.
 
 ## Asset provenance
 
