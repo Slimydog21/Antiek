@@ -127,3 +127,36 @@ def test_unexpected_authority_failure_is_private(tmp_path) -> None:
     assert response.status_code == 500
     assert response.json() == {"detail": "research plan authority is unavailable"}
     assert response.headers["cache-control"] == "private, no-store"
+
+
+def test_edit_route_is_strict_private_and_reopens_approval(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime = client.app.dependency_overrides[get_multimedia_research_plan_runtime]()
+    intent, _ = _create(runtime.intents, key="other-key-1234567")
+    created = client.post(
+        f"/multimedia/research-intents/{intent.intent_id}/plan",
+        json={"idempotency_key": "handoff-123456789"},
+    )
+    plan_id = created.json()["plan_id"]
+    root_id = created.json()["tree"]["root"]["node_id"]
+    client.post(
+        f"/multimedia/research-plans/{plan_id}/approve",
+        json={"expected_plan_version": 1},
+    )
+    body = {
+        "idempotency_key": "mutation-12345678", "expected_plan_version": 1,
+        "operations": [{"type": "add_child", "parent_node_id": root_id,
+                        "position": 0, "question": "A child question?"}],
+    }
+    edited = client.post(f"/multimedia/research-plans/{plan_id}/edits", json=body)
+    replay = client.post(f"/multimedia/research-plans/{plan_id}/edits", json=body)
+    malformed = client.post(
+        f"/multimedia/research-plans/{plan_id}/edits",
+        json={**body, "operations": [{**body["operations"][0], "unknown": True}]},
+    )
+    assert edited.status_code == 200 and edited.json() == replay.json()
+    assert edited.json()["plan_version"] == 2 and edited.json()["state"] == "draft"
+    assert "approved_by_owner_digest" not in edited.json()
+    assert malformed.status_code == 422
+    assert all(response.headers["cache-control"] == "private, no-store"
+               for response in (edited, replay, malformed))

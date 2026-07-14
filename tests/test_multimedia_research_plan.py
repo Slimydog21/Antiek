@@ -13,6 +13,7 @@ from substrate.multimedia.research_plan import (
     ResearchPlanError,
     ResearchPlanLedger,
     ResearchPlanStorageError,
+    ResearchPlanValidationError,
 )
 from tests.test_multimedia_research_intent import _create
 
@@ -185,3 +186,208 @@ def test_operational_file_open_failure_is_storage_unavailable(tmp_path) -> None:
             idempotency_key="handoff-123456789",
             intent=intent,
         )
+
+
+def test_ordered_edit_batch_preserves_ids_reopens_approval_and_replays_history(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    root_id = plan.tree["root"]["node_id"]
+    approved = ledger.approve(
+        owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1
+    )
+    edited = ledger.edit(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="mutation-12345678", expected_plan_version=1,
+        operations=[{"type": "add_child", "parent_node_id": root_id,
+                     "position": 0, "question": "  First child?  "}],
+    )
+    child_id = edited.tree["root"]["children"][0]["node_id"]
+    assert edited.plan_version == 2 and edited.state == "draft"
+    assert edited.approved_at is None and edited.approved_by_owner_digest is None
+    assert edited.tree["root"]["node_id"] == root_id
+    assert child_id.startswith("mrpn_") and edited.tree["root"]["children"][0]["question"] == "First child?"
+    later = ledger.edit(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="mutation-23456789", expected_plan_version=2,
+        operations=[{"type": "update_question", "node_id": child_id,
+                     "question": "Updated child?"}],
+    )
+    replay = ledger.edit(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="mutation-12345678", expected_plan_version=1,
+        operations=[{"type": "add_child", "parent_node_id": root_id,
+                     "position": 0, "question": "First child?"}],
+    )
+    assert approved.state == "approved" and later.plan_version == 3
+    assert replay == edited
+    assert ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id) == later
+
+
+def test_edit_batch_failure_and_idempotency_drift_have_no_side_effects(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    root_id = plan.tree["root"]["node_id"]
+    with pytest.raises(ResearchPlanValidationError):
+        ledger.edit(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="mutation-12345678", expected_plan_version=1,
+            operations=[
+                {"type": "add_child", "parent_node_id": root_id,
+                 "position": 0, "question": "Valid child?"},
+                {"type": "remove_subtree", "node_id": root_id},
+            ],
+        )
+    assert ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id) == plan
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute("SELECT count(*) FROM multimedia_research_plan_mutations").fetchone()[0] == 0
+    committed = ledger.edit(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="mutation-12345678", expected_plan_version=1,
+        operations=[{"type": "add_child", "parent_node_id": root_id,
+                     "position": 0, "question": "Valid child?"}],
+    )
+    with pytest.raises(ResearchPlanError, match="idempotency conflict"):
+        ledger.edit(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="mutation-12345678", expected_plan_version=2,
+            operations=[{"type": "remove_subtree",
+                         "node_id": committed.tree["root"]["children"][0]["node_id"]}],
+        )
+    assert ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id) == committed
+
+
+def test_concurrent_same_version_edits_commit_once(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    root_id = plan.tree["root"]["node_id"]
+
+    def mutate(index: int):
+        try:
+            return ledger.edit(
+                owner_identity_digest=owner, plan_id=plan.plan_id,
+                idempotency_key=f"mutation-concurrent-{index}", expected_plan_version=1,
+                operations=[{"type": "add_child", "parent_node_id": root_id,
+                             "position": 0, "question": f"Concurrent child {index}?"}],
+            )
+        except ResearchPlanError as exc:
+            return exc
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(mutate, range(2)))
+    assert sum(not isinstance(value, Exception) for value in outcomes) == 1
+    assert ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id).plan_version == 2
+
+
+def test_move_reorder_and_remove_subtree_are_ordered_and_keep_unaffected_ids(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    root_id = plan.tree["root"]["node_id"]
+    seeded = ledger.edit(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="mutation-12345678", expected_plan_version=1,
+        operations=[
+            {"type": "add_child", "parent_node_id": root_id, "position": 0,
+             "question": "First branch?"},
+            {"type": "add_child", "parent_node_id": root_id, "position": 1,
+             "question": "Second branch?"},
+        ],
+    )
+    first, second = seeded.tree["root"]["children"]
+    moved = ledger.edit(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="mutation-23456789", expected_plan_version=2,
+        operations=[
+            {"type": "move_subtree", "node_id": second["node_id"],
+             "new_parent_node_id": first["node_id"], "position": 0},
+            {"type": "remove_subtree", "node_id": first["node_id"]},
+        ],
+    )
+    assert moved.tree["root"]["node_id"] == root_id
+    assert moved.tree["root"]["children"] == []
+    assert moved.plan_version == 3
+
+
+def test_exact_v1_store_migrates_transactionally_with_stable_root_id(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    with sqlite3.connect(ledger.path) as connection:
+        row = connection.execute(
+            "SELECT plan_id,owner_identity_digest,source_intent_id,source_intent_digest,"
+            "source_evidence_digest,idempotency_key,request_digest,plan_version,plan_json,"
+            "created_at,updated_at FROM multimedia_research_plans"
+        ).fetchone()
+        envelope = json.loads(row[8])
+        envelope["plan"]["tree"]["root"].pop("node_id")
+        connection.execute("DROP TABLE multimedia_research_plan_mutations")
+        connection.execute("DROP TABLE multimedia_research_plans")
+        connection.execute(
+            "CREATE TABLE multimedia_research_plans (plan_id TEXT PRIMARY KEY, "
+            "owner_identity_digest TEXT NOT NULL, source_intent_id TEXT NOT NULL, "
+            "source_intent_digest TEXT NOT NULL, source_evidence_digest TEXT NOT NULL, "
+            "idempotency_key TEXT NOT NULL, request_digest TEXT NOT NULL, "
+            "plan_version INTEGER NOT NULL, plan_json TEXT NOT NULL, created_at TEXT NOT NULL, "
+            "updated_at TEXT NOT NULL, UNIQUE(owner_identity_digest, idempotency_key), "
+            "UNIQUE(owner_identity_digest, source_intent_id))"
+        )
+        connection.execute(
+            "INSERT INTO multimedia_research_plans VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            row[:8] + (json.dumps(envelope, ensure_ascii=False, sort_keys=True,
+                                 separators=(",", ":")),) + row[9:],
+        )
+        connection.execute("PRAGMA user_version=1")
+    migrated = ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id)
+    replay = ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id)
+    assert migrated.tree["root"]["node_id"].startswith("mrpn_")
+    assert replay.tree["root"]["node_id"] == migrated.tree["root"]["node_id"]
+    assert migrated.plan_version == plan.plan_version
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+
+
+def test_tampered_receipt_tree_is_a_stored_integrity_error(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    body = [{"type": "add_child", "parent_node_id": plan.tree["root"]["node_id"],
+             "position": 0, "question": "A child question?"}]
+    ledger.edit(owner_identity_digest=owner, plan_id=plan.plan_id,
+                idempotency_key="mutation-12345678", expected_plan_version=1,
+                operations=body)
+    with sqlite3.connect(ledger.path) as connection:
+        raw = connection.execute(
+            "SELECT response_json FROM multimedia_research_plan_mutations"
+        ).fetchone()[0]
+        response = json.loads(raw)
+        response["tree"]["root"]["children"][0]["node_id"] = response["tree"]["root"]["node_id"]
+        connection.execute(
+            "UPDATE multimedia_research_plan_mutations SET response_json=?",
+            (json.dumps(response, sort_keys=True, separators=(",", ":")),),
+        )
+    with pytest.raises(ResearchPlanError, match="stored research plan mutation integrity") as error:
+        ledger.edit(owner_identity_digest=owner, plan_id=plan.plan_id,
+                    idempotency_key="mutation-12345678", expected_plan_version=1,
+                    operations=body)
+    assert not isinstance(error.value, ResearchPlanValidationError)
