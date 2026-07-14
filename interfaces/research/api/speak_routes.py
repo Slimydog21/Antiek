@@ -31,17 +31,22 @@ economics.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Header, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_write
+from substrate.event_log import append_event_once, prepare_typed_event, require_event_persistence
 from substrate.graph import default_db_path, ensure_initialized
+from substrate.graph.ops import content_addressed_id
+from substrate.schemas.events import OutlineBlockPlacedPayload, SeamSpeakToWritePayload
 from substrate.speak import (
     biography,
     biography_composition,
@@ -86,6 +91,7 @@ from substrate.speak.contributor import DisbursementBlocked
 from substrate.speak.invitations import PublicEcosystemGated
 from substrate.speak.publish_gate import PublishBlocked
 from substrate.speak.schema import ensure_speak_schema
+from substrate.speak.write_composer import WriteOutlineComposer
 
 speak_router = APIRouter(prefix="/speak", tags=["speak"])
 
@@ -115,6 +121,18 @@ def _write(purpose: str) -> Iterator[Any]:
 
 
 @contextmanager
+def _transaction(con: Any) -> Iterator[None]:
+    con.execute("BEGIN TRANSACTION")
+    try:
+        yield
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    else:
+        con.execute("COMMIT")
+
+
+@contextmanager
 def _translate() -> Iterator[None]:
     """Map Speak domain exceptions onto HTTP status codes."""
     try:
@@ -138,6 +156,13 @@ def _decimal(value: str, field: str) -> Decimal:
         return Decimal(value)
     except (InvalidOperation, TypeError):
         raise HTTPException(status_code=400, detail=f"{field} must be a decimal string")
+
+
+def _validated_command_id(value: str) -> str:
+    command_id = value.strip()
+    if not command_id or len(command_id) > 200:
+        raise HTTPException(status_code=400, detail="invalid Idempotency-Key")
+    return command_id
 
 
 # ---------------------------------------------------------------------------
@@ -578,20 +603,143 @@ async def request_takedown(project_id: str, req: TakedownRequestModel) -> dict:
     return {"takedown_id": tid, "status": "active"}
 
 
+_SPEAK_TO_WRITE_COMMANDS_SQL = """
+CREATE TABLE IF NOT EXISTS speak_to_write_handoff_commands (
+    command_id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    events_json TEXT NOT NULL
+)
+"""
+
+
 @speak_router.post("/projects/{project_id}/draft")
-async def draft(project_id: str, req: DraftRequest) -> dict:
-    with _translate(), _write("speak/api:draft") as con:
-        outline = biography.assemble_outline(con, project_id=project_id)
-        d = biography.generate_draft(con, project_id=project_id, outline=outline, public=req.public)
-    return {
-        "deliverable_id": outline.deliverable_id,
-        "prose_text": d.prose_text,
-        "cited_interview_ids": list(d.cited_interview_ids),
-        "excluded_claim_ids": list(d.excluded_claim_ids),
-        "unverified_marked_claim_ids": list(d.unverified_marked_claim_ids),
-        "voice_style_score": d.voice_style_score,
-        "voice_style_ok": d.voice_style_ok,
-    }
+async def draft(
+    project_id: str,
+    req: DraftRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict:
+    require_event_persistence()
+    command_id = _validated_command_id(idempotency_key)
+    fingerprint = content_addressed_id(
+        "cmd", f"speak-to-write|{project_id}|public={req.public}"
+    )
+    with _translate(), _write("speak/api:draft") as con:  # noqa: SIM117
+        with _transaction(con):
+            con.execute(_SPEAK_TO_WRITE_COMMANDS_SQL)
+            receipt = con.execute(
+                "SELECT fingerprint, response_json, events_json "
+                "FROM speak_to_write_handoff_commands WHERE command_id = ?",
+                [command_id],
+            ).fetchone()
+            if receipt is not None and receipt[0] != fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency-Key was already used for a different draft",
+                )
+            if receipt is None:
+                investigation_id = f"speak-biography-{project_id}"
+                outline = biography.assemble_outline(
+                    con,
+                    project_id=project_id,
+                    composer=WriteOutlineComposer(
+                        con,
+                        investigation_id=investigation_id,
+                        emit_events=False,
+                    ),
+                )
+                d = biography.generate_draft(
+                    con, project_id=project_id, outline=outline, public=req.public
+                )
+                response = {
+                    "deliverable_id": outline.deliverable_id,
+                    "prose_text": d.prose_text,
+                    "cited_interview_ids": list(d.cited_interview_ids),
+                    "excluded_claim_ids": list(d.excluded_claim_ids),
+                    "unverified_marked_claim_ids": list(d.unverified_marked_claim_ids),
+                    "voice_style_score": d.voice_style_score,
+                    "voice_style_ok": d.voice_style_ok,
+                }
+                placed_claims = {
+                    row[0]: (row[1], int(row[2]))
+                    for row in con.execute(
+                        "SELECT source_block_id, outline_block_id, block_index "
+                        "FROM outline_blocks "
+                        "WHERE section_id = ? AND source_block_kind = 'speak_claim'",
+                        [outline.section_id],
+                    ).fetchall()
+                }
+                emitted_at = datetime.now(UTC).isoformat()
+                events = [
+                    {
+                        "event_id": content_addressed_id(
+                            "evt", f"speak-to-write|{command_id}|{block.block_id}"
+                        ),
+                        "placement_event_id": content_addressed_id(
+                            "evt",
+                            f"speak-write-placement|{command_id}|{block.block_id}",
+                        ),
+                        "emitted_at": emitted_at,
+                        "claim_id": block.block_id,
+                        "outline_block_id": placed_claims[block.block_id][0],
+                        "block_index": placed_claims[block.block_id][1],
+                        "deliverable_id": outline.deliverable_id,
+                        "section_id": outline.section_id,
+                        "contributor_interview_ids": list(
+                            block.contributor_interview_ids
+                        ),
+                    }
+                    for block in outline.blocks
+                    if block.block_id in placed_claims
+                ]
+                con.execute(
+                    "INSERT INTO speak_to_write_handoff_commands VALUES (?, ?, ?, ?)",
+                    [
+                        command_id,
+                        fingerprint,
+                        json.dumps(response, sort_keys=True),
+                        json.dumps(events, sort_keys=True),
+                    ],
+                )
+            else:
+                response = json.loads(receipt[1])
+                events = json.loads(receipt[2])
+
+    investigation_id = f"speak-biography-{project_id}"
+    for event_receipt in events:
+        append_event_once(
+            prepare_typed_event(
+                investigation_id,
+                SeamSpeakToWritePayload(
+                    entity_id=event_receipt["claim_id"],
+                    provenance_ref=event_receipt["claim_id"],
+                    contributor_interview_ids=event_receipt[
+                        "contributor_interview_ids"
+                    ],
+                ),
+                event_id=event_receipt["event_id"],
+                emitted_at=event_receipt["emitted_at"],
+                role="speak_biography",
+            )
+        )
+        append_event_once(
+            prepare_typed_event(
+                investigation_id,
+                OutlineBlockPlacedPayload(
+                    outline_block_id=event_receipt["outline_block_id"],
+                    deliverable_id=event_receipt["deliverable_id"],
+                    section_id=event_receipt["section_id"],
+                    block_kind="synthesized",
+                    provenance_kind="synthesized",
+                    node_id=None,
+                    block_index=event_receipt["block_index"],
+                ),
+                event_id=event_receipt["placement_event_id"],
+                emitted_at=event_receipt["emitted_at"],
+                role="write_composition",
+            )
+        )
+    return response
 
 
 @speak_router.post("/projects/{project_id}/publish", status_code=201)

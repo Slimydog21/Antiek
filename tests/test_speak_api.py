@@ -9,12 +9,16 @@ lets the speak-biography e2e un-skip: the surface now exists.
 
 from __future__ import annotations
 
+import json
 import os
 import tempfile
+from pathlib import Path
 
+import duckdb
 import pytest
 from fastapi.testclient import TestClient
 
+import interfaces.research.api.speak_routes as speak_routes
 from interfaces.research.api.app import create_app
 
 
@@ -108,7 +112,11 @@ def test_full_operator_journey_to_public_publish(client, monkeypatch):
     assert r.status_code == 201
 
     # 9. Draft (public) — the corroborated claim is included, none excluded.
-    draft = client.post(f"/speak/projects/{project_id}/draft", json={"public": True}).json()
+    draft = client.post(
+        f"/speak/projects/{project_id}/draft",
+        headers={"Idempotency-Key": "full-journey-draft"},
+        json={"public": True},
+    ).json()
     assert "bakery" in draft["prose_text"]
     assert draft["excluded_claim_ids"] == []
 
@@ -128,6 +136,201 @@ def test_full_operator_journey_to_public_publish(client, monkeypatch):
     order = r.json()
     assert order["payer"] == "split"
     assert order["fulfilled"] is False
+
+
+def _all_events() -> list[dict]:
+    events_dir = Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"])
+    rows: list[dict] = []
+    for path in events_dir.rglob("*.jsonl"):
+        rows.extend(json.loads(line) for line in path.read_text().splitlines() if line)
+    return rows
+
+
+def _speak_to_write_events() -> list[dict]:
+    return [
+        row for row in _all_events() if row["action_type"] == "seam.speak_to_write"
+    ]
+
+
+def _private_project_with_claim(client: TestClient) -> tuple[str, str]:
+    project_id = client.post(
+        "/speak/projects", json={"title": "Private memories"}
+    ).json()["project_id"]
+    interview_id = _invite_and_attest(
+        client, project_id, "memory@example.com", "She built the town library."
+    )
+    return project_id, interview_id
+
+
+def test_draft_command_converges_blocks_events_and_thread(client):
+    project_id, interview_id = _private_project_with_claim(client)
+    path = f"/speak/projects/{project_id}/draft"
+    headers = {"Idempotency-Key": "draft-command-1"}
+
+    first = client.post(path, headers=headers, json={"public": False})
+    second = client.post(path, headers=headers, json={"public": False})
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM deliverables").fetchone()[0] == 1
+        row = con.execute(
+            "SELECT source_block_id, node_id, content FROM outline_blocks"
+        ).fetchone()
+    claim_id = row[0]
+    assert row[1] is None
+    assert row[2] == "She built the town library."
+    events = _speak_to_write_events()
+    assert len(events) == 1
+    assert events[0]["payload"] == {
+        "action_type": "seam.speak_to_write",
+        "from_workflow": "speak",
+        "to_workflow": "write",
+        "entity_id": claim_id,
+        "entity_kind": "speak_claim",
+        "provenance_ref": claim_id,
+        "terminates": True,
+        "contributor_interview_ids": [interview_id],
+    }
+    assert "library" not in json.dumps(events[0]["payload"])
+    thread = client.get(f"/thread/{claim_id}")
+    assert thread.status_code == 200
+    assert [hop["workflow"] for hop in thread.json()["hops"]] == ["speak", "write"]
+
+
+def test_draft_command_repairs_append_failure_without_duplicate_draft(client, monkeypatch):
+    project_id, _ = _private_project_with_claim(client)
+    original = speak_routes.append_event_once
+    calls = 0
+
+    def fail_once(event):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("lost event append")
+        return original(event)
+
+    monkeypatch.setattr(speak_routes, "append_event_once", fail_once)
+    def request():
+        return client.post(
+            f"/speak/projects/{project_id}/draft",
+            headers={"Idempotency-Key": "repair-draft"},
+            json={"public": False},
+        )
+    with pytest.raises(OSError, match="lost event append"):
+        request()
+    repaired = request()
+    assert repaired.status_code == 200
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM deliverables").fetchone()[0] == 1
+        assert con.execute("SELECT count(*) FROM outline_blocks").fetchone()[0] == 1
+    assert len(_speak_to_write_events()) == 1
+
+
+def test_partial_event_pair_never_leaves_placement_without_seam(client, monkeypatch):
+    project_id, _ = _private_project_with_claim(client)
+    original = speak_routes.append_event_once
+    calls = 0
+
+    def fail_second(event):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise OSError("lost placement append")
+        return original(event)
+
+    monkeypatch.setattr(speak_routes, "append_event_once", fail_second)
+    path = f"/speak/projects/{project_id}/draft"
+    headers = {"Idempotency-Key": "partial-pair-draft"}
+    with pytest.raises(OSError, match="lost placement append"):
+        client.post(path, headers=headers, json={"public": False})
+    assert len(_speak_to_write_events()) == 1
+    assert not any(
+        event["action_type"] == "outline_block.placed" for event in _all_events()
+    )
+    repaired = client.post(path, headers=headers, json={"public": False})
+    assert repaired.status_code == 200
+    assert len(_speak_to_write_events()) == 1
+    assert sum(
+        event["action_type"] == "outline_block.placed" for event in _all_events()
+    ) == 1
+
+
+def test_draft_command_rolls_back_composition_before_receipt(client, monkeypatch):
+    project_id, _ = _private_project_with_claim(client)
+    original = speak_routes.biography.generate_draft
+    monkeypatch.setattr(
+        speak_routes.biography,
+        "generate_draft",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("draft fault")),
+    )
+    path = f"/speak/projects/{project_id}/draft"
+    headers = {"Idempotency-Key": "transactional-draft"}
+    with pytest.raises(RuntimeError, match="draft fault"):
+        client.post(path, headers=headers, json={"public": False})
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM deliverables").fetchone()[0] == 0
+        assert con.execute("SELECT count(*) FROM outline_blocks").fetchone()[0] == 0
+    assert not any(
+        event["action_type"] == "outline_block.placed" for event in _all_events()
+    )
+
+    monkeypatch.setattr(speak_routes.biography, "generate_draft", original)
+    repaired = client.post(path, headers=headers, json={"public": False})
+    assert repaired.status_code == 200
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM deliverables").fetchone()[0] == 1
+    assert sum(
+        event["action_type"] == "outline_block.placed" for event in _all_events()
+    ) == 1
+
+
+def test_draft_emits_exactly_one_reference_event_per_placed_claim(client):
+    project_id, interview_id = _private_project_with_claim(client)
+    second = client.post(
+        f"/speak/interviews/{interview_id}/claims",
+        json={"text": "She also funded the reading room."},
+    )
+    assert second.status_code == 201
+    result = client.post(
+        f"/speak/projects/{project_id}/draft",
+        headers={"Idempotency-Key": "two-claim-draft"},
+        json={"public": False},
+    )
+    assert result.status_code == 200
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        claim_ids = {
+            row[0]
+            for row in con.execute(
+                "SELECT source_block_id FROM outline_blocks "
+                "WHERE source_block_kind = 'speak_claim'"
+            ).fetchall()
+        }
+    events = _speak_to_write_events()
+    assert len(events) == len(claim_ids) == 2
+    assert {event["payload"]["entity_id"] for event in events} == claim_ids
+    assert all("text" not in event["payload"] for event in events)
+
+
+def test_draft_command_refuses_reuse_and_disabled_events_before_mutation(client, monkeypatch):
+    project_id, _ = _private_project_with_claim(client)
+    path = f"/speak/projects/{project_id}/draft"
+    headers = {"Idempotency-Key": "fixed-draft"}
+    assert client.post(path, headers=headers, json={"public": False}).status_code == 200
+    assert client.post(path, headers=headers, json={"public": True}).status_code == 409
+
+    other_project, _ = _private_project_with_claim(client)
+    monkeypatch.setenv("ANTIEK_EVENTS_DISABLED", "true")
+    with pytest.raises(RuntimeError, match="event persistence is disabled"):
+        client.post(
+            f"/speak/projects/{other_project}/draft",
+            headers={"Idempotency-Key": "disabled-draft"},
+            json={"public": False},
+        )
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute(
+            "SELECT count(*) FROM deliverables WHERE title = 'Biography'"
+        ).fetchone()[0] == 1
 
 
 # ── SPR-11 — the biography TEMPLATE composition, end-to-end ──────────────

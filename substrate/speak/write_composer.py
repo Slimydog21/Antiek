@@ -53,9 +53,16 @@ class WriteOutlineComposer:
     """``contracts.OutlineComposer`` backed by Write's canonical
     ``outline_blocks`` layer (``substrate.write.place_block``)."""
 
-    def __init__(self, con: Any, *, investigation_id: str = "__operator__"):
+    def __init__(
+        self,
+        con: Any,
+        *,
+        investigation_id: str = "__operator__",
+        emit_events: bool = True,
+    ):
         self.con = con
         self.investigation_id = investigation_id
+        self.emit_events = emit_events
 
     def compose(self, *, deliverable_id: str, section_title: str, blocks: list[OutlineBlock]) -> str:
         from substrate.graph.ops import insert_section
@@ -88,6 +95,7 @@ class WriteOutlineComposer:
                     "source_tier": b.source_tier,
                 },
                 on_conflict="ignore",
+                emit_event=self.emit_events,
             )
             idx += 1
         return section_id

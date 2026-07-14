@@ -241,21 +241,75 @@ export interface AssembledDraft {
   excludedCount: number;
 }
 
+const pendingDraftCommands = new Map<string, string>();
+const inFlightDrafts = new Map<string, Promise<AssembledDraft>>();
+const DRAFT_COMMAND_PREFIX = "antiek:speak-draft:";
+
+function draftCommand(key: string): string {
+  const inMemory = pendingDraftCommands.get(key);
+  if (inMemory) return inMemory;
+  try {
+    const stored = globalThis.localStorage?.getItem(`${DRAFT_COMMAND_PREFIX}${key}`);
+    if (stored) return stored;
+  } catch {
+    // A restricted browser still retains same-tab retry identity in memory.
+  }
+  return crypto.randomUUID();
+}
+
+function persistDraftCommand(key: string, commandId: string | null): void {
+  if (commandId) pendingDraftCommands.set(key, commandId);
+  else pendingDraftCommands.delete(key);
+  try {
+    const storageKey = `${DRAFT_COMMAND_PREFIX}${key}`;
+    if (commandId) globalThis.localStorage?.setItem(storageKey, commandId);
+    else globalThis.localStorage?.removeItem(storageKey);
+  } catch {
+    // The server remains authoritative; storage only extends retry identity.
+  }
+}
+
 /**
  * Assemble the biography draft from the corroborated voices. Throws on a
  * no-key / engine failure (the caller shows AIActionFailure) — there is no
  * fabricated-biography path.
  */
-export async function assembleDraft(id: string, isPublic: boolean): Promise<AssembledDraft> {
+async function executeDraftCommand(
+  id: string,
+  isPublic: boolean,
+  logicalCommand: string,
+): Promise<AssembledDraft> {
+  const commandId = draftCommand(logicalCommand);
+  persistDraftCommand(logicalCommand, commandId);
   const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/draft`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": commandId,
+    },
     body: JSON.stringify({ public: isPublic }),
   });
-  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  if (!resp.ok) {
+    if (resp.status >= 400 && resp.status < 500) {
+      persistDraftCommand(logicalCommand, null);
+    }
+    throw new Error(`HTTP ${resp.status}`);
+  }
   const data = await resp.json();
+  persistDraftCommand(logicalCommand, null);
   const excluded = Array.isArray(data.excluded_claim_ids) ? data.excluded_claim_ids.length : 0;
   return { prose: typeof data.prose_text === "string" ? data.prose_text : "", excludedCount: excluded };
+}
+
+export function assembleDraft(id: string, isPublic: boolean): Promise<AssembledDraft> {
+  const logicalCommand = JSON.stringify([id, isPublic]);
+  const existing = inFlightDrafts.get(logicalCommand);
+  if (existing) return existing;
+  const request = executeDraftCommand(id, isPublic, logicalCommand).finally(() => {
+    inFlightDrafts.delete(logicalCommand);
+  });
+  inFlightDrafts.set(logicalCommand, request);
+  return request;
 }
 
 /**
