@@ -63,6 +63,8 @@ class EpubLimits:
     actually fires."""
 
     max_entries: int = 512
+    max_manifest_items: int = 1024
+    max_spine_items: int = 1024
     max_entry_bytes: int = 10 * 1024 * 1024
     max_total_bytes: int = 64 * 1024 * 1024
     # Ratio guard: entries larger than ratio_floor_bytes (uncompressed) whose
@@ -253,19 +255,38 @@ def _first_text(root: ET.Element, tag: str) -> str | None:
     return text or None
 
 
-def _spine_hrefs(root: ET.Element, opf_dir: str) -> list[str]:
+def _spine_hrefs(root: ET.Element, opf_dir: str, limits: EpubLimits) -> list[str]:
     manifest: dict[str, tuple[str, str]] = {}
-    for item in root.findall(f".//{{{_OPF_NS}}}manifest/{{{_OPF_NS}}}item"):
+    manifest_items = root.findall(f".//{{{_OPF_NS}}}manifest/{{{_OPF_NS}}}item")
+    if len(manifest_items) > limits.max_manifest_items:
+        raise ZipBombSuspectedError(
+            f"manifest has {len(manifest_items)} items; "
+            f"max_manifest_items={limits.max_manifest_items}"
+        )
+    for item in manifest_items:
         item_id = item.get("id")
         href = item.get("href")
         media_type = item.get("media-type", "")
         if item_id and href:
+            if item_id in manifest:
+                raise MalformedEpubError(f"duplicate manifest id {item_id!r}")
             manifest[item_id] = (href, media_type)
     hrefs: list[str] = []
-    for itemref in root.findall(f".//{{{_OPF_NS}}}spine/{{{_OPF_NS}}}itemref"):
+    spine_items = root.findall(f".//{{{_OPF_NS}}}spine/{{{_OPF_NS}}}itemref")
+    if len(spine_items) > limits.max_spine_items:
+        raise ZipBombSuspectedError(
+            f"spine has {len(spine_items)} items; "
+            f"max_spine_items={limits.max_spine_items}"
+        )
+    seen_idrefs: set[str] = set()
+    seen_hrefs: set[str] = set()
+    for itemref in spine_items:
         idref = itemref.get("idref")
         if not idref:
             continue
+        if idref in seen_idrefs:
+            raise MalformedEpubError(f"duplicate spine idref {idref!r}")
+        seen_idrefs.add(idref)
         if idref not in manifest:
             raise MalformedEpubError(f"spine idref {idref!r} not in manifest")
         href, media_type = manifest[idref]
@@ -274,6 +295,9 @@ def _spine_hrefs(root: ET.Element, opf_dir: str) -> list[str]:
             continue
         resolved = posixpath.normpath(posixpath.join(opf_dir, unquote(href)))
         _check_member_name(resolved)
+        if resolved in seen_hrefs:
+            raise MalformedEpubError(f"duplicate spine target {resolved!r}")
+        seen_hrefs.add(resolved)
         hrefs.append(resolved)
     return hrefs
 
@@ -319,7 +343,7 @@ def read_epub(source: EpubSource, *, limits: EpubLimits | None = None) -> EpubBo
         title = _first_text(opf_root, "title")
         author = _first_text(opf_root, "creator")
         chapters: list[EpubChapter] = []
-        for href in _spine_hrefs(opf_root, posixpath.dirname(opf_path)):
+        for href in _spine_hrefs(opf_root, posixpath.dirname(opf_path), limits):
             if href not in names:
                 raise MalformedEpubError(f"spine references missing member {href!r}")
             xhtml = reader.read_text(href)

@@ -320,6 +320,52 @@ def test_dangling_spine_ref_fails_closed() -> None:
         )
 
 
+def test_spine_reference_budget_fails_before_repeated_chapter_reads() -> None:
+    refs = "\n".join('    <itemref idref="ch0"/>' for _ in range(3))
+    opf = _opf(["ch1.xhtml"]).replace(
+        '    <itemref idref="ch0"/>',
+        refs,
+    )
+    with pytest.raises(ZipBombSuspectedError, match="max_spine_items=2"):
+        convert_epub_to_antiek_html(
+            _build_epub([_DEFAULT_CHAPTERS[0]], opf_xml=opf),
+            limits=EpubLimits(max_spine_items=2),
+        )
+
+
+def test_duplicate_spine_reference_fails_closed() -> None:
+    opf = _opf(["ch1.xhtml"]).replace(
+        '    <itemref idref="ch0"/>',
+        '    <itemref idref="ch0"/>\n    <itemref idref="ch0"/>',
+    )
+    with pytest.raises(MalformedEpubError, match="duplicate spine idref"):
+        convert_epub_to_antiek_html(_build_epub([_DEFAULT_CHAPTERS[0]], opf_xml=opf))
+
+
+def test_manifest_item_budget_fails_closed() -> None:
+    repeated = "\n".join(
+        f'    <item id="extra{i}" href="extra{i}.xhtml" '
+        'media-type="application/xhtml+xml"/>'
+        for i in range(3)
+    )
+    opf = _opf(["ch1.xhtml"]).replace("  </manifest>", repeated + "\n  </manifest>")
+    with pytest.raises(ZipBombSuspectedError, match="max_manifest_items=2"):
+        convert_epub_to_antiek_html(
+            _build_epub([_DEFAULT_CHAPTERS[0]], opf_xml=opf),
+            limits=EpubLimits(max_manifest_items=2),
+        )
+
+
+def test_duplicate_manifest_id_fails_closed() -> None:
+    duplicate = (
+        '    <item id="ch0" href="other.xhtml" '
+        'media-type="application/xhtml+xml"/>'
+    )
+    opf = _opf(["ch1.xhtml"]).replace("  </manifest>", duplicate + "\n  </manifest>")
+    with pytest.raises(MalformedEpubError, match="duplicate manifest id"):
+        convert_epub_to_antiek_html(_build_epub([_DEFAULT_CHAPTERS[0]], opf_xml=opf))
+
+
 def test_drm_locked_fails_closed_never_bypassed() -> None:
     with pytest.raises(DrmLockedError):
         convert_epub_to_antiek_html(_build_epub(drm=True))

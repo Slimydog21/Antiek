@@ -358,10 +358,9 @@ def is_trusted_sanitized(metadata: Mapping[str, Any] | str | None) -> bool:
     already-parsed mapping); anything missing, corrupt, or unstamped is
     UNTRUSTED — deny by default, same posture as ``serve_guard``.
 
-    The version key must be present and non-empty (auditability) but is NOT
-    equality-checked against the current SANITIZER_VERSION: rows sanitized by
-    an older allowlist stay servable until an operator re-sanitizes them; the
-    pinned version exists so exactly that audit is possible.
+    The version must equal the current allowlist version. Older or unknown
+    sanitizer contracts remain readable as escaped text until an operator
+    re-sanitizes and re-stamps the stored body.
     """
     parsed: Mapping[str, Any]
     if metadata is None:
@@ -378,8 +377,7 @@ def is_trusted_sanitized(metadata: Mapping[str, Any] | str | None) -> bool:
         parsed = metadata
     if parsed.get(CONTENT_SANITIZED_KEY) is not True:
         return False
-    version = parsed.get(SANITIZER_VERSION_KEY)
-    return isinstance(version, str) and bool(version.strip())
+    return parsed.get(SANITIZER_VERSION_KEY) == SANITIZER_VERSION
 
 
 def strip_trust_markers(metadata: Mapping[str, Any]) -> dict[str, Any]:

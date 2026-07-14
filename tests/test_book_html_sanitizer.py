@@ -354,11 +354,12 @@ def test_trusted_predicate_denies_by_default(metadata: object) -> None:
     assert not is_trusted_sanitized(metadata)  # type: ignore[arg-type]
 
 
-def test_trusted_predicate_accepts_older_versions() -> None:
-    """A version bump must not brick previously sanitized rows; the pinned
-    version exists for audit, not as an equality gate."""
-    assert is_trusted_sanitized(
+def test_trusted_predicate_rejects_older_and_unknown_versions() -> None:
+    assert not is_trusted_sanitized(
         {CONTENT_SANITIZED_KEY: True, SANITIZER_VERSION_KEY: "books-allowlist/0.9.0"}
+    )
+    assert not is_trusted_sanitized(
+        {CONTENT_SANITIZED_KEY: True, SANITIZER_VERSION_KEY: "forged-version"}
     )
 
 

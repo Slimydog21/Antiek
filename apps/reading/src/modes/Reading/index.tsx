@@ -181,9 +181,9 @@ export default function BookReader() {
     (_range: Range, _text: string): SelectionProvenance => ({
       documentId,
       chunkId: representativeChunkId,
-      servable: ownerReadable,
+      servable: book?.servable_full_text ?? false,
     }),
-    [documentId, ownerReadable],
+    [documentId, book?.servable_full_text],
   );
 
   const selection = useFloatMenuSelection({
