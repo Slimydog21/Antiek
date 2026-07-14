@@ -117,11 +117,10 @@ def _isolate_db_and_corpus(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_investigation_deposits_synthesis_with_manifest(
-    monkeypatch, app_and_bus, async_client,
+    monkeypatch, async_client,
 ):
     """A completed investigation deposits a syntheses row + a non-empty
     substrate manifest that joins to a real fixture document."""
-    _, bus = app_and_bus
     inv = "inv-spr03-deposit"
     monkeypatch.setattr(
         "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
@@ -145,7 +144,7 @@ async def test_investigation_deposits_synthesis_with_manifest(
         async_client, investigation_id=inv,
         question="Is PsiQuantum's photonic quantum roadmap defensible?",
     )
-    terminal = await _await_terminal(bus, inv, timeout=30.0)
+    terminal = await _await_terminal(inv, timeout=30.0)
     assert terminal is not None, "no terminal event landed"
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
 
