@@ -42,7 +42,10 @@ inspected active-wave matrix is retained separately under
 `docs/evidence/werner-arcade-authored-field/` as human contrast evidence, not
 as a false deterministic regression oracle. The awaited Storybook `play`
 lifecycle refuses to complete until the validated backdrop readiness marker
-exists, closing the remote decode race. Production game
+exists. Backdrop readiness also sends a redraw-only token to `ArcadeMount`,
+which invokes `render` against the existing context without re-running
+`init`, replacing the cartridge, or changing game state. A fresh scoped local
+run then reported exact zero difference at 768/1024/1280. Production game
 initialization, focus and input do not wait on visual proof instrumentation.
 SPR-19 is now counted as implemented. The existing feature flag remains
 production-default-off; this transport grants no deployment authority.

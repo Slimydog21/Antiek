@@ -39,6 +39,7 @@ export default function ResearchWaitArcadeGame() {
         cartridge={cartridge}
         width={480}
         height={300}
+        redrawToken={backdropReady ? 1 : 0}
         testId="research-wait-arcade-canvas"
       />
     </div>

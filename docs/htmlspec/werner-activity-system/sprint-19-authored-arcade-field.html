@@ -4,7 +4,7 @@
 <section><h2>Acceptance gates</h2><ol>
 <li>One bundled, opaque, exact 480 × 300 runtime plate contains environment only: no character, target, fort, HUD, text, icon, control, weapon, gore, or false interactable.</li>
 <li>Pre-load, error, invalid dimensions and teardown preserve the complete procedural fallback.</li>
-<li>Successful load changes only a mutable visual reference; it never recreates the cartridge, resets state, delays focus/input, or starts network/runtime generation.</li>
+<li>Successful load installs a mutable visual reference and requests one redraw against the existing context; it never recreates the cartridge, reruns initialization, resets state, delays focus/input, or starts network/runtime generation.</li>
 <li>The plate is clipped to <code>x=28..480</code>, <code>y=20..272</code>; fort, traces, HUD, status and targets repaint afterward from code.</li>
 <li>Logic, spawn, waves, score, lives, hitboxes, cursor suspension, research eligibility, reduced-motion exclusion and teardown remain byte-for-byte behaviorally unchanged.</li>
 <li>Asset prompt, tool identity, generation call/thread, hashes and deterministic crop/resize/encode recipe are recorded.</li>

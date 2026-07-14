@@ -11,6 +11,8 @@ export interface ArcadeMountProps {
   seed?: number;
   reducedMotion?: boolean;
   className?: string;
+  /** Repaint the current state without reinitializing the cartridge. */
+  redrawToken?: number;
   /** data-testid for shell / wait-host assertions */
   testId?: string;
 }
@@ -26,9 +28,11 @@ export function ArcadeMount({
   seed = 1,
   reducedMotion = false,
   className,
+  redrawToken,
   testId = "arcade-mount",
 }: ArcadeMountProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const renderNowRef = useRef<(() => void) | null>(null);
   const bestRef = useRef(0);
   const instructionsId = useId();
 
@@ -130,6 +134,7 @@ export function ArcadeMount({
     };
 
     cartridge.init(ctx);
+    renderNowRef.current = () => cartridge.render(c2d, ctx);
     loop = createArcadeLoop({
       cartridge,
       ctx,
@@ -140,6 +145,7 @@ export function ArcadeMount({
     loop.start();
 
     return () => {
+      renderNowRef.current = null;
       loop?.stop();
       cartridge.teardown();
       for (const pointerId of capturedPointers) {
@@ -157,6 +163,10 @@ export function ArcadeMount({
       canvas.removeEventListener("pointercancel", onPointerUp);
     };
   }, [cartridge, width, height, seed, reducedMotion]);
+
+  useEffect(() => {
+    if (redrawToken !== undefined) renderNowRef.current?.();
+  }, [redrawToken]);
 
   return (
     <>
