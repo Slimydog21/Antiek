@@ -2,6 +2,7 @@ import type { CSSProperties } from "react";
 
 import wernerHeadTilt from "./poses/werner_head_tilt_v1_transparent.png";
 import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
+import wernerStationFishing from "./poses/werner_station_fishing_v1_transparent.png";
 import wernerTobogganingBody from "./poses/werner_tobogganing_body_v2_transparent.png";
 import wernerWaking from "./poses/werner_waking_v1_transparent.png";
 
@@ -16,10 +17,17 @@ import wernerWaking from "./poses/werner_waking_v1_transparent.png";
  * ChatGPT Image source (SPR-23). Only the body component is used — speed
  * streaks, snow puffs, and ground shadow from the source are separated into
  * code-native SVG/CSS in WernerTobogganSpinner.
+ *
+ * `stationFishing` (SPR-24) is the deterministic station body: an exact,
+ * identity-preserving crop of canonical Werner with complete attached feet
+ * and flippers, but no rod, line, hook, fish, snow, shadow, background, text,
+ * or motion marks. It replaces the vector limb overlay (feet + flippers SVG)
+ * that was misregistered against the raster silhouette.
  */
 const AUTHORED_POSE = {
   headTilt: wernerHeadTilt,
   sleeping: wernerSleeping,
+  stationFishing: wernerStationFishing,
   tobogganing: wernerTobogganingBody,
   waking: wernerWaking,
 } as const;

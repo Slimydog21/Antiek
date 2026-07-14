@@ -13,8 +13,9 @@
  *   emotes       — the emote vocabulary mapped onto existing animated marks
  *   choreography — the PRODUCT_ACTIVATE → waddle-to-control listener (SPR-10),
  *                  plus the opt-in `data-werner-target` click path (SPR-10 M4)
- *   WernerRig    — the vector WALK-CYCLE rig (SPR-06 M1): feet + flippers that
- *                  animate off the existing walk signal (no second motion source)
+ *   WernerRig    — the labelled station rig (SPR-06 M1 → SPR-24): code rod behind
+ *                  authored body, code line/fish foreground, no vector limbs (feet
+ *                  + flippers removed; their geometry is in the authored PNG)
  *
  * The WERNER-ICE reel (pursuit integrator + reel/roam constants) was removed
  * with the 2026-07-02 fixed-station rework — Werner no longer chases the cursor;
