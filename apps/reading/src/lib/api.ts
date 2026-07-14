@@ -1179,6 +1179,95 @@ export interface ResearchArtifactExportResponse {
   event_id: string | null;
 }
 
+export type InvestigationPromotionGate =
+  | "status"
+  | "recommendation"
+  | "no_source_nodes"
+  | "all_dangling";
+
+export interface InvestigationPromotionResponse {
+  deliverable_id: string;
+  section_id: string;
+  block_count: number;
+  dangling_count: number;
+  source_node_count: number;
+  /** Deprecated server compatibility field; promotion eligibility is conveyed
+   * by the typed 409 refusal rather than a successful insufficient draft. */
+  insufficient_evidence: boolean;
+  synthesis_id: string | null;
+  synthesis_status: string | null;
+  synthesis_recommendation: string | null;
+}
+
+export type InvestigationPromotionFailure =
+  | { kind: "no_synthesis"; reason: string }
+  | {
+      kind: "not_promotable";
+      reason: string;
+      gate_failed: InvestigationPromotionGate;
+    }
+  | { kind: "unknown"; reason: string | null };
+
+/** Start a provenance-preserving Write deliverable from the authoritative
+ * completed synthesis. The server owns every eligibility decision. */
+export async function promoteInvestigationToWrite(
+  investigationId: string,
+): Promise<InvestigationPromotionResponse> {
+  const resp = await apiFetch(`${API_BASE}/write/deliverables/from-investigation`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      investigation_id: investigationId,
+      deliverable_kind: "research_memo",
+    }),
+  });
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /write/deliverables/from-investigation failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
+/** Decode only the closed 404/409 promotion contract. Unknown envelopes stay
+ * unknown so UI copy never guesses why evidence admission refused a draft. */
+export function classifyInvestigationPromotionFailure(
+  error: unknown,
+): InvestigationPromotionFailure {
+  if (!(error instanceof ApiError)) return { kind: "unknown", reason: null };
+  try {
+    const envelope = JSON.parse(error.body) as { detail?: unknown };
+    const detail = envelope.detail;
+    if (typeof detail !== "object" || detail === null) {
+      return { kind: "unknown", reason: null };
+    }
+    const value = detail as Record<string, unknown>;
+    const reason = typeof value.reason === "string" ? value.reason : "";
+    if (error.status === 404 && value.error === "no_synthesis" && reason) {
+      return { kind: "no_synthesis", reason };
+    }
+    if (
+      error.status === 409 &&
+      value.error === "not_promotable" &&
+      reason &&
+      ["status", "recommendation", "no_source_nodes", "all_dangling"].includes(
+        String(value.gate_failed),
+      )
+    ) {
+      return {
+        kind: "not_promotable",
+        reason,
+        gate_failed: value.gate_failed as InvestigationPromotionGate,
+      };
+    }
+  } catch {
+    return { kind: "unknown", reason: null };
+  }
+  return { kind: "unknown", reason: null };
+}
+
 /** GET /research/{id}/artifact/blocks — Lego refs for Write outline drops. */
 export async function getResearchArtifactBlocks(
   investigationId: string,

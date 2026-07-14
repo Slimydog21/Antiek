@@ -17,14 +17,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import type { DistilledNode } from "../../lib/api";
 
-const { getDistillationMock, challengeNoteMock } = vi.hoisted(() => ({
+const { getDistillationMock, challengeNoteMock, promoteInvestigationToWriteMock } = vi.hoisted(() => ({
   getDistillationMock: vi.fn(),
   challengeNoteMock: vi.fn(),
+  promoteInvestigationToWriteMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, getDistillation: getDistillationMock, challengeNote: challengeNoteMock };
+  return {
+    ...actual,
+    getDistillation: getDistillationMock,
+    challengeNote: challengeNoteMock,
+    promoteInvestigationToWrite: promoteInvestigationToWriteMock,
+  };
 });
 
 import DistillView from "./DistillView";
@@ -38,6 +44,7 @@ afterEach(() => {
   cleanup();
   getDistillationMock.mockReset();
   challengeNoteMock.mockReset();
+  promoteInvestigationToWriteMock.mockReset();
 });
 
 function insight(node_id: string, text: string, extra: Partial<DistilledNode> = {}): DistilledNode {
@@ -134,5 +141,141 @@ describe("DistillView — challenge a completed-research insight (M3 + M4)", () 
     await waitFor(() => expect(screen.getByText("A claim.")).toBeTruthy());
     fireEvent.click(screen.getByText("challenge this"));
     await waitFor(() => expect(screen.getByText(/model provider isn/)).toBeTruthy());
+  });
+});
+
+describe("DistillView completed research to Write handoff", () => {
+  it("promotes once, shows the pending state, and opens the returned deliverable", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "A grounded finding.")],
+      questions: [],
+    });
+    let resolvePromotion!: (value: { deliverable_id: string }) => void;
+    promoteInvestigationToWriteMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePromotion = resolve;
+        }),
+    );
+    const onOpenWrite = vi.fn();
+    render(
+      <DistillView
+        investigationId="inv-1"
+        canStartWriting
+        onOpenWrite={onOpenWrite}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText("Start writing")).toBeTruthy());
+
+    fireEvent.click(screen.getByText("Start writing"));
+    const pending = await screen.findByText("Starting…");
+    expect((pending as HTMLButtonElement).disabled).toBe(true);
+    expect(promoteInvestigationToWriteMock).toHaveBeenCalledTimes(1);
+    expect(promoteInvestigationToWriteMock).toHaveBeenCalledWith("inv-1");
+
+    resolvePromotion({ deliverable_id: "draft/one" });
+    await waitFor(() => expect(onOpenWrite).toHaveBeenCalledWith("draft/one"));
+  });
+
+  it("stays hidden when the event stream has no completed synthesis", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "A finding without a synthesis event.")],
+      questions: [],
+    });
+    render(<DistillView investigationId="inv-1" />);
+    await waitFor(() => expect(screen.getByText(/without a synthesis/)).toBeTruthy());
+    expect(screen.queryByTestId("distill-start-writing")).toBeNull();
+  });
+
+  it("ignores a promotion that resolves after the research route changes", async () => {
+    getDistillationMock.mockImplementation((investigationId: string) =>
+      Promise.resolve({
+        investigation_id: investigationId,
+        insights: [insight(`i-${investigationId}`, `Finding for ${investigationId}.`)],
+        questions: [],
+      }),
+    );
+    let resolvePromotion!: (value: { deliverable_id: string }) => void;
+    promoteInvestigationToWriteMock.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolvePromotion = resolve;
+        }),
+    );
+    const onOpenWrite = vi.fn();
+    const view = render(
+      <DistillView investigationId="inv-1" canStartWriting onOpenWrite={onOpenWrite} />,
+    );
+    await screen.findByText("Finding for inv-1.");
+    fireEvent.click(screen.getByText("Start writing"));
+    await screen.findByText("Starting…");
+
+    view.rerender(
+      <DistillView investigationId="inv-2" canStartWriting onOpenWrite={onOpenWrite} />,
+    );
+    await screen.findByText("Finding for inv-2.");
+    expect(screen.getByText("Start writing")).toBeTruthy();
+
+    resolvePromotion({ deliverable_id: "draft/from-inv-1" });
+    await Promise.resolve();
+    expect(onOpenWrite).not.toHaveBeenCalled();
+  });
+
+  it("renders the closed no-synthesis refusal without navigating", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "A finding.")],
+      questions: [],
+    });
+    promoteInvestigationToWriteMock.mockRejectedValue(
+      new ApiError(
+        "no synthesis",
+        404,
+        JSON.stringify({
+          detail: { error: "no_synthesis", reason: "no completed synthesis" },
+        }),
+      ),
+    );
+    const onOpenWrite = vi.fn();
+    render(
+      <DistillView investigationId="inv-1" canStartWriting onOpenWrite={onOpenWrite} />,
+    );
+    await waitFor(() => expect(screen.getByText("Start writing")).toBeTruthy());
+    fireEvent.click(screen.getByText("Start writing"));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/no completed synthesis/i),
+    );
+    expect(onOpenWrite).not.toHaveBeenCalled();
+  });
+
+  it("names the evidence gate that prevents an ungrounded draft", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "An ungrounded finding.")],
+      questions: [],
+    });
+    promoteInvestigationToWriteMock.mockRejectedValue(
+      new ApiError(
+        "not promotable",
+        409,
+        JSON.stringify({
+          detail: {
+            error: "not_promotable",
+            reason: "synthesis pinned no source nodes",
+            gate_failed: "no_source_nodes",
+          },
+        }),
+      ),
+    );
+    render(
+      <DistillView investigationId="inv-1" canStartWriting onOpenWrite={vi.fn()} />,
+    );
+    await waitFor(() => expect(screen.getByText("Start writing")).toBeTruthy());
+    fireEvent.click(screen.getByText("Start writing"));
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/no grounded source blocks/i),
+    );
   });
 });

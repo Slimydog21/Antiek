@@ -1,9 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   getDistillation,
   challengeNote,
   ApiError,
+  classifyInvestigationPromotionFailure,
+  promoteInvestigationToWrite,
 } from "../../lib/api";
 import type { DistilledNode } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
@@ -46,6 +48,10 @@ export interface DistillViewProps {
   /** Chase an open question (hand off to SPR-04). Optional — when absent, the
    *  question is shown but not chaseable from here. */
   onChase?: (question: DistilledNode) => void;
+  /** The event stream contains a completed synthesis worth asking the server
+   * to promote. The server remains the final evidence/eligibility authority. */
+  canStartWriting?: boolean;
+  onOpenWrite?: (deliverableId: string) => void;
 }
 
 type LoadState =
@@ -53,7 +59,13 @@ type LoadState =
   | { kind: "loaded"; insights: DistilledNode[]; questions: DistilledNode[] }
   | { kind: "error"; reason: string | null };
 
-export default function DistillView({ investigationId, running, onChase }: DistillViewProps) {
+export default function DistillView({
+  investigationId,
+  running,
+  onChase,
+  canStartWriting = false,
+  onOpenWrite,
+}: DistillViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const load = useCallback(async () => {
@@ -139,8 +151,98 @@ export default function DistillView({ investigationId, running, onChase }: Disti
         </Section>
       )}
 
+      {canStartWriting && onOpenWrite ? (
+        <StartWritingAction
+          investigationId={investigationId}
+          onOpenWrite={onOpenWrite}
+        />
+      ) : null}
+
       <ArtifactOutlineShelf investigationId={investigationId} />
     </div>
+  );
+}
+
+type PromotionState =
+  | { kind: "idle" }
+  | { kind: "busy" }
+  | { kind: "error"; message: string };
+
+const PROMOTION_GATE_COPY: Record<string, string> = {
+  status: "The synthesis did not converge, so it cannot start a draft yet.",
+  recommendation: "The synthesis needs more evidence before it can start a draft.",
+  no_source_nodes: "The synthesis has no grounded source blocks to carry into Write.",
+  all_dangling: "The synthesis sources are no longer available to carry into Write.",
+};
+
+function StartWritingAction({
+  investigationId,
+  onOpenWrite,
+}: {
+  investigationId: string;
+  onOpenWrite: (deliverableId: string) => void;
+}) {
+  const [promotion, setPromotion] = useState<PromotionState>({ kind: "idle" });
+  const requestSequence = useRef(0);
+
+  useEffect(() => {
+    requestSequence.current += 1;
+    setPromotion({ kind: "idle" });
+    return () => {
+      requestSequence.current += 1;
+    };
+  }, [investigationId]);
+
+  const startWriting = async () => {
+    if (promotion.kind === "busy") return;
+    const request = ++requestSequence.current;
+    setPromotion({ kind: "busy" });
+    try {
+      const result = await promoteInvestigationToWrite(investigationId);
+      if (request !== requestSequence.current) return;
+      onOpenWrite(result.deliverable_id);
+    } catch (error) {
+      if (request !== requestSequence.current) return;
+      const failure = classifyInvestigationPromotionFailure(error);
+      const message =
+        failure.kind === "no_synthesis"
+          ? "This research has no completed synthesis to write from."
+          : failure.kind === "not_promotable"
+            ? PROMOTION_GATE_COPY[failure.gate_failed]
+            : "Couldn’t start a draft from this research. Try again.";
+      setPromotion({ kind: "error", message });
+    }
+  };
+
+  return (
+    <section
+      className="rounded-md border border-rule bg-ice-1 px-3 py-3 dark:border-charcoal-1 dark:bg-charcoal-2"
+      data-testid="distill-start-writing"
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-serif text-sm text-ink dark:text-bright">
+            Turn this research into a draft
+          </h3>
+          <p className="mt-0.5 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+            Carry the synthesis and its grounded blocks into Write with provenance intact.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => void startWriting()}
+          disabled={promotion.kind === "busy"}
+          className="rounded border border-ink/30 px-3 py-1.5 text-[11px] font-mono transition-colors hover:bg-ink/5 disabled:cursor-wait disabled:opacity-60 dark:border-bright/30"
+        >
+          {promotion.kind === "busy" ? "Starting…" : "Start writing"}
+        </button>
+      </div>
+      {promotion.kind === "error" ? (
+        <p className="mt-2 text-[11px] font-mono text-emperor" role="alert">
+          {promotion.message}
+        </p>
+      ) : null}
+    </section>
   );
 }
 

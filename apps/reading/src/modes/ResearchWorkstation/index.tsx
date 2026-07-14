@@ -1,6 +1,6 @@
 import { capabilityGuidanceLinks } from "../../workspace/capabilityGuidanceLinks";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import { CollectiveResearchPanel } from "../../components/engagement/CollectiveResearchPanel";
 import { ResearchContextPanel } from "../../components/engagement/ResearchContextPanel";
@@ -120,6 +120,7 @@ export default function ResearchWorkstation() {
 
 function InvestigationCenter({ investigationId }: { investigationId: string }) {
   const investigation = useInvestigation(investigationId);
+  const navigate = useNavigate();
   const centerRef = useRef<HTMLDivElement>(null);
   const openPanel = useWorkspace((s) => s.open);
 
@@ -201,6 +202,12 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
     },
     [openPanel, investigationId],
   );
+  const onOpenWrite = useCallback(
+    (deliverableId: string) => {
+      navigate(`/write/${encodeURIComponent(deliverableId)}`);
+    },
+    [navigate],
+  );
 
   if (investigation.status === "loading") {
     return (
@@ -245,7 +252,11 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       ref={centerRef}
       className="h-full overflow-y-auto relative"
     >
-      <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
+      <CenterContent
+        investigation={investigation}
+        onChaseQuestion={onChaseQuestion}
+        onOpenWrite={onOpenWrite}
+      />
       {/* Residual (age): dual-gate prep deep-links (never enable injectors). */}
       <nav
         className="border-t border-rule px-4 py-2 flex flex-wrap gap-3 text-[11px] font-mono dark:border-charcoal-1"
@@ -362,12 +373,14 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
 function CenterContent({
   investigation,
   onChaseQuestion,
+  onOpenWrite,
 }: {
   investigation: InvestigationState;
   onChaseQuestion: (q: {
     text: string;
     reserved_child_investigation_id?: string | null;
   }) => void;
+  onOpenWrite: (deliverableId: string) => void;
 }) {
   if (
     investigation.status === "completed" ||
@@ -387,6 +400,8 @@ function CenterContent({
             investigationId={investigation.id}
             running={false}
             onChase={onChaseQuestion}
+            canStartWriting={Boolean(synth)}
+            onOpenWrite={onOpenWrite}
           />
         </div>
         {/* SPR-09: the §7 daemon's scored open questions, surfaced beside the
