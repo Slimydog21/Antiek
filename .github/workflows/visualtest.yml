@@ -50,6 +50,16 @@ jobs:
       - name: Build Storybook
         run: npm run build-storybook
 
+      - name: Gate authored arcade field against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: deepresearch-research-wait-arcade--playing
+        run: |
+          npx lost-pixel
+          if find .lostpixel/diff -type f -print -quit | grep -q .; then
+            echo "::error::Authored arcade field differs from its canonical baselines"
+            exit 1
+          fi
+
       - name: Run Lost-Pixel against committed baselines (informational)
         # BLOCKING (AGH SPR-04 G2): the reconsider-if that made this
         # informational — "baselines committed under
@@ -64,11 +74,6 @@ jobs:
         # baselines. If this PR's own run reds, the committed baselines are
         # stale and need an operator re-approval (an honest signal, not a
         # reason to re-swallow).
-        run: npx lost-pixel
-
-      - name: Gate authored arcade field against its canonical baselines
-        env:
-          LOSTPIXEL_STORY_ID: deepresearch-research-wait-arcade--playing
         run: npx lost-pixel
 
       - name: Upload diff artifacts on failure
