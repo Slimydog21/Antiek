@@ -15,6 +15,7 @@ import {
   emitSourceRead,
   isRead,
 } from "./sourceRead";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner/reactionBus";
 
 afterEach(() => postTypedEventMock.mockClear());
 
@@ -58,10 +59,47 @@ describe("emitSourceRead — single-writer funnel, no body (§9.0)", () => {
     }
   });
 
+  it("reacts only after the source.read write commits", async () => {
+    let resolveCommit!: (value: {
+      event_id: string;
+      action_type: string;
+    }) => void;
+    postTypedEventMock.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveCommit = resolve;
+      }),
+    );
+    const seen: string[] = [];
+    const listener = (event: Event) => {
+      seen.push((event as CustomEvent).detail?.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+
+    const pending = emitSourceRead({
+      documentId: "doc-commit",
+      readingThreadId: "read-doc-commit",
+      dwellMs: 30_000,
+      pageCount: 2,
+    });
+    expect(seen).toEqual([]);
+    resolveCommit({ event_id: "ev-commit", action_type: "source.read" });
+    await pending;
+    expect(seen).toEqual(["source_read_committed"]);
+
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+  });
+
   it("is best-effort — a failed emit never throws into the reader", async () => {
+    const seen: string[] = [];
+    const listener = (event: Event) => {
+      seen.push((event as CustomEvent).detail?.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
     postTypedEventMock.mockRejectedValueOnce(new Error("503"));
     await expect(
       emitSourceRead({ documentId: "d", readingThreadId: "read-d", dwellMs: 40_000, pageCount: 2 }),
     ).resolves.toBeUndefined();
+    expect(seen).toEqual([]);
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
   });
 });

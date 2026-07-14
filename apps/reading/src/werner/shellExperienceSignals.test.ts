@@ -5,6 +5,7 @@ import {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
+  notifySourceReadCommitted,
 } from "./shellExperienceSignals";
 import {
   WERNER_EXPERIENCE_EVENT,
@@ -38,6 +39,13 @@ describe("Werner shell experience edges", () => {
     const capture = captureExperiences();
     notifyShellFailure();
     expect(capture.seen).toEqual(["fail"]);
+    capture.teardown();
+  });
+
+  it("maps persisted reading evidence to one committed-source experience", () => {
+    const capture = captureExperiences();
+    notifySourceReadCommitted();
+    expect(capture.seen).toEqual(["source_read_committed"]);
     capture.teardown();
   });
 
