@@ -27,6 +27,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from substrate.books.takedown import take_down as take_down_book
+
 from .events import (
     SPEAK_TAKEDOWN_REQUESTED,
     SPEAK_TAKEDOWN_REVERSED,
@@ -82,6 +84,27 @@ def request_takedown(
         "WHERE project_id = ? AND served = TRUE",
         [project_id],
     )
+    # Speak publications are materialized as registered HTML Read assets. A
+    # Speak-only flag is insufficient: purge every derived body and close the
+    # shared Read gate in the same write lock.
+    derived_documents = con.execute(
+        "SELECT d.document_id FROM documents d "
+        "JOIN book_assets b ON b.document_id = d.document_id "
+        "WHERE json_extract_string(d.metadata, '$.project_id') = ? "
+        "AND json_extract_string(d.metadata, '$.provenance_class') = 'speak_derived' "
+        "AND COALESCE(b.taken_down, FALSE) = FALSE",
+        [project_id],
+    ).fetchall()
+    for (document_id,) in derived_documents:
+        # The derived chunks contain the same prose and are independently
+        # retrievable. Purge them before mutating the referenced document;
+        # this also avoids DuckDB's update-on-referenced-row limitation.
+        con.execute("DELETE FROM chunks WHERE document_id = ?", [document_id])
+        take_down_book(
+            con,
+            document_id,
+            reason=reason or f"Speak {target_kind} takedown",
+        )
     record_speak_event(
         SPEAK_TAKEDOWN_REQUESTED,
         {"takedown_id": tid, "target_kind": target_kind,

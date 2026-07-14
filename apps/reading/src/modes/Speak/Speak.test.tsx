@@ -24,6 +24,7 @@ const api = vi.hoisted(() => ({
   inviteByEmail: vi.fn(),
   whatEveryoneAgreesOn: vi.fn(),
   assembleDraft: vi.fn(),
+  publishProject: vi.fn(),
 }));
 
 vi.mock("../../lib/speakApi", async (orig) => ({
@@ -50,6 +51,7 @@ beforeEach(() => {
   api.inviteByEmail.mockReset();
   api.whatEveryoneAgreesOn.mockReset();
   api.assembleDraft.mockReset();
+  api.publishProject.mockReset();
   apiFetchMock.mockReset();
   // jsdom clipboard stub
   Object.assign(navigator, { clipboard: { writeText: vi.fn().mockResolvedValue(undefined) } });
@@ -180,15 +182,17 @@ describe("Speak project page", () => {
       id: "p1", name: "Grandma Rosa", willBePublic: true, subjectStatusWord: null,
     });
     api.getEconomics.mockResolvedValue({ splitApplies: true, creatorCarriesCost: false });
-    apiFetchMock.mockResolvedValue({
-      ok: false,
-      status: 409,
-      json: async () => ({ detail: "publishing blocked: legal gate G2 open" }),
+    api.assembleDraft.mockResolvedValue({
+      deliverableId: "dlv-1", prose: "A careful story.", excludedCount: 0,
     });
+    api.publishProject.mockRejectedValue(new Error("publishing blocked: legal gate G2 open"));
     mount();
     await screen.findByText("Grandma Rosa");
+    fireEvent.click(screen.getByRole("button", { name: /assemble the story/i }));
+    await screen.findByText("A careful story.");
     fireEvent.click(screen.getByRole("button", { name: /^settings$/i }));
     fireEvent.click(await screen.findByRole("button", { name: /try to publish/i }));
     expect(await screen.findByText(/legal gate g2 open/i)).toBeTruthy();
+    expect(api.publishProject).toHaveBeenCalledWith("p1", "dlv-1");
   });
 });

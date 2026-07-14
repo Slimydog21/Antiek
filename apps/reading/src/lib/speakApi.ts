@@ -89,6 +89,8 @@ export interface FeedItem {
   id: string;
   name: string;
   voiceCount: number;
+  /** The servable HTML Read asset, absent while this is only public intent. */
+  readerDocumentId: string | null;
 }
 
 const VOICE_STATE: Record<string, VoiceState> = {
@@ -236,6 +238,7 @@ export async function whatEveryoneAgreesOn(id: string): Promise<AgreementPoint[]
 }
 
 export interface AssembledDraft {
+  deliverableId: string;
   prose: string;
   /** Points left out because they aren't corroborated / are contradicted. */
   excludedCount: number;
@@ -298,7 +301,11 @@ async function executeDraftCommand(
   const data = await resp.json();
   persistDraftCommand(logicalCommand, null);
   const excluded = Array.isArray(data.excluded_claim_ids) ? data.excluded_claim_ids.length : 0;
-  return { prose: typeof data.prose_text === "string" ? data.prose_text : "", excludedCount: excluded };
+  return {
+    deliverableId: typeof data.deliverable_id === "string" ? data.deliverable_id : "",
+    prose: typeof data.prose_text === "string" ? data.prose_text : "",
+    excludedCount: excluded,
+  };
 }
 
 export function assembleDraft(id: string, isPublic: boolean): Promise<AssembledDraft> {
@@ -309,6 +316,85 @@ export function assembleDraft(id: string, isPublic: boolean): Promise<AssembledD
     inFlightDrafts.delete(logicalCommand);
   });
   inFlightDrafts.set(logicalCommand, request);
+  return request;
+}
+
+export interface SpeakPublication {
+  served: boolean;
+  documentId: string | null;
+}
+
+const pendingPublishCommands = new Map<string, string>();
+const inFlightPublishes = new Map<string, Promise<SpeakPublication>>();
+const PUBLISH_COMMAND_PREFIX = "antiek:speak-publish:";
+
+function publishCommand(key: string): string {
+  const inMemory = pendingPublishCommands.get(key);
+  if (inMemory) return inMemory;
+  try {
+    const stored = globalThis.localStorage?.getItem(`${PUBLISH_COMMAND_PREFIX}${key}`);
+    if (stored) return stored;
+  } catch {
+    // Same-tab memory remains available when persistent storage is restricted.
+  }
+  return crypto.randomUUID();
+}
+
+function persistPublishCommand(key: string, commandId: string | null): void {
+  if (commandId) pendingPublishCommands.set(key, commandId);
+  else pendingPublishCommands.delete(key);
+  try {
+    const storageKey = `${PUBLISH_COMMAND_PREFIX}${key}`;
+    if (commandId) globalThis.localStorage?.setItem(storageKey, commandId);
+    else globalThis.localStorage?.removeItem(storageKey);
+  } catch {
+    // Persistence improves transport recovery; the receipt remains authoritative.
+  }
+}
+
+async function executePublishCommand(
+  id: string,
+  deliverableId: string,
+  logicalCommand: string,
+): Promise<SpeakPublication> {
+  const commandId = publishCommand(logicalCommand);
+  persistPublishCommand(logicalCommand, commandId);
+  const resp = await apiFetch(`/speak/projects/${encodeURIComponent(id)}/publish`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": commandId,
+    },
+    body: JSON.stringify({ deliverable_id: deliverableId }),
+  });
+  if (!resp.ok) {
+    if (resp.status >= 400 && resp.status < 500) persistPublishCommand(logicalCommand, null);
+    let detail = `HTTP ${resp.status}`;
+    try {
+      const body = await resp.json();
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // Preserve the status fallback for non-JSON failures.
+    }
+    throw new Error(detail);
+  }
+  const data = await resp.json();
+  persistPublishCommand(logicalCommand, null);
+  return {
+    served: Boolean(data.served),
+    documentId: typeof data.document_id === "string" ? data.document_id : null,
+  };
+}
+
+/** Publish one assembled story exactly once across retries and browser reloads. */
+export function publishProject(id: string, deliverableId: string): Promise<SpeakPublication> {
+  const logicalCommand = JSON.stringify([id, deliverableId]);
+  const existing = inFlightPublishes.get(logicalCommand);
+  if (existing) return existing;
+  const request = executePublishCommand(id, deliverableId, logicalCommand).finally(() => {
+    inFlightPublishes.delete(logicalCommand);
+  });
+  inFlightPublishes.set(logicalCommand, request);
   return request;
 }
 
@@ -331,6 +417,7 @@ export async function listPublicFeed(): Promise<FeedItem[]> {
         ? r.title
         : "",
     voiceCount: typeof r.interview_count === "number" ? r.interview_count : 0,
+    readerDocumentId: typeof r.document_id === "string" ? r.document_id : null,
   }));
 }
 

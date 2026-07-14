@@ -122,12 +122,65 @@ def test_full_operator_journey_to_public_publish(client, monkeypatch):
 
     # 10. Publish (gate closed via env) → served as platform_authored, split accrues.
     monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
-    r = client.post(f"/speak/projects/{project_id}/publish", json={"ad_revenue_usd": "100"})
+    r = client.post(
+        f"/speak/projects/{project_id}/publish",
+        headers={"Idempotency-Key": "full-journey-publish"},
+        json={"ad_revenue_usd": "100", "deliverable_id": draft["deliverable_id"]},
+    )
     assert r.status_code == 201, r.text
     pub = r.json()
     assert pub["served"] is True
     assert pub["servability"] == "platform_authored"
     assert len(pub["accrual_lines"]) >= 1
+    document_id = pub["document_id"]
+    assert document_id
+
+    # The handoff is a real HTML-native Read asset, not copied prose in an
+    # event payload or a Speak-only publication row.
+    detail = client.get(f"/books/{document_id}")
+    assert detail.status_code == 200, detail.text
+    full_text = client.get(f"/books/{document_id}/full-text")
+    assert full_text.status_code == 200, full_text.text
+    assert full_text.json()["servable"] is True
+    assert "bakery" in full_text.json()["full_text"]
+    feed_item = next(
+        item for item in client.get("/speak/feed").json()["projects"]
+        if item["project_id"] == project_id
+    )
+    assert feed_item["document_id"] == document_id
+
+    # A replay converges on the same publication, document, accrual and seam.
+    replay = client.post(
+        f"/speak/projects/{project_id}/publish",
+        headers={"Idempotency-Key": "full-journey-publish"},
+        json={"ad_revenue_usd": "100", "deliverable_id": draft["deliverable_id"]},
+    )
+    assert replay.status_code == 201
+    assert replay.json() == pub
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM speak_publications").fetchone()[0] == 1
+        assert con.execute(
+            "SELECT count(*) FROM documents WHERE document_id = ?", [document_id]
+        ).fetchone()[0] == 1
+        assert con.execute(
+            "SELECT count(*) FROM book_assets WHERE document_id = ?", [document_id]
+        ).fetchone()[0] == 1
+    seam_events = [e for e in _all_events() if e["action_type"] == "seam.speak_to_read"]
+    assert len(seam_events) == 1
+    assert seam_events[0]["payload"] == {
+        "action_type": "seam.speak_to_read",
+        "from_workflow": "speak",
+        "to_workflow": "read",
+        "entity_id": document_id,
+        "entity_kind": "servable_entry",
+        "provenance_ref": pub["publication_id"],
+        "terminates": True,
+        "publish_gate_passed": True,
+    }
+    assert "bakery" not in json.dumps(seam_events[0]["payload"])
+    thread = client.get(f"/thread/{document_id}")
+    assert thread.status_code == 200
+    assert [hop["workflow"] for hop in thread.json()["hops"]] == ["speak", "read"]
 
     # 11. Physical-book quote — split economics persist, never fulfilled.
     r = client.post(f"/speak/projects/{project_id}/book-orders",
@@ -136,6 +189,29 @@ def test_full_operator_journey_to_public_publish(client, monkeypatch):
     order = r.json()
     assert order["payer"] == "split"
     assert order["fulfilled"] is False
+
+    # Consent/takedown propagates through the shared Read gate and purges both
+    # materialized full text and derived chunks.
+    taken = client.post(
+        f"/speak/projects/{project_id}/takedowns",
+        json={
+            "target_kind": "subject",
+            "target_id": "the-dad",
+            "reason": "family removal request",
+        },
+    )
+    assert taken.status_code == 201, taken.text
+    after = client.get(f"/books/{document_id}/full-text").json()
+    assert after["servable"] is False
+    assert after["full_text"] is None
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        raw_text, chunk_count = con.execute(
+            "SELECT d.raw_text, (SELECT count(*) FROM chunks c WHERE c.document_id=d.document_id) "
+            "FROM documents d WHERE d.document_id = ?",
+            [document_id],
+        ).fetchone()
+    assert raw_text is None
+    assert chunk_count == 0
 
 
 def _all_events() -> list[dict]:
@@ -160,6 +236,37 @@ def _private_project_with_claim(client: TestClient) -> tuple[str, str]:
         client, project_id, "memory@example.com", "She built the town library."
     )
     return project_id, interview_id
+
+
+def _publishable_public_draft(client: TestClient, *, command: str) -> tuple[str, dict]:
+    project_id = client.post(
+        "/speak/projects",
+        json={
+            "title": "A public life",
+            "subject_ref": "subject-1",
+            "subject_status": "deceased",
+            "publish_intent": "will_be_public",
+        },
+    ).json()["project_id"]
+    claim = "She designed the town's first public garden."
+    _invite_and_attest(client, project_id, "one@example.com", claim, "subject-1")
+    _invite_and_attest(client, project_id, "two@example.com", claim, "subject-1")
+    client.post(f"/speak/projects/{project_id}/corroborate")
+    client.post(
+        f"/speak/projects/{project_id}/subject-consent",
+        json={
+            "subject_ref": "subject-1",
+            "subject_status": "deceased",
+            "consent_granted": False,
+            "rationale": "documented rule",
+        },
+    )
+    draft = client.post(
+        f"/speak/projects/{project_id}/draft",
+        headers={"Idempotency-Key": command},
+        json={"public": True},
+    ).json()
+    return project_id, draft
 
 
 def test_draft_command_converges_blocks_events_and_thread(client):
@@ -404,7 +511,11 @@ def test_publish_refused_when_legal_gate_open(client, monkeypatch):
         "subject_ref": "x", "subject_status": "deceased",
         "consent_granted": False, "rationale": "documented.",
     })
-    r = client.post(f"/speak/projects/{project_id}/publish", json={})
+    r = client.post(
+        f"/speak/projects/{project_id}/publish",
+        headers={"Idempotency-Key": "legal-gate-publish"},
+        json={},
+    )
     assert r.status_code == 409
     assert "legal gate" in r.json()["detail"] or "G2" in r.json()["detail"]
 
@@ -433,10 +544,99 @@ def test_private_publish_not_served(client):
     pid = client.post("/speak/projects", json={
         "title": "Private bio", "publish_intent": "private_never_published",
     }).json()["project_id"]
-    r = client.post(f"/speak/projects/{pid}/publish", json={})
+    r = client.post(
+        f"/speak/projects/{pid}/publish",
+        headers={"Idempotency-Key": "private-publish"},
+        json={},
+    )
     assert r.status_code == 201, r.text
     assert r.json()["served"] is False
     assert r.json()["visibility"] == "private"
+    assert r.json()["document_id"] is None
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute(
+            "SELECT count(*) FROM documents WHERE "
+            "json_extract_string(metadata, '$.provenance_class') = 'speak_derived'"
+        ).fetchone()[0] == 0
+
+
+def test_publish_repairs_lost_seam_append_and_rejects_key_reuse(client, monkeypatch):
+    monkeypatch.setenv("ANTIEK_SPEAK_PUBLIC_PUBLISHING", "1")
+    project_id, draft = _publishable_public_draft(client, command="repair-draft")
+    original = speak_routes.append_event_once
+    calls = 0
+
+    def fail_once(event):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError("lost seam append")
+        return original(event)
+
+    monkeypatch.setattr(speak_routes, "append_event_once", fail_once)
+    path = f"/speak/projects/{project_id}/publish"
+    headers = {"Idempotency-Key": "repair-publish"}
+    body = {"deliverable_id": draft["deliverable_id"]}
+    with pytest.raises(OSError, match="lost seam append"):
+        client.post(path, headers=headers, json=body)
+    repaired = client.post(path, headers=headers, json=body)
+    assert repaired.status_code == 201
+    assert repaired.json()["document_id"]
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM speak_publications").fetchone()[0] == 1
+        assert con.execute(
+            "SELECT count(*) FROM documents WHERE "
+            "json_extract_string(metadata, '$.provenance_class') = 'speak_derived'"
+        ).fetchone()[0] == 1
+    assert len([e for e in _all_events() if e["action_type"] == "seam.speak_to_read"]) == 1
+
+    conflict = client.post(
+        path,
+        headers=headers,
+        json={"deliverable_id": draft["deliverable_id"], "ad_revenue_usd": "1"},
+    )
+    assert conflict.status_code == 409
+
+    newer = client.post(
+        path,
+        headers={"Idempotency-Key": "newer-publish"},
+        json=body,
+    )
+    assert newer.status_code == 201
+    assert newer.json()["document_id"] != repaired.json()["document_id"]
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"]) as con:
+        con.execute(
+            "UPDATE speak_publications SET published_at = CASE publication_id "
+            "WHEN ? THEN TIMESTAMP '2020-01-01' ELSE TIMESTAMP '2021-01-01' END "
+            "WHERE project_id = ?",
+            [repaired.json()["publication_id"], project_id],
+        )
+    feed_item = next(
+        item for item in client.get("/speak/feed").json()["projects"]
+        if item["project_id"] == project_id
+    )
+    assert feed_item["document_id"] == newer.json()["document_id"]
+
+
+def test_publish_refuses_before_mutation_when_event_persistence_is_unavailable(
+    client, monkeypatch
+):
+    project_id = client.post(
+        "/speak/projects", json={"title": "Private", "publish_intent": "private_never_published"}
+    ).json()["project_id"]
+
+    def unavailable():
+        raise RuntimeError("event persistence unavailable")
+
+    monkeypatch.setattr(speak_routes, "require_event_persistence", unavailable)
+    with pytest.raises(RuntimeError, match="event persistence unavailable"):
+        client.post(
+            f"/speak/projects/{project_id}/publish",
+            headers={"Idempotency-Key": "events-disabled"},
+            json={},
+        )
+    with duckdb.connect(os.environ["ANTIEK_DUCKDB_PATH"], read_only=True) as con:
+        assert con.execute("SELECT count(*) FROM speak_publications").fetchone()[0] == 0
 
 
 def _token_from_link(link: str) -> str:

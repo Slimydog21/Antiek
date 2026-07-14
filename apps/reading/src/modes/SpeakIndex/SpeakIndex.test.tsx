@@ -140,7 +140,9 @@ describe("SpeakIndex — the warm door", () => {
     fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
     expect(await screen.findByText(/no public remembrances yet/i)).toBeTruthy();
     // Now a populated feed shows an interview-with / chime-in entry per item.
-    listPublicFeedMock.mockResolvedValue([{ id: "p1", name: "Grandma", voiceCount: 3 }]);
+    listPublicFeedMock.mockResolvedValue([
+      { id: "p1", name: "Grandma", voiceCount: 3, readerDocumentId: null },
+    ]);
     fireEvent.click(screen.getByRole("tab", { name: /people you're remembering/i }));
     fireEvent.click(screen.getByRole("tab", { name: /public remembrances/i }));
     expect(await screen.findByText("Grandma")).toBeTruthy();

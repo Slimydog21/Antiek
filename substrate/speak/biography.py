@@ -188,6 +188,9 @@ def run_deepening(
 @dataclass(frozen=True)
 class Draft:
     prose_text: str
+    # paragraph index → contributing claim block ids; retained for Write X-ray
+    # and for defensible Speak→Read provenance.
+    prose_provenance: dict[int, list[str]]
     cited_interview_ids: tuple[str, ...]
     excluded_claim_ids: tuple[str, ...]            # uncorroborated 3rd-party, public output
     unverified_marked_claim_ids: tuple[str, ...]   # included-but-marked, private draft
@@ -247,6 +250,7 @@ def generate_draft(
             known_block_ids={b.block_id for b in included},
         )
         prose = result.prose_text
+        prose_provenance = result.prose_provenance
     else:
         # Deterministic stub (no live model): assemble cited prose from the
         # block bodies; mark the unverified ones explicitly. Never invent.
@@ -255,11 +259,13 @@ def generate_draft(
             mark = " [unverified]" if b.block_id in unverified_marked else ""
             paragraphs.append(b.body.strip() + mark)
         prose = "\n\n".join(paragraphs)
+        prose_provenance = {index: [block.block_id] for index, block in enumerate(included)}
 
     score, _violations = score_voice_style(prose) if prose.strip() else (1.0, [])
     cited = tuple(sorted({iv for ivs in block_contributors.values() for iv in ivs}))
     return Draft(
         prose_text=prose,
+        prose_provenance=prose_provenance,
         cited_interview_ids=cited,
         excluded_claim_ids=tuple(excluded),
         unverified_marked_claim_ids=tuple(unverified_marked),

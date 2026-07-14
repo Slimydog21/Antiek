@@ -61,6 +61,8 @@ def publish(
     ad_revenue_usd: Decimal = Decimal("0"),
     quality_scores: dict[str, float] | None = None,
     impression_ref: str | None = None,
+    publication_id: str | None = None,
+    emit_events: bool = True,
 ) -> PublishResult:
     """Publish a finished biography per its economics mode.
 
@@ -69,7 +71,7 @@ def publish(
     never served, and routes no contributor split."""
     ensure_speak_schema(con)
     policy = economics_mode.policy_for_project(con, project_id)
-    publication_id = new_publication_id()
+    publication_id = publication_id or new_publication_id()
 
     if policy.publishing == "public":
         # M3 — the full public gate (G2/G3 + subject consent +
@@ -96,6 +98,7 @@ def publish(
             con, project_id=project_id, publication_id=publication_id,
             ad_revenue_usd=ad_revenue_usd, quality_scores=quality_scores,
             impression_ref=impression_ref,
+            emit_event=emit_events,
         )
     else:
         # private-never-published: not served, creator-paid, no split.
@@ -110,13 +113,14 @@ def publish(
         )
         accrual = []
 
-    record_speak_event(
-        SPEAK_PUBLISHED,
-        {"publication_id": publication_id, "visibility": policy.publishing,
-         "served": served, "servability": status.value,
-         "ad_revenue_usd": str(ad_revenue_usd)},
-        project_id=project_id,
-    )
+    if emit_events:
+        record_speak_event(
+            SPEAK_PUBLISHED,
+            {"publication_id": publication_id, "visibility": policy.publishing,
+             "served": served, "servability": status.value,
+             "ad_revenue_usd": str(ad_revenue_usd)},
+            project_id=project_id,
+        )
     return PublishResult(
         publication_id=publication_id,
         visibility="public" if policy.publishing == "public" else "private",

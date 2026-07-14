@@ -43,10 +43,21 @@ from pydantic import BaseModel, Field
 
 from orchestration.interview.orchestrator import ConsentRequired
 from runtime.db_lock import connect_write
+from substrate.books.ingest import register_book
+from substrate.books.model import TocItem
 from substrate.event_log import append_event_once, prepare_typed_event, require_event_persistence
 from substrate.graph import default_db_path, ensure_initialized
-from substrate.graph.ops import content_addressed_id
-from substrate.schemas.events import OutlineBlockPlacedPayload, SeamSpeakToWritePayload
+from substrate.graph.ops import (
+    content_addressed_id,
+    insert_chunk,
+    insert_document,
+    update_section_prose,
+)
+from substrate.schemas.events import (
+    OutlineBlockPlacedPayload,
+    SeamSpeakToReadPayload,
+    SeamSpeakToWritePayload,
+)
 from substrate.speak import (
     biography,
     biography_composition,
@@ -414,6 +425,14 @@ async def public_feed() -> dict:
             "SELECT p.project_id, ip.title, p.subject_ref, p.subject_status, "
             "p.invitation_mode, "
             "(SELECT count(*) FROM interviews i WHERE i.project_id = p.project_id) "
+            ", (SELECT arg_max(d.document_id, sp.published_at) FROM documents d "
+            "JOIN book_assets b ON b.document_id = d.document_id "
+            "JOIN speak_publications sp ON sp.publication_id = "
+            "json_extract_string(d.metadata, '$.publication_id') "
+            "WHERE sp.project_id = p.project_id AND sp.served = TRUE "
+            "AND sp.taken_down = FALSE "
+            "AND json_extract_string(d.metadata, '$.provenance_class') = 'speak_derived' "
+            "AND COALESCE(b.taken_down, FALSE) = FALSE) "
             "FROM speak_projects p "
             "JOIN interview_projects ip ON ip.project_id = p.project_id "
             "WHERE p.publish_intent = 'will_be_public' "
@@ -423,7 +442,8 @@ async def public_feed() -> dict:
         "count": len(rows),
         "projects": [
             {"project_id": r[0], "title": r[1], "subject_ref": r[2],
-             "subject_status": r[3], "invitation_mode": r[4], "interview_count": r[5]}
+             "subject_status": r[3], "invitation_mode": r[4],
+             "interview_count": r[5], "document_id": r[6]}
             for r in rows
         ],
     }
@@ -651,6 +671,14 @@ async def draft(
                 d = biography.generate_draft(
                     con, project_id=project_id, outline=outline, public=req.public
                 )
+                update_section_prose(
+                    con,
+                    section_id=outline.section_id,
+                    prose_text=d.prose_text,
+                    prose_provenance={
+                        str(k): v for k, v in d.prose_provenance.items()
+                    },
+                )
                 response = {
                     "deliverable_id": outline.deliverable_id,
                     "prose_text": d.prose_text,
@@ -742,26 +770,222 @@ async def draft(
     return response
 
 
+_SPEAK_TO_READ_COMMANDS_SQL = """
+CREATE TABLE IF NOT EXISTS speak_to_read_handoff_commands (
+    command_id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    response_json TEXT NOT NULL,
+    seam_event_id TEXT,
+    seam_emitted_at TEXT
+)
+"""
+
+
 @speak_router.post("/projects/{project_id}/publish", status_code=201)
-async def publish(project_id: str, req: PublishRequest) -> dict:
+async def publish(
+    project_id: str,
+    req: PublishRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict:
+    require_event_persistence()
+    command_id = _validated_command_id(idempotency_key)
     ad_revenue = _decimal(req.ad_revenue_usd, "ad_revenue_usd")
-    with _translate(), _write("speak/api:publish") as con:
-        result = publish_mod.publish(
-            con, project_id=project_id, deliverable_id=req.deliverable_id,
-            subject_ref=req.subject_ref, ad_revenue_usd=ad_revenue,
-            quality_scores=req.quality_scores,
+    fingerprint = content_addressed_id(
+        "cmd",
+        "speak-to-read|"
+        + json.dumps(
+            {
+                "project_id": project_id,
+                "deliverable_id": req.deliverable_id,
+                "subject_ref": req.subject_ref,
+                "ad_revenue_usd": str(ad_revenue),
+                "quality_scores": req.quality_scores,
+            },
+            sort_keys=True,
+        ),
+    )
+    with _translate(), _write("speak/api:publish") as con:  # noqa: SIM117
+        with _transaction(con):
+            con.execute(_SPEAK_TO_READ_COMMANDS_SQL)
+            receipt = con.execute(
+                "SELECT fingerprint, response_json, seam_event_id, seam_emitted_at "
+                "FROM speak_to_read_handoff_commands WHERE command_id = ?",
+                [command_id],
+            ).fetchone()
+            if receipt is not None and receipt[0] != fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency-Key was already used for a different publication",
+                )
+            if receipt is None:
+                publication_id = content_addressed_id(
+                    "pub", f"speak-publication|{command_id}"
+                )
+                result = publish_mod.publish(
+                    con,
+                    project_id=project_id,
+                    deliverable_id=req.deliverable_id,
+                    subject_ref=req.subject_ref,
+                    ad_revenue_usd=ad_revenue,
+                    quality_scores=req.quality_scores,
+                    publication_id=publication_id,
+                    emit_events=False,
+                )
+                document_id = None
+                seam_event_id = None
+                seam_emitted_at = None
+                if result.served:
+                    if not req.deliverable_id:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="assemble the story before publishing it",
+                        )
+                    deliverable = con.execute(
+                        "SELECT title FROM deliverables WHERE deliverable_id = ?",
+                        [req.deliverable_id],
+                    ).fetchone()
+                    sections = con.execute(
+                        "SELECT section_id, title, prose_text FROM deliverable_sections "
+                        "WHERE deliverable_id = ? ORDER BY section_index",
+                        [req.deliverable_id],
+                    ).fetchall()
+                    if deliverable is None or not sections or not any(
+                        str(row[2] or "").strip() for row in sections
+                    ):
+                        raise HTTPException(
+                            status_code=409,
+                            detail="assembled story has no publishable prose",
+                        )
+                    claim_counts = con.execute(
+                        "SELECT count(*), count(c.claim_id) FROM outline_blocks b "
+                        "JOIN deliverable_sections s ON s.section_id = b.section_id "
+                        "LEFT JOIN speak_claims c ON c.claim_id = b.source_block_id "
+                        "AND c.project_id = ? "
+                        "WHERE s.deliverable_id = ? "
+                        "AND b.source_block_kind = 'speak_claim'",
+                        [project_id, req.deliverable_id],
+                    ).fetchone()
+                    if claim_counts[0] == 0 or claim_counts[0] != claim_counts[1]:
+                        raise HTTPException(
+                            status_code=409,
+                            detail="assembled story does not belong to this Speak project",
+                        )
+                    document_id = content_addressed_id(
+                        "doc", f"speak-publication|{command_id}"
+                    )
+                    body_parts = [f"# {deliverable[0]}"]
+                    for _section_id, section_title, prose_text in sections:
+                        prose = str(prose_text or "").strip()
+                        if not prose:
+                            continue
+                        if section_title:
+                            body_parts.append(f"## {section_title}")
+                        body_parts.append(prose)
+                    raw_text = "\n\n".join(body_parts)
+                    insert_document(
+                        con,
+                        document_id=document_id,
+                        source_tier=1,
+                        document_type="book",
+                        title=deliverable[0],
+                        investigation_id=f"speak-biography-{project_id}",
+                        raw_text=raw_text,
+                        content_class=result.content_class,
+                        metadata={
+                            "publication_id": publication_id,
+                            "project_id": project_id,
+                            "deliverable_id": req.deliverable_id,
+                            "provenance_class": "speak_derived",
+                            "view_format": "html",
+                        },
+                    )
+                    readable_sections = [
+                        (str(section_title or "Biography"), str(prose_text or "").strip())
+                        for _section_id, section_title, prose_text in sections
+                        if str(prose_text or "").strip()
+                    ]
+                    toc = [
+                        TocItem(
+                            title=section_title,
+                            page_index=chunk_index,
+                        )
+                        for chunk_index, (section_title, _prose) in enumerate(readable_sections)
+                    ]
+                    # Register before inserting chunks: DuckDB cannot update a
+                    # referenced document row once chunk foreign keys exist.
+                    register_book(
+                        con,
+                        document_id=document_id,
+                        content_class=result.content_class,
+                        toc=toc,
+                        page_count=max(1, len(readable_sections)),
+                        pagination_scheme="html_section",
+                        provenance=f"Speak project {project_id}",
+                        license_basis="consent and verification gates passed",
+                    )
+                    for chunk_index, (section_title, prose) in enumerate(readable_sections):
+                        insert_chunk(
+                            con,
+                            chunk_id=content_addressed_id(
+                                "chunk", f"{document_id}|{chunk_index}|{prose}"
+                            ),
+                            document_id=document_id,
+                            chunk_index=chunk_index,
+                            section_path=section_title,
+                            text=prose,
+                        )
+                    seam_event_id = content_addressed_id(
+                        "evt", f"speak-to-read|{command_id}"
+                    )
+                    seam_emitted_at = datetime.now(UTC).isoformat()
+                response = {
+                    "publication_id": result.publication_id,
+                    "document_id": document_id,
+                    "visibility": result.visibility,
+                    "served": result.served,
+                    "servability": result.servability,
+                    "content_class": result.content_class,
+                    "accrual_lines": [
+                        {
+                            "interview_id": line.interview_id,
+                            "ip_holder_id": line.ip_holder_id,
+                            "share_fraction": line.share_fraction,
+                            "amount_usd": str(line.amount_usd),
+                            "slop_gated": line.slop_gated,
+                        }
+                        for line in result.accrual_lines
+                    ],
+                }
+                con.execute(
+                    "INSERT INTO speak_to_read_handoff_commands VALUES (?, ?, ?, ?, ?)",
+                    [
+                        command_id,
+                        fingerprint,
+                        json.dumps(response, sort_keys=True),
+                        seam_event_id,
+                        seam_emitted_at,
+                    ],
+                )
+            else:
+                response = json.loads(receipt[1])
+                seam_event_id, seam_emitted_at = receipt[2], receipt[3]
+
+    if seam_event_id:
+        append_event_once(
+            prepare_typed_event(
+                project_id,
+                SeamSpeakToReadPayload(
+                    entity_id=response["document_id"],
+                    provenance_ref=response["publication_id"],
+                    publish_gate_passed=True,
+                ),
+                event_id=seam_event_id,
+                emitted_at=seam_emitted_at,
+                role="speak_publishing",
+                document_id=response["document_id"],
+            )
         )
-    return {
-        "publication_id": result.publication_id, "visibility": result.visibility,
-        "served": result.served, "servability": result.servability,
-        "content_class": result.content_class,
-        "accrual_lines": [
-            {"interview_id": a.interview_id, "ip_holder_id": a.ip_holder_id,
-             "share_fraction": a.share_fraction, "amount_usd": str(a.amount_usd),
-             "slop_gated": a.slop_gated}
-            for a in result.accrual_lines
-        ],
-    }
+    return response
 
 
 @speak_router.post("/interviews/{interview_id}/grade", status_code=201)

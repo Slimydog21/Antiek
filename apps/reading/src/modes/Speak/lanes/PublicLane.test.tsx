@@ -66,8 +66,8 @@ beforeEach(() => {
 afterEach(cleanup);
 
 const FEED: FeedItem[] = [
-  { id: "p1", name: "Grandma Rosa", voiceCount: 3 },
-  { id: "p2", name: "Uncle Theo", voiceCount: 0 },
+  { id: "p1", name: "Grandma Rosa", voiceCount: 3, readerDocumentId: null },
+  { id: "p2", name: "Uncle Theo", voiceCount: 0, readerDocumentId: null },
 ];
 
 function mount(props: { feedLoading?: boolean; feed?: FeedItem[] } = {}) {
@@ -83,6 +83,15 @@ describe("PublicLane — searchable feed", () => {
     mount();
     expect(screen.getByText("Grandma Rosa")).toBeTruthy();
     expect(screen.getByText("Uncle Theo")).toBeTruthy();
+  });
+
+  it("links only a servable publication into the HTML reader", () => {
+    mount({
+      feed: [{ id: "p1", name: "Grandma Rosa", voiceCount: 3, readerDocumentId: "doc-1" }],
+    });
+    const link = screen.getByRole("link", { name: /read story/i });
+    expect(link.getAttribute("href")).toBe("/read/doc-1");
+    expect(screen.getByText(/published as a readable story/i)).toBeTruthy();
   });
 
   it("filters by name and restores the full list when cleared (M1)", () => {
@@ -139,7 +148,7 @@ describe("PublicLane — the honest G7 locked state (M2)", () => {
 
 describe("PublicLane — the CTA is usable, not a dead end (M3)", () => {
   it("renders an 'Add your memory' action linking to the operator's own /speak/:id (never /login)", () => {
-    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1, readerDocumentId: null }] });
     const cta = screen.getByRole("button", { name: /add your memory/i });
     expect(cta).toBeTruthy();
 
@@ -155,14 +164,14 @@ describe("PublicLane — the CTA is usable, not a dead end (M3)", () => {
   });
 
   it("is honest that open contribution by others is not live", () => {
-    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1, readerDocumentId: null }] });
     expect(screen.getByText(PUBLIC_LANE_LABELS.ctaOperatorOnly)).toBeTruthy();
   });
 });
 
 describe("PublicLane — lifecycle & north-star honesty (M4 + M5)", () => {
   it("labels a feed item intended-public and NEVER claims it is published (M5)", () => {
-    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1 }] });
+    mount({ feed: [{ id: "p9", name: "Aunt May", voiceCount: 1, readerDocumentId: null }] });
     expect(screen.getByText(PUBLIC_LANE_LABELS.intendedPublic)).toBeTruthy();
     // Nothing in the lane claims a project is "published".
     expect(screen.queryByText(/\bpublished\b/i)).toBeNull();

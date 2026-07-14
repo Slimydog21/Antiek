@@ -241,6 +241,7 @@ def accrue_contributions(
     slop_threshold: float = DEFAULT_SLOP_THRESHOLD,
     budget_usd: Decimal | None = None,
     per_interview_cap_usd: Decimal | None = None,
+    emit_event: bool = True,
 ) -> list[AccrualLine]:
     """Accrue each interviewee's share of the 70% contributor slice to
     escrow. Zero-buyer safe: ``ad_revenue_usd == 0`` accrues $0 but still
@@ -329,13 +330,14 @@ def accrue_contributions(
                                  0.0, Decimal("0"), True,
                                  uncapped_amount_usd=Decimal("0")))
 
-    record_speak_event(
-        SPEAK_CONTRIBUTION_ACCRUED,
-        {"publication_id": publication_id, "ad_revenue_usd": str(ad_revenue_usd),
-         "contributor_pool_usd": str(contributor_pool),
-         "n_earning": len(contribution.shares), "n_slop": len(contribution.slop_gated)},
-        project_id=project_id,
-    )
+    if emit_event:
+        record_speak_event(
+            SPEAK_CONTRIBUTION_ACCRUED,
+            {"publication_id": publication_id, "ad_revenue_usd": str(ad_revenue_usd),
+             "contributor_pool_usd": str(contributor_pool),
+             "n_earning": len(contribution.shares), "n_slop": len(contribution.slop_gated)},
+            project_id=project_id,
+        )
     return lines
 
 

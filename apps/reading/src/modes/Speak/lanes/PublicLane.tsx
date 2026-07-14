@@ -148,11 +148,10 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
                 </span>
               </div>
 
-              {/* M5 — lifecycle honesty. The feed lists public-INTENT projects;
-                  FeedItem carries NO "published" flag, so we NEVER claim a
-                  project is published. We label it as intended-public only. */}
+              {/* Lifecycle honesty: intent remains distinct from a servable
+                  publication; only a concrete Read document earns "Read story". */}
               <p className="mt-0.5 font-serif text-[12px] text-ink-mute dark:text-moonlight">
-                {PUBLIC_LANE_LABELS.intendedPublic}
+                {f.readerDocumentId ? "Published as a readable story" : PUBLIC_LANE_LABELS.intendedPublic}
               </p>
 
               {/* M3 — the CTA. PublicLane lives behind RequireAuth, so the
@@ -162,6 +161,11 @@ export default function PublicLane({ feedLoading, feed }: PublicLaneProps) {
                   can contribute now (open public contribution is G7-gated,
                   framed below). No /login link, no 403 button, no dead end. */}
               <div className="mt-2">
+                {f.readerDocumentId && (
+                  <Link className="mr-2" to={`/read/${encodeURIComponent(f.readerDocumentId)}`}>
+                    <LemonButton variant="primary" size="sm">Read story</LemonButton>
+                  </Link>
+                )}
                 <Link to={`/speak/${f.id}`}>
                   <LemonButton variant="secondary" size="sm">
                     Add your memory

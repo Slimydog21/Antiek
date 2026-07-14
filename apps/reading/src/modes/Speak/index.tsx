@@ -12,6 +12,7 @@ import {
   inviteByEmail,
   listVoices,
   makeShareLink,
+  publishProject,
   releasePayout,
   whatEveryoneAgreesOn,
   type AgreementPoint,
@@ -86,6 +87,7 @@ export default function Speak() {
   // Gated-action note (publish / book quote) — shown verbatim, never faked.
   const [actionNote, setActionNote] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [publishedDocumentId, setPublishedDocumentId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!projectId) return;
@@ -107,6 +109,7 @@ export default function Speak() {
   }, [projectId]);
 
   useEffect(() => {
+    setPublishedDocumentId(null);
     void reload();
   }, [reload]);
 
@@ -221,6 +224,31 @@ export default function Speak() {
     [projectId, reload],
   );
 
+  const publish = useCallback(async () => {
+    if (!projectId) return;
+    if (draft.phase !== "ready" || !draft.draft.deliverableId) {
+      setActionNote("Assemble the story before publishing it.");
+      return;
+    }
+    setPublishedDocumentId(null);
+    setActionBusy(true);
+    setActionNote("Publishing…");
+    try {
+      const result = await publishProject(projectId, draft.draft.deliverableId);
+      setPublishedDocumentId(result.documentId);
+      setActionNote(
+        result.served
+          ? "Published as an HTML reading asset."
+          : "Saved privately. It was not shared publicly because publishing is still gated.",
+      );
+      await reload();
+    } catch (e: unknown) {
+      setActionNote(e instanceof Error ? e.message : String(e));
+    } finally {
+      setActionBusy(false);
+    }
+  }, [draft, projectId, reload]);
+
   if (!projectId) {
     return (
       <div className="p-6 font-serif text-[14px] text-ink dark:text-bright">
@@ -271,20 +299,33 @@ export default function Speak() {
         {error && <p className="mb-3 font-mono text-[12px] text-emperor">{error}</p>}
 
         {showSettings ? (
-          <SpeakSettings
-            willBePublic={project?.willBePublic ?? false}
-            subjectStatusWord={project?.subjectStatusWord ?? null}
-            economics={economics}
-            actionNote={actionNote}
-            busy={actionBusy}
-            onPublish={() => void runGated("Publishing", "/publish", {})}
-            onQuoteBook={() =>
-              void runGated("Quote", "/book-orders", { book_format: "paperback", page_count: 200 })
-            }
-            onReleasePayout={(args) =>
-              releasePayout(projectId, { ...args, adRevenueUsd: "0" })
-            }
-          />
+          <>
+            <SpeakSettings
+              willBePublic={project?.willBePublic ?? false}
+              subjectStatusWord={project?.subjectStatusWord ?? null}
+              economics={economics}
+              actionNote={actionNote}
+              busy={actionBusy}
+              onPublish={() => void publish()}
+              onQuoteBook={() =>
+                void runGated("Quote", "/book-orders", {
+                  book_format: "paperback",
+                  page_count: 200,
+                })
+              }
+              onReleasePayout={(args) =>
+                releasePayout(projectId, { ...args, adRevenueUsd: "0" })
+              }
+            />
+            {publishedDocumentId && (
+              <Link
+                className="mt-3 inline-block font-serif text-[13px] text-sun-deep underline dark:text-sun"
+                to={`/read/${encodeURIComponent(publishedDocumentId)}`}
+              >
+                Read the published story →
+              </Link>
+            )}
+          </>
         ) : (
           <>
             {/* 1 · Invite by link */}
