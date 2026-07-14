@@ -31,12 +31,15 @@ from substrate.multimedia.production_registration import (
     register_multimedia_production,
 )
 from substrate.multimedia.read_model import (
+    ApplySteeringPreviewRequest,
     CreateMultimediaDraftRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobList,
-    SteeringRequest,
+    SteeringPreviewConflict,
+    SteeringPreviewRequest,
+    SteeringPreviewResponse,
 )
 
 from .multimedia_local_audible_routes import (
@@ -101,6 +104,11 @@ from .multimedia_visual_generation_routes import (
     multimedia_visual_generation_router,
     multimedia_visual_generation_runtime_from_environment,
 )
+from .multimedia_visual_quality_routes import (
+    get_multimedia_visual_quality_runtime,
+    multimedia_visual_quality_router,
+    multimedia_visual_quality_runtime_from_environment,
+)
 from .multimedia_visual_review_routes import (
     get_multimedia_visual_review_runtime,
     multimedia_visual_review_router,
@@ -120,6 +128,7 @@ multimedia_router.include_router(multimedia_visual_authorization_router)
 multimedia_router.include_router(multimedia_visual_generation_router)
 multimedia_router.include_router(multimedia_visual_candidate_router)
 multimedia_router.include_router(multimedia_visual_review_router)
+multimedia_router.include_router(multimedia_visual_quality_router)
 _STORE = MultimediaAssetStore()
 
 
@@ -205,18 +214,34 @@ def approve_multimedia_dry_run(
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
+@multimedia_router.post(
+    "/assets/{asset_id}/steering-preview", response_model=SteeringPreviewResponse
+)
+def preview_multimedia_steering(
+    asset_id: str,
+    request: SteeringPreviewRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> SteeringPreviewResponse:
+    try:
+        return get_store().preview_steering(asset_id, request, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    except SteeringPreviewConflict as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+
+
 @multimedia_router.post("/assets/{asset_id}/steer", response_model=MultimediaAssetRecord)
 def steer_multimedia_asset(
     asset_id: str,
-    request: SteeringRequest,
+    request: ApplySteeringPreviewRequest,
     operator_id: str = Depends(authenticated_multimedia_operator),
 ) -> MultimediaAssetRecord:
     try:
-        return get_store().apply_steering(asset_id, request, owner_id=operator_id)
+        return get_store().apply_steering_preview(asset_id, request, owner_id=operator_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SteeringPreviewConflict as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
 
 
 @multimedia_router.post("/assets/{asset_id}/hardening", response_model=MultimediaAssetRecord)
@@ -428,6 +453,13 @@ def register_multimedia_routes(app: FastAPI) -> None:
     if visual_review_runtime is not None:
         app.dependency_overrides[get_multimedia_visual_review_runtime] = (
             lambda: visual_review_runtime
+        )
+    visual_quality_runtime = multimedia_visual_quality_runtime_from_environment(
+        store=get_store(), generation_runtime=visual_generation_runtime
+    )
+    if visual_quality_runtime is not None:
+        app.dependency_overrides[get_multimedia_visual_quality_runtime] = (
+            lambda: visual_quality_runtime
         )
 
 

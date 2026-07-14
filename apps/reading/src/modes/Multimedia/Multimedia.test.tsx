@@ -11,13 +11,31 @@ import {
   getMultimediaPlayback,
   getMultimediaReviewedVisualSet,
   listMultimediaAssets,
+  previewMultimediaSteering,
   runMultimediaHardening,
   registerMultimediaProduction,
   produceAuthorizedMultimedia,
   steerMultimediaAsset,
 } from "../../api/multimedia";
-import type { MultimediaAssetRecord } from "../../api/multimedia";
+import type { MultimediaAssetRecord, MultimediaSteeringPreviewReady } from "../../api/multimedia";
 import type { MultimediaPlanWire } from "../../api/multimedia";
+
+vi.mock("./VoiceSteeringInput", () => ({
+  VoiceSteeringInput: ({ value, onChange, onTranscript, onBusyChange, onDiscardTranscript }: {
+    value: string;
+    onChange: (value: string) => void;
+    onTranscript: (value: string) => void;
+    onBusyChange: (value: boolean) => void;
+    onDiscardTranscript: () => void;
+  }) => (
+    <div>
+      <textarea aria-label="Steering prompt" value={value} onChange={(event) => onChange(event.target.value)} />
+      <button type="button" onClick={() => onTranscript("Go deeper on engines.")}>Use voice steer</button>
+      <button type="button" onClick={() => onBusyChange(true)}>Sim capture busy</button>
+      <button type="button" onClick={onDiscardTranscript}>Discard voice</button>
+    </div>
+  ),
+}));
 
 vi.mock("../../api/multimedia", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../api/multimedia")>();
@@ -33,6 +51,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     getMultimediaPlayback: vi.fn(),
     getMultimediaReviewedVisualSet: vi.fn(),
     listMultimediaAssets: vi.fn(),
+    previewMultimediaSteering: vi.fn(),
     runMultimediaHardening: vi.fn(),
     registerMultimediaProduction: vi.fn(),
     produceAuthorizedMultimedia: vi.fn(),
@@ -47,6 +66,7 @@ const mockGet = vi.mocked(getMultimediaAsset);
 const mockPlayback = vi.mocked(getMultimediaPlayback);
 const mockReviewedVisuals = vi.mocked(getMultimediaReviewedVisualSet);
 const mockList = vi.mocked(listMultimediaAssets);
+const mockPreviewSteering = vi.mocked(previewMultimediaSteering);
 const mockHarden = vi.mocked(runMultimediaHardening);
 const mockRegisterProduction = vi.mocked(registerMultimediaProduction);
 const mockProduceAuthorized = vi.mocked(produceAuthorizedMultimedia);
@@ -114,6 +134,54 @@ const steeredRecord: MultimediaAssetRecord = {
   },
   latest_steering_intent: { prompt: "go deeper" },
 };
+
+function readySteeringPreview(prompt: string): MultimediaSteeringPreviewReady {
+  return {
+    status: "ready",
+    asset_id: "mm-1",
+    parent_revision_id: "rev-1",
+    proposed_revision_id: "rev-2",
+    route_policy: "balanced",
+    intent: {
+      steering_event_id: "steer-1",
+      prompt,
+      status: "ready",
+      operations: [{
+        operation_id: "op-1",
+        kind: "deepen",
+        target_kind: "chapter",
+        target_id: "server-mechanism",
+        value: null,
+        reason: "deepen server-mechanism",
+      }],
+      clarifications: [],
+      transcript: null,
+    },
+    operations: [{
+      operation_id: "op-1",
+      kind: "deepen",
+      target_kind: "chapter",
+      target_id: "server-mechanism",
+      value: null,
+      reason: "deepen server-mechanism",
+    }],
+    affected_segment_ids: ["server-mechanism"],
+    segment_reuse: [
+      { segment_id: "server-intro", reused: true, reason: "unaffected", file_ids: ["file-1"], file_sha256s: ["a".repeat(64)] },
+      { segment_id: "server-mechanism", reused: false, reason: "targeted", file_ids: [], file_sha256s: [] },
+    ],
+    changes: [{
+      operation_id: "op-1",
+      target_id: "server-mechanism",
+      changed_segment_ids: ["server-mechanism"],
+      estimated_cost_delta_usd: 0.25,
+      explanation: "targeted segment",
+    }],
+    estimated_cost_delta_usd: 0.25,
+    preview_token: "signed-preview",
+    expires_at_epoch_seconds: 2_000_000_000,
+  };
+}
 
 const hardenedRecord: MultimediaAssetRecord = {
   ...approvedRecord,
@@ -232,6 +300,7 @@ beforeEach(() => {
     },
   });
   mockApprove.mockResolvedValue(approvedRecord);
+  mockPreviewSteering.mockImplementation(async (_assetId, request) => readySteeringPreview(request.prompt));
   mockSteer.mockResolvedValue(steeredRecord);
   mockHarden.mockResolvedValue(hardenedRecord);
 });
@@ -366,6 +435,7 @@ describe("Multimedia workstation", () => {
   });
 
   it("accumulates exact chapter authorities before producing", async () => {
+    const user = userEvent.setup();
     mockReviewedVisuals.mockResolvedValueOnce({
       set_id: "mmvset-test",
       asset_id: "mm-1",
@@ -383,12 +453,17 @@ describe("Multimedia workstation", () => {
     const produce = await screen.findByRole("button", { name: "Produce documentary" });
     expect(produce.getAttribute("disabled")).not.toBeNull();
 
-    fireEvent.click(screen.getByLabelText("Approve this maximum"));
-    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    const authorizeSelectedChapter = async () => {
+      await user.click(screen.getByLabelText("Approve this maximum"));
+      const authorize = screen.getByRole("button", { name: "Authorize narration" });
+      await waitFor(() => expect(authorize.getAttribute("disabled")).toBeNull());
+      await user.click(authorize);
+    };
+
+    await authorizeSelectedChapter();
     await screen.findByText("mmauth2-server-intro");
-    fireEvent.click(screen.getByRole("button", { name: "Select storyboard chapter 2" }));
-    fireEvent.click(screen.getByLabelText("Approve this maximum"));
-    fireEvent.click(screen.getByRole("button", { name: "Authorize narration" }));
+    await user.click(screen.getByRole("button", { name: "Select storyboard chapter 2" }));
+    await authorizeSelectedChapter();
     await screen.findByText("mmauth2-server-mechanism");
 
     await waitFor(() => expect(produce.getAttribute("disabled")).toBeNull());
@@ -497,17 +572,212 @@ describe("Multimedia workstation", () => {
     expect(await screen.findByText(/mm-1 \/ rev-1/)).toBeTruthy();
   });
 
-  it("applies steering and runs hardening through the API client", async () => {
+  it("previews scope and cost before applying through the API client", async () => {
     await reviewPlan();
 
-    fireEvent.click(screen.getByRole("button", { name: "Apply steer" }));
-    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", expect.objectContaining({ prompt: expect.any(String) })));
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    await waitFor(() => expect(mockPreviewSteering).toHaveBeenCalledWith("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: expect.any(String),
+    }));
+    const preview = await screen.findByTestId("multimedia-steering-preview");
+    expect(preview.textContent).toContain("Incremental cost: $0.2500");
+    expect(preview.textContent).toContain("Affected: 1 segments");
+    expect(preview.textContent).toContain("Reused: 1 segments");
+    expect(mockSteer).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply preview" }));
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      preview_token: "signed-preview",
+      prompt: expect.any(String),
+    }));
     expect(await screen.findByText(/mm-1 \/ rev-2/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Run hardening" }));
     await waitFor(() => expect(mockHarden).toHaveBeenCalledWith("mm-1"));
     expect(await screen.findByText(/Hardening: manual_review/)).toBeTruthy();
     expect(screen.getByText(/rights_and_publication/)).toBeTruthy();
+  });
+
+  it("persists raw and corrected voice steering only after explicit apply", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use voice steer" }));
+    expect(mockSteer).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText("Steering prompt"), {
+      target: { value: "Go deeper on engine reliability." },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    await screen.findByRole("button", { name: "Apply preview" });
+    fireEvent.click(screen.getByRole("button", { name: "Apply preview" }));
+
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "Go deeper on engine reliability.",
+      raw_voice_transcript: "Go deeper on engines.",
+      corrected_voice_transcript: "Go deeper on engine reliability.",
+      preview_token: "signed-preview",
+    }));
+  });
+
+  it("omits a correction when the reviewed voice transcript is unchanged", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use voice steer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    await screen.findByRole("button", { name: "Apply preview" });
+    fireEvent.click(screen.getByRole("button", { name: "Apply preview" }));
+
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "Go deeper on engines.",
+      raw_voice_transcript: "Go deeper on engines.",
+      preview_token: "signed-preview",
+    }));
+  });
+
+  it("blocks preview while microphone or transcription work is active", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Sim capture busy" }));
+    const preview = screen.getByRole("button", { name: "Preview steer" }) as HTMLButtonElement;
+
+    expect(preview.disabled).toBe(true);
+    fireEvent.click(preview);
+    expect(mockPreviewSteering).not.toHaveBeenCalled();
+    expect(mockSteer).not.toHaveBeenCalled();
+  });
+
+  it("returns a discarded voice transcript to an exact text-only payload", async () => {
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Use voice steer" }));
+    fireEvent.click(screen.getByRole("button", { name: "Discard voice" }));
+    fireEvent.change(screen.getByLabelText("Steering prompt"), { target: { value: "typed replacement" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    await screen.findByRole("button", { name: "Apply preview" });
+    fireEvent.click(screen.getByRole("button", { name: "Apply preview" }));
+
+    await waitFor(() => expect(mockSteer).toHaveBeenCalledWith("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      preview_token: "signed-preview",
+      prompt: "typed replacement",
+    }));
+  });
+
+  it("renders structured clarification without granting Apply authority", async () => {
+    mockPreviewSteering.mockResolvedValueOnce({
+      status: "needs_clarification",
+      asset_id: "mm-1",
+      parent_revision_id: "rev-1",
+      intent: {
+        steering_event_id: "steer-clarify",
+        prompt: "make it better",
+        status: "needs_clarification",
+        operations: [],
+        clarifications: ["Name the chapter or scene to change."],
+        transcript: null,
+      },
+    });
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    expect(await screen.findByText("Name the chapter or scene to change.")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Apply preview" })).toBeNull();
+    expect(mockSteer).not.toHaveBeenCalled();
+  });
+
+  it("invalidates reviewed authority when the steering text changes", async () => {
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    await screen.findByRole("button", { name: "Apply preview" });
+
+    fireEvent.change(screen.getByLabelText("Steering prompt"), { target: { value: "new scope" } });
+
+    expect(screen.queryByRole("button", { name: "Apply preview" })).toBeNull();
+    expect(screen.queryByTestId("multimedia-steering-preview")).toBeNull();
+  });
+
+  it("invalidates reviewed authority when the outline preset changes the prompt", async () => {
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    await screen.findByRole("button", { name: "Apply preview" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Steer outline" }));
+
+    expect(screen.queryByRole("button", { name: "Apply preview" })).toBeNull();
+    expect(screen.queryByTestId("multimedia-steering-preview")).toBeNull();
+    expect((screen.getByLabelText("Steering prompt") as HTMLTextAreaElement).value).toContain("Shorten");
+  });
+
+  it("retires an already-expired preview without calling Apply", async () => {
+    mockPreviewSteering.mockResolvedValueOnce({
+      ...readySteeringPreview("go deeper"),
+      expires_at_epoch_seconds: 1,
+    });
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+
+    expect(await screen.findByText(/preview expired/i)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Apply preview" })).toBeNull();
+    expect(mockSteer).not.toHaveBeenCalled();
+  });
+
+  it("submits one Apply when the reviewed authority is double-clicked", async () => {
+    let resolveApply: ((value: MultimediaAssetRecord) => void) | undefined;
+    mockSteer.mockReturnValueOnce(
+      new Promise<MultimediaAssetRecord>((resolve) => { resolveApply = resolve; }),
+    );
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    const apply = await screen.findByRole("button", { name: "Apply preview" });
+
+    fireEvent.click(apply);
+    fireEvent.click(apply);
+
+    expect(mockSteer).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText("Applying reviewed revision...")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Steer outline" }) as HTMLButtonElement).disabled).toBe(true);
+    resolveApply?.(steeredRecord);
+    expect(await screen.findByText(/mm-1 \/ rev-2/)).toBeTruthy();
+  });
+
+  it("ignores an older preview response after a newer input snapshot", async () => {
+    let resolveFirst: ((value: MultimediaSteeringPreviewReady) => void) | undefined;
+    mockPreviewSteering
+      .mockReturnValueOnce(new Promise<MultimediaSteeringPreviewReady>((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(async (_assetId, request) => readySteeringPreview(request.prompt));
+    await reviewPlan();
+
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    fireEvent.change(screen.getByLabelText("Steering prompt"), { target: { value: "newer chapter scope" } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    expect((await screen.findByTestId("multimedia-steering-preview")).textContent).toContain("deepen server-mechanism");
+
+    resolveFirst?.({ ...readySteeringPreview("obsolete scope"), estimated_cost_delta_usd: 9 });
+    await Promise.resolve();
+
+    expect(screen.getByTestId("multimedia-steering-preview").textContent).toContain("$0.2500");
+    expect(screen.getByRole("button", { name: "Apply preview" })).toBeTruthy();
+  });
+
+  it("drops stale authority and reopens the current asset revision", async () => {
+    mockSteer.mockRejectedValueOnce(new Error("multimedia_steering_stale_parent"));
+    mockGet.mockResolvedValueOnce({
+      ...draftRecord,
+      asset: { ...draftRecord.asset, revision_id: "rev-current" },
+    });
+    await reviewPlan();
+    fireEvent.click(screen.getByRole("button", { name: "Preview steer" }));
+    await screen.findByRole("button", { name: "Apply preview" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Apply preview" }));
+
+    expect(await screen.findByText(/changed after preview/)).toBeTruthy();
+    expect(mockGet).toHaveBeenCalledWith("mm-1");
+    expect(screen.queryByRole("button", { name: "Apply preview" })).toBeNull();
   });
 
   it("keeps the fixture preview visible when the API is unavailable", async () => {
