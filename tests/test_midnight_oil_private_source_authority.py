@@ -58,6 +58,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "substrate/midnight_oil/private_source_authority.py"
 MODULE_NAME = "substrate.midnight_oil.private_source_authority"
 BUNDLE_STORE_PATH = ROOT / "substrate/midnight_oil/private_source_bundle_store.py"
+PAID_LANE_CHECKPOINT_PATH = (
+    ROOT / "substrate/midnight_oil/private_paid_lane_authority_checkpoint.py"
+)
 
 
 def _resign_anchor(raw: dict[str, Any]) -> SourceCreationAnchorV1:
@@ -639,6 +642,7 @@ def test_production_consumers_packages_and_routes_quarantine_authority_module() 
     excluded = {
         MODULE_PATH,
         BUNDLE_STORE_PATH,
+        PAID_LANE_CHECKPOINT_PATH,
     }
     violations = [
         path.relative_to(ROOT)

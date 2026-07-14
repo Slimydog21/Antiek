@@ -1,0 +1,1830 @@
+"""Test-only issuers for Cycle34A paid-lane authority checkpoint fixtures."""
+
+from __future__ import annotations
+
+import fcntl
+import hashlib
+import json
+import os
+import secrets
+import sqlite3
+import stat
+import time
+from collections.abc import Iterator
+from contextlib import AbstractContextManager, contextmanager
+from dataclasses import dataclass, field
+from pathlib import Path
+from types import TracebackType
+from typing import Literal, Never
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+
+from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
+    _CAPABILITY_V4_SIGNATURE_DOMAIN,
+    _MIGRATION_CHILD_FINAL_VERSION,
+    _MIGRATION_ROLE_SCHEMA_TABLES,
+    _PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
+    _PREDECESSOR_CYCLE32_SOURCE_SHA256,
+    _PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+    _REVOCATION_SIGNATURE_DOMAIN,
+    _SCHEMA_SQL_V1,
+    _SOURCE_SIGNATURE_DOMAIN,
+    _SOURCE_STORE_ROWS_DOMAIN,
+    FrozenPaidLaneMigrationCorpusV1,
+    MigrationSourceStoreV1,
+    OpaqueSourceBundleRevisionV1,
+    OwnerPrivateSourceAuthoritySnapshotV1,
+    OwnerPrivateSourceFloorPinV1,
+    PrivatePaidLaneEligibilityCheckpointStoreV1,
+    ProviderRevocationFloorPinV1,
+    QuarantinedAbortUncutResultV1,
+    QuarantinedSyntheticExternalPinRecordV1,
+    QuarantinedSyntheticReadyRecordV1,
+    SignedProviderCapabilityV4FixtureV1,
+    SignedProviderRevocationHeadFixtureV1,
+    SignedSourceHeadFixtureV1,
+    VerificationKeyV1,
+    _canonical_json,
+    _capability_v4_document_sha256,
+    _migration_barrier_id,
+    _migration_role_schema_sha256,
+    _migration_role_schema_sha256_from_connection,
+    _migration_role_schema_sql,
+    _revocation_head_document_sha256,
+    _source_head_document_sha256,
+    _source_snapshot_sha256,
+    compute_private_paid_lane_contract_sha256,
+    compute_private_paid_lane_semantic_sha256,
+)
+from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
+    QuarantinedSyntheticExternalPinStoreV1 as _OpenExternalPinStoreV1,
+)
+from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
+    QuarantinedSyntheticLegacyRootV1 as _OpenLegacyRootV1,
+)
+
+_SUPPORT_ROOT_STATE = "legacy-root-state-v1.json"
+_SUPPORT_PIN_STATE = "external-pin-state-v1.json"
+_CHILD_ROLES = (
+    "owner-private-source-v1",
+    "paid-lane-fixture-v1",
+    "provider-authority-v4",
+)
+
+
+def _child_path(root: Path, role: str) -> Path:
+    return root / "children" / f"{role}.sqlite3"
+
+
+def _contract_role(role: str) -> str:
+    return role.replace("-", "_")
+
+
+def _owned_child_tables(role: str) -> tuple[str, ...]:
+    return tuple(
+        table
+        for table in _MIGRATION_ROLE_SCHEMA_TABLES[_contract_role(role)]
+        if table not in {"adapter_state", "mutator_attempts"}
+    )
+
+
+def _initialize_child_adapters(root: Path) -> dict[str, object]:
+    children = root / "children"
+    children.mkdir(mode=0o700)
+    result: dict[str, object] = {}
+    for role in _CHILD_ROLES:
+        path = _child_path(root, role)
+        if any(Path(str(path) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+            raise ValueError("child adapter sidecar remains")
+        connection = sqlite3.connect(path)
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA trusted_schema=OFF")
+            connection.execute("PRAGMA user_version=1")
+            connection.executescript(_migration_role_schema_sql(_contract_role(role)))
+            connection.execute("INSERT INTO adapter_state VALUES(1,1,1,0,0,1)")
+            for table in _owned_child_tables(role):
+                connection.execute(
+                    f'INSERT INTO "{table}"(id,payload) VALUES(?,?)',
+                    ("__sentinel__", b"sentinel"),
+                )
+            connection.commit()
+        finally:
+            connection.close()
+        path.chmod(0o600)
+        result[role] = os.fspath(path.relative_to(root))
+    return result
+
+
+def _measure_child_adapters(root: Path) -> dict[str, object]:
+    measurements: dict[str, object] = {}
+    for role in _CHILD_ROLES:
+        path = _child_path(root, role)
+        if any(Path(str(path) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+            raise ValueError("child adapter sidecar remains")
+        info = path.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_uid != os.getuid()
+            or info.st_nlink != 1
+            or info.st_mode & 0o777 != 0o600
+        ):
+            raise ValueError("child adapter identity mismatch")
+        descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+        try:
+            header = os.read(descriptor, 20)
+        finally:
+            os.close(descriptor)
+        if len(header) != 20 or header[18:20] != b"\x02\x02":
+            raise ValueError("child adapter WAL pragma mismatch")
+        uri = f"file:{path}?mode=ro&immutable=1"
+        connection = sqlite3.connect(uri, uri=True)
+        try:
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA trusted_schema=OFF")
+            if connection.execute("PRAGMA user_version").fetchone() != (1,):
+                raise ValueError("child adapter user version mismatch")
+            sql = [
+                list(row)
+                for row in connection.execute(
+                    "SELECT type,name,tbl_name,sql FROM sqlite_master "
+                    "WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name"
+                )
+            ]
+            state_row = connection.execute(
+                "SELECT admission_enabled,writer_enabled,active_invocations,"
+                "open_accounting_cents,version FROM adapter_state WHERE singleton=1"
+            ).fetchone()
+            state = None if state_row is None else list(state_row)
+            probes = [
+                list(row)
+                for row in connection.execute(
+                    "SELECT name,planted_at FROM mutator_attempts ORDER BY name"
+                )
+            ]
+            row_counts = []
+            for table in _owned_child_tables(role):
+                count_row = connection.execute(
+                    f'SELECT COUNT(*) FROM "{table}" WHERE id != ?', ("__sentinel__",)
+                ).fetchone()
+                if count_row is None:
+                    raise ValueError("child row count unavailable")
+                row_counts.append([table, int(count_row[0])])
+            actual_schema_sha256 = _migration_role_schema_sha256_from_connection(
+                connection,
+                _contract_role(role),
+                required_pragmas={
+                    "foreign_keys": 1,
+                    "journal_mode": "wal",
+                    "trusted_schema": 0,
+                    "user_version": 1,
+                },
+            )
+        finally:
+            connection.close()
+        contract_role = _contract_role(role)
+        if actual_schema_sha256 != _migration_role_schema_sha256(contract_role):
+            raise ValueError("child adapter schema drift")
+        role_bytes = contract_role.encode()
+        ordered_rows_sha256 = hashlib.sha256(
+            _SOURCE_STORE_ROWS_DOMAIN
+            + len(role_bytes).to_bytes(4, "big")
+            + role_bytes
+            + _canonical_json([])
+        ).hexdigest()
+        material = {
+            "role": role,
+            "sql": sql,
+            "state": state,
+            "probes": probes,
+            "schema_sha256": actual_schema_sha256,
+            "final_version": None if state is None else state[4],
+            "row_counts": row_counts,
+            "ordered_rows_sha256": ordered_rows_sha256,
+        }
+        measurements[role] = {
+            **material,
+            "measurement_sha256": hashlib.sha256(_canonical_json(material)).hexdigest(),
+        }
+    return measurements
+
+
+def _audit_child_phase(record: dict[str, object], measured: dict[str, object]) -> None:
+    state = record.get("state")
+    versions = {
+        "open": 1,
+        "quiesced": 1,
+        "admission_denied": 2,
+        "drained": 3,
+        "writers_revoked": 4,
+        "writers_verified": 5,
+        "sealed": 6,
+        "legacy_read_only": 6,
+    }
+    expected_version = versions.get(state) if isinstance(state, str) else None
+    if expected_version is None:
+        return
+    for role in _CHILD_ROLES:
+        role_measurement = measured.get(role)
+        if type(role_measurement) is not dict:
+            raise ValueError("child phase measurement missing")
+        child_state = role_measurement.get("state")
+        expected_admission = 0 if role == "paid-lane-fixture-v1" and expected_version >= 2 else 1
+        expected_writer = 0 if expected_version >= 4 else 1
+        if child_state != [expected_admission, expected_writer, 0, 0, expected_version]:
+            raise ValueError("child phase state mismatch")
+
+
+def _durable_write_json(path: Path, value: dict[str, object]) -> None:
+    encoded = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{secrets.token_hex(8)}.tmp")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        view = memoryview(encoded)
+        while view:
+            written = os.write(descriptor, view)
+            if written <= 0:
+                raise OSError("short durable write")
+            view = view[written:]
+        os.fsync(descriptor)
+        os.replace(temporary, path)
+    finally:
+        os.close(descriptor)
+        temporary.unlink(missing_ok=True)
+    directory = os.open(path.parent, os.O_RDONLY)
+    try:
+        os.fsync(directory)
+    finally:
+        os.close(directory)
+
+
+def _secure_support_root(path: Path, *, create: bool) -> Path:
+    if not path.is_absolute() or path.is_symlink():
+        raise ValueError("support root must be absolute and nonsymlinked")
+    if create:
+        path.mkdir(mode=0o700, parents=False, exist_ok=False)
+    resolved = path.resolve(strict=True)
+    root_info = resolved.stat()
+    if resolved != path or (root_info.st_mode & 0o777) != 0o700 or root_info.st_uid != os.getuid():
+        raise ValueError("support root identity or mode mismatch")
+    for orphan in resolved.glob(".*.tmp"):
+        info = orphan.lstat()
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise ValueError("invalid crash temporary")
+        orphan.unlink()
+    return resolved
+
+
+def _read_json_audited(path: Path) -> dict[str, object]:
+    info = path.lstat()
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or info.st_nlink != 1
+        or (info.st_mode & 0o777) != 0o600
+        or info.st_uid != os.getuid()
+    ):
+        raise ValueError("durable state file identity mismatch")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (info.st_dev, info.st_ino):
+            raise ValueError("durable state changed during open")
+        chunks: list[bytes] = []
+        while chunk := os.read(descriptor, 65536):
+            chunks.append(chunk)
+        value = json.loads(b"".join(chunks).decode("utf-8"))
+    finally:
+        os.close(descriptor)
+    if type(value) is not dict:
+        raise ValueError("durable state shape mismatch")
+    return value
+
+
+def _append_transition_evidence(
+    record: dict[str, object], *, operation: str, prior_state: str, next_state: str
+) -> None:
+    evidence = record.get("transition_evidence")
+    if type(evidence) is not list:
+        raise ValueError("transition evidence mismatch")
+    prior_hash = "0" * 64 if not evidence else evidence[-1]["evidence_sha256"]
+    material = {
+        "root_manifest_sha256": record["root_manifest_sha256"],
+        "inventory_sha256": record["inventory_sha256"],
+        "barrier_id": record["barrier_id"],
+        "freeze_nonce": record["freeze_nonce"],
+        "operation": operation,
+        "prior_state": prior_state,
+        "next_state": next_state,
+        "prior_evidence_sha256": prior_hash,
+        "writer_inventory": record["writer_inventory"],
+        "source_store_identities": record["source_store_identities"],
+        "measured_state_sha256": hashlib.sha256(
+            _canonical_json(record["child_adapter_evidence"])
+        ).hexdigest(),
+    }
+    evidence.append(
+        {
+            **material,
+            "evidence_sha256": hashlib.sha256(_canonical_json(material)).hexdigest(),
+        }
+    )
+
+
+def _audit_transition_evidence(record: dict[str, object]) -> None:
+    evidence = record.get("transition_evidence")
+    if type(evidence) is not list:
+        raise ValueError("transition evidence shape")
+    legal = (
+        ("acquire_writer_barrier", "open", "quiesced"),
+        ("deny_new_admission", "quiesced", "admission_denied"),
+        ("drain_terminal_only", "admission_denied", "drained"),
+        ("close_and_revoke_all_writers", "drained", "writers_revoked"),
+        ("checkpoint_and_plant_test_all_mutators", "writers_revoked", "writers_verified"),
+        ("seal_and_collect", "writers_verified", "sealed"),
+        ("revalidate_sealed_sources", "sealed", "sealed"),
+        ("mark_legacy_read_only", "sealed", "legacy_read_only"),
+    )
+    prior_hash = "0" * 64
+    expected_index = 0
+    for index, item in enumerate(evidence):
+        if type(item) is not dict:
+            raise ValueError("transition evidence item")
+        material = {key: value for key, value in item.items() if key != "evidence_sha256"}
+        expected = hashlib.sha256(_canonical_json(material)).hexdigest()
+        if (
+            material.get("prior_evidence_sha256") != prior_hash
+            or item.get("evidence_sha256") != expected
+            or material.get("root_manifest_sha256") != record.get("root_manifest_sha256")
+            or material.get("inventory_sha256") != record.get("inventory_sha256")
+            or material.get("barrier_id") != record.get("barrier_id")
+            or material.get("freeze_nonce") != record.get("freeze_nonce")
+        ):
+            raise ValueError("transition evidence hash")
+        operation = material.get("operation")
+        transition = (
+            operation,
+            material.get("prior_state"),
+            material.get("next_state"),
+        )
+        abort_release = (
+            index == len(evidence) - 1
+            and operation == "release_after_authenticated_abort"
+            and transition[1] == ("open" if expected_index == 0 else legal[expected_index - 1][2])
+            and transition[2] == "released"
+        )
+        ready_release = (
+            expected_index == len(legal)
+            and index == len(evidence) - 1
+            and operation == "release_after_ready"
+            and transition[1:] == ("legacy_read_only", "released")
+        )
+        if expected_index < len(legal) and transition == legal[expected_index]:
+            expected_index += 1
+        elif abort_release or ready_release:
+            pass
+        else:
+            raise ValueError("illegal transition evidence sequence")
+        prior_hash = expected
+    expected_state = "open" if not evidence else evidence[-1]["next_state"]
+    if record.get("state") != expected_state:
+        raise ValueError("durable state/evidence mismatch")
+    revalidated = expected_index >= 7
+    if record.get("sealed_sources_revalidated") is not revalidated:
+        raise ValueError("sealed revalidation flag mismatch")
+    if record.get("migration_aborted") is True and (
+        not evidence or evidence[-1].get("operation") != "release_after_authenticated_abort"
+    ):
+        raise ValueError("abort release evidence mismatch")
+
+
+def _execute_synthetic_transition(root: Path, record: dict[str, object], operation: str) -> None:
+    evidence = record.get("child_adapter_evidence")
+    if type(evidence) is not dict:
+        raise ValueError("child adapter evidence missing")
+    paths = tuple(_child_path(root, role) for role in _CHILD_ROLES)
+    if operation == "deny_new_admission":
+        for role, path in zip(_CHILD_ROLES, paths, strict=True):
+            connection = sqlite3.connect(path)
+            try:
+                if role == "paid-lane-fixture-v1":
+                    changed = connection.execute(
+                        "UPDATE adapter_state SET admission_enabled=0,version=version+1 "
+                        "WHERE singleton=1 AND admission_enabled=1"
+                    ).rowcount
+                    if changed != 1:
+                        raise ValueError("admission already denied")
+                    try:
+                        connection.execute(
+                            "INSERT INTO paid_admissions(id,payload) VALUES('denied',X'00')"
+                        )
+                    except sqlite3.IntegrityError as error:
+                        if "admission denied" not in str(error):
+                            raise
+                    else:
+                        raise ValueError("denied admission accepted")
+                else:
+                    connection.execute(
+                        "UPDATE adapter_state SET version=version+1 WHERE singleton=1"
+                    )
+                connection.commit()
+            finally:
+                connection.close()
+        evidence["admission_denied"] = True
+    elif operation == "drain_terminal_only":
+        for path in paths:
+            connection = sqlite3.connect(path)
+            try:
+                row = connection.execute(
+                    "SELECT active_invocations,open_accounting_cents FROM adapter_state"
+                ).fetchone()
+                if row == (0, 0):
+                    connection.execute(
+                        "UPDATE adapter_state SET version=version+1 WHERE singleton=1"
+                    )
+                    connection.commit()
+            finally:
+                connection.close()
+            if row != (0, 0):
+                raise ValueError("child work not drained")
+        evidence["drain_verified"] = True
+    elif operation == "close_and_revoke_all_writers":
+        for path in paths:
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute(
+                    "UPDATE adapter_state SET writer_enabled=0,version=version+1 "
+                    "WHERE singleton=1 AND writer_enabled=1"
+                )
+                connection.commit()
+            finally:
+                connection.close()
+        evidence["writers_revoked"] = True
+    elif operation == "checkpoint_and_plant_test_all_mutators":
+        rejected: list[str] = []
+        for role, path in zip(_CHILD_ROLES, paths, strict=True):
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+                for table in _owned_child_tables(role):
+                    mutations = (
+                        (
+                            "insert",
+                            f'INSERT INTO "{table}"(id,payload) VALUES(?,?)',
+                            ("plant", b"plant"),
+                        ),
+                        (
+                            "update",
+                            f'UPDATE "{table}" SET payload=? WHERE id=?',
+                            (b"changed", "__sentinel__"),
+                        ),
+                        ("delete", f'DELETE FROM "{table}" WHERE id=?', ("__sentinel__",)),
+                    )
+                    for mutation, sql, parameters in mutations:
+                        try:
+                            connection.execute(sql, parameters)
+                        except sqlite3.IntegrityError as error:
+                            if "writer revoked" not in str(error):
+                                raise
+                            rejected.append(f"{role}:{table}:{mutation}")
+                        else:
+                            raise ValueError("revoked child mutator accepted")
+                connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
+                connection.commit()
+            finally:
+                connection.close()
+        evidence["planted_mutator_rejections"] = rejected
+    elif operation == "seal_and_collect":
+        expected_rejections = [
+            f"{role}:{table}:{mutation}"
+            for role in _CHILD_ROLES
+            for table in _owned_child_tables(role)
+            for mutation in ("insert", "update", "delete")
+        ]
+        if evidence.get("planted_mutator_rejections") != expected_rejections:
+            raise ValueError("child mutator proof roster mismatch")
+        for path in paths:
+            connection = sqlite3.connect(path)
+            try:
+                checkpoint = connection.execute("PRAGMA wal_checkpoint(TRUNCATE)").fetchone()
+                state = connection.execute(
+                    "SELECT admission_enabled,writer_enabled,active_invocations,"
+                    "open_accounting_cents FROM adapter_state WHERE singleton=1"
+                ).fetchone()
+                probes = connection.execute("SELECT COUNT(*) FROM mutator_attempts").fetchone()
+                version = connection.execute(
+                    "SELECT version FROM adapter_state WHERE singleton=1"
+                ).fetchone()
+                if version != (_MIGRATION_CHILD_FINAL_VERSION - 1,):
+                    raise ValueError("child adapter pre-seal version mismatch")
+                connection.execute("UPDATE adapter_state SET version=version+1 WHERE singleton=1")
+                connection.commit()
+            finally:
+                connection.close()
+            if checkpoint != (0, 0, 0) or state is None or state[1:] != (0, 0, 0) or probes != (0,):
+                raise ValueError("child adapter is not sealed")
+            if any(Path(str(path) + suffix).exists() for suffix in ("-wal", "-shm", "-journal")):
+                raise ValueError("child adapter sidecar remains")
+        evidence["sealed_measurements"] = _measure_child_adapters(root)
+
+
+@contextmanager
+def _exclusive_root_lock(root: Path, *, timeout_ms: int = 5000) -> Iterator[None]:
+    lock_path = root / ".migration.lock"
+    descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or (info.st_mode & 0o777) != 0o600
+            or info.st_uid != os.getuid()
+        ):
+            raise ValueError("lock identity mismatch")
+        deadline = time.monotonic() + timeout_ms / 1000
+        while True:
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError("migration lock acquisition timed out") from None
+                time.sleep(0.005)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+class QuarantinedSyntheticWriterBarrierV1:
+    _boot_nonce: bytes
+    _creator_pid: int
+    _root_path: Path
+    acquired_at_ms: int
+    barrier_id: str
+    freeze_nonce: str
+    inventory_sha256: str
+    root_id: str
+    root_manifest_sha256: str
+    schema_version: Literal[1]
+    state: str
+
+    __slots__ = (
+        "_boot_nonce",
+        "_creator_pid",
+        "_root_path",
+        "acquired_at_ms",
+        "barrier_id",
+        "freeze_nonce",
+        "inventory_sha256",
+        "root_id",
+        "root_manifest_sha256",
+        "schema_version",
+        "state",
+    )
+
+    _NEXT = {
+        "quiesced": ("deny_new_admission", "admission_denied"),
+        "admission_denied": ("drain_terminal_only", "drained"),
+        "drained": ("close_and_revoke_all_writers", "writers_revoked"),
+        "writers_revoked": (
+            "checkpoint_and_plant_test_all_mutators",
+            "writers_verified",
+        ),
+        "writers_verified": ("seal_and_collect", "sealed"),
+        "sealed": ("mark_legacy_read_only", "legacy_read_only"),
+        "legacy_read_only": ("release_after_ready", "released"),
+    }
+
+    def __init_subclass__(cls, **kwargs: object) -> Never:
+        del cls, kwargs
+        raise TypeError("synthetic writer barrier is final")
+
+    def __init__(self, *, root_path: Path, record: dict[str, object]) -> None:
+        acquired_at_ms = record["acquired_at_ms"]
+        if type(acquired_at_ms) is not int:
+            raise ValueError("barrier acquisition timestamp mismatch")
+        object.__setattr__(self, "_root_path", root_path)
+        object.__setattr__(self, "_creator_pid", os.getpid())
+        object.__setattr__(self, "_boot_nonce", secrets.token_bytes(32))
+        object.__setattr__(self, "schema_version", 1)
+        object.__setattr__(self, "acquired_at_ms", acquired_at_ms)
+        object.__setattr__(self, "root_id", str(record["root_id"]))
+        object.__setattr__(self, "root_manifest_sha256", str(record["root_manifest_sha256"]))
+        object.__setattr__(self, "barrier_id", str(record["barrier_id"]))
+        object.__setattr__(self, "inventory_sha256", str(record["inventory_sha256"]))
+        object.__setattr__(self, "freeze_nonce", str(record["freeze_nonce"]))
+        object.__setattr__(self, "state", str(record["state"]))
+
+    def __setattr__(self, name: str, value: object) -> Never:
+        del name, value
+        raise AttributeError("synthetic writer barrier is immutable")
+
+    def __reduce__(self) -> Never:
+        raise TypeError("synthetic writer barrier is process-bound")
+
+    def _transition(self, operation: str) -> None:
+        if self._creator_pid != os.getpid() or len(self._boot_nonce) != 32:
+            raise ValueError("barrier process mismatch")
+        expected = self._NEXT.get(self.state)
+        if expected is None or expected[0] != operation:
+            raise ValueError("barrier transition mismatch")
+        state_path = self._root_path / _SUPPORT_ROOT_STATE
+        with _exclusive_root_lock(self._root_path):
+            record = _read_json_audited(state_path)
+            if record["state"] != self.state or record["barrier_id"] != self.barrier_id:
+                raise ValueError("durable barrier mismatch")
+            _audit_transition_evidence(record)
+            _execute_synthetic_transition(self._root_path, record, operation)
+            _append_transition_evidence(
+                record, operation=operation, prior_state=self.state, next_state=expected[1]
+            )
+            record["state"] = expected[1]
+            _durable_write_json(state_path, record)
+        object.__setattr__(self, "state", expected[1])
+
+    def deny_new_admission(self) -> None:
+        self._transition("deny_new_admission")
+
+    def drain_terminal_only(self) -> None:
+        self._transition("drain_terminal_only")
+
+    def close_and_revoke_all_writers(self) -> None:
+        self._transition("close_and_revoke_all_writers")
+
+    def checkpoint_and_plant_test_all_mutators(self) -> None:
+        self._transition("checkpoint_and_plant_test_all_mutators")
+
+    def seal_and_collect(self) -> FrozenPaidLaneMigrationCorpusV1:
+        self._transition("seal_and_collect")
+        record = _read_json_audited(self._root_path / _SUPPORT_ROOT_STATE)
+        child_evidence = record.get("child_adapter_evidence")
+        if type(child_evidence) is not dict:
+            raise ValueError("sealed child evidence unavailable")
+        measurements = child_evidence.get("sealed_measurements")
+        if type(measurements) is not dict:
+            raise ValueError("sealed measurements unavailable")
+        source_stores: list[MigrationSourceStoreV1] = []
+        for role in _CHILD_ROLES:
+            measured = measurements.get(role)
+            if type(measured) is not dict:
+                raise ValueError("sealed role measurement unavailable")
+            row_counts = measured.get("row_counts")
+            if type(row_counts) is not list or any(
+                type(item) is not list or len(item) != 2 or item[1] != 0 for item in row_counts
+            ):
+                raise ValueError("typed child migration extraction required")
+            contract_role = _contract_role(role)
+            source_stores.append(
+                MigrationSourceStoreV1(
+                    store_kind=contract_role,
+                    store_id=role,
+                    schema_sha256=str(measured["schema_sha256"]),
+                    native_writer_barrier_id=self.barrier_id,
+                    final_version=int(measured["final_version"]),
+                    row_count=0,
+                    ordered_rows_sha256=str(measured["ordered_rows_sha256"]),
+                )
+            )
+        canonical_stores = tuple(sorted(source_stores, key=lambda item: item.store_kind))
+        manifest = hashlib.sha256(
+            b"antiek.midnight-oil.private-paid-source-manifest.v1\0"
+            + _canonical_json(
+                {
+                    "schema_version": 1,
+                    "freeze_nonce": self.freeze_nonce,
+                    "quiesced_at_ms": self.acquired_at_ms,
+                    "drained_at_ms": self.acquired_at_ms,
+                    "sealed_at_ms": self.acquired_at_ms,
+                    "source_stores": [row.model_dump(mode="json") for row in canonical_stores],
+                    "collections": [
+                        {
+                            "table_name": name,
+                            "row_count": 0,
+                            "ordered_row_sha256s": [],
+                        }
+                        for name in sorted(
+                            (
+                                "provider_capabilities_v4",
+                                "provider_revocation_heads",
+                                "provider_revocation_current",
+                                "source_heads",
+                                "source_current",
+                                "encrypted_source_bundles",
+                                "owner_operations",
+                                "consent_claims",
+                                "queue_leases",
+                                "budget_accounts",
+                            )
+                        )
+                    ],
+                }
+            )
+        ).hexdigest()
+        return FrozenPaidLaneMigrationCorpusV1(
+            freeze_nonce=self.freeze_nonce,
+            quiesced_at_ms=self.acquired_at_ms,
+            drained_at_ms=self.acquired_at_ms,
+            sealed_at_ms=self.acquired_at_ms,
+            source_stores=canonical_stores,
+            source_manifest_sha256=manifest,
+        )
+
+    def revalidate_sealed_sources(self) -> None:
+        if self.state != "sealed" or self._creator_pid != os.getpid():
+            raise ValueError("sealed source revalidation mismatch")
+        path = self._root_path / _SUPPORT_ROOT_STATE
+        with _exclusive_root_lock(self._root_path):
+            record = _read_json_audited(path)
+            if record["state"] != "sealed" or record.get("sealed_sources_revalidated") is True:
+                raise ValueError("sealed source durable state mismatch")
+            evidence = record.get("child_adapter_evidence")
+            if type(evidence) is not dict:
+                raise ValueError("sealed child evidence missing")
+            measured = _measure_child_adapters(self._root_path)
+            if measured != evidence.get("sealed_measurements"):
+                raise ValueError("sealed source measurement drift")
+            record["sealed_sources_revalidated"] = True
+            evidence["source_revalidation_sha256"] = hashlib.sha256(
+                _canonical_json(measured)
+            ).hexdigest()
+            _append_transition_evidence(
+                record,
+                operation="revalidate_sealed_sources",
+                prior_state="sealed",
+                next_state="sealed",
+            )
+            _durable_write_json(path, record)
+
+    def mark_legacy_read_only(self) -> None:
+        record = _read_json_audited(self._root_path / _SUPPORT_ROOT_STATE)
+        if record.get("sealed_sources_revalidated") is not True:
+            raise ValueError("sources not revalidated")
+        evidence = record.get("child_adapter_evidence")
+        if type(evidence) is not dict:
+            raise ValueError("sealed child evidence missing")
+        measured = _measure_child_adapters(self._root_path)
+        _audit_child_phase(record, measured)
+        if measured != evidence.get("sealed_measurements"):
+            raise ValueError("sealed source measurement drift")
+        self._transition("mark_legacy_read_only")
+
+    def release_after_ready(
+        self,
+        *,
+        pinned_store: PrivatePaidLaneEligibilityCheckpointStoreV1,
+        external_pin_store: QuarantinedSyntheticExternalPinStoreV1,
+        expected_target_store_id: str,
+        expected_pin_sha256: str,
+        expected_ready_sha256: str,
+        expected_root_manifest_sha256: str,
+        expected_barrier_id: str,
+        expected_freeze_nonce: str,
+        expected_source_manifest_sha256: str,
+        expected_copy_audit_sha256: str,
+        expected_cutover_marker_sha256: str,
+        expected_semantic_source_sha256: str,
+        expected_contract_sha256: str,
+    ) -> None:
+        if (
+            type(pinned_store) is not PrivatePaidLaneEligibilityCheckpointStoreV1
+            or pinned_store.open_mode != "pinned_epoch1"
+            or pinned_store.store_id != expected_target_store_id
+            or pinned_store.semantic_source_sha256 != expected_semantic_source_sha256
+            or pinned_store.contract_sha256 != expected_contract_sha256
+        ):
+            raise ValueError("genuine pinned runtime required")
+        with pinned_store._connect():
+            pass
+        pin, ready = external_pin_store.load()
+        durable = _read_json_audited(self._root_path / _SUPPORT_ROOT_STATE)
+        if (
+            pin is None
+            or ready is None
+            or pin.target_store_id != expected_target_store_id
+            or pin.pin_sha256 != expected_pin_sha256
+            or ready.pin_sha256 != pin.pin_sha256
+            or ready.ready_sha256 != expected_ready_sha256
+            or ready.legacy_root_id != self.root_id
+            or durable["root_manifest_sha256"] != expected_root_manifest_sha256
+            or durable["barrier_id"] != expected_barrier_id
+            or durable["freeze_nonce"] != expected_freeze_nonce
+            or pin.source_manifest_sha256 != expected_source_manifest_sha256
+            or pin.copy_audit_sha256 != expected_copy_audit_sha256
+            or pin.cutover_marker_sha256 != expected_cutover_marker_sha256
+            or pin.semantic_source_sha256 != expected_semantic_source_sha256
+            or pin.contract_sha256 != expected_contract_sha256
+            or pin.installed_at_ms > ready.ready_at_ms
+        ):
+            raise ValueError("authenticated readiness mismatch")
+        self._transition("release_after_ready")
+
+    def release_after_authenticated_abort(
+        self,
+        *,
+        abort_result: QuarantinedAbortUncutResultV1,
+        expected_target_store_id: str,
+        expected_target_database_path: Path,
+    ) -> None:
+        if type(abort_result) is not QuarantinedAbortUncutResultV1:
+            raise ValueError("exact abort result required")
+        if abort_result.store_id != expected_target_store_id:
+            raise ValueError("abort result target mismatch")
+        path = self._root_path / _SUPPORT_ROOT_STATE
+        with _exclusive_root_lock(self._root_path):
+            record = _read_json_audited(path)
+            proof = record.get("authenticated_abort_completion")
+            expected_proof = {
+                "root_id": self.root_id,
+                "root_manifest_sha256": self.root_manifest_sha256,
+                "barrier_id": self.barrier_id,
+                "freeze_nonce": self.freeze_nonce,
+                "target_store_id": expected_target_store_id,
+                "target_database_path": os.fspath(expected_target_database_path),
+                "target_absent": True,
+                "sidecars_absent": True,
+                "parent_fsynced": True,
+                "sources_unchanged": True,
+            }
+            if (
+                self.state == "released"
+                or proof != expected_proof
+                or expected_target_database_path.exists()
+                or any(
+                    Path(str(expected_target_database_path) + suffix).exists()
+                    for suffix in ("-wal", "-shm", "-journal")
+                )
+            ):
+                raise ValueError("authenticated abort completion unavailable")
+            _append_transition_evidence(
+                record,
+                operation="release_after_authenticated_abort",
+                prior_state=self.state,
+                next_state="released",
+            )
+            record["migration_aborted"] = True
+            record["state"] = "released"
+            _durable_write_json(path, record)
+            object.__setattr__(self, "state", "released")
+
+
+class QuarantinedSyntheticLegacyRootV1:
+    __slots__ = ("_boot_nonce", "_creator_pid", "root_path")
+
+    def __init_subclass__(cls, **kwargs: object) -> Never:
+        del cls, kwargs
+        raise TypeError("synthetic legacy root is final")
+
+    def __init__(self, root_path: Path) -> None:
+        self.root_path = root_path
+        self._creator_pid = os.getpid()
+        self._boot_nonce = secrets.token_bytes(32)
+
+    @classmethod
+    def create_new(
+        cls,
+        *,
+        root_path: Path,
+        root_id: str,
+        writer_inventory: tuple[str, ...],
+        source_store_identities: tuple[str, ...],
+        now_ms: int,
+    ) -> QuarantinedSyntheticLegacyRootV1:
+        if writer_inventory != _CHILD_ROLES:
+            raise ValueError("writer inventory must exactly name child roles")
+        if source_store_identities != _CHILD_ROLES:
+            raise ValueError("source store identities must exactly name child roles")
+        root = _secure_support_root(root_path, create=True)
+        inventory_sha256 = hashlib.sha256(_canonical_json(writer_inventory)).hexdigest()
+        manifest = {
+            "root_id": root_id,
+            "writer_inventory": writer_inventory,
+            "source_store_identities": source_store_identities,
+            "created_at_ms": now_ms,
+        }
+        record: dict[str, object] = {
+            **manifest,
+            "inventory_sha256": inventory_sha256,
+            "root_manifest_sha256": hashlib.sha256(_canonical_json(manifest)).hexdigest(),
+            "barrier_id": None,
+            "freeze_nonce": None,
+            "state": "open",
+            "transition_evidence": [],
+            "sealed_sources_revalidated": False,
+            "child_adapters": _initialize_child_adapters(root),
+            "child_adapter_evidence": {
+                "admission_denied": False,
+                "drain_verified": False,
+                "writers_revoked": False,
+                "planted_mutator_rejections": [],
+                "sealed_measurements": None,
+            },
+        }
+        _durable_write_json(root / _SUPPORT_ROOT_STATE, record)
+        return cls(root)
+
+    @classmethod
+    def open_existing(
+        cls,
+        *,
+        root_path: Path,
+        expected_root_id: str,
+        expected_root_manifest_sha256: str,
+        expected_inventory_sha256: str,
+    ) -> QuarantinedSyntheticLegacyRootV1:
+        root = _secure_support_root(root_path, create=False)
+        record = _read_json_audited(root / _SUPPORT_ROOT_STATE)
+        _audit_transition_evidence(record)
+        expected_children = {
+            role: os.fspath(_child_path(root, role).relative_to(root)) for role in _CHILD_ROLES
+        }
+        if record.get("child_adapters") != expected_children:
+            raise ValueError("child adapter roster mismatch")
+        measured_children = _measure_child_adapters(root)
+        _audit_child_phase(record, measured_children)
+        child_evidence = record.get("child_adapter_evidence")
+        if type(child_evidence) is not dict:
+            raise ValueError("child adapter evidence shape mismatch")
+        sealed_measurements = child_evidence.get("sealed_measurements")
+        if sealed_measurements is not None and measured_children != sealed_measurements:
+            raise ValueError("reopened child measurement drift")
+        inventory = record.get("writer_inventory")
+        source_identities = record.get("source_store_identities")
+        created_at_ms = record.get("created_at_ms")
+        if type(inventory) is not list or type(source_identities) is not list:
+            raise ValueError("legacy root inventory shape mismatch")
+        manifest = {
+            "root_id": record.get("root_id"),
+            "writer_inventory": inventory,
+            "source_store_identities": source_identities,
+            "created_at_ms": created_at_ms,
+        }
+        if (
+            record["root_id"] != expected_root_id
+            or record["root_manifest_sha256"] != expected_root_manifest_sha256
+            or record["inventory_sha256"] != expected_inventory_sha256
+            or record["inventory_sha256"] != hashlib.sha256(_canonical_json(inventory)).hexdigest()
+            or record["root_manifest_sha256"]
+            != hashlib.sha256(_canonical_json(manifest)).hexdigest()
+        ):
+            raise ValueError("legacy root identity mismatch")
+        return cls(root)
+
+    def acquire_writer_barrier(
+        self,
+        *,
+        expected_root_id: str,
+        expected_root_manifest_sha256: str,
+        expected_inventory_sha256: str,
+        timeout_ms: int = 5000,
+    ) -> QuarantinedSyntheticWriterBarrierV1:
+        if self._creator_pid != os.getpid() or not 0 < timeout_ms <= 5000:
+            raise ValueError("legacy root process or timeout mismatch")
+        path = self.root_path / _SUPPORT_ROOT_STATE
+        with _exclusive_root_lock(self.root_path, timeout_ms=timeout_ms):
+            record = _read_json_audited(path)
+            if (
+                record["state"] != "open"
+                or record["root_id"] != expected_root_id
+                or record["root_manifest_sha256"] != expected_root_manifest_sha256
+                or record["inventory_sha256"] != expected_inventory_sha256
+            ):
+                raise ValueError("barrier acquisition mismatch")
+            record["freeze_nonce"] = secrets.token_hex(32)
+            record["barrier_id"] = _migration_barrier_id(str(record["freeze_nonce"]))
+            created_at_ms = record["created_at_ms"]
+            if type(created_at_ms) is not int:
+                raise ValueError("root creation timestamp mismatch")
+            record["acquired_at_ms"] = created_at_ms
+            _append_transition_evidence(
+                record,
+                operation="acquire_writer_barrier",
+                prior_state="open",
+                next_state="quiesced",
+            )
+            record["state"] = "quiesced"
+            _durable_write_json(path, record)
+        return QuarantinedSyntheticWriterBarrierV1(root_path=self.root_path, record=record)
+
+    def _audit_unchanged_for_abort(self) -> tuple[str, str, str]:
+        if self._creator_pid != os.getpid() or len(self._boot_nonce) != 32:
+            raise ValueError("legacy root process mismatch")
+        record = _read_json_audited(self.root_path / _SUPPORT_ROOT_STATE)
+        _audit_transition_evidence(record)
+        measured = _measure_child_adapters(self.root_path)
+        _audit_child_phase(record, measured)
+        if record.get("state") != "open" or record.get("barrier_id") is not None:
+            raise ValueError("legacy root is no longer unchanged")
+        return (
+            str(record["root_id"]),
+            str(record["root_manifest_sha256"]),
+            str(record["inventory_sha256"]),
+        )
+
+    def reacquire_cutover_barrier(
+        self,
+        *,
+        expected_root_id: str,
+        expected_root_manifest_sha256: str,
+        expected_barrier_id: str,
+        expected_freeze_nonce: str,
+        expected_durable_state: str,
+        timeout_ms: int = 5000,
+    ) -> QuarantinedSyntheticWriterBarrierV1:
+        if self._creator_pid != os.getpid() or not 0 < timeout_ms <= 5000:
+            raise ValueError("legacy root process or timeout mismatch")
+        record = _read_json_audited(self.root_path / _SUPPORT_ROOT_STATE)
+        _audit_transition_evidence(record)
+        allowed = {
+            "quiesced",
+            "admission_denied",
+            "drained",
+            "writers_revoked",
+            "writers_verified",
+            "sealed",
+            "legacy_read_only",
+        }
+        if (
+            expected_durable_state not in allowed
+            or record["root_id"] != expected_root_id
+            or record["root_manifest_sha256"] != expected_root_manifest_sha256
+            or record["barrier_id"] != expected_barrier_id
+            or record["freeze_nonce"] != expected_freeze_nonce
+            or record["state"] != expected_durable_state
+        ):
+            raise ValueError("barrier reacquisition mismatch")
+        return QuarantinedSyntheticWriterBarrierV1(root_path=self.root_path, record=record)
+
+
+class QuarantinedSyntheticExternalPinStoreV1:
+    __slots__ = ("_boot_nonce", "_creator_pid", "pin_store_id", "root_path")
+
+    def __init__(self, *, root_path: Path, pin_store_id: str) -> None:
+        self.root_path = root_path
+        self.pin_store_id = pin_store_id
+        self._creator_pid = os.getpid()
+        self._boot_nonce = secrets.token_bytes(32)
+
+    def __init_subclass__(cls, **kwargs: object) -> Never:
+        del cls, kwargs
+        raise TypeError("synthetic external pin store is final")
+
+    @property
+    def store_id(self) -> str:
+        return self.pin_store_id
+
+    @property
+    def pin_sha256(self) -> str | None:
+        pin, _ = self.load()
+        return None if pin is None else pin.pin_sha256
+
+    @property
+    def ready_sha256(self) -> str | None:
+        _, ready = self.load()
+        return None if ready is None else ready.ready_sha256
+
+    def _check_process(self) -> None:
+        if self._creator_pid != os.getpid() or len(self._boot_nonce) != 32:
+            raise ValueError("pin store process mismatch")
+
+    @classmethod
+    def create_new(
+        cls, *, root_path: Path, pin_store_id: str
+    ) -> QuarantinedSyntheticExternalPinStoreV1:
+        root = _secure_support_root(root_path, create=True)
+        _durable_write_json(
+            root / _SUPPORT_PIN_STATE,
+            {"pin_store_id": pin_store_id, "pin": None, "ready": None},
+        )
+        return cls(root_path=root, pin_store_id=pin_store_id)
+
+    @classmethod
+    def open_existing(
+        cls, *, root_path: Path, expected_pin_store_id: str
+    ) -> QuarantinedSyntheticExternalPinStoreV1:
+        root = _secure_support_root(root_path, create=False)
+        record = _read_json_audited(root / _SUPPORT_PIN_STATE)
+        if record["pin_store_id"] != expected_pin_store_id:
+            raise ValueError("pin store identity mismatch")
+        instance = cls(root_path=root, pin_store_id=expected_pin_store_id)
+        instance.load()
+        return instance
+
+    def load(
+        self,
+    ) -> tuple[
+        QuarantinedSyntheticExternalPinRecordV1 | None,
+        QuarantinedSyntheticReadyRecordV1 | None,
+    ]:
+        self._check_process()
+        record = _read_json_audited(self.root_path / _SUPPORT_PIN_STATE)
+        pin = (
+            None
+            if record["pin"] is None
+            else QuarantinedSyntheticExternalPinRecordV1.model_validate(record["pin"])
+        )
+        ready = (
+            None
+            if record["ready"] is None
+            else QuarantinedSyntheticReadyRecordV1.model_validate(record["ready"])
+        )
+        if (
+            pin is not None
+            and pin.pin_store_id != self.pin_store_id
+            or ready is not None
+            and (
+                pin is None
+                or ready.pin_sha256 != pin.pin_sha256
+                or ready.ready_at_ms < pin.installed_at_ms
+            )
+        ):
+            raise ValueError("pin ready relationship mismatch")
+        return pin, ready
+
+    def install_once(
+        self, *, expected_absent: Literal[True], record: QuarantinedSyntheticExternalPinRecordV1
+    ) -> None:
+        self._check_process()
+        if expected_absent is not True or record.pin_store_id != self.pin_store_id:
+            raise ValueError("pin install identity mismatch")
+        path = self.root_path / _SUPPORT_PIN_STATE
+        with _exclusive_root_lock(self.root_path):
+            durable = _read_json_audited(path)
+            if durable["pin"] is not None:
+                raise ValueError("pin already installed")
+            durable["pin"] = record.model_dump(mode="json")
+            _durable_write_json(path, durable)
+
+    def mark_ready(
+        self, *, expected_pin_sha256: str, ready_record: QuarantinedSyntheticReadyRecordV1
+    ) -> None:
+        self._check_process()
+        path = self.root_path / _SUPPORT_PIN_STATE
+        with _exclusive_root_lock(self.root_path):
+            durable = _read_json_audited(path)
+            pin_value = durable["pin"]
+            if (
+                type(pin_value) is not dict
+                or pin_value.get("pin_sha256") != expected_pin_sha256
+                or ready_record.pin_sha256 != expected_pin_sha256
+                or durable["ready"] is not None
+            ):
+                raise ValueError("ready CAS mismatch")
+            durable["ready"] = ready_record.model_dump(mode="json")
+            _durable_write_json(path, durable)
+
+
+# ---------------------------------------------------------------------------
+# Test constants
+# ---------------------------------------------------------------------------
+
+CAPABILITY_KEY_ID = "fixture-capability-key"
+REVOCATION_KEY_ID = "fixture-revocation-key"
+SOURCE_HEAD_KEY_ID = "fixture-source-head-key"
+
+CAPABILITY_PRIVATE_KEY = bytes.fromhex("51" * 32)
+REVOCATION_PRIVATE_KEY = bytes.fromhex("52" * 32)
+SOURCE_HEAD_PRIVATE_KEY = bytes.fromhex("53" * 32)
+
+OWNER_PATH_DISCRIMINATOR = "opspd1_" + "a1" * 32
+STORE_ID = "mpstore1_" + "b2" * 32
+SOURCE_KEY_VERSION = "moskv1_source-fixture-v1"
+OWNER_KEY_VERSION = "mpkv1_owner-fixture-v1"
+
+CAPABILITY_REGISTRY_ID = "fixture-capability-registry"
+REVOCATION_REGISTRY_ID = "fixture-revocation-registry"
+SOURCE_REGISTRY_ID = "opsreg1_" + "d4" * 32
+
+REVOCATION_FLOOR_HEAD = "00" * 32
+REVOCATION_FLOOR_EPOCH = 0
+SOURCE_FLOOR_HEAD = "00" * 32
+SOURCE_FLOOR_EPOCH = 0
+
+
+# ---------------------------------------------------------------------------
+# Key helpers
+# ---------------------------------------------------------------------------
+
+
+def capability_public_key() -> bytes:
+    return (
+        Ed25519PrivateKey.from_private_bytes(CAPABILITY_PRIVATE_KEY).public_key().public_bytes_raw()
+    )
+
+
+def revocation_public_key() -> bytes:
+    return (
+        Ed25519PrivateKey.from_private_bytes(REVOCATION_PRIVATE_KEY).public_key().public_bytes_raw()
+    )
+
+
+def source_head_public_key() -> bytes:
+    return (
+        Ed25519PrivateKey.from_private_bytes(SOURCE_HEAD_PRIVATE_KEY)
+        .public_key()
+        .public_bytes_raw()
+    )
+
+
+def capability_verification_keys() -> tuple[VerificationKeyV1, ...]:
+    return (VerificationKeyV1(key_id=CAPABILITY_KEY_ID, public_key_bytes=capability_public_key()),)
+
+
+def revocation_verification_keys() -> tuple[VerificationKeyV1, ...]:
+    return (VerificationKeyV1(key_id=REVOCATION_KEY_ID, public_key_bytes=revocation_public_key()),)
+
+
+def source_head_verification_keys() -> tuple[VerificationKeyV1, ...]:
+    return (
+        VerificationKeyV1(key_id=SOURCE_HEAD_KEY_ID, public_key_bytes=source_head_public_key()),
+    )
+
+
+def cutover_verification_keys() -> tuple[VerificationKeyV1, ...]:
+    return ()
+
+
+def provider_revocation_floor_pins() -> tuple[ProviderRevocationFloorPinV1, ...]:
+    genesis = fixture_revocation_head(epoch=0, issued_at_ms=0)
+    return (
+        ProviderRevocationFloorPinV1(
+            registry_id=REVOCATION_REGISTRY_ID,
+            owner_path_discriminator=OWNER_PATH_DISCRIMINATOR,
+            floor_head_sha256=genesis.head_sha256,
+            floor_epoch=REVOCATION_FLOOR_EPOCH,
+        ),
+    )
+
+
+def source_floor_pins() -> tuple[OwnerPrivateSourceFloorPinV1, ...]:
+    genesis = fixture_source_head(epoch=0, previous_head_sha256="0" * 64, issued_at_ms=0)
+    return (
+        OwnerPrivateSourceFloorPinV1(
+            registry_id=SOURCE_REGISTRY_ID,
+            owner_path_discriminator=OWNER_PATH_DISCRIMINATOR,
+            floor_head_sha256=genesis.head_sha256,
+            floor_epoch=SOURCE_FLOOR_EPOCH,
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Signing helpers
+# ---------------------------------------------------------------------------
+
+
+def _sign_capability_v4(cap: SignedProviderCapabilityV4FixtureV1) -> str:
+    return (
+        Ed25519PrivateKey.from_private_bytes(CAPABILITY_PRIVATE_KEY)
+        .sign(_CAPABILITY_V4_SIGNATURE_DOMAIN + bytes.fromhex(cap.capability_sha256))
+        .hex()
+    )
+
+
+def _sign_revocation_head(head: SignedProviderRevocationHeadFixtureV1) -> str:
+    return (
+        Ed25519PrivateKey.from_private_bytes(REVOCATION_PRIVATE_KEY)
+        .sign(_REVOCATION_SIGNATURE_DOMAIN + bytes.fromhex(head.head_sha256))
+        .hex()
+    )
+
+
+def _sign_source_head(head: SignedSourceHeadFixtureV1) -> str:
+    return (
+        Ed25519PrivateKey.from_private_bytes(SOURCE_HEAD_PRIVATE_KEY)
+        .sign(_SOURCE_SIGNATURE_DOMAIN + bytes.fromhex(head.head_sha256))
+        .hex()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Fixture factories
+# ---------------------------------------------------------------------------
+
+
+def fixture_capability_v4(
+    *,
+    capability_id: str = "fixture-capability-1",
+    revocation_registry_id: str = REVOCATION_REGISTRY_ID,
+    issued_at_ms: int = 1_000,
+    expires_at_ms: int = 10_000,
+    revocation_trusted_floor_sha256: str = REVOCATION_FLOOR_HEAD,
+    approved_max_cents: int = 100,
+    maximum_output_bytes: int = 4096,
+    router_role: Literal["planner", "gatherer", "verifier", "synthesizer"] = "gatherer",
+) -> SignedProviderCapabilityV4FixtureV1:
+    account_blind = b"\x01" * 32
+    project_blind = b"\x02" * 32
+    material: dict[str, object] = {
+        "schema_version": 4,
+        "capability_id": capability_id,
+        "owner_path_discriminator": OWNER_PATH_DISCRIMINATOR,
+        "revocation_registry_id": revocation_registry_id,
+        "revocation_trusted_floor_sha256": revocation_trusted_floor_sha256,
+        "provider": "fixture.provider",
+        "model": "fixture.model",
+        "route": "fixture.route",
+        "api_mode": "fixture",
+        "processing_region": "local",
+        "output_schema": "fixture.output.v1",
+        "account_scope_blind_id": account_blind,
+        "project_scope_blind_id": project_blind,
+        "router_role": router_role,
+        "policy_sha256": "aa" * 32,
+        "core_sha256": "bb" * 32,
+        "receipt_contract_sha256": "cc" * 32,
+        "envelope_contract_sha256": "dd" * 32,
+        "approved_max_cents": approved_max_cents,
+        "maximum_output_bytes": maximum_output_bytes,
+        "issued_at_ms": issued_at_ms,
+        "expires_at_ms": expires_at_ms,
+        "key_id": CAPABILITY_KEY_ID,
+        "issuer_role": "private_provider_capability_v4_fixture_issuer",
+        "key_purpose": "private_provider_capability_v4_fixture_v1",
+        "signature_scheme": "ed25519",
+        "synthetic_fixture_eligibility_only": True,
+        "live_migration_verified": False,
+        "user_accounting_effect": False,
+        "transport_reachable": False,
+        "confers_execution_authority": False,
+        "confers_checkpoint_authority": False,
+        "confers_sink_authority": False,
+        "confers_transition_authority": False,
+        "production_consumer_enabled": False,
+    }
+    cap_hash = _capability_v4_document_sha256(material)
+    cap = SignedProviderCapabilityV4FixtureV1.model_validate(
+        {**material, "capability_sha256": cap_hash, "signature_ed25519": "00" * 64}
+    )
+    return SignedProviderCapabilityV4FixtureV1.model_validate(
+        {**material, "capability_sha256": cap_hash, "signature_ed25519": _sign_capability_v4(cap)}
+    )
+
+
+def fixture_revocation_head(
+    *,
+    registry_id: str = REVOCATION_REGISTRY_ID,
+    epoch: int = 0,
+    predecessor_head_sha256: str | None = None,
+    issued_at_ms: int = 1_000,
+    revoked_capability_sha256s: tuple[str, ...] = (),
+) -> SignedProviderRevocationHeadFixtureV1:
+    material: dict[str, object] = {
+        "schema_version": 1,
+        "registry_id": registry_id,
+        "owner_path_discriminator": OWNER_PATH_DISCRIMINATOR,
+        "epoch": epoch,
+        "predecessor_head_sha256": predecessor_head_sha256,
+        "issued_at_ms": issued_at_ms,
+        "revoked_capability_sha256s": revoked_capability_sha256s,
+        "key_id": REVOCATION_KEY_ID,
+        "issuer_role": "private_provider_revocation_fixture_issuer",
+        "key_purpose": "private_provider_revocation_fixture_v1",
+        "signature_scheme": "ed25519",
+        "synthetic_fixture_eligibility_only": True,
+        "live_migration_verified": False,
+        "user_accounting_effect": False,
+        "transport_reachable": False,
+        "confers_execution_authority": False,
+        "confers_checkpoint_authority": False,
+        "confers_sink_authority": False,
+        "confers_transition_authority": False,
+        "production_consumer_enabled": False,
+    }
+    head_hash = _revocation_head_document_sha256(material)
+    head = SignedProviderRevocationHeadFixtureV1.model_validate(
+        {**material, "head_sha256": head_hash, "signature_ed25519": "00" * 64}
+    )
+    return SignedProviderRevocationHeadFixtureV1.model_validate(
+        {**material, "head_sha256": head_hash, "signature_ed25519": _sign_revocation_head(head)}
+    )
+
+
+def fixture_source_head(
+    *,
+    epoch: int = 0,
+    previous_head_sha256: str = "0" * 64,
+    issued_at_ms: int = 1_000,
+    active_revisions: tuple[OpaqueSourceBundleRevisionV1, ...] = (),
+) -> SignedSourceHeadFixtureV1:
+    # Compute snapshot hash without the hash field first
+    snapshot_no_hash: dict[str, object] = {
+        "schema_version": 1,
+        "registry_id": SOURCE_REGISTRY_ID,
+        "owner_path_discriminator": OWNER_PATH_DISCRIMINATOR,
+        "epoch": epoch,
+        "issued_at_ms": issued_at_ms,
+        "active_bundle_revisions": tuple(r.model_dump(mode="json") for r in active_revisions),
+        "tombstoned_bundle_ids": (),
+        "confers_execution_authority": False,
+        "confers_checkpoint_authority": False,
+        "confers_sink_authority": False,
+        "confers_transition_authority": False,
+        "production_consumer_enabled": False,
+    }
+    snapshot_hash = _source_snapshot_sha256(snapshot_no_hash)
+    snapshot_material = {**snapshot_no_hash, "snapshot_sha256": snapshot_hash}
+    OwnerPrivateSourceAuthoritySnapshotV1.model_validate(snapshot_material)
+
+    head_material: dict[str, object] = {
+        "schema_version": 1,
+        "registry_id": SOURCE_REGISTRY_ID,
+        "owner_path_discriminator": OWNER_PATH_DISCRIMINATOR,
+        "epoch": epoch,
+        "issued_at_ms": issued_at_ms,
+        "previous_head_sha256": previous_head_sha256,
+        "snapshot": snapshot_material,
+        "key_id": SOURCE_HEAD_KEY_ID,
+        "issuer_role": "owner_private_source_head_issuer",
+        "key_purpose": "owner_private_source_head_issuer_v1",
+        "signature_scheme": "ed25519",
+        "confers_execution_authority": False,
+        "confers_checkpoint_authority": False,
+        "confers_sink_authority": False,
+        "confers_transition_authority": False,
+        "production_consumer_enabled": False,
+    }
+    head_hash = _source_head_document_sha256(head_material)
+    head = SignedSourceHeadFixtureV1.model_validate(
+        {**head_material, "head_sha256": head_hash, "signature_ed25519": "00" * 64}
+    )
+    return SignedSourceHeadFixtureV1.model_validate(
+        {**head_material, "head_sha256": head_hash, "signature_ed25519": _sign_source_head(head)}
+    )
+
+
+# ---------------------------------------------------------------------------
+# Owner authority
+# ---------------------------------------------------------------------------
+
+
+class OpaqueOwnerPathAuthority:
+    __slots__ = ()
+
+    def __repr__(self) -> str:
+        return "OpaqueOwnerPathAuthority(redacted=True)"
+
+    def __reduce__(self) -> Never:
+        raise TypeError("owner path authority is process-local")
+
+
+# ---------------------------------------------------------------------------
+# Key provider (test fixture)
+# ---------------------------------------------------------------------------
+
+
+class _HMACKeyContext(AbstractContextManager[bytearray]):
+    def __init__(self, key: bytes) -> None:
+        self._key = key
+        self._opened: bytearray | None = None
+
+    def __enter__(self) -> bytearray:
+        buf = bytearray(self._key)
+        self._opened = buf
+        return buf
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if self._opened is not None:
+            self._opened[:] = b"\x00" * len(self._opened)
+        self._opened = None
+
+
+class _AESKeyContext(AbstractContextManager[bytearray]):
+    def __init__(self, key: bytes) -> None:
+        self._key = key
+        self._opened: bytearray | None = None
+
+    def __enter__(self) -> bytearray:
+        buf = bytearray(self._key)
+        self._opened = buf
+        return buf
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        if self._opened is not None:
+            self._opened[:] = b"\x00" * len(self._opened)
+        self._opened = None
+
+
+class _AuthContext(AbstractContextManager[None]):
+    def __enter__(self) -> None:
+        return None
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_value: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        pass
+
+
+@dataclass(slots=True)
+class FixtureOwnerKeyProvider:
+    expected_authority: object
+    hmac_keys: dict[str, bytes] = field(
+        default_factory=lambda: {
+            "consent_v1": bytes([0x10]) * 32,
+            "cursor_v1": bytes([0x11]) * 32,
+            "account_v1": bytes([0x12]) * 32,
+            "project_v1": bytes([0x13]) * 32,
+            "request_v1": bytes([0x14]) * 32,
+            "idempotency_v1": bytes([0x15]) * 32,
+            "effect_v1": bytes([0x16]) * 32,
+            "test_claim_v1": bytes([0x17]) * 32,
+        }
+    )
+    aes_keys: dict[tuple[str, str], bytes] = field(default_factory=dict)
+    auth_calls: list[tuple[int, str]] = field(default_factory=list)
+    hmac_calls: list[tuple[int, str, str]] = field(default_factory=list)
+
+    def authenticate_owner_path(
+        self,
+        *,
+        owner_path_authority: object,
+        owner_path_discriminator: str,
+    ) -> AbstractContextManager[None]:
+        if owner_path_authority is not self.expected_authority:
+            raise ValueError("wrong authority")
+        if owner_path_discriminator != OWNER_PATH_DISCRIMINATOR:
+            raise ValueError("wrong discriminator")
+        self.auth_calls.append((id(owner_path_authority), owner_path_discriminator))
+        return _AuthContext()
+
+    def open_hmac_sha256_key(
+        self,
+        *,
+        owner_path_authority: object,
+        owner_path_discriminator: str,
+        purpose: Literal[
+            "consent_v1",
+            "cursor_v1",
+            "account_v1",
+            "project_v1",
+            "request_v1",
+            "idempotency_v1",
+            "effect_v1",
+            "test_claim_v1",
+        ],
+    ) -> AbstractContextManager[bytearray]:
+        if owner_path_authority is not self.expected_authority:
+            raise ValueError("wrong authority")
+        if owner_path_discriminator != OWNER_PATH_DISCRIMINATOR:
+            raise ValueError("wrong discriminator")
+        key = self.hmac_keys.get(purpose)
+        if key is None:
+            raise ValueError("wrong purpose")
+        self.hmac_calls.append((id(owner_path_authority), owner_path_discriminator, purpose))
+        return _HMACKeyContext(key)
+
+    def open_aes256gcm_key(
+        self,
+        *,
+        owner_path_authority: object,
+        owner_path_discriminator: str,
+        key_version: str,
+        purpose: Literal["admission_candidate_v1", "attempt_evidence_v1"],
+    ) -> AbstractContextManager[bytearray]:
+        if owner_path_authority is not self.expected_authority:
+            raise ValueError("wrong authority")
+        return _AESKeyContext(secrets.token_bytes(32))
+
+
+class FixtureSourceKeyProvider:
+    def __init__(self) -> None:
+        self.keys: dict[tuple[str, str], bytes] = {
+            (OWNER_PATH_DISCRIMINATOR, SOURCE_KEY_VERSION): bytes([0x31]) * 32
+        }
+        self.calls: list[tuple[int, str, str]] = []
+        self.opened_buffers: list[bytearray] = []
+
+    def open_aes256gcm_key(
+        self,
+        *,
+        owner_path_authority: object,
+        owner_path_discriminator: str,
+        key_version: str,
+    ) -> AbstractContextManager[bytearray]:
+        key = self.keys.get((owner_path_discriminator, key_version))
+        if key is None:
+            raise ValueError("source key unavailable")
+        self.calls.append((id(owner_path_authority), owner_path_discriminator, key_version))
+        return _AESKeyContext(key)
+
+
+# ---------------------------------------------------------------------------
+# Store case factory
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class PrivatePaidLaneCheckpointCase:
+    authority: OpaqueOwnerPathAuthority
+    owner_key_provider: FixtureOwnerKeyProvider
+    source_key_provider: FixtureSourceKeyProvider
+    store: PrivatePaidLaneEligibilityCheckpointStoreV1
+    genesis_source_head: SignedSourceHeadFixtureV1
+    uses_quarantined_raw_sql_genesis_scaffolding: Literal[True]
+
+
+def fixture_store_case(
+    root: Path, *, synthetic_legacy_root: _OpenLegacyRootV1 | None = None
+) -> PrivatePaidLaneCheckpointCase:
+    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+    root.chmod(0o700)
+    authority = OpaqueOwnerPathAuthority()
+    owner_key_provider = FixtureOwnerKeyProvider(authority)
+    source_key_provider = FixtureSourceKeyProvider()
+
+    # Create genesis source head (epoch 0, predecessor all-zeros)
+    genesis_source_head = fixture_source_head(
+        epoch=0,
+        previous_head_sha256="0" * 64,
+        issued_at_ms=0,
+    )
+
+    # Create genesis revocation head
+    genesis_revocation_head = fixture_revocation_head(epoch=0, issued_at_ms=0)
+
+    # Build floor pins pointing at the genesis heads
+    rfp = ProviderRevocationFloorPinV1(
+        registry_id=REVOCATION_REGISTRY_ID,
+        owner_path_discriminator=OWNER_PATH_DISCRIMINATOR,
+        floor_head_sha256=genesis_revocation_head.head_sha256,
+        floor_epoch=0,
+    )
+    sfp = OwnerPrivateSourceFloorPinV1(
+        registry_id=SOURCE_REGISTRY_ID,
+        owner_path_discriminator=OWNER_PATH_DISCRIMINATOR,
+        floor_head_sha256=genesis_source_head.head_sha256,
+        floor_epoch=0,
+    )
+
+    # Compute expected identities
+    semantic = compute_private_paid_lane_semantic_sha256()
+    contract = compute_private_paid_lane_contract_sha256(
+        semantic_sha256=semantic,
+        sql=_SCHEMA_SQL_V1,
+        predecessor_cycle33_contract=_PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+        predecessor_cycle32_source=_PREDECESSOR_CYCLE32_SOURCE_SHA256,
+        predecessor_cycle30_capability=_PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
+    )
+
+    production_epoch0_store = PrivatePaidLaneEligibilityCheckpointStoreV1.open(
+        database_path=root / "paid-lane.sqlite3",
+        open_mode="create_epoch0",
+        expected_store_id=STORE_ID,
+        expected_schema_version=1,
+        expected_migration_epoch=0,
+        expected_cutover_marker_sha256=None,
+        expected_source_manifest_sha256=None,
+        expected_copy_audit_sha256=None,
+        expected_external_pin_store_id=STORE_ID,
+        expected_semantic_source_sha256=semantic,
+        expected_contract_sha256=contract,
+        provider_capability_verification_keys=capability_verification_keys(),
+        provider_revocation_verification_keys=revocation_verification_keys(),
+        source_head_verification_keys=source_head_verification_keys(),
+        cutover_verification_keys=cutover_verification_keys(),
+        provider_revocation_floor_pins=(rfp,),
+        source_floor_pins=(sfp,),
+        source_bundle_key_provider=source_key_provider,
+        owner_key_provider=owner_key_provider,
+        synthetic_legacy_root=(
+            _OpenLegacyRootV1() if synthetic_legacy_root is None else synthetic_legacy_root
+        ),
+        synthetic_external_pin_store=_OpenExternalPinStoreV1(store_id=STORE_ID),
+    )
+    # Quarantined support composition scaffolding only. Cycle34A defines no public genesis
+    # bootstrap, and these rows are not evidence of epoch-zero writer authority.
+
+    with sqlite3.connect(production_epoch0_store.database_path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        # Insert genesis revocation head
+        revoked_json = _canonical_json(sorted(genesis_revocation_head.revoked_capability_sha256s))
+        head_doc = _canonical_json(genesis_revocation_head.model_dump(mode="json"))
+        conn.execute(
+            "INSERT INTO provider_revocation_heads "
+            "(head_sha256, registry_id, owner_path_discriminator, epoch, "
+            "predecessor_head_sha256, issued_at_ms, revoked_capability_hashes_json, "
+            "key_id, document_json, signature_ed25519) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?)",
+            (
+                genesis_revocation_head.head_sha256,
+                genesis_revocation_head.registry_id,
+                genesis_revocation_head.owner_path_discriminator,
+                0,
+                None,
+                0,
+                revoked_json,
+                genesis_revocation_head.key_id,
+                head_doc,
+                genesis_revocation_head.signature_ed25519,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO provider_revocation_current "
+            "(registry_id, owner_path_discriminator, head_sha256, epoch, "
+            "state_version, updated_at_ms) "
+            "VALUES (?,?,?,?,?,?)",
+            (
+                REVOCATION_REGISTRY_ID,
+                OWNER_PATH_DISCRIMINATOR,
+                genesis_revocation_head.head_sha256,
+                0,
+                1,
+                0,
+            ),
+        )
+        # Insert genesis source head
+        snapshot_doc = _canonical_json(genesis_source_head.snapshot.model_dump(mode="json"))
+        revisions_json = _canonical_json(
+            [
+                r.model_dump(mode="json")
+                for r in genesis_source_head.snapshot.active_bundle_revisions
+            ]
+        )
+        source_head_doc = _canonical_json(genesis_source_head.model_dump(mode="json"))
+        conn.execute(
+            "INSERT INTO source_heads "
+            "(head_sha256, registry_id, owner_path_discriminator, epoch, "
+            "previous_head_sha256, issued_at_ms, active_bundle_revisions_json, "
+            "snapshot_json, key_id, document_json, signature_ed25519) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (
+                genesis_source_head.head_sha256,
+                genesis_source_head.registry_id,
+                genesis_source_head.owner_path_discriminator,
+                0,
+                "0" * 64,
+                0,
+                revisions_json,
+                snapshot_doc,
+                genesis_source_head.key_id,
+                source_head_doc,
+                genesis_source_head.signature_ed25519,
+            ),
+        )
+        conn.execute(
+            "INSERT INTO source_current "
+            "(registry_id, owner_path_discriminator, head_sha256, epoch, "
+            "state_version, updated_at_ms) "
+            "VALUES (?,?,?,?,?,?)",
+            (
+                SOURCE_REGISTRY_ID,
+                OWNER_PATH_DISCRIMINATOR,
+                genesis_source_head.head_sha256,
+                0,
+                1,
+                0,
+            ),
+        )
+        conn.commit()
+
+    return PrivatePaidLaneCheckpointCase(
+        authority=authority,
+        owner_key_provider=owner_key_provider,
+        source_key_provider=source_key_provider,
+        store=production_epoch0_store,
+        genesis_source_head=genesis_source_head,
+        uses_quarantined_raw_sql_genesis_scaffolding=True,
+    )
+
+
+__all__ = [
+    "CAPABILITY_KEY_ID",
+    "CAPABILITY_PRIVATE_KEY",
+    "OWNER_PATH_DISCRIMINATOR",
+    "REVOCATION_KEY_ID",
+    "REVOCATION_REGISTRY_ID",
+    "SOURCE_HEAD_KEY_ID",
+    "SOURCE_KEY_VERSION",
+    "SOURCE_REGISTRY_ID",
+    "STORE_ID",
+    "FixtureOwnerKeyProvider",
+    "FixtureSourceKeyProvider",
+    "OpaqueOwnerPathAuthority",
+    "PrivatePaidLaneCheckpointCase",
+    "QuarantinedSyntheticExternalPinStoreV1",
+    "QuarantinedSyntheticLegacyRootV1",
+    "QuarantinedSyntheticWriterBarrierV1",
+    "capability_verification_keys",
+    "fixture_capability_v4",
+    "fixture_revocation_head",
+    "fixture_source_head",
+    "fixture_store_case",
+    "provider_revocation_floor_pins",
+    "revocation_verification_keys",
+    "source_floor_pins",
+    "source_head_verification_keys",
+]

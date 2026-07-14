@@ -1105,6 +1105,7 @@ def test_bundle_and_head_stores_remain_quarantined_from_production_composition()
     excluded = {
         ROOT / "substrate/midnight_oil/private_source_bundle_store.py",
         ROOT / "substrate/midnight_oil/private_source_head_store.py",
+        ROOT / "substrate/midnight_oil/private_paid_lane_authority_checkpoint.py",
     }
     violations = [
         path.relative_to(ROOT)
