@@ -120,6 +120,51 @@ def _empty_migration_source_stores() -> tuple[MigrationSourceStoreV1, ...]:
     return tuple(stores)
 
 
+def _migration_corpus_from_rows(
+    rows: dict[str, tuple[Any, ...]],
+) -> FrozenPaidLaneMigrationCorpusV1:
+    freeze_nonce = "33" * 32
+    stores: list[MigrationSourceStoreV1] = []
+    for index, role in enumerate(sorted(checkpoint_module._MIGRATION_ROLE_SCHEMA_TABLES), start=1):
+        sequence = [
+            [table_name, checkpoint_module._migration_row_sha256(table_name, row)]
+            for table_name in checkpoint_module._MIGRATION_ROLE_SCHEMA_TABLES[role]
+            for row in rows.get(table_name, ())
+        ]
+        role_bytes = role.encode()
+        stores.append(
+            MigrationSourceStoreV1(
+                store_kind=role,
+                store_id=f"legacy-{index}",
+                schema_sha256=checkpoint_module._migration_role_schema_sha256(role),
+                native_writer_barrier_id=checkpoint_module._migration_barrier_id(freeze_nonce),
+                final_version=checkpoint_module._MIGRATION_CHILD_FINAL_VERSION,
+                row_count=len(sequence),
+                ordered_rows_sha256=hashlib.sha256(
+                    checkpoint_module._SOURCE_STORE_ROWS_DOMAIN
+                    + len(role_bytes).to_bytes(4, "big")
+                    + role_bytes
+                    + _canonical_json(sequence)
+                ).hexdigest(),
+            )
+        )
+    draft = FrozenPaidLaneMigrationCorpusV1.model_construct(
+        freeze_nonce=freeze_nonce,
+        quiesced_at_ms=1,
+        drained_at_ms=1,
+        sealed_at_ms=1,
+        source_stores=tuple(stores),
+        **rows,
+        source_manifest_sha256="0" * 64,
+    )
+    return FrozenPaidLaneMigrationCorpusV1.model_validate(
+        {
+            **draft.model_dump(mode="python"),
+            "source_manifest_sha256": checkpoint_module._migration_source_manifest_sha256(draft),
+        }
+    )
+
+
 def _signed_lifecycle_state(
     private_key: Ed25519PrivateKey, **overrides: object
 ) -> checkpoint_module.SignedMigrationLifecycleStateV1:
@@ -2293,6 +2338,32 @@ class TestMigrationPrerequisites:
             barrier_handle.close_and_revoke_all_writers()
             barrier_handle.checkpoint_and_plant_test_all_mutators()
             corpus = barrier_handle.seal_and_collect()
+            copy_intent = checkpoint_module._copy_audit_intent_v1(
+                corpus=corpus,
+                target_store_id=STORE_ID,
+                semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+                contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+                provider_capability_verification_keys=(),
+                provider_revocation_verification_keys=(),
+                source_head_verification_keys=(),
+                provider_revocation_floor_pins=(),
+                source_floor_pins=(),
+            )
+            assert sum(copy_intent.table_row_counts.model_dump().values()) == 1 + sum(
+                len(getattr(corpus, table_name))
+                for table_name in (
+                    "provider_capabilities_v4",
+                    "provider_revocation_heads",
+                    "provider_revocation_current",
+                    "source_heads",
+                    "source_current",
+                    "encrypted_source_bundles",
+                    "owner_operations",
+                    "consent_claims",
+                    "queue_leases",
+                    "budget_accounts",
+                )
+            )
             issuer_measured = support_checkpoint._collect_sealed_corpus(
                 support_checkpoint._issuer_root_path(root_fd),
                 json.loads(
@@ -2429,7 +2500,7 @@ class TestMigrationPrerequisites:
             os.close(root_fd)
             os.close(parent_fd)
 
-    def test_closed_corpus_model_has_exact_top_level_fields(self) -> None:
+    def test_closed_corpus_model_has_exact_top_level_fields(self, tmp_path: Path) -> None:
         assert tuple(FrozenPaidLaneMigrationCorpusV1.model_fields) == (
             "schema_version",
             "target_migration_epoch",
@@ -2467,6 +2538,115 @@ class TestMigrationPrerequisites:
             }
         )
         assert corpus.target_migration_epoch == 1
+        copy_intent = checkpoint_module._copy_audit_intent_v1(
+            corpus=corpus,
+            target_store_id=STORE_ID,
+            semantic_source_sha256="aa" * 32,
+            contract_sha256="bb" * 32,
+            provider_capability_verification_keys=(),
+            provider_revocation_verification_keys=(),
+            source_head_verification_keys=(),
+            provider_revocation_floor_pins=(),
+            source_floor_pins=(),
+        )
+        assert copy_intent.table_row_counts.paid_lane_schema == 1
+        assert sum(copy_intent.table_row_counts.model_dump().values()) == 1
+        assert corpus.source_manifest_sha256 == (
+            "3210fd97c98a58d24e354ad86ee968c31be7d819b42309577515223cf28a6f26"
+        )
+        assert copy_intent.ordered_table_row_sha256s[0][1] == (
+            "eb48986e805d1de532a4a5fa9ec1fef615a5bc094255ff2bdd2f17806b508437",
+        )
+        assert copy_intent.budget_invariant_sha256 == (
+            "88c9152ff7e97576b7849747c2fb253b8c9c3192f3763fa44e362a6d965cf7d7"
+        )
+        assert copy_intent.chain_audit_sha256 == (
+            "df9116bd5bae5c15ea9e439cbd1ac3a62a5e54325d598ae0993deaa2b78addd2"
+        )
+        assert checkpoint_module._copy_audit_sha256(copy_intent) == (
+            "4f19eda35623b79888c1d32296d1fed2fabaf5a256ae81ac0f79fbbe01b7a148"
+        )
+        assert tuple(name for name, _ in copy_intent.ordered_table_row_sha256s) == tuple(
+            checkpoint_module.PaidLaneTableRowCountsV1.model_fields
+        )
+        assert checkpoint_module._copy_audit_sha256(
+            copy_intent
+        ) == checkpoint_module._copy_audit_sha256(
+            checkpoint_module._copy_audit_intent_v1(
+                corpus=corpus,
+                target_store_id=STORE_ID,
+                semantic_source_sha256="aa" * 32,
+                contract_sha256="bb" * 32,
+                provider_capability_verification_keys=(),
+                provider_revocation_verification_keys=(),
+                source_head_verification_keys=(),
+                provider_revocation_floor_pins=(),
+                source_floor_pins=(),
+            )
+        )
+        changed_target = checkpoint_module._copy_audit_intent_v1(
+            corpus=corpus,
+            target_store_id=STORE_ID,
+            semantic_source_sha256="cc" * 32,
+            contract_sha256="bb" * 32,
+            provider_capability_verification_keys=(),
+            provider_revocation_verification_keys=(),
+            source_head_verification_keys=(),
+            provider_revocation_floor_pins=(),
+            source_floor_pins=(),
+        )
+        assert checkpoint_module._copy_audit_sha256(
+            changed_target
+        ) != checkpoint_module._copy_audit_sha256(copy_intent)
+        connection = sqlite3.connect(tmp_path / "copy-audit.sqlite3")
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=5000")
+            connection.execute("PRAGMA temp_store=MEMORY")
+            connection.execute("PRAGMA page_size=4096")
+            connection.execute(f"PRAGMA max_page_count={checkpoint_module.MAX_DB_PAGES}")
+            connection.executescript(checkpoint_module._SCHEMA_SQL_V1)
+            connection.execute(
+                "INSERT INTO paid_lane_schema "
+                "(singleton,schema_version,migration_epoch,store_id,semantic_source_sha256,"
+                "contract_sha256,cutover_marker_sha256,created_at_ms) "
+                "VALUES (1,1,0,?,?,?,NULL,0)",
+                (STORE_ID, "aa" * 32, "bb" * 32),
+            )
+            observed = checkpoint_module._copy_audit_observed_target_v1(
+                connection,
+                corpus=corpus,
+                target_store_id=STORE_ID,
+                semantic_source_sha256="aa" * 32,
+                contract_sha256="bb" * 32,
+                provider_capability_verification_keys=(),
+                provider_revocation_verification_keys=(),
+                source_head_verification_keys=(),
+                provider_revocation_floor_pins=(),
+                source_floor_pins=(),
+            )
+            assert observed == copy_intent
+            connection.execute(
+                "UPDATE paid_lane_schema SET semantic_source_sha256=? WHERE singleton=1",
+                ("dd" * 32,),
+            )
+            with pytest.raises(ValueError, match="copy target singleton"):
+                checkpoint_module._copy_audit_observed_target_v1(
+                    connection,
+                    corpus=corpus,
+                    target_store_id=STORE_ID,
+                    semantic_source_sha256="aa" * 32,
+                    contract_sha256="bb" * 32,
+                    provider_capability_verification_keys=(),
+                    provider_revocation_verification_keys=(),
+                    source_head_verification_keys=(),
+                    provider_revocation_floor_pins=(),
+                    source_floor_pins=(),
+                )
+        finally:
+            connection.close()
         with pytest.raises(ValueError):
             FrozenPaidLaneMigrationCorpusV1.model_validate(
                 {**corpus.model_dump(mode="python"), "drained_at_ms": 0}
@@ -2475,6 +2655,95 @@ class TestMigrationPrerequisites:
             FrozenPaidLaneMigrationCorpusV1.model_validate(
                 {**corpus.model_dump(mode="python"), "source_manifest_sha256": "ff" * 32}
             )
+
+    def test_copy_audit_nonempty_authority_round_trip(self, tmp_path: Path) -> None:
+        corpus = _migration_corpus_from_rows(support_checkpoint.fixture_genesis_migration_rows())
+        authority = {
+            "provider_capability_verification_keys": support_checkpoint.capability_verification_keys(),
+            "provider_revocation_verification_keys": support_checkpoint.revocation_verification_keys(),
+            "source_head_verification_keys": support_checkpoint.source_head_verification_keys(),
+            "provider_revocation_floor_pins": support_checkpoint.provider_revocation_floor_pins(),
+            "source_floor_pins": support_checkpoint.source_floor_pins(),
+        }
+        intent = checkpoint_module._copy_audit_intent_v1(
+            corpus=corpus,
+            target_store_id=STORE_ID,
+            semantic_source_sha256="aa" * 32,
+            contract_sha256="bb" * 32,
+            **authority,
+        )
+        assert intent.table_row_counts.provider_revocation_heads == 1
+        assert intent.table_row_counts.provider_revocation_current == 1
+        assert intent.table_row_counts.source_heads == 1
+        assert intent.table_row_counts.source_current == 1
+        wrong_revocation_key = checkpoint_module.VerificationKeyV1(
+            key_id=support_checkpoint.revocation_verification_keys()[0].key_id,
+            public_key_bytes=Ed25519PrivateKey.generate().public_key().public_bytes_raw(),
+        )
+        with pytest.raises(InvalidSignature):
+            checkpoint_module._copy_audit_intent_v1(
+                corpus=corpus,
+                target_store_id=STORE_ID,
+                semantic_source_sha256="aa" * 32,
+                contract_sha256="bb" * 32,
+                **{
+                    **authority,
+                    "provider_revocation_verification_keys": (wrong_revocation_key,),
+                },
+            )
+        connection = sqlite3.connect(tmp_path / "copy-audit-nonempty.sqlite3")
+        try:
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute("PRAGMA foreign_keys=ON")
+            connection.execute("PRAGMA busy_timeout=5000")
+            connection.execute("PRAGMA temp_store=MEMORY")
+            connection.execute("PRAGMA page_size=4096")
+            connection.execute(f"PRAGMA max_page_count={checkpoint_module.MAX_DB_PAGES}")
+            connection.executescript(checkpoint_module._SCHEMA_SQL_V1)
+            connection.execute(
+                "INSERT INTO paid_lane_schema "
+                "(singleton,schema_version,migration_epoch,store_id,semantic_source_sha256,"
+                "contract_sha256,cutover_marker_sha256,created_at_ms) "
+                "VALUES (1,1,0,?,?,?,NULL,0)",
+                (STORE_ID, "aa" * 32, "bb" * 32),
+            )
+            for table_name in checkpoint_module._COPY_TABLE_ORDER_FIELDS:
+                for row in getattr(corpus, table_name):
+                    columns = tuple(type(row).model_fields)
+                    values = tuple(
+                        value.hex()
+                        if isinstance(value, bytes) and column == "signature_ed25519"
+                        else value
+                        for column in columns
+                        for value in (getattr(row, column),)
+                    )
+                    connection.execute(
+                        f"INSERT INTO {table_name} ({','.join(columns)}) "
+                        f"VALUES ({','.join('?' for _ in columns)})",
+                        values,
+                    )
+            observed = checkpoint_module._copy_audit_observed_target_v1(
+                connection,
+                corpus=corpus,
+                target_store_id=STORE_ID,
+                semantic_source_sha256="aa" * 32,
+                contract_sha256="bb" * 32,
+                **authority,
+            )
+            assert observed == intent
+            connection.execute("UPDATE source_current SET updated_at_ms=updated_at_ms+1")
+            with pytest.raises(ValueError, match="copy target row mismatch"):
+                checkpoint_module._copy_audit_observed_target_v1(
+                    connection,
+                    corpus=corpus,
+                    target_store_id=STORE_ID,
+                    semantic_source_sha256="aa" * 32,
+                    contract_sha256="bb" * 32,
+                    **authority,
+                )
+        finally:
+            connection.close()
 
     def test_encrypted_migration_row_rejects_framing_mismatch(self) -> None:
         with pytest.raises(ValueError):

@@ -201,6 +201,10 @@ _PENDING_SOURCE_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-pending-sourc
 _MIGRATION_ROW_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-migration-row.v1\x00"
 _SOURCE_MANIFEST_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-source-manifest.v1\x00"
 _COPY_AUDIT_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-copy-audit.v1\x00"
+_COPY_BUDGET_INVARIANT_DOMAIN: bytes = (
+    b"antiek.midnight-oil.private-paid-copy-budget-invariant.v1\x00"
+)
+_COPY_CHAIN_AUDIT_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-copy-chain-audit.v1\x00"
 _CUTOVER_MARKER_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-cutover-marker.v1\x00"
 _CUTOVER_MARKER_SIGNATURE_DOMAIN: bytes = (
     b"antiek.midnight-oil.private-paid-cutover-marker-signature.v1\x00"
@@ -2575,6 +2579,10 @@ def _migration_row_sha256(table_name: str, row: BaseModel) -> str:
         else:
             raise ValueError("unsupported migration row value")
         columns.append([name, tag, encoded])
+    return _typed_migration_row_sha256(table_name, columns)
+
+
+def _typed_migration_row_sha256(table_name: str, columns: list[list[object]]) -> str:
     table_bytes = table_name.encode()
     return hashlib.sha256(
         _MIGRATION_ROW_DOMAIN + _u32be(len(table_bytes)) + table_bytes + _canonical_json(columns)
@@ -2642,6 +2650,370 @@ class CopyAuditV1(_Closed):
             ):
                 raise ValueError("copy audit row hashes")
         return self
+
+
+def _copy_floor_pin_map(
+    pins: tuple[ProviderRevocationFloorPinV1, ...] | tuple[OwnerPrivateSourceFloorPinV1, ...],
+) -> dict[tuple[str, str], ProviderRevocationFloorPinV1 | OwnerPrivateSourceFloorPinV1]:
+    ordered = tuple(sorted(pins, key=lambda pin: (pin.registry_id, pin.owner_path_discriminator)))
+    if pins != ordered or len(pins) > MAX_MUTABLE_CURRENT_ROWS:
+        raise ValueError("copy intent floor pin order")
+    result = {(pin.registry_id, pin.owner_path_discriminator): pin for pin in pins}
+    if len(result) != len(pins):
+        raise ValueError("copy intent duplicate floor pin")
+    return result
+
+
+def _audit_corpus_authority_v1(
+    corpus: FrozenPaidLaneMigrationCorpusV1,
+    *,
+    capability_keys: Mapping[str, bytes],
+    revocation_keys: Mapping[str, bytes],
+    source_keys: Mapping[str, bytes],
+    revocation_pins: Mapping[
+        tuple[str, str], ProviderRevocationFloorPinV1 | OwnerPrivateSourceFloorPinV1
+    ],
+    source_pins: Mapping[
+        tuple[str, str], ProviderRevocationFloorPinV1 | OwnerPrivateSourceFloorPinV1
+    ],
+) -> None:
+    revocation_current = {
+        (row.registry_id, row.owner_path_discriminator): row
+        for row in corpus.provider_revocation_current
+    }
+    source_current = {
+        (row.registry_id, row.owner_path_discriminator): row for row in corpus.source_current
+    }
+    if set(revocation_current) != set(revocation_pins) or set(source_current) != set(source_pins):
+        raise ValueError("copy intent authority roster")
+    for capability_row in corpus.provider_capabilities_v4:
+        capability = SignedProviderCapabilityV4FixtureV1.model_validate_json(
+            capability_row.document_json
+        )
+        verify_capability_v4(capability, verification_keys=capability_keys)
+        if (
+            capability.capability_sha256 != capability_row.capability_sha256
+            or capability.capability_id != capability_row.capability_id
+            or capability.owner_path_discriminator != capability_row.owner_path_discriminator
+            or capability.revocation_registry_id != capability_row.revocation_registry_id
+            or capability.revocation_trusted_floor_sha256
+            != capability_row.revocation_trusted_floor_sha256
+            or capability.issued_at_ms != capability_row.issued_at_ms
+            or capability.expires_at_ms != capability_row.expires_at_ms
+            or capability.key_id != capability_row.key_id
+            or bytes.fromhex(capability.signature_ed25519) != capability_row.signature_ed25519
+            or _canonical_model_json(capability) != capability_row.document_json
+        ):
+            raise ValueError("copy intent capability authority")
+    for key, pin in revocation_pins.items():
+        known_capabilities = {
+            row.capability_sha256
+            for row in corpus.provider_capabilities_v4
+            if (row.revocation_registry_id, row.owner_path_discriminator) == key
+        }
+        revocation_heads = tuple(
+            revocation_row
+            for revocation_row in corpus.provider_revocation_heads
+            if (revocation_row.registry_id, revocation_row.owner_path_discriminator) == key
+        )
+        revocation_current_row = revocation_current[key]
+        if (
+            not revocation_heads
+            or revocation_heads[-1].head_sha256 != revocation_current_row.head_sha256
+        ):
+            raise ValueError("copy intent revocation current")
+        floor = tuple(item for item in revocation_heads if item.epoch == pin.floor_epoch)
+        if len(floor) != 1 or floor[0].head_sha256 != pin.floor_head_sha256:
+            raise ValueError("copy intent revocation floor")
+        for revocation_row in revocation_heads:
+            revocation_head = SignedProviderRevocationHeadFixtureV1.model_validate_json(
+                revocation_row.document_json
+            )
+            verify_revocation_head(revocation_head, verification_keys=revocation_keys)
+            if (
+                revocation_head.head_sha256 != revocation_row.head_sha256
+                or bytes.fromhex(revocation_head.signature_ed25519)
+                != revocation_row.signature_ed25519
+                or any(
+                    revoked not in known_capabilities
+                    for revoked in revocation_head.revoked_capability_sha256s
+                )
+            ):
+                raise ValueError("copy intent revocation authority")
+    for key, pin in source_pins.items():
+        source_heads = tuple(
+            source_row
+            for source_row in corpus.source_heads
+            if (source_row.registry_id, source_row.owner_path_discriminator) == key
+        )
+        source_current_row = source_current[key]
+        if not source_heads or source_heads[-1].head_sha256 != source_current_row.head_sha256:
+            raise ValueError("copy intent source current")
+        source_floor = tuple(item for item in source_heads if item.epoch == pin.floor_epoch)
+        if len(source_floor) != 1 or source_floor[0].head_sha256 != pin.floor_head_sha256:
+            raise ValueError("copy intent source floor")
+        for source_row in source_heads:
+            source_head = SignedSourceHeadFixtureV1.model_validate_json(source_row.document_json)
+            verify_source_head(source_head, verification_keys=source_keys)
+            if (
+                source_head.head_sha256 != source_row.head_sha256
+                or bytes.fromhex(source_head.signature_ed25519) != source_row.signature_ed25519
+            ):
+                raise ValueError("copy intent source authority")
+
+
+def _copy_audit_intent_v1(
+    *,
+    corpus: FrozenPaidLaneMigrationCorpusV1,
+    target_store_id: str,
+    semantic_source_sha256: str,
+    contract_sha256: str,
+    provider_capability_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_verification_keys: tuple[VerificationKeyV1, ...],
+    source_head_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
+    source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+) -> CopyAuditV1:
+    if type(corpus) is not FrozenPaidLaneMigrationCorpusV1:
+        raise ValueError("copy intent corpus type")
+    corpus = FrozenPaidLaneMigrationCorpusV1.model_validate(corpus.model_dump(mode="python"))
+    if (
+        not _STORE_ID.fullmatch(target_store_id)
+        or not _HEX64.fullmatch(semantic_source_sha256)
+        or not _HEX64.fullmatch(contract_sha256)
+    ):
+        raise ValueError("copy intent target identity")
+    capability_keys = _copy_verification_keyring(provider_capability_verification_keys)
+    revocation_keys = _copy_verification_keyring(provider_revocation_verification_keys)
+    source_keys = _copy_verification_keyring(source_head_verification_keys)
+    revocation_pins = _copy_floor_pin_map(provider_revocation_floor_pins)
+    source_pins = _copy_floor_pin_map(source_floor_pins)
+    _audit_corpus_authority_v1(
+        corpus,
+        capability_keys=capability_keys,
+        revocation_keys=revocation_keys,
+        source_keys=source_keys,
+        revocation_pins=revocation_pins,
+        source_pins=source_pins,
+    )
+    migrated_tables = (
+        "provider_capabilities_v4",
+        "provider_revocation_heads",
+        "provider_revocation_current",
+        "source_heads",
+        "source_current",
+        "encrypted_source_bundles",
+        "owner_operations",
+        "consent_claims",
+        "queue_leases",
+        "budget_accounts",
+    )
+    hashes_by_table: dict[str, tuple[str, ...]] = {
+        table_name: tuple(
+            _migration_row_sha256(table_name, row) for row in getattr(corpus, table_name)
+        )
+        for table_name in migrated_tables
+    }
+    schema_columns: list[list[object]] = [
+        ["singleton", "integer", 1],
+        ["schema_version", "integer", 1],
+        ["migration_epoch", "integer", 0],
+        ["store_id", "text", target_store_id],
+        ["semantic_source_sha256", "text", semantic_source_sha256],
+        ["contract_sha256", "text", contract_sha256],
+        ["cutover_marker_sha256", "null", None],
+        ["created_at_ms", "integer", 0],
+    ]
+    hashes_by_table["paid_lane_schema"] = (
+        _typed_migration_row_sha256("paid_lane_schema", schema_columns),
+    )
+    for table_name in PaidLaneTableRowCountsV1.model_fields:
+        hashes_by_table.setdefault(table_name, ())
+    ordered = tuple(
+        (table_name, hashes_by_table[table_name])
+        for table_name in PaidLaneTableRowCountsV1.model_fields
+    )
+    counts = PaidLaneTableRowCountsV1.model_validate(
+        {table_name: len(row_hashes) for table_name, row_hashes in ordered}
+    )
+    budget_row_hashes = hashes_by_table["budget_accounts"]
+    budget_material = {
+        "schema_version": 1,
+        "source_manifest_sha256": corpus.source_manifest_sha256,
+        "budget_account_row_sha256s": budget_row_hashes,
+        "approved_ceiling_cents_total": sum(
+            row.approved_ceiling_cents for row in corpus.budget_accounts
+        ),
+        "confirmed_cents_total": 0,
+        "open_cents_total": 0,
+        "unknown_cents_total": 0,
+    }
+    chain_tables = (
+        "provider_capabilities_v4",
+        "provider_revocation_heads",
+        "provider_revocation_current",
+        "source_heads",
+        "source_current",
+        "encrypted_source_bundles",
+    )
+    chain_material = {
+        "schema_version": 1,
+        "source_manifest_sha256": corpus.source_manifest_sha256,
+        "ordered_table_row_sha256s": [
+            [table_name, list(hashes_by_table[table_name])] for table_name in chain_tables
+        ],
+        "authority_inputs": {
+            "provider_capability_keys": [
+                [key_id, hashlib.sha256(public_key).hexdigest()]
+                for key_id, public_key in sorted(capability_keys.items())
+            ],
+            "provider_revocation_keys": [
+                [key_id, hashlib.sha256(public_key).hexdigest()]
+                for key_id, public_key in sorted(revocation_keys.items())
+            ],
+            "source_head_keys": [
+                [key_id, hashlib.sha256(public_key).hexdigest()]
+                for key_id, public_key in sorted(source_keys.items())
+            ],
+            "provider_revocation_floor_pins": [
+                pin.model_dump(mode="json") for pin in provider_revocation_floor_pins
+            ],
+            "source_floor_pins": [pin.model_dump(mode="json") for pin in source_floor_pins],
+        },
+    }
+    return CopyAuditV1(
+        target_store_id=target_store_id,
+        source_manifest_sha256=corpus.source_manifest_sha256,
+        table_row_counts=counts,
+        ordered_table_row_sha256s=ordered,
+        budget_invariant_sha256=hashlib.sha256(
+            _COPY_BUDGET_INVARIANT_DOMAIN + _canonical_json(budget_material)
+        ).hexdigest(),
+        chain_audit_sha256=hashlib.sha256(
+            _COPY_CHAIN_AUDIT_DOMAIN + _canonical_json(chain_material)
+        ).hexdigest(),
+    )
+
+
+_COPY_MIGRATION_MODELS: Mapping[str, type[BaseModel]] = MappingProxyType(
+    {
+        "provider_capabilities_v4": ProviderCapabilityV4MigrationRowV1,
+        "provider_revocation_heads": ProviderRevocationHeadMigrationRowV1,
+        "provider_revocation_current": ProviderRevocationCurrentMigrationRowV1,
+        "source_heads": SourceHeadMigrationRowV1,
+        "source_current": SourceCurrentMigrationRowV1,
+        "encrypted_source_bundles": EncryptedSourceBundleMigrationRowV1,
+        "owner_operations": OwnerOperationMigrationRowV1,
+        "consent_claims": ConsentClaimMigrationRowV1,
+        "queue_leases": QueueLeaseMigrationRowV1,
+        "budget_accounts": BudgetAccountMigrationRowV1,
+    }
+)
+
+
+_COPY_TABLE_ORDER_FIELDS: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {
+        "provider_capabilities_v4": ("capability_sha256",),
+        "provider_revocation_heads": ("registry_id", "owner_path_discriminator", "epoch"),
+        "provider_revocation_current": ("registry_id", "owner_path_discriminator"),
+        "source_heads": ("registry_id", "owner_path_discriminator", "epoch"),
+        "source_current": ("registry_id", "owner_path_discriminator"),
+        "encrypted_source_bundles": ("opaque_source_bundle_id",),
+        "owner_operations": ("owner_path_discriminator", "operation_id"),
+        "consent_claims": ("owner_path_discriminator", "consent_blind_id"),
+        "queue_leases": ("owner_path_discriminator", "queue_operation_id"),
+        "budget_accounts": (
+            "owner_path_discriminator",
+            "account_scope_blind_id",
+            "project_scope_blind_id",
+        ),
+    }
+)
+
+
+def _copy_audit_observed_target_v1(
+    connection: sqlite3.Connection,
+    *,
+    corpus: FrozenPaidLaneMigrationCorpusV1,
+    target_store_id: str,
+    semantic_source_sha256: str,
+    contract_sha256: str,
+    provider_capability_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_verification_keys: tuple[VerificationKeyV1, ...],
+    source_head_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
+    source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+) -> CopyAuditV1:
+    if type(connection) is not sqlite3.Connection:
+        raise ValueError("copy target connection type")
+    expected = _copy_audit_intent_v1(
+        corpus=corpus,
+        target_store_id=target_store_id,
+        semantic_source_sha256=semantic_source_sha256,
+        contract_sha256=contract_sha256,
+        provider_capability_verification_keys=provider_capability_verification_keys,
+        provider_revocation_verification_keys=provider_revocation_verification_keys,
+        source_head_verification_keys=source_head_verification_keys,
+        provider_revocation_floor_pins=provider_revocation_floor_pins,
+        source_floor_pins=source_floor_pins,
+    )
+    _audit_schema(connection)
+    singleton = connection.execute(
+        "SELECT singleton,schema_version,migration_epoch,store_id,semantic_source_sha256,"
+        "contract_sha256,cutover_marker_sha256,created_at_ms FROM paid_lane_schema"
+    ).fetchall()
+    if singleton != [(1, 1, 0, target_store_id, semantic_source_sha256, contract_sha256, None, 0)]:
+        raise ValueError("copy target singleton")
+    if connection.execute("PRAGMA foreign_key_check").fetchall() != []:
+        raise ValueError("copy target foreign keys")
+    for table_name, order_fields in _COPY_TABLE_ORDER_FIELDS.items():
+        expected_rows = getattr(corpus, table_name)
+        columns = tuple(_COPY_MIGRATION_MODELS[table_name].model_fields)
+        selected = connection.execute(
+            f"SELECT {','.join(columns)} FROM {table_name} "
+            f"ORDER BY {','.join(order_fields)} LIMIT ?",
+            (MAX_MIGRATION_ROWS + 1,),
+        ).fetchall()
+        expected_storage = [
+            tuple(
+                (
+                    value.hex()
+                    if isinstance(value, bytes) and column == "signature_ed25519"
+                    else value
+                )
+                for column in columns
+                for value in (getattr(row, column),)
+            )
+            for row in expected_rows
+        ]
+        if selected != expected_storage:
+            raise ValueError("copy target row mismatch")
+    for table_name in (
+        "logical_effects",
+        "paid_admissions",
+        "budget_holds",
+        "paid_attempts",
+        "paid_effect_transitions",
+        "paid_attempt_events",
+        "migration_cutover_proof",
+    ):
+        if connection.execute(f"SELECT 1 FROM {table_name} LIMIT 1").fetchone() is not None:
+            raise ValueError("copy target runtime row")
+    _audit_authority_chains(
+        connection,
+        revocation_floor_pins={
+            (pin.registry_id, pin.owner_path_discriminator): pin
+            for pin in provider_revocation_floor_pins
+        },
+        source_floor_pins={
+            (pin.registry_id, pin.owner_path_discriminator): pin for pin in source_floor_pins
+        },
+        revocation_verification_keys=_copy_verification_keyring(
+            provider_revocation_verification_keys
+        ),
+        source_verification_keys=_copy_verification_keyring(source_head_verification_keys),
+    )
+    return expected
 
 
 class SignedCutoverMarkerV1(_Closed):
