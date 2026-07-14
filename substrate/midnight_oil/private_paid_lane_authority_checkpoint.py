@@ -3300,6 +3300,79 @@ class SignedMigrationLifecycleStateV1(_Closed):
         return self
 
 
+_MIGRATION_EPOCH0_RECOVERY_PHASES = Literal[
+    "schema_only",
+    "barrier_acquired",
+    "sources_sealed",
+    "copy_prepared",
+    "copied_epoch0",
+]
+
+
+class Epoch0RecoveryAuthorityPinsV1(_Closed):
+    schema_version: Literal[1] = 1
+    target_store_id: str
+    root_id: str
+    root_manifest_sha256: str
+    target_parent_dev: int = Field(ge=0, le=MAX_I63)
+    target_parent_ino: int = Field(ge=1, le=MAX_I63)
+    target_basename: str
+    target_dev: int = Field(ge=0, le=MAX_I63)
+    target_ino: int = Field(ge=1, le=MAX_I63)
+    lifecycle_phase: _MIGRATION_EPOCH0_RECOVERY_PHASES
+    phase_version: int = Field(ge=0, le=4)
+    issuer_sequence: int = Field(ge=0, le=4)
+    state_sha256: str
+    barrier_id: str | None
+    freeze_nonce: str | None
+    source_manifest_sha256: str | None
+    copy_audit_sha256: str | None
+    witness_sha256: str | None
+
+    @model_validator(mode="after")
+    def _closed_recovery_pins(self) -> Epoch0RecoveryAuthorityPinsV1:
+        optional_hashes = (
+            self.freeze_nonce,
+            self.source_manifest_sha256,
+            self.copy_audit_sha256,
+            self.witness_sha256,
+        )
+        expected = {
+            "schema_only": (0, (False, False, False, False, False)),
+            "barrier_acquired": (1, (True, True, False, False, True)),
+            "sources_sealed": (2, (True, True, True, False, True)),
+            "copy_prepared": (3, (True, True, True, True, True)),
+            "copied_epoch0": (4, (True, True, True, True, True)),
+        }
+        version, presence = expected[self.lifecycle_phase]
+        actual_presence = (
+            self.barrier_id is not None,
+            self.freeze_nonce is not None,
+            self.source_manifest_sha256 is not None,
+            self.copy_audit_sha256 is not None,
+            self.witness_sha256 is not None,
+        )
+        if (
+            not _STORE_ID.fullmatch(self.target_store_id)
+            or not _REGISTRY_ID.fullmatch(self.root_id)
+            or not _HEX64.fullmatch(self.root_manifest_sha256)
+            or not _HEX64.fullmatch(self.state_sha256)
+            or not _MIGRATION_BASENAME.fullmatch(self.target_basename)
+            or self.target_basename in {".", ".."}
+            or any(value is not None and not _HEX64.fullmatch(value) for value in optional_hashes)
+            or (self.barrier_id is not None and not _REGISTRY_ID.fullmatch(self.barrier_id))
+            or (
+                self.freeze_nonce is not None
+                and self.barrier_id != _migration_barrier_id(self.freeze_nonce)
+            )
+            or self.phase_version != version
+            or self.issuer_sequence != version
+            or actual_presence != presence
+        ):
+            raise ValueError("epoch0 recovery authority pins")
+        return self
+
+
 def _verify_signed_migration_lifecycle_state(
     state: SignedMigrationLifecycleStateV1, verification_key: VerificationKeyV1
 ) -> None:
@@ -3574,6 +3647,16 @@ def _read_signed_migration_lifecycle_state(
             raise ValueError("migration lifecycle state changed during read")
     finally:
         os.close(descriptor)
+    path_after = os.stat(state_basename, dir_fd=parent_fd, follow_symlinks=False)
+    if (
+        not stat.S_ISREG(path_after.st_mode)
+        or path_after.st_uid != os.getuid()
+        or path_after.st_nlink != 1
+        or stat.S_IMODE(path_after.st_mode) != 0o600
+        or (path_after.st_dev, path_after.st_ino, path_after.st_size)
+        != (opened.st_dev, opened.st_ino, opened.st_size)
+    ):
+        raise ValueError("migration lifecycle state changed after read")
     state = _parse_migration_lifecycle_state_document(document, verification_key)
     if (
         state.target_parent_dev,
@@ -3583,6 +3666,74 @@ def _read_signed_migration_lifecycle_state(
     if _migration_lifecycle_temporary_basenames(parent_fd, target_basename):
         raise ValueError("migration lifecycle orphan temporary")
     _verify_migration_lifecycle_target_state(parent_fd, state)
+    return state
+
+
+def _authenticate_epoch0_recovery_state_v1(
+    *,
+    parent_fd: int,
+    target_fd: int,
+    verification_key: VerificationKeyV1,
+    expected: Epoch0RecoveryAuthorityPinsV1,
+) -> SignedMigrationLifecycleStateV1:
+    if (
+        type(parent_fd) is not int
+        or type(target_fd) is not int
+        or type(expected) is not Epoch0RecoveryAuthorityPinsV1
+    ):
+        raise ValueError("epoch0 recovery descriptor type")
+    expected = Epoch0RecoveryAuthorityPinsV1.model_validate(expected.model_dump(mode="python"))
+    if _migration_lifecycle_parent_identity(parent_fd) != (
+        expected.target_parent_dev,
+        expected.target_parent_ino,
+    ):
+        raise ValueError("epoch0 recovery parent identity")
+    target_info = os.fstat(target_fd)
+    if (
+        not stat.S_ISREG(target_info.st_mode)
+        or target_info.st_uid != os.getuid()
+        or target_info.st_nlink != 1
+        or stat.S_IMODE(target_info.st_mode) != 0o600
+        or (target_info.st_dev, target_info.st_ino) != (expected.target_dev, expected.target_ino)
+        or _migration_lifecycle_entry_identity(parent_fd, expected.target_basename)
+        != (expected.target_dev, expected.target_ino)
+    ):
+        raise ValueError("epoch0 recovery target identity")
+    state = _read_signed_migration_lifecycle_state(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        verification_key=verification_key,
+    )
+    fields = (
+        "target_store_id",
+        "root_id",
+        "root_manifest_sha256",
+        "target_parent_dev",
+        "target_parent_ino",
+        "target_basename",
+        "target_dev",
+        "target_ino",
+        "lifecycle_phase",
+        "phase_version",
+        "issuer_sequence",
+        "state_sha256",
+        "barrier_id",
+        "freeze_nonce",
+        "source_manifest_sha256",
+        "copy_audit_sha256",
+        "witness_sha256",
+    )
+    if any(getattr(state, field) != getattr(expected, field) for field in fields):
+        raise ValueError("epoch0 recovery signed state mismatch")
+    target_after = os.fstat(target_fd)
+    if (target_after.st_dev, target_after.st_ino) != (
+        expected.target_dev,
+        expected.target_ino,
+    ) or _migration_lifecycle_entry_identity(parent_fd, expected.target_basename) != (
+        expected.target_dev,
+        expected.target_ino,
+    ):
+        raise ValueError("epoch0 recovery target changed during authentication")
     return state
 
 

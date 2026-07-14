@@ -246,6 +246,36 @@ def _issuer_candidate(private_key: Ed25519PrivateKey, **overrides: object) -> di
     )
 
 
+def _recovery_pins(
+    state: checkpoint_module.SignedMigrationLifecycleStateV1,
+) -> checkpoint_module.Epoch0RecoveryAuthorityPinsV1:
+    fields = checkpoint_module.Epoch0RecoveryAuthorityPinsV1.model_fields
+    return checkpoint_module.Epoch0RecoveryAuthorityPinsV1.model_validate(
+        {name: getattr(state, name) for name in fields}
+    )
+
+
+def _adversarial_rewrite_lifecycle_state(
+    parent_fd: int, state: checkpoint_module.SignedMigrationLifecycleStateV1
+) -> None:
+    document = checkpoint_module._migration_lifecycle_state_document(state)
+    descriptor = os.open(
+        checkpoint_module._migration_lifecycle_state_basename(state.target_basename),
+        os.O_WRONLY | os.O_TRUNC | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=parent_fd,
+    )
+    try:
+        view = memoryview(document)
+        while view:
+            written = os.write(descriptor, view)
+            assert written > 0
+            view = view[written:]
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+    os.fsync(parent_fd)
+
+
 def _attempt_inherited_issuer_close(connection: socket.socket) -> None:
     with suppress(OSError):
         connection.sendall(_canonical_json({"command": "close"}))
@@ -1754,6 +1784,19 @@ class TestMigrationPrerequisites:
             checkpoint_module._verify_migration_lifecycle_transition(
                 prior, successor, verification_key
             )
+        for state in states:
+            pins = _recovery_pins(state)
+            assert pins.lifecycle_phase == state.lifecycle_phase
+            assert pins.state_sha256 == state.state_sha256
+            assert pins.phase_version == state.phase_version
+            assert pins.issuer_sequence == state.issuer_sequence
+        with pytest.raises(ValueError, match="epoch0 recovery authority pins"):
+            checkpoint_module.Epoch0RecoveryAuthorityPinsV1.model_validate(
+                {
+                    **_recovery_pins(barrier).model_dump(mode="python"),
+                    "source_manifest_sha256": "ff" * 32,
+                }
+            )
 
         prior = copied
         for index, phase in enumerate(
@@ -2600,6 +2643,70 @@ class TestMigrationPrerequisites:
             )
             issuer.commit(state=copied, parent_fd=parent_fd)
             issuer.commit(state=copied, parent_fd=parent_fd)
+            target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            try:
+                recovery_pins = _recovery_pins(copied)
+                assert (
+                    checkpoint_module._authenticate_epoch0_recovery_state_v1(
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        verification_key=issuer.verification_key,
+                        expected=recovery_pins,
+                    )
+                    == copied
+                )
+                with pytest.raises(ValueError, match="signed state mismatch"):
+                    checkpoint_module._authenticate_epoch0_recovery_state_v1(
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        verification_key=issuer.verification_key,
+                        expected=recovery_pins.model_copy(update={"state_sha256": "ff" * 32}),
+                    )
+                wrong_recovery_key = checkpoint_module.VerificationKeyV1(
+                    key_id=issuer.verification_key.key_id,
+                    public_key_bytes=Ed25519PrivateKey.generate().public_key().public_bytes_raw(),
+                )
+                with pytest.raises(InvalidSignature):
+                    checkpoint_module._authenticate_epoch0_recovery_state_v1(
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        verification_key=wrong_recovery_key,
+                        expected=recovery_pins,
+                    )
+                with pytest.raises(ValueError, match="parent identity"):
+                    checkpoint_module._authenticate_epoch0_recovery_state_v1(
+                        parent_fd=root_fd,
+                        target_fd=target_fd,
+                        verification_key=issuer.verification_key,
+                        expected=recovery_pins,
+                    )
+                _adversarial_rewrite_lifecycle_state(parent_fd, prepared)
+                try:
+                    with pytest.raises(ValueError, match="signed state mismatch"):
+                        checkpoint_module._authenticate_epoch0_recovery_state_v1(
+                            parent_fd=parent_fd,
+                            target_fd=target_fd,
+                            verification_key=issuer.verification_key,
+                            expected=recovery_pins,
+                        )
+                finally:
+                    _adversarial_rewrite_lifecycle_state(parent_fd, copied)
+                replacement = tmp_path / "replacement.sqlite3"
+                replacement.write_bytes(target.read_bytes())
+                replacement.chmod(0o600)
+                replacement_fd = os.open(replacement, os.O_RDONLY)
+                try:
+                    with pytest.raises(ValueError, match="target identity"):
+                        checkpoint_module._authenticate_epoch0_recovery_state_v1(
+                            parent_fd=parent_fd,
+                            target_fd=replacement_fd,
+                            verification_key=issuer.verification_key,
+                            expected=recovery_pins,
+                        )
+                finally:
+                    os.close(replacement_fd)
+            finally:
+                os.close(target_fd)
             target_connection = sqlite3.connect(target, timeout=0.1)
             try:
                 target_connection.execute("BEGIN IMMEDIATE")
