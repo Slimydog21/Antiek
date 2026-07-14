@@ -31,12 +31,15 @@ from substrate.multimedia.production_registration import (
     register_multimedia_production,
 )
 from substrate.multimedia.read_model import (
+    ApplySteeringPreviewRequest,
     CreateMultimediaDraftRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaJobList,
-    SteeringRequest,
+    SteeringPreviewConflict,
+    SteeringPreviewRequest,
+    SteeringPreviewResponse,
 )
 
 from .multimedia_local_audible_routes import (
@@ -205,18 +208,34 @@ def approve_multimedia_dry_run(
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
 
 
+@multimedia_router.post(
+    "/assets/{asset_id}/steering-preview", response_model=SteeringPreviewResponse
+)
+def preview_multimedia_steering(
+    asset_id: str,
+    request: SteeringPreviewRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+) -> SteeringPreviewResponse:
+    try:
+        return get_store().preview_steering(asset_id, request, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    except SteeringPreviewConflict as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
+
+
 @multimedia_router.post("/assets/{asset_id}/steer", response_model=MultimediaAssetRecord)
 def steer_multimedia_asset(
     asset_id: str,
-    request: SteeringRequest,
+    request: ApplySteeringPreviewRequest,
     operator_id: str = Depends(authenticated_multimedia_operator),
 ) -> MultimediaAssetRecord:
     try:
-        return get_store().apply_steering(asset_id, request, owner_id=operator_id)
+        return get_store().apply_steering_preview(asset_id, request, owner_id=operator_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except SteeringPreviewConflict as exc:
+        raise HTTPException(status_code=409, detail=exc.code) from exc
 
 
 @multimedia_router.post("/assets/{asset_id}/hardening", response_model=MultimediaAssetRecord)
