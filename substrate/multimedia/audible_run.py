@@ -433,17 +433,21 @@ def compile_audible_run_manifest(
             raise ValueError("audio span source authority drifted from the script")
     markers: list[RetentionMarker] = []
     for span in transcript_spans:
-        if span.marker_kind in {"remember", "recap"}:
-            kind = span.marker_kind
-            markers.append(
-                RetentionMarker(
-                    line_id=span.line_id,
-                    chapter_id=span.chapter_id,
-                    kind=kind,
-                    at_seconds=span.start_offset_seconds,
-                    source_chunk_ids=span.source_chunk_ids,
-                )
+        if span.marker_kind == "remember":
+            retention_kind: Literal["remember", "recap"] = "remember"
+        elif span.marker_kind == "recap":
+            retention_kind = "recap"
+        else:
+            continue
+        markers.append(
+            RetentionMarker(
+                line_id=span.line_id,
+                chapter_id=span.chapter_id,
+                kind=retention_kind,
+                at_seconds=span.start_offset_seconds,
+                source_chunk_ids=span.source_chunk_ids,
             )
+        )
     learned = tuple(
         LearnedClaimCard(
             line_id=span.line_id,
