@@ -298,6 +298,12 @@ class InvestigationStartRequest(BaseModel):
     # legacy callers preserve each role's configured route rather than gaining
     # an implicit provider/model override.
     research_tier: Literal["fast", "deep"] | None = None
+    # Composer callers use this opaque server-issued proof. Legacy callers may
+    # continue to use research_tier, but supplying both is rejected at launch.
+    route_choice_id: str | None = None
+    route_prompt_fingerprint: str | None = None
+    route_policy_version: str | None = None
+    route_configuration_fingerprint: str | None = None
 
 
 # ── Sprint 11 additions ────────────────────────────────────────────────
@@ -2191,6 +2197,65 @@ def create_app(
             InvestigationStartRequestedPayload,
         )
 
+        resolved_research_tier = req.research_tier
+        route_provenance: dict[str, str | None] = {
+            "research_route_choice_id": None,
+            "research_route_prompt_fingerprint": None,
+            "research_route_policy_version": None,
+            "research_route_configuration_fingerprint": None,
+        }
+        if req.route_choice_id is not None and req.research_tier is not None:
+            raise HTTPException(
+                status_code=422,
+                detail="submit either route_choice_id or research_tier, not both",
+            )
+        route_fields = (
+            req.route_choice_id,
+            req.route_prompt_fingerprint,
+            req.route_policy_version,
+            req.route_configuration_fingerprint,
+        )
+        if any(value is not None for value in route_fields):
+            if not all(value is not None for value in route_fields):
+                raise HTTPException(status_code=422, detail="incomplete research route proof")
+            from substrate.dispatch.research_route import (
+                ResearchRouteError,
+                resolve_route_choice,
+            )
+            try:
+                choice = resolve_route_choice(
+                    choice_id=req.route_choice_id or "",
+                    question=req.question,
+                    supplied_prompt_fingerprint=req.route_prompt_fingerprint or "",
+                    policy_version=req.route_policy_version or "",
+                    configuration_fingerprint=req.route_configuration_fingerprint or "",
+                )
+            except ResearchRouteError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
+            from substrate.dispatch.research_tier import resolve_research_tier
+
+            registered = getattr(app.state, "registered_providers", set())
+            ready_provider_ids = (
+                {str(value) for value in registered}
+                if isinstance(registered, (set, list, tuple, frozenset))
+                else set()
+            )
+            if resolve_research_tier(choice.tier).provider not in ready_provider_ids:
+                # An explicit route is a reviewed choice, not merely a router
+                # preference. Never disguise a changed primary as that choice;
+                # legacy tier callers retain the router's established fallback.
+                raise HTTPException(
+                    status_code=409,
+                    detail="selected research route is no longer available",
+                )
+            resolved_research_tier = choice.tier
+            route_provenance = {
+                "research_route_choice_id": choice.choice_id,
+                "research_route_prompt_fingerprint": req.route_prompt_fingerprint,
+                "research_route_policy_version": req.route_policy_version,
+                "research_route_configuration_fingerprint": choice.configuration_fingerprint,
+            }
+
         investigation_id = (
             req.investigation_id or f"inv-{_uuid.uuid4().hex[:12]}"
         )
@@ -2207,7 +2272,8 @@ def create_app(
                     # SPR-01 M3: record the chosen research tier on the
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
-                    research_tier=req.research_tier,
+                    research_tier=resolved_research_tier,
+                    **route_provenance,
                 ),
                 role="operator",
                 policy_id="operator-cli",
@@ -6402,6 +6468,9 @@ def create_app(
     # operator workstation, matching write_routes).
     from interfaces.research.api.supersession_routes import supersession_router
     app.include_router(supersession_router)
+
+    from interfaces.research.api.research_routes import research_route_router
+    app.include_router(research_route_router)
 
     return app
 

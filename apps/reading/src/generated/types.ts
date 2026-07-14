@@ -1591,6 +1591,10 @@ export interface InvestigationStartRequestedPayload {
   chase_value?: number;
   chase_budget_usd?: number;
   research_tier?: "fast" | "deep" | null;
+  research_route_choice_id?: string | null;
+  research_route_prompt_fingerprint?: string | null;
+  research_route_policy_version?: string | null;
+  research_route_configuration_fingerprint?: string | null;
 }
 
 /**

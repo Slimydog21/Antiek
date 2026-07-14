@@ -71,6 +71,15 @@ vi.mock("../../hooks/useEventStream", () => ({
   useEventStream: () => ({ events: [] as Event[], status: "closed", reconnects: 0 }),
 }));
 
+vi.mock("../../hooks/useResearchRoutePreview", () => ({
+  useResearchRoutePreview: () => ({
+    status: "error",
+    preview: null,
+    error: "preview unavailable",
+    retry: vi.fn(),
+  }),
+}));
+
 // VoiceChaseButton drives capture off useVoiceRecorder; control it per-test.
 vi.mock("../../hooks/useVoiceRecorder", () => ({
   useVoiceRecorder: () => recorderState.current,

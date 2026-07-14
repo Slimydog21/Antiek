@@ -9,6 +9,7 @@ import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
+import { useResearchRoutePreview } from "../../hooks/useResearchRoutePreview";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
 import CascadeProposal from "./CascadeProposal";
@@ -142,6 +143,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // SPR-01 M3: the curated fast/deep tier. Closed set; defaults to deep.
   // Recorded on the investigation server-side so it's queryable after.
   const [tier, setTier] = useState<ResearchTier>(DEFAULT_TIER);
+  const routePreview = useResearchRoutePreview(question);
+  const [selectedChoiceId, setSelectedChoiceId] = useState<string | null>(null);
   // Two entry actions on one composer: Ask (one-shot, the shipped fast lane,
   // default) and Break-into-sub-questions (cascade). Cascade swaps the
   // composer for the proposal surface IN PLACE — no navigation away (M1). The
@@ -173,10 +176,35 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     reset,
   } = start;
 
+  const selectedRoute =
+    routePreview.preview?.candidates.find((row) => row.choice_id === selectedChoiceId) ?? null;
+  const hasReadyRoute = routePreview.preview?.candidates.some((row) => row.ready) ?? false;
+
+  useEffect(() => {
+    const candidates = routePreview.preview?.candidates;
+    if (!candidates?.length) return;
+    setSelectedChoiceId((current) => {
+      if (candidates.some((row) => row.choice_id === current && row.ready)) return current;
+      return (
+        candidates.find((row) => row.tier === "deep" && row.ready) ??
+        candidates.find((row) => row.ready) ??
+        candidates.find((row) => row.tier === "deep") ??
+        candidates[0]
+      ).choice_id;
+    });
+  }, [routePreview.preview]);
+
   const onSubmit = useCallback(async () => {
-    const id = await submit({ question, researchTier: tier });
+    const route = selectedRoute?.ready && routePreview.preview
+      ? {
+          candidate: selectedRoute,
+          promptFingerprint: routePreview.preview.prompt_fingerprint,
+          policyVersion: routePreview.preview.policy_version,
+        }
+      : undefined;
+    const id = await submit({ question, researchTier: tier, route });
     if (id) setQuestion("");
-  }, [submit, question, tier]);
+  }, [submit, question, tier, selectedRoute, routePreview]);
 
   const fillExample = useCallback((prompt: string) => {
     setQuestion(prompt);
@@ -584,12 +612,114 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <div className="text-xs font-mono text-emperor">{error}</div>
           )}
 
-          {/* SPR-01 M3 — the curated fast/deep tier selector. A closed
-              two-value segmented control (NOT a model dropdown). Selecting
-              a tier changes the server-owned upstream route; the chosen
-              value rides on the start request and is recorded on the
-              investigation. Lives ONLY here, at the research entry. */}
-          <div
+          {routePreview.status === "ready" && routePreview.preview && (
+            <section aria-labelledby="research-route-label" className="space-y-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <h2 id="research-route-label" className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">Research route</h2>
+                <span className="text-[10px] font-mono text-ink-mute dark:text-moonlight">Synthesis independently pinned</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Research route">
+                {routePreview.preview.candidates.map((candidate, candidateIndex, candidates) => {
+                  const active = selectedChoiceId === candidate.choice_id;
+                  return (
+                    <button
+                      key={candidate.choice_id}
+                      id={`research-route-${candidate.choice_id}`}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      tabIndex={active ? 0 : -1}
+                      aria-describedby={`${candidate.choice_id}-detail`}
+                      disabled={busy || !candidate.ready}
+                      onClick={() => {
+                        setSelectedChoiceId(candidate.choice_id);
+                        setTier(candidate.tier);
+                      }}
+                      onKeyDown={(event) => {
+                        if (!["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+                        event.preventDefault();
+                        if (event.key === "Home" || event.key === "End") {
+                          const ordered = event.key === "Home" ? candidates : [...candidates].reverse();
+                          const boundary = ordered.find((row) => row.ready);
+                          if (boundary) {
+                            setSelectedChoiceId(boundary.choice_id);
+                            setTier(boundary.tier);
+                            document.getElementById(`research-route-${boundary.choice_id}`)?.focus();
+                          }
+                          return;
+                        }
+                        const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+                        for (let step = 1; step <= candidates.length; step += 1) {
+                          const next = candidates[(candidateIndex + direction * step + candidates.length) % candidates.length];
+                          if (!next.ready) continue;
+                          setSelectedChoiceId(next.choice_id);
+                          setTier(next.tier);
+                          document.getElementById(`research-route-${next.choice_id}`)?.focus();
+                          break;
+                        }
+                      }}
+                      className={
+                        "rounded-hog border-2 p-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ink dark:focus-visible:outline-bright motion-reduce:transition-none disabled:opacity-60 " +
+                        (active ? "border-ink bg-sun/30" : "border-rule bg-ice-0 dark:bg-charcoal-2")
+                      }
+                    >
+                      <span className="block font-serif text-sm text-ink dark:text-bright">{candidate.display_name}</span>
+                      <span className="block font-mono text-[11px] text-ink-mute dark:text-moonlight">{candidate.model_policy_label}</span>
+                      <span className={"block font-mono text-[10px] mt-1 " + (candidate.ready ? "text-aurora" : "text-emperor")}>{candidate.readiness_label}</span>
+                      <span id={`${candidate.choice_id}-detail`} className="sr-only">{candidate.rationale}</span>
+                    </button>
+                  );
+                })}
+              </div>
+              <details className="text-[11px] text-ink-mute dark:text-moonlight">
+                <summary className="cursor-pointer font-mono">Route and projection details</summary>
+                <ul className="mt-1 space-y-1">
+                  {routePreview.preview.candidates.map((candidate) => (
+                    <li key={`${candidate.choice_id}-rationale`}><strong>{candidate.display_name}:</strong> {candidate.rationale}</li>
+                  ))}
+                </ul>
+                <p className="mt-1">Trajectory cost is unknown; no per-prompt-call estimate is presented as a research total.</p>
+              </details>
+              <div aria-label="Daily research budget advisory" className="rounded-hog border border-rule dark:border-charcoal-1 px-3 py-2">
+                <div className="flex flex-wrap justify-between gap-2 text-[11px] font-mono text-ink-mute dark:text-moonlight">
+                  <span>Daily ledger · advisory only</span>
+                  <span>
+                    {routePreview.preview.budget.spent_usd == null ? "spent unknown" : `$${routePreview.preview.budget.spent_usd.toFixed(2)} spent`}
+                    {routePreview.preview.budget.daily_cap_usd == null ? " · ceiling unknown" : ` · $${routePreview.preview.budget.daily_cap_usd.toFixed(2)} ceiling`}
+                    {" · projection unknown"}
+                  </span>
+                </div>
+                {routePreview.preview.budget.spent_usd != null &&
+                  routePreview.preview.budget.daily_cap_usd != null &&
+                  routePreview.preview.budget.daily_cap_usd > 0 && (
+                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-rule/50" aria-hidden="true">
+                      <div
+                        className="h-full bg-sun-deep motion-reduce:transition-none"
+                        style={{
+                          width: `${Math.min(100, Math.max(0, (routePreview.preview.budget.spent_usd / routePreview.preview.budget.daily_cap_usd) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  )}
+              </div>
+              {!hasReadyRoute && (
+                <p role="status" className="text-[11px] font-mono text-emperor">
+                  Preferred drivers are unavailable. You can still launch through Antiek’s configured recovery chain below.
+                </p>
+              )}
+            </section>
+          )}
+          {routePreview.status === "loading" && (
+            <p role="status" className="text-[11px] font-mono text-ink-mute dark:text-moonlight">Checking research routes for this question…</p>
+          )}
+          {routePreview.status === "error" && (
+            <div role="status" className="flex items-center justify-between gap-3 text-[11px] font-mono text-emperor">
+              <span>Route preview unavailable. You can still launch with the legacy Fast/Deep route.</span>
+              <button type="button" className="underline focus-visible:outline focus-visible:outline-2" onClick={routePreview.retry}>Retry preview</button>
+            </div>
+          )}
+
+          {(routePreview.status !== "ready" || !hasReadyRoute) && <div
             className="flex items-center gap-2"
             role="radiogroup"
             aria-label="Research depth"
@@ -624,7 +754,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             <span className="text-[11px] font-serif text-ink-mute dark:text-moonlight">
               {RESEARCH_TIER_OPTIONS.find((o) => o.value === tier)?.hint}
             </span>
-          </div>
+          </div>}
 
           <div className="flex items-center justify-between gap-3">
             <div className="text-[11px] font-mono text-ink-mute dark:text-moonlight">
@@ -654,7 +784,11 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                 variant="primary"
                 size="lg"
                 onClick={() => void onSubmit()}
-                disabled={busy || question.trim().length < 3}
+                disabled={
+                  busy ||
+                  question.trim().length < 3 ||
+                  (routePreview.status === "ready" && hasReadyRoute && (!selectedRoute || !selectedRoute.ready))
+                }
               >
                 {busy ? "Starting…" : "Ask"}
               </LemonButton>

@@ -1,0 +1,35 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Antiek — Research Route Instrument</title><style>
+:root{--ice:#f8f7f2;--card:#fffefa;--ink:#0f1419;--rule:#c8c4b8;--sun:#e8d98c;--sun-deep:#9c8636;--aurora:#28796a}*{box-sizing:border-box}body{margin:0;background:var(--ice);color:var(--ink);font:15px/1.55 Inter,system-ui,sans-serif}main{width:min(980px,calc(100% - 32px));margin:40px auto 80px}h1,h2{font-family:Charter,"Iowan Old Style",Georgia,serif;letter-spacing:-.025em}h1{font-size:clamp(38px,7vw,72px);line-height:.95;max-width:780px}.eyebrow,code,th{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}.eyebrow{text-transform:uppercase;letter-spacing:.14em;font-size:11px;color:var(--sun-deep)}section{background:var(--card);border:2px solid var(--ink);padding:24px;margin:22px 0;box-shadow:6px 6px 0 var(--sun)}table{width:100%;border-collapse:collapse}th,td{text-align:left;vertical-align:top;border-top:1px solid var(--rule);padding:11px 8px}pre{overflow:auto;background:var(--ink);color:var(--ice);padding:18px}li{margin:.45em 0}.five{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.five div{border:1px solid var(--rule);padding:12px}.five strong{display:block;font-family:ui-monospace,monospace;font-size:11px;text-transform:uppercase}@media(max-width:700px){.five{grid-template-columns:1fr}section{padding:17px}}
+</style></head><body><main>
+<p class="eyebrow">Cycle 591 · executable master spec</p><h1>A truthful dispatch instrument for one research question.</h1>
+<p>The operator can see and choose the upstream research route, understand its model and thinking policy, and inspect the projected effect on the daily ceiling without leaving the composer. Antiek—not the browser—owns the eligible route set.</p>
+<section><h2>Outcome and boundary</h2><pre>question + route preview
+        │ server-issued closed route IDs
+        ▼
+   operator selects lens ─── budget ledger: spent → projected → ceiling
+        │ launch-time re-resolution
+        ▼
+ persisted start event ─── four upstream research roles
+
+ synthesis ─────────────── independently config-pinned (unchanged)</pre>
+<ul><li>No raw provider or model value is accepted from the browser.</li><li>Legacy callers may continue to submit <code>research_tier</code>; the composer submits a route ID.</li><li>Budget is advisory in this sprint: known values are visible, but no reservation or hard launch authorization is implied. Unknown price or ledger state is labeled unknown, never zero.</li><li>A stale, malformed, or unavailable route ID fails explicitly; it does not silently become a materially different explicit choice.</li></ul></section>
+<section><h2>Visual contract</h2><div class="five"><div><strong>Ice</strong>#F8F7F2 ground</div><div><strong>Card</strong>#FFFEFA evidence</div><div><strong>Ink</strong>#0F1419 authority</div><div><strong>Sun</strong>#E8D98C selection</div><div><strong>Aurora</strong>#28796A ready</div></div>
+<p>Charter carries the question and route names; Inter carries controls; monospace carries IDs, readiness, benchmark basis, and money. The signature is a compact ledger rail whose geometry encodes known spend, projected addition, and ceiling. It is not rendered as meaningful geometry when any required value is unknown.</p>
+<pre>RESEARCH ROUTE
+┌ Fast lens ─ GLM-5.2 · thinking off ┐ ┌ Deep lens ─ GLM-5.2 · thinking on ┐
+│ exploratory work · READY            │ │ reasoning-heavy · SELECTED         │
+└─────────────────────────────────────┘ └─────────────────────────────────────┘
+
+DAILY LEDGER   $1.82 spent ━━━━━╸ $0.14 projected ━╸──────── $5.00 ceiling
+               estimate, not a charge                    synthesis excluded</pre>
+<p>At narrow widths the lenses stack and the ledger becomes labeled rows. Focus uses the existing ink outline. Route changes do not animate under reduced motion. Details disclose route rationale and projection assumptions without turning the default surface into a dashboard.</p></section>
+<section><h2>Five-values rigor</h2><div class="five"><div><strong>Truth</strong>Unknown stays unknown; estimate is not a charge.</div><div><strong>Authority</strong>Server issues and re-resolves every selectable ID.</div><div><strong>Continuity</strong>Fast/Deep behavior and old callers remain valid.</div><div><strong>Craft</strong>One compact instrument, not settings pasted into home.</div><div><strong>Proof</strong>Contract, launch, UI, accessibility, and stale-ID tests.</div></div></section>
+<section><h2>Rejected alternatives</h2><table><thead><tr><th>Alternative</th><th>Why rejected</th><th>Reopen only if</th></tr></thead><tbody>
+<tr><td>Raw provider/model dropdown</td><td>Creates model-smuggling and configuration-drift surfaces.</td><td>A multi-tenant policy engine authorizes arbitrary model inventory.</td></tr>
+<tr><td>Reuse old client-supplied candidate API</td><td>The browser could nominate its own candidates and price assumptions.</td><td>Never for the launch authority boundary.</td></tr>
+<tr><td>Decorative cost range</td><td>Research trajectory cost is not one prompt call and current pricing may be unknown.</td><td>Telemetry provides a defensible trajectory estimate with stated confidence.</td></tr>
+<tr><td>Route final synthesis too</td><td>Breaks the measured, operator-facing synthesis pin.</td><td>The synthesis measurement gate explicitly changes policy.</td></tr>
+<tr><td>Hide unavailable routes</td><td>Makes configuration failure look like absent product capability.</td><td>Never; show the reason and block launch.</td></tr></tbody></table></section>
+<section><h2>Acceptance gates</h2><ol><li>Preview response is derived solely from the closed server map, registered providers, dispatch pricing, benchmark evidence, and budget ledger.</li><li>Every response includes an opaque stable route ID plus a configuration fingerprint; no secret is exposed.</li><li>POST launch accepts the route ID, re-resolves it, rejects stale/unknown/ineligible/unavailable IDs, and persists both route ID and resolved tier. Budget remains visibly advisory until a durable reservation ledger exists.</li><li>The four upstream bridges consume the persisted resolved tier. Synthesis ignores it.</li><li>The composer debounces prompt projections, survives preview failure with an honest retry state, and never blocks legacy launch merely because advisory preview is unreachable or loading.</li><li>Keyboard, screen reader, narrow viewport, dark theme, and reduced-motion evidence passes.</li><li>At least two heterogeneous adversarial reviews and HardenX report zero real findings.</li></ol></section>
+<section id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="SPR-01"><h2>Harness hint</h2><p>Execute SPR-01 inline in one isolated stacked worktree. Attack model smuggling, TOCTOU fingerprint drift, unknown-as-zero arithmetic, fallback surprise, replay ambiguity, secret leakage, request races, and synthesis-route contamination. Sharpen at least twice.</p></section>
+</main></body></html>
