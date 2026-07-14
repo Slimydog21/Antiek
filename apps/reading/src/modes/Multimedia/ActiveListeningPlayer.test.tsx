@@ -95,7 +95,7 @@ describe("ActiveListeningPlayer", () => {
     const first = render(<ActiveListeningPlayer playback={playback} title="First player" />);
     const second = render(<ActiveListeningPlayer playback={{ ...playback, asset_id: "asset-2" }} title="Second player" />);
     const firstAudio = first.getByLabelText("Audio playback for First player") as HTMLAudioElement;
-    const pauseFirst = vi.spyOn(firstAudio, "pause");
+    const pauseFirst = vi.spyOn(firstAudio, "pause").mockImplementation(() => undefined);
     fireEvent.play(firstAudio);
     fireEvent.play(second.getByLabelText("Audio playback for Second player"));
     expect(pauseFirst).toHaveBeenCalledOnce();
@@ -120,5 +120,16 @@ describe("ActiveListeningPlayer", () => {
     render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
     expect(screen.getByRole("button", { name: "Back 15 seconds" })).toBeTruthy();
     expect(screen.getByRole("radiogroup", { name: "Playback speed" })).toBeTruthy();
+  });
+
+  it("keeps one active audio authority when Media Session is unsupported", () => {
+    Object.defineProperty(navigator, "mediaSession", { configurable: true, value: undefined });
+    const first = render(<ActiveListeningPlayer playback={playback} title="First player" />);
+    const second = render(<ActiveListeningPlayer playback={{ ...playback, asset_id: "asset-2" }} title="Second player" />);
+    const firstAudio = first.getByLabelText("Audio playback for First player") as HTMLAudioElement;
+    const pauseFirst = vi.spyOn(firstAudio, "pause").mockImplementation(() => undefined);
+    fireEvent.play(firstAudio);
+    fireEvent.play(second.getByLabelText("Audio playback for Second player"));
+    expect(pauseFirst).toHaveBeenCalledOnce();
   });
 });
