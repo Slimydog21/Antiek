@@ -50,7 +50,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 from decimal import Decimal
-from typing import Literal, Protocol, cast, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 
 from runtime.research_runner.protocol import CostProjection, ProjectionDisposition
 from substrate.dispatch.advisory_decision import (
@@ -275,20 +275,19 @@ def _validate_price_bounds(low: object, high: object) -> None:
 def _validate_candidate(candidate: object) -> DecisionCandidate:
     if type(candidate) is not DecisionCandidate:
         raise TypeError("candidate must be an exact DecisionCandidate")
-    validated = cast(DecisionCandidate, candidate)
-    _bounded_text(validated.tier, "tier", _MAX_TIER_CHARS)
-    _bounded_text(validated.provider, "provider", _MAX_IDENTITY_CHARS)
-    _bounded_text(validated.model, "model", _MAX_IDENTITY_CHARS)
-    if type(validated.ready) is not bool:
+    _bounded_text(candidate.tier, "tier", _MAX_TIER_CHARS)
+    _bounded_text(candidate.provider, "provider", _MAX_IDENTITY_CHARS)
+    _bounded_text(candidate.model, "model", _MAX_IDENTITY_CHARS)
+    if type(candidate.ready) is not bool:
         raise TypeError("candidate ready must be a bool")
     if (
-        validated.would_exceed_budget is not None
-        and type(validated.would_exceed_budget) is not bool
+        candidate.would_exceed_budget is not None
+        and type(candidate.would_exceed_budget) is not bool
     ):
         raise TypeError("candidate would_exceed_budget must be bool or None")
-    _validate_price_bounds(validated.estimated_usd_low, validated.estimated_usd_high)
-    benchmark = validated.benchmark_score
-    samples = validated.benchmark_samples
+    _validate_price_bounds(candidate.estimated_usd_low, candidate.estimated_usd_high)
+    benchmark = candidate.benchmark_score
+    samples = candidate.benchmark_samples
     if (benchmark is None) != (samples is None):
         raise ValueError("benchmark score and sample count must be present together")
     if benchmark is not None:
@@ -302,7 +301,7 @@ def _validate_candidate(candidate: object) -> DecisionCandidate:
             or not 1 <= samples <= _MAX_BENCHMARK_SAMPLES
         ):
             raise ValueError("benchmark_samples must be a bounded positive integer")
-    return validated
+    return candidate
 
 
 def _validate_projection(
@@ -310,16 +309,15 @@ def _validate_projection(
 ) -> CostProjection:
     if type(projection) is not CostProjection:
         raise TypeError("projector must return an exact CostProjection")
-    validated = cast(CostProjection, projection)
     try:
-        validated.__post_init__()
+        projection.__post_init__()
     except AttributeError as exc:
         raise ValueError("projector returned an incomplete CostProjection") from exc
     if provider is None or model is None:
         raise ValueError("a projection requires an explicit chosen route")
-    if validated.provider != provider or validated.model != model:
+    if projection.provider != provider or projection.model != model:
         raise ValueError("projector returned a projection for a different route")
-    return validated
+    return projection
 
 
 def _pricing_status(candidate: DecisionCandidate) -> PricingStatus:
