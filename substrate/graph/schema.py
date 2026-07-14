@@ -1173,6 +1173,23 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_meta_fingerprint
 """
 
 
+# CTW-01 — one durable, idempotent bridge from an immutable reviewed compose
+# to its NULL-root Write deliverable. The compose itself remains filesystem
+# source-of-truth; this table only records the promotion identity.
+ANTIEK_GRAPH_SCHEMA_V16_COMPOSE_WRITE_SQL = """
+CREATE TABLE IF NOT EXISTS artifact_compose_write_workspaces (
+    compose_id             TEXT PRIMARY KEY,
+    selection_fingerprint  TEXT NOT NULL,
+    -- Soft references are deliberate: DuckDB's FK indexes can block later
+    -- transactional rewrites. Promotion creates and validates both targets
+    -- under the same writer transaction.
+    deliverable_id         TEXT NOT NULL UNIQUE,
+    section_id             TEXT NOT NULL UNIQUE,
+    created_at             TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1249,6 +1266,8 @@ def init_database(con: LockedConnection) -> None:
     # GF-7 — chunk embedding provider/model/dimension pinning. Soft chunk_id
     # reference; pure idempotent CREATE IF NOT EXISTS.
     con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
+    # CTW-01 — immutable compose → Write workspace idempotency mapping.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V16_COMPOSE_WRITE_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.

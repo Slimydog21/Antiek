@@ -6,9 +6,12 @@ import os
 import re
 import sys
 from pathlib import Path
+from typing import Any, Literal
 
 from fastapi import APIRouter, HTTPException, Response
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+from runtime.db_lock import connect_read
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
@@ -17,6 +20,7 @@ if _PKG_ROOT not in sys.path:
 from substrate.event_log import ActionType, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    ComposeResult,
     StaleComposePreview,
     create_compose_draft,
     delete_compose_draft,
@@ -27,6 +31,10 @@ from substrate.research_artifact import (  # noqa: E402
     preview_artifacts,
 )
 from substrate.research_artifact.paths import compose_member_path  # noqa: E402
+from substrate.write.promote_compose import (  # noqa: E402
+    ComposeIntegrityError,
+    promote_compose_to_write,
+)
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -88,7 +96,29 @@ class ComposeOut(BaseModel):
     reused: bool = False
 
 
-def _compose_out(result, *, include_url: bool = False) -> ComposeOut:
+class ComposeWriteIn(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=300)
+    deliverable_kind: Literal[
+        "research_memo", "book_chapter", "biography_section",
+        "investor_brief", "general_essay",
+    ] = "research_memo"
+
+
+class ComposeWriteOut(BaseModel):
+    compose_id: str
+    deliverable_id: str
+    section_id: str
+    write_url: str
+    member_count: int
+    snapshot_occurrence_count: int
+    unique_block_count: int
+    duplicate_count: int
+    kind_conflict_count: int
+    dangling_count: int
+    reused: bool
+
+
+def _compose_out(result: ComposeResult, *, include_url: bool = False) -> ComposeOut:
     assert result.compose_id and result.selection_fingerprint
     return ComposeOut(
         compose_id=result.compose_id,
@@ -108,7 +138,7 @@ def _require_completed(investigation_ids: list[str]) -> None:
         ):
             raise HTTPException(status_code=422, detail="invalid investigation id")
         rows = trajectory(investigation_id)
-        terminal: tuple[str, dict] | None = None
+        terminal: tuple[str, dict[str, Any]] | None = None
         for row in rows:
             action = row.get("action_type")
             if action in {
@@ -172,6 +202,31 @@ async def get_compose(compose_id: str) -> ComposeOut:
         raise HTTPException(status_code=404, detail="compose draft not found") from exc
 
 
+@artifact_router.post(
+    "/artifact-composes/{compose_id}/write-workspace",
+    response_model=ComposeWriteOut,
+    status_code=201,
+)
+async def post_compose_write_workspace(
+    compose_id: str, body: ComposeWriteIn, response: Response,
+) -> ComposeWriteOut:
+    try:
+        result = promote_compose_to_write(
+            compose_id,
+            title=body.title,
+            deliverable_kind=body.deliverable_kind,
+            # The promoter validates every frozen member before it initializes
+            # or opens DuckDB; do not call this module's eager `_db()` first.
+            db_path=default_db_path(),
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="compose draft not found") from exc
+    except ComposeIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    response.status_code = 200 if result.reused else 201
+    return ComposeWriteOut(**result.__dict__, write_url=f"/write/{result.deliverable_id}")
+
+
 @artifact_router.get("/artifact-composes/{compose_id}/view")
 async def get_compose_view(compose_id: str) -> Response:
     try:
@@ -205,8 +260,25 @@ async def get_compose_member(compose_id: str, member_index: int) -> Response:
 
 @artifact_router.delete("/artifact-composes/{compose_id}", status_code=204)
 async def delete_compose(compose_id: str) -> Response:
+    # A promoted compose is the immutable provenance anchor for its Write
+    # workspace. Removing it would make source order unreconstructable.
+    db_path = _db()
+
+    def may_delete() -> bool:
+        with connect_read(db_path) as con:
+            return con.execute(
+                "SELECT 1 FROM artifact_compose_write_workspaces "
+                "WHERE compose_id = ? LIMIT 1",
+                [compose_id],
+            ).fetchone() is None
+
     try:
-        delete_compose_draft(compose_id)
+        delete_compose_draft(compose_id, before_delete=may_delete)
+    except PermissionError as exc:
+        raise HTTPException(
+            status_code=409,
+            detail="compose is the provenance source for a Write workspace",
+        ) from exc
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="compose draft not found") from exc
     return Response(status_code=204)

@@ -39,10 +39,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import {
+  createComposeWriteWorkspace,
   createResearchCompose,
   getBudgetDefaults,
   previewResearchCompose,
   type BudgetDefaults,
+  type ComposeWriteWorkspace,
   type ResearchCompose,
 } from "../../api/research";
 import { useAuth } from "../../lib/auth";
@@ -200,6 +202,12 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   const [composePreview, setComposePreview] = useState<ResearchCompose | null>(null);
   const [composeError, setComposeError] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
+  const [writeWorkspace, setWriteWorkspace] = useState<ComposeWriteWorkspace | null>(null);
+  const [writeError, setWriteError] = useState<string | null>(null);
+  const [openingWrite, setOpeningWrite] = useState(false);
+  const openingWriteRef = useRef(false);
+  const composePreviewRef = useRef(composePreview);
+  composePreviewRef.current = composePreview;
   const selectionRef = useRef(selected);
   selectionRef.current = selected;
   useEffect(() => {
@@ -230,6 +238,8 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     if (composing) return;
     setComposePreview(null);
     setComposeError(null);
+    setWriteWorkspace(null);
+    setWriteError(null);
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   };
 
@@ -254,12 +264,35 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     setComposeError(null);
     try {
       const response = await createResearchCompose(requested, composePreview.selection_fingerprint);
-      if (sameSelection(selectionRef.current, requested)) setComposePreview(response);
+      if (sameSelection(selectionRef.current, requested)) {
+        setComposePreview(response);
+        setWriteWorkspace(null);
+        setWriteError(null);
+      }
     } catch (err) {
       setComposePreview(null);
       setComposeError(err instanceof Error ? err.message : "The sources changed. Review them again.");
     } finally {
       setComposing(false);
+    }
+  };
+
+  const openInWrite = async () => {
+    if (!composePreview?.view_url || openingWriteRef.current || writeWorkspace) return;
+    const requestedComposeId = composePreview.compose_id;
+    openingWriteRef.current = true;
+    setOpeningWrite(true);
+    setWriteError(null);
+    try {
+      const workspace = await createComposeWriteWorkspace(requestedComposeId);
+      if (composePreviewRef.current?.compose_id === requestedComposeId) setWriteWorkspace(workspace);
+    } catch (err) {
+      if (composePreviewRef.current?.compose_id === requestedComposeId) {
+        setWriteError(err instanceof Error ? err.message : "Couldn’t open these sources in Write.");
+      }
+    } finally {
+      openingWriteRef.current = false;
+      setOpeningWrite(false);
     }
   };
 
@@ -381,9 +414,13 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
             preview={composePreview}
             busy={composing}
             error={composeError}
+            writeWorkspace={writeWorkspace}
+            writeError={writeError}
+            openingWrite={openingWrite}
             onPreview={previewCompose}
             onCreate={createCompose}
-            onClear={() => { setSelected([]); setComposePreview(null); setComposeError(null); }}
+            onOpenWrite={openInWrite}
+            onClear={() => { setSelected([]); setComposePreview(null); setComposeError(null); setWriteWorkspace(null); setWriteError(null); }}
           />
         )}
       </div>
@@ -563,13 +600,17 @@ function ResearchRow({
   );
 }
 
-function ComposeTray({ selectedCount, preview, busy, error, onPreview, onCreate, onClear }: {
+function ComposeTray({ selectedCount, preview, busy, error, writeWorkspace, writeError, openingWrite, onPreview, onCreate, onOpenWrite, onClear }: {
   selectedCount: number;
   preview: ResearchCompose | null;
   busy: boolean;
   error: string | null;
+  writeWorkspace: ComposeWriteWorkspace | null;
+  writeError: string | null;
+  openingWrite: boolean;
   onPreview: () => void;
   onCreate: () => void;
+  onOpenWrite: () => void;
   onClear: () => void;
 }) {
   return (
@@ -595,7 +636,29 @@ function ComposeTray({ selectedCount, preview, busy, error, onPreview, onCreate,
             <div className="mt-3 flex justify-end"><LemonButton variant="primary" size="sm" onClick={onCreate} disabled={busy}>{busy ? "Creating…" : "Create HTML draft"}</LemonButton></div>
           </div>
         )}
-        {preview?.view_url && <p className="mt-3 text-sm"><a className="font-semibold text-ink underline dark:text-bright" href={preview.view_url} target="_blank" rel="noreferrer">Open HTML draft ↗</a>{preview.reused ? " · Existing identical draft reused" : " · Draft created"}</p>}
+        {preview?.view_url && (
+          <div className="mt-3 space-y-3 border-t border-rule pt-3 dark:border-charcoal-1">
+            <p className="text-sm"><a className="font-semibold text-ink underline dark:text-bright" href={preview.view_url} target="_blank" rel="noreferrer">Open HTML draft ↗</a>{preview.reused ? " · Existing identical draft reused" : " · Draft created"}</p>
+            {!writeWorkspace && (
+              <div className="flex flex-wrap items-center gap-3">
+                <LemonButton variant="secondary" size="sm" onClick={onOpenWrite} disabled={openingWrite}>
+                  {openingWrite ? "Opening in Write…" : "Start writing from these sources"}
+                </LemonButton>
+                <span className="text-xs text-shadow-1 dark:text-moonlight">Builds an outline from the reviewed snapshots. No AI runs.</span>
+              </div>
+            )}
+            {writeError && <p className="text-sm text-emperor" role="alert">{writeError}</p>}
+            {writeWorkspace && (
+              <div className="border-l-4 border-ink pl-3 dark:border-bright" data-testid="compose-write-receipt">
+                <p className="font-serif text-sm text-ink dark:text-bright">{writeWorkspace.member_count} source artifacts stitched into {writeWorkspace.unique_block_count} source blocks</p>
+                <p className="text-xs text-shadow-1 dark:text-moonlight">
+                  {writeWorkspace.snapshot_occurrence_count} snapshot occurrences · {writeWorkspace.duplicate_count} duplicates folded · {writeWorkspace.kind_conflict_count} kind conflicts · {writeWorkspace.dangling_count} unavailable sources
+                </p>
+                <a className="mt-1 inline-block text-sm font-semibold text-ink underline dark:text-bright" href={writeWorkspace.write_url}>Open in Write →</a>
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </aside>
   );

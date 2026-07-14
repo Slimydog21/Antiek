@@ -21,8 +21,9 @@ import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
 import type { InvestigationSummary } from "../../lib/api";
+import type { ComposeWriteWorkspace } from "../../api/research";
 
-const { listState, budgetState, authState, navigateMock, previewComposeMock, createComposeMock } = vi.hoisted(() => ({
+const { listState, budgetState, authState, navigateMock, previewComposeMock, createComposeMock, createWriteWorkspaceMock } = vi.hoisted(() => ({
   listState: {
     current: {
       investigations: [] as InvestigationSummary[],
@@ -42,6 +43,7 @@ const { listState, budgetState, authState, navigateMock, previewComposeMock, cre
   navigateMock: vi.fn(),
   previewComposeMock: vi.fn(),
   createComposeMock: vi.fn(),
+  createWriteWorkspaceMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigationList", () => ({
@@ -62,6 +64,7 @@ vi.mock("../../api/research", async (orig) => {
     getSuggestions: () => Promise.resolve({ count: 0, suggestions: [] }),
     previewResearchCompose: previewComposeMock,
     createResearchCompose: createComposeMock,
+    createComposeWriteWorkspace: createWriteWorkspaceMock,
   };
 });
 
@@ -113,6 +116,7 @@ beforeEach(() => {
   navigateMock.mockReset();
   previewComposeMock.mockReset();
   createComposeMock.mockReset();
+  createWriteWorkspaceMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -246,6 +250,12 @@ describe("MyResearch — compose light table", () => {
       members: [], identical_content: [],
       view_url: "/research/artifact-composes/cmp-created/view", reused: false,
     });
+    createWriteWorkspaceMock.mockResolvedValue({
+      compose_id: "cmp-created", deliverable_id: "dlv-write", section_id: "sec-write",
+      write_url: "/write/dlv-write", member_count: 2, snapshot_occurrence_count: 4,
+      unique_block_count: 3, duplicate_count: 1, kind_conflict_count: 0,
+      dangling_count: 1, reused: false,
+    });
     const { default: userEventModule } = await import("@testing-library/user-event");
     const user = userEventModule.setup();
     renderMonitor();
@@ -259,5 +269,83 @@ describe("MyResearch — compose light table", () => {
     expect(createComposeMock).toHaveBeenCalledWith(["inv-one", "inv-two"], "fingerprint");
     const link = await screen.findByRole("link", { name: /Open HTML draft/ }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/research/artifact-composes/cmp-created/view");
+    await user.click(screen.getByRole("button", { name: "Start writing from these sources" }));
+    expect(createWriteWorkspaceMock).toHaveBeenCalledWith("cmp-created");
+    expect(await screen.findByText(/2 source artifacts stitched into 3 source blocks/)).toBeTruthy();
+    expect(screen.getByText(/1 duplicates folded/)).toBeTruthy();
+    expect((screen.getByRole("link", { name: /Open in Write/ }) as HTMLAnchorElement).getAttribute("href")).toBe("/write/dlv-write");
+    expect(screen.getByRole("link", { name: /Open HTML draft/ })).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Start writing from these sources" })).toBeNull();
+  });
+
+  it("keeps the draft and permits retry when opening Write fails", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", status: "completed" }),
+      inv({ investigation_id: "inv-two", status: "completed" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [], view_url: null, reused: false,
+    });
+    createComposeMock.mockResolvedValue({
+      compose_id: "cmp-created", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [],
+      view_url: "/research/artifact-composes/cmp-created/view", reused: false,
+    });
+    createWriteWorkspaceMock
+      .mockRejectedValueOnce(new Error("Snapshot integrity check failed"))
+      .mockResolvedValueOnce({
+        compose_id: "cmp-created", deliverable_id: "dlv-write", section_id: "sec-write",
+        write_url: "/write/dlv-write", member_count: 2, snapshot_occurrence_count: 0,
+        unique_block_count: 0, duplicate_count: 0, kind_conflict_count: 0,
+        dangling_count: 0, reused: false,
+      });
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    await user.click(await screen.findByRole("button", { name: "Create HTML draft" }));
+    await user.click(await screen.findByRole("button", { name: "Start writing from these sources" }));
+    expect(await screen.findByText("Snapshot integrity check failed")).toBeTruthy();
+    expect(screen.getByRole("link", { name: /Open HTML draft/ })).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Start writing from these sources" }));
+    expect(await screen.findByRole("link", { name: /Open in Write/ })).toBeTruthy();
+  });
+
+  it("discards an old Write receipt when the reviewed selection changes in flight", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", status: "completed" }),
+      inv({ investigation_id: "inv-two", status: "completed" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [], view_url: null, reused: false,
+    });
+    createComposeMock.mockResolvedValue({
+      compose_id: "cmp-created", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [],
+      view_url: "/research/artifact-composes/cmp-created/view", reused: false,
+    });
+    let resolveWorkspace!: (value: ComposeWriteWorkspace) => void;
+    createWriteWorkspaceMock.mockReturnValue(new Promise((resolve) => { resolveWorkspace = resolve; }));
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    await user.click(await screen.findByRole("button", { name: "Create HTML draft" }));
+    await user.click(await screen.findByRole("button", { name: "Start writing from these sources" }));
+    await user.click(screen.getByRole("button", { name: "Clear" }));
+    resolveWorkspace({
+      compose_id: "cmp-created", deliverable_id: "dlv-old", section_id: "sec-old",
+      write_url: "/write/dlv-old", member_count: 2, snapshot_occurrence_count: 2,
+      unique_block_count: 2, duplicate_count: 0, kind_conflict_count: 0,
+      dangling_count: 0, reused: false,
+    });
+    await vi.waitFor(() => expect(createWriteWorkspaceMock).toHaveBeenCalledTimes(1));
+    expect(screen.queryByRole("link", { name: /Open in Write/ })).toBeNull();
   });
 });
