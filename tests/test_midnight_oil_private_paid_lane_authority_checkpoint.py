@@ -12,6 +12,7 @@ import json
 import multiprocessing
 import os
 import pickle
+import select
 import socket
 import sqlite3
 import textwrap
@@ -354,6 +355,57 @@ def _attempt_child_recovery_admission(
     except BaseException:
         os.write(result_fd, b"0")
     finally:
+        os.close(result_fd)
+
+
+def _attempt_child_recovery_session_death(
+    socket_path: str,
+    issuer_pid: int,
+    ticket: checkpoint_module.SignedMigrationRecoveryTicketV1,
+    pins: checkpoint_module.Epoch0RecoveryAuthorityPinsV1,
+    verification_key: checkpoint_module.VerificationKeyV1,
+    root_fd: int,
+    parent_fd: int,
+    target_fd: int,
+    ready_fd: int,
+    release_fd: int,
+    result_fd: int,
+) -> None:
+    session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
+    try:
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            authority_pins=pins,
+        )
+        owned_descriptors = session._descriptors
+        os.close(root_fd)
+        os.close(parent_fd)
+        os.close(target_fd)
+        session.ping()
+        os.write(ready_fd, b"R")
+        assert os.read(release_fd, 1) == b"G"
+        with pytest.raises((OSError, ValueError)):
+            session.ping()
+        with pytest.raises(ValueError, match="unavailable"):
+            _ = session.admission
+        for descriptor in owned_descriptors:
+            with pytest.raises(OSError):
+                fcntl.fcntl(descriptor, fcntl.F_GETFD)
+        session.close()
+        os.write(result_fd, b"1")
+    except BaseException:
+        os.write(result_fd, b"0")
+    finally:
+        if session is not None:
+            session.close()
+        os.close(ready_fd)
+        os.close(release_fd)
         os.close(result_fd)
 
 
@@ -3026,6 +3078,146 @@ class TestMigrationPrerequisites:
         finally:
             delegated.close()
             issuer.close()
+            os.close(root_fd)
+            os.close(parent_fd)
+
+    @pytest.mark.parametrize("death_source", ("issuer", "supervisor"))
+    def test_recovery_session_closes_owned_resources_when_generation_dies(
+        self, tmp_path: Path, death_source: str
+    ) -> None:
+        target = tmp_path / "paid-lane.sqlite3"
+        _initialize_schema_only_copy_target(target)
+        target.chmod(0o600)
+        target_info = target.stat()
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "issuer-root",
+            root_id="issuer-root-death-1",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+        )
+        root_record = json.loads(
+            (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        root_fd = os.open(root.root_path, os.O_RDONLY)
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        parent_info = os.fstat(parent_fd)
+        issuer = support_checkpoint.FixtureMigrationLifecycleIssuerV1.spawn(
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_basename=target.name,
+            provider_capability_verification_keys=(),
+            provider_revocation_verification_keys=(),
+            source_head_verification_keys=(),
+            provider_revocation_floor_pins=(),
+            source_floor_pins=(),
+            expected_target_store_id=STORE_ID,
+            expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
+            expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+        )
+        target_fd = -1
+        ready_read = ready_write = release_read = release_write = result_read = result_write = -1
+        child = -1
+        owner_closed = False
+        try:
+            candidate = _issuer_candidate(
+                Ed25519PrivateKey.from_private_bytes(b"d" * 32),
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+            )
+            genesis = issuer.reserve(candidate)
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=genesis,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=None,
+            )
+            issuer.commit(state=genesis, parent_fd=parent_fd)
+            pins = _recovery_pins(genesis)
+            target_fd = os.open(target, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+            ready_read, ready_write = os.pipe()
+            release_read, release_write = os.pipe()
+            result_read, result_write = os.pipe()
+            issuer_pid = issuer.process_id
+            socket_path = issuer._socket_path
+            ticket = issuer.recovery_ticket
+            verification_key = issuer.verification_key
+            child = os.fork()
+            if child == 0:
+                os.close(ready_read)
+                os.close(release_write)
+                os.close(result_read)
+                _attempt_child_recovery_session_death(
+                    socket_path,
+                    issuer_pid,
+                    ticket,
+                    pins,
+                    verification_key,
+                    root_fd,
+                    parent_fd,
+                    target_fd,
+                    ready_write,
+                    release_read,
+                    result_write,
+                )
+                os._exit(0)
+            os.close(ready_write)
+            ready_write = -1
+            os.close(release_read)
+            release_read = -1
+            os.close(result_write)
+            result_write = -1
+            assert select.select([ready_read], [], [], 5)[0] == [ready_read]
+            assert os.read(ready_read, 1) == b"R"
+            if death_source == "supervisor":
+                issuer._supervisor_process.terminate()
+                issuer._supervisor_process.join(timeout=5)
+            else:
+                issuer._process.terminate()
+            issuer._process.join(timeout=5)
+            assert not issuer._process.is_alive()
+            os.write(release_write, b"G")
+            assert select.select([result_read], [], [], 5)[0] == [result_read]
+            assert os.read(result_read, 1) == b"1"
+            _, child_status = os.waitpid(child, 0)
+            child = -1
+            assert os.waitstatus_to_exitcode(child_status) == 0
+            if death_source == "supervisor":
+                assert not Path(socket_path).exists()
+            else:
+                assert Path(socket_path).exists()
+                stale_connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    with pytest.raises(ConnectionRefusedError):
+                        stale_connection.connect(socket_path)
+                finally:
+                    stale_connection.close()
+            issuer.close()
+            owner_closed = True
+            assert not Path(socket_path).exists()
+        finally:
+            if child > 0:
+                with suppress(ProcessLookupError):
+                    os.kill(child, 9)
+                os.waitpid(child, 0)
+            for descriptor in (
+                ready_read,
+                ready_write,
+                release_read,
+                release_write,
+                result_read,
+                result_write,
+                target_fd,
+            ):
+                if descriptor >= 0:
+                    with suppress(OSError):
+                        os.close(descriptor)
+            if not owner_closed:
+                issuer.close()
             os.close(root_fd)
             os.close(parent_fd)
 
