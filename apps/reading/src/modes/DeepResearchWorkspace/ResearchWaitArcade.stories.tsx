@@ -28,7 +28,7 @@ export const Offer: Story = {
 export const Playing: Story = {
   render: (args) => <CursorPolicyPreview {...args} playing />,
   parameters: {
-    lostpixel: { waitForSelector: '[data-backdrop-ready="true"]' },
+    lostpixel: { waitBeforeScreenshot: 750 },
   },
 };
 
@@ -41,14 +41,30 @@ function CursorPolicyPreview({
 
   useEffect(() => {
     let frame = 0;
+    let optedIn = false;
+    let gameStarted = false;
     const activate = () => {
       window.dispatchEvent(
         new PointerEvent("pointermove", { clientX: 160, clientY: 92 }),
       );
       if (!playing) return;
+      const canvas = rootRef.current?.querySelector<HTMLCanvasElement>("canvas");
+      if (canvas && !gameStarted) {
+        gameStarted = true;
+        canvas.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "Enter", bubbles: true }),
+        );
+        canvas.dispatchEvent(
+          new KeyboardEvent("keyup", { key: "Enter", bubbles: true }),
+        );
+        return;
+      }
       const play = rootRef.current?.querySelector<HTMLButtonElement>("button");
-      if (play) play.click();
-      else frame = window.requestAnimationFrame(activate);
+      if (play && !optedIn) {
+        optedIn = true;
+        play.click();
+      }
+      frame = window.requestAnimationFrame(activate);
     };
     frame = window.requestAnimationFrame(activate);
     return () => window.cancelAnimationFrame(frame);

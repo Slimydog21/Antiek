@@ -1,6 +1,6 @@
 # Werner arcade authored field — Cycle 570
 
-Status: code verified locally; rendered visual adoption pending.
+Status: implemented; code and rendered visual adoption verified locally.
 
 ## Decision
 
@@ -16,19 +16,29 @@ unloaded, error and teardown fallback rather than an empty or blocked canvas.
 
 ## Visual adoption gate
 
-Rendered target and HP-pip legibility is not proven. The in-app browser exposed
+Rendered target and HP-pip legibility is proven. The in-app browser exposed
 no controllable tab, and Lost Pixel 3.22 ignored the attempted shot filter,
 started all 726 captures, then hit the known unrelated AISidecar exception
 before the arcade story. The run was stopped and no baseline was accepted.
-The first remote PR run then reported zero diff because it photographed the
-exact-host procedural fallback before the asynchronously loaded authored plate
-became ready. That green result is rejected as evidence. The Playing story now
-waits for a DOM readiness signal emitted only after the loader validates and
-installs the bundled image; production game initialization, focus and input do
-not wait on that signal.
-SPR-19 therefore remains visual-acceptance pending, is not counted among the
-implemented sprints, and must not be merged until scoped 768/1024/1280 playing
-captures prove contrast or the plate is revised. The existing feature flag is
+The first remote PR run then reported zero diff because the committed baseline
+slug (`deepresearch`) did not match LostPixel's generated slug
+(`deep-research`); additions are non-blocking in the current configuration.
+That green result is rejected as evidence. A scoped local LostPixel 3.22 run
+captured only the Playing story after a story-only deterministic Enter press
+and a 750 ms settling interval. The 768/1024/1280 captures all show wave 01,
+the authored field, a spawn-edge target and its HP pip, code-native fort,
+trace, HUD and status, and native-canvas cursor ownership. The target remains
+immediate against the deliberately quiet right edge. The prior exact-host
+procedural captures are retained under
+`docs/evidence/werner-arcade-authored-field/` as fallback proof; loader and
+paint-order tests cover error and teardown without game-state drift.
+
+The three authored captures replace the legacy-slug Playing baselines, so the
+next remote run compares rather than silently adding them. A second scoped
+run compared fresh captures at 0.14%, 0.17% and 0.23% difference respectively,
+all inside the repository's 0.4% threshold. Production game
+initialization, focus and input do not wait on visual proof instrumentation.
+SPR-19 is now counted as implemented. The existing feature flag remains
 production-default-off; this transport grants no deployment authority.
 
 ## Asset provenance
