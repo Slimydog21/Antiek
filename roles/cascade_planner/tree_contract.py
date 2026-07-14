@@ -24,6 +24,7 @@ An edit to an approved plan **re-opens the gate** — re-approval is required.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -55,13 +56,13 @@ class PlanNode:
     def is_leaf(self) -> bool:
         return not self.children
 
-    def iter_leaves(self):
+    def iter_leaves(self) -> Iterator[PlanNode]:
         if self.is_leaf:
             yield self
         for c in self.children:
             yield from c.iter_leaves()
 
-    def iter_all(self):
+    def iter_all(self) -> Iterator[PlanNode]:
         yield self
         for c in self.children:
             yield from c.iter_all()
