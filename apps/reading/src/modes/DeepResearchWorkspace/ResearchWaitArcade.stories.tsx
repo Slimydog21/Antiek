@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { waitFor } from "@storybook/test";
 import { createRef, useEffect, useRef, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 
@@ -27,6 +28,12 @@ export const Offer: Story = {
 
 export const Playing: Story = {
   render: (args) => <CursorPolicyPreview {...args} playing />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      const ready = canvasElement.querySelector('[data-backdrop-ready="true"]');
+      if (!ready) throw new Error("Authored arcade backdrop is not ready");
+    });
+  },
   parameters: {
     lostpixel: { waitBeforeScreenshot: 750 },
   },

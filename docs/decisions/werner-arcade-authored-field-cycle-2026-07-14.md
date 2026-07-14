@@ -40,7 +40,9 @@ job is also rejected: the repository does not currently set
 deterministic authored ready plate at the corrected generated slug. The
 inspected active-wave matrix is retained separately under
 `docs/evidence/werner-arcade-authored-field/` as human contrast evidence, not
-as a false deterministic regression oracle. Production game
+as a false deterministic regression oracle. The awaited Storybook `play`
+lifecycle refuses to complete until the validated backdrop readiness marker
+exists, closing the remote decode race. Production game
 initialization, focus and input do not wait on visual proof instrumentation.
 SPR-19 is now counted as implemented. The existing feature flag remains
 production-default-off; this transport grants no deployment authority.
