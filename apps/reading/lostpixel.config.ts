@@ -48,8 +48,10 @@ export const config: CustomProjectConfig = {
   // Normal legacy sweep remains advisory; an explicitly scoped story is a
   // blocking evidence gate and must surface its current/diff artifacts.
   failOnDifference: Boolean(scopedStoryId),
-  // S12 ceiling: 0.4% per-shot delta. Tighter than S2's 1% advisory.
-  threshold: 0.004,
+  // The scoped authored plate permits only microscopic Chromium raster jitter
+  // (roughly 6–10 pixels across the configured viewports). The legacy sweep
+  // retains its established 0.4% advisory ceiling.
+  threshold: scopedStoryId ? 0.00001 : 0.004,
   // Skip known-flaky stories at every breakpoint. The framer-motion
   // spring on workspace-demo produces sub-1% inter-run diffs that
   // aren't real regressions.

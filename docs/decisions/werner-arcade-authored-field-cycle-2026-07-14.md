@@ -55,12 +55,12 @@ production-default-off; this transport grants no deployment authority.
 The legacy repository-wide visual sweep does not set `failOnDifference` and
 therefore cannot prove this adoption. CI now runs a three-shot story-ID-scoped
 gate before that sweep. It requires every named canonical baseline before
-capture, every named current plate after capture, byte identity between each
-current/baseline pair, and an empty diff directory. Missing evidence or any
-target-byte delta reds the PR and activates the existing current/diff artifact
-upload. The normal workspace-demo exclusion also uses the actual Storybook
-`id` field rather than the not-yet-generated `shotName`, repairing its
-previously ineffective filter.
+capture, every named current plate after capture, a scoped 0.001% ceiling
+(roughly 6–10 pixels across the three viewports), and an empty diff directory.
+Missing evidence or any delta above that microscopic Chromium-raster allowance
+reds the PR and activates the existing current/diff artifact upload. The normal
+workspace-demo exclusion also uses the actual Storybook `id` field rather than
+the not-yet-generated `shotName`, repairing its previously ineffective filter.
 
 ## Asset provenance
 
