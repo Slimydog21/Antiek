@@ -3257,10 +3257,10 @@ def create_app(
             # of the documents that ground this deliverable, and render them as
             # a Sources section in the human-readable exports (the JSON bundle
             # already carries the raw per-section provenance map). §9.0-gated:
-            # personal_reading / restricted documents are never named — a
+            # personal_reading / restricted documents are never named; a
             # withheld source is indistinguishable from no source at all, so a
             # public/monetized export cannot hint one exists. Resolved on THIS
-            # read_only connection — no second handle, single-writer untouched.
+            # read_only connection; no second handle, single-writer untouched.
             sources = resolve_deliverable_sources(con, deliverable_id)
         finally:
             con.close()
@@ -3472,7 +3472,7 @@ def create_app(
                 book.add_item(chapter)
                 chapters.append(chapter)
             if sources:
-                # GPW SPR-04 STRETCH: Sources as a final chapter — the natural
+                # GPW SPR-04 STRETCH: Sources as a final chapter, the natural
                 # EPUB structure (its own TOC entry + spine position). §9.0-gated
                 # titles only (personal_reading / restricted already excluded).
                 src_items = "".join(f"<li>{esc(s)}</li>" for s in sources)

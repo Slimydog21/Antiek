@@ -1,4 +1,4 @@
-"""Tests for GPW SPR-04 STRETCH — rendered, §9.0-gated deliverable Sources.
+"""Tests for GPW SPR-04 STRETCH; rendered, §9.0-gated deliverable Sources.
 
 ``substrate/write/deliverable_sources.resolve_deliverable_sources`` turns a
 deliverable's ``prose_provenance`` (paragraph_index → [block_id]) into the
@@ -9,7 +9,7 @@ Sources section in the Markdown / HTML / Substack exports and carries it in
 the JSON bundle.
 
 The load-bearing property is §9.0 indistinguishability: a deliverable whose
-only sources are withheld must export IDENTICALLY to a source-less one — no
+only sources are withheld must export IDENTICALLY to a source-less one; no
 "## Sources" heading, no hint that a personal_reading document exists.
 """
 
@@ -58,7 +58,7 @@ def _read(db_path: str) -> duckdb.DuckDBPyConnection:
 
 
 def _grounded_node(con, *, label, document_id, node_type="insight"):
-    """An insight/claim node grounded to a document via node metadata —
+    """An insight/claim node grounded to a document via node metadata --
     the primary linkage the deposit path writes (insight_question.py)."""
     return insert_node(
         con, canonical_label=label, node_type=node_type,
@@ -85,7 +85,7 @@ def test_resolves_grounded_titles_in_first_appearance_order(env):
         nb = _grounded_node(con, label="insight b", document_id="doc-beta")
         did = insert_deliverable(
             con, title="Memo", deliverable_kind="research_memo")
-        # paragraph "1" cites beta, paragraph "0" cites alpha — the result
+        # paragraph "1" cites beta, paragraph "0" cites alpha; the result
         # must follow paragraph order (0 then 1), NOT dict/insertion order.
         insert_section(
             con, deliverable_id=did, section_index=0, title="S",
@@ -153,7 +153,7 @@ def test_restricted_pending_opt_in_source_is_never_named(env):
 def test_supported_by_edge_fallback_resolves_document(env):
     with connect_write(env["db_path"], purpose="test/seed") as con:
         _doc(con, document_id="doc-e", title="Edge-Grounded Paper")
-        # Node WITHOUT metadata.source_document_id — grounding lives only on
+        # Node WITHOUT metadata.source_document_id; grounding lives only on
         # a supported_by edge (the resolver's documented fallback).
         n = insert_node(
             con, canonical_label="ungrounded-in-meta", node_type="insight",
@@ -191,7 +191,7 @@ def test_empty_title_document_is_dropped_not_fabricated(env):
             prose_provenance={"0": [n]},
         )
     with _read(env["db_path"]) as con:
-        # Never fabricate an "Untitled" bullet — drop it.
+        # Never fabricate an "Untitled" bullet; drop it.
         assert resolve_deliverable_sources(con, did) == []
 
 
@@ -281,14 +281,14 @@ def test_json_export_carries_gated_sources_list(env):
 
 def test_epub_export_includes_sources_chapter_and_withholds_personal(env):
     """EPUB Sources render as their own chapter, §9.0-gated. Skip-gated on
-    the export extra (same convention as every pdf/epub test — CI does not
+    the export extra (same convention as every pdf/epub test; CI does not
     install it). Where it runs, the zip is DECOMPRESSED and every entry
     scanned, so the personal_reading title's absence is a real guarantee,
     not a false-negative off compressed bytes."""
     try:
         import ebooklib  # noqa: F401
     except ImportError:
-        pytest.skip("ebooklib not installed — pip install -e '.[export]'")
+        pytest.skip("ebooklib not installed; pip install -e '.[export]'")
     import base64
     import io
     import zipfile
@@ -310,12 +310,12 @@ def test_pdf_export_with_sources_renders(env):
     """PDF Sources template must not break rendering. Skip-gated on the
     export extra. This asserts render-success (the §9.0 text-level guarantee
     is inherited from the same gated ``sources`` list the executed
-    markdown/html/resolver tests already prove — PDF is a binary re-render of
+    markdown/html/resolver tests already prove; PDF is a binary re-render of
     the identical list)."""
     try:
         import xhtml2pdf  # noqa: F401
     except ImportError:
-        pytest.skip("xhtml2pdf not installed — pip install -e '.[export]'")
+        pytest.skip("xhtml2pdf not installed; pip install -e '.[export]'")
     import base64
     did = _seed_two_source_memo(env["db_path"])
     client = _client()
@@ -328,7 +328,7 @@ def test_pdf_export_with_sources_renders(env):
 
 def test_withheld_only_deliverable_exports_identically_to_sourceless(env):
     """The §9.0 keystone: a deliverable whose ONLY source is personal_reading
-    must export byte-for-byte like one with no sources — no Sources heading,
+    must export byte-for-byte like one with no sources; no Sources heading,
     nothing that betrays a withheld document exists."""
     with connect_write(env["db_path"], purpose="test/seed") as con:
         _doc(con, document_id="doc-priv", title="Secret Diary",
@@ -354,6 +354,6 @@ def test_withheld_only_deliverable_exports_identically_to_sourceless(env):
     b = client.get(
         f"/deliverables/{sourceless}/export?format=markdown").json()["content"]
     assert "## Sources" not in a
-    # Same modulo the deliverable_id-independent body — the section content is
+    # Same modulo the deliverable_id-independent body; the section content is
     # identical, so the withheld export carries no extra bytes.
     assert a == b

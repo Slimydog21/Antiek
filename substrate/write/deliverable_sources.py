@@ -1,9 +1,9 @@
 """Resolve a deliverable's §9.0-gated source-document titles for export.
 
 GPW SPR-04 STRETCH. A deliverable's exported / sellable artifact should
-carry a human-readable **Sources** list — the titles of the documents
+carry a human-readable **Sources** list; the titles of the documents
 that ultimately ground its prose. The substrate already stores the raw
-provenance (``deliverable_sections.prose_provenance`` — a
+provenance (``deliverable_sections.prose_provenance``; a
 ``paragraph_index -> [block_id]`` map whose block_ids are graph node ids
 attached via ``section_blocks``), and GPW SPR-04's floor (#196) surfaced
 that raw map in the JSON export. But nothing resolved those ids to
@@ -12,22 +12,22 @@ Substack exports carried no Sources section at all.
 
 This module does exactly that, and nothing more surfacing-sensitive:
 
-* It emits document **titles only** — never bodies, never node labels.
+* It emits document **titles only**; never bodies, never node labels.
 * It drops any source whose resolved document ``content_class`` is
   withheld from a non-privileged (public / attribution-eligible) surface,
   reusing the public canonical ``is_chunk_body_withheld`` policy predicate
   from ``substrate/graph/retrieval_gate.py`` so the surfaces cannot drift
   apart (master-spec §9.0). A withheld source is therefore
-  **indistinguishable from no source at all** — the required §9.0
+  **indistinguishable from no source at all**; the required §9.0
   posture: an export must not even hint that a ``personal_reading``
   document exists.
 
 Why titles are §9.0-safe here where node labels were not: a node
 ``canonical_label`` is free text that can leak a ``personal_reading``
-body verbatim — GPW SPR-03 stayed correctly BLOCKED on exactly that
+body verbatim; GPW SPR-03 stayed correctly BLOCKED on exactly that
 (the ungated node-label read, substrate gap #201). A document **title**
 is surfaced only after gating on the resolved document's own
-``content_class``, exactly as attribution does — so only
+``content_class``, exactly as attribution does; so only
 attribution-eligible documents are ever named.
 
 The reader owns the connection: the export path already holds a
@@ -114,16 +114,16 @@ def resolve_deliverable_sources(
     """Ordered, de-duplicated list of §9.0-gated source-document titles
     grounding a deliverable's prose.
 
-    Order is by first appearance — ``section_index``, then
-    ``paragraph_index``, then block order within a paragraph — and each
+    Order is by first appearance; ``section_index``, then
+    ``paragraph_index``, then block order within a paragraph; and each
     document is named **once** even if cited across many paragraphs or
     sections. The list is safe to render into a public / monetized export:
 
     * a document whose ``content_class`` the canonical non-privileged policy
       withholds (including ``personal_reading`` and
-      ``restricted_pending_opt_in``) is dropped — never named, never counted,
+      ``restricted_pending_opt_in``) is dropped; never named, never counted,
       indistinguishable from having no source;
-    * a document with an empty / NULL title is dropped — we never
+    * a document with an empty / NULL title is dropped; we never
       fabricate a title, and an "Untitled" bullet would be noise (and
       could imply a source exists without naming it).
 
