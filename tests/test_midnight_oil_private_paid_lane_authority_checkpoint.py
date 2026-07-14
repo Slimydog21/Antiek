@@ -12,9 +12,11 @@ import json
 import multiprocessing
 import os
 import pickle
+import socket
 import sqlite3
 import textwrap
 import weakref
+from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -152,6 +154,29 @@ def _signed_lifecycle_state(
         checkpoint_module._MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
     )
     return checkpoint_module.SignedMigrationLifecycleStateV1.model_validate(material)
+
+
+def _issuer_candidate(private_key: Ed25519PrivateKey, **overrides: object) -> dict[str, object]:
+    if overrides.get("lifecycle_phase", "schema_only") != "schema_only":
+        overrides.setdefault("witness_sha256", "00" * 32)
+    draft = _signed_lifecycle_state(private_key, **overrides)
+    return draft.model_dump(
+        mode="python",
+        exclude={
+            "issuer_key_id",
+            "state_sha256",
+            "signature_ed25519",
+            "witness_sha256",
+        },
+    )
+
+
+def _attempt_inherited_issuer_close(connection: socket.socket) -> None:
+    with suppress(OSError):
+        connection.sendall(_canonical_json({"command": "close"}))
+        connection.shutdown(socket.SHUT_WR)
+        connection.recv(16)
+    connection.close()
 
 
 def _reopen_precutover(case: Any) -> PrivatePaidLaneEligibilityCheckpointStoreV1:
@@ -2127,6 +2152,207 @@ class TestMigrationPrerequisites:
             os.close(result_read)
             os.close(shared_parent_fd)
         assert not orphan.exists()
+
+    def test_isolated_issuer_reserves_replays_and_commits_only_durable_state(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "paid-lane.sqlite3"
+        target.write_bytes(b"sqlite-target-placeholder")
+        target.chmod(0o600)
+        target_info = target.stat()
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "issuer-root",
+            root_id="issuer-root-1",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+        )
+        root_record = json.loads(
+            (root.root_path / "legacy-root-state-v1.json").read_text(encoding="utf-8")
+        )
+        root_fd = os.open(root.root_path, os.O_RDONLY)
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        local_key = Ed25519PrivateKey.from_private_bytes(b"i" * 32)
+        issuer = support_checkpoint.FixtureMigrationLifecycleIssuerV1.spawn(
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_basename=target.name,
+        )
+        try:
+            parent_info = os.fstat(parent_fd)
+            assert issuer.process_id != os.getpid()
+            assert not hasattr(issuer, "private_key")
+            assert issuer.verification_key.key_id.endswith(
+                hashlib.sha256(issuer.verification_key.public_key_bytes).hexdigest()[:24]
+            )
+            with pytest.raises(TypeError, match="cannot be copied"):
+                copy.copy(issuer)
+            with pytest.raises(TypeError, match="process-bound"):
+                pickle.dumps(issuer)
+            with pytest.raises(ValueError, match="candidate fields"):
+                issuer.reserve({})
+            wrong_root_candidate = _issuer_candidate(
+                local_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id="different-root",
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+            )
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(wrong_root_candidate)
+            genesis_candidate = _issuer_candidate(
+                local_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+            )
+            genesis = issuer.reserve(genesis_candidate)
+            assert genesis.issuer_key_id == issuer.verification_key.key_id
+            assert issuer.reserve(genesis_candidate) == genesis
+            changed_pending = {**genesis_candidate, "updated_at_ms": 2}
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(changed_pending)
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=genesis,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=None,
+            )
+            assert issuer.reserve(genesis_candidate) == genesis
+            issuer.commit(state=genesis, parent_fd=parent_fd)
+            issuer.commit(state=genesis, parent_fd=parent_fd)
+
+            barrier_handle = root.acquire_writer_barrier(
+                expected_root_id=root_record["root_id"],
+                expected_root_manifest_sha256=root_record["root_manifest_sha256"],
+                expected_inventory_sha256=root_record["inventory_sha256"],
+            )
+
+            barrier_candidate = _issuer_candidate(
+                local_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+                lifecycle_phase="barrier_acquired",
+                barrier_id=barrier_handle.barrier_id,
+                freeze_nonce=barrier_handle.freeze_nonce,
+                phase_version=1,
+                issuer_sequence=1,
+                updated_at_ms=2,
+                previous_state_sha256=genesis.state_sha256,
+            )
+            barrier = issuer.reserve(barrier_candidate)
+            assert barrier.witness_sha256 is not None
+            assert barrier.witness_sha256 != "00" * 32
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.commit(state=barrier, parent_fd=parent_fd)
+            assert issuer.reserve(barrier_candidate) == barrier
+            checkpoint_module._persist_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                state=barrier,
+                verification_key=issuer.verification_key,
+                expected_prior_state_sha256=genesis.state_sha256,
+            )
+            issuer.commit(state=barrier, parent_fd=parent_fd)
+
+            unsupported_sources_candidate = _issuer_candidate(
+                local_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+                lifecycle_phase="sources_sealed",
+                barrier_id=barrier.barrier_id,
+                freeze_nonce=barrier.freeze_nonce,
+                source_manifest_sha256="72" * 32,
+                phase_version=2,
+                issuer_sequence=2,
+                updated_at_ms=3,
+                previous_state_sha256=barrier.state_sha256,
+            )
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(unsupported_sources_candidate)
+
+            barrier_handle.deny_new_admission()
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(barrier_candidate)
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.commit(state=barrier, parent_fd=parent_fd)
+
+            skipped_candidate = _issuer_candidate(
+                local_key,
+                target_parent_dev=parent_info.st_dev,
+                target_parent_ino=parent_info.st_ino,
+                target_dev=target_info.st_dev,
+                target_ino=target_info.st_ino,
+                root_id=root_record["root_id"],
+                root_manifest_sha256=root_record["root_manifest_sha256"],
+                lifecycle_phase="copy_prepared",
+                barrier_id=barrier.barrier_id,
+                freeze_nonce=barrier.freeze_nonce,
+                source_manifest_sha256="73" * 32,
+                copy_audit_sha256="74" * 32,
+                witness_sha256=barrier.witness_sha256,
+                phase_version=3,
+                issuer_sequence=3,
+                updated_at_ms=4,
+                previous_state_sha256=barrier.state_sha256,
+            )
+            with pytest.raises(ValueError, match="issuer rejected"):
+                issuer.reserve(skipped_candidate)
+        finally:
+            issuer.close()
+            os.close(root_fd)
+            os.close(parent_fd)
+
+    def test_isolated_issuer_fails_closed_when_creator_forks_authenticated_stream(
+        self, tmp_path: Path
+    ) -> None:
+        target = tmp_path / "paid-lane.sqlite3"
+        target.write_bytes(b"sqlite-target-placeholder")
+        target.chmod(0o600)
+        root = SupportLegacyRootV1.create_new(
+            root_path=tmp_path / "issuer-root",
+            root_id="issuer-root-1",
+            writer_inventory=support_checkpoint._CHILD_ROLES,
+            source_store_identities=support_checkpoint._CHILD_ROLES,
+            now_ms=1,
+        )
+        root_fd = os.open(root.root_path, os.O_RDONLY)
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        issuer = support_checkpoint.FixtureMigrationLifecycleIssuerV1.spawn(
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_basename=target.name,
+        )
+        delegated = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            delegated.connect(issuer._socket_path)
+            child = multiprocessing.get_context("fork").Process(
+                target=_attempt_inherited_issuer_close,
+                args=(delegated,),
+            )
+            child.start()
+            delegated.close()
+            child.join(timeout=5)
+            assert child.exitcode == 0
+            issuer._process.join(timeout=5)
+            assert not issuer._process.is_alive()
+        finally:
+            delegated.close()
+            issuer.close()
+            os.close(root_fd)
+            os.close(parent_fd)
 
     def test_closed_corpus_model_has_exact_top_level_fields(self) -> None:
         assert tuple(FrozenPaidLaneMigrationCorpusV1.model_fields) == (

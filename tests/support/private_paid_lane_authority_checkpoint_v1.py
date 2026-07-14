@@ -5,17 +5,27 @@ from __future__ import annotations
 import fcntl
 import hashlib
 import json
+import multiprocessing
 import os
+import re
 import secrets
+import select
+import socket
 import sqlite3
 import stat
+import struct
+import tempfile
+import threading
 import time
-from collections.abc import Iterator
-from contextlib import AbstractContextManager, contextmanager
+from array import array
+from collections.abc import Iterator, Mapping
+from contextlib import AbstractContextManager, contextmanager, suppress
 from dataclasses import dataclass, field
+from multiprocessing.connection import Connection
+from multiprocessing.process import BaseProcess
 from pathlib import Path
 from types import TracebackType
-from typing import Literal, Never
+from typing import Literal, Never, cast
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import BaseModel
@@ -23,6 +33,7 @@ from pydantic import BaseModel
 from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _CAPABILITY_V4_SIGNATURE_DOMAIN,
     _MIGRATION_CHILD_FINAL_VERSION,
+    _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN,
     _MIGRATION_ROLE_SCHEMA_TABLES,
     _PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
     _PREDECESSOR_CYCLE32_SOURCE_SHA256,
@@ -49,6 +60,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     QuarantinedSyntheticExternalPinRecordV1,
     QuarantinedSyntheticReadyRecordV1,
     QueueLeaseMigrationRowV1,
+    SignedMigrationLifecycleStateV1,
     SignedProviderCapabilityV4FixtureV1,
     SignedProviderRevocationHeadFixtureV1,
     SignedSourceHeadFixtureV1,
@@ -59,14 +71,23 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _capability_v4_document_sha256,
     _migration_barrier_id,
     _migration_encode,
+    _migration_lifecycle_entry_identity,
+    _migration_lifecycle_parent_identity,
+    _migration_lifecycle_state_document,
+    _migration_lifecycle_state_sha256,
     _migration_role_schema_sha256,
     _migration_role_schema_sha256_from_connection,
     _migration_role_schema_sql,
     _migration_row_sha256,
     _migration_source_manifest_sha256,
+    _parse_migration_lifecycle_state_document,
+    _parse_strict_json,
+    _read_signed_migration_lifecycle_state,
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
+    _verify_migration_lifecycle_genesis,
+    _verify_migration_lifecycle_transition,
     compute_private_paid_lane_contract_sha256,
     compute_private_paid_lane_semantic_sha256,
 )
@@ -84,6 +105,647 @@ _CHILD_ROLES = (
     "paid-lane-fixture-v1",
     "provider-authority-v4",
 )
+
+_ISSUER_MAX_PACKET = 131_072
+_ISSUER_WITNESS_SOCKET_NAME = "issuer-v1.sock"
+_ISSUER_CANDIDATE_FIELDS = frozenset(SignedMigrationLifecycleStateV1.model_fields) - {
+    "issuer_key_id",
+    "state_sha256",
+    "signature_ed25519",
+    "witness_sha256",
+}
+_ISSUER_WITNESS_DOMAIN = b"antiek.midnight-oil.fixture-migration-root-witness.v1\0"
+
+
+def _issuer_response(socket_: socket.socket, payload: bytes) -> None:
+    if len(payload) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer response bound")
+    with suppress(OSError):
+        socket_.sendall(payload)
+
+
+def _issuer_received_descriptors(ancillary: list[tuple[int, int, bytes]]) -> list[int]:
+    descriptors: list[int] = []
+    for level, kind, data in ancillary:
+        if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+            values = array("i")
+            usable = len(data) - (len(data) % values.itemsize)
+            values.frombytes(data[:usable])
+            descriptors.extend(values)
+    return descriptors
+
+
+def _issuer_root_record(root_fd: int) -> dict[str, object]:
+    root_info = os.fstat(root_fd)
+    if (
+        not stat.S_ISDIR(root_info.st_mode)
+        or root_info.st_uid != os.getuid()
+        or stat.S_IMODE(root_info.st_mode) != 0o700
+    ):
+        raise ValueError("issuer root identity")
+    state_info = os.stat(_SUPPORT_ROOT_STATE, dir_fd=root_fd, follow_symlinks=False)
+    if (
+        not stat.S_ISREG(state_info.st_mode)
+        or state_info.st_uid != os.getuid()
+        or state_info.st_nlink != 1
+        or stat.S_IMODE(state_info.st_mode) != 0o600
+        or not 0 < state_info.st_size <= 1_048_576
+    ):
+        raise ValueError("issuer root state identity")
+    descriptor = os.open(
+        _SUPPORT_ROOT_STATE,
+        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        dir_fd=root_fd,
+    )
+    try:
+        opened = os.fstat(descriptor)
+        if (opened.st_dev, opened.st_ino) != (state_info.st_dev, state_info.st_ino):
+            raise ValueError("issuer root state changed during open")
+        chunks: list[bytes] = []
+        remaining = 1_048_577
+        while remaining:
+            chunk = os.read(descriptor, min(65_536, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        document = b"".join(chunks)
+        if len(document) != opened.st_size or len(document) > 1_048_576:
+            raise ValueError("issuer root state changed during read")
+    finally:
+        os.close(descriptor)
+    record = json.loads(document)
+    if type(record) is not dict:
+        raise ValueError("issuer root state shape")
+    _audit_transition_evidence(record)
+    return record
+
+
+def _issuer_witness_sha256(
+    *,
+    root_record: Mapping[str, object],
+    target_parent_identity: tuple[int, int],
+    target_basename: str,
+    target_identity: tuple[int, int],
+) -> str:
+    evidence = cast(list[dict[str, object]], root_record["transition_evidence"])
+    return hashlib.sha256(
+        _ISSUER_WITNESS_DOMAIN
+        + _canonical_json(
+            {
+                "root_id": root_record["root_id"],
+                "root_manifest_sha256": root_record["root_manifest_sha256"],
+                "inventory_sha256": root_record["inventory_sha256"],
+                "barrier_id": root_record["barrier_id"],
+                "freeze_nonce": root_record["freeze_nonce"],
+                "root_state": root_record["state"],
+                "transition_evidence_tip": (
+                    "0" * 64 if not evidence else evidence[-1]["evidence_sha256"]
+                ),
+                "target_parent_dev": target_parent_identity[0],
+                "target_parent_ino": target_parent_identity[1],
+                "target_basename": target_basename,
+                "target_dev": target_identity[0],
+                "target_ino": target_identity[1],
+            }
+        )
+    ).hexdigest()
+
+
+@contextmanager
+def _issuer_transition_lock(root_fd: int) -> Iterator[None]:
+    descriptor = os.open(
+        ".migration.lock",
+        os.O_RDWR | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+        0o600,
+        dir_fd=root_fd,
+    )
+    try:
+        info = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+            or (info.st_mode & 0o777) != 0o600
+            or info.st_uid != os.getuid()
+        ):
+            raise ValueError("issuer transition lock identity")
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _issuer_compatible_root_record(root_fd: int, phase: object) -> dict[str, object]:
+    record = _issuer_root_record(root_fd)
+    if type(phase) is not str:
+        raise ValueError("issuer lifecycle phase type")
+    expected_state = {"schema_only": "open", "barrier_acquired": "quiesced"}.get(phase)
+    if expected_state is None or record.get("state") != expected_state:
+        raise ValueError("issuer unsupported or incompatible root phase")
+    if phase == "schema_only" and record.get("barrier_id") is not None:
+        raise ValueError("issuer schema root phase")
+    return record
+
+
+def _fixture_migration_lifecycle_issuer_main(
+    socket_path: str,
+    authorized_pid: int,
+    handshake: Connection,
+) -> None:
+    private_key = Ed25519PrivateKey.generate()
+    public_key = private_key.public_key().public_bytes_raw()
+    key_id = "fixture-migration-lifecycle-issuer-v1-" + hashlib.sha256(public_key).hexdigest()[:24]
+    verification_key = VerificationKeyV1(key_id=key_id, public_key_bytes=public_key)
+    committed: SignedMigrationLifecycleStateV1 | None = None
+    pending_candidate: bytes | None = None
+    pending_state: SignedMigrationLifecycleStateV1 | None = None
+    bound_root_fd: int | None = None
+    bound_identity: dict[str, object] | None = None
+    listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    process_watch = select.kqueue()
+    try:
+        process_watch.control(
+            [
+                select.kevent(
+                    authorized_pid,
+                    filter=select.KQ_FILTER_PROC,
+                    flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE,
+                    fflags=select.KQ_NOTE_EXIT | select.KQ_NOTE_FORK,
+                )
+            ],
+            0,
+            0,
+        )
+        listener.bind(socket_path)
+        os.chmod(socket_path, 0o600)
+        listener.listen(8)
+        listener.settimeout(0.25)
+        handshake.send((key_id, public_key))
+        handshake.close()
+        while True:
+            if process_watch.control(None, 1, 0):
+                return
+            try:
+                connection, _ = listener.accept()
+            except TimeoutError:
+                continue
+            descriptor: int | None = None
+            received_descriptors: list[int] = []
+            try:
+                peer_pid = struct.unpack("i", connection.getsockopt(0, 2, 4))[0]
+                if peer_pid != authorized_pid:
+                    raise ValueError("issuer peer pid")
+                connection.settimeout(0.1)
+                while True:
+                    try:
+                        first, ancillary, flags, _ = connection.recvmsg(
+                            _ISSUER_MAX_PACKET + 1,
+                            socket.CMSG_SPACE(array("i").itemsize * 2),
+                        )
+                        if process_watch.control(None, 1, 0):
+                            return
+                        break
+                    except TimeoutError:
+                        if process_watch.control(None, 1, 0):
+                            return
+                received_descriptors = _issuer_received_descriptors(ancillary)
+                if flags & (socket.MSG_CTRUNC | socket.MSG_TRUNC):
+                    raise ValueError("issuer truncated request")
+                chunks = [first]
+                total = len(first)
+                while True:
+                    try:
+                        chunk = connection.recv(65_536)
+                    except TimeoutError:
+                        if process_watch.control(None, 1, 0):
+                            return
+                        continue
+                    if not chunk:
+                        break
+                    if process_watch.control(None, 1, 0):
+                        return
+                    total += len(chunk)
+                    if total > _ISSUER_MAX_PACKET:
+                        raise ValueError("issuer request bound")
+                    chunks.append(chunk)
+                if process_watch.control(None, 1, 0):
+                    return
+                packet = b"".join(chunks)
+                request = _parse_strict_json(packet, _ISSUER_MAX_PACKET)
+                command = request.get("command")
+                if command == "bind":
+                    if (
+                        bound_root_fd is not None
+                        or set(request) != {"command", "target_basename"}
+                        or len(received_descriptors) != 2
+                        or type(request["target_basename"]) is not str
+                    ):
+                        raise ValueError("issuer bind envelope")
+                    root_fd = received_descriptors.pop(0)
+                    parent_fd = received_descriptors.pop(0)
+                    independent_root_fd = -1
+                    try:
+                        independent_root_fd = os.open(
+                            ".",
+                            os.O_RDONLY | os.O_DIRECTORY,
+                            dir_fd=root_fd,
+                        )
+                        fcntl.flock(
+                            independent_root_fd,
+                            fcntl.LOCK_EX | fcntl.LOCK_NB,
+                        )
+                        root_record = _issuer_root_record(independent_root_fd)
+                        if (
+                            root_record.get("state") != "open"
+                            or root_record.get("barrier_id") is not None
+                        ):
+                            raise ValueError("issuer bind root phase")
+                        parent_identity = _migration_lifecycle_parent_identity(parent_fd)
+                        bind_target_basename = request["target_basename"]
+                        target_identity = _migration_lifecycle_entry_identity(
+                            parent_fd, bind_target_basename
+                        )
+                        if target_identity is None:
+                            raise ValueError("issuer bind target missing")
+                        bound_identity = {
+                            "root_id": root_record["root_id"],
+                            "root_manifest_sha256": root_record["root_manifest_sha256"],
+                            "target_parent_dev": parent_identity[0],
+                            "target_parent_ino": parent_identity[1],
+                            "target_basename": bind_target_basename,
+                            "target_dev": target_identity[0],
+                            "target_ino": target_identity[1],
+                        }
+                        bound_root_fd = independent_root_fd
+                        independent_root_fd = -1
+                        _issuer_response(
+                            connection,
+                            b"B"
+                            + hashlib.sha256(_canonical_json(bound_identity)).hexdigest().encode(),
+                        )
+                    finally:
+                        if independent_root_fd >= 0:
+                            os.close(independent_root_fd)
+                        if root_fd >= 0:
+                            os.close(root_fd)
+                        os.close(parent_fd)
+                    continue
+                if command == "close":
+                    if received_descriptors:
+                        raise ValueError("issuer close descriptor")
+                    _issuer_response(connection, b"C")
+                    return
+                if command == "reserve":
+                    if (
+                        bound_root_fd is None
+                        or bound_identity is None
+                        or received_descriptors
+                        or set(request) != {"command", "candidate"}
+                    ):
+                        raise ValueError("issuer reserve envelope")
+                    candidate = request["candidate"]
+                    if type(candidate) is not dict or set(candidate) != _ISSUER_CANDIDATE_FIELDS:
+                        raise ValueError("issuer candidate fields")
+                    candidate_bytes = _canonical_json(candidate)
+                    if pending_candidate is not None:
+                        if candidate_bytes != pending_candidate or pending_state is None:
+                            raise ValueError("issuer pending equivocation")
+                        with _issuer_transition_lock(bound_root_fd):
+                            compatible = _issuer_compatible_root_record(
+                                bound_root_fd, pending_state.lifecycle_phase
+                            )
+                            if pending_state.lifecycle_phase != "schema_only" and (
+                                pending_state.barrier_id != compatible.get("barrier_id")
+                                or pending_state.freeze_nonce != compatible.get("freeze_nonce")
+                            ):
+                                raise ValueError("issuer pending root authority")
+                        _issuer_response(
+                            connection,
+                            b"S" + _migration_lifecycle_state_document(pending_state),
+                        )
+                        continue
+                    if any(
+                        candidate.get(field) != expected
+                        for field, expected in bound_identity.items()
+                    ):
+                        raise ValueError("issuer candidate bound identity")
+                    phase = candidate.get("lifecycle_phase")
+                    with _issuer_transition_lock(bound_root_fd):
+                        root_record = _issuer_compatible_root_record(bound_root_fd, phase)
+                        if phase == "schema_only":
+                            witness_sha256 = None
+                        else:
+                            if candidate.get("barrier_id") != root_record.get(
+                                "barrier_id"
+                            ) or candidate.get("freeze_nonce") != root_record.get("freeze_nonce"):
+                                raise ValueError("issuer barrier root phase")
+                            witness_sha256 = _issuer_witness_sha256(
+                                root_record=root_record,
+                                target_parent_identity=(
+                                    cast(int, bound_identity["target_parent_dev"]),
+                                    cast(int, bound_identity["target_parent_ino"]),
+                                ),
+                                target_basename=str(bound_identity["target_basename"]),
+                                target_identity=(
+                                    cast(int, bound_identity["target_dev"]),
+                                    cast(int, bound_identity["target_ino"]),
+                                ),
+                            )
+                            if committed is not None and committed.witness_sha256 is not None:
+                                witness_sha256 = committed.witness_sha256
+                    material = {
+                        **candidate,
+                        "witness_sha256": witness_sha256,
+                        "issuer_key_id": key_id,
+                    }
+                    state_sha256 = _migration_lifecycle_state_sha256(material)
+                    material["state_sha256"] = state_sha256
+                    material["signature_ed25519"] = private_key.sign(
+                        _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                    )
+                    state = SignedMigrationLifecycleStateV1.model_validate(material)
+                    if committed is None:
+                        _verify_migration_lifecycle_genesis(state, verification_key)
+                    else:
+                        _verify_migration_lifecycle_transition(committed, state, verification_key)
+                    pending_candidate = candidate_bytes
+                    pending_state = state
+                    _issuer_response(connection, b"S" + _migration_lifecycle_state_document(state))
+                    continue
+                if command == "commit":
+                    if set(request) != {
+                        "command",
+                        "state_sha256",
+                        "target_basename",
+                    }:
+                        raise ValueError("issuer commit envelope")
+                    if len(received_descriptors) != 1:
+                        raise ValueError("issuer descriptor roster")
+                    descriptor = received_descriptors.pop()
+                    requested_hash = request["state_sha256"]
+                    target_basename = request["target_basename"]
+                    if type(requested_hash) is not str or type(target_basename) is not str:
+                        raise ValueError("issuer commit values")
+                    if bound_root_fd is None:
+                        raise ValueError("issuer unbound commit")
+                    state_for_commit = pending_state if pending_state is not None else committed
+                    if state_for_commit is None:
+                        raise ValueError("issuer commit without state")
+                    with _issuer_transition_lock(bound_root_fd):
+                        compatible = _issuer_compatible_root_record(
+                            bound_root_fd, state_for_commit.lifecycle_phase
+                        )
+                        if state_for_commit.lifecycle_phase != "schema_only" and (
+                            state_for_commit.barrier_id != compatible.get("barrier_id")
+                            or state_for_commit.freeze_nonce != compatible.get("freeze_nonce")
+                        ):
+                            raise ValueError("issuer commit root authority")
+                        durable = _read_signed_migration_lifecycle_state(
+                            parent_fd=descriptor,
+                            target_basename=target_basename,
+                            verification_key=verification_key,
+                        )
+                        if pending_state is None:
+                            if committed is None or requested_hash != committed.state_sha256:
+                                raise ValueError("issuer commit without pending")
+                            if durable != committed:
+                                raise ValueError("issuer committed replay mismatch")
+                        else:
+                            if (
+                                requested_hash != pending_state.state_sha256
+                                or durable != pending_state
+                            ):
+                                raise ValueError("issuer durable commit mismatch")
+                            committed = pending_state
+                            pending_candidate = None
+                            pending_state = None
+                    _issuer_response(connection, b"A" + requested_hash.encode("ascii"))
+                    continue
+                raise ValueError("issuer command")
+            except Exception:
+                _issuer_response(connection, b"E")
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
+                for unexpected_descriptor in received_descriptors:
+                    os.close(unexpected_descriptor)
+                connection.close()
+    finally:
+        handshake.close()
+        process_watch.close()
+        if bound_root_fd is not None:
+            fcntl.flock(bound_root_fd, fcntl.LOCK_UN)
+            os.close(bound_root_fd)
+        listener.close()
+        Path(socket_path).unlink(missing_ok=True)
+
+
+class FixtureMigrationLifecycleIssuerV1:
+    _boot_nonce: bytes
+    _creator_pid: int
+    _lock: threading.Lock
+    _process: BaseProcess
+    _socket_path: str
+    _socket_root: Path
+    verification_key: VerificationKeyV1
+
+    __slots__ = (
+        "_boot_nonce",
+        "_creator_pid",
+        "_lock",
+        "_process",
+        "_socket_path",
+        "_socket_root",
+        "verification_key",
+    )
+
+    def __init_subclass__(cls, **kwargs: object) -> Never:
+        del cls, kwargs
+        raise TypeError("fixture migration lifecycle issuer is final")
+
+    @classmethod
+    def spawn(
+        cls, *, root_fd: int, parent_fd: int, target_basename: str
+    ) -> FixtureMigrationLifecycleIssuerV1:
+        context = multiprocessing.get_context("spawn")
+        receive_handshake, send_handshake = context.Pipe(duplex=False)
+        socket_root = Path(tempfile.mkdtemp(prefix="antiek-issuer-"))
+        socket_root.chmod(0o700)
+        socket_path = os.fspath(socket_root / _ISSUER_WITNESS_SOCKET_NAME)
+        process = context.Process(
+            target=_fixture_migration_lifecycle_issuer_main,
+            args=(socket_path, os.getpid(), send_handshake),
+            daemon=True,
+        )
+        try:
+            process.start()
+            send_handshake.close()
+            if not receive_handshake.poll(5):
+                raise TimeoutError("issuer handshake timeout")
+            handshake = receive_handshake.recv()
+            if (
+                type(handshake) is not tuple
+                or len(handshake) != 2
+                or type(handshake[0]) is not str
+                or type(handshake[1]) is not bytes
+            ):
+                raise ValueError("issuer handshake")
+            key_id, public_key = handshake
+            if len(public_key) != 32:
+                raise ValueError("issuer public key")
+        except Exception:
+            if process.pid is not None:
+                if process.is_alive():
+                    process.terminate()
+                process.join(timeout=5)
+            (socket_root / _ISSUER_WITNESS_SOCKET_NAME).unlink(missing_ok=True)
+            socket_root.rmdir()
+            raise
+        finally:
+            receive_handshake.close()
+            send_handshake.close()
+        issuer = object.__new__(cls)
+        object.__setattr__(issuer, "_boot_nonce", secrets.token_bytes(32))
+        object.__setattr__(issuer, "_creator_pid", os.getpid())
+        object.__setattr__(issuer, "_lock", threading.Lock())
+        object.__setattr__(issuer, "_process", process)
+        object.__setattr__(issuer, "_socket_path", socket_path)
+        object.__setattr__(issuer, "_socket_root", socket_root)
+        object.__setattr__(
+            issuer,
+            "verification_key",
+            VerificationKeyV1(key_id=key_id, public_key_bytes=public_key),
+        )
+        bind_request = _canonical_json({"command": "bind", "target_basename": target_basename})
+        try:
+            bind_response = issuer._request(bind_request, (root_fd, parent_fd))
+            if not re.fullmatch(rb"B[0-9a-f]{64}", bind_response):
+                raise ValueError("issuer bind response")
+        except Exception:
+            issuer.close()
+            raise
+        return issuer
+
+    def __setattr__(self, name: str, value: object) -> Never:
+        del name, value
+        raise AttributeError("fixture migration lifecycle issuer is immutable")
+
+    def __reduce__(self) -> Never:
+        raise TypeError("fixture migration lifecycle issuer is process-bound")
+
+    def __copy__(self) -> Never:
+        raise TypeError("fixture migration lifecycle issuer cannot be copied")
+
+    def __deepcopy__(self, memo: object) -> Never:
+        del memo
+        raise TypeError("fixture migration lifecycle issuer cannot be copied")
+
+    def _validate_client(self) -> None:
+        if self._creator_pid != os.getpid() or len(self._boot_nonce) != 32:
+            raise ValueError("issuer client process mismatch")
+
+    @property
+    def process_id(self) -> int:
+        self._validate_client()
+        pid = self._process.pid
+        if type(pid) is not int:
+            raise ValueError("issuer process unavailable")
+        return pid
+
+    def _request(self, request: bytes, descriptors: tuple[int, ...] = ()) -> bytes:
+        self._validate_client()
+        if len(request) > _ISSUER_MAX_PACKET or len(descriptors) > 2:
+            raise ValueError("issuer request bound")
+        connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        connection.settimeout(5.0)
+        try:
+            connection.connect(self._socket_path)
+            issuer_pid = self._process.pid
+            if (
+                type(issuer_pid) is not int
+                or struct.unpack("i", connection.getsockopt(0, 2, 4))[0] != issuer_pid
+            ):
+                raise ValueError("issuer server pid mismatch")
+            ancillary: list[tuple[int, int, bytes]] = []
+            if descriptors:
+                rights = array("i", descriptors)
+                ancillary.append((socket.SOL_SOCKET, socket.SCM_RIGHTS, rights.tobytes()))
+            sent = connection.sendmsg([request], ancillary)
+            if sent != len(request):
+                raise OSError("short issuer request")
+            connection.shutdown(socket.SHUT_WR)
+            response_parts: list[bytes] = []
+            total = 0
+            while chunk := connection.recv(65_536):
+                total += len(chunk)
+                if total > _ISSUER_MAX_PACKET:
+                    raise ValueError("issuer response bound")
+                response_parts.append(chunk)
+            response = b"".join(response_parts)
+        finally:
+            connection.close()
+        if not response or response[:1] == b"E":
+            raise ValueError("fixture migration lifecycle issuer rejected")
+        return response
+
+    def reserve(self, candidate: Mapping[str, object]) -> SignedMigrationLifecycleStateV1:
+        self._validate_client()
+        if set(candidate) != _ISSUER_CANDIDATE_FIELDS:
+            raise ValueError("issuer candidate fields")
+        request = _canonical_json({"command": "reserve", "candidate": dict(candidate)})
+        if len(request) > _ISSUER_MAX_PACKET:
+            raise ValueError("issuer request bound")
+        with self._lock:
+            response = self._request(request)
+        if response[:1] != b"S":
+            raise ValueError("issuer reserve response")
+        state = _parse_migration_lifecycle_state_document(response[1:], self.verification_key)
+        returned_candidate = state.model_dump(
+            mode="python",
+            exclude={
+                "issuer_key_id",
+                "state_sha256",
+                "signature_ed25519",
+                "witness_sha256",
+            },
+        )
+        if returned_candidate != dict(candidate):
+            raise ValueError("issuer reserve correlation mismatch")
+        return state
+
+    def commit(self, *, state: SignedMigrationLifecycleStateV1, parent_fd: int) -> None:
+        self._validate_client()
+        if type(state) is not SignedMigrationLifecycleStateV1:
+            raise ValueError("issuer commit state")
+        request = _canonical_json(
+            {
+                "command": "commit",
+                "state_sha256": state.state_sha256,
+                "target_basename": state.target_basename,
+            }
+        )
+        with self._lock:
+            response = self._request(request, (parent_fd,))
+        if response != b"A" + state.state_sha256.encode("ascii"):
+            raise ValueError("issuer commit response")
+
+    def close(self) -> None:
+        self._validate_client()
+        with self._lock:
+            try:
+                if self._process.is_alive():
+                    response = self._request(_canonical_json({"command": "close"}))
+                    if response != b"C":
+                        raise ValueError("issuer close response")
+            finally:
+                self._process.join(timeout=5)
+                if self._process.is_alive():
+                    self._process.terminate()
+                    self._process.join(timeout=5)
+                (self._socket_root / _ISSUER_WITNESS_SOCKET_NAME).unlink(missing_ok=True)
+                self._socket_root.rmdir()
+
 
 _MIGRATION_ROW_MODELS: dict[str, type[BaseModel]] = {
     "provider_capabilities_v4": ProviderCapabilityV4MigrationRowV1,
@@ -2009,6 +2671,7 @@ __all__ = [
     "SOURCE_REGISTRY_ID",
     "STORE_ID",
     "FixtureOwnerKeyProvider",
+    "FixtureMigrationLifecycleIssuerV1",
     "FixtureSourceKeyProvider",
     "OpaqueOwnerPathAuthority",
     "PrivatePaidLaneCheckpointCase",
