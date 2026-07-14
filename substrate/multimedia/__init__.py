@@ -119,6 +119,14 @@ from .reviewed_visual_registry import (
     get_reviewed_visuals,
     register_reviewed_visuals,
 )
+from .ship_cost_snapshot import (
+    MultimediaShipCostEvidenceConflict,
+    MultimediaShipCostEvidenceUnavailable,
+    MultimediaShipCostExecutionV1,
+    MultimediaShipCostSnapshotV1,
+    build_multimedia_ship_cost_snapshot,
+    verify_multimedia_ship_cost_snapshot,
+)
 from .steering import (
     RevisionPlan,
     SegmentReuse,
@@ -224,6 +232,12 @@ __all__ = [
     "MultimediaHardeningReport",
     "ShipStatus",
     "evaluate_multimedia_asset",
+    "MultimediaShipCostEvidenceConflict",
+    "MultimediaShipCostEvidenceUnavailable",
+    "MultimediaShipCostExecutionV1",
+    "MultimediaShipCostSnapshotV1",
+    "build_multimedia_ship_cost_snapshot",
+    "verify_multimedia_ship_cost_snapshot",
     # HTML knowledge-asset projection
     "MultimediaInformationAsset",
     "MultimediaInformationAssetError",

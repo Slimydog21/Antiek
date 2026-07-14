@@ -127,6 +127,75 @@ export interface MultimediaAssetRecord {
   audio_production_link?: MultimediaAudioProductionLink | null;
 }
 
+export interface MultimediaSteeringRequest {
+  expected_parent_revision_id: string;
+  prompt: string;
+  raw_voice_transcript?: string | null;
+  corrected_voice_transcript?: string | null;
+}
+
+export interface MultimediaSteeringOperation {
+  operation_id: string;
+  kind: string;
+  target_kind: string;
+  target_id: string;
+  value: string | null;
+  reason: string;
+}
+
+export interface MultimediaSteeringIntent {
+  steering_event_id: string;
+  prompt: string;
+  status: "ready" | "needs_clarification";
+  operations: MultimediaSteeringOperation[];
+  clarifications: string[];
+  transcript: {
+    transcript_id: string;
+    raw_text: string;
+    corrected_text: string | null;
+    confidence: number | null;
+  } | null;
+}
+
+export interface MultimediaSteeringPreviewClarification {
+  status: "needs_clarification";
+  asset_id: string;
+  parent_revision_id: string;
+  intent: MultimediaSteeringIntent;
+}
+
+export interface MultimediaSteeringPreviewReady {
+  status: "ready";
+  asset_id: string;
+  parent_revision_id: string;
+  proposed_revision_id: string;
+  route_policy: MultimediaRoutePolicy;
+  intent: MultimediaSteeringIntent;
+  operations: MultimediaSteeringOperation[];
+  affected_segment_ids: string[];
+  segment_reuse: Array<{
+    segment_id: string;
+    reused: boolean;
+    reason: string;
+    file_ids: string[];
+    file_sha256s: string[];
+  }>;
+  changes: Array<{
+    operation_id: string;
+    target_id: string;
+    changed_segment_ids: string[];
+    estimated_cost_delta_usd: number;
+    explanation: string;
+  }>;
+  estimated_cost_delta_usd: number;
+  preview_token: string;
+  expires_at_epoch_seconds: number;
+}
+
+export type MultimediaSteeringPreview =
+  | MultimediaSteeringPreviewClarification
+  | MultimediaSteeringPreviewReady;
+
 export interface MultimediaProductionLink {
   schema_version: "antiek.multimedia-production-link.v1";
   owner_identity_digest: string;
@@ -1174,18 +1243,43 @@ export async function approveMultimediaDryRun(assetId: string): Promise<Multimed
   return (await resp.json()) as MultimediaAssetRecord;
 }
 
+export async function previewMultimediaSteering(
+  assetId: string,
+  request: MultimediaSteeringRequest,
+): Promise<MultimediaSteeringPreview> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/steering-preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (resp.status === 409) throw new Error(await multimediaSteeringConflict(resp));
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/steering-preview: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaSteeringPreview;
+}
+
 export async function steerMultimediaAsset(
   assetId: string,
-  request: { prompt: string; raw_voice_transcript?: string | null; corrected_voice_transcript?: string | null },
+  request: MultimediaSteeringRequest & { preview_token: string },
 ): Promise<MultimediaAssetRecord> {
   const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/steer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  if (resp.status === 409) throw new Error("multimedia_steering_needs_clarification");
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (resp.status === 409) throw new Error(await multimediaSteeringConflict(resp));
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/steer: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+async function multimediaSteeringConflict(resp: Response): Promise<string> {
+  try {
+    const body = (await resp.json()) as { detail?: unknown };
+    return typeof body.detail === "string" ? body.detail : "multimedia_steering_conflict";
+  } catch {
+    return "multimedia_steering_conflict";
+  }
 }
 
 export async function runMultimediaHardening(assetId: string): Promise<MultimediaAssetRecord> {
