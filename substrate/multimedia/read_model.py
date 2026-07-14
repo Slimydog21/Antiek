@@ -47,6 +47,7 @@ from substrate.multimedia.planner import (
     MultimediaPlanRequest,
     build_multimedia_plan,
     validate_selected_arc_ids,
+    validate_source_excerpts,
 )
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
@@ -93,6 +94,7 @@ class CreateMultimediaDraftRequest(_ReadModelBase):
     target_minutes: int = Field(ge=15, le=45)
     mode: PlanMode = "hybrid"
     route_policy: RoutePolicy = "balanced"
+    source_scope: str | None = Field(default=None, max_length=512)
     sources: tuple[str, ...] = Field(default_factory=tuple)
     must_cover: tuple[str, ...] = Field(default_factory=tuple)
     avoid: tuple[str, ...] = Field(default_factory=tuple)
@@ -105,6 +107,11 @@ class CreateMultimediaDraftRequest(_ReadModelBase):
     @classmethod
     def selected_arcs_are_supported(cls, value: tuple[str, ...]) -> tuple[str, ...]:
         return validate_selected_arc_ids(value)
+
+    @field_validator("sources")
+    @classmethod
+    def source_excerpts_are_bounded(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        return validate_source_excerpts(value)
 
 
 class SteeringRequest(_ReadModelBase):
@@ -367,6 +374,7 @@ class MultimediaAssetStore:
             target_minutes=request.target_minutes,
             mode=request.mode,
             route_policy=request.route_policy,
+            source_scope=request.source_scope,
             sources=request.sources,
             must_cover=request.must_cover,
             avoid=request.avoid,
@@ -1232,13 +1240,13 @@ def _fsync_directory(path: Path) -> None:
 
 def _evidence_from_request(request: CreateMultimediaDraftRequest) -> tuple[EvidenceChunk, ...]:
     rows: list[EvidenceChunk] = []
-    for index, text in enumerate(request.sources or request.must_cover or (request.topic,)):
+    for index, text in enumerate(request.sources):
         rows.append(
             EvidenceChunk(
                 chunk_id=f"mm-src-{index}",
-                document_id=f"mm-doc-{index}",
-                title=f"Multimedia source {index + 1}",
-                section_path="operator brief",
+                document_id=f"operator-source-excerpt-{index}",
+                title=f"Operator-provided source excerpt {index + 1}",
+                section_path="operator-provided excerpt",
                 text=text,
             )
         )

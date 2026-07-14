@@ -12,6 +12,7 @@ export interface CreateMultimediaDraftRequest {
   target_minutes: number;
   mode: MultimediaMode;
   route_policy: MultimediaRoutePolicy;
+  source_scope?: string | null;
   sources?: string[];
   must_cover?: string[];
   avoid?: string[];
@@ -249,6 +250,7 @@ export interface MultimediaPlanWire {
     mode: MultimediaMode;
     route_policy: MultimediaRoutePolicy;
     depth?: MultimediaDepth;
+    source_scope?: string | null;
     selected_arc_ids?: string[];
   };
   suggestions: Array<{

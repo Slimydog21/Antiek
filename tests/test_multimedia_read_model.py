@@ -142,6 +142,36 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
     assert listed.assets[0].hardening_status == hardened.hardening_report.ship_status
 
 
+def test_research_scope_and_prompt_constraints_never_become_evidence(tmp_path):
+    record = MultimediaAssetStore(tmp_path).create_draft(
+        CreateMultimediaDraftRequest(
+            topic="swept wing history",
+            target_minutes=20,
+            source_scope="Owned corpus + vetted web sources",
+            must_cover=("shock waves",),
+        )
+    )
+
+    assert record.plan.request.source_scope == "Owned corpus + vetted web sources"
+    assert record.plan.unsourced_line_ids
+    assert all(not line.citations for line in record.plan.script_lines)
+    assert all("weak source coverage" in omission for omission in record.plan.omissions)
+
+
+def test_explicit_operator_source_excerpt_has_honest_synthetic_provenance(tmp_path):
+    record = MultimediaAssetStore(tmp_path).create_draft(
+        CreateMultimediaDraftRequest(
+            topic="swept wing history",
+            target_minutes=20,
+            sources=("Swept wings delayed shock waves.",),
+        )
+    )
+
+    citations = [citation for line in record.plan.script_lines for citation in line.citations]
+    assert citations
+    assert {citation.document_id for citation in citations} == {"operator-source-excerpt-0"}
+
+
 def test_store_persists_operator_depth_and_exact_coverage_selection(tmp_path):
     store = MultimediaAssetStore(tmp_path)
     draft = store.create_draft(
@@ -529,6 +559,30 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     )
     assert invalid_coverage.status_code == 422
 
+    invalid_source = client.post(
+        "/multimedia/assets",
+        json={"topic": "swept wing history", "target_minutes": 20, "sources": ["  "]},
+    )
+    assert invalid_source.status_code == 422
+
+    ungrounded = client.post(
+        "/multimedia/assets",
+        json={
+            "topic": "swept wing history",
+            "target_minutes": 20,
+            "source_scope": "Owned corpus + vetted web sources",
+            "must_cover": ["shock waves"],
+        },
+    )
+    assert ungrounded.status_code == 201
+    assert ungrounded.json()["plan"]["request"]["source_scope"] == "Owned corpus + vetted web sources"
+    assert ungrounded.json()["plan"]["unsourced_line_ids"]
+    assert not {
+        citation["chunk_id"]
+        for line in ungrounded.json()["plan"]["script_lines"]
+        for citation in line["citations"]
+    }
+
     created = client.post(
         "/multimedia/assets",
         json={
@@ -572,7 +626,7 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
 
     listed = client.get("/multimedia/assets")
     assert listed.status_code == 200
-    assert listed.json()["count"] == 1
+    assert listed.json()["count"] == 2
 
     # GET /jobs returns ordered job rows for the asset.
     jobs = client.get(f"/multimedia/assets/{asset_id}/jobs")

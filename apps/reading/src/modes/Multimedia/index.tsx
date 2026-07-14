@@ -409,6 +409,7 @@ export default function Multimedia() {
     }
     setSelectedCoverageArcIds(projectedPlan.chosenArcIds);
     setDepth(projectedPlan.depth);
+    setSourceScope(projectedPlan.sourceScope ?? "");
   }, [projectedPlan]);
 
   function setPreset(next: number) {
@@ -436,7 +437,7 @@ export default function Multimedia() {
       target_minutes: duration,
       mode,
       route_policy: tier,
-      sources: [sourceScope].filter((item) => item.trim().length > 0),
+      source_scope: sourceScope.trim() || null,
       must_cover: splitOperatorList(mustCover),
       audience: "curious generalist",
       style,
@@ -857,7 +858,7 @@ export default function Multimedia() {
               </div>
             </div>
 
-            <Labeled label="Source scope" htmlFor="multimedia-source-scope">
+            <Labeled label="Research scope" htmlFor="multimedia-source-scope">
               <LemonInput
                 id="multimedia-source-scope"
                 value={sourceScope}
