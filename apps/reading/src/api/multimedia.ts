@@ -240,10 +240,12 @@ export interface MultimediaAudioProductionLink {
   revision_id: string;
   receipt_sha256: string;
   audio_sha256: string;
+  audio_size_bytes: number;
   duration_seconds: number;
   chapter_ids: string[];
   retention_marker_count: number;
   learned_claim_count: number;
+  source_count: number;
 }
 
 export interface MultimediaSourceCitationWire {
@@ -421,6 +423,8 @@ export interface MultimediaLocalAudiblePlayback {
   }>;
   audio_url: string;
 }
+
+export type MultimediaPaidAudioPlayback = MultimediaLocalAudiblePlayback;
 
 export interface MultimediaNarrationAuthorization {
   chapter_id: string;
@@ -974,6 +978,34 @@ export async function getMultimediaLocalAudiblePlayback(
   return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
 }
 
+export async function getMultimediaPaidAudioPlayback(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaPaidAudioPlayback> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/audio-playback?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_paid_audio_playback_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_paid_audio_playback_conflict");
+  if (resp.status === 503) throw new Error("multimedia_paid_audio_playback_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET paid audio playback: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaPaidAudioPlayback;
+  const expectedPath = `/multimedia/assets/${encodeURIComponent(assetId)}/audio-playback/${encodeURIComponent(revisionId)}/audio`;
+  if (
+    result.asset_id !== assetId || result.revision_id !== revisionId ||
+    result.audio_url !== expectedPath || !Number.isFinite(result.duration_seconds) ||
+    result.duration_seconds <= 0 || !Number.isSafeInteger(result.audio_size_bytes) ||
+    result.audio_size_bytes <= 0 || !Array.isArray(result.chapter_ids) ||
+    result.chapter_ids.length < 1 || new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
+    !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
+    !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
+    !Array.isArray(result.learned_claims) || result.learned_claims.length !== result.learned_claim_count
+  ) throw new Error("multimedia_paid_audio_playback_identity_conflict");
+  return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
+}
+
 async function localAudibleCommand(
   assetId: string,
   revisionId: string,
@@ -1340,6 +1372,34 @@ export async function produceAuthorizedMultimedia(
     record.production_link.revision_id !== expectedRevisionId
   ) {
     throw new Error("multimedia_production_worker_identity_conflict");
+  }
+  return record;
+}
+
+export async function produceAuthorizedAudio(
+  assetId: string,
+  expectedRevisionId: string,
+  chapterAuthorities: Array<{
+    chapter_id: string;
+    authorization: MultimediaNarrationAuthorization["authorization"];
+  }>,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/audio-production`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      expected_revision_id: expectedRevisionId, chapter_authorities: chapterAuthorities,
+    }) },
+  );
+  if (resp.status === 404) throw new Error("multimedia_audio_production_worker_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_audio_production_worker_conflict");
+  if (resp.status === 503) throw new Error("multimedia_audio_production_worker_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/audio-production: HTTP ${resp.status}`);
+  const record = (await resp.json()) as MultimediaAssetRecord;
+  if (!record.audio_production_link || record.asset.asset_id !== assetId ||
+      record.asset.revision_id !== expectedRevisionId ||
+      record.audio_production_link.asset_id !== assetId ||
+      record.audio_production_link.revision_id !== expectedRevisionId) {
+    throw new Error("multimedia_audio_production_worker_identity_conflict");
   }
   return record;
 }

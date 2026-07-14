@@ -377,10 +377,12 @@ describe("Multimedia workstation", () => {
         revision_id: audio.asset.revision_id,
         receipt_sha256: "a".repeat(64),
         audio_sha256: "b".repeat(64),
+        audio_size_bytes: 44,
         duration_seconds: 30,
         chapter_ids: ["chapter-1"],
         retention_marker_count: 2,
         learned_claim_count: 1,
+        source_count: 1,
       },
     })).toBe(true);
   });

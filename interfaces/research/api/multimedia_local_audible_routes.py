@@ -131,9 +131,7 @@ def inspect_local_audible(
     runtime: MultimediaLocalAudibleRuntime = Depends(get_multimedia_local_audible_runtime),
 ) -> LocalAudiblePreparedSet:
     return _command(
-        lambda: runtime.workstation.inspect(
-            asset_id, revision_id, set_id, owner_id=operator_id
-        )
+        lambda: runtime.workstation.inspect(asset_id, revision_id, set_id, owner_id=operator_id)
     )
 
 
@@ -191,10 +189,12 @@ def get_local_audible_playback(
     if (
         metadata.receipt_sha256 != link.receipt_sha256
         or metadata.audio_sha256 != link.audio_sha256
+        or metadata.audio_size_bytes != link.audio_size_bytes
         or metadata.duration_seconds != link.duration_seconds
         or metadata.chapter_ids != link.chapter_ids
         or metadata.retention_marker_count != link.retention_marker_count
         or metadata.learned_claim_count != link.learned_claim_count
+        or metadata.source_count != link.source_count
     ):
         raise HTTPException(status_code=409, detail="local audible registration conflicts")
     values = dict(metadata.__dict__)

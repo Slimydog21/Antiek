@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
+from .audible_run import prepare_audible_run_plan
 from .audio_assembly import AudioExperience, ChapterAudio
+from .audio_production_registration import (
+    MultimediaAudioRegistrationError,
+    MultimediaAudioRegistrationRequest,
+    register_multimedia_audio_production,
+)
 from .chapter_tts_production import ChapterTTSSynthesisResult, PreparedChapterTTSRequest
 from .documentary_production import reopen_ken_burns_documentary
 from .educational_video_production import (
@@ -28,6 +36,12 @@ from .narration_run import (
     prepare_narration_run,
     produce_narration_run,
 )
+from .paid_audio_receipt import (
+    PaidAudioChapter,
+    PaidAudioLearnedClaim,
+    PaidAudioRetentionMarker,
+    issue_paid_audio_receipt,
+)
 from .planner import verify_canonical_evidence_bytes
 from .production_registration import (
     MultimediaProductionRegistrationRequest,
@@ -39,6 +53,7 @@ from .reviewed_visual_registry import (
     ReviewedVisualRegistryError,
     get_reviewed_visuals,
 )
+from .verified_paid_audio_playback import VerifiedPaidAudioPlaybackRuntime
 from .verified_playback import VerifiedPlaybackError, VerifiedPlaybackRuntime
 from .video import VideoScene, build_video_scenes, compile_ken_burns_timeline
 from .visual_selection import EvidenceVerifier
@@ -87,6 +102,7 @@ class AuthorizedProductionRuntime:
     synthesize: Callable[[PreparedChapterTTSRequest], ChapterTTSSynthesisResult]
     verify_evidence: EvidenceVerifier
     clock: Callable[[], datetime]
+    audio_playback: VerifiedPaidAudioPlaybackRuntime | None = None
     ffmpeg_path: str = DEFAULT_FFMPEG_PATH
     ffprobe_path: str = DEFAULT_FFPROBE_PATH
     width_px: int = 1280
@@ -122,8 +138,7 @@ def produce_authorized_multimedia(
     if tuple(binding.chapter_id for binding in request.chapter_authorities) != chapter_ids:
         raise AuthorizedProductionError("narration authorization set is incomplete")
     authorizations = {
-        binding.chapter_id: binding.authorization
-        for binding in request.chapter_authorities
+        binding.chapter_id: binding.authorization for binding in request.chapter_authorities
     }
     if len(authorizations) != len(chapter_ids):
         raise AuthorizedProductionError("narration authorization set is invalid")
@@ -172,9 +187,7 @@ def produce_authorized_multimedia(
     )
     try:
         canonical_chunks = (
-            load_canonical_multimedia_chunks(
-                runtime.db_path, canonical_ids, owner_id=owner_id
-            )
+            load_canonical_multimedia_chunks(runtime.db_path, canonical_ids, owner_id=owner_id)
             if canonical_ids
             else None
         )
@@ -197,13 +210,9 @@ def produce_authorized_multimedia(
         ffprobe_path=runtime.ffprobe_path,
         timeout_seconds=runtime.timeout_seconds,
     )
-    current = _current_record(
-        asset_id, request.expected_revision_id, owner_id, runtime.store
-    )
+    current = _current_record(asset_id, request.expected_revision_id, owner_id, runtime.store)
     try:
-        runtime.playback.metadata(
-            asset_id=asset_id, revision_id=request.expected_revision_id
-        )
+        runtime.playback.metadata(asset_id=asset_id, revision_id=request.expected_revision_id)
     except VerifiedPlaybackError:
         pass
     else:
@@ -218,9 +227,7 @@ def produce_authorized_multimedia(
         )
 
     audio = _audio_experience(current, narration)
-    base_scenes = build_video_scenes(
-        current.plan, audio, canonical_chunks=canonical_chunks
-    )
+    base_scenes = build_video_scenes(current.plan, audio, canonical_chunks=canonical_chunks)
     if tuple(scene.scene_id for scene in base_scenes) != reviewed.receipt.scene_ids:
         raise AuthorizedProductionError("reviewed visual scenes conflict with narration")
     scenes = tuple(
@@ -286,13 +293,160 @@ def produce_authorized_multimedia(
     _current_record(asset_id, request.expected_revision_id, owner_id, runtime.store)
     return register_multimedia_production(
         asset_id,
-        MultimediaProductionRegistrationRequest(
-            expected_revision_id=request.expected_revision_id
-        ),
+        MultimediaProductionRegistrationRequest(expected_revision_id=request.expected_revision_id),
         owner_id=owner_id,
         store=runtime.store,
         playback=runtime.playback,
     )
+
+
+def produce_authorized_audio(
+    asset_id: str,
+    request: AuthorizedProductionRequest,
+    *,
+    owner_id: str,
+    runtime: AuthorizedProductionRuntime,
+) -> MultimediaAssetRecord:
+    """Produce and register one current paid audio lesson without visual authority."""
+    record = _current_record(asset_id, request.expected_revision_id, owner_id, runtime.store)
+    if str(record.asset.status) != "ready":
+        raise AuthorizedProductionError("paid audio production requires a ready asset")
+    if record.mode != "audio" or str(record.asset.kind) != "audio_experience":
+        raise AuthorizedProductionError("paid audio production requires an audio asset")
+    if record.asset.route_policy == "cheapest":
+        raise AuthorizedProductionError("cheapest route cannot run paid audio production")
+
+    canonical_ids = tuple(
+        dict.fromkeys(
+            span.chunk_id
+            for line in record.plan.script_lines
+            if line.evidence_derivation is not None
+            for span in line.evidence_derivation.spans
+            if span.authority_kind == "canonical_graph"
+        )
+    )
+    try:
+        canonical_chunks = (
+            load_canonical_multimedia_chunks(runtime.db_path, canonical_ids, owner_id=owner_id)
+            if canonical_ids
+            else None
+        )
+        run_plan = prepare_audible_run_plan(record.plan, canonical_chunks=canonical_chunks)
+        verify_canonical_evidence_bytes(run_plan, canonical_chunks)
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError, ValueError) as exc:
+        raise AuthorizedProductionError("canonical paid audio evidence is unavailable") from exc
+
+    chapter_ids = tuple(chapter.chapter_id for chapter in run_plan.chapters)
+    if tuple(row.chapter_id for row in request.chapter_authorities) != chapter_ids:
+        raise AuthorizedProductionError("paid audio authorization set is incomplete")
+    authorizations = {row.chapter_id: row.authorization for row in request.chapter_authorities}
+    if len(authorizations) != len(chapter_ids):
+        raise AuthorizedProductionError("paid audio authorization set is invalid")
+    prepared = prepare_narration_run(
+        run_plan,
+        asset_id=asset_id,
+        revision_id=request.expected_revision_id,
+        routes={
+            chapter_id: (
+                authorizations[chapter_id].provider,
+                authorizations[chapter_id].model,
+            )
+            for chapter_id in chapter_ids
+        },
+        voice=request.voice,
+        speed=request.speed,
+        sample_rate_hz=request.sample_rate_hz,
+        channels=request.channels,
+    )
+    try:
+        authorized = authorize_narration_run(prepared, authorizations)
+    except ValueError as exc:
+        raise AuthorizedProductionError(str(exc)) from exc
+    _current_record(asset_id, request.expected_revision_id, owner_id, runtime.store)
+    now = runtime.clock()
+    narration = produce_narration_run(
+        plan=run_plan,
+        prepared=authorized,
+        authorizations=authorizations,
+        operator_id=owner_id,
+        signing_key=runtime.signing_key,
+        integrity_key=runtime.narration_integrity_key,
+        db_path=runtime.db_path,
+        output_dir=runtime.narration_output_dir,
+        now=now,
+        synthesize=runtime.synthesize,
+        ffmpeg_path=runtime.ffmpeg_path,
+        ffprobe_path=runtime.ffprobe_path,
+        timeout_seconds=runtime.timeout_seconds,
+    )
+    _current_record(asset_id, request.expected_revision_id, owner_id, runtime.store)
+    plan_payload = json.dumps(
+        run_plan.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    markers = tuple(
+        PaidAudioRetentionMarker(
+            line_id=line.line_id,
+            chapter_id=line.line_id.split("-line-", 1)[0],
+            kind="remember" if line.line_id.endswith("-run-remember") else "recap",
+            source_chunk_ids=tuple(citation.chunk_id for citation in line.citations),
+        )
+        for line in run_plan.script_lines
+        if line.line_id.endswith(("-run-remember", "-run-recap"))
+    )
+    claims = tuple(
+        PaidAudioLearnedClaim(
+            line_id=line.line_id,
+            chapter_id=line.line_id.split("-line-", 1)[0],
+            claim_text=line.text,
+            source_chunk_ids=tuple(citation.chunk_id for citation in line.citations),
+            follow_up_prompt=(
+                "What additional context do source chunks "
+                + ", ".join(citation.chunk_id for citation in line.citations)
+                + " provide for this claim?"
+            ),
+        )
+        for line in run_plan.script_lines
+        if line.kind == "factual"
+        and line.citations
+        and not line.line_id.endswith(("-run-remember", "-run-recap"))
+    )
+    sources = tuple(
+        dict.fromkeys(
+            citation.chunk_id for line in run_plan.script_lines for citation in line.citations
+        )
+    )
+    issue_paid_audio_receipt(
+        owner_digest=str(record.asset.owner_user_id),
+        asset_id=asset_id,
+        revision_id=request.expected_revision_id,
+        transformed_plan_sha256=hashlib.sha256(plan_payload).hexdigest(),
+        transformed_plan=run_plan,
+        narration=narration,
+        chapters=tuple(
+            PaidAudioChapter(chapter_id=row.chapter_id, duration_seconds=row.duration_seconds)
+            for row in narration.manifest.sources
+        ),
+        retention_markers=markers,
+        learned_claims=claims,
+        source_chunk_ids=sources,
+        receipt_key=runtime.receipt_key,
+        narration_key=runtime.narration_integrity_key,
+        output_dir=runtime.receipt_output_dir,
+        now=now,
+    )
+    _current_record(asset_id, request.expected_revision_id, owner_id, runtime.store)
+    if runtime.audio_playback is None:
+        raise AuthorizedProductionError("paid audio playback runtime is unavailable")
+    try:
+        return register_multimedia_audio_production(
+            asset_id,
+            MultimediaAudioRegistrationRequest(expected_revision_id=request.expected_revision_id),
+            owner_id=owner_id,
+            store=runtime.store,
+            playback=runtime.audio_playback,
+        )
+    except MultimediaAudioRegistrationError as exc:
+        raise AuthorizedProductionError(str(exc)) from exc
 
 
 def _audio_experience(
@@ -353,4 +507,5 @@ __all__ = [
     "AuthorizedProductionUnavailable",
     "ChapterNarrationAuthority",
     "produce_authorized_multimedia",
+    "produce_authorized_audio",
 ]

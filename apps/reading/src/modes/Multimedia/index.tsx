@@ -9,6 +9,7 @@ import {
   failedGateIds,
   getMultimediaAsset,
   getMultimediaLocalAudiblePlayback,
+  getMultimediaPaidAudioPlayback,
   getMultimediaPlayback,
   getMultimediaReviewedVisualSet,
   listMultimediaAssets,
@@ -18,6 +19,7 @@ import {
   searchMultimediaEvidence,
   registerMultimediaProduction,
   produceAuthorizedMultimedia,
+  produceAuthorizedAudio,
   steerMultimediaAsset,
 } from "../../api/multimedia";
 import type {
@@ -323,7 +325,9 @@ export default function Multimedia() {
     setPlaybackLoading(true);
     const request = shouldUseLocalAudiblePlayback(selectedRecord)
       ? getMultimediaLocalAudiblePlayback(assetId, revisionId)
-      : getMultimediaPlayback(assetId, revisionId);
+      : selectedRecord.mode === "audio"
+        ? getMultimediaPaidAudioPlayback(assetId, revisionId)
+        : getMultimediaPlayback(assetId, revisionId);
     if (selectedRecord.mode === "audio") setPlayerView("audio");
     request
       .then((result) => {
@@ -677,6 +681,28 @@ export default function Multimedia() {
       setApiError(null);
     } catch {
       setApiError("Could not produce this revision from its current authorities.");
+    } finally {
+      setProductionWorkerPending(false);
+    }
+  }
+
+  async function produceCurrentAudioLesson() {
+    if (!selectedRecord || productionWorkerPending) return;
+    const authorities = planChapters.map((chapter) => chapterNarrationAuthorities[chapter.id]);
+    if (authorities.some((authority) => !authority)) return;
+    const requestedRecord = selectedRecord;
+    setProductionWorkerPending(true);
+    try {
+      const produced = await produceAuthorizedAudio(
+        requestedRecord.asset.asset_id, requestedRecord.asset.revision_id,
+        authorities.map((authority, index) => ({
+          chapter_id: planChapters[index].id, authorization: authority!.authorization,
+        })),
+      );
+      setSelectedRecord((current) => (current === requestedRecord ? produced : current));
+      setApiError(null);
+    } catch {
+      setApiError("Could not produce this audio lesson from its current authorities.");
     } finally {
       setProductionWorkerPending(false);
     }
@@ -1293,6 +1319,21 @@ export default function Multimedia() {
                     </LemonButton>
                     </section>
                   </>
+                )}
+
+                {selectedRecord && selectedRecord.mode === "audio" && selectedRecord.asset.route_policy !== "cheapest" && (
+                  <section className="border-t border-rule pt-3 dark:border-charcoal-1">
+                    <LemonButton
+                      type="button"
+                      variant="secondary"
+                      onClick={produceCurrentAudioLesson}
+                      disabled={productionWorkerPending || planChapters.some(
+                        (chapter) => !chapterNarrationAuthorities[chapter.id]
+                      )}
+                    >
+                      {productionWorkerPending ? "Producing..." : "Produce audio lesson"}
+                    </LemonButton>
+                  </section>
                 )}
 
                 <div className="flex flex-wrap items-center gap-2">
