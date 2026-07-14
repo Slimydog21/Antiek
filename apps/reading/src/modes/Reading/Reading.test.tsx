@@ -242,6 +242,21 @@ describe("useReaderImpressions", () => {
     expect(items[0].page_index).toBe(0);
     expect(items[0].fill_kind).toBe("house");
   });
+
+  it("reports page dwell even when the readable asset has no ad slots", () => {
+    const onDwell = vi.fn();
+    const { result } = renderHook(() =>
+      useReaderImpressions("doc-1", "sess-1", onDwell),
+    );
+    act(() => {
+      result.current.observePage(0, []);
+      result.current.observePage(1, []);
+    });
+    expect(recordAdImpressionsMock).not.toHaveBeenCalled();
+    expect(onDwell).toHaveBeenCalledWith(
+      expect.objectContaining({ pageIndex: 0, pagesSeen: 1 }),
+    );
+  });
 });
 
 // ── BookReader (gate-aware rendering) ───────────────────────────────
@@ -284,6 +299,7 @@ function makeBody(over: Partial<FullTextResponse> = {}): FullTextResponse {
     canonical_url: null,
     license: null,
     ...over,
+    chunks: over.chunks ?? [],
   };
 }
 
@@ -560,6 +576,40 @@ describe("BookReader", () => {
     expect(
       screen.queryByRole("complementary", { name: /Following this passage/ }),
     ).toBeNull();
+  });
+
+  it("carries the selected authoritative chunk into deep research", async () => {
+    launchFloatingDeepResearchMock.mockClear();
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(
+      makeBody({
+        chunks: [
+          {
+            chunk_id: "chunk-page-1",
+            chunk_index: 0,
+            page_index: 0,
+            text: "## Page 1\n\nThe opening of the book.",
+          },
+        ],
+      }),
+    );
+    await renderReader();
+    const para = await screen.findByText("The opening of the book.");
+    expect(para.closest("[data-akb-chunk-id]")?.getAttribute("data-akb-chunk-id")).toBe(
+      "chunk-page-1",
+    );
+    selectTextIn(para, "The opening of the book.");
+    fireEvent.click(
+      within(await screen.findByRole("menu", { name: /Highlight actions/ })).getByRole(
+        "menuitem",
+        { name: "Deep-research" },
+      ),
+    );
+    await waitFor(() =>
+      expect(launchFloatingDeepResearchMock).toHaveBeenCalledWith(
+        expect.objectContaining({ region_id: "chunk-page-1" }),
+      ),
+    );
   });
 
   it("Deep-research FloatMenu forwards Settings wrestle research_tier (jj)", async () => {
@@ -920,6 +970,14 @@ describe("BookReader", () => {
         servable: false,
         full_text: null,
         snippet: "A short gate-served preview.",
+        chunks: [
+          {
+            chunk_id: "must-not-render",
+            chunk_index: 0,
+            page_index: 0,
+            text: "WITHHELD CHUNK BODY",
+          },
+        ],
         servability: "gated_metadata_only",
         reason: "gated_metadata_only",
       }),
@@ -927,6 +985,7 @@ describe("BookReader", () => {
     await renderReader();
     // Only the gate-served snippet is on screen (full_text was withheld).
     const para = await screen.findByText(/A short gate-served preview\./);
+    expect(screen.queryByText("WITHHELD CHUNK BODY")).toBeNull();
     selectTextIn(para, "A short gate-served preview.");
 
     const menu = await screen.findByRole("menu", { name: /Highlight actions/ });

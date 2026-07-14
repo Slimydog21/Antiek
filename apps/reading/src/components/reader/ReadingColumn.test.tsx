@@ -75,22 +75,27 @@ describe("ReadingColumn — SPR-07 attribution markers (§9.0)", () => {
     expect(screen.getByText("Snippet.")).toBeTruthy();
   });
 
-  it("adds data-akb-chunk-id only when a real chunk id is present", () => {
+  it("tags each authoritative chunk region without attributing the whole article", () => {
     const { container: withChunk } = render(
-      <ReadingColumn assetId="doc-1" chunkId="chunk-7" text="Body." />,
+      <ReadingColumn
+        assetId="doc-1"
+        text="Body."
+        chunks={[
+          { chunk_id: "chunk-7", chunk_index: 0, page_index: 0, text: "First." },
+          { chunk_id: "chunk-8", chunk_index: 1, page_index: 0, text: "Second." },
+        ]}
+      />,
     );
-    expect(withChunk.querySelector("article")!.getAttribute("data-akb-chunk-id")).toBe("chunk-7");
+    expect(withChunk.querySelector("article")!.hasAttribute("data-akb-chunk-id")).toBe(false);
+    expect(
+      [...withChunk.querySelectorAll("[data-akb-chunk-id]")].map((node) =>
+        node.getAttribute("data-akb-chunk-id"),
+      ),
+    ).toEqual(["chunk-7", "chunk-8"]);
 
     cleanup();
     const { container: noChunk } = render(<ReadingColumn assetId="doc-1" text="Body." />);
     expect(noChunk.querySelector("article")!.hasAttribute("data-akb-chunk-id")).toBe(false);
-
-    cleanup();
-    // A null chunk id never becomes an empty attribute (no fabricated coverage).
-    const { container: nullChunk } = render(
-      <ReadingColumn assetId="doc-1" chunkId={null} text="Body." />,
-    );
-    expect(nullChunk.querySelector("article")!.hasAttribute("data-akb-chunk-id")).toBe(false);
   });
 });
 

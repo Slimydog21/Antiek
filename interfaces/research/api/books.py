@@ -312,6 +312,21 @@ class FullTextResponse(BaseModel):
     ad_eligible: bool = False
     canonical_url: str | None = None
     license: str | None = None
+    chunks: list[ReaderChunkResponse] = Field(default_factory=list)
+
+
+class ReaderChunkResponse(BaseModel):
+    """A graph chunk the caller is already permitted to read.
+
+    The manifest is absent for snippet-only and taken-down responses. Page
+    ownership is exact only when the ingestion section is a ``Page N`` marker;
+    unresolved chunks remain honest rather than being assigned heuristically.
+    """
+
+    chunk_id: str
+    chunk_index: int
+    page_index: int | None
+    text: str
 
 
 class BookChunkAnchorResponse(BaseModel):
@@ -567,11 +582,19 @@ def register_book_routes(app: FastAPI) -> None:
     )
     async def get_book_full_text(document_id: str) -> FullTextResponse:
         from runtime.db_lock import connect_read
+        from substrate.books.page_anchor import page_index_from_section_path
 
         db = _resolve_db_path()
         con = connect_read(db)
         try:
             result = serve_full_text_guarded(con, document_id)
+            chunk_rows = []
+            if result.full_text is not None:
+                chunk_rows = con.execute(
+                    "SELECT chunk_id, chunk_index, section_path, text "
+                    "FROM chunks WHERE document_id = ? ORDER BY chunk_index",
+                    [document_id],
+                ).fetchall()
         finally:
             con.close()
         if not result.found:
@@ -598,6 +621,15 @@ def register_book_routes(app: FastAPI) -> None:
             ad_eligible=result.ad_eligible,
             canonical_url=result.canonical_url,
             license=result.license,
+            chunks=[
+                ReaderChunkResponse(
+                    chunk_id=row[0],
+                    chunk_index=int(row[1]),
+                    page_index=page_index_from_section_path(row[2]),
+                    text=row[3],
+                )
+                for row in chunk_rows
+            ],
         )
 
     @app.get(

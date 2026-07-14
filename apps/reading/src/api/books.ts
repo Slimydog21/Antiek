@@ -70,6 +70,16 @@ export interface FullTextResponse {
   ad_eligible: boolean;
   canonical_url: string | null;
   license: string | null;
+  /** Ordered graph chunks for the body this response is permitted to serve.
+   * Empty for snippets and taken-down assets. */
+  chunks: ReaderChunk[];
+}
+
+export interface ReaderChunk {
+  chunk_id: string;
+  chunk_index: number;
+  page_index: number | null;
+  text: string;
 }
 
 export interface BookChunkAnchorResponse {

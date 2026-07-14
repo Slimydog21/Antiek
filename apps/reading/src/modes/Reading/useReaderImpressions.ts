@@ -40,6 +40,8 @@ function nowMs(): number {
 export interface ReaderDwell {
   totalDwellMs: number;
   pagesSeen: number;
+  /** The page whose focused interval was just flushed. */
+  pageIndex: number;
 }
 
 export function useReaderImpressions(
@@ -81,7 +83,7 @@ export function useReaderImpressions(
     const ctx = pageRef.current;
     const dwell = Math.round(dwellMsRef.current);
     dwellMsRef.current = 0;
-    if (!ctx || ctx.slots.length === 0) {
+    if (!ctx) {
       resume();
       return;
     }
@@ -94,14 +96,17 @@ export function useReaderImpressions(
       focused_dwell_ms: dwell,
       tab_focused: tabFocused,
     }));
-    void recordAdImpressions(documentId, sessionId, items).catch(() => {
-      /* best-effort — never disrupt reading */
-    });
+    if (items.length > 0) {
+      void recordAdImpressions(documentId, sessionId, items).catch(() => {
+        /* Ad bookkeeping must never disrupt reading. */
+      });
+    }
     // Report the SESSION-cumulative dwell evidence (SPR-07 M4). The consumer
     // decides the source.read "read" verdict from this; the hook just measures.
     onDwellRef.current?.({
       totalDwellMs: sessionDwellMsRef.current,
       pagesSeen: seenPagesRef.current.size,
+      pageIndex: ctx.pageIndex,
     });
     resume();
   }, [accumulate, resume, documentId, sessionId]);

@@ -1,3 +1,5 @@
+import type { ReaderChunk } from "../../api/books";
+
 /**
  * Pagination — the book reader's locator scheme (Read SPR-03).
  *
@@ -56,6 +58,59 @@ export function paginate(markdown: string): PageWindow[] {
   }
   // Re-index 0-based by position (defends against non-contiguous N).
   return windows.map((w, i) => ({ ...w, pageIndex: i }));
+}
+
+/** Return the authoritative chunks owned by one reader page. The ingestion
+ * page heading and long-chunk carry marker are projection metadata already
+ * represented by reader chrome, so they are not rendered as prose. */
+export function chunksForPage(
+  chunks: ReaderChunk[],
+  pageIndex: number,
+): ReaderChunk[] {
+  return chunks
+    .filter((chunk) => chunk.page_index === pageIndex)
+    .sort((a, b) => a.chunk_index - b.chunk_index)
+    .map((chunk) => ({
+      ...chunk,
+      text: chunk.text
+        .replace(/^##\s+Page\s+\d+\s*(?:\r?\n)*/i, "")
+        .replace(/^<!--\s*section:\s*.*?-->\s*(?:\r?\n)*/i, "")
+        .trim(),
+    }));
+}
+
+/** Use chunk-region rendering only when those regions reconstruct the complete
+ * visible page. Any unresolved ownership falls back to full unanchored prose,
+ * preserving content rather than overstating provenance. */
+export function anchoredChunksForPage(
+  chunks: ReaderChunk[],
+  pageIndex: number,
+  pageText: string,
+): ReaderChunk[] {
+  const owned = chunksForPage(chunks, pageIndex);
+  const normalize = (value: string) => value.replace(/\s+/g, " ").trim();
+  return normalize(owned.map((chunk) => chunk.text).join("\n")) ===
+    normalize(pageText)
+    ? owned
+    : [];
+}
+
+/** Dwell uses the same coverage gate as DOM provenance. A page that cannot be
+ * fully reconstructed has no representative chunk. */
+export function representativeChunkIdsByPage(
+  chunks: ReaderChunk[],
+  pages: PageWindow[],
+): Map<number, string> {
+  const byPage = new Map<number, string>();
+  for (const page of pages) {
+    const [representative] = anchoredChunksForPage(
+      chunks,
+      page.pageIndex,
+      page.text,
+    );
+    if (representative) byPage.set(page.pageIndex, representative.chunk_id);
+  }
+  return byPage;
 }
 
 function finish(c: { pageNumber: number; buf: string[] }): PageWindow {

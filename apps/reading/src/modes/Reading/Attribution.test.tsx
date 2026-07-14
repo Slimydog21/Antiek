@@ -32,6 +32,7 @@ function body(over: Partial<FullTextResponse> = {}): FullTextResponse {
     canonical_url: null,
     license: null,
     ...over,
+    chunks: over.chunks ?? [],
   };
 }
 

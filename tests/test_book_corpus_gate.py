@@ -677,6 +677,7 @@ def test_api_full_text_endpoint_enforces_gate(db, client):
     body = res.json()
     assert body["servable"] is False
     assert body["full_text"] is None
+    assert body["chunks"] == []
     assert body["snippet"] is not None
 
 
@@ -691,6 +692,39 @@ def test_api_full_text_serves_servable(db, client):
     body = res.json()
     assert body["servable"] is True
     assert "OPEN BODY" in body["full_text"]
+    assert len(body["chunks"]) == 1
+    assert body["chunks"][0]["chunk_id"]
+    assert body["chunks"][0]["page_index"] is None
+
+
+def test_api_full_text_manifest_is_ordered_and_page_owned(db, client):
+    _insert_book(db, "doc-api-manifest", raw_text="## Page 1\nFirst.\n## Page 2\nSecond.", with_chunk=False)
+    con = connect_write(db, purpose="reader-manifest")
+    try:
+        bingest.register_book(con, document_id="doc-api-manifest", content_class="public_domain")
+        second = insert_chunk(
+            con,
+            document_id="doc-api-manifest",
+            chunk_index=1,
+            text="## Page 2\nSecond.",
+            section_path="Page 2",
+            token_count=3,
+        )
+        first = insert_chunk(
+            con,
+            document_id="doc-api-manifest",
+            chunk_index=0,
+            text="## Page 1\nFirst.",
+            section_path="Page 1",
+            token_count=3,
+        )
+    finally:
+        con.close()
+
+    body = client.get("/books/doc-api-manifest/full-text").json()
+    assert [chunk["chunk_id"] for chunk in body["chunks"]] == [first, second]
+    assert [chunk["chunk_index"] for chunk in body["chunks"]] == [0, 1]
+    assert [chunk["page_index"] for chunk in body["chunks"]] == [0, 1]
 
 
 def test_api_full_text_unknown_404(db, client):

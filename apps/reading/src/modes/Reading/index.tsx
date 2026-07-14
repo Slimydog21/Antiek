@@ -29,7 +29,13 @@ import TocPanel from "./TocPanel";
 import VoiceNote from "./VoiceNote";
 import { useSettingsResearchTier } from "../../lib/useSettingsResearchTier";
 import { launchFloatingDeepResearch } from "./launchFloatingDeepResearch";
-import { paginate, windowForTocPage } from "./paginate";
+import {
+  anchoredChunksForPage,
+  paginate,
+  representativeChunkIdsByPage,
+  windowForTocPage,
+} from "./paginate";
+import { readerChunkIdForRange } from "./readerChunkProvenance";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { emitSourceRead, isRead } from "./sourceRead";
@@ -163,25 +169,19 @@ export default function BookReader() {
   // passed to components, never rendered.
   const readingThreadId = `read-${documentId}`;
 
-  // §9.0 — the chunk the read/note is attributed to.
-  //
-  // HONEST GAP (Read SPR-07 M4, tightened): the reader client has NO chunk id
-  // to attribute to this sprint. BookDetail / FullTextResponse expose
-  // title/toc/full_text/servability — never per-chunk ids — and surfacing them
-  // is a backend change (a /books endpoint that returns chunk ids) deliberately
-  // OUT OF SCOPE here. So we attribute to null HONESTLY rather than invent a
-  // chunk id. Consequence, stated plainly so the M4 claim is not overstated:
-  //   • source.read EVENT + the SiteSee resolver are LIVE (sourceRead.ts);
-  //   • the SiteSee "read" tint keys on chunk_id, so it PAINTS only once a
-  //     real chunk anchor is resolved — a documented follow-up (a books
-  //     endpoint exposing chunk ids), NOT something this sprint claims paints
-  //     end-to-end.
-  // For the in-book NOTE: document_id still completes the claim→chunk→document
-  // chain (the note's per-book insight node is grounded on its document via
-  // node metadata, so block_search returns it per-book even with a null chunk —
-  // see substrate/graph/insight_question.promote_from_marginalia_event). The
-  // chunk anchor on the note is the SAME documented follow-up.
-  const representativeChunkId: string | null = null;
+  const pageChunks = useMemo(
+    () =>
+      anchoredChunksForPage(
+        body?.full_text !== null ? (body?.chunks ?? []) : [],
+        pageIndex,
+        pages[pageIndex]?.text ?? "",
+      ),
+    [body?.chunks, body?.full_text, pageIndex, pages],
+  );
+  const representativeChunkByPage = useMemo(() => {
+    const chunks = body?.full_text !== null ? (body?.chunks ?? []) : [];
+    return representativeChunkIdsByPage(chunks, pages);
+  }, [body?.chunks, body?.full_text, pages]);
 
   // source.read (SPR-07 M4) — fire ONCE per source per reading session on the
   // justified dwell threshold, reusing the focused-dwell clock the ad-impression
@@ -189,19 +189,19 @@ export default function BookReader() {
   // spam, never refired. §9.0: the event carries no body (sourceRead.ts).
   const readEmittedRef = useRef(false);
   const onDwell = useCallback(
-    (dwell: { totalDwellMs: number; pagesSeen: number }) => {
+    (dwell: { totalDwellMs: number; pagesSeen: number; pageIndex: number }) => {
       if (readEmittedRef.current) return;
       if (!isRead(dwell.totalDwellMs, dwell.pagesSeen)) return;
       readEmittedRef.current = true;
       void emitSourceRead({
         documentId,
         readingThreadId,
-        chunkId: representativeChunkId,
+        chunkId: representativeChunkByPage.get(dwell.pageIndex) ?? null,
         dwellMs: dwell.totalDwellMs,
         pageCount: dwell.pagesSeen,
       });
     },
-    [documentId, readingThreadId],
+    [documentId, readingThreadId, representativeChunkByPage],
   );
   const { observePage } = useReaderImpressions(documentId, sessionId, onDwell);
   const [showVoice, setShowVoice] = useState(false);
@@ -230,12 +230,14 @@ export default function BookReader() {
   // research over a non-servable book (defence in depth — the body can't even
   // reach the DOM, but the outbound guard holds regardless).
   const resolveProvenance = useCallback(
-    (_range: Range, _text: string): SelectionProvenance => ({
+    (range: Range, _text: string): SelectionProvenance => ({
       documentId,
-      chunkId: representativeChunkId,
-      servable: book?.servable_full_text ?? false,
+      chunkId: articleRef.current
+        ? readerChunkIdForRange(articleRef.current, range)
+        : null,
+      servable: body?.full_text !== null,
     }),
-    [documentId, book?.servable_full_text],
+    [documentId, body?.full_text],
   );
 
   const selection = useFloatMenuSelection({
@@ -527,6 +529,7 @@ export default function BookReader() {
                 ref={articleRef}
                 assetId={book.servable_full_text ? documentId : null}
                 text={page?.text ?? ""}
+                chunks={pageChunks}
               />
 
               {/* Per-page actions: voice note + spin a deep research. */}
