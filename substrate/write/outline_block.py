@@ -248,6 +248,20 @@ def _resolve_deliverable_id(con: Any, section_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _normalize_section_indices(con: LockedConnection, section_id: str) -> None:
+    """Repair legacy sparse/duplicate ordering before applying a final seam."""
+    rows = con.execute(
+        "SELECT outline_block_id FROM outline_blocks WHERE section_id = ? "
+        "ORDER BY block_index, outline_block_id",
+        [section_id],
+    ).fetchall()
+    for index, (block_id,) in enumerate(rows):
+        con.execute(
+            "UPDATE outline_blocks SET block_index = ? WHERE outline_block_id = ?",
+            [index, block_id],
+        )
+
+
 def place_block(
     con: LockedConnection,
     *,
@@ -287,6 +301,18 @@ def place_block(
         if exists is not None:
             return obid  # idempotent: no INSERT, no event
     did = deliverable_id or _resolve_deliverable_id(con, section_id)
+    # ``block_index`` names a final visual seam. Make room before inserting so
+    # two blocks can never occupy the same position.
+    _normalize_section_indices(con, section_id)
+    existing_count = int(con.execute(
+        "SELECT COUNT(*) FROM outline_blocks WHERE section_id = ?", [section_id]
+    ).fetchone()[0])
+    final_index = min(max(int(block_index), 0), existing_count)
+    con.execute(
+        "UPDATE outline_blocks SET block_index = block_index + 1 "
+        "WHERE section_id = ? AND block_index >= ?",
+        [section_id, final_index],
+    )
     con.execute(
         "INSERT INTO outline_blocks "
         "(outline_block_id, section_id, block_kind, provenance_kind, "
@@ -295,7 +321,7 @@ def place_block(
         "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             obid, section_id, block_kind, provenance_kind, node_id,
-            source_block_kind, source_block_id, content, int(block_index),
+            source_block_kind, source_block_id, content, final_index,
             cluster_id, _maybe_json(metadata),
         ],
     )
@@ -308,7 +334,7 @@ def place_block(
             block_kind=block_kind,  # type: ignore[arg-type]
             provenance_kind=provenance_kind,  # type: ignore[arg-type]
             node_id=node_id,
-            block_index=int(block_index),
+            block_index=final_index,
         ),
         parent_event_id=parent_event_id,
         role="write_composition",
@@ -384,11 +410,33 @@ def move_block(
             [to_section_id],
         ).fetchone() is None:
             raise OutlineBlockError(f"target section not found: {to_section_id!r}")
-    con.execute(
-        "UPDATE outline_blocks SET section_id = ?, block_index = ? "
-        "WHERE outline_block_id = ?",
-        [to_section_id, int(to_index), outline_block_id],
-    )
+    # Rebuild the affected order(s). The requested index is the block's FINAL
+    # position after removal, which keeps same- and cross-section moves dense.
+    def _ordered_ids(section_id: str, *, exclude: str | None = None) -> list[str]:
+        rows = con.execute(
+            "SELECT outline_block_id FROM outline_blocks WHERE section_id = ? "
+            "ORDER BY block_index, outline_block_id",
+            [section_id],
+        ).fetchall()
+        return [r[0] for r in rows if r[0] != exclude]
+
+    source_ids = _ordered_ids(from_section_id, exclude=outline_block_id)
+    target_ids = source_ids if to_section_id == from_section_id else _ordered_ids(to_section_id)
+    final_index = min(max(int(to_index), 0), len(target_ids))
+    target_ids.insert(final_index, outline_block_id)
+
+    if to_section_id != from_section_id:
+        for index, block_id in enumerate(source_ids):
+            con.execute(
+                "UPDATE outline_blocks SET block_index = ? WHERE outline_block_id = ?",
+                [index, block_id],
+            )
+    for index, block_id in enumerate(target_ids):
+        con.execute(
+            "UPDATE outline_blocks SET section_id = ?, block_index = ? "
+            "WHERE outline_block_id = ?",
+            [to_section_id, index, block_id],
+        )
     emit_typed(
         investigation_id,
         OutlineBlockMovedPayload(
@@ -396,7 +444,7 @@ def move_block(
             from_section_id=from_section_id,
             to_section_id=to_section_id,
             from_index=from_index,
-            to_index=int(to_index),
+            to_index=final_index,
         ),
         parent_event_id=parent_event_id,
         role="write_composition",
@@ -415,15 +463,25 @@ def remove_block(
     edit, not a graph deletion. Emits ``OUTLINE_BLOCK_REMOVED``."""
     _assert_write_locked(con)
     row = con.execute(
-        "SELECT section_id FROM outline_blocks WHERE outline_block_id = ?",
+        "SELECT section_id, block_index FROM outline_blocks WHERE outline_block_id = ?",
         [outline_block_id],
     ).fetchone()
     if row is None:
         return False
     section_id = row[0]
+    _normalize_section_indices(con, section_id)
+    removed_index = int(con.execute(
+        "SELECT block_index FROM outline_blocks WHERE outline_block_id = ?",
+        [outline_block_id],
+    ).fetchone()[0])
     con.execute(
         "DELETE FROM outline_blocks WHERE outline_block_id = ?",
         [outline_block_id],
+    )
+    con.execute(
+        "UPDATE outline_blocks SET block_index = block_index - 1 "
+        "WHERE section_id = ? AND block_index > ?",
+        [section_id, removed_index],
     )
     emit_typed(
         investigation_id,

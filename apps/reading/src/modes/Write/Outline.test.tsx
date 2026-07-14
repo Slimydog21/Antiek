@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Editor } from "@tiptap/react";
 
 import { ApiError, type SectionResponse } from "../../lib/api";
-import type { GenerationResult, OutlineBlockView } from "./writeApi";
+import type { GenerationResult, OutlineBlockView, RepositoryHit } from "./writeApi";
 
 /**
  * Outline.test — the outline + generate + real-editor surface (SPR-07
@@ -139,6 +139,283 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Outline — no id, honest generate, real editor", () => {
+  it("places selected repository evidence at the exact chosen seam", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    const done = vi.fn();
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 1 })]}
+        onChanged={vi.fn()}
+        pendingRepositoryHit={{
+          node_id: "node-new",
+          label: "Demand compounds across cycles",
+          node_type: "insight",
+          document_title: "Research memo",
+          document_id: "doc-new",
+          source_tier: 1,
+          score: 0.91,
+        }}
+        onRepositoryPlacementDone={done}
+      />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    await userEvent.click(screen.getByRole("button", { name: /place before capital intensity/i }));
+    await waitFor(() =>
+      expect(placeBlockMock).toHaveBeenCalledWith({
+        section_id: "sec-1",
+        block_kind: "insight",
+        provenance_kind: "graph_node",
+        node_id: "node-new",
+        block_index: 0,
+        deliverable_id: "dlv-1",
+      }),
+    );
+    expect(done).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [/place between blocks 1 and 2/i, 1],
+    [/place after the last block/i, 2],
+  ])("places repository evidence at another populated seam: %s", async (seamName, index) => {
+    getSectionBlocksMock.mockResolvedValue([
+      block({ outline_block_id: "oblk-a", node_label: "Evidence A", block_index: 0 }),
+      block({ outline_block_id: "oblk-b", node_label: "Evidence B", block_index: 1 }),
+    ]);
+    render(
+      <Outline
+        deliverableId="dlv-1" sections={[section({ block_count: 2 })]} onChanged={vi.fn()}
+        pendingRepositoryHit={{
+          node_id: "node-new", label: "New evidence", node_type: "insight",
+          document_title: null, document_id: null, source_tier: null, score: 0.8,
+        }}
+      />,
+    );
+    await screen.findByText("Evidence B");
+    await userEvent.click(screen.getByRole("button", { name: seamName }));
+    await waitFor(() => expect(placeBlockMock).toHaveBeenCalledWith(
+      expect.objectContaining({ block_index: index }),
+    ));
+  });
+
+  it("keeps a failed placement selected and exposes a truthful retry seam", async () => {
+    getSectionBlocksMock.mockResolvedValue([]);
+    placeBlockMock.mockRejectedValue(new Error("write refused"));
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section()]}
+        onChanged={vi.fn()}
+        pendingRepositoryHit={{
+          node_id: "node-new",
+          label: "Demand compounds across cycles",
+          node_type: "insight",
+          document_title: null,
+          document_id: null,
+          source_tier: null,
+          score: 0.91,
+        }}
+      />,
+    );
+    const seam = await screen.findByRole("button", { name: /place as the first block/i });
+    await userEvent.click(seam);
+    expect((await screen.findByRole("alert")).textContent ?? "").toMatch(
+      /not placed.*write refused/i,
+    );
+    expect(screen.getByRole("button", { name: /place as the first block/i })).toBeTruthy();
+  });
+
+  it("retries the same seam successfully and preserves question semantics", async () => {
+    placeBlockMock
+      .mockRejectedValueOnce(new Error("temporary lock"))
+      .mockResolvedValueOnce("oblk-retried");
+    const done = vi.fn();
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section()]}
+        onChanged={vi.fn()}
+        pendingRepositoryHit={{
+          node_id: "question-new", label: "What survives?", node_type: "open_question",
+          document_title: null, document_id: null, source_tier: null, score: 0.8,
+        }}
+        onRepositoryPlacementDone={done}
+      />,
+    );
+    const seam = await screen.findByRole("button", { name: /place as the first block/i });
+    await userEvent.click(seam);
+    await screen.findByRole("alert");
+    await userEvent.click(seam);
+    await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+    expect(placeBlockMock).toHaveBeenLastCalledWith(expect.objectContaining({
+      block_kind: "open_question", node_id: "question-new", block_index: 0,
+    }));
+  });
+
+  it("coalesces rapid seam activation and ignores Escape while the write is pending", async () => {
+    let resolveWrite!: (value: string) => void;
+    placeBlockMock.mockReturnValue(new Promise<string>((resolve) => { resolveWrite = resolve; }));
+    const cancel = vi.fn();
+    const done = vi.fn();
+    render(
+      <Outline
+        deliverableId="dlv-1" sections={[section()]} onChanged={vi.fn()}
+        pendingRepositoryHit={{
+          node_id: "claim-new", label: "Costs remain", node_type: "claim",
+          document_title: null, document_id: null, source_tier: null, score: 0.8,
+        }}
+        onRepositoryPlacementDone={done}
+        onRepositoryPlacementCancel={cancel}
+      />,
+    );
+    const seam = await screen.findByRole("button", { name: /place as the first block/i });
+    fireEvent.click(seam);
+    fireEvent.click(seam);
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(placeBlockMock).toHaveBeenCalledTimes(1);
+    expect(placeBlockMock).toHaveBeenCalledWith(expect.objectContaining({ block_kind: "claim" }));
+    expect(cancel).not.toHaveBeenCalled();
+    resolveWrite("oblk-new");
+    await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  });
+
+  it("keeps desktop tap committed when its parent refresh rejects", async () => {
+    let add!: (hit: RepositoryHit) => void;
+    const onChanged = vi.fn().mockRejectedValue(new Error("refresh offline"));
+    render(
+      <Outline
+        deliverableId="dlv-1" sections={[section()]} onChanged={onChanged}
+        registerAddHandler={(handler) => { add = handler; }}
+      />,
+    );
+    await waitFor(() => expect(add).toBeTypeOf("function"));
+    add({
+      node_id: "claim-tap", label: "Tap claim", node_type: "claim",
+      document_title: null, document_id: null, source_tier: null, score: 0.7,
+    });
+    await waitFor(() => expect(placeBlockMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(placeBlockMock).toHaveBeenCalledWith(expect.objectContaining({ block_kind: "claim" }));
+  });
+
+  it("preserves native drag kind and does not retry a commit when refresh rejects", async () => {
+    const onChanged = vi.fn().mockRejectedValue(new Error("refresh offline"));
+    const { container } = render(
+      <Outline deliverableId="dlv-1" sections={[section()]} onChanged={onChanged} />,
+    );
+    const card = container.querySelector("section")!;
+    const payload = JSON.stringify({
+      from: "palette", block_kind: "open_question", block_id: "question-drag", label: "Why?",
+    });
+    fireEvent.drop(card, {
+      dataTransfer: { getData: () => payload, types: ["application/x-antiek-block"] },
+    });
+    await waitFor(() => expect(placeBlockMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(placeBlockMock).toHaveBeenCalledWith(expect.objectContaining({
+      block_kind: "open_question", node_id: "question-drag",
+    }));
+  });
+
+  it("keeps native reorder committed when the parent refresh rejects", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    const onChanged = vi.fn().mockRejectedValue(new Error("refresh offline"));
+    render(
+      <Outline
+        deliverableId="dlv-1" sections={[section({ block_count: 1 })]} onChanged={onChanged}
+      />,
+    );
+    const row = await screen.findByTitle("Drag to reorder");
+    fireEvent.drop(row, {
+      dataTransfer: {
+        getData: (type: string) =>
+          type === "application/x-antiek-outline-block" ? "oblk-native" : "",
+        types: ["application/x-antiek-outline-block"],
+      },
+    });
+    await waitFor(() => expect(moveBlockMock).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    expect(moveBlockMock).toHaveBeenCalledWith("oblk-native", "sec-1", 0);
+  });
+
+  it("moves an existing block through the same keyboard-operable seams", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    render(
+      <Outline deliverableId="dlv-1" sections={[section({ block_count: 1 })]} onChanged={vi.fn()} />,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /move capital intensity rises with scale/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /place after the last block/i }));
+    await waitFor(() => expect(moveBlockMock).toHaveBeenCalledWith("oblk-" + NODE_ID, "sec-1", 1));
+  });
+
+  it.each([
+    [/place before evidence a/i, 0],
+    [/place between blocks 1 and 2/i, 1],
+  ])("moves populated evidence to a first/middle seam: %s", async (seamName, index) => {
+    getSectionBlocksMock.mockResolvedValue([
+      block({ outline_block_id: "oblk-a", node_label: "Evidence A", block_index: 0 }),
+      block({ outline_block_id: "oblk-b", node_label: "Evidence B", block_index: 1 }),
+      block({ outline_block_id: "oblk-c", node_label: "Evidence C", block_index: 2 }),
+    ]);
+    render(
+      <Outline deliverableId="dlv-1" sections={[section({ block_count: 3 })]} onChanged={vi.fn()} />,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: /move evidence c/i }));
+    await userEvent.click(screen.getByRole("button", { name: seamName }));
+    await waitFor(() => expect(moveBlockMock).toHaveBeenCalledWith("oblk-c", "sec-1", index));
+  });
+
+  it("moves evidence across sections without exposing its identifier", async () => {
+    getSectionBlocksMock.mockImplementation(async (sectionId: string) =>
+      sectionId === "sec-1" ? [block()] : [],
+    );
+    const second = section({
+      section_id: "sec-2",
+      section_index: 1,
+      title: "Counterargument",
+      block_count: 0,
+    });
+    const { container } = render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section({ block_count: 1 }), second]}
+        onChanged={vi.fn()}
+      />,
+    );
+    await userEvent.click(
+      await screen.findByRole("button", { name: /move capital intensity rises with scale/i }),
+    );
+    await userEvent.click(screen.getByRole("button", { name: /place as the first block/i }));
+    await waitFor(() => expect(moveBlockMock).toHaveBeenCalledWith("oblk-" + NODE_ID, "sec-2", 0));
+    expect(container.textContent ?? "").not.toContain("oblk-");
+  });
+
+  it("cancels field-kit placement with Escape without writing", async () => {
+    const cancel = vi.fn();
+    render(
+      <Outline
+        deliverableId="dlv-1"
+        sections={[section()]}
+        onChanged={vi.fn()}
+        pendingRepositoryHit={{
+          node_id: "node-new",
+          label: "Demand compounds across cycles",
+          node_type: "insight",
+          document_title: null,
+          document_id: null,
+          source_tier: null,
+          score: 0.91,
+        }}
+        onRepositoryPlacementCancel={cancel}
+      />,
+    );
+    fireEvent.keyDown(window, { key: "Escape" });
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(placeBlockMock).not.toHaveBeenCalled();
+  });
+
   it("renders a block by text + provenance, never an id", async () => {
     getSectionBlocksMock.mockResolvedValue([block()]);
     const { container } = render(

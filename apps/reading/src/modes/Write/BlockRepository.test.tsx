@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import type { RepositoryHit } from "./writeApi";
@@ -72,6 +72,17 @@ describe("BlockRepository — tap-to-add, no id", () => {
     render(<BlockRepository onAdd={vi.fn()} />);
     await waitFor(() =>
       expect(screen.getByText(/No blocks/i)).toBeTruthy(),
+    );
+  });
+
+  it("carries a claim's semantic kind through native drag", async () => {
+    render(<BlockRepository onAdd={vi.fn()} />);
+    const block = await screen.findByRole("button", { name: /capital intensity/i });
+    const setData = vi.fn();
+    fireEvent.dragStart(block, { dataTransfer: { setData, effectAllowed: "none" } });
+    expect(setData).toHaveBeenCalledWith(
+      "application/x-antiek-block",
+      expect.stringContaining('"block_kind":"claim"'),
     );
   });
 });

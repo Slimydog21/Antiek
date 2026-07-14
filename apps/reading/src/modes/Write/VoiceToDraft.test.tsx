@@ -106,4 +106,23 @@ describe("VoiceToDraft — user-sourced spoken draft", () => {
     await waitFor(() => expect(screen.getByText(/didn't catch any words/i)).toBeTruthy());
     expect(placeBlockMock).not.toHaveBeenCalled();
   });
+
+  it("keeps a spoken block saved when the outline refresh rejects", async () => {
+    useVoiceCaptureMock.mockReturnValue(voiceState({
+      stopAndCapture: vi.fn().mockResolvedValue({
+        transcript: "a committed thought", transcriptStatus: "ok", sourceKind: "user",
+        language: "en", durationSeconds: 2, eventId: "ev-3",
+      }),
+    }));
+    render(
+      <VoiceToDraft
+        sectionId="sec-1" deliverableId="dlv-1" investigationId="inv-1" blockIndex={0}
+        onDrafted={vi.fn().mockRejectedValue(new Error("refresh offline"))}
+      />,
+    );
+    await userEvent.click(screen.getByRole("button", { name: /stop & add/i }));
+    await waitFor(() => expect(screen.getByText(/added.*user-sourced/i)).toBeTruthy());
+    expect(screen.queryByText(/couldn't save/i)).toBeNull();
+    expect(placeBlockMock).toHaveBeenCalledTimes(1);
+  });
 });

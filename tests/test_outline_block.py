@@ -350,6 +350,30 @@ def test_placed_event_emitted(db, monkeypatch):
     assert "outline_block.placed" in actions
 
 
+def test_events_record_resolved_final_indices(db):
+    events_dir = os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]
+    with connect_write(db["path"], purpose="t") as con:
+        place_user_authored_block(
+            con, section_id=db["section"], content="anchor", block_index=0,
+            investigation_id="__operator__",
+        )
+        moved = place_user_authored_block(
+            con, section_id=db["section"], content="clamped", block_index=99,
+            investigation_id="__operator__",
+        )
+        move_block(
+            con, outline_block_id=moved, to_section_id=db["subsection"], to_index=99,
+            investigation_id="__operator__",
+        )
+    events = [
+        json.loads(line) for line in open(os.path.join(events_dir, "__operator__.jsonl"))
+    ]
+    placed = [e for e in events if e["action_type"] == "outline_block.placed"]
+    moved_events = [e for e in events if e["action_type"] == "outline_block.moved"]
+    assert placed[-1]["payload"]["block_index"] == 1
+    assert moved_events[-1]["payload"]["to_index"] == 0
+
+
 def test_new_action_types_in_typed_union():
     for at in ("outline_block.placed", "outline_block.moved", "outline_block.removed"):
         assert at in TYPED_PAYLOAD_ACTION_TYPES
@@ -366,7 +390,7 @@ def test_move_and_remove(db):
     moved = get_block(con, obid)
     con.close()
     assert moved.section_id == db["subsection"]
-    assert moved.block_index == 2
+    assert moved.block_index == 0
 
     with connect_write(db["path"], purpose="t") as con:
         assert remove_block(con, outline_block_id=obid) is True
@@ -374,6 +398,63 @@ def test_move_and_remove(db):
     con = _read(db["path"])
     assert get_block(con, obid) is None
     con.close()
+
+
+def test_insert_and_move_keep_dense_exact_order(db):
+    """Occupied seams shift; moves never leave duplicate indexes."""
+    with connect_write(db["path"], purpose="t") as con:
+        first = place_user_authored_block(
+            con, section_id=db["section"], content="first", block_index=0,
+        )
+        third = place_user_authored_block(
+            con, section_id=db["section"], content="third", block_index=1,
+        )
+        middle = place_user_authored_block(
+            con, section_id=db["section"], content="middle", block_index=1,
+        )
+        move_block(con, outline_block_id=first, to_section_id=db["section"], to_index=2)
+        move_block(con, outline_block_id=middle, to_section_id=db["subsection"], to_index=9)
+
+    con = _read(db["path"])
+    source = list_section_blocks(con, db["section"])
+    target = list_section_blocks(con, db["subsection"])
+    con.close()
+    assert [(b.outline_block_id, b.block_index) for b in source] == [
+        (third, 0), (first, 1),
+    ]
+    assert [(b.outline_block_id, b.block_index) for b in target] == [(middle, 0)]
+
+    with connect_write(db["path"], purpose="t") as con:
+        assert remove_block(con, outline_block_id=third) is True
+    con = _read(db["path"])
+    source = list_section_blocks(con, db["section"])
+    con.close()
+    assert [(b.outline_block_id, b.block_index) for b in source] == [(first, 0)]
+
+
+def test_place_repairs_legacy_sparse_duplicate_indices(db):
+    """The first touched write repairs rows created under the old sort-hint semantics."""
+    with connect_write(db["path"], purpose="t") as con:
+        for obid, content, index in (
+            ("oblk-legacy-a", "legacy a", 7),
+            ("oblk-legacy-b", "legacy b", 7),
+            ("oblk-legacy-c", "legacy c", 19),
+        ):
+            con.execute(
+                "INSERT INTO outline_blocks "
+                "(outline_block_id, section_id, block_kind, provenance_kind, content, block_index) "
+                "VALUES (?, ?, 'user_authored', 'user_authored', ?, ?)",
+                [obid, db["section"], content, index],
+            )
+        inserted = place_user_authored_block(
+            con, section_id=db["section"], content="new middle", block_index=1,
+        )
+
+    con = _read(db["path"])
+    blocks = list_section_blocks(con, db["section"])
+    con.close()
+    assert [b.block_index for b in blocks] == [0, 1, 2, 3]
+    assert blocks[1].outline_block_id == inserted
 
 
 # ── M6 — migration ─────────────────────────────────────────────────

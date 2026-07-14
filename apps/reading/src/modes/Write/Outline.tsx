@@ -13,7 +13,7 @@ import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection
 import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type { RewriteIntent } from "../shared/FloatMenu/floatMenuActions";
 import type { PaletteDragPayload } from "../CreationStudio/BlockPalette";
-import { parsePaletteDrag } from "./Repository/dragToOutline";
+import { paletteDragToPlaceBlock, parsePaletteDrag } from "./Repository/dragToOutline";
 import { WriteEditor } from "./Editor/Editor";
 import { EDIT_CAPTURE_POLICY } from "./EditCapture";
 import SubAgentProposal from "./SubAgentProposal";
@@ -25,6 +25,7 @@ import {
   getSectionBlocks,
   moveBlock,
   placeBlock,
+  repositoryBlockKind,
   type GenerationResult,
   type OutlineBlockView,
   type RepositoryHit,
@@ -78,7 +79,15 @@ export interface OutlineProps {
    * SPR-09 M1). It buckets the voice-to-draft VOICE_CAPTURED event (M4) and is
    * the parent of a spun sub-agent (M4). Falls back to the operator bucket. */
   investigationId?: string | null;
+  /** A field-kit block waiting for an exact section/index choice. */
+  pendingRepositoryHit?: RepositoryHit | null;
+  onRepositoryPlacementDone?: () => void;
+  onRepositoryPlacementCancel?: () => void;
 }
+
+type PlacementIntent =
+  | { kind: "repository"; hit: RepositoryHit }
+  | { kind: "move"; outlineBlockId: string; label: string };
 
 export default function Outline({
   deliverableId,
@@ -86,7 +95,93 @@ export default function Outline({
   onChanged,
   registerAddHandler,
   investigationId,
+  pendingRepositoryHit = null,
+  onRepositoryPlacementDone,
+  onRepositoryPlacementCancel,
 }: OutlineProps) {
+  const [movingBlock, setMovingBlock] = useState<PlacementIntent | null>(null);
+  const [placementBusy, setPlacementBusy] = useState(false);
+  const placementBusyRef = useRef(false);
+  const [placementError, setPlacementError] = useState<string | null>(null);
+  const placementBannerRef = useRef<HTMLDivElement>(null);
+  const placement: PlacementIntent | null = pendingRepositoryHit
+    ? { kind: "repository", hit: pendingRepositoryHit }
+    : movingBlock;
+
+  useEffect(() => {
+    if (!placement) return;
+    setPlacementError(null);
+    placementBannerRef.current?.focus();
+  }, [pendingRepositoryHit?.node_id, movingBlock]);
+
+  const cancelPlacement = useCallback(() => {
+    if (placementBusyRef.current) return;
+    setMovingBlock(null);
+    setPlacementError(null);
+    onRepositoryPlacementCancel?.();
+  }, [onRepositoryPlacementCancel]);
+
+  useEffect(() => {
+    if (!placement) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      if (placementBusyRef.current) return;
+      event.preventDefault();
+      cancelPlacement();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [placement, cancelPlacement]);
+
+  const commitPlacement = useCallback(
+    async (sectionId: string, blockIndex: number) => {
+      if (!placement || placementBusyRef.current) return;
+      placementBusyRef.current = true;
+      setPlacementBusy(true);
+      setPlacementError(null);
+      try {
+        if (placement.kind === "repository") {
+          await placeBlock({
+            section_id: sectionId,
+            block_kind: repositoryBlockKind(placement.hit.node_type),
+            provenance_kind: "graph_node",
+            node_id: placement.hit.node_id,
+            block_index: blockIndex,
+            deliverable_id: deliverableId,
+          });
+        } else {
+          await moveBlock(placement.outlineBlockId, sectionId, blockIndex);
+        }
+      } catch (error) {
+        setPlacementError(
+          error instanceof Error ? error.message : "The block was not placed. Try again.",
+        );
+        placementBusyRef.current = false;
+        setPlacementBusy(false);
+        return;
+      }
+
+      // The persistence result is now known. Clear the intent exactly once;
+      // a subsequent view refresh cannot retroactively turn a committed write
+      // into a truthful "not placed" retry.
+      if (placement.kind === "repository") onRepositoryPlacementDone?.();
+      else setMovingBlock(null);
+      try {
+        await onChanged();
+      } catch {
+        // Persistence succeeded. A stale view is recoverable on the next
+        // refresh; never mislabel the committed operation as a failed write.
+      }
+      placementBusyRef.current = false;
+      setPlacementBusy(false);
+    },
+    [
+      deliverableId,
+      onChanged,
+      onRepositoryPlacementDone,
+      placement,
+    ],
+  );
   // The section a tapped repository block lands in (the last section, by
   // default — the writer is composing top-down). A null active section means
   // "no section yet"; the tap then nudges the writer to add one.
@@ -97,13 +192,18 @@ export default function Outline({
       if (!sectionId) return;
       await placeBlock({
         section_id: sectionId,
-        block_kind: "insight",
+        block_kind: repositoryBlockKind(hit.node_type),
         provenance_kind: "graph_node",
         node_id: hit.node_id, // the SAME node — provenance preserved, no copy
         block_index: blockCount,
         deliverable_id: deliverableId,
       });
-      await onChanged();
+      try {
+        await onChanged();
+      } catch {
+        // The block is committed; a failed view refresh must not turn the
+        // successful tap into an apparent failed write/retry.
+      }
     },
     [deliverableId, onChanged],
   );
@@ -121,6 +221,37 @@ export default function Outline({
 
   return (
     <div className="flex h-full min-h-0 flex-col" data-mode="write-outline">
+      {placement && (
+        <div
+          ref={placementBannerRef}
+          tabIndex={-1}
+          role="status"
+          className="mb-3 flex items-start justify-between gap-3 border-2 border-ink bg-sun px-3 py-2 text-ink shadow-z1"
+        >
+          <div className="min-w-0">
+            <p className="font-mono text-[9px] font-bold uppercase tracking-[0.2em]">
+              {placement.kind === "repository" ? "Evidence selected" : "Moving evidence"}
+            </p>
+            <p className="truncate font-serif text-sm font-semibold">
+              {placement.kind === "repository" ? placement.hit.label : placement.label}
+            </p>
+            <p className="font-serif text-xs">Choose a dashed seam in any section.</p>
+            {placementError && (
+              <p role="alert" className="mt-1 font-mono text-[10px] font-bold text-emperor">
+                Not placed — {placementError}
+              </p>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={cancelPlacement}
+            disabled={placementBusy}
+            className="shrink-0 border border-ink px-2 py-1 font-mono text-[10px] font-bold uppercase focus:outline-none focus:ring-2 focus:ring-ocean"
+          >
+            {placementBusy ? "Placing…" : "Cancel"}
+          </button>
+        </div>
+      )}
       <div className="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1">
         {sections.length === 0 ? (
           <p className="px-1 py-6 font-serif text-sm italic text-ink-mute dark:text-moonlight">
@@ -136,6 +267,13 @@ export default function Outline({
               sectionNumber={i + 1}
               onChanged={onChanged}
               investigationId={investigationId ?? "__operator__"}
+              placement={placement}
+              placementBusy={placementBusy}
+              onCommitPlacement={commitPlacement}
+              onPickMove={(outlineBlockId, label) => {
+                setPlacementError(null);
+                setMovingBlock({ kind: "move", outlineBlockId, label });
+              }}
             />
           ))
         )}
@@ -156,12 +294,20 @@ function SectionCard({
   sectionNumber,
   onChanged,
   investigationId,
+  placement,
+  placementBusy,
+  onCommitPlacement,
+  onPickMove,
 }: {
   deliverableId: string;
   section: SectionResponse;
   sectionNumber: number;
   onChanged: () => Promise<void> | void;
   investigationId: string;
+  placement: PlacementIntent | null;
+  placementBusy: boolean;
+  onCommitPlacement: (sectionId: string, blockIndex: number) => Promise<void>;
+  onPickMove: (outlineBlockId: string, label: string) => void;
 }) {
   const [blocks, setBlocks] = useState<OutlineBlockView[]>([]);
   const [dropHover, setDropHover] = useState(false);
@@ -290,16 +436,17 @@ function SectionCard({
     if (!payload) return;
     setBusy(true);
     try {
-      await placeBlock({
-        section_id: section.section_id,
-        block_kind: "insight",
-        provenance_kind: "graph_node",
-        node_id: payload.block_id,
-        block_index: blocks.length,
-        deliverable_id: deliverableId,
-      });
-      await refreshBlocks();
-      await onChanged();
+      await placeBlock(paletteDragToPlaceBlock(payload, {
+        sectionId: section.section_id,
+        blockIndex: blocks.length,
+        deliverableId,
+      }));
+      try {
+        await refreshBlocks();
+        await onChanged();
+      } catch {
+        // Persistence already succeeded; refresh failure is not a write retry.
+      }
     } finally {
       setBusy(false);
     }
@@ -317,8 +464,12 @@ function SectionCard({
     setBusy(true);
     try {
       await moveBlock(obid, section.section_id, toIndex);
-      await refreshBlocks();
-      await onChanged();
+      try {
+        await refreshBlocks();
+        await onChanged();
+      } catch {
+        // The move is committed; refresh failure cannot make it retryable.
+      }
     } finally {
       setBusy(false);
     }
@@ -442,8 +593,15 @@ function SectionCard({
       {blocks.length > 0 ? (
         <ol className="mb-3 space-y-1">
           {blocks.map((b, idx) => (
-            <li
-              key={b.outline_block_id}
+            <li key={b.outline_block_id} className="list-none">
+              {placement && (
+                <InsertionSeam
+                  label={idx === 0 ? `Place before ${blockDisplayText(b)}` : `Place between blocks ${idx} and ${idx + 1}`}
+                  disabled={placementBusy}
+                  onClick={() => void onCommitPlacement(section.section_id, idx)}
+                />
+              )}
+              <div
               draggable
               onDragStart={(e) => {
                 e.dataTransfer.setData(REORDER_MIME, b.outline_block_id);
@@ -465,13 +623,41 @@ function SectionCard({
               <p className="min-w-0 flex-1 font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
                 {blockDisplayText(b)}
               </p>
+              <button
+                type="button"
+                onClick={() => onPickMove(b.outline_block_id, blockDisplayText(b))}
+                aria-label={`Move ${blockDisplayText(b)}`}
+                className="shrink-0 border border-ocean/50 px-1.5 py-0.5 font-mono text-[9px] font-bold uppercase text-ocean focus:outline-none focus:ring-2 focus:ring-sun"
+              >
+                Move
+              </button>
+              </div>
             </li>
           ))}
+          {placement && (
+            <li className="list-none">
+              <InsertionSeam
+                label="Place after the last block"
+                disabled={placementBusy}
+                onClick={() => void onCommitPlacement(section.section_id, blocks.length)}
+              />
+            </li>
+          )}
         </ol>
       ) : (
-        <p className="mb-3 text-xs italic text-ink-mute dark:text-moonlight">
-          Empty. Tap a block from your repository, or drag one here.
-        </p>
+        <div className="mb-3">
+          {placement ? (
+            <InsertionSeam
+              label="Place as the first block"
+              disabled={placementBusy}
+              onClick={() => void onCommitPlacement(section.section_id, 0)}
+            />
+          ) : (
+            <p className="text-xs italic text-ink-mute dark:text-moonlight">
+              Empty. Tap a block from your repository, or drag one here.
+            </p>
+          )}
+        </div>
       )}
 
       {/* Generate (M3) + honest states. */}
@@ -651,6 +837,29 @@ function SectionCard({
         </div>
       )}
     </section>
+  );
+}
+
+function InsertionSeam({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className="my-1 flex w-full items-center gap-2 py-1 font-mono text-[9px] font-bold uppercase tracking-wider text-ocean focus:outline-none focus:ring-2 focus:ring-sun disabled:opacity-50"
+    >
+      <span className="h-px flex-1 border-t border-dashed border-ocean" aria-hidden="true" />
+      <span>{disabled ? "Placing…" : label}</span>
+      <span className="h-px flex-1 border-t border-dashed border-ocean" aria-hidden="true" />
+    </button>
   );
 }
 

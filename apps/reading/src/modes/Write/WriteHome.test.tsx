@@ -19,19 +19,20 @@ import type { TraceTarget } from "./writeApi";
 
 const {
   listDeliverablesMock, getTraceTargetMock, listInvestigationsMock,
-  startInvestigationMock, createDeliverableMock,
+  startInvestigationMock, createDeliverableMock, getDeliverableMock,
 } = vi.hoisted(() => ({
   listDeliverablesMock: vi.fn(),
   getTraceTargetMock: vi.fn(),
   listInvestigationsMock: vi.fn(),
   startInvestigationMock: vi.fn(),
   createDeliverableMock: vi.fn(),
+  getDeliverableMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => ({
   ...(await orig<typeof import("../../lib/api")>()),
   listDeliverables: listDeliverablesMock,
-  getDeliverable: vi.fn().mockResolvedValue(null),
+  getDeliverable: getDeliverableMock,
   createDeliverable: createDeliverableMock,
   listInvestigations: listInvestigationsMock,
   startInvestigation: startInvestigationMock,
@@ -44,7 +45,10 @@ vi.mock("./writeApi", async (orig) => ({
 
 import WriteHome from "./WriteHome";
 
+let desktopMatches = false;
+
 beforeEach(() => {
+  desktopMatches = false;
   listDeliverablesMock.mockReset().mockResolvedValue({ count: 0, deliverables: [] });
   getTraceTargetMock.mockReset();
   listInvestigationsMock.mockReset().mockResolvedValue({ count: 0, investigations: [] });
@@ -56,6 +60,7 @@ beforeEach(() => {
     investigation_root_id: "inv-spawned", status: "draft",
     created_at: null, updated_at: null, section_count: 0,
   });
+  getDeliverableMock.mockReset().mockResolvedValue(null);
   // WriteHome now renders through GlassSurface (SPR-03 M2 landing-glass home /
   // M3 solid open-piece), which reads prefers-reduced-motion via
   // window.matchMedia. jsdom lacks it; stub the default (motion allowed → the
@@ -64,7 +69,7 @@ beforeEach(() => {
     writable: true,
     configurable: true,
     value: (query: string) => ({
-      matches: false,
+      matches: query === "(min-width: 1024px)" ? desktopMatches : false,
       media: query,
       onchange: null,
       addEventListener: () => {},
@@ -90,6 +95,39 @@ function mountAt(path: string) {
 }
 
 describe("WriteHome — the re-homed door", () => {
+  it("keeps one responsive repository door when a piece is open", async () => {
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-1",
+      title: "Responsive evidence memo",
+      deliverable_kind: "general_essay",
+      investigation_root_id: "inv-1",
+      status: "draft",
+      created_at: null,
+      updated_at: null,
+      sections: [],
+    });
+    const { container } = mountAt("/write/dlv-1");
+    await screen.findByText("Responsive evidence memo");
+    expect(screen.getByRole("button", { name: /evidence blocks/i })).toBeTruthy();
+    expect(screen.getByTestId("write-field-kit").className).toContain("lg:hidden");
+    const sidebar = container.querySelector("aside.hidden.lg\\:flex");
+    expect(sidebar).toBeNull();
+    expect(container.querySelectorAll('[data-mode="write-block-repository"]')).toHaveLength(0);
+  });
+
+  it("mounts the sole repository sidebar—not a field kit—at desktop width", async () => {
+    desktopMatches = true;
+    getDeliverableMock.mockResolvedValue({
+      deliverable_id: "dlv-1", title: "Desktop evidence memo",
+      deliverable_kind: "general_essay", investigation_root_id: "inv-1",
+      status: "draft", created_at: null, updated_at: null, sections: [],
+    });
+    const { container } = mountAt("/write/dlv-1");
+    await screen.findByText("Desktop evidence memo");
+    expect(screen.queryByTestId("write-field-kit")).toBeNull();
+    expect(container.querySelectorAll('[data-mode="write-block-repository"]')).toHaveLength(1);
+  });
+
   it("the no-piece Write home is LANDING-GLASS (SPR-03 M2 occlusion contract)", async () => {
     // Audit §3 item 5: the Write home (no piece) is a landing surface, rendered
     // through GlassSurface variant="glass" so the scene shows through the margins.
