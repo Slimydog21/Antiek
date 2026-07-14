@@ -22,7 +22,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { InvestigationSummary } from "../../lib/api";
 
-const { listState, budgetState, authState, navigateMock } = vi.hoisted(() => ({
+const { listState, budgetState, authState, navigateMock, previewComposeMock, createComposeMock } = vi.hoisted(() => ({
   listState: {
     current: {
       investigations: [] as InvestigationSummary[],
@@ -40,6 +40,8 @@ const { listState, budgetState, authState, navigateMock } = vi.hoisted(() => ({
   },
   authState: { current: { status: "authenticated" as "authenticated" | "unauthenticated" | "loading" } },
   navigateMock: vi.fn(),
+  previewComposeMock: vi.fn(),
+  createComposeMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigationList", () => ({
@@ -58,6 +60,8 @@ vi.mock("../../api/research", async (orig) => {
     // deterministic + offline here (empty → honest no-result), so these
     // monitor tests stay a true unit. SuggestedResearch has its own suite.
     getSuggestions: () => Promise.resolve({ count: 0, suggestions: [] }),
+    previewResearchCompose: previewComposeMock,
+    createResearchCompose: createComposeMock,
   };
 });
 
@@ -107,6 +111,8 @@ beforeEach(() => {
   };
   authState.current = { status: "authenticated" };
   navigateMock.mockReset();
+  previewComposeMock.mockReset();
+  createComposeMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -217,5 +223,41 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
     renderMonitor();
     await user.click(screen.getByRole("button", { name: "Launch several at once" }));
     expect(navigateMock).toHaveBeenCalledWith("/");
+  });
+});
+
+describe("MyResearch — compose light table", () => {
+  it("selects only completed research and creates after exact-hash review", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", question: "One", status: "completed" }),
+      inv({ investigation_id: "inv-two", question: "Two", status: "completed" }),
+      inv({ investigation_id: "inv-live", question: "Live", status: "in_progress" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "fingerprint",
+      members: [
+        { investigation_id: "inv-one", content_hash: "a".repeat(64) },
+        { investigation_id: "inv-two", content_hash: "b".repeat(64) },
+      ],
+      identical_content: [], view_url: null, reused: false,
+    });
+    createComposeMock.mockResolvedValue({
+      compose_id: "cmp-created", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [],
+      view_url: "/research/artifact-composes/cmp-created/view", reused: false,
+    });
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    expect((screen.getByRole("checkbox", { name: /Select Live/ }) as HTMLInputElement).disabled).toBe(true);
+    await user.click(screen.getByRole("checkbox", { name: /Select One/ }));
+    await user.click(screen.getByRole("checkbox", { name: /Select Two/ }));
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    expect(previewComposeMock).toHaveBeenCalledWith(["inv-one", "inv-two"]);
+    expect(await screen.findByText("a".repeat(64))).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Create HTML draft" }));
+    expect(createComposeMock).toHaveBeenCalledWith(["inv-one", "inv-two"], "fingerprint");
+    const link = await screen.findByRole("link", { name: /Open HTML draft/ }) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("/research/artifact-composes/cmp-created/view");
   });
 });

@@ -146,6 +146,20 @@ export interface SuggestionsResponse {
   suggestions: Suggestion[];
 }
 
+export interface ResearchComposeMember {
+  investigation_id: string;
+  content_hash: string;
+}
+
+export interface ResearchCompose {
+  compose_id: string;
+  selection_fingerprint: string;
+  members: ResearchComposeMember[];
+  identical_content: [string, string][];
+  view_url: string | null;
+  reused: boolean;
+}
+
 // ── Request helpers ─────────────────────────────────────────────────────
 
 async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
@@ -179,6 +193,19 @@ export function getBudgetDefaults(): Promise<BudgetDefaults> {
  * here. `limit` bounds the displayed count (rank + cap, never a flood). */
 export function getSuggestions(limit = 8): Promise<SuggestionsResponse> {
   return get(`/research/suggestions?limit=${encodeURIComponent(String(limit))}`);
+}
+
+export function previewResearchCompose(investigationIds: string[]): Promise<ResearchCompose> {
+  return post("/research/artifact-composes/preview", { investigation_ids: investigationIds });
+}
+
+export function createResearchCompose(
+  investigationIds: string[], selectionFingerprint: string,
+): Promise<ResearchCompose> {
+  return post("/research/artifact-composes", {
+    investigation_ids: investigationIds,
+    selection_fingerprint: selectionFingerprint,
+  });
 }
 
 export function createPlan(req: {
