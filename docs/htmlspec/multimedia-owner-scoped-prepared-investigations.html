@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Cycle 26 - Owner-scoped prepared investigations</title>
+  <style>
+    body { margin: 0 auto; max-width: 980px; padding: 32px 24px 72px; color: #18181b; background: #fafafa; font: 16px/1.55 system-ui, sans-serif; }
+    h1, h2 { letter-spacing: 0; line-height: 1.2; } h1 { font-size: 32px; } h2 { margin-top: 36px; font-size: 21px; }
+    code { background: #e4e4e7; padding: 2px 4px; } table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border: 1px solid #d4d4d8; text-align: left; vertical-align: top; }
+    .gate { border-left: 4px solid #b91c1c; padding-left: 14px; } li { margin: 7px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Owner-scoped prepared investigations</h1>
+  <p><strong>Cycle:</strong> 26. <strong>Base:</strong> Cycle 25 owner-private editable research plans. <strong>Status:</strong> execution contract.</p>
+
+  <h2>Outcome</h2>
+  <p>An authenticated owner can prepare one immutable, inspectable investigation snapshot from the exact current approved version of a multimedia research plan. Preparation is durable and exactly idempotent but grants no execution authority: it emits no event, creates no legacy runnable investigation, writes no graph data, calls no provider, authorizes no spend, and schedules no work.</p>
+
+  <h2>Five values</h2>
+  <table>
+    <tr><th>Value</th><th>Required consequence</th></tr>
+    <tr><td>Truth</td><td><code>prepared</code> means only that an approved plan snapshot was durably captured; it never implies queued, running, launched, funded, or completed.</td></tr>
+    <tr><td>Ownership</td><td>Creation, replay, and read bind the server-derived owner digest. Missing and foreign records are indistinguishable.</td></tr>
+    <tr><td>Determinism</td><td>An exact retry returns the original historical snapshot even after the source plan changes. Request drift under one key conflicts.</td></tr>
+    <tr><td>Control</td><td>The source plan must be current, exact-version, approved by the authenticated owner, and fully integrity-valid inside the creation transaction.</td></tr>
+    <tr><td>Least authority</td><td>The new authority imports or invokes no event, graph, orchestrator, runner, provider, network, budget, spend, task, daemon, or scheduler collaborator.</td></tr>
+  </table>
+
+  <h2>Prepared authority</h2>
+  <p>The server creates a <code>PreparedInvestigation</code> with a non-runnable <code>mpi_</code> plus 48-lowercase-hex ID. It contains:</p>
+  <ul>
+    <li>Source plan ID, exact plan version, internal source-plan integrity digest, intent ID/digest, and evidence digest.</li>
+    <li>An immutable deep snapshot of the complete ordered question tree, including stable <code>mrpn_</code> node identities and root provenance.</li>
+    <li>Derived total-node and leaf-question counts that are recomputed on every decode.</li>
+    <li>Preparation request digest, literal <code>state="prepared"</code>, and server creation timestamp.</li>
+    <li>Literal <code>execution_started=false</code>, <code>background_work_authorized=false</code>, and null event, graph, provider, and spend authority digests.</li>
+  </ul>
+  <p>No owner digest or idempotency key appears in the public projection. The private canonical envelope binds both.</p>
+
+  <h2>Creation API</h2>
+  <p><code>POST /multimedia/research-plans/{plan_id}/investigation</code> accepts only:</p>
+  <ul>
+    <li><code>idempotency_key</code>: 16-128 ASCII alphanumeric, underscore, or hyphen.</li>
+    <li><code>expected_plan_version</code>: strict positive integer.</li>
+  </ul>
+  <p>The client does not submit owner, investigation ID, source digests, tree, counts, state, timestamps, integrity seals, routing, model, context, budget, or authority flags. The server verifies the internal plan-integrity digest transactionally; it does not expose that tamper seal as client protocol.</p>
+
+  <h2>Read API</h2>
+  <p><code>GET /multimedia/investigations/{investigation_id}</code> returns the immutable prepared snapshot only to its owner. Prepared records do not appear in legacy <code>/investigations</code>, trajectory, cascade, graph, daemon, or event-log projections.</p>
+
+  <h2>Storage and migration</h2>
+  <p>The prepared table lives in <code>research-plans.sqlite3</code>, allowing source verification and insert to share one SQLite transaction. Schema v3 adds <code>multimedia_prepared_investigations</code> without rewriting v2 plans or mutation receipts. Migration verifies the exact v2 schema, runs under <code>BEGIN IMMEDIATE</code>, creates the exact v3 table, sets <code>PRAGMA user_version=3</code>, and commits atomically. Drift or partial migration fails closed; no repair or deletion is permitted.</p>
+  <p>The table duplicates owner, source IDs/digests, source version/integrity, request digest, canonical envelope, prepared integrity digest, and timestamp. Unique constraints cover owner-key and owner-plan. The prepared row itself is the immutable idempotency receipt.</p>
+
+  <h2>Creation transaction</h2>
+  <ol>
+    <li>Validate owner, plan ID, key, version, and canonical request size before mutation.</li>
+    <li>Open the privately controlled plan ledger, verify schema v3, and enter <code>BEGIN IMMEDIATE</code>.</li>
+    <li>Look up the owner-key prepared row before reading current plan state. Exact request replay returns its stored historical response; drift conflicts.</li>
+    <li>Look up any owner-plan prepared row. A different key conflicts; preparation never mints a second snapshot for one plan.</li>
+    <li>Load and fully integrity-check the current owner plan. Missing and foreign plans are equally unavailable.</li>
+    <li>Require exact expected version, <code>state="approved"</code>, valid owner approval fields, and all Cycle 25 no-execution fields.</li>
+    <li>Deep-copy and strictly validate the complete tree. Compute counts and construct the immutable prepared object.</li>
+    <li>Enforce 128 KiB canonical request, envelope, and response limits; insert the row and commit.</li>
+    <li>Return only after commit. No callback occurs before, during, or after the transaction.</li>
+  </ol>
+
+  <h2>Concurrency</h2>
+  <ul>
+    <li>Two identical same-key prepares serialize to one <code>201</code>, one exact <code>200</code>, and one row.</li>
+    <li>Different keys for one plan produce one commit and one conflict.</li>
+    <li>Edit first makes the plan draft or version-stale and preparation fails. Preparation first captures history; a later edit does not mutate it.</li>
+    <li>Approval first may make preparation valid. Preparation first against draft fails without retry or synthesized approval.</li>
+    <li>Failure before commit leaves neither prepared row nor partial migration.</li>
+  </ul>
+
+  <h2>Integrity and limits</h2>
+  <ul>
+    <li>Strict canonical JSON and relational cross-binding cover every duplicated field. Unknown, missing, malformed, non-canonical, or oversized data fails closed.</li>
+    <li>Prepared integrity is SHA-256 over the complete prepared object. The source plan integrity digest is captured from the verified current row.</li>
+    <li>The snapshot reuses Cycle 25 bounds: 256 nodes, depth 8 including root, 64 children per node, 3-2000 trimmed characters per question, unique stable IDs, connected acyclic strict shape.</li>
+    <li>Counts, root provenance, source columns, timestamp, literal state, and every zero-authority field are re-derived or checked on every read/replay.</li>
+    <li>The same private-root, regular-file, ownership, mode, hard-link, and inode-race protections used by the plan ledger apply.</li>
+  </ul>
+
+  <h2>HTTP semantics</h2>
+  <ul>
+    <li><code>201</code> first creation; <code>200</code> exact replay and owner read.</li>
+    <li>Opaque private <code>404</code> for malformed, absent, or foreign plan/prepared IDs.</li>
+    <li><code>409</code> for draft source, stale version, idempotency drift, already prepared under another key, or stored-integrity conflict.</li>
+    <li><code>413</code> for request, envelope, or response overflow; framework <code>422</code> for strict body validation; private <code>500</code> for operational storage or unexpected failure.</li>
+    <li>Every response includes <code>Cache-Control: private, no-store</code> and reveals no owner digest, key, hidden foreign question, path, SQL, or exception detail.</li>
+  </ul>
+
+  <h2 class="gate">Non-negotiable refusals</h2>
+  <ul>
+    <li>No use of legacy <code>inv-</code>, <code>POST /investigations</code>, event broadcaster, trajectory, <code>CascadeSession</code>, <code>InvestigationCoordinator</code>, or research runner.</li>
+    <li>No event, graph node/edge/document, embedding, promotion, provider call, network request, route/model selection, budget estimate, reservation, spend record, task, queue, daemon, or scheduler.</li>
+    <li>No launch/start/activate/cancel/delete/list/mutate endpoint and no mutable queued/running/completed/superseded/revoked state.</li>
+    <li>No caller-authored snapshot, provenance, integrity digest, owner, identity, count, state, timestamp, or execution field.</li>
+    <li>No automatic invalidation when the source plan later changes; historical preparation remains an immutable statement about what was approved then.</li>
+  </ul>
+
+  <h2>Rejected alternatives</h2>
+  <table>
+    <tr><th>Alternative</th><th>Reason rejected</th></tr>
+    <tr><td>Call legacy <code>POST /investigations</code></td><td>It emits a start event and broadcasts to detached orchestration immediately.</td></tr>
+    <tr><td>Separate prepared database</td><td>Cannot atomically prove current approval and persist its snapshot across concurrent edits.</td></tr>
+    <tr><td>Reuse plan approval as preparation</td><td>Approval is mutable plan state, not an immutable inspectable handoff record.</td></tr>
+    <tr><td>Expose the internal plan digest as required client input</td><td>Exact version and transactional current-approval validation prove authority without expanding client protocol.</td></tr>
+    <tr><td>Add activation fields now</td><td>Mutable lifecycle states invite execution semantics into a cycle whose sole purpose is zero-authority preparation.</td></tr>
+  </table>
+
+  <h2>Acceptance</h2>
+  <ol>
+    <li>An exact current approved plan creates one owner-private immutable prepared snapshot; draft and stale-version plans cannot.</li>
+    <li>Exact replay returns the historical response after later edits/reapproval; changed plan/version/key terms conflict appropriately.</li>
+    <li>Concurrent same-key and different-key preparations produce exactly one row with defined outcomes.</li>
+    <li>The snapshot preserves exact order, node IDs, questions, root provenance, and derived counts.</li>
+    <li>Foreign and absent source/prepared IDs are indistinguishable and every route response is private/no-store.</li>
+    <li>Row, envelope, tree, digest, count, timestamp, owner, source, zero-authority, canonicalization, schema, and file tampering fail closed.</li>
+    <li>Exact v2 stores migrate transactionally to v3; migration failure preserves v2 bytes and no partial table.</li>
+    <li>Static import checks and runtime spies prove create, replay, read, and failures touch no forbidden collaborator or external state.</li>
+    <li>No legacy event file, trajectory row, graph write, provider record, spend record, or background task is created.</li>
+    <li>Focused tests, all multimedia backend tests, frontend tests/typecheck/build, Ruff, HTML parsing, diff hygiene, independent reviews, and HardenX pass or any unrelated harness failure is evidenced precisely.</li>
+  </ol>
+</main>
+</body>
+</html>

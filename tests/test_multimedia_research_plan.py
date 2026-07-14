@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import ast
+import asyncio
 import json
 import os
+import socket
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -338,6 +342,7 @@ def test_exact_v1_store_migrates_transactionally_with_stable_root_id(tmp_path) -
         ).fetchone()
         envelope = json.loads(row[8])
         envelope["plan"]["tree"]["root"].pop("node_id")
+        connection.execute("DROP TABLE multimedia_prepared_investigations")
         connection.execute("DROP TABLE multimedia_research_plan_mutations")
         connection.execute("DROP TABLE multimedia_research_plans")
         connection.execute(
@@ -361,7 +366,7 @@ def test_exact_v1_store_migrates_transactionally_with_stable_root_id(tmp_path) -
     assert replay.tree["root"]["node_id"] == migrated.tree["root"]["node_id"]
     assert migrated.plan_version == plan.plan_version
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
 
 
 def test_tampered_receipt_tree_is_a_stored_integrity_error(tmp_path) -> None:
@@ -391,3 +396,237 @@ def test_tampered_receipt_tree_is_a_stored_integrity_error(tmp_path) -> None:
                     idempotency_key="mutation-12345678", expected_plan_version=1,
                     operations=body)
     assert not isinstance(error.value, ResearchPlanValidationError)
+
+
+def test_prepare_is_immutable_owner_scoped_and_replays_historical_snapshot(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    ledger.approve(owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1)
+    prepared, created = ledger.prepare_investigation(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="prepare-123456789", expected_plan_version=1,
+    )
+    edited = ledger.edit(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="mutation-12345678", expected_plan_version=1,
+        operations=[{"type": "add_child", "parent_node_id": plan.tree["root"]["node_id"],
+                     "position": 0, "question": "A later child?"}],
+    )
+    replay, replay_created = ledger.prepare_investigation(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="prepare-123456789", expected_plan_version=1,
+    )
+    assert created is True and replay_created is False and replay == prepared
+    assert prepared.investigation_id.startswith("mpi_")
+    assert prepared.tree == plan.tree and prepared.tree is not edited.tree
+    assert prepared.total_node_count == prepared.leaf_question_count == 1
+    assert prepared.state == "prepared" and prepared.execution_started is False
+    with pytest.raises(ResearchPlanError, match="unavailable"):
+        ledger.get_prepared_investigation(
+            owner_identity_digest="b" * 64, investigation_id=prepared.investigation_id
+        )
+
+
+def test_prepare_rejects_draft_stale_drift_and_second_key(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    with pytest.raises(ResearchPlanError, match="not approved"):
+        ledger.prepare_investigation(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="prepare-123456789", expected_plan_version=1,
+        )
+    ledger.approve(owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1)
+    with pytest.raises(ResearchPlanError, match="version conflict"):
+        ledger.prepare_investigation(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="prepare-123456789", expected_plan_version=2,
+        )
+    ledger.prepare_investigation(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="prepare-123456789", expected_plan_version=1,
+    )
+    with pytest.raises(ResearchPlanError, match="idempotency conflict"):
+        ledger.prepare_investigation(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="prepare-123456789", expected_plan_version=2,
+        )
+    with pytest.raises(ResearchPlanError, match="already prepared"):
+        ledger.prepare_investigation(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="prepare-other-12345", expected_plan_version=1,
+        )
+
+
+def test_concurrent_prepare_creates_exactly_one_v3_row(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    ledger.approve(owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1)
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: ledger.prepare_investigation(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="prepare-123456789", expected_plan_version=1,
+        ), range(4)))
+    assert sum(created for _, created in results) == 1
+    assert len({prepared.investigation_id for prepared, _ in results}) == 1
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute(
+            "SELECT count(*) FROM multimedia_prepared_investigations"
+        ).fetchone()[0] == 1
+
+
+def test_exact_v2_store_migrates_atomically_to_v3(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute("DROP TABLE multimedia_prepared_investigations")
+        connection.execute("PRAGMA user_version=2")
+    assert ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id) == plan
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute(
+            "SELECT count(*) FROM multimedia_prepared_investigations"
+        ).fetchone()[0] == 0
+
+
+def test_v2_migration_failure_rolls_back_without_partial_v3(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute("DROP TABLE multimedia_prepared_investigations")
+        connection.execute("PRAGMA user_version=2")
+    with (
+        patch("substrate.multimedia.research_plan._V3_PREPARED_SCHEMA", "CREATE TABLE broken ("),
+        pytest.raises(ResearchPlanStorageError),
+    ):
+        ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id)
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' "
+            "AND name='multimedia_prepared_investigations'"
+        ).fetchone()[0] == 0
+
+
+def test_prepared_tamper_and_forbidden_imports_fail_closed(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    ledger.approve(owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1)
+    prepared, _ = ledger.prepare_investigation(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="prepare-123456789", expected_plan_version=1,
+    )
+    with sqlite3.connect(ledger.path) as connection:
+        raw = connection.execute(
+            "SELECT prepared_json FROM multimedia_prepared_investigations"
+        ).fetchone()[0]
+        envelope = json.loads(raw)
+        envelope["prepared_investigation"]["total_node_count"] = True
+        changed = json.dumps(envelope, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+        connection.execute(
+            "UPDATE multimedia_prepared_investigations SET prepared_json=? WHERE investigation_id=?",
+            (changed, prepared.investigation_id),
+        )
+    with pytest.raises(ResearchPlanError, match="stored prepared investigation"):
+        ledger.get_prepared_investigation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id
+        )
+
+    tree = ast.parse((Path(__file__).parents[1] / "substrate/multimedia/research_plan.py").read_text())
+    imports = {
+        alias.name for node in ast.walk(tree) if isinstance(node, ast.Import) for alias in node.names
+    } | {
+        node.module or "" for node in ast.walk(tree) if isinstance(node, ast.ImportFrom)
+    }
+    forbidden = ("event", "graph", "orchestration", "provider", "dispatch", "budget", "spend")
+    assert not any(token in name for name in imports for token in forbidden)
+
+
+def test_prepare_replay_read_and_failure_schedule_no_work_or_network(tmp_path) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    ledger.approve(owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1)
+    with (
+        patch.object(asyncio, "create_task") as create_task,
+        patch.object(socket, "create_connection") as create_connection,
+    ):
+        prepared, _ = ledger.prepare_investigation(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="prepare-123456789", expected_plan_version=1,
+        )
+        ledger.prepare_investigation(
+            owner_identity_digest=owner, plan_id=plan.plan_id,
+            idempotency_key="prepare-123456789", expected_plan_version=1,
+        )
+        ledger.get_prepared_investigation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id
+        )
+        with pytest.raises(ResearchPlanError):
+            ledger.prepare_investigation(
+                owner_identity_digest=owner, plan_id=plan.plan_id,
+                idempotency_key="prepare-other-12345", expected_plan_version=1,
+            )
+    create_task.assert_not_called()
+    create_connection.assert_not_called()
+
+
+@pytest.mark.parametrize("column,value", [
+    ("owner_identity_digest", "b" * 64),
+    ("source_plan_version", 2),
+    ("source_plan_integrity_digest", "b" * 64),
+    ("source_intent_digest", "b" * 64),
+    ("source_evidence_digest", "b" * 64),
+    ("idempotency_key", "short"),
+    ("request_digest", "b" * 64),
+    ("prepared_integrity_digest", "b" * 64),
+    ("created_at", "2020-01-01T00:00:00Z"),
+])
+def test_prepared_relational_binding_tamper_fails_closed(tmp_path, column, value) -> None:
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789",
+        intent=_intent(tmp_path),
+    )
+    ledger.approve(owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1)
+    prepared, _ = ledger.prepare_investigation(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="prepare-123456789", expected_plan_version=1,
+    )
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute(
+            f"UPDATE multimedia_prepared_investigations SET {column}=? WHERE investigation_id=?",
+            (value, prepared.investigation_id),
+        )
+    with pytest.raises(ResearchPlanError, match="prepared investigation"):
+        ledger.get_prepared_investigation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id
+        )

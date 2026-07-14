@@ -27,6 +27,12 @@ _RECEIPT_COLUMNS = (
     "base_plan_version", "result_plan_version", "before_plan_integrity_digest",
     "after_plan_integrity_digest", "response_json", "created_at",
 )
+_PREPARED_COLUMNS = (
+    "investigation_id", "owner_identity_digest", "source_plan_id",
+    "source_plan_version", "source_plan_integrity_digest", "source_intent_id",
+    "source_intent_digest", "source_evidence_digest", "idempotency_key",
+    "request_digest", "prepared_json", "prepared_integrity_digest", "created_at",
+)
 _V1_SCHEMA = """
 CREATE TABLE IF NOT EXISTS multimedia_research_plans (
   plan_id TEXT PRIMARY KEY, owner_identity_digest TEXT NOT NULL,
@@ -64,6 +70,23 @@ CREATE TABLE IF NOT EXISTS multimedia_research_plan_mutations (
   FOREIGN KEY(plan_id) REFERENCES multimedia_research_plans(plan_id)
 )
 """
+_V3_PREPARED_SCHEMA = """
+CREATE TABLE IF NOT EXISTS multimedia_prepared_investigations (
+  investigation_id TEXT PRIMARY KEY, owner_identity_digest TEXT NOT NULL,
+  source_plan_id TEXT NOT NULL, source_plan_version INTEGER NOT NULL CHECK(source_plan_version >= 1),
+  source_plan_integrity_digest TEXT NOT NULL CHECK(length(source_plan_integrity_digest) = 64),
+  source_intent_id TEXT NOT NULL,
+  source_intent_digest TEXT NOT NULL CHECK(length(source_intent_digest) = 64),
+  source_evidence_digest TEXT NOT NULL CHECK(length(source_evidence_digest) = 64),
+  idempotency_key TEXT NOT NULL,
+  request_digest TEXT NOT NULL CHECK(length(request_digest) = 64), prepared_json TEXT NOT NULL,
+  prepared_integrity_digest TEXT NOT NULL CHECK(length(prepared_integrity_digest) = 64),
+  created_at TEXT NOT NULL,
+  UNIQUE(owner_identity_digest, idempotency_key),
+  UNIQUE(owner_identity_digest, source_plan_id),
+  FOREIGN KEY(source_plan_id) REFERENCES multimedia_research_plans(plan_id)
+)
+"""
 
 _MAX_RECORD_BYTES = 128 * 1024
 _MAX_NODES = 256
@@ -90,6 +113,29 @@ class ResearchPlanValidationError(ResearchPlanError):
 
 class ResearchPlanTooLargeError(ResearchPlanValidationError):
     """A canonical request or result exceeds the private authority bound."""
+
+
+@dataclass(frozen=True)
+class PreparedInvestigation:
+    investigation_id: str
+    source_plan_id: str
+    source_plan_version: int
+    source_plan_integrity_digest: str
+    source_intent_id: str
+    source_intent_digest: str
+    source_evidence_digest: str
+    tree: dict[str, object]
+    total_node_count: int
+    leaf_question_count: int
+    request_digest: str
+    state: str
+    created_at: str
+    execution_started: bool = False
+    background_work_authorized: bool = False
+    event_authority_digest: None = None
+    graph_authority_digest: None = None
+    provider_authority_digest: None = None
+    spend_authority_digest: None = None
 
 
 @dataclass(frozen=True)
@@ -314,6 +360,113 @@ class ResearchPlanLedger:
         finally:
             connection.close()
 
+    def prepare_investigation(
+        self, *, owner_identity_digest: str, plan_id: str, idempotency_key: str,
+        expected_plan_version: int,
+    ) -> tuple[PreparedInvestigation, bool]:
+        _validate_owner(owner_identity_digest)
+        _validate_plan_id(plan_id)
+        _validate_key(idempotency_key)
+        _validate_version(expected_plan_version)
+        request = {"expected_plan_version": expected_plan_version, "source_plan_id": plan_id}
+        request_raw = _canonical(request)
+        _check_size(request_raw, "prepared investigation request is too large")
+        request_digest = _digest(request)
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            connection.execute("BEGIN IMMEDIATE")
+            replay_row = connection.execute(
+                "SELECT " + ",".join(_PREPARED_COLUMNS)
+                + " FROM multimedia_prepared_investigations "
+                "WHERE owner_identity_digest=? AND idempotency_key=?",
+                (owner_identity_digest, idempotency_key),
+            ).fetchone()
+            if replay_row is not None:
+                replay = self._decode_prepared_row(replay_row, owner_identity_digest)
+                if replay_row[9] != request_digest:
+                    raise ResearchPlanError("prepared investigation idempotency conflict")
+                connection.commit()
+                return replay, False
+            existing = connection.execute(
+                "SELECT " + ",".join(_PREPARED_COLUMNS)
+                + " FROM multimedia_prepared_investigations "
+                "WHERE owner_identity_digest=? AND source_plan_id=?",
+                (owner_identity_digest, plan_id),
+            ).fetchone()
+            if existing is not None:
+                self._decode_prepared_row(existing, owner_identity_digest)
+                raise ResearchPlanError("research plan is already prepared")
+            plan_row = self._select_plan(connection, owner_identity_digest, plan_id)
+            if plan_row is None:
+                raise ResearchPlanUnavailableError("research plan is unavailable")
+            plan = self._decode_row(plan_row, owner_identity_digest)
+            if plan.plan_version != expected_plan_version:
+                raise ResearchPlanError("research plan version conflict")
+            if (plan.state != "approved" or plan.approved_by_owner_digest != owner_identity_digest
+                    or not _timestamp(plan.approved_at) or plan.research_launched is not False
+                    or plan.provider_launch_authorized is not False
+                    or plan.spend_authority_digest is not None):
+                raise ResearchPlanError("research plan is not approved")
+            tree = deepcopy(plan.tree)
+            _validate_tree(tree, plan)
+            total_nodes, leaf_questions = _tree_counts(tree)
+            prepared = PreparedInvestigation(
+                investigation_id="mpi_" + secrets.token_hex(24), source_plan_id=plan.plan_id,
+                source_plan_version=plan.plan_version,
+                source_plan_integrity_digest=str(plan_row[11]),
+                source_intent_id=plan.source_intent_id,
+                source_intent_digest=plan.source_intent_digest,
+                source_evidence_digest=plan.source_evidence_digest, tree=tree,
+                total_node_count=total_nodes, leaf_question_count=leaf_questions,
+                request_digest=request_digest, state="prepared", created_at=_now(),
+            )
+            _assert_prepared_integrity(prepared)
+            raw = _encode_prepared(prepared, owner_identity_digest, idempotency_key)
+            response_raw = _canonical(asdict(prepared))
+            _check_size(raw, "prepared investigation is too large")
+            _check_size(response_raw, "prepared investigation is too large")
+            connection.execute(
+                "INSERT INTO multimedia_prepared_investigations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (prepared.investigation_id, owner_identity_digest, prepared.source_plan_id,
+                 prepared.source_plan_version, prepared.source_plan_integrity_digest,
+                 prepared.source_intent_id, prepared.source_intent_digest,
+                 prepared.source_evidence_digest, idempotency_key, request_digest, raw,
+                 _prepared_digest(prepared), prepared.created_at),
+            )
+            connection.commit()
+            return prepared, True
+        except sqlite3.Error as exc:
+            connection.rollback()
+            raise ResearchPlanStorageError("research plan ledger is unavailable") from exc
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def get_prepared_investigation(
+        self, *, owner_identity_digest: str, investigation_id: str,
+    ) -> PreparedInvestigation:
+        _validate_owner(owner_identity_digest)
+        _validate_investigation_id(investigation_id)
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            row = connection.execute(
+                "SELECT " + ",".join(_PREPARED_COLUMNS)
+                + " FROM multimedia_prepared_investigations "
+                "WHERE owner_identity_digest=? AND investigation_id=?",
+                (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if row is None:
+                raise ResearchPlanUnavailableError("prepared investigation is unavailable")
+            return self._decode_prepared_row(row, owner_identity_digest)
+        except sqlite3.Error as exc:
+            raise ResearchPlanStorageError("research plan ledger is unavailable") from exc
+        finally:
+            connection.close()
+
     def _initialize(self, connection: sqlite3.Connection) -> None:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
         exists = connection.execute(
@@ -326,13 +479,16 @@ class ResearchPlanLedger:
             try:
                 connection.execute(_V2_PLAN_SCHEMA)
                 connection.execute(_V2_RECEIPT_SCHEMA)
-                connection.execute("PRAGMA user_version=2")
+                connection.execute(_V3_PREPARED_SCHEMA)
+                connection.execute("PRAGMA user_version=3")
                 connection.commit()
             except Exception:
                 connection.rollback()
                 raise
         elif version in (0, 1) and self._columns(connection, "multimedia_research_plans") == _V1_COLUMNS:
             self._migrate_v1(connection)
+        elif version == 2:
+            self._migrate_v2(connection)
         self._assert_schema(connection)
 
     def _migrate_v1(self, connection: sqlite3.Connection) -> None:
@@ -360,7 +516,25 @@ class ResearchPlanLedger:
             )
             connection.execute(_V2_RECEIPT_SCHEMA)
             connection.execute("DROP TABLE multimedia_research_plans_v1")
-            connection.execute("PRAGMA user_version=2")
+            connection.execute(_V3_PREPARED_SCHEMA)
+            connection.execute("PRAGMA user_version=3")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+
+    def _migrate_v2(self, connection: sqlite3.Connection) -> None:
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            version = connection.execute("PRAGMA user_version").fetchone()[0]
+            if version == 3:
+                connection.commit()
+                return
+            if version != 2:
+                raise ResearchPlanError("research plan ledger schema conflicts")
+            self._assert_v2_schema(connection)
+            connection.execute(_V3_PREPARED_SCHEMA)
+            connection.execute("PRAGMA user_version=3")
             connection.commit()
         except Exception:
             connection.rollback()
@@ -373,15 +547,28 @@ class ResearchPlanLedger:
             raise ResearchPlanError("research plan ledger schema conflicts")
 
     def _assert_schema(self, connection: sqlite3.Connection) -> None:
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 2:
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 3:
             raise ResearchPlanError("research plan ledger schema conflicts")
         if (self._columns(connection, "multimedia_research_plans") != _PLAN_COLUMNS
-                or self._columns(connection, "multimedia_research_plan_mutations") != _RECEIPT_COLUMNS):
+                or self._columns(connection, "multimedia_research_plan_mutations") != _RECEIPT_COLUMNS
+                or self._columns(connection, "multimedia_prepared_investigations") != _PREPARED_COLUMNS):
             raise ResearchPlanError("research plan ledger schema conflicts")
         plan_sql = self._schema_sql(connection, "multimedia_research_plans")
         receipt_sql = self._schema_sql(connection, "multimedia_research_plan_mutations")
+        prepared_sql = self._schema_sql(connection, "multimedia_prepared_investigations")
         if (_normalized_schema(plan_sql) != _normalized_schema(_V2_PLAN_SCHEMA)
-                or _normalized_schema(receipt_sql) != _normalized_schema(_V2_RECEIPT_SCHEMA)):
+                or _normalized_schema(receipt_sql) != _normalized_schema(_V2_RECEIPT_SCHEMA)
+                or _normalized_schema(prepared_sql) != _normalized_schema(_V3_PREPARED_SCHEMA)):
+            raise ResearchPlanError("research plan ledger schema conflicts")
+
+    def _assert_v2_schema(self, connection: sqlite3.Connection) -> None:
+        if (self._columns(connection, "multimedia_research_plans") != _PLAN_COLUMNS
+                or self._columns(connection, "multimedia_research_plan_mutations") != _RECEIPT_COLUMNS
+                or _normalized_schema(self._schema_sql(connection, "multimedia_research_plans"))
+                != _normalized_schema(_V2_PLAN_SCHEMA)
+                or _normalized_schema(self._schema_sql(connection, "multimedia_research_plan_mutations"))
+                != _normalized_schema(_V2_RECEIPT_SCHEMA)
+                or self._schema_sql(connection, "multimedia_prepared_investigations")):
             raise ResearchPlanError("research plan ledger schema conflicts")
 
     @staticmethod
@@ -436,6 +623,20 @@ class ResearchPlanLedger:
                 or not _timestamp(row[9]) or str(row[8]) != _canonical(asdict(plan))):
             raise ResearchPlanError("stored research plan mutation integrity conflicts")
         return plan
+
+    @staticmethod
+    def _decode_prepared_row(row: tuple[object, ...], owner: str) -> PreparedInvestigation:
+        prepared = _decode_prepared_envelope(row[10], owner, str(row[8]))
+        expected = (
+            prepared.investigation_id, owner, prepared.source_plan_id,
+            prepared.source_plan_version, prepared.source_plan_integrity_digest,
+            prepared.source_intent_id, prepared.source_intent_digest,
+            prepared.source_evidence_digest, row[8], prepared.request_digest, row[10],
+            _prepared_digest(prepared), prepared.created_at,
+        )
+        if not _valid_key(row[8]) or tuple(row) != expected:
+            raise ResearchPlanError("stored prepared investigation integrity conflicts")
+        return prepared
 
     def _connect_existing(self) -> sqlite3.Connection:
         if not self.path.is_file() or self.path.is_symlink():
@@ -690,6 +891,89 @@ def _plan_digest(plan: ResearchPlan) -> str:
     return _digest(asdict(plan))
 
 
+def _encode_prepared(prepared: PreparedInvestigation, owner: str, key: str) -> str:
+    return _canonical({
+        "owner_identity_digest": owner,
+        "idempotency_key": key,
+        "prepared_investigation": asdict(prepared),
+    })
+
+
+def _decode_prepared_envelope(raw: object, owner: str, key: str) -> PreparedInvestigation:
+    if not isinstance(raw, str) or len(raw.encode()) > _MAX_RECORD_BYTES:
+        raise ResearchPlanError("stored prepared investigation is too large")
+    try:
+        envelope = json.loads(raw)
+        if (not isinstance(envelope, dict) or set(envelope) != {
+                "owner_identity_digest", "idempotency_key", "prepared_investigation"
+        } or envelope["owner_identity_digest"] != owner or envelope["idempotency_key"] != key
+                or not isinstance(envelope["prepared_investigation"], dict)
+                or set(envelope["prepared_investigation"])
+                != set(PreparedInvestigation.__dataclass_fields__)):
+            raise ResearchPlanError("stored prepared investigation binding conflicts")
+        prepared = PreparedInvestigation(**envelope["prepared_investigation"])
+        _assert_prepared_integrity(prepared)
+        if raw != _encode_prepared(prepared, owner, key):
+            raise ResearchPlanError("stored prepared investigation is non-canonical")
+        return prepared
+    except ResearchPlanError:
+        raise
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise ResearchPlanError("stored prepared investigation is malformed") from exc
+
+
+def _prepared_digest(prepared: PreparedInvestigation) -> str:
+    return _digest(asdict(prepared))
+
+
+def _tree_counts(tree: dict[str, object]) -> tuple[int, int]:
+    root = tree["root"]
+    assert isinstance(root, dict)
+    nodes, _ = _index_tree(root)
+    leaves = sum(not node["children"] for node in nodes.values())
+    return len(nodes), leaves
+
+
+def _assert_prepared_integrity(prepared: PreparedInvestigation) -> None:
+    plan_shape = ResearchPlan(
+        plan_id=prepared.source_plan_id, source_intent_id=prepared.source_intent_id,
+        source_intent_digest=prepared.source_intent_digest,
+        source_evidence_digest=prepared.source_evidence_digest, request_digest="0" * 64,
+        state="approved", plan_version=prepared.source_plan_version, tree=prepared.tree,
+        created_at=prepared.created_at, updated_at=prepared.created_at,
+        approved_at=prepared.created_at, approved_by_owner_digest="0" * 64,
+    )
+    try:
+        _validate_tree(prepared.tree, plan_shape)
+        counts = _tree_counts(prepared.tree)
+    except ResearchPlanError:
+        raise
+    except (KeyError, TypeError, AssertionError) as exc:
+        raise ResearchPlanError("stored prepared investigation is malformed") from exc
+    expected_request_digest = _digest({
+        "expected_plan_version": prepared.source_plan_version,
+        "source_plan_id": prepared.source_plan_id,
+    })
+    if (not _opaque_id(prepared.investigation_id, prefix="mpi_", hex_length=48)
+            or not _opaque_id(prepared.source_plan_id, prefix="mrp_", hex_length=48)
+            or type(prepared.source_plan_version) is not int or prepared.source_plan_version < 1
+            or not _hex_digest(prepared.source_plan_integrity_digest)
+            or not _opaque_id(prepared.source_intent_id, prefix="mmri_", hex_length=48)
+            or not _hex_digest(prepared.source_intent_digest)
+            or not _hex_digest(prepared.source_evidence_digest)
+            or type(prepared.total_node_count) is not int
+            or type(prepared.leaf_question_count) is not int
+            or counts != (prepared.total_node_count, prepared.leaf_question_count)
+            or prepared.request_digest != expected_request_digest or prepared.state != "prepared"
+            or not _timestamp(prepared.created_at) or prepared.execution_started is not False
+            or prepared.background_work_authorized is not False
+            or prepared.event_authority_digest is not None
+            or prepared.graph_authority_digest is not None
+            or prepared.provider_authority_digest is not None
+            or prepared.spend_authority_digest is not None):
+        raise ResearchPlanError("stored prepared investigation integrity conflicts")
+
+
 def _validate_owner(value: str) -> None:
     if not _hex_digest(value):
         raise ResearchPlanError("research plan owner identity is invalid")
@@ -698,6 +982,11 @@ def _validate_owner(value: str) -> None:
 def _validate_plan_id(value: object) -> None:
     if not _opaque_id(value, prefix="mrp_", hex_length=48):
         raise ResearchPlanUnavailableError("research plan is unavailable")
+
+
+def _validate_investigation_id(value: object) -> None:
+    if not _opaque_id(value, prefix="mpi_", hex_length=48):
+        raise ResearchPlanUnavailableError("prepared investigation is unavailable")
 
 
 def _valid_key(value: object) -> bool:
@@ -760,6 +1049,6 @@ def _now() -> str:
 
 
 __all__ = [
-    "ResearchPlan", "ResearchPlanError", "ResearchPlanLedger", "ResearchPlanStorageError",
+    "PreparedInvestigation", "ResearchPlan", "ResearchPlanError", "ResearchPlanLedger", "ResearchPlanStorageError",
     "ResearchPlanTooLargeError", "ResearchPlanUnavailableError", "ResearchPlanValidationError",
 ]
