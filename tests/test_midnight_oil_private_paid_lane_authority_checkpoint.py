@@ -118,6 +118,42 @@ def _empty_migration_source_stores() -> tuple[MigrationSourceStoreV1, ...]:
     return tuple(stores)
 
 
+def _signed_lifecycle_state(
+    private_key: Ed25519PrivateKey, **overrides: object
+) -> checkpoint_module.SignedMigrationLifecycleStateV1:
+    material: dict[str, object] = {
+        "schema_version": 1,
+        "target_store_id": STORE_ID,
+        "root_id": "legacy-root-1",
+        "root_manifest_sha256": "10" * 32,
+        "barrier_id": None,
+        "freeze_nonce": None,
+        "source_manifest_sha256": None,
+        "copy_audit_sha256": None,
+        "target_parent_dev": 1,
+        "target_parent_ino": 2,
+        "target_basename": "paid-lane.sqlite3",
+        "target_dev": 1,
+        "target_ino": 3,
+        "tombstone_basename": ".paid-lane.sqlite3.abort-v1",
+        "lifecycle_phase": "schema_only",
+        "phase_version": 0,
+        "issuer_sequence": 0,
+        "prepared_at_ms": 1,
+        "updated_at_ms": 1,
+        "witness_sha256": None,
+        "previous_state_sha256": "0" * 64,
+        "issuer_key_id": "migration-lifecycle-key",
+    }
+    material.update(overrides)
+    state_sha256 = checkpoint_module._migration_lifecycle_state_sha256(material)
+    material["state_sha256"] = state_sha256
+    material["signature_ed25519"] = private_key.sign(
+        checkpoint_module._MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+    )
+    return checkpoint_module.SignedMigrationLifecycleStateV1.model_validate(material)
+
+
 def _reopen_precutover(case: Any) -> PrivatePaidLaneEligibilityCheckpointStoreV1:
     semantic = compute_private_paid_lane_semantic_sha256()
     return PrivatePaidLaneEligibilityCheckpointStoreV1.open(
@@ -1555,6 +1591,223 @@ class TestMigrationPrerequisites:
         policy = checkpoint_module.CONSTRUCTION_POLICY_V1
         assert policy["same_process_reflection_is_security_boundary"] is False
         assert policy["stronger_same_process_boundary_requirement"] == "native-or-external"
+
+    def test_signed_migration_lifecycle_exact_progression_and_abort_replay(self) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"l" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        genesis = _signed_lifecycle_state(private_key)
+        checkpoint_module._verify_migration_lifecycle_genesis(genesis, verification_key)
+        barrier = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="barrier_acquired",
+            barrier_id=checkpoint_module._migration_barrier_id("21" * 32),
+            freeze_nonce="21" * 32,
+            witness_sha256="22" * 32,
+            phase_version=1,
+            issuer_sequence=1,
+            updated_at_ms=2,
+            previous_state_sha256=genesis.state_sha256,
+        )
+        sealed = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="sources_sealed",
+            barrier_id=barrier.barrier_id,
+            freeze_nonce=barrier.freeze_nonce,
+            source_manifest_sha256="23" * 32,
+            witness_sha256=barrier.witness_sha256,
+            phase_version=2,
+            issuer_sequence=2,
+            updated_at_ms=3,
+            previous_state_sha256=barrier.state_sha256,
+        )
+        prepared = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="copy_prepared",
+            barrier_id=sealed.barrier_id,
+            freeze_nonce=sealed.freeze_nonce,
+            source_manifest_sha256=sealed.source_manifest_sha256,
+            copy_audit_sha256="24" * 32,
+            witness_sha256=sealed.witness_sha256,
+            phase_version=3,
+            issuer_sequence=3,
+            updated_at_ms=4,
+            previous_state_sha256=sealed.state_sha256,
+        )
+        copied = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="copied_epoch0",
+            barrier_id=prepared.barrier_id,
+            freeze_nonce=prepared.freeze_nonce,
+            source_manifest_sha256=prepared.source_manifest_sha256,
+            copy_audit_sha256=prepared.copy_audit_sha256,
+            witness_sha256=prepared.witness_sha256,
+            phase_version=4,
+            issuer_sequence=4,
+            updated_at_ms=5,
+            previous_state_sha256=prepared.state_sha256,
+        )
+        states = (genesis, barrier, sealed, prepared, copied)
+        for prior, successor in zip(states[:-1], states[1:], strict=True):
+            checkpoint_module._verify_migration_lifecycle_transition(
+                prior, successor, verification_key
+            )
+
+        prior = copied
+        for index, phase in enumerate(
+            (
+                "abort_prepared",
+                "abort_renamed_to_tombstone",
+                "abort_rename_fsynced",
+                "abort_tombstone_unlinked",
+                "abort_deletion_fsynced",
+                "abort_sources_revalidated",
+                "abort_barrier_released",
+            ),
+            start=5,
+        ):
+            successor = _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase=phase,
+                barrier_id=prior.barrier_id,
+                freeze_nonce=prior.freeze_nonce,
+                source_manifest_sha256=prior.source_manifest_sha256,
+                copy_audit_sha256=prior.copy_audit_sha256,
+                witness_sha256=prior.witness_sha256,
+                phase_version=index,
+                issuer_sequence=index,
+                updated_at_ms=index + 1,
+                previous_state_sha256=prior.state_sha256,
+            )
+            checkpoint_module._verify_migration_lifecycle_transition(
+                prior, successor, verification_key
+            )
+            prior = successor
+
+    def test_migration_lifecycle_abort_inherits_each_exact_pin_class(self) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"a" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        origins = (
+            _signed_lifecycle_state(private_key),
+            _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="barrier_acquired",
+                barrier_id=checkpoint_module._migration_barrier_id("32" * 32),
+                freeze_nonce="32" * 32,
+                witness_sha256="33" * 32,
+                phase_version=1,
+                issuer_sequence=1,
+            ),
+            _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="sources_sealed",
+                barrier_id=checkpoint_module._migration_barrier_id("32" * 32),
+                freeze_nonce="32" * 32,
+                source_manifest_sha256="34" * 32,
+                witness_sha256="33" * 32,
+                phase_version=2,
+                issuer_sequence=2,
+            ),
+            _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="copy_prepared",
+                barrier_id=checkpoint_module._migration_barrier_id("32" * 32),
+                freeze_nonce="32" * 32,
+                source_manifest_sha256="34" * 32,
+                copy_audit_sha256="35" * 32,
+                witness_sha256="33" * 32,
+                phase_version=3,
+                issuer_sequence=3,
+            ),
+        )
+        for origin in origins:
+            aborted = _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="abort_prepared",
+                barrier_id=origin.barrier_id,
+                freeze_nonce=origin.freeze_nonce,
+                source_manifest_sha256=origin.source_manifest_sha256,
+                copy_audit_sha256=origin.copy_audit_sha256,
+                witness_sha256=origin.witness_sha256,
+                phase_version=origin.phase_version + 1,
+                issuer_sequence=origin.issuer_sequence + 1,
+                updated_at_ms=origin.updated_at_ms + 1,
+                previous_state_sha256=origin.state_sha256,
+            )
+            checkpoint_module._verify_migration_lifecycle_transition(
+                origin, aborted, verification_key
+            )
+
+    def test_migration_lifecycle_rejects_hash_signature_chain_and_pin_forgery(self) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"f" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        genesis = _signed_lifecycle_state(private_key)
+        with pytest.raises(ValueError, match="phase pins"):
+            _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="barrier_acquired",
+                barrier_id=checkpoint_module._migration_barrier_id("42" * 32),
+            )
+        with pytest.raises(ValueError, match="migration lifecycle identity"):
+            _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="barrier_acquired",
+                barrier_id=checkpoint_module._migration_barrier_id("44" * 32),
+                freeze_nonce="42" * 32,
+                witness_sha256="43" * 32,
+                phase_version=1,
+                issuer_sequence=1,
+            )
+        with pytest.raises(ValueError, match="state hash"):
+            checkpoint_module.SignedMigrationLifecycleStateV1.model_validate(
+                {**genesis.model_dump(mode="python"), "state_sha256": "ff" * 32}
+            )
+        bad_signature = genesis.model_copy(update={"signature_ed25519": b"x" * 64})
+        with pytest.raises(InvalidSignature):
+            checkpoint_module._verify_signed_migration_lifecycle_state(
+                bad_signature, verification_key
+            )
+        bypassed_hash_closure = genesis.model_copy(update={"target_ino": 99})
+        with pytest.raises(ValueError, match="state hash"):
+            checkpoint_module._verify_signed_migration_lifecycle_state(
+                bypassed_hash_closure, verification_key
+            )
+        skipped = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="barrier_acquired",
+            barrier_id=checkpoint_module._migration_barrier_id("42" * 32),
+            freeze_nonce="42" * 32,
+            witness_sha256="43" * 32,
+            phase_version=1,
+            issuer_sequence=1,
+            updated_at_ms=2,
+            previous_state_sha256="99" * 32,
+        )
+        with pytest.raises(ValueError, match="chain mismatch"):
+            checkpoint_module._verify_migration_lifecycle_transition(
+                genesis, skipped, verification_key
+            )
+        changed_identity = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="abort_prepared",
+            target_ino=4,
+            phase_version=1,
+            issuer_sequence=1,
+            updated_at_ms=2,
+            previous_state_sha256=genesis.state_sha256,
+        )
+        with pytest.raises(ValueError, match="static identity changed"):
+            checkpoint_module._verify_migration_lifecycle_transition(
+                genesis, changed_identity, verification_key
+            )
 
     def test_closed_corpus_model_has_exact_top_level_fields(self) -> None:
         assert tuple(FrozenPaidLaneMigrationCorpusV1.model_fields) == (

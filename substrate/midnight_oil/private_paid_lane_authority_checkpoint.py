@@ -123,6 +123,7 @@ _STORE_ID: re.Pattern[str] = re.compile(r"^mpstore1_[0-9a-f]{64}$")
 _SOURCE_BUNDLE_ID: re.Pattern[str] = re.compile(r"^opsbs1_[0-9a-f]{64}$")
 _SOURCE_SELECTOR: re.Pattern[str] = re.compile(r"^opsbs1_[0-9a-f]{64}$")
 _EFFECT_BLIND: re.Pattern[str] = re.compile(r"^[0-9a-f]{64}$")
+_MIGRATION_BASENAME: re.Pattern[str] = re.compile(r"^[A-Za-z0-9._-]{1,220}$")
 
 # ---------------------------------------------------------------------------
 # Domain constants
@@ -207,6 +208,12 @@ _EXTERNAL_PIN_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-external-pin.v1
 _READY_DOMAIN: bytes = b"antiek.midnight-oil.private-paid-ready.v1\x00"
 _SOURCE_STORE_ROWS_DOMAIN: bytes = (
     b"antiek.midnight-oil.private-paid-source-store-ordered-rows.v1\x00"
+)
+_MIGRATION_LIFECYCLE_STATE_DOMAIN: bytes = (
+    b"antiek.midnight-oil.private-paid-migration-state.v1\x00"
+)
+_MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN: bytes = (
+    b"antiek.midnight-oil.private-paid-migration-state-signature.v1\x00"
 )
 
 _MIGRATION_ROLE_TABLES: Mapping[str, tuple[str, ...]] = MappingProxyType(
@@ -2686,6 +2693,245 @@ def _copy_audit_sha256(audit: CopyAuditV1) -> str:
     return hashlib.sha256(
         _COPY_AUDIT_DOMAIN + _canonical_json(audit.model_dump(mode="json"))
     ).hexdigest()
+
+
+_MIGRATION_LIFECYCLE_PHASES = Literal[
+    "schema_only",
+    "barrier_acquired",
+    "sources_sealed",
+    "copy_prepared",
+    "copied_epoch0",
+    "abort_prepared",
+    "abort_renamed_to_tombstone",
+    "abort_rename_fsynced",
+    "abort_tombstone_unlinked",
+    "abort_deletion_fsynced",
+    "abort_sources_revalidated",
+    "abort_barrier_released",
+]
+_MIGRATION_PRECOPY_TRANSITIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "schema_only": "barrier_acquired",
+        "barrier_acquired": "sources_sealed",
+        "sources_sealed": "copy_prepared",
+        "copy_prepared": "copied_epoch0",
+    }
+)
+_MIGRATION_ABORT_TRANSITIONS: Mapping[str, str] = MappingProxyType(
+    {
+        "abort_prepared": "abort_renamed_to_tombstone",
+        "abort_renamed_to_tombstone": "abort_rename_fsynced",
+        "abort_rename_fsynced": "abort_tombstone_unlinked",
+        "abort_tombstone_unlinked": "abort_deletion_fsynced",
+        "abort_deletion_fsynced": "abort_sources_revalidated",
+        "abort_sources_revalidated": "abort_barrier_released",
+    }
+)
+
+
+def _migration_lifecycle_state_sha256(value: Mapping[str, object]) -> str:
+    material = {
+        key: item for key, item in value.items() if key not in {"state_sha256", "signature_ed25519"}
+    }
+    return hashlib.sha256(_MIGRATION_LIFECYCLE_STATE_DOMAIN + _canonical_json(material)).hexdigest()
+
+
+class SignedMigrationLifecycleStateV1(_Closed):
+    schema_version: Literal[1] = 1
+    target_store_id: str
+    root_id: str
+    root_manifest_sha256: str
+    barrier_id: str | None
+    freeze_nonce: str | None
+    source_manifest_sha256: str | None
+    copy_audit_sha256: str | None
+    target_parent_dev: int = Field(ge=0, le=MAX_I63)
+    target_parent_ino: int = Field(ge=1, le=MAX_I63)
+    target_basename: str
+    target_dev: int = Field(ge=0, le=MAX_I63)
+    target_ino: int = Field(ge=1, le=MAX_I63)
+    tombstone_basename: str
+    lifecycle_phase: _MIGRATION_LIFECYCLE_PHASES
+    phase_version: int = Field(ge=0, le=MAX_I63)
+    issuer_sequence: int = Field(ge=0, le=MAX_I63)
+    prepared_at_ms: int = Field(ge=0, le=MAX_I63)
+    updated_at_ms: int = Field(ge=0, le=MAX_I63)
+    witness_sha256: str | None
+    previous_state_sha256: str
+    state_sha256: str
+    issuer_key_id: str
+    signature_ed25519: bytes
+
+    @model_validator(mode="after")
+    def _closed_lifecycle_state(self) -> SignedMigrationLifecycleStateV1:
+        optional_hashes = (
+            self.freeze_nonce,
+            self.source_manifest_sha256,
+            self.copy_audit_sha256,
+            self.witness_sha256,
+        )
+        if (
+            not _STORE_ID.fullmatch(self.target_store_id)
+            or not _REGISTRY_ID.fullmatch(self.root_id)
+            or not _HEX64.fullmatch(self.root_manifest_sha256)
+            or not _HEX64.fullmatch(self.previous_state_sha256)
+            or not _HEX64.fullmatch(self.state_sha256)
+            or not _KEY_ID.fullmatch(self.issuer_key_id)
+            or len(self.signature_ed25519) != 64
+            or self.updated_at_ms < self.prepared_at_ms
+            or any(value is not None and not _HEX64.fullmatch(value) for value in optional_hashes)
+            or (self.barrier_id is not None and not _REGISTRY_ID.fullmatch(self.barrier_id))
+            or not _MIGRATION_BASENAME.fullmatch(self.target_basename)
+            or self.target_basename in {".", ".."}
+            or self.tombstone_basename != f".{self.target_basename}.abort-v1"
+            or len(self.tombstone_basename.encode()) > 255
+            or (
+                self.freeze_nonce is not None
+                and self.barrier_id != _migration_barrier_id(self.freeze_nonce)
+            )
+        ):
+            raise ValueError("migration lifecycle identity")
+        pin_presence = (
+            self.barrier_id is not None,
+            self.freeze_nonce is not None,
+            self.source_manifest_sha256 is not None,
+            self.copy_audit_sha256 is not None,
+            self.witness_sha256 is not None,
+        )
+        expected_presence = {
+            "schema_only": (False, False, False, False, False),
+            "barrier_acquired": (True, True, False, False, True),
+            "sources_sealed": (True, True, True, False, True),
+            "copy_prepared": (True, True, True, True, True),
+            "copied_epoch0": (True, True, True, True, True),
+        }
+        minimum_abort_version = {
+            "abort_prepared": 1,
+            "abort_renamed_to_tombstone": 2,
+            "abort_rename_fsynced": 3,
+            "abort_tombstone_unlinked": 4,
+            "abort_deletion_fsynced": 5,
+            "abort_sources_revalidated": 6,
+            "abort_barrier_released": 7,
+        }
+        expected_precopy_version = {
+            "schema_only": 0,
+            "barrier_acquired": 1,
+            "sources_sealed": 2,
+            "copy_prepared": 3,
+            "copied_epoch0": 4,
+        }
+        if self.issuer_sequence != self.phase_version:
+            raise ValueError("migration lifecycle sequence/version mismatch")
+        if self.lifecycle_phase.startswith("abort_"):
+            if (
+                pin_presence not in set(expected_presence.values())
+                or self.phase_version < minimum_abort_version[self.lifecycle_phase]
+            ):
+                raise ValueError("migration abort pin class")
+        elif (
+            pin_presence != expected_presence[self.lifecycle_phase]
+            or self.phase_version != expected_precopy_version[self.lifecycle_phase]
+        ):
+            raise ValueError("migration lifecycle phase pins")
+        expected_state_sha256 = _migration_lifecycle_state_sha256(self.model_dump(mode="python"))
+        if self.state_sha256 != expected_state_sha256:
+            raise ValueError("migration lifecycle state hash")
+        return self
+
+
+def _verify_signed_migration_lifecycle_state(
+    state: SignedMigrationLifecycleStateV1, verification_key: VerificationKeyV1
+) -> None:
+    if (
+        type(state) is not SignedMigrationLifecycleStateV1
+        or type(verification_key) is not VerificationKeyV1
+    ):
+        raise ValueError("migration lifecycle verifier type mismatch")
+    state = SignedMigrationLifecycleStateV1.model_validate(state.model_dump(mode="python"))
+    verification_key = VerificationKeyV1.model_validate(verification_key.model_dump(mode="python"))
+    if state.issuer_key_id != verification_key.key_id:
+        raise ValueError("migration lifecycle issuer key mismatch")
+    Ed25519PublicKey.from_public_bytes(verification_key.public_key_bytes).verify(
+        state.signature_ed25519,
+        _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state.state_sha256),
+    )
+
+
+def _verify_migration_lifecycle_genesis(
+    state: SignedMigrationLifecycleStateV1, verification_key: VerificationKeyV1
+) -> None:
+    _verify_signed_migration_lifecycle_state(state, verification_key)
+    if (
+        state.lifecycle_phase != "schema_only"
+        or state.phase_version != 0
+        or state.issuer_sequence != 0
+        or state.previous_state_sha256 != "0" * 64
+    ):
+        raise ValueError("migration lifecycle genesis mismatch")
+
+
+def _verify_migration_lifecycle_transition(
+    prior: SignedMigrationLifecycleStateV1,
+    successor: SignedMigrationLifecycleStateV1,
+    verification_key: VerificationKeyV1,
+) -> None:
+    _verify_signed_migration_lifecycle_state(prior, verification_key)
+    _verify_signed_migration_lifecycle_state(successor, verification_key)
+    static_fields = (
+        "target_store_id",
+        "root_id",
+        "root_manifest_sha256",
+        "target_parent_dev",
+        "target_parent_ino",
+        "target_basename",
+        "target_dev",
+        "target_ino",
+        "tombstone_basename",
+        "prepared_at_ms",
+        "issuer_key_id",
+    )
+    if any(getattr(prior, field) != getattr(successor, field) for field in static_fields):
+        raise ValueError("migration lifecycle static identity changed")
+    if (
+        successor.previous_state_sha256 != prior.state_sha256
+        or successor.phase_version != prior.phase_version + 1
+        or successor.issuer_sequence != prior.issuer_sequence + 1
+        or successor.updated_at_ms < prior.updated_at_ms
+    ):
+        raise ValueError("migration lifecycle chain mismatch")
+    expected_phase = _MIGRATION_PRECOPY_TRANSITIONS.get(prior.lifecycle_phase)
+    if (
+        prior.lifecycle_phase
+        in {"schema_only", "barrier_acquired", "sources_sealed", "copy_prepared", "copied_epoch0"}
+        and successor.lifecycle_phase == "abort_prepared"
+    ):
+        expected_phase = "abort_prepared"
+    if prior.lifecycle_phase.startswith("abort_"):
+        expected_phase = _MIGRATION_ABORT_TRANSITIONS.get(prior.lifecycle_phase)
+    if successor.lifecycle_phase != expected_phase:
+        raise ValueError("migration lifecycle phase transition")
+    prior_pins = (
+        prior.barrier_id,
+        prior.freeze_nonce,
+        prior.source_manifest_sha256,
+        prior.copy_audit_sha256,
+        prior.witness_sha256,
+    )
+    successor_pins = (
+        successor.barrier_id,
+        successor.freeze_nonce,
+        successor.source_manifest_sha256,
+        successor.copy_audit_sha256,
+        successor.witness_sha256,
+    )
+    if prior.lifecycle_phase.startswith("abort_") or successor.lifecycle_phase.startswith("abort_"):
+        if successor_pins != prior_pins:
+            raise ValueError("migration abort pins changed")
+    elif any(
+        old is not None and old != new for old, new in zip(prior_pins, successor_pins, strict=True)
+    ):
+        raise ValueError("migration lifecycle pin changed")
 
 
 def _verify_signed_cutover_marker(
