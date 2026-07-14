@@ -34,6 +34,16 @@ from substrate.contracts.multimedia import (
 PlanMode = Literal["video", "audio", "hybrid"]
 Depth = Literal["overview", "intermediate", "deep"]
 
+
+def validate_source_excerpts(values: tuple[str, ...]) -> tuple[str, ...]:
+    if len(values) > 64:
+        raise ValueError("at most 64 operator source excerpts are supported")
+    if any(not value.strip() for value in values):
+        raise ValueError("operator source excerpts must be non-empty")
+    if any(len(value) > 100_000 for value in values):
+        raise ValueError("operator source excerpts must not exceed 100000 characters")
+    return values
+
 MIN_MULTIMEDIA_MINUTES = 15
 MAX_MULTIMEDIA_MINUTES = 45
 _DEFAULT_ARCS = (
@@ -118,6 +128,7 @@ class MultimediaPlanRequest(_PlannerBase):
     target_minutes: int = Field(ge=MIN_MULTIMEDIA_MINUTES, le=MAX_MULTIMEDIA_MINUTES)
     mode: PlanMode = "hybrid"
     depth: Depth = "intermediate"
+    source_scope: str | None = Field(default=None, max_length=512)
     sources: tuple[str, ...] = Field(default_factory=tuple)
     must_cover: tuple[str, ...] = Field(default_factory=tuple)
     avoid: tuple[str, ...] = Field(default_factory=tuple)
@@ -129,6 +140,7 @@ class MultimediaPlanRequest(_PlannerBase):
     @model_validator(mode="after")
     def selected_arcs_are_non_empty(self) -> MultimediaPlanRequest:
         validate_selected_arc_ids(self.selected_arc_ids)
+        validate_source_excerpts(self.sources)
         return self
 
 

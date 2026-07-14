@@ -27,6 +27,7 @@ export type MultimediaPlanProjection = {
   coverageOptions: Array<{ id: string; title: string; teaches: string; tradeoff: string; evidenceCount: number }>;
   chosenArcIds: string[];
   depth: "overview" | "intermediate" | "deep";
+  sourceScope: string | null;
   omissions: string[];
   chapters: ProjectedChapter[];
   sources: ProjectedSource[];
@@ -55,6 +56,13 @@ export function projectMultimediaPlan(input: unknown): PlanProjectionResult {
   const depth = plan.request.depth ?? "intermediate";
   if (!["overview", "intermediate", "deep"].includes(depth)) {
     return invalid("Plan depth is unavailable.");
+  }
+  if (
+    plan.request.source_scope !== undefined &&
+    plan.request.source_scope !== null &&
+    typeof plan.request.source_scope !== "string"
+  ) {
+    return invalid("Plan research scope is unavailable.");
   }
   if (
     !Array.isArray(plan.chosen_arc_ids) ||
@@ -214,6 +222,7 @@ export function projectMultimediaPlan(input: unknown): PlanProjectionResult {
       })),
       chosenArcIds: plan.chosen_arc_ids,
       depth,
+      sourceScope: plan.request.source_scope ?? null,
       omissions: plan.omissions,
       chapters,
       sources,

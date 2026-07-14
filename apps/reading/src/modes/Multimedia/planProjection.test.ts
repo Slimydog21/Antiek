@@ -62,6 +62,22 @@ describe("projectMultimediaPlan", () => {
       status: "cited",
       detail: "§2",
     }]);
+    expect(result.value.sourceScope).toBeNull();
+  });
+
+  it("restores research intent without treating it as a citation", () => {
+    const scoped = structuredClone(PLAN);
+    scoped.request.source_scope = "Owned corpus + vetted web sources";
+    const result = projectMultimediaPlan(scoped);
+
+    expect(result.ok && result.value.sourceScope).toBe("Owned corpus + vetted web sources");
+    expect(result.ok && result.value.sources).toHaveLength(1);
+  });
+
+  it("rejects malformed persisted research scope", () => {
+    const malformed = structuredClone(PLAN);
+    malformed.request.source_scope = 42 as unknown as string;
+    expect(projectMultimediaPlan(malformed)).toEqual({ ok: false, error: "Plan research scope is unavailable." });
   });
 
   it("surfaces the server unsourced reason without inventing one", () => {

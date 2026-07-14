@@ -370,6 +370,11 @@ describe("Multimedia workstation", () => {
   it("reviews a plan before render approval and then opens playback", async () => {
     await reviewPlan();
 
+    expect(mockCreate.mock.calls[0]?.[0]).toEqual(expect.objectContaining({
+      source_scope: "Owned corpus + vetted web sources",
+    }));
+    expect(mockCreate.mock.calls[0]?.[0]).not.toHaveProperty("sources");
+
     expect(screen.getByTestId("multimedia-suggestions")).toBeTruthy();
     expect(screen.getByText(/Unsourced claim guard/)).toBeTruthy();
     expect(screen.queryByTestId("multimedia-player")).toBeNull();
