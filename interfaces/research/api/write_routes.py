@@ -56,7 +56,12 @@ from substrate.event_log import (
 from substrate.graph import default_db_path, ensure_initialized
 from substrate.graph.insight_question import insight_node_id
 from substrate.graph.ops import content_addressed_id
-from substrate.schemas.events import SeamReadToWritePayload, SeamWriteToReadPayload
+from substrate.schemas.events import (
+    SeamReadToWritePayload,
+    SeamWriteToReadPayload,
+    SeamWriteToSpeakPayload,
+)
+from substrate.speak import project as speak_project_mod
 from substrate.write import block_search
 from substrate.write import folders as folders_mod
 from substrate.write.brainstorm_blocks import drivers_to_blocks
@@ -107,6 +112,18 @@ def _write(purpose: str) -> Iterator[Any]:
         yield con
     finally:
         con.close()
+
+
+@contextmanager
+def _transaction(con: Any) -> Iterator[None]:
+    con.execute("BEGIN TRANSACTION")
+    try:
+        yield
+    except BaseException:
+        con.execute("ROLLBACK")
+        raise
+    else:
+        con.execute("COMMIT")
 
 
 @contextmanager
@@ -192,6 +209,10 @@ class ReadToWriteRequest(BaseModel):
 
 
 class WriteToReadRequest(BaseModel):
+    deliverable_id: str = Field(..., min_length=1)
+
+
+class WriteToSpeakRequest(BaseModel):
     deliverable_id: str = Field(..., min_length=1)
 
 
@@ -552,6 +573,152 @@ def handoff_write_block_to_read(
         "chunk_ids": current_target.chunk_ids,
         "servability_status": current_target.servability_status,
         "detail": current_target.detail,
+        "seam_event_id": seam_event.event_id,
+    }
+
+
+_WRITE_TO_SPEAK_COMMANDS_SQL = """
+CREATE TABLE IF NOT EXISTS write_to_speak_handoff_commands (
+    command_id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL,
+    seam_event_id TEXT NOT NULL,
+    seam_emitted_at TEXT NOT NULL,
+    outline_block_id TEXT NOT NULL,
+    question_node_id TEXT NOT NULL,
+    section_id TEXT NOT NULL,
+    deliverable_id TEXT NOT NULL,
+    speak_project_id TEXT NOT NULL
+)
+"""
+
+
+@write_router.post("/blocks/{outline_block_id}/speak-handoffs", status_code=201)
+def handoff_write_question_to_speak(
+    outline_block_id: str,
+    req: WriteToSpeakRequest,
+    idempotency_key: str = Header(..., alias="Idempotency-Key"),
+) -> dict[str, Any]:
+    """Commission a private Speak interview project from one outline question."""
+    require_event_persistence()
+    command_id = _validated_idempotency_key(idempotency_key)
+    fingerprint = content_addressed_id(
+        "cmd", f"write-to-speak|{outline_block_id}|{req.deliverable_id}"
+    )
+    with _translate(), _write("write/speak_handoff") as con:  # noqa: SIM117
+        with _transaction(con):
+            con.execute(_WRITE_TO_SPEAK_COMMANDS_SQL)
+            receipt = con.execute(
+                "SELECT fingerprint, seam_event_id, seam_emitted_at, "
+                "question_node_id, section_id, speak_project_id "
+                "FROM write_to_speak_handoff_commands WHERE command_id = ?",
+                [command_id],
+            ).fetchone()
+            if receipt is not None and receipt[0] != fingerprint:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Idempotency-Key was already used for a different interview commission",
+                )
+            if receipt is None:
+                receipt = con.execute(
+                    "SELECT fingerprint, seam_event_id, seam_emitted_at, "
+                    "question_node_id, section_id, speak_project_id "
+                    "FROM write_to_speak_handoff_commands WHERE fingerprint = ? "
+                    "ORDER BY command_id LIMIT 1",
+                    [fingerprint],
+                ).fetchone()
+                if receipt is not None:
+                    con.execute(
+                        "INSERT INTO write_to_speak_handoff_commands "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        [
+                            command_id,
+                            fingerprint,
+                            receipt[1],
+                            receipt[2],
+                            outline_block_id,
+                            receipt[3],
+                            receipt[4],
+                            req.deliverable_id,
+                            receipt[5],
+                        ],
+                    )
+            if receipt is None:
+                block_row = con.execute(
+                    "SELECT b.node_id, b.section_id, d.title "
+                    "FROM outline_blocks b "
+                    "JOIN deliverable_sections s ON s.section_id = b.section_id "
+                    "JOIN deliverables d ON d.deliverable_id = s.deliverable_id "
+                    "JOIN nodes n ON n.node_id = b.node_id "
+                    "WHERE b.outline_block_id = ? AND d.deliverable_id = ? "
+                    "AND b.block_kind = 'open_question' "
+                    "AND b.provenance_kind = 'graph_node' "
+                    "AND n.node_type = 'question'",
+                    [outline_block_id, req.deliverable_id],
+                ).fetchone()
+                if block_row is None:
+                    raise HTTPException(
+                        status_code=409,
+                        detail="only a node-backed open question in this piece can commission interviews",
+                    )
+                question_node_id, section_id, deliverable_title = block_row
+                speak_project_id = content_addressed_id(
+                    "ivp", f"write-to-speak|{fingerprint}"
+                )
+                speak_project_mod.create_project(
+                    con,
+                    project_id=speak_project_id,
+                    title=f"Interview research for {deliverable_title}",
+                    publish_intent="private_never_published",
+                    interview_guide={
+                        "must_cover": [
+                            {
+                                "id": question_node_id,
+                                "question_node_id": question_node_id,
+                            }
+                        ]
+                    },
+                    emit_event=False,
+                )
+                seam_event_id = content_addressed_id(
+                    "evt", f"write-to-speak|{fingerprint}"
+                )
+                seam_emitted_at = datetime.now(UTC).isoformat()
+                con.execute(
+                    "INSERT INTO write_to_speak_handoff_commands "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                    [
+                        command_id,
+                        fingerprint,
+                        seam_event_id,
+                        seam_emitted_at,
+                        outline_block_id,
+                        question_node_id,
+                        section_id,
+                        req.deliverable_id,
+                        speak_project_id,
+                    ],
+                )
+            else:
+                seam_event_id, seam_emitted_at = receipt[1], receipt[2]
+                question_node_id, section_id, speak_project_id = receipt[3:6]
+
+    seam_event = prepare_typed_event(
+        req.deliverable_id,
+        SeamWriteToSpeakPayload(
+            entity_id=question_node_id,
+            provenance_ref=outline_block_id,
+            outline_section_id=section_id,
+        ),
+        event_id=seam_event_id,
+        emitted_at=seam_emitted_at,
+        role="write_composition",
+    )
+    append_event_once(seam_event)
+    return {
+        "question_node_id": question_node_id,
+        "section_id": section_id,
+        "speak_project_id": speak_project_id,
+        "speak_path": f"/speak/{speak_project_id}",
         "seam_event_id": seam_event.event_id,
     }
 

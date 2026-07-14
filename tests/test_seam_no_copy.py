@@ -28,6 +28,7 @@ from substrate.seams import (
     ResearchToReadSeam,
     SpeakToWriteSeam,
     WriteToReadSeam,
+    WriteToSpeakSeam,
 )
 
 # ---------------------------------------------------------------------------
@@ -173,11 +174,19 @@ def test_speak_to_write_preserves_claim_reference():
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.skip(
-    reason="write→speak is the provisional seam (commission interviews from an "
-    "outline gap). No product implements either side, so there is no real "
-    "handoff to exercise a no-copy guard against. Promote when a Write sprint "
-    "and a Speak sprint each implement a side (see substrate/seams/README.md)."
-)
-def test_write_to_speak_no_copy():  # pragma: no cover — intentionally skipped
-    raise AssertionError("provisional seam — guard not yet load-bearing")
+def test_write_to_speak_no_copy():
+    question_node_id = "question-node-42"
+    seam = WriteToSpeakSeam(
+        entity_id=question_node_id,
+        provenance_ref="outline-block-7",
+        outline_section_id="section-A",
+    )
+    persisted_guide = {
+        "must_cover": [{"id": question_node_id, "question_node_id": question_node_id}]
+    }
+    _assert_no_copy(
+        sent_id=question_node_id,
+        received_id=persisted_guide["must_cover"][0]["question_node_id"],
+    )
+    assert seam.entity_id == question_node_id
+    assert "text" not in persisted_guide["must_cover"][0]

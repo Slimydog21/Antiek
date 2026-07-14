@@ -179,9 +179,28 @@ def _project_guide(con: Any, project_id: str) -> dict:
     if row is None or not row[0]:
         return {}
     try:
-        return json.loads(row[0])
+        guide = json.loads(row[0])
     except (TypeError, ValueError):
         return {}
+    hydrated: list[dict] = []
+    for index, item in enumerate(guide.get("must_cover", [])):
+        if isinstance(item, str):
+            hydrated.append({"id": f"legacy-{index}", "text": item})
+            continue
+        if not isinstance(item, dict):
+            continue
+        question_node_id = item.get("question_node_id")
+        if not question_node_id:
+            hydrated.append(item)
+            continue
+        question = con.execute(
+            "SELECT canonical_label FROM nodes "
+            "WHERE node_id = ? AND node_type = 'question'",
+            [question_node_id],
+        ).fetchone()
+        if question is not None:
+            hydrated.append({**item, "id": question_node_id, "text": question[0]})
+    return {**guide, "must_cover": hydrated}
 
 
 def _consent_recorded(con: Any, interview_id: str) -> bool:

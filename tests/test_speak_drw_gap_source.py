@@ -81,6 +81,17 @@ def test_drw_gap_source_empty_without_promoted_nodes(db):
         assert DRWGapSource(con).open_questions(pid) == []
 
 
+def test_speak_gap_source_preserves_legacy_string_guide(db):
+    with _con(db) as con:
+        pid = project.create_project(
+            con,
+            title="Legacy guide",
+            interview_guide={"must_cover": ["What should we remember?"]},
+        ).project_id
+        gaps = SpeakGraphGapSource(con).open_questions(pid)
+    assert any(gap.text == "What should we remember?" for gap in gaps)
+
+
 # --------------------------------------------------------------------------
 # Project-scoped, centrality-ranked gaps when content IS in the shared graph
 # --------------------------------------------------------------------------

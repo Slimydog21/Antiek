@@ -16,17 +16,15 @@ was cross-checked against the actual product-spec sprint pages
 | `WriteToReadSeam` | write → read | `OutlineBlockContract` ref → resolved source span | **Write SPR-07** (trace-to-source) | shared reading surface (DRW SPR-10 / Read SPR-03 reader) | committed |
 | `SpeakToWriteSeam` | speak → write | `speak_claim` ref → `OutlineBlockContract` (`synthesized`) | **Speak SPR-08** (biography authoring) | Write SPR-01 (OutlineComposer) | committed |
 | `SpeakToReadSeam` | speak → read | `ServableEntryContract` ref (`platform_authored` + `speak_derived`) | **Speak SPR-09** (publishing) | Read servable corpus (seam #4 gate) | committed |
-| `WriteToSpeakSeam` | write → speak | `question_node` ref (an outline gap's open question) | Write (unspecified) | Speak (unspecified) | **provisional** |
+| `WriteToSpeakSeam` | write → speak | `question_node` ref (an outline gap's open question) | Write outline commission endpoint | Speak reference-resolving interview guide | committed |
 
-### `WriteToSpeakSeam` is provisional
+### `WriteToSpeakSeam` is committed
 
-**Reason:** weakest seam — commission interviews from an outline gap. The four
-product specs barely describe it; no real Write sprint or Speak sprint owns a
-side. It is defined so the shape exists, flagged provisional, kept OFF the
-SPR-08 end-to-end critical path, and its no-copy guard is skipped (xfail) with a
-reason. **Promotion criterion:** the operator uses Write and Speak together and
-explicitly wants the commission flow — i.e. a real Write sprint and a real Speak
-sprint each implement a side.
+The stated promotion criterion is satisfied: the operator explicitly wants
+Write gaps to commission Speak research, and both product sides now exist. The
+Write endpoint validates a node-backed open question and creates one private
+Speak project with a reference-only guide. Speak resolves that node into the
+live must-cover question at interview time. The no-copy guard is load-bearing.
 
 ## Implementing-sprint citation audit (diligence — verified against the real spec pages)
 

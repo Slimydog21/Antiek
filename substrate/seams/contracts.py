@@ -32,7 +32,7 @@ hands it to a :class:`OutlineBlockContract` (``provenance_kind='graph_node'``,
 same ``node_id``). The seam owns the handoff shape; each product spec
 implements its own side against the SPR-01 contract the seam names.
 
-Seven seams, six committed + one provisional:
+Seven committed seams:
 
 * ``ResearchToReadSeam``  research → read   (surface a researched insight)
 * ``ReadToResearchSeam``  read → research   (research a highlighted passage)
@@ -40,8 +40,8 @@ Seven seams, six committed + one provisional:
 * ``WriteToReadSeam``     write → read      (trace a block to its source)
 * ``SpeakToWriteSeam``    speak → write     (author a bio from interview claims)
 * ``SpeakToReadSeam``     speak → read      (serve a published bio)
-* ``WriteToSpeakSeam``    write → speak     (**provisional** — commission
-  interviews from an outline gap; the weakest seam, off SPR-08's critical path)
+* ``WriteToSpeakSeam``    write → speak     (commission interviews from a
+  node-backed outline question)
 
 The seam *events* are typed in ``substrate/schemas/events.py`` (the
 ``seam.*`` action types) and emitted through ``substrate/event_log`` →
@@ -123,7 +123,7 @@ class _SeamBase(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# The six committed seams
+# The seven committed seams
 # ---------------------------------------------------------------------------
 
 
@@ -247,6 +247,20 @@ class SpeakToReadSeam(_SeamBase):
     publish_gate_passed: bool = False
 
 
+class WriteToSpeakSeam(_SeamBase):
+    """write → speak. Commission interviews from a node-backed outline gap.
+
+    The Write side accepts only an ``open_question`` block backed by an existing
+    question node. The Speak side stores that node id in its interview guide and
+    resolves the question when an interview is resumed. No question text is
+    copied into the commission record."""
+
+    from_workflow: Literal["write"] = "write"
+    to_workflow: Literal["speak"] = "speak"
+    entity_kind: Literal["question_node"] = "question_node"
+    outline_section_id: str | None = None
+
+
 COMMITTED_SEAMS: tuple[type[_SeamBase], ...] = (
     ResearchToReadSeam,
     ReadToResearchSeam,
@@ -254,41 +268,10 @@ COMMITTED_SEAMS: tuple[type[_SeamBase], ...] = (
     WriteToReadSeam,
     SpeakToWriteSeam,
     SpeakToReadSeam,
+    WriteToSpeakSeam,
 )
 
-
-# ---------------------------------------------------------------------------
-# The one provisional seam
-# ---------------------------------------------------------------------------
-
-
-class WriteToSpeakSeam(_SeamBase):
-    """write → speak. **PROVISIONAL.** Commission interviews from an outline gap.
-
-    The weakest seam: the four product specs barely describe it. The intent is
-    that an outline gap or open question in Write (a section that needs lived
-    testimony) commissions a Speak interview to fill it. It is defined here so
-    the shape exists, but flagged provisional and kept OFF the SPR-08 end-to-end
-    critical path; its no-copy guard is skipped (xfail) with a stated reason
-    (rigor #1 — inventing a confident contract no product implements is the
-    dishonest move).
-
-    Promotion criterion (stated, not assumed): promote to committed when the
-    operator uses Write and Speak together and explicitly wants the commission
-    flow — i.e. a real Write sprint and a real Speak sprint each implement a
-    side. Until then it carries a ``question_node`` reference (the outline gap's
-    open question) as its best-guess entity, but the receiving Speak side is
-    unspecified."""
-
-    from_workflow: Literal["write"] = "write"
-    to_workflow: Literal["speak"] = "speak"
-    entity_kind: Literal["question_node"] = "question_node"
-    # Best-guess: the outline section whose gap commissions the interview.
-    # PROVISIONAL — the receiving Speak side is unspecified.
-    outline_section_id: str | None = None
-
-
-PROVISIONAL_SEAMS: tuple[type[_SeamBase], ...] = (WriteToSpeakSeam,)
+PROVISIONAL_SEAMS: tuple[type[_SeamBase], ...] = ()
 
 ALL_SEAMS: tuple[type[_SeamBase], ...] = COMMITTED_SEAMS + PROVISIONAL_SEAMS
 

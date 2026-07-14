@@ -351,7 +351,7 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
     #    handoff (substrate/seams/contracts.py) emits one of these when it
     #    fires. They carry the entity id + kind + provenance ref + the
     #    terminating-handoff marker — NEVER a copy of the entity. Six
-    #    committed + one provisional (write→speak). These are handoff-audit
+    #    committed. These are handoff-audit
     #    events: they record that a workflow handed an entity (by reference)
     #    to another workflow; the underlying graph node / claim / document is
     #    untouched (the seam moves the reference, the products own the
@@ -560,7 +560,7 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v16: antiek-unified SPR-03 — cross-workflow seam handoff audit trail.
 #     Seven typed events (seam.research_to_read / read_to_research /
 #     read_to_write / write_to_read / speak_to_write / speak_to_read +
-#     provisional seam.write_to_speak) record one cross-workflow handoff
+#     seam.write_to_speak) record one cross-workflow handoff
 #     each, carrying the entity id + entity_kind + provenance_ref + the
 #     terminating-handoff marker so the flywheel is reconstructable from
 #     the trajectory. Handoff-audit events over existing entities — NOT
@@ -3678,9 +3678,9 @@ class SeamSpeakToReadPayload(_SeamPayloadBase):
 
 
 class SeamWriteToSpeakPayload(_SeamPayloadBase):
-    """write → speak. **PROVISIONAL.** Commission interviews from an outline
-    gap. Typed so the trajectory can carry it, but the seam is the weakest and
-    off the SPR-08 critical path; the receiving Speak side is unspecified."""
+    """write → speak. Commission interviews from a node-backed outline gap.
+    Speak retains and resolves the question node reference without copying its
+    text into the handoff."""
 
     action_type: Literal[ActionType.SEAM_WRITE_TO_SPEAK] = ActionType.SEAM_WRITE_TO_SPEAK
     from_workflow: Literal["write"] = "write"

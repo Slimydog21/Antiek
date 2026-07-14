@@ -23,8 +23,7 @@ its own side of a seam against the contract here.
                                                        ▼                    │
                                                      speak ─────────────────┘
 
-         write→speak  (PROVISIONAL — commission interviews from an outline gap;
-                       off the SPR-08 critical path)
+         write→speak  (commission interviews from a node-backed outline question)
 ```
 
 The flywheel is a **cycle of handoffs, not an auto-loop.** Each seam is an
@@ -44,7 +43,7 @@ successor automatically would be a runaway-cost bug. The invariant lives in the
 | `WriteToReadSeam` | write → read | `outline_block` ref → source span | Write SPR-07 / shared reader (DRW SPR-10) | committed |
 | `SpeakToWriteSeam` | speak → write | `speak_claim` id → synthesized block | Speak SPR-08 / Write SPR-01 | committed |
 | `SpeakToReadSeam` | speak → read | `servable_entry` ref | Speak SPR-09 / Read corpus (seam #4 gate) | committed |
-| `WriteToSpeakSeam` | write → speak | `question_node` id | unspecified / unspecified | **provisional** |
+| `WriteToSpeakSeam` | write → speak | `question_node` id | Write outline / Speak interview guide | committed |
 
 Each seam contract (`contracts.py`) carries four load-bearing fields:
 **direction** (pinned, one-way), an **entity reference** (`entity_id` +
@@ -123,20 +122,15 @@ Read SPR-01 owns serve.py and will call it.*
 **Guard:** `tests/test_seam_platform_authored_gate.py` — "speak_derived docs hit
 the publish gate" (a non-gate-passing speak_derived doc is NOT served).
 
-## The provisional seam — `write→speak`
+## The committed `write→speak` seam
 
-`WriteToSpeakSeam` (commission interviews from an outline gap) is the **weakest**
-seam — the four product specs barely describe it; no real Write sprint or Speak
-sprint owns a side. It is defined so the shape exists, but:
-
-- it is flagged **provisional** (`seam_status(WriteToSpeakSeam) == "provisional"`);
-- it is kept **off the SPR-08 end-to-end critical path**;
-- its no-copy guard is **skipped (xfail)** with a stated reason
-  (`tests/test_seam_no_copy.py::test_write_to_speak_no_copy`).
-
-**Promotion criterion:** promote to committed when the operator uses Write and
-Speak together and explicitly wants the commission flow — i.e. a real Write
-sprint and a real Speak sprint each implement a side.
+`WriteToSpeakSeam` commissions a private Speak interview project from a
+node-backed open question in a Write outline. The command stores the original
+question node id and outline reference. Speak resolves the question text from
+that node when loading the interview guide, so the seam never copies the
+question into a second record. The operator still chooses invitees and sends
+links explicitly; the handoff never auto-fires an interview or widens publish
+intent.
 
 ## Rejected alternative (fairness) — "each workflow owns its own seams"
 

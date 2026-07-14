@@ -17,6 +17,7 @@ vi.mock("../../lib/api", () => ({
 }));
 
 import {
+  commissionQuestionInterviews,
   handoffWriteBlockToRead,
   moveBlock,
   traceReaderPath,
@@ -127,6 +128,70 @@ describe("traceReaderPath", () => {
 
   it("refuses a non-servable target", () => {
     expect(traceReaderPath({ ...target, full_text_allowed: false }, "dlv-1")).toBeNull();
+  });
+});
+
+describe("write-to-speak command identity", () => {
+  beforeEach(() => {
+    vi.restoreAllMocks();
+    apiFetch.mockReset();
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(COMMAND_1);
+    localStorage.clear();
+  });
+
+  const success = () =>
+    new Response(
+      JSON.stringify({
+        question_node_id: "question-1",
+        section_id: "section-1",
+        speak_project_id: "project-1",
+        speak_path: "/speak/project-1",
+        seam_event_id: "event-1",
+      }),
+      { status: 201, headers: { "Content-Type": "application/json" } },
+    );
+
+  it("keeps retry identity after a lost response", async () => {
+    apiFetch.mockRejectedValueOnce(new TypeError("response lost"));
+    await expect(
+      commissionQuestionInterviews("block-1", "piece-1"),
+    ).rejects.toThrow("response lost");
+    apiFetch.mockResolvedValueOnce(success());
+    await commissionQuestionInterviews("block-1", "piece-1");
+    expect(commandKeys()).toEqual([COMMAND_1, COMMAND_1]);
+  });
+
+  it("recovers identity from browser storage and clears it on success", async () => {
+    localStorage.setItem(
+      'antiek:write-to-speak:["block-reload","piece-1"]',
+      COMMAND_2,
+    );
+    apiFetch.mockResolvedValueOnce(success());
+    await commissionQuestionInterviews("block-reload", "piece-1");
+    expect(commandKeys()).toEqual([COMMAND_2]);
+    expect(localStorage.length).toBe(0);
+  });
+
+  it("coalesces concurrent commissions", async () => {
+    apiFetch.mockResolvedValueOnce(success());
+    const first = commissionQuestionInterviews("block-1", "piece-1");
+    const second = commissionQuestionInterviews("block-1", "piece-1");
+    expect(second).toBe(first);
+    await Promise.all([first, second]);
+    expect(apiFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears a terminal client-error identity", async () => {
+    vi.mocked(crypto.randomUUID)
+      .mockReturnValueOnce(COMMAND_1)
+      .mockReturnValueOnce(COMMAND_2);
+    apiFetch.mockResolvedValueOnce(response(409));
+    await expect(
+      commissionQuestionInterviews("block-1", "piece-1"),
+    ).rejects.toThrow("HTTP 409");
+    apiFetch.mockResolvedValueOnce(success());
+    await commissionQuestionInterviews("block-1", "piece-1");
+    expect(commandKeys()).toEqual([COMMAND_1, COMMAND_2]);
   });
 });
 

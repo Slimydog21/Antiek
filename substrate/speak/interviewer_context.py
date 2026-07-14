@@ -91,7 +91,21 @@ class SpeakGraphGapSource:
                 guide = json.loads(guide_row[0])
             except (TypeError, ValueError):
                 guide = {}
-            for q in guide.get("must_cover", []):
+            for index, q in enumerate(guide.get("must_cover", [])):
+                if isinstance(q, str):
+                    q = {"id": f"legacy-{index}", "text": q}
+                if not isinstance(q, dict):
+                    continue
+                question_node_id = q.get("question_node_id")
+                if question_node_id:
+                    resolved = self.con.execute(
+                        "SELECT canonical_label FROM nodes "
+                        "WHERE node_id = ? AND node_type = 'question'",
+                        [question_node_id],
+                    ).fetchone()
+                    if resolved is None:
+                        continue
+                    q = {**q, "id": question_node_id, "text": resolved[0]}
                 gaps.append(OpenQuestion(
                     question_id=f"mc-{q.get('id', '')}",
                     text=q.get("text", ""),

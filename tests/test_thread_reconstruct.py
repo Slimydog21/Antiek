@@ -82,9 +82,8 @@ def test_unbuilt_workflow_hop_is_flagged_not_dropped() -> None:
     assert any(s.workflow == "write" for s in thread.stubs)
 
 
-def test_provisional_seam_hop_is_marked() -> None:
-    """The provisional write→speak seam is reconstructable but flagged so the
-    breadcrumb can label it honestly (rigor #1)."""
+def test_committed_write_to_speak_hop_is_not_marked_provisional() -> None:
+    """The committed write→speak hop must not render an unfinished warning."""
     node = "node-3"
     events = [
         _ev("e1", "seam.write_to_speak", node, "2026-05-25T10:00:00"),
@@ -93,7 +92,7 @@ def test_provisional_seam_hop_is_marked() -> None:
         node, seam_events=events, origin_entity_kind="question_node"
     )
     speak_hops = [h for h in thread.hops if h.workflow == "speak"]
-    assert speak_hops and speak_hops[0].via_provisional_seam
+    assert speak_hops and not speak_hops[0].via_provisional_seam
 
 
 def test_other_nodes_seam_events_are_ignored() -> None:

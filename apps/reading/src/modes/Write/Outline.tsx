@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   ApiError,
@@ -21,6 +22,7 @@ import VoiceToDraft from "./VoiceToDraft";
 import Xray from "./Xray";
 import {
   blockDisplayText,
+  commissionQuestionInterviews,
   generateSection,
   getSectionBlocks,
   moveBlock,
@@ -476,6 +478,12 @@ function SectionCard({
               <p className="min-w-0 flex-1 font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
                 {blockDisplayText(b)}
               </p>
+              {b.block_kind === "open_question" && b.provenance_kind === "graph_node" && (
+                <CommissionInterviewButton
+                  outlineBlockId={b.outline_block_id}
+                  deliverableId={deliverableId}
+                />
+              )}
             </li>
           ))}
         </ol>
@@ -660,6 +668,62 @@ function SectionCard({
         </div>
       )}
     </section>
+  );
+}
+
+function CommissionInterviewButton({
+  outlineBlockId,
+  deliverableId,
+}: {
+  outlineBlockId: string;
+  deliverableId: string;
+}) {
+  const [state, setState] = useState<
+    | { phase: "idle" }
+    | { phase: "working" }
+    | { phase: "ready"; path: string }
+    | { phase: "failed"; message: string }
+  >({ phase: "idle" });
+
+  if (state.phase === "ready") {
+    return (
+      <Link
+        to={state.path}
+        className="shrink-0 text-[11px] font-medium text-ocean underline"
+        onClick={(event) => event.stopPropagation()}
+      >
+        Invite people →
+      </Link>
+    );
+  }
+
+  return (
+    <div className="shrink-0 text-right">
+      <button
+        type="button"
+        disabled={state.phase === "working"}
+        onClick={(event) => {
+          event.stopPropagation();
+          setState({ phase: "working" });
+          void commissionQuestionInterviews(outlineBlockId, deliverableId)
+            .then((result) => setState({ phase: "ready", path: result.speak_path }))
+            .catch((error: unknown) =>
+              setState({
+                phase: "failed",
+                message: error instanceof Error ? error.message : String(error),
+              }),
+            );
+        }}
+        className="rounded border border-ocean/40 px-2 py-1 text-[11px] text-ocean disabled:opacity-50"
+      >
+        {state.phase === "working" ? "Opening…" : "Ask people"}
+      </button>
+      {state.phase === "failed" && (
+        <p className="mt-1 max-w-40 text-[10px] text-emperor" role="alert">
+          {state.message}
+        </p>
+      )}
+    </div>
   );
 }
 

@@ -88,6 +88,18 @@ def test_resume_across_sessions(speak_env):
     assert any(p["id"] == "q2" for p in resumed.pending_questions())
 
 
+def test_resume_preserves_legacy_string_must_cover(speak_env):
+    db, proj = speak_env["db_path"], speak_env["project_id"]
+    session = ai.start_async_interview(
+        db,
+        project_id=proj,
+        interview_guide={"must_cover": ["What should we remember?"]},
+    )
+    assert session.pending_questions() == [
+        {"id": "legacy-0", "text": "What should we remember?"}
+    ]
+
+
 def test_abandoned_interview_marked_incomplete(speak_env):
     db, proj = speak_env["db_path"], speak_env["project_id"]
     s = ai.start_async_interview(db, project_id=proj, interview_guide=GUIDE)

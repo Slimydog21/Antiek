@@ -15,8 +15,10 @@ than fabricating prose, and is not asserted.
 
 from __future__ import annotations
 
+import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -25,6 +27,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
+import interfaces.research.api.write_routes as write_routes
 from interfaces.research.api import create_app
 from runtime.db_lock import connect_write
 from substrate.graph import default_db_path, ensure_initialized
@@ -35,6 +38,7 @@ from substrate.graph.ops import (
     insert_node,
     insert_section,
 )
+from substrate.speak.interviewer_context import SpeakGraphGapSource
 
 
 @pytest.fixture(autouse=True)
@@ -65,6 +69,14 @@ def seed():
         node = insert_node(con, canonical_label="a sourced insight", node_type="claim",
                            graph_scope="cross_domain", investigation_id="__operator__",
                            metadata={"chunk_id": ch})
+        question = insert_node(
+            con,
+            canonical_label="What changed after the first prototype?",
+            node_type="question",
+            graph_scope="cross_domain",
+            investigation_id="__operator__",
+            metadata={"chunk_id": ch},
+        )
         gated_doc = insert_document(con, document_id="doc-gated", source_tier=2,
                                     document_type="book", title="Gated Book")
         con.execute("UPDATE documents SET content_class='restricted_pending_opt_in' "
@@ -74,7 +86,131 @@ def seed():
                             graph_scope="cross_domain", investigation_id="__operator__",
                             metadata={"chunk_id": gch})
     return {"deliverable_id": did, "section_id": sec, "node": node,
+            "question": question,
             "document": doc, "gated_node": gnode}
+
+
+def _place_question(client: TestClient, seed: dict) -> str:
+    response = client.post("/write/blocks", json={
+        "section_id": seed["section_id"],
+        "block_kind": "open_question",
+        "provenance_kind": "graph_node",
+        "node_id": seed["question"],
+        "block_index": 0,
+    })
+    assert response.status_code == 201, response.text
+    return response.json()["outline_block_id"]
+
+
+def _all_events() -> list[dict]:
+    rows: list[dict] = []
+    for path in Path(os.environ["ANTIEK_RESEARCH_EVENTS_DIR"]).rglob("*.jsonl"):
+        rows.extend(json.loads(line) for line in path.read_text().splitlines() if line)
+    return rows
+
+
+# ── Write → Speak committed seam ──
+
+
+def test_question_commission_is_reference_only_and_hydrates_at_read_time(client, seed):
+    block_id = _place_question(client, seed)
+    response = client.post(
+        f"/write/blocks/{block_id}/speak-handoffs",
+        headers={"Idempotency-Key": "commission-1"},
+        json={"deliverable_id": seed["deliverable_id"]},
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["question_node_id"] == seed["question"]
+    assert body["speak_path"] == f"/speak/{body['speak_project_id']}"
+
+    with connect_write(default_db_path(), purpose="test/commission") as con:
+        row = con.execute(
+            "SELECT ip.interview_guide, sp.publish_intent, sp.invitation_mode "
+            "FROM interview_projects ip JOIN speak_projects sp USING (project_id) "
+            "WHERE ip.project_id = ?",
+            [body["speak_project_id"]],
+        ).fetchone()
+        stored = json.loads(row[0])
+        assert stored == {"must_cover": [{
+            "id": seed["question"], "question_node_id": seed["question"],
+        }]}
+        assert "first prototype" not in row[0]
+        assert row[1:] == ("private_never_published", "private")
+
+        gaps = SpeakGraphGapSource(con).open_questions(body["speak_project_id"])
+        assert any("first prototype" in gap.text for gap in gaps)
+
+    seam_events = [e for e in _all_events() if e["action_type"] == "seam.write_to_speak"]
+    assert len(seam_events) == 1
+    assert seam_events[0]["payload"]["entity_id"] == seed["question"]
+    assert "first prototype" not in json.dumps(seam_events[0])
+
+
+def test_question_commission_replays_once_and_rejects_key_reuse(client, seed):
+    block_id = _place_question(client, seed)
+    path = f"/write/blocks/{block_id}/speak-handoffs"
+    headers = {"Idempotency-Key": "commission-replay"}
+    payload = {"deliverable_id": seed["deliverable_id"]}
+    first = client.post(path, headers=headers, json=payload)
+    replay = client.post(path, headers=headers, json=payload)
+    assert replay.status_code == 201
+    assert replay.json() == first.json()
+    assert len([e for e in _all_events() if e["action_type"] == "seam.write_to_speak"]) == 1
+
+    new_command = client.post(
+        path,
+        headers={"Idempotency-Key": "commission-replay-after-reload"},
+        json=payload,
+    )
+    assert new_command.status_code == 201
+    assert new_command.json() == first.json()
+    assert len([e for e in _all_events() if e["action_type"] == "seam.write_to_speak"]) == 1
+
+    other = client.post("/deliverables", json={
+        "title": "Other", "deliverable_kind": "research_memo",
+    }).json()["deliverable_id"]
+    conflict = client.post(path, headers=headers, json={"deliverable_id": other})
+    assert conflict.status_code == 409
+    with connect_write(default_db_path(), purpose="test/commission-count") as con:
+        assert con.execute("SELECT count(*) FROM speak_projects").fetchone()[0] == 1
+
+
+def test_question_commission_repairs_event_after_append_failure(client, seed, monkeypatch):
+    block_id = _place_question(client, seed)
+    path = f"/write/blocks/{block_id}/speak-handoffs"
+    headers = {"Idempotency-Key": "commission-repair"}
+    real_append = write_routes.append_event_once
+    monkeypatch.setattr(
+        write_routes,
+        "append_event_once",
+        lambda _event: (_ for _ in ()).throw(RuntimeError("event store unavailable")),
+    )
+    with pytest.raises(RuntimeError, match="event store unavailable"):
+        client.post(path, headers=headers, json={"deliverable_id": seed["deliverable_id"]})
+    monkeypatch.setattr(write_routes, "append_event_once", real_append)
+    repaired = client.post(
+        path, headers=headers, json={"deliverable_id": seed["deliverable_id"]}
+    )
+    assert repaired.status_code == 201
+    with connect_write(default_db_path(), purpose="test/commission-repair") as con:
+        assert con.execute("SELECT count(*) FROM speak_projects").fetchone()[0] == 1
+    assert len([e for e in _all_events() if e["action_type"] == "seam.write_to_speak"]) == 1
+
+
+def test_question_commission_rejects_non_question_before_mutation(client, seed):
+    block = client.post("/write/blocks", json={
+        "section_id": seed["section_id"], "block_kind": "insight",
+        "provenance_kind": "graph_node", "node_id": seed["node"], "block_index": 0,
+    }).json()["outline_block_id"]
+    response = client.post(
+        f"/write/blocks/{block}/speak-handoffs",
+        headers={"Idempotency-Key": "not-a-question"},
+        json={"deliverable_id": seed["deliverable_id"]},
+    )
+    assert response.status_code == 409
+    with connect_write(default_db_path(), purpose="test/no-commission") as con:
+        assert con.execute("SELECT count(*) FROM interview_projects").fetchone()[0] == 0
 
 
 # ── SPR-09 M1 — the piece↔research link, verified by reading it back ──

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Editor } from "@tiptap/react";
+import { MemoryRouter } from "react-router-dom";
 
 import { ApiError, type SectionResponse } from "../../lib/api";
 import type { GenerationResult, OutlineBlockView } from "./writeApi";
@@ -25,6 +26,7 @@ const {
   generateSectionMock,
   placeBlockMock,
   moveBlockMock,
+  commissionQuestionInterviewsMock,
   updateSectionProseMock,
   postTypedEventMock,
   editorHolder,
@@ -33,6 +35,7 @@ const {
   generateSectionMock: vi.fn(),
   placeBlockMock: vi.fn(),
   moveBlockMock: vi.fn(),
+  commissionQuestionInterviewsMock: vi.fn(),
   updateSectionProseMock: vi.fn(),
   postTypedEventMock: vi.fn(),
   // Holds the REAL TipTap editor instance (captured, not replaced) so a test
@@ -47,6 +50,7 @@ vi.mock("./writeApi", async (orig) => ({
   generateSection: generateSectionMock,
   placeBlock: placeBlockMock,
   moveBlock: moveBlockMock,
+  commissionQuestionInterviews: commissionQuestionInterviewsMock,
 }));
 
 // createSection lives on the shared lib/api — keep it inert in these tests.
@@ -130,6 +134,7 @@ beforeEach(() => {
   generateSectionMock.mockReset();
   placeBlockMock.mockReset().mockResolvedValue("oblk-new");
   moveBlockMock.mockReset().mockResolvedValue(undefined);
+  commissionQuestionInterviewsMock.mockReset();
   updateSectionProseMock
     .mockReset()
     .mockResolvedValue({ status: "saved", section_id: "sec-1", claim_node_id: null, claim_event_id: null });
@@ -144,6 +149,39 @@ describe("Outline — no id, honest generate, real editor", () => {
     expect(blockKindForNodeType("question")).toBe("open_question");
     expect(blockKindForNodeType("claim")).toBe("claim");
     expect(blockKindForNodeType("entity")).toBeNull();
+  });
+  it("commissions interviews only from a node-backed open question", async () => {
+    getSectionBlocksMock.mockResolvedValue([
+      block({ block_kind: "open_question", node_label: "What changed?" }),
+    ]);
+    commissionQuestionInterviewsMock.mockResolvedValue({
+      speak_path: "/speak/project-1",
+    });
+    render(
+      <MemoryRouter>
+        <Outline
+          deliverableId="dlv-1"
+          sections={[section({ block_count: 1 })]}
+          onChanged={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+    await userEvent.click(await screen.findByRole("button", { name: "Ask people" }));
+    expect(commissionQuestionInterviewsMock).toHaveBeenCalledWith(
+      `oblk-${NODE_ID}`,
+      "dlv-1",
+    );
+    const link = await screen.findByRole("link", { name: /invite people/i });
+    expect(link.getAttribute("href")).toBe("/speak/project-1");
+  });
+
+  it("does not offer interview commissioning for an insight", async () => {
+    getSectionBlocksMock.mockResolvedValue([block()]);
+    render(
+      <Outline deliverableId="dlv-1" sections={[section({ block_count: 1 })]} onChanged={vi.fn()} />,
+    );
+    await screen.findByText("Capital intensity rises with scale");
+    expect(screen.queryByRole("button", { name: "Ask people" })).toBeNull();
   });
   it("renders a block by text + provenance, never an id", async () => {
     getSectionBlocksMock.mockResolvedValue([block()]);

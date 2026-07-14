@@ -55,6 +55,7 @@ def create_project(
     topic_description: str | None = None,
     interview_guide: Any | None = None,
     project_id: str | None = None,
+    emit_event: bool = True,
 ) -> SpeakProject:
     """Create a Speak project: the base ``interview_projects`` row plus
     the ``speak_projects`` sidecar carrying publish intent + subject."""
@@ -76,12 +77,13 @@ def create_project(
         "VALUES (?, ?, 'private', ?, ?) ON CONFLICT (project_id) DO NOTHING",
         [pid, publish_intent, subject_ref, subject_status],
     )
-    record_speak_event(
-        SPEAK_PROJECT_CREATED,
-        {"title": title, "publish_intent": publish_intent,
-         "subject_ref": subject_ref, "subject_status": subject_status},
-        project_id=pid,
-    )
+    if emit_event:
+        record_speak_event(
+            SPEAK_PROJECT_CREATED,
+            {"title": title, "publish_intent": publish_intent,
+             "subject_ref": subject_ref, "subject_status": subject_status},
+            project_id=pid,
+        )
     return get_project(con, pid)
 
 

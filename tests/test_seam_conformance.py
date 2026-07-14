@@ -37,10 +37,10 @@ _FORBIDDEN_SUCCESSOR_FIELDS = frozenset(
 )
 
 
-def test_six_committed_one_provisional():
-    assert len(COMMITTED_SEAMS) == 6
-    assert len(PROVISIONAL_SEAMS) == 1
-    assert (WriteToSpeakSeam,) == PROVISIONAL_SEAMS
+def test_seven_committed_no_provisional():
+    assert len(COMMITTED_SEAMS) == 7
+    assert len(PROVISIONAL_SEAMS) == 0
+    assert WriteToSpeakSeam in COMMITTED_SEAMS
     assert set(ALL_SEAMS) == set(COMMITTED_SEAMS) | set(PROVISIONAL_SEAMS)
 
 
@@ -112,7 +112,7 @@ def test_seam_events_mirror_seam_contracts():
     # The action_type each payload's class declares as its discriminator
     # default — read off the field default so we don't need to construct
     # payloads with required args.
-    for seam, payload in payload_map.items():
+    for payload in payload_map.values():
         pf = set(payload.model_fields.keys())
         # The handoff identity travels on both the contract and the event.
         for f in ("entity_id", "entity_kind", "provenance_ref", "terminates",

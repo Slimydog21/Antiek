@@ -303,6 +303,94 @@ export async function handoffWriteBlockToRead(
   return result;
 }
 
+export interface SpeakCommission {
+  question_node_id: string;
+  section_id: string;
+  speak_project_id: string;
+  speak_path: string;
+  seam_event_id: string;
+}
+
+const pendingSpeakCommissions = new Map<string, string>();
+const inFlightSpeakCommissions = new Map<string, Promise<SpeakCommission>>();
+const SPEAK_COMMISSION_STORAGE_PREFIX = "antiek:write-to-speak:";
+
+function speakCommissionCommand(logicalCommand: string): string {
+  const inMemory = pendingSpeakCommissions.get(logicalCommand);
+  if (inMemory) return inMemory;
+  try {
+    const stored = globalThis.localStorage?.getItem(
+      `${SPEAK_COMMISSION_STORAGE_PREFIX}${logicalCommand}`,
+    );
+    if (stored) return stored;
+  } catch {
+    // Same-tab memory retains retry identity when storage is restricted.
+  }
+  return crypto.randomUUID();
+}
+
+function persistSpeakCommission(logicalCommand: string, commandId: string | null): void {
+  if (commandId) pendingSpeakCommissions.set(logicalCommand, commandId);
+  else pendingSpeakCommissions.delete(logicalCommand);
+  try {
+    const key = `${SPEAK_COMMISSION_STORAGE_PREFIX}${logicalCommand}`;
+    if (commandId) globalThis.localStorage?.setItem(key, commandId);
+    else globalThis.localStorage?.removeItem(key);
+  } catch {
+    // The server receipt remains authoritative.
+  }
+}
+
+async function executeSpeakCommission(
+  outlineBlockId: string,
+  deliverableId: string,
+  logicalCommand: string,
+): Promise<SpeakCommission> {
+  const commandId = speakCommissionCommand(logicalCommand);
+  persistSpeakCommission(logicalCommand, commandId);
+  const response = await apiFetch(
+    `${API_BASE}/write/blocks/${encodeURIComponent(outlineBlockId)}/speak-handoffs`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": commandId,
+      },
+      body: JSON.stringify({ deliverable_id: deliverableId }),
+    },
+  );
+  try {
+    const result = await _json<SpeakCommission>(
+      response,
+      "POST /write/blocks/{id}/speak-handoffs",
+    );
+    persistSpeakCommission(logicalCommand, null);
+    return result;
+  } catch (error) {
+    if (response.status >= 400 && response.status < 500) {
+      persistSpeakCommission(logicalCommand, null);
+    }
+    throw error;
+  }
+}
+
+/** Commission one Speak project from the same question node, without copying it. */
+export function commissionQuestionInterviews(
+  outlineBlockId: string,
+  deliverableId: string,
+): Promise<SpeakCommission> {
+  const logicalCommand = JSON.stringify([outlineBlockId, deliverableId]);
+  const existing = inFlightSpeakCommissions.get(logicalCommand);
+  if (existing) return existing;
+  const request = executeSpeakCommission(
+    outlineBlockId,
+    deliverableId,
+    logicalCommand,
+  ).finally(() => inFlightSpeakCommissions.delete(logicalCommand));
+  inFlightSpeakCommissions.set(logicalCommand, request);
+  return request;
+}
+
 export interface PromoteResult {
   deliverable_id: string;
   section_id: string;

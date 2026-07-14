@@ -14,7 +14,7 @@ collision-fix adapters. It builds *on* the SPR-01 substrate contracts
 builds no product's internals — each product spec implements its own side of a
 seam against the contract here.
 
-Six committed seams + one provisional:
+Seven committed seams:
 
 * ``ResearchToReadSeam``  research → read
 * ``ReadToResearchSeam``  read → research   (Read SPR-08)
@@ -22,7 +22,7 @@ Six committed seams + one provisional:
 * ``WriteToReadSeam``     write → read       (Write SPR-07)
 * ``SpeakToWriteSeam``    speak → write      (Speak SPR-08)
 * ``SpeakToReadSeam``     speak → read       (Speak SPR-09)
-* ``WriteToSpeakSeam``    write → speak      (**provisional**)
+* ``WriteToSpeakSeam``    write → speak
 
 The seam-level collision adapter ``servability_gate`` resolves seam #4
 (``platform_authored``-from-Speak gating) — the speak→read translation Read
@@ -30,8 +30,8 @@ calls so a ``speak_derived`` document passes Speak's publish gate before Read
 serves full text, without coupling Read to Speak internals.
 
 See ``inventory.md`` for the row-by-row map and ``README.md`` for the flywheel
-diagram, the four collision resolutions, and the provisional-seam promotion
-criterion. The seam *events* (``seam.*`` action types) are typed in
+diagram, the four collision resolutions, and seam implementation details. The
+seam *events* (``seam.*`` action types) are typed in
 ``substrate/schemas/events.py`` and emitted through ``substrate/event_log`` →
 ``runtime/db_lock``.
 """
@@ -68,14 +68,13 @@ from .thread import (
 )
 
 __all__ = [
-    # the six committed seams
+    # the seven committed seams
     "ResearchToReadSeam",
     "ReadToResearchSeam",
     "ReadToWriteSeam",
     "WriteToReadSeam",
     "SpeakToWriteSeam",
     "SpeakToReadSeam",
-    # the one provisional seam
     "WriteToSpeakSeam",
     # registries + status
     "COMMITTED_SEAMS",

@@ -318,8 +318,8 @@ def test_meta_check_rejects_missing_guard(tmp_path: Path) -> None:
 
 def test_meta_check_rejects_skipped_guard(tmp_path: Path) -> None:
     """Failure mode 2 — a guard that is @pytest.mark.skip (an unjustified skip /
-    xfail placeholder) FAILS the meta-check. We point at the real intentionally-
-    skipped node test_write_to_speak_no_copy and prove it is rejected."""
+    xfail placeholder) FAILS the meta-check. We point at a real prod-only
+    skipped node and prove it is rejected."""
     _write_decl(
         tmp_path,
         "broken-skipped",
@@ -328,7 +328,7 @@ def test_meta_check_rejects_skipped_guard(tmp_path: Path) -> None:
         id = "broken-skipped"
         status = "guarded"
         statement = "A registration whose guard node is decorated skip — collected but never run."
-        guard = "tests/test_seam_no_copy.py::test_write_to_speak_no_copy"
+        guard = "tests/test_bernays_public_domain.py::test_live_network_ingest_bernays_titles"
         assertion = "nothing — the node is skipped"
         [non_vacuity]
         method = "negative_control"

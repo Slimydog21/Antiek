@@ -51,9 +51,9 @@ from .contracts import EntityKind, Workflow
 # The seam ``action_type`` strings, paired with their (from_workflow,
 # to_workflow). Mirrors ``substrate/schemas/events.py`` ActionType.SEAM_*.
 # A seam event hands the entity from ``from_workflow`` to ``to_workflow``;
-# the thread walk turns a chain of these into ordered hops. The provisional
-# write→speak seam is included so a trajectory that touched it is still
-# reconstructable, but it is flagged so the breadcrumb can render it honestly.
+# the thread walk turns a chain of these into ordered hops. The boolean marks
+# provisional contracts for honest breadcrumb rendering; every current seam is
+# committed.
 _SEAM_ACTION_DIRECTION: dict[str, tuple[Workflow, Workflow, bool]] = {
     "seam.research_to_read": ("research", "read", False),
     "seam.read_to_research": ("read", "research", False),
@@ -61,7 +61,7 @@ _SEAM_ACTION_DIRECTION: dict[str, tuple[Workflow, Workflow, bool]] = {
     "seam.write_to_read": ("write", "read", False),
     "seam.speak_to_write": ("speak", "write", False),
     "seam.speak_to_read": ("speak", "read", False),
-    "seam.write_to_speak": ("write", "speak", True),  # provisional
+    "seam.write_to_speak": ("write", "speak", False),
 }
 
 
@@ -93,8 +93,8 @@ class ThreadHop:
     # Whether the workflow this hop lands in has a built surface. Drives the
     # honest stub — the thread does not lie about what exists.
     built: bool = True
-    # True only for the provisional write→speak seam — the breadcrumb labels it
-    # so the operator knows the hop rests on an unfinished seam.
+    # True only when a seam contract is provisional, so the breadcrumb labels
+    # the unfinished hop honestly. All current contracts are committed.
     via_provisional_seam: bool = False
 
 
