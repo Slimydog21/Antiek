@@ -42,6 +42,11 @@ from substrate.multimedia.planner import (
     MultimediaPlanRequest,
     build_multimedia_plan,
 )
+from substrate.multimedia.ship_cost_snapshot import (
+    MultimediaShipCostEvidenceConflict,
+    MultimediaShipCostSnapshotV1,
+    verify_multimedia_ship_cost_snapshot,
+)
 from substrate.multimedia.steering import (
     RevisionChange,
     RevisionPlan,
@@ -590,16 +595,40 @@ class MultimediaAssetStore:
         return claims
 
     def run_hardening(
-        self, asset_id: str, *, owner_id: str = _DEFAULT_OWNER_ID
+        self,
+        asset_id: str,
+        *,
+        owner_id: str = _DEFAULT_OWNER_ID,
+        cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
+        snapshot_key: bytes | None = None,
     ) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
+            if cost_snapshot is not None:
+                try:
+                    if snapshot_key is None:
+                        raise ValueError("snapshot key is unavailable")
+                    verify_multimedia_ship_cost_snapshot(
+                        cost_snapshot,
+                        snapshot_key=snapshot_key,
+                        owner_id=owner_id,
+                        asset_id=record.asset.asset_id,
+                        revision_id=record.asset.revision_id,
+                    )
+                except (TypeError, ValueError, RuntimeError) as exc:
+                    raise MultimediaShipCostEvidenceConflict("evidence_conflict") from exc
             scenes: tuple[object, ...] = ()
             if record.mode != "audio":
                 audio = assemble_audio_experience(record.plan, FakeTTSProvider(), asset_id=record.asset.asset_id, revision_id=f"{record.asset.revision_id}-audio")
                 scenes = build_video_scenes(record.plan, audio)
-            report = evaluate_multimedia_asset(record.asset, scenes=scenes)
+            report = evaluate_multimedia_asset(
+                record.asset,
+                scenes=scenes,
+                cost_snapshot=cost_snapshot,
+                snapshot_key=snapshot_key,
+                owner_id=owner_id,
+            )
             updated = self._with_job(
                 record.model_copy(update={"hardening_report": report}),
                 kind="hardening",

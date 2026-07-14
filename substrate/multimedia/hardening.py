@@ -13,6 +13,11 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.contracts.multimedia import MultimediaAssetContract, MultimediaStatus
+from substrate.multimedia.ship_cost_snapshot import (
+    MultimediaShipCostEvidenceUnavailable,
+    MultimediaShipCostSnapshotV1,
+    verify_multimedia_ship_cost_snapshot,
+)
 
 GateStatus = Literal["pass", "fail", "manual"]
 ShipStatus = Literal["pass", "blocked", "manual_review"]
@@ -42,6 +47,7 @@ class MultimediaHardeningReport(_HardeningBase):
     ship_status: ShipStatus
     gates: tuple[GateResult, ...]
     residual_risks: tuple[str, ...] = Field(default_factory=tuple)
+    cost_snapshot: MultimediaShipCostSnapshotV1 | None = None
 
     @property
     def failed_gate_ids(self) -> tuple[str, ...]:
@@ -56,8 +62,9 @@ def evaluate_multimedia_asset(
     asset: MultimediaAssetContract,
     *,
     acknowledged_unsourced_line_ids: tuple[str, ...] = (),
-    budget_usd: float | None = None,
-    actual_cost_usd: float | None = None,
+    cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
+    snapshot_key: bytes | None = None,
+    owner_id: str | None = None,
     scenes: Iterable[Any] = (),
     retry_attempts: int = 0,
     max_retry_attempts: int = 2,
@@ -72,7 +79,12 @@ def evaluate_multimedia_asset(
 
     gates = (
         _grounding_gate(asset, acknowledged_unsourced_line_ids, scenes),
-        _cost_gate(asset, budget_usd, actual_cost_usd),
+        _cost_gate(
+            asset,
+            cost_snapshot=cost_snapshot,
+            snapshot_key=snapshot_key,
+            owner_id=owner_id,
+        ),
         _playback_gate(asset),
         _provider_safety_gate(asset, retry_attempts, max_retry_attempts),
         _rights_publication_gate(),
@@ -92,6 +104,7 @@ def evaluate_multimedia_asset(
             "Public publishing approval is out of scope for this automated gate.",
             "Custom voice likeness/licensing requires operator review before release.",
         ),
+        cost_snapshot=(cost_snapshot if gates[1].status == "pass" else None),
     )
 
 
@@ -134,52 +147,34 @@ def _grounding_gate(
 
 def _cost_gate(
     asset: MultimediaAssetContract,
-    budget_usd: float | None,
-    actual_cost_usd: float | None,
+    *,
+    cost_snapshot: MultimediaShipCostSnapshotV1 | None,
+    snapshot_key: bytes | None,
+    owner_id: str | None,
 ) -> GateResult:
-    findings: list[GateFinding] = []
-    calls = asset.manifest.provider_calls
-    row_call_ids = {row.call_id for row in asset.manifest.cost_rows}
-    for call in calls:
-        if call.call_id not in row_call_ids:
-            findings.append(
-                GateFinding(
-                    code="missing_cost_row",
-                    severity="error",
-                    target_id=call.call_id,
-                    message="Every provider call, including failed jobs, must have a cost ledger row.",
-                )
-            )
-    estimated = round(sum(row.cost_usd for row in asset.manifest.cost_rows), 4)
-    if calls and actual_cost_usd is None and not asset.manifest.cost_rows:
-        findings.append(
-            GateFinding(
-                code="unknown_provider_cost",
-                severity="error",
-                message="Provider cost is unknown because no actual cost or cost ledger rows were supplied.",
-            )
+    if cost_snapshot is None or snapshot_key is None or owner_id is None:
+        finding = GateFinding(
+            code="cost_evidence_unavailable",
+            severity="error",
+            message="Authoritative direct-provider cost evidence is unavailable.",
         )
-    if budget_usd is not None:
-        # Conservative spend measure: a low operator-supplied actual must not
-        # mask a high ledger total. Block if the ledger total OR the supplied
-        # authoritative actual exceeds the budget.
-        budget_measures: list[float] = [estimated]
-        if actual_cost_usd is not None:
-            budget_measures.append(actual_cost_usd)
-        exceeded_measure = max(budget_measures)
-        if exceeded_measure > budget_usd:
-            findings.append(
-                GateFinding(
-                    code="budget_exceeded",
-                    severity="error",
-                    message=f"Multimedia spend ${exceeded_measure:.4f} exceeds budget ${budget_usd:.4f}.",
-                )
-            )
-    return GateResult(
-        gate_id="cost_and_budget",
-        status="fail" if findings else "pass",
-        findings=tuple(findings),
-    )
+        return GateResult(gate_id="cost_and_budget", status="fail", findings=(finding,))
+    try:
+        verify_multimedia_ship_cost_snapshot(
+            cost_snapshot,
+            snapshot_key=snapshot_key,
+            owner_id=owner_id,
+            asset_id=asset.asset_id,
+            revision_id=asset.revision_id,
+        )
+    except (MultimediaShipCostEvidenceUnavailable, TypeError, ValueError):
+        finding = GateFinding(
+            code="cost_evidence_invalid",
+            severity="error",
+            message="Direct-provider cost evidence failed integrity or identity validation.",
+        )
+        return GateResult(gate_id="cost_and_budget", status="fail", findings=(finding,))
+    return GateResult(gate_id="cost_and_budget", status="pass")
 
 
 def _playback_gate(asset: MultimediaAssetContract) -> GateResult:

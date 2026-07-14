@@ -97,6 +97,8 @@ def test_store_create_approve_reopen_steer_and_harden(tmp_path):
 
     hardened = store.run_hardening(draft.asset.asset_id)
     assert hardened.hardening_report is not None
+    assert hardened.hardening_report.ship_status == "blocked"
+    assert "cost_and_budget" in hardened.hardening_report.failed_gate_ids
     assert hardened.hardening_report.manual_gate_ids == ("rights_and_publication",)
     assert hardened.jobs[-1].kind == "hardening"
     assert hardened.jobs[-1].progress_percent == 100
@@ -533,15 +535,8 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     assert steered.json()["asset"]["parent_revision_id"] == "rev-1"
 
     hardened = client.post(f"/multimedia/assets/{asset_id}/hardening")
-    assert hardened.status_code == 200
-    report = hardened.json()["hardening_report"]
-    assert report["ship_status"] in {"manual_review", "blocked"}
-    # manual_gate_ids is a Python @property (not serialized); derive the manual
-    # gate from the serialized `gates` tuple, which is the JSON source of truth.
-    assert any(
-        gate["status"] == "manual" and gate["gate_id"] == "rights_and_publication"
-        for gate in report["gates"]
-    )
+    assert hardened.status_code == 503
+    assert hardened.json()["detail"] == "multimedia hardening runtime is unavailable"
 
     listed = client.get("/multimedia/assets")
     assert listed.status_code == 200
@@ -551,12 +546,11 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
     jobs = client.get(f"/multimedia/assets/{asset_id}/jobs")
     assert jobs.status_code == 200
     jobs_body = jobs.json()
-    # approve + steer + harden each left one job row.
-    assert jobs_body["count"] == 3
+    # A missing cost-authority runtime cannot leave a hardening job row.
+    assert jobs_body["count"] == 2
     assert [row["kind"] for row in jobs_body["jobs"]] == [
         "render",
         "steering",
-        "hardening",
     ]
     sequences = [row["sequence"] for row in jobs_body["jobs"]]
     assert sequences == sorted(sequences)
@@ -596,7 +590,7 @@ def test_multimedia_routes_round_trip_without_provider_secrets(tmp_path, monkeyp
         ),
         other.post(f"/multimedia/assets/{asset_id}/hardening"),
     )
-    assert [response.status_code for response in denied] == [404] * len(denied)
+    assert [response.status_code for response in denied] == [404, 404, 404, 404, 503]
 
 
 def test_hybrid_approve_does_not_double_count_audio_cost_rows(tmp_path):
