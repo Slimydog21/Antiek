@@ -1,0 +1,71 @@
+/* Storybook-only review harness. This file is never imported by production. */
+.werner-motion-proof__frame {
+  display: grid;
+  min-height: 10rem;
+  place-items: center;
+}
+
+.werner-motion-proof__frame .werner-semantic *,
+.werner-motion-proof__frame .werner-semantic svg {
+  animation-delay: var(--werner-review-delay) !important;
+  animation-play-state: paused !important;
+}
+
+/* The capture host may itself request reduced motion. Restore only the authored
+   semantic tracks in explicitly non-reduced proof cells; the fourth column
+   keeps data-reduced=true and therefore exercises the real static fallback. */
+.werner-motion-proof__frame
+  .werner-semantic--curious[data-reduced="false"]
+  .werner-semantic__mark {
+  animation: werner-curious-beat var(--werner-semantic-duration) ease-in-out
+    both paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--curious[data-reduced="false"]
+  .werner-semantic__evidence {
+  animation: werner-evidence-arrive var(--werner-semantic-duration) ease-out
+    both paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--happy[data-reduced="false"]
+  .werner-semantic__mark {
+  animation: werner-proud-lift var(--werner-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--happy[data-reduced="false"]
+  .werner-semantic__stamp {
+  animation: werner-verified-beat var(--werner-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--dizzy[data-reduced="false"]
+  .werner-semantic__orbit {
+  animation: werner-paperclip-orbit var(--werner-semantic-duration) linear both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--hit[data-reduced="false"]
+  .werner-semantic__mark {
+  animation: werner-hit-rebound var(--werner-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--hit[data-reduced="false"]
+  .werner-semantic__tab {
+  animation: werner-tab-impact var(--werner-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
