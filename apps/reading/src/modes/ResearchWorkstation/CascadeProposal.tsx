@@ -10,14 +10,18 @@ import {
 import Thinking from "../../shared/Thinking";
 import {
   approvePlan,
+  approveSpend,
   createPlan,
   editPlan,
   getBudgetDefaults,
   getPlan,
+  getSpendPreview,
   getSession,
   launchPlan,
   type PlanNode,
   type PlanTree,
+  type SpendMode,
+  type SpendPreview,
 } from "../../api/research";
 
 /**
@@ -115,6 +119,12 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
   const [perResearchCost, setPerResearchCost] = useState<number | null>(null);
   const [priceCeiling, setPriceCeiling] = useState("");
   const [ceilingApproved, setCeilingApproved] = useState(false);
+  const [spendMode, setSpendMode] = useState<SpendMode>("stop_limit");
+  const [hardPreview, setHardPreview] = useState<SpendPreview | null>(null);
+  const [previewPending, setPreviewPending] = useState(false);
+  const [authorityDigest, setAuthorityDigest] = useState<string | null>(null);
+  const [approvedSessionId, setApprovedSessionId] = useState<string | null>(null);
+  const previewSequence = useRef(0);
 
   // Propose the tree once on mount (and on an explicit retry). A ref guards
   // React 18 StrictMode's double-invoke so we don't POST two plans.
@@ -156,7 +166,33 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       setPriceCeiling((perResearchCost * count).toFixed(2));
     }
     setCeilingApproved(false);
+    setAuthorityDigest(null);
+    setApprovedSessionId(null);
   }, [perResearchCost, plan]);
+
+  useEffect(() => {
+    const sequence = ++previewSequence.current;
+    if (
+      plan === null ||
+      !/^\d+(?:\.\d{1,2})?$/.test(priceCeiling) ||
+      Number(priceCeiling) <= 0
+    ) {
+      setHardPreview(null);
+      setPreviewPending(false);
+      return;
+    }
+    setPreviewPending(true);
+    void getSpendPreview(plan.rootNodeId, "hard_ceiling", priceCeiling)
+      .then((preview) => {
+        if (previewSequence.current === sequence) setHardPreview(preview);
+      })
+      .catch(() => {
+        if (previewSequence.current === sequence) setHardPreview(null);
+      })
+      .finally(() => {
+        if (previewSequence.current === sequence) setPreviewPending(false);
+      });
+  }, [plan, priceCeiling]);
 
   const applyEdit = useCallback(
     async (edit: { op: "remove" | "reword"; target_local_id: string; question?: string }) => {
@@ -164,6 +200,8 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       // Approval belongs to an exact tree version. Revoke it before the edit
       // request leaves the browser so the old tree cannot launch in the gap.
       setCeilingApproved(false);
+      setAuthorityDigest(null);
+      setApprovedSessionId(null);
       setPlanMutationPending(true);
       try {
         const r = await editPlan(plan.rootNodeId, edit);
@@ -189,6 +227,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       planMutationPending ||
       researchCount === 0 ||
       !ceilingApproved ||
+      (spendMode === "hard_ceiling" && authorityDigest === null) ||
       !/^\d+(?:\.\d{1,2})?$/.test(priceCeiling) ||
       !Number.isFinite(parsedCeiling) ||
       parsedCeiling <= 0
@@ -201,18 +240,58 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
       // approved. We approve-then-launch in one user action because the
       // door's affordance is a single "Start these researches" — the
       // human-in-the-loop trim already happened above.
-      await approvePlan(plan.rootNodeId);
+      if (spendMode === "stop_limit") {
+        await approvePlan(plan.rootNodeId);
+      }
       approvalCompleted = true;
-      const r = await launchPlan(plan.rootNodeId, {
-        aggregate_budget_usd: parsedCeiling,
-      });
+      const r = await launchPlan(
+        plan.rootNodeId,
+        spendMode === "hard_ceiling"
+          ? {
+              spend_mode: "hard_ceiling",
+              hard_ceiling_usd: priceCeiling,
+              authority_digest: authorityDigest!,
+            }
+          : { aggregate_budget_usd: parsedCeiling },
+      );
       onLaunched(r.session_id);
     } catch (e) {
       setFailureStage(approvalCompleted ? "launch" : "approval");
       setFailure(classifyClientError(e));
       setPhase("ready");
     }
-  }, [ceilingApproved, onLaunched, phase, plan, planMutationPending, priceCeiling]);
+  }, [authorityDigest, ceilingApproved, onLaunched, phase, plan, planMutationPending, priceCeiling, spendMode]);
+
+  const changeApproval = useCallback(
+    async (checked: boolean) => {
+      setCeilingApproved(false);
+      setAuthorityDigest(null);
+      setApprovedSessionId(null);
+      if (!checked || !plan) return;
+      if (spendMode === "stop_limit") {
+        setCeilingApproved(true);
+        return;
+      }
+      if (!hardPreview?.eligible) return;
+      setPlanMutationPending(true);
+      setFailure(null);
+      try {
+        await approvePlan(plan.rootNodeId);
+        const approved = await approveSpend(plan.rootNodeId, priceCeiling);
+        if (!approved.authority_digest) throw new Error("hard approval returned no authority");
+        setAuthorityDigest(approved.authority_digest);
+        setApprovedSessionId(approved.recovery_session_id ?? null);
+        setHardPreview(approved);
+        setCeilingApproved(true);
+      } catch (error) {
+        setFailureStage("approval");
+        setFailure(classifyClientError(error));
+      } finally {
+        setPlanMutationPending(false);
+      }
+    },
+    [hardPreview?.eligible, plan, priceCeiling, spendMode],
+  );
 
   const retryFailure = useCallback(async () => {
     if (failureStage === "propose" || plan === null) {
@@ -226,10 +305,26 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
         const r = await getPlan(plan.rootNodeId);
         setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
         setCeilingApproved(false);
+        setAuthorityDigest(null);
+        setApprovedSessionId(null);
         setPhase("ready");
         return;
       }
-      const sessionId = `session-${plan.rootNodeId}`;
+      if (
+        spendMode === "hard_ceiling" &&
+        approvedSessionId !== null &&
+        authorityDigest !== null
+      ) {
+        const recovered = await launchPlan(plan.rootNodeId, {
+          spend_mode: "hard_ceiling",
+          hard_ceiling_usd: priceCeiling,
+          authority_digest: authorityDigest,
+        });
+        onLaunched(recovered.session_id);
+        return;
+      }
+      const sessionId =
+        `session-${plan.rootNodeId}`;
       try {
         await getSession(sessionId);
         onLaunched(sessionId);
@@ -238,13 +333,15 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
         const r = await getPlan(plan.rootNodeId);
         setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
         setCeilingApproved(false);
+        setAuthorityDigest(null);
+        setApprovedSessionId(null);
         setPhase("ready");
       }
     } catch (e) {
       setFailure(classifyClientError(e));
       setPhase("ready");
     }
-  }, [failureStage, onLaunched, plan, propose]);
+  }, [approvedSessionId, authorityDigest, failureStage, onLaunched, plan, priceCeiling, propose, spendMode]);
 
   // ── Proposing: the AI is breaking the problem down. ──
   if (phase === "proposing" || phase === "recovering") {
@@ -426,17 +523,67 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
 
       <fieldset className="border-t border-rule pt-3 dark:border-charcoal-1">
         <legend className="text-[11px] font-mono uppercase text-shadow-1 dark:text-moonlight">
-          Aggregate stop limit
+          Spend control
         </legend>
+        <div
+          aria-label="Spend control mode"
+          className="mt-2 inline-grid grid-cols-2 border border-rule dark:border-charcoal-1"
+          role="group"
+        >
+          <button
+            aria-pressed={spendMode === "stop_limit"}
+            className={`min-h-9 px-3 text-xs font-medium ${
+              spendMode === "stop_limit"
+                ? "bg-ink text-bright dark:bg-bright dark:text-ink"
+                : "bg-ice-0 text-ink dark:bg-charcoal-2 dark:text-bright"
+            }`}
+            disabled={interactionLocked}
+            onClick={() => {
+              setSpendMode("stop_limit");
+              setCeilingApproved(false);
+              setAuthorityDigest(null);
+              setApprovedSessionId(null);
+            }}
+            type="button"
+          >
+            Stop limit
+          </button>
+          <button
+            aria-describedby="hard-ceiling-eligibility"
+            aria-pressed={spendMode === "hard_ceiling"}
+            className={`min-h-9 border-l border-rule px-3 text-xs font-medium dark:border-charcoal-1 ${
+              spendMode === "hard_ceiling"
+                ? "bg-ink text-bright dark:bg-bright dark:text-ink"
+                : "bg-ice-0 text-ink disabled:text-ink-mute dark:bg-charcoal-2 dark:text-bright dark:disabled:text-moonlight"
+            }`}
+            disabled={interactionLocked || previewPending || hardPreview?.eligible !== true}
+            onClick={() => {
+              setSpendMode("hard_ceiling");
+              setCeilingApproved(false);
+              setAuthorityDigest(null);
+              setApprovedSessionId(null);
+            }}
+            type="button"
+          >
+            Hard ceiling
+          </button>
+        </div>
+        <p id="hard-ceiling-eligibility" className="mt-2 max-w-2xl text-xs text-ink-mute dark:text-moonlight">
+          {previewPending
+            ? "Checking whether every provider path can enforce a hard ceiling…"
+            : hardPreview?.eligible
+              ? "Available: every reachable paid request is bounded, send-once, and reconcilable in USD."
+              : hardPreview?.reasons[0] ?? "Hard ceiling availability is determined by the research engine."}
+        </p>
         <div className="mt-2 flex flex-wrap items-end gap-3">
           <label className="flex flex-col gap-1 text-xs font-medium text-ink dark:text-bright">
-            Stop after reported spend
+            {spendMode === "hard_ceiling" ? "Maximum Antiek may authorize" : "Stop after reported spend"}
             <span className="flex h-9 items-center border border-rule bg-ice-0 px-2 dark:border-charcoal-1 dark:bg-charcoal-2">
               <span aria-hidden="true" className="mr-1 text-ink-mute dark:text-moonlight">$</span>
               <input
                 aria-describedby="aggregate-stop-limit-note"
                 aria-invalid={!ceilingValid && priceCeiling !== ""}
-                aria-label="Aggregate stop limit"
+                aria-label={spendMode === "hard_ceiling" ? "Authorized spend ceiling" : "Aggregate stop limit"}
                 className="w-24 bg-transparent font-mono text-sm text-ink outline-none dark:text-bright"
                 inputMode="decimal"
                 min="0.01"
@@ -447,12 +594,16 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
                 onChange={(event) => {
                   setPriceCeiling(event.target.value);
                   setCeilingApproved(false);
+                  setAuthorityDigest(null);
+                  setApprovedSessionId(null);
                 }}
               />
             </span>
           </label>
           <p className="pb-2 text-xs text-ink-mute dark:text-moonlight">
-            {estimate ?? "Set when this plan should stop."}
+            {spendMode === "hard_ceiling"
+              ? "Each paid request reserves its maximum before it is sent."
+              : estimate ?? "Set when this plan should stop."}
           </p>
         </div>
         {!ceilingValid && priceCeiling !== "" && (
@@ -461,18 +612,20 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
           </p>
         )}
         <p id="aggregate-stop-limit-note" className="mt-2 text-xs text-ink-mute dark:text-moonlight">
-          Research stops after reported spend reaches this amount. Final in-flight steps can exceed it.
+          {spendMode === "hard_ceiling"
+            ? "This bounds spend Antiek authorizes. Taxes, currency conversion, external fees, and provider misbilling are outside the guarantee and remain visible as breaches."
+            : "Research stops after reported spend reaches this amount. Final in-flight steps can exceed it."}
         </p>
         <label className="mt-3 flex items-start gap-2 text-xs text-ink dark:text-bright">
           <input
             checked={ceilingApproved}
             className="mt-0.5 size-4 accent-sun"
             disabled={!ceilingValid || interactionLocked}
-            onChange={(event) => setCeilingApproved(event.target.checked)}
+            onChange={(event) => void changeApproval(event.target.checked)}
             type="checkbox"
           />
           <span>
-            I approve a {ceilingValid ? `$${parsedCeiling.toFixed(2)}` : "configured"} aggregate stop limit for this plan.
+            I approve a {ceilingValid ? `$${parsedCeiling.toFixed(2)}` : "configured"} {spendMode === "hard_ceiling" ? "hard authorized-spend ceiling" : "aggregate stop limit"} for this exact plan.
           </span>
         </label>
       </fieldset>
@@ -489,7 +642,7 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
             variant="primary"
             size="lg"
             onClick={() => void onLaunch()}
-            disabled={interactionLocked || !ceilingApproved || !ceilingValid}
+            disabled={interactionLocked || !ceilingApproved || !ceilingValid || (spendMode === "hard_ceiling" && authorityDigest === null)}
           >
             {phase === "launching"
               ? "Starting…"

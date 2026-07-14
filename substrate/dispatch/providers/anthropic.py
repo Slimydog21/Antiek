@@ -57,6 +57,7 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 except ImportError:  # pragma: no cover
     import sys
@@ -66,6 +67,7 @@ except ImportError:  # pragma: no cover
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 
 
@@ -100,6 +102,7 @@ class AnthropicProvider:
         client: httpx.Client | None = None,
         anthropic_version: str = _ANTHROPIC_VERSION,
         enable_prompt_caching: bool = False,
+        expose_error_body: bool = True,
     ):
         """
         Args:
@@ -113,6 +116,10 @@ class AnthropicProvider:
                 user message so subsequent calls with the same prefix can
                 read from cache. Off by default — turn on once the
                 dispatch caller starts re-using stable system prompts.
+            expose_error_body: Include a bounded upstream response-body preview
+                in provider errors. User-configured endpoints disable this so
+                a hostile endpoint cannot reflect a request credential into an
+                exception that may later be returned, logged, or persisted.
         """
         self._api_key = api_key
         self._api_key_env = api_key_env
@@ -122,6 +129,7 @@ class AnthropicProvider:
         self._owns_client = client is None
         self._anthropic_version = anthropic_version
         self._enable_prompt_caching = enable_prompt_caching
+        self._expose_error_body = expose_error_body
 
     def _resolve_api_key(self) -> str:
         if self._api_key:
@@ -179,32 +187,60 @@ class AnthropicProvider:
 
         client = self._ensure_client()
         t_start = time.monotonic()
+        resp: httpx.Response | None = None
+        sanitized_transport_error: str | None = None
         try:
             resp = client.post(url, json=body, headers=headers)
         except httpx.TimeoutException as e:
-            raise ProviderError(
-                f"anthropic: request timeout after {self._timeout_s}s — {e}",
-                provider=self.name, model=model,
-                latency_ms=int((time.monotonic() - t_start) * 1000),
-                retryable=True,
-            ) from e
+            if self._expose_error_body:
+                raise ProviderError(
+                    f"anthropic: request timeout after {self._timeout_s}s — {e}",
+                    provider=self.name, model=model,
+                    latency_ms=int((time.monotonic() - t_start) * 1000),
+                    retryable=True,
+                ) from e
+            sanitized_transport_error = (
+                f"anthropic: request timeout after {self._timeout_s}s"
+            )
         except httpx.RequestError as e:
+            if self._expose_error_body:
+                raise ProviderError(
+                    f"anthropic: network error — {e}",
+                    provider=self.name, model=model,
+                    latency_ms=int((time.monotonic() - t_start) * 1000),
+                    retryable=True,
+                ) from e
+            sanitized_transport_error = "anthropic: network error"
+
+        if sanitized_transport_error is not None:
             raise ProviderError(
-                f"anthropic: network error — {e}",
+                sanitized_transport_error,
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
-            ) from e
+            )
+        assert resp is not None
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
-            body_preview = resp.text[:400]
+            detail = f" — {resp.text[:400]}" if self._expose_error_body else ""
             raise ProviderError(
-                f"anthropic: HTTP {resp.status_code} — {body_preview}",
+                f"anthropic: HTTP {resp.status_code}{detail}",
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
-                request_id=resp.headers.get("request-id") or resp.headers.get("x-request-id"),
+                request_id=(
+                    (resp.headers.get("request-id") or resp.headers.get("x-request-id"))
+                    if self._expose_error_body
+                    else None
+                ),
+            )
+
+        if not self._expose_error_body and api_key in resp.text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
             )
 
         try:
@@ -214,6 +250,16 @@ class AnthropicProvider:
                 f"anthropic: response body not JSON — {e}",
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
+
+        if (
+            not self._expose_error_body
+            and response_contains_secret(data, api_key)
+        ):
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
 
         try:
             # Anthropic returns content as a list of typed parts. Join the
@@ -226,18 +272,35 @@ class AnthropicProvider:
             )
             stop_reason = data.get("stop_reason")
         except (KeyError, TypeError) as e:
+            detail = (
+                f" — body: {str(data)[:400]}" if self._expose_error_body else ""
+            )
             raise ProviderError(
-                f"anthropic: unexpected response shape — {e} — body: {str(data)[:400]}",
+                f"anthropic: unexpected response shape — {e}{detail}",
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
+
+        # Anthropic joins multiple text parts.  A hostile endpoint could split
+        # the credential across parts so no individual decoded value contains
+        # it, then rely on this join to reconstruct the secret.
+        if not self._expose_error_body and api_key in text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
 
         return RawProviderResponse(
             text=text,
             raw_usage=data.get("usage") or {},
             finish_reason=stop_reason,
             latency_ms=latency_ms,
-            request_id=resp.headers.get("request-id") or data.get("id"),
-            extra={"model": data.get("model")},
+            request_id=(
+                (resp.headers.get("request-id") or data.get("id"))
+                if self._expose_error_body
+                else None
+            ),
+            extra={"model": data.get("model")} if self._expose_error_body else {},
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:

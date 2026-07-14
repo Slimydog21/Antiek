@@ -49,6 +49,32 @@ class ProviderError(Exception):
         self.request_id = request_id
 
 
+def response_contains_secret(value: Any, secret: str) -> bool:
+    """Return whether decoded JSON data contains plaintext ``secret``.
+
+    User-configured provider endpoints are untrusted.  Inspecting the raw
+    response text is insufficient because JSON escapes are decoded before
+    response content is returned to callers.  Walk JSON-shaped data without
+    recursion so a hostile, deeply nested response cannot exhaust Python's
+    call stack.
+    """
+    if not secret:
+        return False
+
+    pending = [value]
+    while pending:
+        item = pending.pop()
+        if isinstance(item, str):
+            if secret in item:
+                return True
+        elif isinstance(item, dict):
+            pending.extend(item.keys())
+            pending.extend(item.values())
+        elif isinstance(item, (list, tuple)):
+            pending.extend(item)
+    return False
+
+
 # ---------------------------------------------------------------------------
 # Normalized usage
 # ---------------------------------------------------------------------------

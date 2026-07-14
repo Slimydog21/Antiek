@@ -37,6 +37,7 @@ import {
   recoverMultimediaLocalAudible,
   produceMultimediaLocalAudible,
   pollMultimediaVisualGeneration,
+  previewMultimediaSteering,
   previewMultimediaVisualCandidate,
   manualGateIds,
   runMultimediaHardening,
@@ -299,8 +300,32 @@ describe("multimedia API client", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
+    const steeringPreview = {
+      status: "ready",
+      asset_id: "mm-1",
+      parent_revision_id: "rev-1",
+      proposed_revision_id: "rev-2",
+      route_policy: "cheapest",
+      intent: { steering_event_id: "steer-1", prompt: "go deeper", status: "ready", operations: [], clarifications: [], transcript: null },
+      operations: [], affected_segment_ids: [], segment_reuse: [], changes: [],
+      estimated_cost_delta_usd: 0, preview_token: "signed", expires_at_epoch_seconds: 2_000_000_000,
+    } as const;
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, steeringPreview));
+    await previewMultimediaSteering("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "go deeper",
+    });
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/steering-preview",
+      expect.objectContaining({ method: "POST" }),
+    );
+
     mockFetch().mockResolvedValueOnce(jsonResponse(200, record));
-    await steerMultimediaAsset("mm-1", { prompt: "go deeper" });
+    await steerMultimediaAsset("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "go deeper",
+      preview_token: "signed",
+    });
     expect(mockFetch()).toHaveBeenLastCalledWith(
       "/multimedia/assets/mm-1/steer",
       expect.objectContaining({ method: "POST" }),
@@ -579,10 +604,14 @@ describe("multimedia API client", () => {
     await expect(listMultimediaJobs("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
   });
 
-  it("surfaces the typed steering-clarification error on 409", async () => {
-    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "ambiguous" }));
-    await expect(steerMultimediaAsset("mm-1", { prompt: "x" })).rejects.toThrow(
-      "multimedia_steering_needs_clarification",
+  it("surfaces stable steering preview conflict details", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "multimedia_steering_stale_parent" }));
+    await expect(steerMultimediaAsset("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "x",
+      preview_token: "signed",
+    })).rejects.toThrow(
+      "multimedia_steering_stale_parent",
     );
   });
 

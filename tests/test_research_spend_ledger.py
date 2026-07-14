@@ -33,6 +33,9 @@ from substrate.research_spend.ledger import (
     APPLICATION_ID,
     MAX_ACTUAL_CENTS,
     SCHEMA_VERSION,
+    _binding_payload,
+    _canonical,
+    _sha256,
 )
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -120,6 +123,17 @@ def test_exact_headroom_succeeds_and_next_cent_fails(tmp_path: Path) -> None:
     assert ledger.balance("run-1").available_cents == 0
 
 
+def test_session_balance_lookup_is_owner_scoped(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path, ceiling=500)
+    visible = ledger.balance_for_session("owner-1", "session-1")
+    assert visible is not None
+    assert visible.binding == _binding()
+    assert ledger.owner_for_session("session-1") == "owner-1"
+    assert ledger.balance_for_session("other-owner", "session-1") is None
+    assert ledger.balance_for_session("owner-1", "other-session") is None
+    assert ledger.owner_for_session("other-session") is None
+
+
 @pytest.mark.parametrize(
     "binding",
     [
@@ -140,6 +154,8 @@ def test_reservation_rejects_stale_full_run_binding(
 def test_non_usd_and_invalid_money_never_reach_storage(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="USD-only"):
         replace(_binding(), currency="EUR")
+    with pytest.raises(ValueError, match="hard_ceiling"):
+        replace(_binding(), mode="stop_limit")
     ledger = _ledger(tmp_path)
     with pytest.raises(ValueError):
         ledger.reserve_paid("zero", _binding(), _paid(), 0)
@@ -192,6 +208,17 @@ def test_reserved_hold_survives_restart_but_cannot_settle(tmp_path: Path) -> Non
         reopened.settle("settle", hold.hold_id, 80, {"receipt": "r-1"})
     assert reopened.recovery_work("run-1")[0].action == "resume_or_release"
     assert reopened.balance("run-1").held_cents == 100
+
+
+def test_zero_attempt_lookup_by_run_scoped_key_includes_terminal_receipts(
+    tmp_path: Path,
+) -> None:
+    ledger = _ledger(tmp_path)
+    attempt = ledger.prepare_zero_cost("prepare", _binding(), _zero())
+    assert ledger.zero_attempt_for_key("run-1", "zero-1") == attempt
+    completed = ledger.complete_zero_cost("complete", attempt.attempt_id, "outcome-sha")
+    assert ledger.zero_attempt_for_key("run-1", "zero-1") == completed
+    assert ledger.zero_attempt_for_key("run-1", "absent") is None
 
 
 def test_dispatch_unknown_and_authoritative_release_rules(tmp_path: Path) -> None:
@@ -607,6 +634,122 @@ def test_schema_rejects_wrong_application_and_future_version(tmp_path: Path) -> 
         connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION + 1}")
     with pytest.raises(LedgerIntegrityError, match="unsupported"):
         ResearchSpendLedger(future).ensure_schema()
+
+
+def test_schema_one_migrates_mode_binding_atomically(tmp_path: Path) -> None:
+    legacy = tmp_path / "legacy-v1.sqlite3"
+    with sqlite3.connect(legacy) as connection:
+        connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute("CREATE TABLE research_spend_runs (run_id TEXT PRIMARY KEY)")
+    ResearchSpendLedger(legacy).ensure_schema()
+    with sqlite3.connect(legacy) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+        columns = {
+            row[1]: row for row in connection.execute("PRAGMA table_info(research_spend_runs)")
+        }
+        assert columns["mode"][3] == 1
+
+
+def test_schema_one_mode_migration_rolls_back_on_process_failure(tmp_path: Path) -> None:
+    legacy = tmp_path / "legacy-v1-crash.sqlite3"
+    with sqlite3.connect(legacy) as connection:
+        connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute("CREATE TABLE research_spend_runs (run_id TEXT PRIMARY KEY)")
+
+    def fail(name: str) -> None:
+        if name == "schema:1:after_migration:1":
+            raise RuntimeError("injected migration crash")
+
+    with pytest.raises(RuntimeError, match="migration crash"):
+        ResearchSpendLedger(legacy, failure_injector=fail).ensure_schema()
+    with sqlite3.connect(legacy) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert "mode" not in {
+            row[1] for row in connection.execute("PRAGMA table_info(research_spend_runs)")
+        }
+    ResearchSpendLedger(legacy).ensure_schema()
+
+
+def test_populated_schema_one_run_and_hold_replay_after_mode_migration(
+    tmp_path: Path,
+) -> None:
+    legacy = tmp_path / "legacy-v1-populated.sqlite3"
+    binding = _binding()
+    paid = _paid()
+    create_intent = _canonical({**_binding_payload(binding), "ceiling_cents": 1_000})
+    hold_intent = ResearchSpendLedger._paid_intent_json(binding, paid, 100)
+    timestamp = "2026-07-13T00:00:00.000000Z"
+    with sqlite3.connect(legacy) as connection:
+        for statement in _DDL:
+            connection.execute(
+                statement.replace(
+                    "        mode TEXT NOT NULL CHECK (mode = 'hard_ceiling'),\n", ""
+                )
+            )
+        connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
+        connection.execute("PRAGMA user_version = 1")
+        connection.execute(
+            "INSERT INTO research_spend_runs "
+            "(run_id, owner_id, session_id, plan_digest, approval_revision, currency, "
+            "ceiling_cents, authorized_spent_cents, observed_provider_spend_dec, "
+            "held_cents, status, ceiling_breached, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 'USD', 1000, 0, '0', 100, 'active', 0, ?, ?)",
+            (
+                binding.run_id,
+                binding.owner_id,
+                binding.session_id,
+                binding.plan_digest,
+                binding.approval_revision,
+                timestamp,
+                timestamp,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO research_spend_holds "
+            "(hold_id, run_id, reservation_key, intent_json, intent_sha256, seam_id, "
+            "provider, model, operation, operation_digest, projection_digest, "
+            "rate_snapshot, provider_idempotency_key, projected_max_cents, state, "
+            "created_at, updated_at) VALUES "
+            "('legacy-hold', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 100, 'reserved', ?, ?)",
+            (
+                binding.run_id,
+                paid.reservation_key,
+                hold_intent,
+                _sha256(hold_intent),
+                paid.seam_id,
+                paid.provider,
+                paid.model,
+                paid.operation,
+                paid.operation_digest,
+                paid.projection_digest,
+                paid.rate_snapshot,
+                paid.provider_idempotency_key,
+                timestamp,
+                timestamp,
+            ),
+        )
+        connection.execute(
+            "INSERT INTO research_spend_commands "
+            "(command_key, command_kind, scope_id, intent_json, intent_sha256, "
+            "result_json, result_sha256, created_at) "
+            "VALUES ('create-run', 'create_run', ?, ?, ?, '{}', ?, ?)",
+            (
+                binding.run_id,
+                create_intent,
+                _sha256(create_intent),
+                _sha256("{}"),
+                timestamp,
+            ),
+        )
+
+    ledger = ResearchSpendLedger(legacy)
+    ledger.ensure_schema()
+    reopened = ledger.create_or_reopen_run("create-run", binding, 1_000)
+    assert reopened.binding.mode == "hard_ceiling"
+    assert reopened.held_cents == 100
+    assert ledger.hold("legacy-hold").intent == paid
 
 
 def test_commands_and_events_are_immutable_and_intents_are_verified(
