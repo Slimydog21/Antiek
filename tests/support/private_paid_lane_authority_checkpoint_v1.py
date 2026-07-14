@@ -34,6 +34,10 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _CAPABILITY_V4_SIGNATURE_DOMAIN,
     _MIGRATION_CHILD_FINAL_VERSION,
     _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN,
+    _MIGRATION_RECOVERY_ADMISSION_DOMAIN,
+    _MIGRATION_RECOVERY_ADMISSION_SIGNATURE_DOMAIN,
+    _MIGRATION_RECOVERY_TICKET_DOMAIN,
+    _MIGRATION_RECOVERY_TICKET_SIGNATURE_DOMAIN,
     _MIGRATION_ROLE_SCHEMA_TABLES,
     _PREDECESSOR_CYCLE30_CAPABILITY_SHA256,
     _PREDECESSOR_CYCLE32_SOURCE_SHA256,
@@ -46,6 +50,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     BudgetAccountMigrationRowV1,
     ConsentClaimMigrationRowV1,
     EncryptedSourceBundleMigrationRowV1,
+    Epoch0RecoveryAuthorityPinsV1,
     FrozenPaidLaneMigrationCorpusV1,
     MigrationSourceStoreV1,
     OpaqueSourceBundleRevisionV1,
@@ -61,7 +66,9 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     QuarantinedSyntheticExternalPinRecordV1,
     QuarantinedSyntheticReadyRecordV1,
     QueueLeaseMigrationRowV1,
+    SignedEpoch0RecoveryAdmissionV1,
     SignedMigrationLifecycleStateV1,
+    SignedMigrationRecoveryTicketV1,
     SignedProviderCapabilityV4FixtureV1,
     SignedProviderRevocationHeadFixtureV1,
     SignedSourceHeadFixtureV1,
@@ -69,6 +76,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     SourceHeadMigrationRowV1,
     VerificationKeyV1,
     _audit_schema,
+    _authenticate_epoch0_recovery_state_v1,
     _canonical_json,
     _capability_v4_document_sha256,
     _copy_audit_intent_v1,
@@ -94,6 +102,8 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _source_snapshot_sha256,
     _verify_migration_lifecycle_genesis,
     _verify_migration_lifecycle_transition,
+    _verify_signed_epoch0_recovery_admission,
+    _verify_signed_migration_recovery_ticket,
     compute_private_paid_lane_contract_sha256,
     compute_private_paid_lane_semantic_sha256,
 )
@@ -650,6 +660,44 @@ def _issuer_observed_copy(
     return _copy_audit_sha256(audit)
 
 
+def _issuer_authenticate_recovery_descriptors(
+    *,
+    root_fd: int,
+    parent_fd: int,
+    target_fd: int,
+    ticket: SignedMigrationRecoveryTicketV1,
+    verification_key: VerificationKeyV1,
+    raw_pins: object,
+) -> Epoch0RecoveryAuthorityPinsV1:
+    root_info = os.fstat(root_fd)
+    root_record = _issuer_root_record(root_fd)
+    if (
+        (root_info.st_dev, root_info.st_ino) != (ticket.root_dev, ticket.root_ino)
+        or root_record.get("root_id") != ticket.root_id
+        or root_record.get("root_manifest_sha256") != ticket.root_manifest_sha256
+    ):
+        raise ValueError("issuer recovery root identity")
+    pins = Epoch0RecoveryAuthorityPinsV1.model_validate(raw_pins)
+    if (
+        pins.target_store_id != ticket.target_store_id
+        or pins.root_id != ticket.root_id
+        or pins.root_manifest_sha256 != ticket.root_manifest_sha256
+        or (pins.target_parent_dev, pins.target_parent_ino)
+        != (ticket.target_parent_dev, ticket.target_parent_ino)
+        or pins.target_basename != ticket.target_basename
+        or (pins.target_dev, pins.target_ino) != (ticket.target_dev, ticket.target_ino)
+        or pins.issuer_sequence > ticket.maximum_issuer_sequence
+    ):
+        raise ValueError("issuer recovery ticket pins")
+    _authenticate_epoch0_recovery_state_v1(
+        parent_fd=parent_fd,
+        target_fd=target_fd,
+        verification_key=verification_key,
+        expected=pins,
+    )
+    return pins
+
+
 def _fixture_migration_lifecycle_issuer_main(
     socket_path: str,
     authorized_pid: int,
@@ -659,6 +707,7 @@ def _fixture_migration_lifecycle_issuer_main(
     source_head_verification_keys: tuple[VerificationKeyV1, ...],
     provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
     source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+    expected_target_store_id: str,
     expected_semantic_source_sha256: str,
     expected_contract_sha256: str,
 ) -> None:
@@ -666,6 +715,7 @@ def _fixture_migration_lifecycle_issuer_main(
     public_key = private_key.public_key().public_bytes_raw()
     key_id = "fixture-migration-lifecycle-issuer-v1-" + hashlib.sha256(public_key).hexdigest()[:24]
     verification_key = VerificationKeyV1(key_id=key_id, public_key_bytes=public_key)
+    issuer_generation_nonce = secrets.token_hex(32)
     committed: SignedMigrationLifecycleStateV1 | None = None
     pending_candidate: bytes | None = None
     pending_state: SignedMigrationLifecycleStateV1 | None = None
@@ -673,6 +723,9 @@ def _fixture_migration_lifecycle_issuer_main(
     bound_target_fd: int | None = None
     target_lease: sqlite3.Connection | None = None
     bound_identity: dict[str, object] | None = None
+    recovery_ticket: SignedMigrationRecoveryTicketV1 | None = None
+    recovery_admission_request: bytes | None = None
+    recovery_admission: SignedEpoch0RecoveryAdmissionV1 | None = None
     copy_completed = False
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     process_watch = select.kqueue()
@@ -706,14 +759,12 @@ def _fixture_migration_lifecycle_issuer_main(
             received_descriptors: list[int] = []
             try:
                 peer_pid = struct.unpack("i", connection.getsockopt(0, 2, 4))[0]
-                if peer_pid != authorized_pid:
-                    raise ValueError("issuer peer pid")
                 connection.settimeout(0.1)
                 while True:
                     try:
                         first, ancillary, flags, _ = connection.recvmsg(
                             _ISSUER_MAX_PACKET + 1,
-                            socket.CMSG_SPACE(array("i").itemsize * 2),
+                            socket.CMSG_SPACE(array("i").itemsize * 3),
                         )
                         if process_watch.control(None, 1, 0):
                             return
@@ -746,6 +797,8 @@ def _fixture_migration_lifecycle_issuer_main(
                 packet = b"".join(chunks)
                 request = _parse_strict_json(packet, _ISSUER_MAX_PACKET)
                 command = request.get("command")
+                if peer_pid != authorized_pid and command != "recover_open":
+                    raise ValueError("issuer peer pid")
                 if command == "bind":
                     if (
                         bound_root_fd is not None
@@ -803,10 +856,49 @@ def _fixture_migration_lifecycle_issuer_main(
                         independent_root_fd = -1
                         bound_target_fd = independent_target_fd
                         independent_target_fd = -1
+                        root_info = os.fstat(bound_root_fd)
+                        ticket_material = {
+                            "schema_version": 1,
+                            "issuer_key_id": key_id,
+                            "issuer_generation_nonce": issuer_generation_nonce,
+                            "root_id": root_record["root_id"],
+                            "root_dev": root_info.st_dev,
+                            "root_ino": root_info.st_ino,
+                            "root_manifest_sha256": root_record["root_manifest_sha256"],
+                            "target_store_id": expected_target_store_id,
+                            "target_parent_dev": parent_identity[0],
+                            "target_parent_ino": parent_identity[1],
+                            "target_basename": bind_target_basename,
+                            "target_dev": target_identity[0],
+                            "target_ino": target_identity[1],
+                            "maximum_issuer_sequence": 4,
+                            "ticket_nonce": secrets.token_hex(32),
+                            "issued_at_ms": time.time_ns() // 1_000_000,
+                        }
+                        ticket_sha256 = hashlib.sha256(
+                            _MIGRATION_RECOVERY_TICKET_DOMAIN + _canonical_json(ticket_material)
+                        ).hexdigest()
+                        recovery_ticket = SignedMigrationRecoveryTicketV1.model_validate(
+                            {
+                                **ticket_material,
+                                "ticket_sha256": ticket_sha256,
+                                "signature_ed25519": private_key.sign(
+                                    _MIGRATION_RECOVERY_TICKET_SIGNATURE_DOMAIN
+                                    + bytes.fromhex(ticket_sha256)
+                                ),
+                            }
+                        )
                         _issuer_response(
                             connection,
                             b"B"
-                            + hashlib.sha256(_canonical_json(bound_identity)).hexdigest().encode(),
+                            + _canonical_json(
+                                {
+                                    **recovery_ticket.model_dump(
+                                        mode="python", exclude={"signature_ed25519"}
+                                    ),
+                                    "signature_ed25519": recovery_ticket.signature_ed25519.hex(),
+                                }
+                            ),
                         )
                     finally:
                         if independent_root_fd >= 0:
@@ -816,6 +908,94 @@ def _fixture_migration_lifecycle_issuer_main(
                         if root_fd >= 0:
                             os.close(root_fd)
                         os.close(parent_fd)
+                    continue
+                if command == "recover_open":
+                    if (
+                        recovery_ticket is None
+                        or set(request)
+                        != {
+                            "command",
+                            "ticket_sha256",
+                            "issuer_generation_nonce",
+                            "caller_boot_nonce",
+                            "handle_nonce",
+                            "authority_pins",
+                        }
+                        or len(received_descriptors) != 3
+                        or request["ticket_sha256"] != recovery_ticket.ticket_sha256
+                        or request["issuer_generation_nonce"]
+                        != recovery_ticket.issuer_generation_nonce
+                        or type(request["caller_boot_nonce"]) is not str
+                        or type(request["handle_nonce"]) is not str
+                        or type(request["authority_pins"]) is not dict
+                    ):
+                        raise ValueError("issuer recovery open envelope")
+                    request_bytes = _canonical_json(request)
+                    recovery_root_fd = received_descriptors.pop(0)
+                    recovery_parent_fd = received_descriptors.pop(0)
+                    recovery_target_fd = received_descriptors.pop(0)
+                    try:
+                        pins = _issuer_authenticate_recovery_descriptors(
+                            root_fd=recovery_root_fd,
+                            parent_fd=recovery_parent_fd,
+                            target_fd=recovery_target_fd,
+                            ticket=recovery_ticket,
+                            verification_key=verification_key,
+                            raw_pins=request["authority_pins"],
+                        )
+                    finally:
+                        os.close(recovery_root_fd)
+                        os.close(recovery_parent_fd)
+                        os.close(recovery_target_fd)
+                    if recovery_admission_request is not None:
+                        if (
+                            request_bytes != recovery_admission_request
+                            or recovery_admission is None
+                            or peer_pid != recovery_admission.authenticated_peer_pid
+                        ):
+                            raise ValueError("issuer recovery admission replay")
+                    else:
+                        admission_material = {
+                            "schema_version": 1,
+                            "issuer_key_id": key_id,
+                            "issuer_generation_nonce": issuer_generation_nonce,
+                            "ticket_sha256": recovery_ticket.ticket_sha256,
+                            "authenticated_peer_pid": peer_pid,
+                            "caller_boot_nonce": request["caller_boot_nonce"],
+                            "handle_nonce": request["handle_nonce"],
+                            "descriptor_mode": "target",
+                            "authority_pins": pins.model_dump(mode="json"),
+                            "issued_at_ms": time.time_ns() // 1_000_000,
+                        }
+                        admission_sha256 = hashlib.sha256(
+                            _MIGRATION_RECOVERY_ADMISSION_DOMAIN
+                            + _canonical_json(admission_material)
+                        ).hexdigest()
+                        recovery_admission = SignedEpoch0RecoveryAdmissionV1.model_validate(
+                            {
+                                **admission_material,
+                                "admission_sha256": admission_sha256,
+                                "signature_ed25519": private_key.sign(
+                                    _MIGRATION_RECOVERY_ADMISSION_SIGNATURE_DOMAIN
+                                    + bytes.fromhex(admission_sha256)
+                                ),
+                            }
+                        )
+                        recovery_admission_request = request_bytes
+                    if recovery_admission is None:
+                        raise ValueError("issuer recovery admission missing")
+                    _issuer_response(
+                        connection,
+                        b"R"
+                        + _canonical_json(
+                            {
+                                **recovery_admission.model_dump(
+                                    mode="python", exclude={"signature_ed25519"}
+                                ),
+                                "signature_ed25519": recovery_admission.signature_ed25519.hex(),
+                            }
+                        ),
+                    )
                     continue
                 if command == "close":
                     if received_descriptors:
@@ -1224,6 +1404,7 @@ class FixtureMigrationLifecycleIssuerV1:
     _process: BaseProcess
     _socket_path: str
     _socket_root: Path
+    recovery_ticket: SignedMigrationRecoveryTicketV1
     verification_key: VerificationKeyV1
 
     __slots__ = (
@@ -1233,6 +1414,7 @@ class FixtureMigrationLifecycleIssuerV1:
         "_process",
         "_socket_path",
         "_socket_root",
+        "recovery_ticket",
         "verification_key",
     )
 
@@ -1252,6 +1434,7 @@ class FixtureMigrationLifecycleIssuerV1:
         source_head_verification_keys: tuple[VerificationKeyV1, ...],
         provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
         source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+        expected_target_store_id: str,
         expected_semantic_source_sha256: str,
         expected_contract_sha256: str,
     ) -> FixtureMigrationLifecycleIssuerV1:
@@ -1271,6 +1454,7 @@ class FixtureMigrationLifecycleIssuerV1:
                 source_head_verification_keys,
                 provider_revocation_floor_pins,
                 source_floor_pins,
+                expected_target_store_id,
                 expected_semantic_source_sha256,
                 expected_contract_sha256,
             ),
@@ -1318,11 +1502,20 @@ class FixtureMigrationLifecycleIssuerV1:
         bind_request = _canonical_json({"command": "bind", "target_basename": target_basename})
         try:
             bind_response = issuer._request(bind_request, (root_fd, parent_fd))
-            if not re.fullmatch(rb"B[0-9a-f]{64}", bind_response):
+            if bind_response[:1] != b"B":
                 raise ValueError("issuer bind response")
+            parsed_ticket = _parse_strict_json(bind_response[1:], _ISSUER_MAX_PACKET)
+            signature_hex = parsed_ticket.get("signature_ed25519")
+            if type(signature_hex) is not str:
+                raise ValueError("issuer recovery ticket signature")
+            recovery_ticket = SignedMigrationRecoveryTicketV1.model_validate(
+                {**parsed_ticket, "signature_ed25519": bytes.fromhex(signature_hex)}
+            )
+            _verify_signed_migration_recovery_ticket(recovery_ticket, issuer.verification_key)
         except Exception:
             issuer.close()
             raise
+        object.__setattr__(issuer, "recovery_ticket", recovery_ticket)
         return issuer
 
     def __setattr__(self, name: str, value: object) -> Never:
@@ -1353,7 +1546,7 @@ class FixtureMigrationLifecycleIssuerV1:
 
     def _request(self, request: bytes, descriptors: tuple[int, ...] = ()) -> bytes:
         self._validate_client()
-        if len(request) > _ISSUER_MAX_PACKET or len(descriptors) > 2:
+        if len(request) > _ISSUER_MAX_PACKET or len(descriptors) > 3:
             raise ValueError("issuer request bound")
         connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         connection.settimeout(5.0)
@@ -1456,6 +1649,56 @@ class FixtureMigrationLifecycleIssuerV1:
         if response not in {expected_prefix + b"0", expected_prefix + b"1"}:
             raise ValueError("issuer copy response")
         return response[-1:] == b"1"
+
+    def recover_open(
+        self,
+        *,
+        root_fd: int,
+        parent_fd: int,
+        target_fd: int,
+        authority_pins: Epoch0RecoveryAuthorityPinsV1,
+        caller_boot_nonce: str,
+        handle_nonce: str,
+    ) -> SignedEpoch0RecoveryAdmissionV1:
+        self._validate_client()
+        if (
+            type(authority_pins) is not Epoch0RecoveryAuthorityPinsV1
+            or not re.fullmatch(r"[0-9a-f]{64}", caller_boot_nonce)
+            or not re.fullmatch(r"[0-9a-f]{64}", handle_nonce)
+        ):
+            raise ValueError("issuer recovery open values")
+        request = _canonical_json(
+            {
+                "command": "recover_open",
+                "ticket_sha256": self.recovery_ticket.ticket_sha256,
+                "issuer_generation_nonce": self.recovery_ticket.issuer_generation_nonce,
+                "caller_boot_nonce": caller_boot_nonce,
+                "handle_nonce": handle_nonce,
+                "authority_pins": authority_pins.model_dump(mode="json"),
+            }
+        )
+        with self._lock:
+            response = self._request(request, (root_fd, parent_fd, target_fd))
+        if response[:1] != b"R":
+            raise ValueError("issuer recovery admission response")
+        parsed = _parse_strict_json(response[1:], _ISSUER_MAX_PACKET)
+        signature_hex = parsed.get("signature_ed25519")
+        if type(signature_hex) is not str:
+            raise ValueError("issuer recovery admission signature")
+        admission = SignedEpoch0RecoveryAdmissionV1.model_validate(
+            {**parsed, "signature_ed25519": bytes.fromhex(signature_hex)}
+        )
+        _verify_signed_epoch0_recovery_admission(admission, self.verification_key)
+        if (
+            admission.ticket_sha256 != self.recovery_ticket.ticket_sha256
+            or admission.issuer_generation_nonce != self.recovery_ticket.issuer_generation_nonce
+            or admission.authenticated_peer_pid != os.getpid()
+            or admission.caller_boot_nonce != caller_boot_nonce
+            or admission.handle_nonce != handle_nonce
+            or admission.authority_pins != authority_pins
+        ):
+            raise ValueError("issuer recovery admission correlation")
+        return admission
 
     def close(self) -> None:
         self._validate_client()

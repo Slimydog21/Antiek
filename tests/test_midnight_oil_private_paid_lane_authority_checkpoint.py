@@ -1623,6 +1623,102 @@ class TestProductionWritersDeferred:
 
 
 class TestMigrationPrerequisites:
+    def test_recovery_ticket_and_admission_are_domain_bound(self) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"r" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="recovery-ticket-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        ticket_material = {
+            "schema_version": 1,
+            "issuer_key_id": verification_key.key_id,
+            "issuer_generation_nonce": "11" * 32,
+            "root_id": "recovery-root",
+            "root_dev": 1,
+            "root_ino": 2,
+            "root_manifest_sha256": "22" * 32,
+            "target_store_id": STORE_ID,
+            "target_parent_dev": 3,
+            "target_parent_ino": 4,
+            "target_basename": "paid-lane.sqlite3",
+            "target_dev": 5,
+            "target_ino": 6,
+            "maximum_issuer_sequence": 4,
+            "ticket_nonce": "33" * 32,
+            "issued_at_ms": 7,
+        }
+        ticket_sha256 = hashlib.sha256(
+            checkpoint_module._MIGRATION_RECOVERY_TICKET_DOMAIN + _canonical_json(ticket_material)
+        ).hexdigest()
+        ticket = checkpoint_module.SignedMigrationRecoveryTicketV1.model_validate(
+            {
+                **ticket_material,
+                "ticket_sha256": ticket_sha256,
+                "signature_ed25519": private_key.sign(
+                    checkpoint_module._MIGRATION_RECOVERY_TICKET_SIGNATURE_DOMAIN
+                    + bytes.fromhex(ticket_sha256)
+                ),
+            }
+        )
+        checkpoint_module._verify_signed_migration_recovery_ticket(ticket, verification_key)
+        genesis = _signed_lifecycle_state(private_key)
+        pins = _recovery_pins(genesis)
+        admission_material = {
+            "schema_version": 1,
+            "issuer_key_id": verification_key.key_id,
+            "issuer_generation_nonce": ticket.issuer_generation_nonce,
+            "ticket_sha256": ticket.ticket_sha256,
+            "authenticated_peer_pid": 8,
+            "caller_boot_nonce": "44" * 32,
+            "handle_nonce": "55" * 32,
+            "descriptor_mode": "target",
+            "authority_pins": pins.model_dump(mode="json"),
+            "issued_at_ms": 9,
+        }
+        admission_sha256 = hashlib.sha256(
+            checkpoint_module._MIGRATION_RECOVERY_ADMISSION_DOMAIN
+            + _canonical_json(admission_material)
+        ).hexdigest()
+        admission = checkpoint_module.SignedEpoch0RecoveryAdmissionV1.model_validate(
+            {
+                **admission_material,
+                "admission_sha256": admission_sha256,
+                "signature_ed25519": private_key.sign(
+                    checkpoint_module._MIGRATION_RECOVERY_ADMISSION_SIGNATURE_DOMAIN
+                    + bytes.fromhex(admission_sha256)
+                ),
+            }
+        )
+        checkpoint_module._verify_signed_epoch0_recovery_admission(admission, verification_key)
+        assert ticket.ticket_sha256 == (
+            "4961d218893aab770beb7fdb881596169928703bdcb0544bc165a1f95021566f"
+        )
+        assert admission.admission_sha256 == (
+            "271a4395fd7fbf1a42733d83eafb736f01962b45232b0f32b383fdd908c2b70a"
+        )
+        wrong_key = checkpoint_module.VerificationKeyV1(
+            key_id=verification_key.key_id,
+            public_key_bytes=Ed25519PrivateKey.generate().public_key().public_bytes_raw(),
+        )
+        with pytest.raises(InvalidSignature):
+            checkpoint_module._verify_signed_migration_recovery_ticket(ticket, wrong_key)
+        with pytest.raises(InvalidSignature):
+            checkpoint_module._verify_signed_epoch0_recovery_admission(admission, wrong_key)
+        with pytest.raises(ValueError, match="migration recovery ticket hash"):
+            checkpoint_module.SignedMigrationRecoveryTicketV1.model_validate(
+                {
+                    **ticket.model_dump(mode="python"),
+                    "issuer_generation_nonce": "66" * 32,
+                }
+            )
+        with pytest.raises(ValueError, match="epoch0 recovery admission hash"):
+            checkpoint_module.SignedEpoch0RecoveryAdmissionV1.model_validate(
+                {
+                    **admission.model_dump(mode="python"),
+                    "authenticated_peer_pid": 10,
+                }
+            )
+
     def test_cutover_marker_requires_explicit_correct_verification_key(self) -> None:
         private_key = Ed25519PrivateKey.from_private_bytes(b"m" * 32)
         material = {
@@ -2301,6 +2397,7 @@ class TestMigrationPrerequisites:
             source_head_verification_keys=support_checkpoint.source_head_verification_keys(),
             provider_revocation_floor_pins=support_checkpoint.provider_revocation_floor_pins(),
             source_floor_pins=support_checkpoint.source_floor_pins(),
+            expected_target_store_id=STORE_ID,
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
         )
@@ -2308,6 +2405,25 @@ class TestMigrationPrerequisites:
             parent_info = os.fstat(parent_fd)
             assert issuer.process_id != os.getpid()
             assert not hasattr(issuer, "private_key")
+            ticket = issuer.recovery_ticket
+            assert ticket.target_store_id == STORE_ID
+            root_info = os.fstat(root_fd)
+            assert (ticket.root_dev, ticket.root_ino) == (
+                root_info.st_dev,
+                root_info.st_ino,
+            )
+            assert (ticket.target_parent_dev, ticket.target_parent_ino) == (
+                parent_info.st_dev,
+                parent_info.st_ino,
+            )
+            assert (ticket.target_dev, ticket.target_ino) == (
+                target_info.st_dev,
+                target_info.st_ino,
+            )
+            assert ticket.root_manifest_sha256 == root_record["root_manifest_sha256"]
+            checkpoint_module._verify_signed_migration_recovery_ticket(
+                ticket, issuer.verification_key
+            )
             assert issuer.verification_key.key_id.endswith(
                 hashlib.sha256(issuer.verification_key.public_key_bytes).hexdigest()[:24]
             )
@@ -2655,6 +2771,51 @@ class TestMigrationPrerequisites:
                     )
                     == copied
                 )
+                admission = issuer.recover_open(
+                    root_fd=root_fd,
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                    authority_pins=recovery_pins,
+                    caller_boot_nonce="91" * 32,
+                    handle_nonce="92" * 32,
+                )
+                assert admission.authority_pins == recovery_pins
+                assert (
+                    issuer.recover_open(
+                        root_fd=root_fd,
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        authority_pins=recovery_pins,
+                        caller_boot_nonce="91" * 32,
+                        handle_nonce="92" * 32,
+                    )
+                    == admission
+                )
+                admission_replacement = tmp_path / "admission-replacement.sqlite3"
+                admission_replacement.write_bytes(target.read_bytes())
+                admission_replacement.chmod(0o600)
+                admission_replacement_fd = os.open(admission_replacement, os.O_RDONLY)
+                try:
+                    with pytest.raises(ValueError, match="issuer rejected"):
+                        issuer.recover_open(
+                            root_fd=root_fd,
+                            parent_fd=parent_fd,
+                            target_fd=admission_replacement_fd,
+                            authority_pins=recovery_pins,
+                            caller_boot_nonce="91" * 32,
+                            handle_nonce="92" * 32,
+                        )
+                finally:
+                    os.close(admission_replacement_fd)
+                with pytest.raises(ValueError, match="issuer rejected"):
+                    issuer.recover_open(
+                        root_fd=root_fd,
+                        parent_fd=parent_fd,
+                        target_fd=target_fd,
+                        authority_pins=recovery_pins,
+                        caller_boot_nonce="91" * 32,
+                        handle_nonce="93" * 32,
+                    )
                 with pytest.raises(ValueError, match="signed state mismatch"):
                     checkpoint_module._authenticate_epoch0_recovery_state_v1(
                         parent_fd=parent_fd,
@@ -2742,6 +2903,7 @@ class TestMigrationPrerequisites:
             source_head_verification_keys=(),
             provider_revocation_floor_pins=(),
             source_floor_pins=(),
+            expected_target_store_id=STORE_ID,
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
         )

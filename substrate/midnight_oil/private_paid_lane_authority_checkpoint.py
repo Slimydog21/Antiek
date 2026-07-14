@@ -220,6 +220,18 @@ _MIGRATION_LIFECYCLE_STATE_DOMAIN: bytes = (
 _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN: bytes = (
     b"antiek.midnight-oil.private-paid-migration-state-signature.v1\x00"
 )
+_MIGRATION_RECOVERY_TICKET_DOMAIN: bytes = (
+    b"antiek.midnight-oil.private-paid-recovery-ticket.v1\x00"
+)
+_MIGRATION_RECOVERY_TICKET_SIGNATURE_DOMAIN: bytes = (
+    b"antiek.midnight-oil.private-paid-recovery-ticket-signature.v1\x00"
+)
+_MIGRATION_RECOVERY_ADMISSION_DOMAIN: bytes = (
+    b"antiek.midnight-oil.private-paid-recovery-admission.v1\x00"
+)
+_MIGRATION_RECOVERY_ADMISSION_SIGNATURE_DOMAIN: bytes = (
+    b"antiek.midnight-oil.private-paid-recovery-admission-signature.v1\x00"
+)
 
 _MIGRATION_ROLE_TABLES: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {
@@ -3371,6 +3383,120 @@ class Epoch0RecoveryAuthorityPinsV1(_Closed):
         ):
             raise ValueError("epoch0 recovery authority pins")
         return self
+
+
+class SignedMigrationRecoveryTicketV1(_Closed):
+    schema_version: Literal[1] = 1
+    issuer_key_id: str
+    issuer_generation_nonce: str
+    root_id: str
+    root_dev: int = Field(ge=0, le=MAX_I63)
+    root_ino: int = Field(ge=1, le=MAX_I63)
+    root_manifest_sha256: str
+    target_store_id: str
+    target_parent_dev: int = Field(ge=0, le=MAX_I63)
+    target_parent_ino: int = Field(ge=1, le=MAX_I63)
+    target_basename: str
+    target_dev: int = Field(ge=0, le=MAX_I63)
+    target_ino: int = Field(ge=1, le=MAX_I63)
+    maximum_issuer_sequence: Literal[4] = 4
+    ticket_nonce: str
+    issued_at_ms: int = Field(ge=0, le=MAX_I63)
+    ticket_sha256: str
+    signature_ed25519: bytes
+
+    @model_validator(mode="after")
+    def _closed_recovery_ticket(self) -> SignedMigrationRecoveryTicketV1:
+        if (
+            not _KEY_ID.fullmatch(self.issuer_key_id)
+            or not _HEX64.fullmatch(self.issuer_generation_nonce)
+            or not _REGISTRY_ID.fullmatch(self.root_id)
+            or not _HEX64.fullmatch(self.root_manifest_sha256)
+            or not _STORE_ID.fullmatch(self.target_store_id)
+            or not _MIGRATION_BASENAME.fullmatch(self.target_basename)
+            or self.target_basename in {".", ".."}
+            or not _HEX64.fullmatch(self.ticket_nonce)
+            or not _HEX64.fullmatch(self.ticket_sha256)
+            or len(self.signature_ed25519) != 64
+        ):
+            raise ValueError("migration recovery ticket identity")
+        material = self.model_dump(mode="json", exclude={"ticket_sha256", "signature_ed25519"})
+        expected = hashlib.sha256(
+            _MIGRATION_RECOVERY_TICKET_DOMAIN + _canonical_json(material)
+        ).hexdigest()
+        if self.ticket_sha256 != expected:
+            raise ValueError("migration recovery ticket hash")
+        return self
+
+
+class SignedEpoch0RecoveryAdmissionV1(_Closed):
+    schema_version: Literal[1] = 1
+    issuer_key_id: str
+    issuer_generation_nonce: str
+    ticket_sha256: str
+    authenticated_peer_pid: int = Field(ge=1, le=MAX_I63)
+    caller_boot_nonce: str
+    handle_nonce: str
+    descriptor_mode: Literal["target"] = "target"
+    authority_pins: Epoch0RecoveryAuthorityPinsV1
+    issued_at_ms: int = Field(ge=0, le=MAX_I63)
+    admission_sha256: str
+    signature_ed25519: bytes
+
+    @model_validator(mode="after")
+    def _closed_recovery_admission(self) -> SignedEpoch0RecoveryAdmissionV1:
+        if (
+            not _KEY_ID.fullmatch(self.issuer_key_id)
+            or not _HEX64.fullmatch(self.issuer_generation_nonce)
+            or not _HEX64.fullmatch(self.ticket_sha256)
+            or not _HEX64.fullmatch(self.caller_boot_nonce)
+            or not _HEX64.fullmatch(self.handle_nonce)
+            or not _HEX64.fullmatch(self.admission_sha256)
+            or len(self.signature_ed25519) != 64
+        ):
+            raise ValueError("epoch0 recovery admission identity")
+        material = self.model_dump(mode="json", exclude={"admission_sha256", "signature_ed25519"})
+        expected = hashlib.sha256(
+            _MIGRATION_RECOVERY_ADMISSION_DOMAIN + _canonical_json(material)
+        ).hexdigest()
+        if self.admission_sha256 != expected:
+            raise ValueError("epoch0 recovery admission hash")
+        return self
+
+
+def _verify_signed_migration_recovery_ticket(
+    ticket: SignedMigrationRecoveryTicketV1, verification_key: VerificationKeyV1
+) -> None:
+    if (
+        type(ticket) is not SignedMigrationRecoveryTicketV1
+        or type(verification_key) is not VerificationKeyV1
+    ):
+        raise ValueError("migration recovery ticket verifier type")
+    ticket = SignedMigrationRecoveryTicketV1.model_validate(ticket.model_dump(mode="python"))
+    if ticket.issuer_key_id != verification_key.key_id:
+        raise ValueError("migration recovery ticket key")
+    Ed25519PublicKey.from_public_bytes(verification_key.public_key_bytes).verify(
+        ticket.signature_ed25519,
+        _MIGRATION_RECOVERY_TICKET_SIGNATURE_DOMAIN + bytes.fromhex(ticket.ticket_sha256),
+    )
+
+
+def _verify_signed_epoch0_recovery_admission(
+    admission: SignedEpoch0RecoveryAdmissionV1,
+    verification_key: VerificationKeyV1,
+) -> None:
+    if (
+        type(admission) is not SignedEpoch0RecoveryAdmissionV1
+        or type(verification_key) is not VerificationKeyV1
+    ):
+        raise ValueError("epoch0 recovery admission verifier type")
+    admission = SignedEpoch0RecoveryAdmissionV1.model_validate(admission.model_dump(mode="python"))
+    if admission.issuer_key_id != verification_key.key_id:
+        raise ValueError("epoch0 recovery admission key")
+    Ed25519PublicKey.from_public_bytes(verification_key.public_key_bytes).verify(
+        admission.signature_ed25519,
+        _MIGRATION_RECOVERY_ADMISSION_SIGNATURE_DOMAIN + bytes.fromhex(admission.admission_sha256),
+    )
 
 
 def _verify_signed_migration_lifecycle_state(
