@@ -12,9 +12,16 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 
 from roles.note_taker import DispatchDistiller, Distiller
+from substrate.multimedia.graph_evidence import (
+    CreateGroundedMultimediaDraftRequest,
+    MultimediaEvidenceSearchRequest,
+    MultimediaEvidenceSearchResult,
+    MultimediaGraphEvidence,
+    MultimediaGraphEvidenceUnavailable,
+)
 from substrate.multimedia.knowledge_finalization import (
     MultimediaKnowledgeFinalizationError,
     MultimediaKnowledgeFinalizationRequest,
@@ -98,6 +105,7 @@ from .multimedia_production_worker_runtime import (
 )
 from .multimedia_reconciliation_routes import (
     authenticated_multimedia_operator,
+    authenticated_multimedia_policy_tag,
     get_multimedia_reconciliation_runtime,
     multimedia_reconciliation_router,
     multimedia_reconciliation_runtime_from_environment,
@@ -163,12 +171,41 @@ class MultimediaKnowledgeRuntime:
     embedding_provider: Any = None
 
 
+@dataclass(frozen=True)
+class MultimediaEvidenceRuntime:
+    db_path: str
+    embedding_provider_factory: Callable[[], Any]
+
+
 def get_store() -> MultimediaAssetStore:
     return _STORE
 
 
 def get_multimedia_knowledge_runtime() -> MultimediaKnowledgeRuntime:
     raise HTTPException(status_code=503, detail="multimedia knowledge runtime is unavailable")
+
+
+def get_multimedia_evidence_runtime() -> MultimediaEvidenceRuntime:
+    raise HTTPException(status_code=503, detail="multimedia evidence runtime is unavailable")
+
+
+def multimedia_evidence_runtime_from_environment(
+    environ: dict[str, str] | None = None,
+) -> MultimediaEvidenceRuntime | None:
+    values = os.environ if environ is None else environ
+    enabled = values.get("ANTIEK_MULTIMEDIA_EVIDENCE_ENABLED", "").strip().lower()
+    db_path = values.get("ANTIEK_MULTIMEDIA_EVIDENCE_DB_PATH", "").strip()
+    if not any((enabled, db_path)):
+        return None
+    if enabled not in {"1", "true"} or not db_path:
+        raise RuntimeError("multimedia evidence configuration is incomplete")
+
+    def provider() -> Any:
+        from processing.embedding import default_embedding_provider
+
+        return default_embedding_provider()
+
+    return MultimediaEvidenceRuntime(db_path=db_path, embedding_provider_factory=provider)
 
 
 def multimedia_knowledge_runtime_from_environment(
@@ -213,6 +250,87 @@ def get_multimedia_asset(
         return get_store().get(asset_id, owner_id=operator_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+
+
+@multimedia_router.post(
+    "/assets/{asset_id}/evidence-search",
+    response_model=MultimediaEvidenceSearchResult,
+)
+def search_multimedia_asset_evidence(
+    asset_id: str,
+    request: Request,
+    payload: MultimediaEvidenceSearchRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaEvidenceRuntime = Depends(get_multimedia_evidence_runtime),
+) -> MultimediaEvidenceSearchResult:
+    try:
+        record = get_store().get(asset_id, owner_id=operator_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    if record.asset.revision_id != payload.expected_revision_id:
+        raise HTTPException(status_code=409, detail="multimedia evidence parent revision is stale")
+    query = " ".join(
+        part
+        for part in (
+            record.plan.request.topic,
+            record.plan.request.source_scope or "",
+            *record.plan.request.must_cover,
+        )
+        if part.strip()
+    )
+    query = " ".join(query.split())[:4096].rstrip()
+    try:
+        evidence = MultimediaGraphEvidence(
+            db_path=runtime.db_path,
+            embedding_provider=runtime.embedding_provider_factory(),
+        )
+        result = evidence.search(
+            owner_id=operator_id,
+            asset_id=asset_id,
+            revision_id=record.asset.revision_id,
+            query=query,
+            limit=payload.limit,
+            policy_tag=authenticated_multimedia_policy_tag(request),
+        )
+        current = get_store().get(asset_id, owner_id=operator_id)
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    if current.asset.revision_id != payload.expected_revision_id:
+        raise HTTPException(status_code=409, detail="multimedia evidence parent revision is stale")
+    return result
+
+
+@multimedia_router.post(
+    "/assets/{asset_id}/grounded-drafts",
+    response_model=MultimediaAssetRecord,
+    status_code=201,
+)
+def create_grounded_multimedia_asset(
+    asset_id: str,
+    request: CreateGroundedMultimediaDraftRequest,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: MultimediaEvidenceRuntime = Depends(get_multimedia_evidence_runtime),
+) -> MultimediaAssetRecord:
+    try:
+        evidence = MultimediaGraphEvidence(
+            db_path=runtime.db_path,
+            embedding_provider=runtime.embedding_provider_factory(),
+        )
+        chunks = evidence.resolve(request.selections, owner_id=operator_id)
+        return get_store().create_grounded_draft(
+            asset_id,
+            expected_parent_revision_id=request.expected_parent_revision_id,
+            evidence=chunks,
+            owner_id=operator_id,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @multimedia_router.get("/assets/{asset_id}/jobs", response_model=MultimediaJobList)
@@ -433,6 +551,9 @@ def register_multimedia_routes(app: FastAPI) -> None:
     knowledge_runtime = multimedia_knowledge_runtime_from_environment()
     if knowledge_runtime is not None:
         app.dependency_overrides[get_multimedia_knowledge_runtime] = lambda: knowledge_runtime
+    evidence_runtime = multimedia_evidence_runtime_from_environment()
+    if evidence_runtime is not None:
+        app.dependency_overrides[get_multimedia_evidence_runtime] = lambda: evidence_runtime
     local_runtime = multimedia_local_runtime_from_environment(store=get_store())
     if local_runtime is not None:
         app.dependency_overrides[get_multimedia_local_runtime_optional] = (

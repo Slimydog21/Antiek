@@ -6,6 +6,7 @@ import Multimedia, { formatRecordCost, shouldUseLocalAudiblePlayback } from "./i
 import {
   approveMultimediaDryRun,
   authorizeMultimediaNarration,
+  createGroundedMultimediaDraft,
   createMultimediaDraft,
   getMultimediaAsset,
   getMultimediaPlayback,
@@ -13,6 +14,7 @@ import {
   listMultimediaAssets,
   previewMultimediaSteering,
   runMultimediaHardening,
+  searchMultimediaEvidence,
   registerMultimediaProduction,
   produceAuthorizedMultimedia,
   steerMultimediaAsset,
@@ -46,6 +48,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     ...actual,
     approveMultimediaDryRun: vi.fn(),
     authorizeMultimediaNarration: vi.fn(),
+    createGroundedMultimediaDraft: vi.fn(),
     createMultimediaDraft: vi.fn(),
     getMultimediaAsset: vi.fn(),
     getMultimediaPlayback: vi.fn(),
@@ -53,6 +56,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
     listMultimediaAssets: vi.fn(),
     previewMultimediaSteering: vi.fn(),
     runMultimediaHardening: vi.fn(),
+    searchMultimediaEvidence: vi.fn(),
     registerMultimediaProduction: vi.fn(),
     produceAuthorizedMultimedia: vi.fn(),
     steerMultimediaAsset: vi.fn(),
@@ -61,6 +65,7 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
 
 const mockApprove = vi.mocked(approveMultimediaDryRun);
 const mockAuthorizeNarration = vi.mocked(authorizeMultimediaNarration);
+const mockCreateGrounded = vi.mocked(createGroundedMultimediaDraft);
 const mockCreate = vi.mocked(createMultimediaDraft);
 const mockGet = vi.mocked(getMultimediaAsset);
 const mockPlayback = vi.mocked(getMultimediaPlayback);
@@ -68,6 +73,7 @@ const mockReviewedVisuals = vi.mocked(getMultimediaReviewedVisualSet);
 const mockList = vi.mocked(listMultimediaAssets);
 const mockPreviewSteering = vi.mocked(previewMultimediaSteering);
 const mockHarden = vi.mocked(runMultimediaHardening);
+const mockSearchEvidence = vi.mocked(searchMultimediaEvidence);
 const mockRegisterProduction = vi.mocked(registerMultimediaProduction);
 const mockProduceAuthorized = vi.mocked(produceAuthorizedMultimedia);
 const mockSteer = vi.mocked(steerMultimediaAsset);
@@ -267,6 +273,32 @@ beforeEach(() => {
     count: 1,
   });
   mockCreate.mockResolvedValue(draftRecord);
+  mockCreateGrounded.mockResolvedValue(draftRecord);
+  mockSearchEvidence.mockResolvedValue({
+    asset_id: "mm-1",
+    revision_id: "rev-1",
+    query: "Server plan owned corpus",
+    candidates: [
+      {
+        chunk_id: "chunk-a",
+        document_id: "doc-a",
+        document_title: "Aircraft history",
+        section_path: "Origins",
+        excerpt: "Early aircraft history began with lightweight structures.",
+        text_sha256: "a".repeat(64),
+        similarity: 0.91,
+      },
+      {
+        chunk_id: "chunk-b",
+        document_id: "doc-b",
+        document_title: "Engine systems",
+        section_path: "Reliability",
+        excerpt: "Engine design changed aircraft reliability.",
+        text_sha256: "b".repeat(64),
+        similarity: 0.84,
+      },
+    ],
+  });
   mockGet.mockResolvedValue(draftRecord);
   mockPlayback.mockResolvedValue({
     asset_id: "mm-1",
@@ -319,6 +351,9 @@ async function reviewPlan() {
   await waitForApiReady();
   fireEvent.click(screen.getByRole("button", { name: "Review plan" }));
   await screen.findByTestId("multimedia-suggestions");
+  await waitFor(() => expect(
+    (screen.getByRole("checkbox", { name: "Include Server coverage" }) as HTMLInputElement).checked,
+  ).toBe(true));
 }
 
 describe("Multimedia workstation", () => {
@@ -386,6 +421,33 @@ describe("Multimedia workstation", () => {
     expect(screen.getByRole("status").textContent).toContain("Partial render available");
     const video = await screen.findByLabelText(/Video playback for/);
     expect(video.getAttribute("src")).toBe("/multimedia/assets/mm-1/playback/rev-1/video");
+  });
+
+  it("reviews graph evidence and creates a separate grounded draft from exact selections", async () => {
+    const user = userEvent.setup();
+    const unsourced = structuredClone(draftRecord);
+    const unsourcedPlan = unsourced.plan as MultimediaPlanWire;
+    unsourcedPlan.script_lines[1].citations = [];
+    unsourcedPlan.script_lines[1].unsourced_reason = "planner needs more graph evidence before render";
+    unsourcedPlan.unsourced_line_ids = [unsourcedPlan.script_lines[1].line_id];
+    unsourcedPlan.chapters[1].source_chunk_ids = [];
+    unsourcedPlan.scenes[0].source_chunk_ids = [];
+    mockCreate.mockResolvedValueOnce(unsourced);
+    await reviewPlan();
+
+    expect(screen.getByRole("button", { name: "Approve render" }).getAttribute("disabled")).not.toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Find evidence" }));
+    expect(await screen.findByTestId("multimedia-evidence-results")).toBeTruthy();
+    expect(mockSearchEvidence).toHaveBeenCalledWith("mm-1", "rev-1");
+    await user.click(screen.getByRole("checkbox", { name: "Include evidence from Engine systems" }));
+    await user.click(screen.getByRole("button", { name: "Create grounded draft" }));
+
+    await waitFor(() => expect(mockCreateGrounded).toHaveBeenCalledWith(
+      "mm-1",
+      "rev-1",
+      [expect.objectContaining({ chunk_id: "chunk-a", text_sha256: "a".repeat(64) })],
+    ));
   });
 
   it("persists a focused draft from selected generated coverage", async () => {
