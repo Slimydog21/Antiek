@@ -349,6 +349,39 @@ export const radius = { sm: "4px", md: "6px", lg: "10px" } as const;
 /** The brand outline thickness used on every Lemon primitive. */
 export const edgeWidth = "2.5px" as const;
 
+/**
+ * Scene landscape palette — six named colour roles per daypart (ATP-01).
+ *
+ * TypeScript mirror of the CSS custom properties in tokens.css
+ * (--scene-dawn-horizon, --scene-dusk-top/mid/horizon) and the
+ * tailwind.config.js colour entries. These are the atmospheric scene
+ * colours for dawn and dusk; day and night reuse the existing surface
+ * ramps and do not need scene-specific tokens.
+ *
+ * These hex values are the CSS-var-backed Tailwind colour definitions
+ * consumed by landscapePalette.ts through ProceduralSky. The landscape
+ * module holds the Tailwind class-name map; this export mirrors the raw
+ * hex values for parity auditing and token-lint verification.
+ */
+export const sceneLandscape = {
+  dawn: {
+    skyTop: "#D4DEE2",
+    skyMid: "#E4E9E7",
+    skyHorizon: "#E6D8B5",
+    ridgeFar: "#B7C5CB",
+    ridgeMid: "#879BA8",
+    ridgeNear: "#506574",
+  },
+  dusk: {
+    skyTop: "#182235",
+    skyMid: "#26384A",
+    skyHorizon: "#4B7777",
+    ridgeFar: "#394A5C",
+    ridgeMid: "#273749",
+    ridgeNear: "#121C2B",
+  },
+} as const;
+
 export const type = {
   sans: '"Inter", system-ui, -apple-system, sans-serif',
   mono: '"JetBrains Mono", ui-monospace, SFMono-Regular, monospace',

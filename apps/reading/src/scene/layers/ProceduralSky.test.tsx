@@ -38,6 +38,7 @@ describe("ProceduralSky — deterministic fallback", () => {
     const { container } = render(<ProceduralSky mood={NIGHT} />);
     const sky = container.querySelector('[data-testid="procedural-sky"]');
     expect(sky!.className).toContain("from-space-2");
+    expect(sky!.className).toContain("to-charcoal-2");
     expect(sky!.getAttribute("data-mood")).toBe("night|snow");
   });
 });

@@ -132,6 +132,23 @@
      inventing a new hue (same restraint as --rod/--foot). */
   --werner-fish:  var(--aurora);
 
+  /* scene transition palette (ATP-01) — dawn/dusk atmospheric tokens.
+     These sit beside the mode-swap ramps and drive the procedural sky gradient.
+     Day/night roles reuse the existing ramp tokens; dawn/dusk introduce new
+     atmospheric hues that don't impersonate global ice/sun/space/interactive semantics. */
+  --scene-dawn-top:      #D4DEE2;
+  --scene-dawn-mid:      #E4E9E7;
+  --scene-dawn-horizon:  #E6D8B5;
+  --scene-dawn-ridge-far:  #B7C5CB;
+  --scene-dawn-ridge-mid:  #879BA8;
+  --scene-dawn-ridge-near: #506574;
+  --scene-dusk-top:      #182235; /* deep slate/indigo — the dusk upper sky */
+  --scene-dusk-mid:      #26384A; /* mid slate — dusk atmospheric mid */
+  --scene-dusk-horizon:  #4B7777; /* desaturated teal — restrained afterglow */
+  --scene-dusk-ridge-far:  #394A5C;
+  --scene-dusk-ridge-mid:  #273749;
+  --scene-dusk-ridge-near: #121C2B;
+
   /* accent (reserved) */
   --aurora:  #16C2C2;
   /* S11 a11y: darkened #E33C2D → #CE3623 (4.51:1 with white text).
@@ -304,6 +321,23 @@
        against the deep-slate scene; the var(--aurora) reference above already
        resolves to that brighter teal here. */
     --werner-fish:  var(--aurora);
+
+    /* scene transition palette (ATP-01), night — same dawn/dusk tokens as day:
+       these are atmospheric scene colours that intentionally do NOT swap under
+       prefers-color-scheme because dawn/dusk are fixed local-time windows, not
+       theme-dependent UI surfaces. */
+    --scene-dawn-top:      #D4DEE2;
+    --scene-dawn-mid:      #E4E9E7;
+    --scene-dawn-horizon:  #E6D8B5;
+    --scene-dawn-ridge-far:  #B7C5CB;
+    --scene-dawn-ridge-mid:  #879BA8;
+    --scene-dawn-ridge-near: #506574;
+    --scene-dusk-top:      #182235;
+    --scene-dusk-mid:      #26384A;
+    --scene-dusk-horizon:  #4B7777;
+    --scene-dusk-ridge-far:  #394A5C;
+    --scene-dusk-ridge-mid:  #273749;
+    --scene-dusk-ridge-near: #121C2B;
 
     --aurora:  #3FE0DC;
     --emperor: #FF6155;
