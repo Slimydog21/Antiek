@@ -81,7 +81,7 @@ export function AppShell({ children }: Props) {
   useWorkspaceHydration();
 
   // SPR-22/29 — opaque scene-moment transport: Scene detects committed
-  // night→dawn and non-dusk→dusk transitions; AppShell stores only an identified
+  // the closed nightfall/daybreak/dusk-settle set; AppShell stores only an identified
   // cue and passes it to PenguinMascot. AppShell never reads a clock,
   // theme, daypart, or weather, and never mounts another Werner.
   const [sceneCue, setSceneCue] = useState<SceneMomentCue | null>(null);

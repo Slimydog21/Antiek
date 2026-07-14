@@ -110,32 +110,10 @@ const FALLBACK_CUES: Record<DayPart, Record<Weather, CueCell>> = {
   },
 };
 
-export const POSE_GAPS: readonly PoseGap[] = [
-  {
-    sceneKey: "dawn|snow",
-    fallbackMood: "idle",
-    wantedPose: "a waking pose for first light in snow",
-    note: "No dawn-specific pose exists; idle is honest and restrained.",
-  },
-  {
-    sceneKey: "dawn|clear",
-    fallbackMood: "idle",
-    wantedPose: "a waking pose for clear first light",
-    note: "No clear-dawn pose exists; idle is honest and restrained.",
-  },
-  {
-    sceneKey: "night|snow",
-    fallbackMood: "idle",
-    wantedPose: "a settled-night pose under aurora and snow",
-    note: "The empty pose means blank state, so night uses idle.",
-  },
-  {
-    sceneKey: "night|clear",
-    fallbackMood: "idle",
-    wantedPose: "a settled-night pose under clear stars",
-    note: "The empty pose means blank state, so night uses idle.",
-  },
-];
+// SPR-17/22 resolved dawn; SPR-29 resolved dusk; SPR-30 resolves nightfall.
+// Keep the typed ledger rather than deleting the authority seam: future gaps
+// must be explicit evidence records, not ad-hoc additions to product moods.
+export const POSE_GAPS: readonly PoseGap[] = [];
 
 const COMPANION_COPY: Record<ArtPresence, string> = {
   live: "Werner notices the scene and stays out of the text.",

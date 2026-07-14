@@ -24,13 +24,15 @@ the exact topological cut the anchor transparent variant
 (poses/anchor/werner_default_v5_transparent.png, produced by the same family of
 script) already uses; this mirrors it for the emote poses.
 
-EDGES (anti-aliasing): a near-white pixel adjacent to a kept (penguin) pixel is
-feathered to a partial alpha proportional to how white it is, so the outline
-keeps its soft anti-aliased edge instead of a hard 1px halo.
+EDGES (anti-aliasing): a neutral backdrop pixel adjacent to the kept subject is
+cut completely. Retaining the source RGB under partial alpha produces a pale
+matte when composited on Antiek's night surfaces; the authored dark outline is
+the subject-side anti-aliasing boundary.
 
 Usage:
     python3 cut_pose_bg.py                 # cut every poses/*_v1_corrected.png
     python3 cut_pose_bg.py --image PATH    # cut one file → <stem>_transparent.png
+    python3 cut_pose_bg.py --image PATH --near-white-min 180 --hard-cut
 
 Output: poses/<name>_transparent.png (e.g. werner_thinking_v1_transparent.png).
 The source PNG is kept on disk for provenance (we never overwrite it).
@@ -48,18 +50,29 @@ from PIL import Image
 # channel spread is small (NEUTRAL — not a saturated yellow bill / blue accent,
 # which can also be bright). The Krea backdrop sits ≈(253,254,253); the brand
 # sun bill is saturated and so is NOT neutral, so it is never eaten.
-NEAR_WHITE_MIN = 238   # all channels >= this …
+# ChatGPT Image checker tiles can dip below this default. Those sources opt in
+# to a lower floor; topology, not brightness alone, protects the enclosed
+# warm-white interior.
+NEAR_WHITE_MIN = 226   # ordinary near-white matte floor …
 NEUTRAL_SPREAD = 14    # … and (max-min) channel spread <= this
 
 
-def is_neutral_near_white(r: int, g: int, b: int) -> bool:
+def is_neutral_near_white(
+    r: int, g: int, b: int, min_channel: int = NEAR_WHITE_MIN
+) -> bool:
     """True if (r,g,b) is a neutral near-white background candidate."""
-    if r < NEAR_WHITE_MIN or g < NEAR_WHITE_MIN or b < NEAR_WHITE_MIN:
+    if r < min_channel or g < min_channel or b < min_channel:
         return False
     return (max(r, g, b) - min(r, g, b)) <= NEUTRAL_SPREAD
 
 
-def cut(image_path: Path, out_path: Path | None = None) -> Path:
+def cut(
+    image_path: Path,
+    out_path: Path | None = None,
+    *,
+    min_channel: int = NEAR_WHITE_MIN,
+    hard_cut: bool = False,
+) -> Path:
     img = Image.open(image_path).convert("RGBA")
     out_path = out_path or image_path.with_name(
         image_path.stem.replace("_corrected", "") + "_transparent.png"
@@ -80,7 +93,7 @@ def cut(image_path: Path, out_path: Path | None = None) -> Path:
         if bg[i]:
             return
         r, g, b, _a = px[x, y]
-        if is_neutral_near_white(r, g, b):
+        if is_neutral_near_white(r, g, b, min_channel):
             bg[i] = 1
             q.append((x, y))
 
@@ -97,11 +110,9 @@ def cut(image_path: Path, out_path: Path | None = None) -> Path:
             if 0 <= nx < w and 0 <= ny < h:
                 seed(nx, ny)
 
-    # ── Apply the cut + feather the anti-aliased edge ──
-    # Background pixels → alpha 0. A KEPT near-white pixel that touches the
-    # background (the soft outline halo) is feathered: the whiter it is, the
-    # more transparent, so the outline keeps its anti-aliased softness instead
-    # of a hard ring. Interior pixels (belly/face/outline) are untouched.
+    # ── Apply the cut ──
+    # Background pixels become alpha 0. Interior pixels (belly/face/outline)
+    # are unreachable through the closed outline and remain untouched.
     cut_count = 0
     feather_count = 0
     for y in range(h):
@@ -112,22 +123,20 @@ def cut(image_path: Path, out_path: Path | None = None) -> Path:
                 px[x, y] = (r, g, b, 0)
                 cut_count += 1
                 continue
-            # Feather only KEPT near-white pixels adjacent to the cut surround.
-            r, g, b, a = px[x, y]
-            if a == 0 or not is_neutral_near_white(r, g, b):
+            if hard_cut:
                 continue
-            touches_bg = False
-            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                if 0 <= nx < w and 0 <= ny < h and bg[ny * w + nx]:
-                    touches_bg = True
-                    break
+            r, g, b, a = px[x, y]
+            if a == 0 or not is_neutral_near_white(r, g, b, min_channel):
+                continue
+            touches_bg = any(
+                0 <= nx < w and 0 <= ny < h and bg[ny * w + nx]
+                for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1))
+            )
             if touches_bg:
-                # Whiteness 0..1 over the near-white band → more white = more cut.
-                whiteness = (min(r, g, b) - NEAR_WHITE_MIN) / (255 - NEAR_WHITE_MIN)
+                whiteness = (min(r, g, b) - min_channel) / (255 - min_channel)
                 whiteness = max(0.0, min(1.0, whiteness))
                 px[x, y] = (r, g, b, int(round(a * (1.0 - whiteness))))
                 feather_count += 1
-
     img.save(out_path)
     total = w * h
     print(
@@ -144,10 +153,27 @@ def main() -> None:
         "--image", type=Path, default=None,
         help="Cut one file instead of the default poses/ sweep.",
     )
+    parser.add_argument(
+        "--output", type=Path, default=None,
+        help="Write the single-image result to this path.",
+    )
+    parser.add_argument(
+        "--near-white-min", type=int, default=NEAR_WHITE_MIN,
+        help="Minimum neutral channel value; lower only for checkerboard sources.",
+    )
+    parser.add_argument(
+        "--hard-cut", action="store_true",
+        help="Do not retain a partially transparent neutral matte at the boundary.",
+    )
     args = parser.parse_args()
 
     if args.image:
-        cut(args.image)
+        cut(
+            args.image,
+            args.output,
+            min_channel=args.near_white_min,
+            hard_cut=args.hard_cut,
+        )
         return
 
     poses_dir = Path(__file__).parent / "poses"

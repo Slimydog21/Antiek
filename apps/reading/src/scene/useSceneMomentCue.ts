@@ -3,7 +3,10 @@ import { useEffect, useRef } from "react";
 import type { SceneMood } from "./mood";
 import { momentForTransition, type WernerMomentId } from "../brand/wernerMoments";
 
-export type LiveSceneMoment = Extract<WernerMomentId, "daybreak" | "dusk-settle">;
+export type LiveSceneMoment = Extract<
+  WernerMomentId,
+  "nightfall" | "daybreak" | "dusk-settle"
+>;
 
 export interface SceneMomentCue {
   sequence: number;
@@ -23,7 +26,11 @@ export function useSceneMomentCue(
 
   useEffect(() => {
     const moment = momentForTransition(previousRef.current, mood);
-    if (moment?.id === "daybreak" || moment?.id === "dusk-settle") {
+    if (
+      moment?.id === "nightfall" ||
+      moment?.id === "daybreak" ||
+      moment?.id === "dusk-settle"
+    ) {
       sequenceRef.current += 1;
       onTransition?.({ sequence: sequenceRef.current, moment: moment.id });
     }

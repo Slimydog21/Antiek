@@ -174,6 +174,17 @@
   transform-origin: 50% 72%;
 }
 
+/* Nightfall lands as one restrained settling breath, not sleep or a loop. */
+@keyframes werner-night-watch-settle {
+  0% { opacity: 0; transform: translateY(2px) scale(0.985); }
+  45% { opacity: 1; transform: translateY(-0.5px) scale(1); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+.werner-night-watch {
+  animation: werner-night-watch-settle 1600ms ease-out both;
+  transform-origin: 50% 74%;
+}
+
 /* The lost/empty source frames Werner as a tiny figure on a 1024px horizon:
    its visible subject occupies 1.4% of the canvas versus 24–32% for the other
    canonical poses. Crop that source framing at the canonical render seam. */
@@ -221,7 +232,8 @@
   .penguin-mascot-wander,
   .werner-idle,
   .werner-waking,
-  .werner-dusk-gaze {
+  .werner-dusk-gaze,
+  .werner-night-watch {
     animation: none !important;
   }
   .penguin-mascot-wander { transform: translate(0, 0); }

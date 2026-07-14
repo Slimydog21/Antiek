@@ -124,6 +124,11 @@ const duskCue = (sequence = 1): SceneMomentCue => ({
   moment: "dusk-settle",
 });
 
+const nightCue = (sequence = 1): SceneMomentCue => ({
+  sequence,
+  moment: "nightfall",
+});
+
 async function advanceFrames(totalMs: number) {
   await act(async () => {
     vi.advanceTimersByTime(totalMs);
@@ -337,5 +342,43 @@ describe("PenguinMascot — dusk gaze beat (SPR-29)", () => {
     await advanceFrames(32);
     expect(onEnd).toHaveBeenCalledOnce();
     expect(container.querySelector('[data-werner-dusk-gaze="true"]')).toBeNull();
+  });
+});
+
+describe("PenguinMascot — night watch beat (SPR-30)", () => {
+  it("renders awake night-watch art instead of waking or sleeping", async () => {
+    const { container } = mount({ sceneBeat: nightCue() });
+    await advanceFrames(16);
+    expect(container.querySelector('[data-werner-night-watch="true"]')).not.toBeNull();
+    expect(container.querySelector('[data-werner-waking="true"]')).toBeNull();
+    expect(container.querySelector('[data-werner-authored-pose="sleeping"]')).toBeNull();
+    expect(screen.getByTestId("penguin-mascot").getAttribute("data-werner-scene-beat")).toBe("nightfall");
+  });
+
+  it("keeps reduced-motion nightfall semantic and static", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (q: string) => ({
+        matches: q.includes("prefers-reduced-motion"), media: q,
+        addEventListener: vi.fn(), removeEventListener: vi.fn(),
+        addListener: vi.fn(), removeListener: vi.fn(),
+      }),
+    });
+    const { container } = mount({ sceneBeat: nightCue() });
+    await advanceFrames(16);
+    const watch = container.querySelector('[data-werner-night-watch="true"]');
+    expect(watch?.getAttribute("data-reduced")).toBe("true");
+    expect(watch?.className).toBe("");
+  });
+
+  it("is preempted and consumed by a product reaction", async () => {
+    const onEnd = vi.fn();
+    const { container } = mount({ sceneBeat: nightCue(), onSceneBeatEnd: onEnd });
+    await advanceFrames(16);
+    act(() => emitWernerExperience("highlight"));
+    await advanceFrames(32);
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-werner-night-watch="true"]')).toBeNull();
   });
 });

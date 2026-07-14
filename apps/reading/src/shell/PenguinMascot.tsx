@@ -119,10 +119,15 @@ const loadWernerWaking = () => import("../brand/werner/animated/WernerWaking");
 const LazyWernerWaking = lazy(loadWernerWaking);
 const loadWernerDuskGaze = () => import("../brand/werner/animated/WernerDuskGaze");
 const LazyWernerDuskGaze = lazy(loadWernerDuskGaze);
+const loadWernerNightWatch = () => import("../brand/werner/animated/WernerNightWatch");
+const LazyWernerNightWatch = lazy(loadWernerNightWatch);
 const DUSK_GAZE_MS = 1_400;
+const NIGHT_WATCH_MS = 1_600;
 
 function sceneBeatDurationMs(moment: SceneMomentCue["moment"]): number {
-  return moment === "dusk-settle" ? DUSK_GAZE_MS : STATION_WAKE_MS;
+  if (moment === "nightfall") return NIGHT_WATCH_MS;
+  if (moment === "dusk-settle") return DUSK_GAZE_MS;
+  return STATION_WAKE_MS;
 }
 
 /** Where the Penguin's station is when first shown — lower-left, out of the way
@@ -191,6 +196,7 @@ export function PenguinMascot({
   useEffect(() => {
     if (sceneBeat?.moment === "daybreak") void loadWernerWaking();
     if (sceneBeat?.moment === "dusk-settle") void loadWernerDuskGaze();
+    if (sceneBeat?.moment === "nightfall") void loadWernerNightWatch();
   }, [sceneBeat]);
 
   // The active (default) station activity. With one registered activity
@@ -835,7 +841,9 @@ export function PenguinMascot({
             <Suspense
               fallback={<WernerSleeping size={MASCOT_SIZE} label="" reduced />}
             >
-              {sceneBeat?.moment === "dusk-settle" ? (
+              {sceneBeat?.moment === "nightfall" ? (
+                <LazyWernerNightWatch size={MASCOT_SIZE} reduced={reduceMotion} />
+              ) : sceneBeat?.moment === "dusk-settle" ? (
                 <LazyWernerDuskGaze size={MASCOT_SIZE} reduced={reduceMotion} />
               ) : (
                 <LazyWernerWaking size={MASCOT_SIZE} reduced={reduceMotion} />

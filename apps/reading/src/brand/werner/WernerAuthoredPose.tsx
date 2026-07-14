@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 
 import wernerHeadTilt from "./poses/werner_head_tilt_v1_transparent.png";
+import wernerNightWatch from "./poses/werner_night_watch_v1_transparent.png";
 import wernerDuskGaze from "./poses/werner_dusk_gaze_v1_transparent.png";
 import wernerSleeping from "./poses/werner_sleeping_v1_transparent.png";
 import wernerStationFishing from "./poses/werner_station_fishing_v1_transparent.png";
@@ -28,6 +29,7 @@ import wernerWaking from "./poses/werner_waking_v1_transparent.png";
 const AUTHORED_POSE = {
   duskGaze: wernerDuskGaze,
   headTilt: wernerHeadTilt,
+  nightWatch: wernerNightWatch,
   sleeping: wernerSleeping,
   stationFishing: wernerStationFishing,
   tobogganing: wernerTobogganingBody,
