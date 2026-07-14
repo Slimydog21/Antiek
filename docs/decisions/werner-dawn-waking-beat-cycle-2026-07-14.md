@@ -32,8 +32,8 @@ cue. Unmount clears the timer without firing a post-unmount callback.
 - TypeScript and diff checks: green.
 - HTML sprint/index structure checks: green.
 - hardenx 1.4.0 strict: LOW, 0 real findings; corpus certification unavailable.
-- PR #2102 exact head `efc7b6d4f7415029c50c14ac5233478969261193`
-  is locally qualified and awaits its four remote checks.
+- PR #2102 implementation commit `efc7b6d4f7415029c50c14ac5233478969261193`
+  is locally qualified; its documentation tip awaits four remote checks.
 
 ## Honest gaps
 
