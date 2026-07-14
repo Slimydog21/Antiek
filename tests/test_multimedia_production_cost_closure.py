@@ -131,7 +131,13 @@ class Fixture:
         self.db_path = tmp_path / "accounting.duckdb"
         self.asset_store = MultimediaAssetStore(tmp_path / "assets")
         draft = self.asset_store.create_draft(
-            CreateMultimediaDraftRequest(topic="Aircraft", target_minutes=15, mode="video"),
+            CreateMultimediaDraftRequest(
+                topic="Aircraft",
+                target_minutes=15,
+                mode="video",
+                sources=("Early aircraft history is supported by reviewed evidence.",),
+                selected_arc_ids=("history",),
+            ),
             owner_id=_OWNER,
         )
         record = self.asset_store.approve_dry_run(draft.asset.asset_id, owner_id=_OWNER)

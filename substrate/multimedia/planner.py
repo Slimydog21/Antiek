@@ -18,12 +18,15 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import Counter
+from collections.abc import Mapping
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from substrate.contracts.multimedia import (
     ClaimToChunk,
+    EvidenceDerivation,
+    EvidenceSpan,
     MediaSegment,
     MultimediaManifest,
     RoutePolicy,
@@ -33,6 +36,10 @@ from substrate.contracts.multimedia import (
 
 PlanMode = Literal["video", "audio", "hybrid"]
 Depth = Literal["overview", "intermediate", "deep"]
+GroundingContract = Literal[
+    "citation_presence_v1", "exact_extract_v2", "audible_transform_v1"
+]
+CanonicalEvidenceChunk = tuple[str, str]
 
 
 def validate_source_excerpts(values: tuple[str, ...]) -> tuple[str, ...]:
@@ -111,6 +118,7 @@ class EvidenceChunk(_PlannerBase):
     text: str = Field(min_length=1)
     title: str | None = None
     section_path: str | None = None
+    authority_kind: Literal["canonical_graph", "operator_excerpt"] = "operator_excerpt"
 
     def citation(self) -> SourceCitation:
         return SourceCitation(
@@ -118,6 +126,30 @@ class EvidenceChunk(_PlannerBase):
             document_id=self.document_id,
             locator=self.section_path,
             quote_sha256=hashlib.sha256(self.text.encode("utf-8")).hexdigest(),
+        )
+
+    def verbatim_derivation(self, exact_text: str) -> EvidenceDerivation:
+        start_character = self.text.find(exact_text)
+        if start_character < 0:
+            raise ValueError("evidence extract must be an exact chunk substring")
+        start_byte = len(self.text[:start_character].encode("utf-8"))
+        body = exact_text.encode("utf-8")
+        return EvidenceDerivation(
+            method="verbatim_span",
+            recipe_version="antiek.evidence-narration.v1",
+            spans=(
+                EvidenceSpan(
+                    chunk_id=self.chunk_id,
+                    document_id=self.document_id,
+                    authority_kind=self.authority_kind,
+                    chunk_sha256=hashlib.sha256(self.text.encode("utf-8")).hexdigest(),
+                    start_utf8_byte=start_byte,
+                    end_utf8_byte=start_byte + len(body),
+                    span_sha256=hashlib.sha256(body).hexdigest(),
+                    exact_text=exact_text,
+                ),
+            ),
+            output_sha256=hashlib.sha256(body).hexdigest(),
         )
 
 
@@ -180,6 +212,7 @@ class StoryboardScene(_PlannerBase):
 
 
 class MultimediaPlan(_PlannerBase):
+    grounding_contract: GroundingContract = "citation_presence_v1"
     request: MultimediaPlanRequest
     suggestions: tuple[CoverageSuggestion, ...]
     chosen_arc_ids: tuple[str, ...]
@@ -209,6 +242,41 @@ class MultimediaPlan(_PlannerBase):
         )
         if actual_unsourced != self.unsourced_line_ids:
             raise ValueError("unsourced_line_ids must list every unsourced factual line")
+        if self.grounding_contract == "exact_extract_v2":
+            for line in self.script_lines:
+                if line.kind == "factual" and line.citations and (
+                    len(line.citations) != 1
+                    or line.citations[0].quote_sha256 is None
+                    or line.evidence_derivation is None
+                ):
+                    raise ValueError(
+                        "exact_extract_v2 requires one text-bound canonical citation per factual line"
+                    )
+            chapter_by_id = {chapter.chapter_id: chapter for chapter in self.chapters}
+            authority_by_chapter: dict[str, list[str]] = {
+                chapter_id: [] for chapter_id in chapter_by_id
+            }
+            for line in self.script_lines:
+                chapter_id = line.line_id.split("-line-", 1)[0]
+                if chapter_id not in authority_by_chapter:
+                    if line.kind == "factual" or line.citations:
+                        raise ValueError("factual script line does not belong to a plan chapter")
+                    continue
+                for citation in line.citations:
+                    if citation.chunk_id not in authority_by_chapter[chapter_id]:
+                        authority_by_chapter[chapter_id].append(citation.chunk_id)
+            for chapter_id, chapter in chapter_by_id.items():
+                if chapter.source_chunk_ids != tuple(authority_by_chapter[chapter_id]):
+                    raise ValueError(
+                        "chapter source authority must equal factual derivation authority"
+                    )
+            for scene in self.scenes:
+                scene_chapter = chapter_by_id.get(scene.chapter_id)
+                if (
+                    scene_chapter is None
+                    or scene.source_chunk_ids != scene_chapter.source_chunk_ids
+                ):
+                    raise ValueError("scene source authority must equal chapter authority")
         return self
 
     def to_manifest(self, *, asset_id: str, revision_id: str) -> MultimediaManifest:
@@ -274,6 +342,7 @@ def build_multimedia_plan(
         if line.kind == "factual" and not line.citations
     )
     return MultimediaPlan(
+        grounding_contract="exact_extract_v2",
         request=request,
         suggestions=suggestions,
         chosen_arc_ids=chosen,
@@ -348,7 +417,7 @@ def _chapters(
     must_cover_remaining = list(request.must_cover)
     for arc_id in chosen_arc_ids:
         suggestion = suggestion_by_id[arc_id]
-        chunks = tuple(chunk.chunk_id for chunk in evidence_by_arc.get(arc_id, ())[:4])
+        chunks = tuple(chunk.chunk_id for chunk in evidence_by_arc.get(arc_id, ())[:2])
         cuts: list[str] = []
         if request.target_minutes <= 18 and len(chosen_arc_ids) > 2:
             cuts.append("Compress examples to keep the requested runtime.")
@@ -398,28 +467,29 @@ def _script_lines(
 ) -> tuple[ScriptLine, ...]:
     evidence_by_id = {chunk.chunk_id: chunk for chunk in evidence}
     lines: list[ScriptLine] = []
-    for index, chapter in enumerate(chapters):
-        citations = tuple(
-            evidence_by_id[chunk_id].citation()
+    for chapter in chapters:
+        chapter_evidence = tuple(
+            evidence_by_id[chunk_id]
             for chunk_id in chapter.source_chunk_ids[:2]
             if chunk_id in evidence_by_id
         )
-        line_id = f"{chapter.chapter_id}-line-0"
-        if citations:
-            text = f"{chapter.title}: {chapter.purpose}"
-            lines.append(
-                ScriptLine(
-                    line_id=line_id,
-                    sequence=index,
-                    text=text,
-                    citations=citations,
+        if chapter_evidence:
+            for line_index, chunk in enumerate(chapter_evidence):
+                text = _bounded_evidence_extract(chunk.text)
+                lines.append(
+                    ScriptLine(
+                        line_id=f"{chapter.chapter_id}-line-{line_index}",
+                        sequence=len(lines),
+                        text=text,
+                        citations=(chunk.citation(),),
+                        evidence_derivation=chunk.verbatim_derivation(text),
+                    )
                 )
-            )
         else:
             lines.append(
                 ScriptLine(
-                    line_id=line_id,
-                    sequence=index,
+                    line_id=f"{chapter.chapter_id}-line-0",
+                    sequence=len(lines),
                     text=f"{chapter.title}: {chapter.purpose}",
                     unsourced_reason="planner needs more graph evidence before render",
                 )
@@ -434,6 +504,24 @@ def _script_lines(
             )
         )
     return tuple(lines)
+
+
+def _bounded_evidence_extract(text: str, *, limit: int = 700) -> str:
+    """Return a narration-sized exact substring of one canonical chunk."""
+
+    extract = text.strip()
+    if len(extract) <= limit:
+        return extract
+    window = extract[:limit]
+    boundaries = tuple(
+        position + 1
+        for marker in (". ", "? ", "! ", "\n")
+        for position in (window.rfind(marker),)
+        if position >= 119
+    )
+    if boundaries:
+        return extract[: max(boundaries)].strip()
+    return window.strip()
 
 
 def _storyboard_scenes(
@@ -505,3 +593,35 @@ def _tradeoff_for(arc_id: str) -> str:
         "comparison": "Sacrifices narrative momentum for side-by-side contrast.",
         "consequences": "Sacrifices build detail for downstream effects.",
     }[arc_id]
+
+
+def verify_canonical_evidence_bytes(
+    plan: MultimediaPlan,
+    canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None,
+) -> None:
+    """Reopen and verify every graph-authoritative derivation before production."""
+
+    canonical_spans = tuple(
+        span
+        for line in plan.script_lines
+        if line.evidence_derivation is not None
+        for span in line.evidence_derivation.spans
+        if span.authority_kind == "canonical_graph"
+    )
+    if canonical_spans and canonical_chunks is None:
+        raise ValueError("canonical graph bytes are required for production")
+    if canonical_chunks is None:
+        return
+    for span in canonical_spans:
+        canonical = canonical_chunks.get(span.chunk_id)
+        if canonical is None:
+            raise ValueError("canonical graph evidence is unavailable for production")
+        document_id, source = canonical
+        if document_id != span.document_id:
+            raise ValueError("canonical graph document identity drifted before production")
+        source_bytes = source.encode("utf-8")
+        if hashlib.sha256(source_bytes).hexdigest() != span.chunk_sha256:
+            raise ValueError("canonical graph evidence digest drifted before production")
+        selected = source_bytes[span.start_utf8_byte : span.end_utf8_byte]
+        if selected.decode("utf-8") != span.exact_text:
+            raise ValueError("canonical graph evidence span drifted before production")

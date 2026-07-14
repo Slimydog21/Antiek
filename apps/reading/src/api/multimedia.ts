@@ -253,16 +253,36 @@ export interface MultimediaSourceCitationWire {
   quote_sha256: string | null;
 }
 
+export interface MultimediaEvidenceSpanWire {
+  chunk_id: string;
+  document_id: string;
+  authority_kind: "canonical_graph" | "operator_excerpt";
+  chunk_sha256: string;
+  start_utf8_byte: number;
+  end_utf8_byte: number;
+  span_sha256: string;
+  exact_text: string;
+}
+
+export interface MultimediaEvidenceDerivationWire {
+  method: "verbatim_span";
+  recipe_version: "antiek.evidence-narration.v1";
+  spans: MultimediaEvidenceSpanWire[];
+  output_sha256: string;
+}
+
 export interface MultimediaScriptLineWire {
   line_id: string;
   sequence: number;
   text: string;
   kind: "factual" | "transition" | "narration" | "opinion" | "instruction";
   citations: MultimediaSourceCitationWire[];
+  evidence_derivation?: MultimediaEvidenceDerivationWire | null;
   unsourced_reason: string | null;
 }
 
 export interface MultimediaPlanWire {
+  grounding_contract?: "citation_presence_v1" | "exact_extract_v2" | "audible_transform_v1";
   request: {
     topic: string;
     target_minutes: number;

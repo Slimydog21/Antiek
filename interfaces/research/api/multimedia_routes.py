@@ -21,6 +21,7 @@ from substrate.multimedia.graph_evidence import (
     MultimediaEvidenceSearchResult,
     MultimediaGraphEvidence,
     MultimediaGraphEvidenceUnavailable,
+    load_canonical_multimedia_chunks,
 )
 from substrate.multimedia.knowledge_finalization import (
     MultimediaKnowledgeFinalizationError,
@@ -188,6 +189,10 @@ def get_multimedia_evidence_runtime() -> MultimediaEvidenceRuntime:
     raise HTTPException(status_code=503, detail="multimedia evidence runtime is unavailable")
 
 
+def get_multimedia_evidence_runtime_optional() -> MultimediaEvidenceRuntime | None:
+    return None
+
+
 def multimedia_evidence_runtime_from_environment(
     environ: dict[str, str] | None = None,
 ) -> MultimediaEvidenceRuntime | None:
@@ -345,11 +350,39 @@ def list_multimedia_jobs(
 def approve_multimedia_dry_run(
     asset_id: str,
     operator_id: str = Depends(authenticated_multimedia_operator),
+    evidence_runtime: MultimediaEvidenceRuntime | None = Depends(
+        get_multimedia_evidence_runtime_optional
+    ),
 ) -> MultimediaAssetRecord:
     try:
-        return get_store().approve_dry_run(asset_id, owner_id=operator_id)
+        record = get_store().get(asset_id, owner_id=operator_id)
+        canonical_ids = tuple(
+            dict.fromkeys(
+                span.chunk_id
+                for line in record.plan.script_lines
+                if line.evidence_derivation is not None
+                for span in line.evidence_derivation.spans
+                if span.authority_kind == "canonical_graph"
+            )
+        )
+        canonical_chunks = (
+            load_canonical_multimedia_chunks(
+                evidence_runtime.db_path, canonical_ids, owner_id=operator_id
+            )
+            if canonical_ids and evidence_runtime is not None
+            else None
+        )
+        return get_store().approve_dry_run(
+            asset_id,
+            owner_id=operator_id,
+            canonical_chunks=canonical_chunks,
+        )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @multimedia_router.post(
@@ -387,9 +420,28 @@ def run_multimedia_hardening(
     asset_id: str,
     operator_id: str = Depends(authenticated_multimedia_operator),
     runtime: MultimediaHardeningRuntime = Depends(get_multimedia_hardening_runtime),
+    evidence_runtime: MultimediaEvidenceRuntime | None = Depends(
+        get_multimedia_evidence_runtime_optional
+    ),
 ) -> MultimediaAssetRecord:
     try:
         record = get_store().get(asset_id, owner_id=operator_id)
+        canonical_ids = tuple(
+            dict.fromkeys(
+                span.chunk_id
+                for line in record.plan.script_lines
+                if line.evidence_derivation is not None
+                for span in line.evidence_derivation.spans
+                if span.authority_kind == "canonical_graph"
+            )
+        )
+        canonical_chunks = (
+            load_canonical_multimedia_chunks(
+                evidence_runtime.db_path, canonical_ids, owner_id=operator_id
+            )
+            if canonical_ids and evidence_runtime is not None
+            else None
+        )
         now = runtime.clock()
         try:
             snapshot = build_multimedia_ship_cost_snapshot(
@@ -420,12 +472,14 @@ def run_multimedia_hardening(
             return get_store().run_hardening(
                 asset_id,
                 owner_id=operator_id,
+                canonical_chunks=canonical_chunks,
                 local_zero_cost_evidence=evidence,
                 snapshot_key=runtime.local_zero_snapshot_key,
             )
         return get_store().run_hardening(
             asset_id,
             owner_id=operator_id,
+            canonical_chunks=canonical_chunks,
             cost_snapshot=snapshot,
             snapshot_key=runtime.snapshot_key,
         )
@@ -435,6 +489,10 @@ def run_multimedia_hardening(
         raise HTTPException(status_code=409, detail=exc.code) from exc
     except LocalZeroEvidenceUnavailable as exc:
         raise HTTPException(status_code=409, detail=exc.code) from exc
+    except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @multimedia_router.post(
@@ -551,6 +609,9 @@ def register_multimedia_routes(app: FastAPI) -> None:
     evidence_runtime = multimedia_evidence_runtime_from_environment()
     if evidence_runtime is not None:
         app.dependency_overrides[get_multimedia_evidence_runtime] = lambda: evidence_runtime
+        app.dependency_overrides[get_multimedia_evidence_runtime_optional] = (
+            lambda: evidence_runtime
+        )
     local_runtime = multimedia_local_runtime_from_environment(store=get_store())
     if local_runtime is not None:
         app.dependency_overrides[get_multimedia_local_runtime_optional] = (

@@ -29,27 +29,6 @@ PRODUCTION_KEY = b"local-audible-coordinator-production-key"
 RECEIPT_KEY = b"local-audible-coordinator-receipt-key"
 
 
-def _ground(plan):  # noqa: ANN001, ANN202
-    authority = next(line.citations for line in plan.script_lines if line.citations)
-    authority_ids = tuple(citation.chunk_id for citation in authority)
-    values = plan.model_dump(mode="python")
-    lines = []
-    for line in plan.script_lines:
-        row = line.model_dump(mode="python")
-        if line.kind == "factual" and not line.citations:
-            row.update(citations=authority, unsourced_reason=None)
-        lines.append(type(line).model_validate(row))
-    chapters = []
-    for chapter in plan.chapters:
-        row = chapter.model_dump(mode="python")
-        row["source_chunk_ids"] = tuple(
-            dict.fromkeys((*chapter.source_chunk_ids, *authority_ids))
-        )
-        chapters.append(type(chapter).model_validate(row))
-    values.update(script_lines=tuple(lines), chapters=tuple(chapters), unsourced_line_ids=())
-    return type(plan).model_validate(values)
-
-
 class _Resolver:
     def __init__(self, artifacts):  # noqa: ANN001
         self.artifacts = artifacts
@@ -66,13 +45,15 @@ def _fixture(tmp_path: Path):  # noqa: ANN202
             target_minutes=15,
             mode="audio",
             route_policy="cheapest",
-            sources=("Frank Whittle patented a turbojet design in 1930.",),
+            sources=(
+                "Early jet engine history began with Frank Whittle's turbojet patent in 1930.",
+            ),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )
-    plan = _ground(draft.plan)
-    store.save(draft.model_copy(update={"plan": plan}), owner_id="owner-1")
     ready = store.approve_dry_run(draft.asset.asset_id, owner_id="owner-1")
+    plan = ready.plan
     requests = prepare_local_audible_span_requests(
         plan, asset_id=ready.asset.asset_id, revision_id=ready.asset.revision_id
     )
