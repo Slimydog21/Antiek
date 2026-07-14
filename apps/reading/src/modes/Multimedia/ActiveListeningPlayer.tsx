@@ -294,23 +294,26 @@ export function ActiveListeningPlayer({
 
   // ── Media session teardown ──
   useEffect(() => {
-    const mediaSession = navigator.mediaSession;
-    if (!mediaSession) return;
     return () => {
       if (mediaSessionOwner !== mediaSessionToken.current) return;
+      mediaSessionOwner = null;
+      mediaSessionOwnerAudio = null;
+      const mediaSession = navigator.mediaSession;
+      if (!mediaSession) return;
       for (const action of MEDIA_SESSION_ACTIONS) mediaSession.setActionHandler(action, null);
       mediaSession.metadata = null;
       mediaSession.playbackState = "none";
-      mediaSessionOwner = null;
-      mediaSessionOwnerAudio = null;
     };
   }, [playback.asset_id, playback.revision_id, playback.audio_url]);
 
   function claimMediaSession() {
-    const mediaSession = navigator.mediaSession;
     const audio = audioRef.current;
-    if (!mediaSession || !audio) return;
+    if (!audio) return;
     if (mediaSessionOwner !== mediaSessionToken.current) mediaSessionOwnerAudio?.pause();
+    mediaSessionOwner = mediaSessionToken.current;
+    mediaSessionOwnerAudio = audio;
+    const mediaSession = navigator.mediaSession;
+    if (!mediaSession) return;
     const actions: Array<[MediaSessionAction, MediaSessionActionHandler]> = [
       ["play", () => { void audio.play().catch(() => undefined); }],
       ["pause", () => audio.pause()],
@@ -319,8 +322,6 @@ export function ActiveListeningPlayer({
       ["previoustrack", () => seekChapter(currentIndexRef.current - 1)],
       ["nexttrack", () => seekChapter(currentIndexRef.current + 1)],
     ];
-    mediaSessionOwner = mediaSessionToken.current;
-    mediaSessionOwnerAudio = audio;
     mediaSession.metadata = new MediaMetadata({ title, artist: "Antiek" });
     for (const [action, handler] of actions) mediaSession.setActionHandler(action, handler);
   }

@@ -351,6 +351,9 @@ async function reviewPlan() {
   await waitForApiReady();
   fireEvent.click(screen.getByRole("button", { name: "Review plan" }));
   await screen.findByTestId("multimedia-suggestions");
+  await waitFor(() => expect(
+    (screen.getByRole("checkbox", { name: "Include Server coverage" }) as HTMLInputElement).checked,
+  ).toBe(true));
 }
 
 describe("Multimedia workstation", () => {

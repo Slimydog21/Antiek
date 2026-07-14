@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any, cast
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 
 from roles.note_taker import DispatchDistiller, Distiller
 from substrate.multimedia.graph_evidence import (
@@ -121,6 +121,7 @@ from .multimedia_production_worker_runtime import (
 )
 from .multimedia_reconciliation_routes import (
     authenticated_multimedia_operator,
+    authenticated_multimedia_policy_tag,
     get_multimedia_reconciliation_runtime,
     multimedia_reconciliation_router,
     multimedia_reconciliation_runtime_from_environment,
@@ -279,7 +280,8 @@ def get_multimedia_asset(
 )
 def search_multimedia_asset_evidence(
     asset_id: str,
-    request: MultimediaEvidenceSearchRequest,
+    request: Request,
+    payload: MultimediaEvidenceSearchRequest,
     operator_id: str = Depends(authenticated_multimedia_operator),
     runtime: MultimediaEvidenceRuntime = Depends(get_multimedia_evidence_runtime),
 ) -> MultimediaEvidenceSearchResult:
@@ -287,7 +289,7 @@ def search_multimedia_asset_evidence(
         record = get_store().get(asset_id, owner_id=operator_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="multimedia asset not found") from exc
-    if record.asset.revision_id != request.expected_revision_id:
+    if record.asset.revision_id != payload.expected_revision_id:
         raise HTTPException(status_code=409, detail="multimedia evidence parent revision is stale")
     query = " ".join(
         part
@@ -309,14 +311,15 @@ def search_multimedia_asset_evidence(
             asset_id=asset_id,
             revision_id=record.asset.revision_id,
             query=query,
-            limit=request.limit,
+            limit=payload.limit,
+            policy_tag=authenticated_multimedia_policy_tag(request),
         )
         current = get_store().get(asset_id, owner_id=operator_id)
     except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError) as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    if current.asset.revision_id != request.expected_revision_id:
+    if current.asset.revision_id != payload.expected_revision_id:
         raise HTTPException(status_code=409, detail="multimedia evidence parent revision is stale")
     return result
 
