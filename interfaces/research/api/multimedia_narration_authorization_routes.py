@@ -30,9 +30,7 @@ class NarrationAuthorizationBody(BaseModel):
     request_id: str = Field(min_length=1, max_length=256)
     expected_revision_id: str = Field(min_length=1, max_length=128)
     chapter_id: str = Field(min_length=1, max_length=128)
-    approved_ceiling_microdollars: int = Field(
-        gt=0, le=9_223_372_036_854_775_807, strict=True
-    )
+    approved_ceiling_microdollars: int = Field(gt=0, le=9_223_372_036_854_775_807, strict=True)
     operator_acknowledged_spend: bool
     voice: str = Field(default="narrator", min_length=1, max_length=128)
     speed: float = Field(default=1.0, ge=0.25, le=4)
@@ -82,6 +80,7 @@ class MultimediaNarrationAuthorizationRuntime:
     issuer: ExecutionAuthorizationIssuer
     terms_resolver: Callable[[MultimediaAssetRecord, str], TrustedNarrationTerms]
     clock: Callable[[], datetime]
+    db_path: str | None = None
 
 
 def get_multimedia_narration_authorization_runtime() -> MultimediaNarrationAuthorizationRuntime:
@@ -106,9 +105,7 @@ def multimedia_narration_authorization_runtime_from_environment(
         "quote_id": values.get(f"{prefix}QUOTE_ID", "").strip(),
         "quote_ttl": values.get(f"{prefix}QUOTE_TTL_SECONDS", "").strip(),
         "recovery_id": values.get(f"{prefix}RECOVERY_AUTHORITY_ID", "").strip(),
-        "recovery_digest": values.get(
-            f"{prefix}RECOVERY_VERIFICATION_KEY_DIGEST", ""
-        ).strip(),
+        "recovery_digest": values.get(f"{prefix}RECOVERY_VERIFICATION_KEY_DIGEST", "").strip(),
         "maximum_ceiling": values.get(f"{prefix}MAXIMUM_CEILING_MICRODOLLARS", "").strip(),
     }
     if not enabled and not any(fields.values()):
@@ -147,11 +144,10 @@ def multimedia_narration_authorization_runtime_from_environment(
     )
     return MultimediaNarrationAuthorizationRuntime(
         store=store,
-        issuer=ExecutionAuthorizationIssuer(
-            db_path=fields["db_path"], signing_key=signing_key
-        ),
+        issuer=ExecutionAuthorizationIssuer(db_path=fields["db_path"], signing_key=signing_key),
         terms_resolver=lambda _record, _chapter_id: terms,
         clock=lambda: datetime.now(UTC),
+        db_path=fields["db_path"],
     )
 
 
@@ -179,6 +175,7 @@ def authorize_chapter_narration(
             terms_resolver=runtime.terms_resolver,
             issuer=runtime.issuer,
             clock=runtime.clock,
+            db_path=runtime.db_path,
         )
     except NarrationAuthorizationError as exc:
         detail = str(exc)
@@ -193,9 +190,7 @@ def authorize_chapter_narration(
         chapter_id=result.prepared.chapter_id,
         child_revision_id=result.prepared.revision_id,
         request_body_digest=result.prepared.body_digest,
-        authorization=AsyncNarrationAuthorizationResponse.model_validate(
-            asdict(authorization)
-        ),
+        authorization=AsyncNarrationAuthorizationResponse.model_validate(asdict(authorization)),
     )
 
 

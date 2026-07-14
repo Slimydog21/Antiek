@@ -70,6 +70,7 @@ export interface FullTextResponse {
   ad_eligible: boolean;
   canonical_url: string | null;
   license: string | null;
+  content_format?: "text" | "html";
 }
 
 export type CorpusStatus = "servable" | "gated" | "all";
@@ -93,9 +94,16 @@ export async function getBook(documentId: string): Promise<BookDetail> {
 /** Fetch the body the gate permits: full text for servable books, a
  * bounded snippet for gated books, nothing for taken-down books. */
 export async function getBookFullText(documentId: string): Promise<FullTextResponse> {
-  const resp = await apiFetch(
-    `${API_BASE}/books/${encodeURIComponent(documentId)}/full-text`,
+  let resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/owner-full-text`,
   );
+  // Local development and non-owner/public clients deliberately lack the
+  // private-read capability; retain the established narrow endpoint there.
+  if (resp.status === 403) {
+    resp = await apiFetch(
+      `${API_BASE}/books/${encodeURIComponent(documentId)}/full-text`,
+    );
+  }
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}/full-text: HTTP ${resp.status}`);
   return (await resp.json()) as FullTextResponse;
