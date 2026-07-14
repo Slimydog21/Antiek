@@ -329,10 +329,13 @@ def _toc_sha256(toc: tuple[TocHeading, ...]) -> str:
 
 
 def _verify_republish_content(
-    stored_metadata: Any, converted: ConvertedBook, document_id: str
+    stored_metadata: Any,
+    converted: ConvertedBook,
+    document_id: str,
+    body_sha256: str,
 ) -> None:
-    """Republish content-completeness (judge r2 G10). Body byte-equality
-    pins only the sanitized HTML; the markdown projection (what chunks and
+    """Republish content-completeness (judge r2 G10). The full stored HTML
+    digest pins the sanitized body; the markdown projection (what chunks and
     grounds) and the TOC travel separately on ConvertedBook, so a republish
     presenting identical HTML with divergent markdown/TOC must be REFUSED —
     not silently answered with the old chunks/asset. The stored hashes live
@@ -351,11 +354,18 @@ def _verify_republish_content(
     book_import = meta.get("book_import")
     if not isinstance(book_import, dict):
         book_import = {}
+    stored_html_sha = book_import.get("html_sha256")
     stored_markdown_sha = book_import.get("markdown_sha256")
     stored_toc_sha = book_import.get("toc_sha256")
+    if stored_html_sha != body_sha256:
+        raise StoredBodyMismatchError(
+            f"document {document_id!r} exists but its stored html_sha256 "
+            f"({stored_html_sha!r}) does not match the sanitized body being "
+            "published; refusing an id shadow or an unverifiable legacy row"
+        )
     if stored_markdown_sha != _markdown_sha256(converted.markdown):
         raise StoredBodyMismatchError(
-            f"document {document_id!r} exists with a byte-identical HTML body "
+            f"document {document_id!r} exists with a matching HTML digest "
             "but the incoming markdown projection does not match the stored "
             f"markdown_sha256 ({stored_markdown_sha!r}) — divergent grounding "
             "content (or a stored row without the hash); refusing to answer "
@@ -363,7 +373,7 @@ def _verify_republish_content(
         )
     if stored_toc_sha != _toc_sha256(converted.toc):
         raise StoredBodyMismatchError(
-            f"document {document_id!r} exists with a byte-identical HTML body "
+            f"document {document_id!r} exists with a matching HTML digest "
             "but the incoming TOC does not match the stored toc_sha256 "
             f"({stored_toc_sha!r}) — divergent reading structure; refusing "
             "to answer with the old asset"
@@ -418,8 +428,9 @@ def publish_converted_book(
     retrieval.
 
     RE-PUBLISH IS RIGHTS-STABLE (judge r1 F1). When the document already
-    exists: (a) the stored body must byte-equal the body being published —
-    a mismatch is an id shadow and raises ``StoredBodyMismatchError``;
+    exists: (a) its write-time full HTML digest and stored body must match the
+    sanitized body being published; a missing or different value is an id
+    shadow and raises ``StoredBodyMismatchError``;
     (b) if its ``book_assets`` registration exists, NO rights write happens
     at all — args identical to (or ``None`` against) the stored state return
     the existing state untouched, while ANY requested change to
@@ -445,8 +456,8 @@ def publish_converted_book(
         raise NoTextContentError("refusing to publish an empty book body")
 
     body_sha = hashlib.sha256(body.encode("utf-8")).hexdigest()
-    # 128-bit id prefix (judge r1 F2); the byte-equality check below — not
-    # the hash width — is the binding shadow defense.
+    # The ID is a 128-bit prefix, while republish checks the separately stored
+    # full SHA-256 before accepting the existing row.
     document_id = f"doc-bookimport-{body_sha[:32]}"
     provenance = _provenance_line(converted)
     toc_items = [
@@ -467,13 +478,15 @@ def publish_converted_book(
         if stored_body != body:
             raise StoredBodyMismatchError(
                 f"document {document_id!r} exists but its stored body is not "
-                "byte-equal to the body being published — id shadow "
-                "(collision or tampering); refusing to touch it"
+                "byte-equal to the body being published; refusing an id "
+                "shadow, collision, or tampered row"
             )
         # Content-completeness BEFORE the chunk-set check: divergent markdown
         # must surface as the mismatch it is, not as a coincidental
         # chunk-count discrepancy (judge r2 G10).
-        _verify_republish_content(stored_metadata, converted, document_id)
+        _verify_republish_content(
+            stored_metadata, converted, document_id, body_sha
+        )
         _verify_published_chunks(con, document_id, converted)
         existing_asset = get_book_asset(con, document_id)
         if existing_asset is not None:
@@ -589,6 +602,7 @@ def publish_converted_book(
                     "converter_version": converted.converter_version,
                     "source_format": converted.source_format,
                     "chapter_count": converted.chapter_count,
+                    "html_sha256": body_sha,
                     # Republish content-completeness anchors (judge r2 G10):
                     # body byte-equality pins the HTML; these pin the
                     # markdown projection (grounding) and the TOC.

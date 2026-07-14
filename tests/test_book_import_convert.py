@@ -1097,6 +1097,7 @@ def _forge_partial_publish(db: str, converted: ConvertedBook, *, content_class: 
             content_class=content_class,
             metadata={
                 "book_import": {
+                    "html_sha256": body_sha,
                     "markdown_sha256": _markdown_sha256(converted.markdown),
                     "toc_sha256": _toc_sha256(converted.toc),
                 }
