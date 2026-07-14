@@ -86,6 +86,10 @@ export interface FloatMenuProps {
   /** CK-5: apply the model's edited span. The host splices it into the
    *  section prose (its own selection state identifies the span to replace). */
   onApplyEdit?: (editedText: string) => void;
+  /** Read-only extension: after a marginalia note is durably saved, let the
+   * host open its Write target picker. Only the opaque note identity crosses;
+   * the server resolves the authoritative promoted graph node. */
+  onAddToWrite?: (noteId: string) => void;
 }
 
 /** Clamp the menu on-screen at a viewport edge (rigor #3). The menu sits above
@@ -134,6 +138,7 @@ export default function FloatMenu({
   rewriteActions,
   editContext,
   onApplyEdit,
+  onAddToWrite,
 }: FloatMenuProps) {
   const [view, setView] = useState<FloatMenuView>({ kind: "menu" });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -300,6 +305,7 @@ export default function FloatMenu({
         <NotePanel
           selection={selection}
           investigationId={investigationId}
+          onAddToWrite={onAddToWrite}
           onClose={() => setView({ kind: "menu" })}
         />
       )}
@@ -369,15 +375,17 @@ function MenuButton({
 function NotePanel({
   selection,
   investigationId,
+  onAddToWrite,
   onClose,
 }: {
   selection: FloatMenuSelection;
   investigationId: string;
+  onAddToWrite?: (noteId: string) => void;
   onClose: () => void;
 }) {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [savedNoteId, setSavedNoteId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const voice = useVoiceCapture();
 
@@ -392,8 +400,8 @@ function NotePanel({
       setError(null);
       try {
         // NOTE → postTypedEvent, source_kind "user" (see floatMenuActions).
-        await saveFloatMenuNote({ investigationId, selection, noteText: t });
-        setSaved(true);
+        const saved = await saveFloatMenuNote({ investigationId, selection, noteText: t });
+        setSavedNoteId(saved.noteId);
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -416,7 +424,7 @@ function NotePanel({
     }
   }, [voice, investigationId]);
 
-  if (saved) {
+  if (savedNoteId) {
     return (
       <div
         data-testid="floatmenu-note-saved"
@@ -431,6 +439,15 @@ function NotePanel({
             Saved — user-sourced, anchored to your selection · seamless
             highlight note
           </p>
+          {onAddToWrite && (
+            <LemonButton
+              type="button"
+              size="sm"
+              onClick={() => onAddToWrite(savedNoteId)}
+            >
+              Add to writing
+            </LemonButton>
+          )}
         </Panel>
       </div>
     );
@@ -827,4 +844,3 @@ function EditPanel({
     </Panel>
   );
 }
-

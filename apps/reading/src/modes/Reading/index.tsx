@@ -23,6 +23,7 @@ import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
 import Attribution from "./Attribution";
 import ReadingCompanion from "./ReadingCompanion";
+import ReadToWritePicker from "./ReadToWritePicker";
 import ResearchThis from "./ResearchThis";
 import TalkToBook from "./TalkToBook";
 import TocPanel from "./TocPanel";
@@ -64,6 +65,7 @@ export default function BookReader() {
   const [housePool, setHousePool] = useState<BookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [writeNoteId, setWriteNoteId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -418,6 +420,18 @@ export default function BookReader() {
           selection={selection}
           investigationId={readingThreadId}
           onDeepResearch={onDeepResearch}
+          onAddToWrite={setWriteNoteId}
+        />
+      )}
+
+      {writeNoteId && (
+        <ReadToWritePicker
+          noteId={writeNoteId}
+          investigationId={readingThreadId}
+          onClose={() => setWriteNoteId(null)}
+          onComplete={(deliverableId) =>
+            navigate(`/write/${encodeURIComponent(deliverableId)}`)
+          }
         />
       )}
 

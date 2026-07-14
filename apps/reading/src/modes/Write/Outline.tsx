@@ -30,6 +30,15 @@ import {
   type RepositoryHit,
 } from "./writeApi";
 
+export function blockKindForNodeType(
+  nodeType: string,
+): "insight" | "open_question" | "claim" | null {
+  if (nodeType === "insight") return "insight";
+  if (nodeType === "question") return "open_question";
+  if (nodeType === "claim") return "claim";
+  return null;
+}
+
 /**
  * The outline — arrange blocks, reorder, add sections, generate, edit
  * (Product Depth SPR-07 M2+M3+M4).
@@ -95,9 +104,11 @@ export default function Outline({
   const addTappedBlock = useCallback(
     async (hit: RepositoryHit, sectionId: string | null, blockCount: number) => {
       if (!sectionId) return;
+      const blockKind = blockKindForNodeType(hit.node_type);
+      if (!blockKind) return;
       await placeBlock({
         section_id: sectionId,
-        block_kind: "insight",
+        block_kind: blockKind,
         provenance_kind: "graph_node",
         node_id: hit.node_id, // the SAME node — provenance preserved, no copy
         block_index: blockCount,

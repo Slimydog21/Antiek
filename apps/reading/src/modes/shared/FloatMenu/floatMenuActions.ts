@@ -81,7 +81,7 @@ export interface SaveNoteArgs {
 
 export async function saveFloatMenuNote(
   args: SaveNoteArgs,
-): Promise<{ eventId: string }> {
+): Promise<{ eventId: string; noteId: string }> {
   const { investigationId, selection, noteText } = args;
   const noteId = args.noteId ?? `mn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const payload: MarginaliaNotedPayload = {
@@ -105,7 +105,7 @@ export async function saveFloatMenuNote(
     document_id: selection.provenance.documentId ?? undefined,
     payload,
   });
-  return { eventId: emitted.event_id };
+  return { eventId: emitted.event_id, noteId };
 }
 
 // ─── SEARCH ──────────────────────────────────────────────────────────────

@@ -37,6 +37,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from datetime import UTC, datetime
 from typing import Any, Literal
 
 import duckdb
@@ -46,7 +47,16 @@ from pydantic import BaseModel, Field
 from roles.creative_writer.prompt import AdjacentSection
 from roles.interviewer.drivers import DriverSet
 from runtime.db_lock import connect_write
+from substrate.event_log import (
+    append_event_once,
+    prepare_typed_event,
+    require_event_persistence,
+    trajectory,
+)
 from substrate.graph import default_db_path, ensure_initialized
+from substrate.graph.insight_question import insight_node_id
+from substrate.graph.ops import content_addressed_id
+from substrate.schemas.events import SeamReadToWritePayload
 from substrate.write import block_search
 from substrate.write import folders as folders_mod
 from substrate.write.brainstorm_blocks import drivers_to_blocks
@@ -175,6 +185,12 @@ class FolderMemberRequest(BaseModel):
     node_id: str = Field(..., min_length=1)
 
 
+class ReadToWriteRequest(BaseModel):
+    note_id: str = Field(..., min_length=1, max_length=200)
+    target_section_id: str = Field(..., min_length=1)
+    investigation_id: str = Field(..., min_length=1)
+
+
 class BrainstormBlocksRequest(BaseModel):
     section_id: str
     deliverable_id: str | None = None
@@ -211,6 +227,107 @@ def place_outline_block(req: PlaceBlockRequest) -> dict[str, Any]:
             node_id=req.node_id, content=req.content, deliverable_id=req.deliverable_id,
         )
     return {"outline_block_id": obid}
+
+
+@write_router.post("/read-handoffs", status_code=201)
+def handoff_read_note(req: ReadToWriteRequest) -> dict[str, Any]:
+    """Place the graph insight already promoted from marginalia into Write.
+
+    The note text never crosses this boundary. The marginalia event resolves
+    the existing user-authored insight, and the outline block references that
+    same node. Stable block and event IDs make a retry converge on one handoff.
+    """
+    # Refuse before touching the outline when its terminating audit record
+    # cannot be persisted. A retry can repair a rare post-commit append fault,
+    # but an explicitly disabled event store must never create a silent seam.
+    require_event_persistence()
+    block_id = content_addressed_id(
+        "oblk", f"read-to-write|{req.note_id}|{req.target_section_id}"
+    )
+    seam_event_id = content_addressed_id(
+        "evt", f"read-to-write|{req.note_id}|{req.target_section_id}"
+    )
+    with _translate(), _write("write/read_handoff") as con:
+        section = con.execute(
+            "SELECT deliverable_id FROM deliverable_sections WHERE section_id = ?",
+            [req.target_section_id],
+        ).fetchone()
+        if section is None:
+            raise HTTPException(status_code=404, detail="target section not found")
+        note_events = [
+            event
+            for event in trajectory(req.investigation_id)
+            if event.get("action_type") == "marginalia.noted"
+            and event.get("payload", {}).get("note_id") == req.note_id
+            and event.get("payload", {}).get("source_kind") == "user"
+        ]
+        if len(note_events) != 1:
+            raise HTTPException(
+                status_code=404,
+                detail="saved reader note is not uniquely authoritative",
+            )
+        node_id = insight_node_id(note_events[0]["payload"]["note_text"])
+        promoted = con.execute(
+            "SELECT 1 FROM nodes WHERE node_id = ? AND node_type = 'insight' "
+            "AND json_extract_string(metadata, '$.source_kind') = 'user'",
+            [node_id],
+        ).fetchone()
+        if promoted is None:
+            raise HTTPException(
+                status_code=404,
+                detail="saved reader note has no promoted user insight",
+            )
+        receipt = con.execute(
+            "SELECT json_extract_string(metadata, '$.seam_emitted_at') "
+            "FROM outline_blocks WHERE outline_block_id = ?",
+            [block_id],
+        ).fetchone()
+        seam_emitted_at = (
+            receipt[0] if receipt is not None else datetime.now(UTC).isoformat()
+        )
+        next_index = con.execute(
+            "SELECT COALESCE(MAX(block_index), -1) + 1 FROM outline_blocks "
+            "WHERE section_id = ?",
+            [req.target_section_id],
+        ).fetchone()[0]
+        outline_block_id = place_block(
+            con,
+            section_id=req.target_section_id,
+            block_kind="insight",
+            provenance_kind="graph_node",
+            block_index=int(next_index),
+            node_id=node_id,
+            deliverable_id=section[0],
+            investigation_id=req.investigation_id,
+            outline_block_id=block_id,
+            on_conflict="ignore",
+            metadata={
+                "seam_event_id": seam_event_id,
+                "seam_emitted_at": seam_emitted_at,
+            },
+        )
+
+    seam_event = prepare_typed_event(
+        req.investigation_id,
+        SeamReadToWritePayload(
+            entity_id=node_id,
+            provenance_ref=req.note_id,
+            target_section_id=req.target_section_id,
+        ),
+        event_id=seam_event_id,
+        role="write_composition",
+        # The block atomically carries this receipt. A retry after an event-file
+        # fault repairs the append with the exact original envelope.
+        emitted_at=seam_emitted_at,
+    )
+    append_event_once(seam_event)
+    return {
+        "outline_block_id": outline_block_id,
+        "node_id": node_id,
+        "deliverable_id": section[0],
+        "section_id": req.target_section_id,
+        "seam_event_id": seam_event.event_id,
+    }
 
 
 @write_router.post("/blocks/{outline_block_id}/move", status_code=202)

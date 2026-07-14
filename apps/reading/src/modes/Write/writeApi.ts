@@ -120,6 +120,31 @@ export async function placeBlock(body: PlaceBlockBody): Promise<string> {
   return r.outline_block_id;
 }
 
+export interface ReadToWriteHandoff {
+  outline_block_id: string;
+  node_id: string;
+  deliverable_id: string;
+  section_id: string;
+  seam_event_id: string;
+}
+
+/** Commit a saved reader note into an outline without sending or copying its
+ * text. The backend resolves note_id to the existing user-authored insight. */
+export async function handoffReadNoteToWrite(body: {
+  note_id: string;
+  target_section_id: string;
+  investigation_id: string;
+}): Promise<ReadToWriteHandoff> {
+  return _json<ReadToWriteHandoff>(
+    await apiFetch(`${API_BASE}/write/read-handoffs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+    "POST /write/read-handoffs",
+  );
+}
+
 /** One block as it sits in a section's outline.
  *
  * `node_label` is the node's text for a graph-node block (whose `content`

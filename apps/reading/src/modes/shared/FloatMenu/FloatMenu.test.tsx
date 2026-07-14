@@ -375,6 +375,28 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
     expect(saved.getAttribute("data-view-format")).toBe("html");
     expect(saved.textContent).toMatch(/seamless highlight note/i);
   });
+
+  it("offers the saved note identity to Read without copying its text", async () => {
+    const onAddToWrite = vi.fn();
+    const selection: FloatMenuSelection = {
+      text: "selected source text",
+      rect: { top: 100, left: 100, width: 80, height: 18 },
+      provenance: { documentId: "doc-1", chunkId: "chunk-1" },
+    };
+    render(
+      <FloatMenu selection={selection} investigationId="read-doc-1"
+        onDeepResearch={vi.fn()} onAddToWrite={onAddToWrite} />,
+    );
+    fireEvent.click(screen.getByRole("menuitem", { name: "Note" }));
+    fireEvent.change(screen.getByPlaceholderText("Type a note, or speak it…"), {
+      target: { value: "my analysis" },
+    });
+    await act(async () => { fireEvent.click(screen.getByText("Save note")); });
+    fireEvent.click(screen.getByRole("button", { name: "Add to writing" }));
+    expect(onAddToWrite).toHaveBeenCalledTimes(1);
+    expect(onAddToWrite.mock.calls[0][0]).toMatch(/^mn-/);
+    expect(onAddToWrite.mock.calls[0][0]).not.toContain("my analysis");
+  });
 });
 
 // ── M3 — VOICE → NOTE keeps the user-sourced label (the fold from voice) ─────

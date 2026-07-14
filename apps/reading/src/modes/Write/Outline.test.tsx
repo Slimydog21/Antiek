@@ -92,7 +92,7 @@ async function typeInEditor(text: string): Promise<void> {
   });
 }
 
-import Outline from "./Outline";
+import Outline, { blockKindForNodeType } from "./Outline";
 
 const NODE_ID = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
 
@@ -139,6 +139,12 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Outline — no id, honest generate, real editor", () => {
+  it("preserves graph node kinds and refuses unsupported repository nodes", () => {
+    expect(blockKindForNodeType("insight")).toBe("insight");
+    expect(blockKindForNodeType("question")).toBe("open_question");
+    expect(blockKindForNodeType("claim")).toBe("claim");
+    expect(blockKindForNodeType("entity")).toBeNull();
+  });
   it("renders a block by text + provenance, never an id", async () => {
     getSectionBlocksMock.mockResolvedValue([block()]);
     const { container } = render(
