@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import hashlib
 import json
 import os
 import socket
 import sqlite3
+import threading
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -14,6 +18,8 @@ import pytest
 
 from substrate.multimedia.research_intent import ResearchIntentLedger
 from substrate.multimedia.research_plan import (
+    InvestigationActivationAuthorization,
+    InvestigationActivationQuote,
     ResearchPlanError,
     ResearchPlanLedger,
     ResearchPlanStorageError,
@@ -366,7 +372,7 @@ def test_exact_v1_store_migrates_transactionally_with_stable_root_id(tmp_path) -
     assert replay.tree["root"]["node_id"] == migrated.tree["root"]["node_id"]
     assert migrated.plan_version == plan.plan_version
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
 
 
 def test_tampered_receipt_tree_is_a_stored_integrity_error(tmp_path) -> None:
@@ -481,7 +487,7 @@ def test_concurrent_prepare_creates_exactly_one_v3_row(tmp_path) -> None:
     assert sum(created for _, created in results) == 1
     assert len({prepared.investigation_id for prepared, _ in results}) == 1
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
         assert connection.execute(
             "SELECT count(*) FROM multimedia_prepared_investigations"
         ).fetchone()[0] == 1
@@ -499,7 +505,7 @@ def test_exact_v2_store_migrates_atomically_to_v3(tmp_path) -> None:
         connection.execute("PRAGMA user_version=2")
     assert ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id) == plan
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
         assert connection.execute(
             "SELECT count(*) FROM multimedia_prepared_investigations"
         ).fetchone()[0] == 0
@@ -630,3 +636,301 @@ def test_prepared_relational_binding_tamper_fails_closed(tmp_path, column, value
         ledger.get_prepared_investigation(
             owner_identity_digest=owner, investigation_id=prepared.investigation_id
         )
+
+
+def _activation_fixture(tmp_path):
+    ledger = ResearchPlanLedger(tmp_path)
+    owner = "a" * 64
+    plan, _ = ledger.handoff(
+        owner_identity_digest=owner, idempotency_key="handoff-123456789", intent=_intent(tmp_path),
+    )
+    ledger.approve(owner_identity_digest=owner, plan_id=plan.plan_id, expected_plan_version=1)
+    prepared, _ = ledger.prepare_investigation(
+        owner_identity_digest=owner, plan_id=plan.plan_id,
+        idempotency_key="prepare-123456789", expected_plan_version=1,
+    )
+    prepared_raw = json.dumps(
+        asdict(prepared), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
+    prepared_digest = hashlib.sha256(prepared_raw).hexdigest()
+    workload = {
+        "investigation_id": prepared.investigation_id,
+        "prepared_integrity_digest": prepared_digest,
+        "total_node_count": prepared.total_node_count,
+        "leaf_question_count": prepared.leaf_question_count,
+    }
+    workload_digest = hashlib.sha256(json.dumps(
+        workload, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()).hexdigest()
+    now = datetime.now(UTC)
+    quote = InvestigationActivationQuote(
+        schema_version=1, route_policy="balanced", resolved_tier="standard",
+        provider="server-provider", model="server-model", dispatch_config_digest="d" * 64,
+        pricing_source="server-pricebook", pricing_digest="e" * 64,
+        workload_digest=workload_digest, quoted_ceiling_cents=250, quote_id="quote-123",
+        issued_at=now.isoformat().replace("+00:00", "Z"),
+        expires_at=(now + timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
+    )
+    return ledger, owner, prepared, quote
+
+
+def test_activation_authorization_is_exact_private_and_non_executing(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    kwargs = dict(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600, quote_resolver=lambda *_: quote,
+    )
+    created, was_created = ledger.authorize_investigation_activation(**kwargs)
+    replay, replay_created = ledger.authorize_investigation_activation(**kwargs)
+    read = ledger.get_investigation_activation_authorization(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id
+    )
+    assert was_created is True and replay_created is False
+    assert created == replay == read and created.authorization_id.startswith("mia_")
+    assert created.execution_started is created.background_work_authorized is False
+    assert created.event_authority_digest is created.graph_authority_digest is None
+    assert created.provider_authority_digest is created.spend_reservation_digest is None
+    assert created.consumed_at is None and created.is_expired is False
+    with pytest.raises(ResearchPlanError, match="unavailable"):
+        ledger.get_investigation_activation_authorization(
+            owner_identity_digest="b" * 64, investigation_id=prepared.investigation_id
+        )
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        tables = {row[0] for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )}
+    assert not any(token in name for name in tables for token in ("event", "graph", "budget", "task"))
+
+
+def test_activation_exact_replay_does_not_resolve_quote(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    kwargs = dict(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600,
+    )
+    created, _ = ledger.authorize_investigation_activation(
+        **kwargs, quote_resolver=lambda *_: quote,
+    )
+
+    def unavailable(*_args):
+        raise AssertionError("quote resolver must not run for exact replay")
+
+    replay, was_created = ledger.authorize_investigation_activation(
+        **kwargs, quote_resolver=unavailable,
+    )
+    assert replay == created
+    assert was_created is False
+
+
+def test_activation_max_ttl_is_persisted_and_expiry_is_capped_by_quote(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    kwargs = dict(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-86400-ttl", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=86400,
+    )
+    created, was_created = ledger.authorize_investigation_activation(
+        **kwargs, quote_resolver=lambda *_: quote,
+    )
+    replay, replay_created = ledger.authorize_investigation_activation(
+        **kwargs, quote_resolver=lambda *_: pytest.fail("replay resolved a quote"),
+    )
+    read = ledger.get_investigation_activation_authorization(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+    )
+
+    assert was_created is True and replay_created is False
+    assert created == replay == read
+    assert created.ttl_seconds == 86400
+    assert created.expires_at == created.quote_expires_at
+    with sqlite3.connect(ledger.path) as connection:
+        ttl, raw = connection.execute(
+            "SELECT ttl_seconds, authorization_json FROM "
+            "multimedia_investigation_activation_authorizations WHERE authorization_id=?",
+            (created.authorization_id,),
+        ).fetchone()
+    assert ttl == 86400
+    assert json.loads(raw)["ttl_seconds"] == 86400
+
+
+@pytest.mark.parametrize("tamper", [59, 86399, 86401])
+def test_activation_persisted_ttl_tamper_fails_closed(tmp_path, tamper) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    authorization, _ = ledger.authorize_investigation_activation(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-86400-ttl", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=86400, quote_resolver=lambda *_: quote,
+    )
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute("PRAGMA ignore_check_constraints=ON")
+        connection.execute(
+            "UPDATE multimedia_investigation_activation_authorizations SET ttl_seconds=? "
+            "WHERE authorization_id=?", (tamper, authorization.authorization_id),
+        )
+    with pytest.raises(ResearchPlanError, match="integrity"):
+        ledger.get_investigation_activation_authorization(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        )
+
+
+def test_activation_quote_resolver_runs_without_write_lock(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+
+    def resolver(*_args):
+        with sqlite3.connect(ledger.path, timeout=0) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            connection.commit()
+        return quote
+
+    authorization, created = ledger.authorize_investigation_activation(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600, quote_resolver=resolver,
+    )
+    assert created is True
+    assert authorization.investigation_id == prepared.investigation_id
+
+
+def test_concurrent_exact_activation_safely_replays_after_both_resolve(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    barrier = threading.Barrier(2)
+
+    def resolver(*_args):
+        barrier.wait(timeout=5)
+        return quote
+
+    def authorize():
+        return ledger.authorize_investigation_activation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+            idempotency_key="activate-12345678", route_policy="balanced",
+            approved_ceiling_cents=300, ttl_seconds=3600, quote_resolver=resolver,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(lambda _: authorize(), range(2)))
+    assert sum(created for _, created in results) == 1
+    assert results[0][0] == results[1][0]
+
+
+def test_activation_rejects_non_quote_resolver_result(tmp_path) -> None:
+    ledger, owner, prepared, _quote = _activation_fixture(tmp_path)
+    with pytest.raises(ResearchPlanError, match="quote is malformed"):
+        ledger.authorize_investigation_activation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+            idempotency_key="activate-12345678", route_policy="balanced",
+            approved_ceiling_cents=300, ttl_seconds=3600,
+            quote_resolver=lambda *_: {"quoted_ceiling_cents": 250},
+        )
+
+
+def test_activation_authorization_fails_closed_on_terms_quote_and_drift(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    base = dict(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600, quote_resolver=lambda *_: quote,
+    )
+    with pytest.raises(ResearchPlanError, match="does not cover"):
+        ledger.authorize_investigation_activation(**{**base, "approved_ceiling_cents": 249})
+    stale = InvestigationActivationQuote(**{
+        **asdict(quote), "issued_at": "2020-01-01T00:00:00Z", "expires_at": "2020-01-01T01:00:00Z"
+    })
+    with pytest.raises(ResearchPlanError, match="stale"):
+        ledger.authorize_investigation_activation(
+            **{**base, "quote_resolver": lambda *_: stale}
+        )
+    created, _ = ledger.authorize_investigation_activation(**base)
+    with pytest.raises(ResearchPlanError, match="idempotency conflict"):
+        ledger.authorize_investigation_activation(**{**base, "approved_ceiling_cents": 301})
+    with pytest.raises(ResearchPlanError, match="idempotency conflict"):
+        ledger.authorize_investigation_activation(**{**base, "ttl_seconds": 3599})
+    with pytest.raises(ResearchPlanError, match="already has"):
+        ledger.authorize_investigation_activation(**{**base, "idempotency_key": "activate-other-123"})
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute(
+            "UPDATE multimedia_prepared_investigations SET prepared_integrity_digest=? "
+            "WHERE investigation_id=?", ("f" * 64, prepared.investigation_id),
+        )
+    with pytest.raises(ResearchPlanError, match="integrity"):
+        ledger.get_investigation_activation_authorization(
+            owner_identity_digest=owner, investigation_id=created.investigation_id
+        )
+
+
+@pytest.mark.parametrize("value", [True, 9_223_372_036_854_775_808])
+def test_activation_monetary_values_reject_bool_and_bigint_overflow(tmp_path, value) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    kwargs = dict(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600,
+    )
+    with pytest.raises(ResearchPlanValidationError, match="positive integer"):
+        ledger.authorize_investigation_activation(
+            **{**kwargs, "approved_ceiling_cents": value},
+            quote_resolver=lambda *_: quote,
+        )
+    invalid_quote = InvestigationActivationQuote(**{
+        **asdict(quote), "quoted_ceiling_cents": value,
+    })
+    with pytest.raises(ResearchPlanError, match="quote integrity"):
+        ledger.authorize_investigation_activation(
+            **kwargs, quote_resolver=lambda *_: invalid_quote,
+        )
+
+
+def test_activation_canonical_record_tamper_fails_closed(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    authorization, _ = ledger.authorize_investigation_activation(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600,
+        quote_resolver=lambda *_: quote,
+    )
+    with sqlite3.connect(ledger.path) as connection:
+        raw = json.loads(connection.execute(
+            "SELECT authorization_json FROM "
+            "multimedia_investigation_activation_authorizations WHERE authorization_id=?",
+            (authorization.authorization_id,),
+        ).fetchone()[0])
+        raw["provider"] = "tampered-provider"
+        connection.execute(
+            "UPDATE multimedia_investigation_activation_authorizations "
+            "SET authorization_json=? WHERE authorization_id=?",
+            (json.dumps(raw, sort_keys=True, separators=(",", ":")), authorization.authorization_id),
+        )
+    with pytest.raises(ResearchPlanError, match="integrity"):
+        ledger.get_investigation_activation_authorization(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        )
+
+
+def test_activation_expiry_boundary_is_inclusive() -> None:
+    now = datetime.now(UTC)
+
+    def timestamp(value: datetime) -> str:
+        return value.isoformat().replace("+00:00", "Z")
+
+    base = dict(
+        authorization_id="mia_" + "a" * 48, investigation_id="mpi_" + "b" * 48,
+        prepared_integrity_digest="c" * 64, source_plan_id="mrp_" + "d" * 48,
+        source_plan_version=1, source_plan_integrity_digest="e" * 64,
+        source_intent_id="mmri_" + "f" * 48, source_intent_digest="1" * 64,
+        source_evidence_digest="2" * 64, total_node_count=1, leaf_question_count=1,
+        route_policy="balanced", resolved_tier="standard", provider="provider", model="model",
+        dispatch_config_digest="3" * 64, pricing_source="pricebook",
+        pricing_digest="4" * 64, workload_digest="5" * 64, quoted_ceiling_cents=1,
+        quote_id="quote", quote_issued_at=timestamp(now - timedelta(hours=1)),
+        quote_expires_at=timestamp(now + timedelta(hours=1)), quote_digest="6" * 64,
+        approved_ceiling_cents=1, ttl_seconds=60, request_digest="7" * 64,
+        issued_at=timestamp(now - timedelta(minutes=1)),
+    )
+    assert InvestigationActivationAuthorization(
+        **base, expires_at=timestamp(now),
+    ).is_expired is True
+    assert InvestigationActivationAuthorization(
+        **base, expires_at=timestamp(now + timedelta(minutes=1)),
+    ).is_expired is False

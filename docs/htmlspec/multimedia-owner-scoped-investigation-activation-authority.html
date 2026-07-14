@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cycle 27: Investigation Activation Authority</title></head>
+<body>
+<main>
+  <h1>Cycle 27: Owner-scoped investigation activation authority</h1>
+  <p><strong>Status:</strong> executable specification. <strong>Base:</strong> Cycle 26 head <code>578aac4277b40e748540bd10681f272f114034d8</code>.</p>
+
+  <section id="outcome">
+    <h2>Outcome</h2>
+    <p>An authenticated owner may explicitly approve one immutable <code>mpi_</code> prepared-investigation snapshot for later activation. The receipt binds the exact prepared integrity digest, route policy, server-resolved provider and model, dispatch-config provenance, quote provenance, a positive integer-cent hard ceiling, issuance time, and expiry.</p>
+    <p>This cycle records authority only. It never consumes authority, starts execution, emits events, writes graph state, calls a provider, reserves or debits money, or creates background work.</p>
+  </section>
+
+  <section id="values">
+    <h2>Five load-bearing values</h2>
+    <ol>
+      <li><strong>Owner privacy:</strong> every lookup and uniqueness boundary includes the authenticated owner digest; cross-owner absence is indistinguishable from missing data.</li>
+      <li><strong>Exact binding:</strong> authorization targets one persisted prepared snapshot and repeats its integrity digest, source plan identity/version, intent/evidence digests, and tree counts.</li>
+      <li><strong>Server authority:</strong> callers select only a closed route policy and ceiling. Provider, model, tier, pricing, quote ID, config digest, and quote expiry come from a server resolver.</li>
+      <li><strong>Money honesty:</strong> cents are exact positive integers. Unknown, zero, stale, or malformed pricing fails closed. Approval ceiling must cover the conservative quoted ceiling.</li>
+      <li><strong>Non-execution:</strong> receipt fields explicitly prove false/null execution, event, graph, provider, spend-reservation, consumption, and background-work state.</li>
+    </ol>
+  </section>
+
+  <section id="contract">
+    <h2>Domain contract</h2>
+    <p><code>InvestigationActivationQuote</code> is an immutable server result containing: schema version; route policy (<code>cheapest|balanced|highest_quality</code>); resolved tier; provider; model; 64-hex dispatch-config digest; pricing source; pricing digest; workload digest; positive quoted ceiling cents; quote ID; issued-at; and expires-at. Canonical JSON determines its quote digest. Expiry is UTC, later than issuance, and no more than 24 hours.</p>
+    <p><code>InvestigationActivationAuthorization</code> contains an opaque <code>mia_</code> ID, owner-hidden prepared bindings, quote fields/digest, approved ceiling cents, the persisted requested <code>ttl_seconds</code>, request digest, issued/expiry timestamps, state <code>authorized</code>, and explicit negative authority fields. Actual expiry is exactly the earlier of the requested TTL horizon and quote expiry. Its integrity digest covers the complete canonical record.</p>
+    <p>Request identity is <code>(owner_digest, investigation_id, idempotency_key, route_policy, approved_ceiling_cents, ttl_seconds)</code>. Exact replay returns byte-equivalent authority with <code>200</code>; first creation returns <code>201</code>. Reusing an idempotency key with different terms is <code>409</code>. Only one activation authorization may exist per owner and prepared investigation; a second key is <code>409</code>.</p>
+  </section>
+
+  <section id="storage">
+    <h2>Storage and migration</h2>
+    <p>Migrate the private research-plan SQLite ledger from schema v3 to v4. Add <code>multimedia_investigation_activation_authorizations</code> with explicit scalar binding columns, canonical authorization JSON, authorization integrity digest, owner-scoped idempotency uniqueness, owner-scoped investigation uniqueness, and a foreign key to the prepared investigation. Migration is additive and transactional. Schema SQL and exact column order remain fail-closed invariants.</p>
+    <p>Reads re-decode canonical JSON, validate the complete dataclass shape and timestamps, recompute request/quote/authorization digests, compare every scalar column, and re-read the referenced prepared row to prove its integrity still matches. Historical expired records remain readable and report <code>is_expired</code>; no mutable status transition is written.</p>
+  </section>
+
+  <section id="api">
+    <h2>Private API</h2>
+    <ul>
+      <li><code>POST /multimedia/investigations/{investigation_id}/activation-authorizations</code>: body has strict <code>idempotency_key</code>, closed <code>route_policy</code>, strict positive <code>approved_ceiling_cents</code>, and strict <code>ttl_seconds</code> (60..86400). Resolve the owner first, fetch and verify prepared state, request a server quote, then atomically persist.</li>
+      <li><code>GET /multimedia/investigations/{investigation_id}/activation-authorization</code>: owner-private read of the immutable record.</li>
+    </ul>
+    <p>All responses use <code>Cache-Control: private, no-store</code>. Missing or foreign resources return the same <code>404 investigation is unavailable</code>. Validation is <code>422</code>; stale/unknown quote, ceiling shortfall, duplicate authorization, replay mismatch, or integrity conflict is <code>409</code>; authority storage/resolver failure is value-free <code>500</code>/<code>503</code>. Responses never expose owner digests or internal idempotency keys.</p>
+    <p>The production resolver maps cheapest to flash, balanced to pro, and highest quality to synthesis. It parses the server-owned dispatch configuration, assumes one full uncached context/output call per tree node plus one per leaf, uses exact Decimal arithmetic with upward cent rounding, and binds the config, pricing, and workload digests. The current zero price placeholders are unknown rather than free and therefore return a value-free unavailable response until the operator supplies verified positive prices.</p>
+  </section>
+
+  <section id="acceptance">
+    <h2>Acceptance criteria</h2>
+    <ol>
+      <li>Domain tests cover creation, exact replay, replay conflict, one-per-investigation conflict, cross-owner privacy, foreign-owner idempotency independence, stale quote, unknown/zero quote, ceiling shortfall, expiry boundary, timestamp skew, malformed IDs/digests, canonical tamper detection, prepared-row drift, and v3-to-v4 migration.</li>
+      <li>Route tests cover 201/200, GET, strict body rejection, private headers on success and every failure, owner isolation, resolver non-invocation for absent prepared records, and value-free server failures.</li>
+      <li>Tests assert no dispatch registry call, provider call, event emission, graph mutation, budget-ledger table, reservation, debit, task, thread, or process is created.</li>
+      <li>Focused tests, the multimedia backend suite, Ruff, TypeScript checks, frontend build, HTML validation, independent review, and HardenX pass or have precisely recorded unrelated baseline failures.</li>
+    </ol>
+  </section>
+
+  <section id="next">
+    <h2>Explicit deferral: Cycle 28</h2>
+    <p>Cycle 28 may introduce a one-shot consumption permit and transactional launch boundary. It must verify this receipt at consumption time, reject expiry/config drift/quote drift, reserve the complete approved band before any dispatch, and atomically record launch identity. No part of that behavior belongs in Cycle 27.</p>
+  </section>
+</main>
+</body>
+</html>

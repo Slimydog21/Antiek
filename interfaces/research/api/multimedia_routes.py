@@ -7,12 +7,16 @@ planner/audio/video/steering/hardening seams without live provider spend.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
+from pathlib import Path
 from typing import Any, cast
 
+import yaml
 from fastapi import APIRouter, Depends, FastAPI, HTTPException
 
 from roles.note_taker import DispatchDistiller, Distiller
@@ -69,7 +73,11 @@ from substrate.multimedia.read_model import (
     SteeringPreviewResponse,
 )
 from substrate.multimedia.research_intent import ResearchIntentLedger
-from substrate.multimedia.research_plan import ResearchPlanLedger
+from substrate.multimedia.research_plan import (
+    InvestigationActivationQuote,
+    PreparedInvestigation,
+    ResearchPlanLedger,
+)
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
     MultimediaShipCostEvidenceUnavailable,
@@ -178,6 +186,149 @@ from .multimedia_visual_review_routes import (
 multimedia_router = APIRouter(prefix="/multimedia", tags=["multimedia"])
 multimedia_router.include_router(multimedia_reconciliation_router)
 multimedia_router.include_router(multimedia_local_router)
+
+_ACTIVATION_POLICY_TIERS = {
+    "cheapest": "flash",
+    "balanced": "pro",
+    "highest_quality": "synthesis",
+}
+_DISPATCH_CONFIG_PATH = Path(__file__).parents[3] / "substrate" / "dispatch" / "config.yaml"
+_PRICING_SOURCE = "substrate/dispatch/config.yaml"
+_MILLION = Decimal(1_000_000)
+_MAX_QUOTE_CENTS = 9_223_372_036_854_775_807
+
+
+class _DecimalSafeLoader(yaml.SafeLoader):
+    pass
+
+
+def _decimal_yaml(loader: yaml.SafeLoader, node: yaml.Node) -> Decimal:
+    return Decimal(loader.construct_scalar(node))
+
+
+_DecimalSafeLoader.add_constructor("tag:yaml.org,2002:float", _decimal_yaml)
+
+
+def _jsonable(value: object) -> object:
+    if isinstance(value, Decimal):
+        return {"decimal": str(value)}
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    return value
+
+
+def _canonical_digest(value: object) -> str:
+    return hashlib.sha256(json.dumps(
+        _jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")).hexdigest()
+
+
+def _production_activation_quote_resolver(
+    config_path: Path = _DISPATCH_CONFIG_PATH,
+    *,
+    clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+) -> Callable[[PreparedInvestigation, str], InvestigationActivationQuote]:
+    """Build quotes without dispatching work.
+
+    The ceiling assumes one uncached provider call for every prepared tree node
+    and one additional call for every leaf question.  Every assumed call is
+    charged the tier's full ``context_budget_tokens`` as input and full
+    ``max_tokens`` as output.  This deliberately conservative bound includes
+    decomposition/internal-node work and leaf retrieval/synthesis work; cached
+    pricing is never assumed.
+    """
+    def resolve(prepared: PreparedInvestigation, route_policy: str) -> InvestigationActivationQuote:
+        tier_name = _ACTIVATION_POLICY_TIERS.get(route_policy)
+        if tier_name is None:
+            raise ValueError("activation quote unavailable")
+        try:
+            raw = config_path.read_bytes()
+            config = yaml.load(raw, Loader=_DecimalSafeLoader)
+            if not isinstance(config, dict):
+                raise ValueError
+            tiers = config["tiers"]
+            defaults = config["tier_defaults"]
+            tier = tiers[tier_name]
+            limits = defaults[tier_name]
+            if not isinstance(tiers, dict) or not isinstance(defaults, dict):
+                raise ValueError
+            if not isinstance(tier, dict) or not isinstance(limits, dict):
+                raise ValueError
+            provider, model, pricing = tier["provider"], tier["model"], tier["pricing"]
+            if not isinstance(provider, str) or not provider or not isinstance(model, str) or not model:
+                raise ValueError
+            if not isinstance(pricing, dict):
+                raise ValueError
+            input_rate = Decimal(str(pricing["input_per_mtok"]))
+            output_rate = Decimal(str(pricing["output_per_mtok"]))
+            cached_rate = Decimal(str(pricing["cached_input_per_mtok"]))
+            context_tokens = limits["context_budget_tokens"]
+            output_tokens = limits["max_tokens"]
+            if (type(context_tokens) is not int or context_tokens <= 0
+                    or type(output_tokens) is not int or output_tokens <= 0
+                    or any(not rate.is_finite() or rate <= 0
+                           for rate in (input_rate, output_rate, cached_rate))):
+                raise ValueError
+            call_count = prepared.total_node_count + prepared.leaf_question_count
+            if (type(prepared.total_node_count) is not int
+                    or type(prepared.leaf_question_count) is not int or call_count <= 0):
+                raise ValueError
+            ceiling_usd = Decimal(call_count) * (
+                Decimal(context_tokens) * input_rate
+                + Decimal(output_tokens) * output_rate
+            ) / _MILLION
+            ceiling_cents = int((ceiling_usd * 100).to_integral_value(rounding=ROUND_CEILING))
+            if not 0 < ceiling_cents <= _MAX_QUOTE_CENTS:
+                raise ValueError
+        except (
+            KeyError, OSError, OverflowError, TypeError, ValueError,
+            InvalidOperation, yaml.YAMLError,
+        ) as exc:
+            raise ValueError("activation quote unavailable") from exc
+
+        dispatch_digest = _canonical_digest(config)
+        pricing_binding = {
+            "model": model,
+            "pricing": {
+                "cached_input_per_mtok": str(cached_rate),
+                "input_per_mtok": str(input_rate),
+                "output_per_mtok": str(output_rate),
+            },
+            "pricing_source": _PRICING_SOURCE,
+            "provider": provider,
+            "resolved_tier": tier_name,
+        }
+        pricing_digest = _canonical_digest(pricing_binding)
+        prepared_digest = _canonical_digest(vars(prepared))
+        workload_digest = _canonical_digest({
+            "investigation_id": prepared.investigation_id,
+            "prepared_integrity_digest": prepared_digest,
+            "total_node_count": prepared.total_node_count,
+            "leaf_question_count": prepared.leaf_question_count,
+        })
+        quote_id = "aq_" + _canonical_digest({
+            "dispatch_config_digest": dispatch_digest,
+            "pricing_digest": pricing_digest,
+            "route_policy": route_policy,
+            "workload_digest": workload_digest,
+        })[:48]
+        clock_value = clock()
+        if clock_value.tzinfo is None or clock_value.utcoffset() is None:
+            raise ValueError("activation quote unavailable")
+        issued = clock_value.astimezone(UTC).replace(microsecond=0)
+        expires = issued + timedelta(hours=24)
+        return InvestigationActivationQuote(
+            schema_version=1, route_policy=route_policy, resolved_tier=tier_name,
+            provider=provider, model=model, dispatch_config_digest=dispatch_digest,
+            pricing_source=_PRICING_SOURCE, pricing_digest=pricing_digest,
+            workload_digest=workload_digest, quoted_ceiling_cents=ceiling_cents,
+            quote_id=quote_id, issued_at=issued.isoformat().replace("+00:00", "Z"),
+            expires_at=expires.isoformat().replace("+00:00", "Z"),
+        )
+
+    return resolve
 multimedia_router.include_router(multimedia_local_audible_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_paid_audio_playback_router)
@@ -848,6 +999,7 @@ def register_multimedia_routes(app: FastAPI) -> None:
             plans=ResearchPlanLedger(get_store().root),
             intents=research_intent_runtime.ledger,
             owner_digest_resolver=_owner_digest,
+            activation_quote_resolver=_production_activation_quote_resolver(),
         )
         app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: (
             research_plan_runtime
