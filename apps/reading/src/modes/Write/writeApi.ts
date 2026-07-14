@@ -9,6 +9,7 @@
  */
 
 import { API_BASE, ApiError, apiFetch } from "../../lib/api";
+import { notifyOutlineBlockCommitted } from "../../werner/shellExperienceSignals";
 
 export interface RepositoryHit {
   node_id: string;
@@ -117,6 +118,17 @@ export async function placeBlock(body: PlaceBlockBody): Promise<string> {
     }),
     "POST /write/blocks",
   );
+  if (
+    typeof r.outline_block_id !== "string" ||
+    r.outline_block_id.trim().length === 0
+  ) {
+    throw new ApiError(
+      "POST /write/blocks returned an invalid outline_block_id",
+      502,
+      JSON.stringify(r),
+    );
+  }
+  notifyOutlineBlockCommitted();
   return r.outline_block_id;
 }
 

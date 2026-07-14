@@ -19,6 +19,7 @@ describe("Werner product reaction bus", () => {
     ["deep_research_complete", "happy"],
     ["deep_research_error", "dizzy"],
     ["source_read_committed", "happy"],
+    ["outline_block_committed", "curious"],
     ["fail", "dizzy"],
   ];
 
