@@ -42,7 +42,9 @@ inspected active-wave matrix is retained separately under
 `docs/evidence/werner-arcade-authored-field/` as human contrast evidence, not
 as a false deterministic regression oracle. The awaited Storybook `play`
 lifecycle refuses to complete until the validated backdrop readiness marker
-exists. Backdrop readiness also sends a redraw-only token to `ArcadeMount`,
+exists. The story-only harness decodes and caches the exact bundled plate
+before opting into the lazy game, so the canvas cannot mount on an uncached
+asset during remote capture. Backdrop readiness also sends a redraw-only token to `ArcadeMount`,
 which invokes `render` against the existing context without re-running
 `init`, replacing the cartridge, or changing game state. A fresh scoped local
 run then reported exact zero difference at 768/1024/1280. Production game

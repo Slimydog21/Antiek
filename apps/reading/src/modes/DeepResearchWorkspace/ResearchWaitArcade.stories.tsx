@@ -3,6 +3,7 @@ import { waitFor } from "@storybook/test";
 import { createRef, useEffect, useRef, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 
+import backdropUrl from "../../arcade/games/zombies/assets/paperclip_zombies_night_archive_v1.jpg";
 import { WernerIceCursorShell } from "../../werner/WernerIceCursorShell";
 import { useStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
 import ResearchWaitArcade from "./ResearchWaitArcade";
@@ -48,6 +49,7 @@ function CursorPolicyPreview({
 
   useEffect(() => {
     let frame = 0;
+    let live = true;
     let optedIn = false;
     const activate = () => {
       window.dispatchEvent(
@@ -63,8 +65,21 @@ function CursorPolicyPreview({
       }
       frame = window.requestAnimationFrame(activate);
     };
-    frame = window.requestAnimationFrame(activate);
-    return () => window.cancelAnimationFrame(frame);
+    if (!playing) {
+      frame = window.requestAnimationFrame(activate);
+    } else {
+      const preload = new Image();
+      preload.onload = () => {
+        void preload.decode().catch(() => undefined).then(() => {
+          if (live) frame = window.requestAnimationFrame(activate);
+        });
+      };
+      preload.src = backdropUrl;
+    }
+    return () => {
+      live = false;
+      window.cancelAnimationFrame(frame);
+    };
   }, [playing]);
 
   return (
