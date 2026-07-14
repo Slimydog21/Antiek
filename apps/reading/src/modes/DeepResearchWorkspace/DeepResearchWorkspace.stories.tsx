@@ -4,6 +4,7 @@ import type { PlanTree, ResearchStatus, SessionCost } from "../../api/research";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import ResearchTrail from "./ResearchTrail";
 
 const meta = {
   title: "DeepResearch / Workspace",
@@ -58,6 +59,30 @@ export const Research_Panels: Story = {
       {RESEARCHES.map((r) => (
         <ResearchPanel key={r.investigation_id} research={r} costUsd={0.042} onSteer={() => {}} />
       ))}
+    </div>
+  ),
+};
+
+export const Live_Research_Trail: Story = {
+  render: () => (
+    <div className="max-w-md">
+      <ResearchTrail
+        plan={{
+          root_node_id: "plan-root",
+          tree: { ...TREE, approval: { ...TREE.approval, state: "approved" } },
+        }}
+        researches={TREE.root.children.map((node, index) => ({
+          investigation_id: `session-x-leaf-${index}`,
+          sub_question: node.question,
+          state: (["running", "paused", "done"] as const)[index],
+          question_node_id: node.graph_node_id,
+          plan_node_local_id: node.local_id,
+          control_available: true,
+        }))}
+        steeringId={null}
+        onSteer={() => {}}
+        onFocusResearch={() => {}}
+      />
     </div>
   ),
 };

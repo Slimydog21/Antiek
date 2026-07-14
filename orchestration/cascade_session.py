@@ -36,6 +36,8 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import fcntl
+import hashlib
 import logging
 import os
 import sys
@@ -81,6 +83,13 @@ _log = logging.getLogger(__name__)
 # Researchmaxx vocabulary that hasn't been schemaed yet. Recoverable from the
 # event log so the from-event-log status path can surface it honestly.
 SYNTHESIS_TAIL_FAILED = "cascade.synthesis_tail.failed"
+CASCADE_LAUNCH_RESERVED = "cascade.launch_reserved"
+CASCADE_SYNTHESIS_COMPLETED = "cascade.synthesis_tail.completed"
+CASCADE_SESSION_TERMINAL = "cascade.session.terminal"
+
+
+class LaunchGenerationActive(RuntimeError):
+    """A durable reservation exists without a terminal session marker."""
 
 
 @dataclass
@@ -92,6 +101,9 @@ class Leaf:
     sub_question: str
     question_node_id: str | None = None
     budget: BudgetCap = field(default_factory=BudgetCap)
+    # Appended after the established positional fields so four-positional
+    # callers keep binding their BudgetCap to ``budget``.
+    plan_node_local_id: str | None = None
 
 
 @dataclass
@@ -100,6 +112,7 @@ class ResearchState:
     sub_question: str
     state: str
     question_node_id: str | None = None
+    plan_node_local_id: str | None = None
 
 
 @dataclass
@@ -109,6 +122,8 @@ class SessionRecovery:
 
     session_id: str
     researches: list[ResearchState]
+    plan_root_node_id: str | None = None
+    approved_plan_tree: dict[str, Any] | None = None
     # Reconstructed from the session's own trajectory: the
     # ``cascade.synthesis_tail.failed`` audit event, if one was emitted before
     # the session was evicted. None when no such event exists — we surface only
@@ -141,6 +156,9 @@ class CascadeSession:
         self._handles: dict[str, Handle] = {}
         self._out: asyncio.Queue[StepEvent | object] = asyncio.Queue()
         self._pump_tasks: list[asyncio.Task[None]] = []
+        self.plan_root_node_id: str | None = None
+        self.approved_plan_tree: dict[str, Any] | None = None
+        self.launch_generation: int | None = None
         # Set by background completion (``_run_to_completion``) when the Loop 1
         # synthesis tail raises. A non-None value means the session never
         # reached ``DeepResearchComplete`` because synthesis failed — the
@@ -149,29 +167,105 @@ class CascadeSession:
 
     # -- M1: launch with approval enforcement --------------------------
 
-    async def launch(self, plan_root_node_id: str, leaves: Sequence[Leaf]) -> list[Handle]:
+    async def launch(
+        self,
+        plan_root_node_id: str,
+        leaves: Sequence[Leaf],
+        *,
+        approved_plan_tree: dict[str, Any] | None = None,
+        launch_generation: int | None = None,
+    ) -> list[Handle]:
         """Launch an approved plan as N investigations. Refuses an unapproved
         plan (SPR-05 gate). Each leaf is spawned_from the session parent."""
         assert_launchable(plan_root_node_id, db_path=self._db_path)
-        if self._funnel is not None:
-            await self._funnel.start()
-        log_event(self.session_id, "cascade.launched",
-                  payload={"plan_root_node_id": plan_root_node_id,
-                           "leaf_count": len(leaves)},
-                  role="user_agent", events_dir=self._events_dir)
+        generation = _reserve_launch_generation(
+            self.session_id,
+            plan_root_node_id=plan_root_node_id,
+            events_dir=self._events_dir,
+            requested_generation=launch_generation,
+        )
+        self.launch_generation = generation
         handles: list[Handle] = []
-        for leaf in leaves:
-            self._leaves[leaf.investigation_id] = leaf
-            plan = ResearchPlan(
-                investigation_id=leaf.investigation_id, sub_question=leaf.sub_question,
-                parent_investigation_id=self.session_id, budget=leaf.budget,
+        try:
+            if self._funnel is not None:
+                await self._funnel.start()
+            for leaf in leaves:
+                self._leaves[leaf.investigation_id] = leaf
+                plan = ResearchPlan(
+                    investigation_id=leaf.investigation_id, sub_question=leaf.sub_question,
+                    parent_investigation_id=self.session_id, budget=leaf.budget,
+                    metadata={"cascade_launch_generation": generation},
+                )
+                handle = await self._runner.start(leaf.investigation_id, plan)
+                self._handles[leaf.investigation_id] = handle
+                handles.append(handle)
+                # Pump this research's stream into the multiplexed session queue.
+                self._pump_tasks.append(asyncio.create_task(self._pump(handle)))
+        except BaseException:
+            # Launch is atomic from the caller's perspective. A runner may have
+            # accepted earlier leaves before a later start fails, so explicitly
+            # cancel and drain every accepted handle before propagating. This
+            # prevents invisible orphan work after the route returns an error.
+            await self._abort_launch(handles)
+            raise
+        # This is a success receipt, not an intent: emit it only after every
+        # runner handle exists. A partial start can leave child audit events,
+        # but can never claim the complete approved tree launched.
+        self.plan_root_node_id = plan_root_node_id
+        self.approved_plan_tree = approved_plan_tree
+        try:
+            receipt_payload = {"plan_root_node_id": plan_root_node_id,
+                           "launch_generation": generation,
+                           "leaf_count": len(leaves),
+                           # Immutable execution receipt. Loading the mutable
+                           # graph plan later could show edits that were never
+                           # launched.
+                           "approved_plan_tree": approved_plan_tree,
+                           "plan_version": (
+                               approved_plan_tree.get("approval", {}).get("plan_version")
+                               if isinstance(approved_plan_tree, dict) else None
+                           ),
+                           # Durable identity map for the live research trail.
+                           # Recovery must never guess from question text or
+                           # deterministic leaf suffixes.
+                           "researches": [
+                               {"investigation_id": leaf.investigation_id,
+                                "sub_question": leaf.sub_question,
+                                "question_node_id": leaf.question_node_id,
+                                "plan_node_local_id": leaf.plan_node_local_id}
+                               for leaf in leaves
+                               ]}
+            _persist_required_event(
+                self.session_id,
+                "cascade.launched",
+                payload=receipt_payload,
+                events_dir=self._events_dir,
             )
-            handle = await self._runner.start(leaf.investigation_id, plan)
-            self._handles[leaf.investigation_id] = handle
-            handles.append(handle)
-            # Pump this research's stream into the multiplexed session queue.
-            self._pump_tasks.append(asyncio.create_task(self._pump(handle)))
+        except BaseException:
+            # A launch does not exist until its durable success receipt exists.
+            # Apply the same rollback if persistence itself fails after all
+            # runners accepted their work.
+            self.plan_root_node_id = None
+            self.approved_plan_tree = None
+            await self._abort_launch(handles)
+            self.launch_generation = None
+            raise
         return handles
+
+    async def _abort_launch(self, handles: Sequence[Handle]) -> None:
+        """Stop and drain every resource accepted by an uncommitted launch."""
+        await asyncio.gather(
+            *(self._runner.cancel(handle) for handle in handles),
+            return_exceptions=True,
+        )
+        await asyncio.gather(*self._pump_tasks, return_exceptions=True)
+        if self._funnel is not None:
+            with contextlib.suppress(Exception):
+                await self._funnel.drain_and_stop()
+        self._handles.clear()
+        self._leaves.clear()
+        self._pump_tasks.clear()
+        self.record_session_terminal()
 
     async def _pump(self, handle: Handle) -> None:
         async for ev in self._runner.stream(handle):
@@ -282,7 +376,10 @@ class CascadeSession:
         for iid, leaf in self._leaves.items():
             h = self._handles.get(iid)
             st = self._runner.status(h).state.value if h else RunState.PENDING.value
-            out.append(ResearchState(iid, leaf.sub_question, st, leaf.question_node_id))
+            out.append(ResearchState(
+                iid, leaf.sub_question, st, leaf.question_node_id,
+                leaf.plan_node_local_id,
+            ))
         return out
 
     def is_complete(self) -> bool:
@@ -302,7 +399,60 @@ class CascadeSession:
         if not self.is_complete():
             return False
         ok, _ = check_deep_research_complete(self.session_id)
-        return ok
+        if not ok or self.launch_generation is None:
+            return False
+        return any(
+            event.get("action_type") == CASCADE_SYNTHESIS_COMPLETED
+            and isinstance(event.get("payload"), dict)
+            and event["payload"].get("cascade_launch_generation")
+            == self.launch_generation
+            for event in trajectory(self.session_id, events_dir=self._events_dir)
+        )
+
+    def record_synthesis_tail_complete(self, prior_parent_event_ids: set[str]) -> None:
+        """Commit current-generation synthesis after the raw invariant passes."""
+        if self.launch_generation is None:
+            raise RuntimeError("cannot complete synthesis without a launch generation")
+        ok, reasons = check_deep_research_complete(self.session_id)
+        if not ok:
+            raise RuntimeError(
+                "synthesis tail returned without DeepResearchComplete: "
+                + "; ".join(reasons)
+            )
+        new_parent_completion = any(
+            event.get("action_type") == ActionType.INVESTIGATION_COMPLETED.value
+            and isinstance(event.get("event_id"), str)
+            and event["event_id"] not in prior_parent_event_ids
+            for event in trajectory(self.session_id, events_dir=self._events_dir)
+        )
+        if not new_parent_completion:
+            raise RuntimeError(
+                "synthesis tail produced no current-run parent completion event"
+            )
+        payload = {"cascade_launch_generation": self.launch_generation}
+        if any(
+            event.get("action_type") == CASCADE_SYNTHESIS_COMPLETED
+            and event.get("payload") == payload
+            for event in trajectory(self.session_id, events_dir=self._events_dir)
+        ):
+            return
+        _persist_required_event(
+            self.session_id,
+            CASCADE_SYNTHESIS_COMPLETED,
+            payload=payload,
+            events_dir=self._events_dir,
+        )
+
+    def record_session_terminal(self) -> None:
+        """Release the durable launch lease after background completion ends."""
+        if self.launch_generation is None:
+            return
+        _persist_required_event(
+            self.session_id,
+            CASCADE_SESSION_TERMINAL,
+            payload={"cascade_launch_generation": self.launch_generation},
+            events_dir=self._events_dir,
+        )
 
     def record_synthesis_tail_error(
         self, exc: BaseException, *, stage: str = "synthesis_tail"
@@ -337,7 +487,8 @@ class CascadeSession:
                 SYNTHESIS_TAIL_FAILED,
                 payload={"error": self.synthesis_tail_error,
                          "error_type": type(exc).__name__,
-                         "stage": stage},
+                         "stage": stage,
+                         "cascade_launch_generation": self.launch_generation},
                 role="user_agent",
                 events_dir=self._events_dir,
             )
@@ -392,11 +543,17 @@ class CascadeSession:
         """Path A capstone — Loop 1 phases 6–9 on the session parent."""
         from orchestration.loop_one.orchestrator import run_synthesis_tail_from_pack
 
+        prior_parent_event_ids = {
+            event["event_id"]
+            for event in trajectory(self.session_id, events_dir=self._events_dir)
+            if isinstance(event.get("event_id"), str)
+        }
         await run_synthesis_tail_from_pack(
             pack,
             broadcaster=broadcaster,
             coordinator=coordinator,
         )
+        self.record_synthesis_tail_complete(prior_parent_event_ids)
         return self.is_deep_research_complete()
 
     def drain_nowait(self) -> list[StepEvent]:
@@ -442,12 +599,275 @@ def _list_investigation_ids(events_dir: str) -> list[str]:
     return sorted(seen)
 
 
+def _persist_required_event(
+    investigation_id: str,
+    action_type: str,
+    *,
+    payload: dict[str, Any],
+    events_dir: str | None,
+) -> str:
+    """Persist and exactly re-read an event that forms part of launch commit."""
+    event_id = log_event(
+        investigation_id,
+        action_type,
+        payload=payload,
+        role="user_agent",
+        events_dir=events_dir,
+    )
+    matches = [
+        event for event in trajectory(investigation_id, events_dir=events_dir)
+        if event.get("event_id") == event_id
+    ]
+    if (
+        event_id is None
+        or len(matches) != 1
+        or matches[0].get("investigation_id") != investigation_id
+        or matches[0].get("action_type") != action_type
+        or matches[0].get("payload") != payload
+    ):
+        raise RuntimeError(f"required {action_type} event was not persisted exactly")
+    return event_id
+
+
+def _next_launch_generation(
+    session_id: str, *, events_dir: str | None = None
+) -> int:
+    """Return the next durable generation number for a deterministic session.
+
+    The maximum is independent of event timestamps and trajectory ordering.
+    API launch ownership prevents concurrent allocation in one process.
+    """
+    maximum = 0
+    for event in trajectory(session_id, events_dir=events_dir):
+        if event.get("action_type") not in {
+            CASCADE_LAUNCH_RESERVED,
+            "cascade.launched",
+        }:
+            continue
+        payload = event.get("payload", {})
+        if not isinstance(payload, dict):
+            continue
+        generation = payload.get("launch_generation")
+        if (
+            isinstance(generation, int)
+            and not isinstance(generation, bool)
+            and generation > maximum
+        ):
+            maximum = generation
+    return maximum + 1
+
+
+def _reserve_launch_generation(
+    session_id: str,
+    *,
+    plan_root_node_id: str,
+    events_dir: str | None,
+    requested_generation: int | None,
+) -> int:
+    """Atomically allocate and persist a generation across API worker processes."""
+    resolved = events_dir or default_events_dir()
+    os.makedirs(resolved, exist_ok=True)
+    lock_name = hashlib.sha256(session_id.encode("utf-8")).hexdigest() + ".launch.lock"
+    lock_path = os.path.join(resolved, lock_name)
+    with open(lock_path, "a+", encoding="utf-8") as lock_file:
+        fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+        try:
+            rows = trajectory(session_id, events_dir=resolved)
+            reservations = [
+                event for event in rows
+                if event.get("action_type") == CASCADE_LAUNCH_RESERVED
+                and isinstance(event.get("payload"), dict)
+                and isinstance(event["payload"].get("launch_generation"), int)
+                and not isinstance(event["payload"].get("launch_generation"), bool)
+            ]
+            if reservations:
+                latest_reserved = max(
+                    event["payload"]["launch_generation"] for event in reservations
+                )
+                released = any(
+                    event.get("action_type") == CASCADE_SESSION_TERMINAL
+                    and isinstance(event.get("payload"), dict)
+                    and event["payload"].get("cascade_launch_generation")
+                    == latest_reserved
+                    for event in rows
+                )
+                if not released:
+                    raise LaunchGenerationActive(
+                        f"session {session_id!r} generation {latest_reserved} is active"
+                    )
+            next_generation = _next_launch_generation(
+                session_id, events_dir=resolved
+            )
+            generation = requested_generation or next_generation
+            if isinstance(generation, bool) or generation <= 0:
+                raise ValueError("launch_generation must be a positive integer")
+            if generation != next_generation:
+                raise ValueError(
+                    "launch_generation must be the next durable generation "
+                    f"({next_generation})"
+                )
+            _persist_required_event(
+                session_id,
+                CASCADE_LAUNCH_RESERVED,
+                payload={
+                    "launch_generation": generation,
+                    "plan_root_node_id": plan_root_node_id,
+                },
+                events_dir=resolved,
+            )
+            return generation
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+
+
 def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> SessionRecovery:
     """Rebuild a session's membership + per-research state from the event log
     alone — the durability guarantee. A child belongs to the session if its
     trajectory carries an ``investigation.spawned_from`` pointing at the
     session; its state is its terminal event (or ``running``)."""
     resolved = events_dir or default_events_dir()
+    plan_root_node_id: str | None = None
+    approved_plan_tree: dict[str, Any] | None = None
+    launch_emitted_at: str | None = None
+    launch_generation: int | None = None
+    research_identity: dict[str, tuple[str, str | None, str | None]] = {}
+    receipts = [
+        event for event in trajectory(session_id, events_dir=resolved)
+        if event.get("action_type") == "cascade.launched"
+    ]
+    reservation_generations = [
+        event["payload"]["launch_generation"]
+        for event in trajectory(session_id, events_dir=resolved)
+        if event.get("action_type") == CASCADE_LAUNCH_RESERVED
+        and isinstance(event.get("payload"), dict)
+        and isinstance(event["payload"].get("launch_generation"), int)
+        and not isinstance(event["payload"].get("launch_generation"), bool)
+        and event["payload"]["launch_generation"] > 0
+    ]
+    generated_receipts = []
+    for event in receipts:
+        payload = event.get("payload", {})
+        generation = payload.get("launch_generation") if isinstance(payload, dict) else None
+        if (
+            isinstance(generation, int)
+            and not isinstance(generation, bool)
+            and generation > 0
+        ):
+            generated_receipts.append((generation, event))
+    if reservation_generations:
+        latest_reservation = max(reservation_generations)
+        receipt_generations = {generation for generation, _event in generated_receipts}
+        if latest_reservation not in receipt_generations:
+            return SessionRecovery(session_id=session_id, researches=[])
+    if generated_receipts:
+        maximum_generation = max(generation for generation, _event in generated_receipts)
+        newest = [
+            event for generation, event in generated_receipts
+            if generation == maximum_generation
+        ]
+        # One generation has exactly one success receipt. Conflicts are durable
+        # corruption, not a tie that wall-clock order may resolve.
+        if len(newest) != 1:
+            return SessionRecovery(session_id=session_id, researches=[])
+        chosen_receipt = newest[0]
+    else:
+        chosen_receipt = receipts[-1] if receipts else None
+    if chosen_receipt is not None:
+        ev = chosen_receipt
+        # A deterministic session id can be relaunched. Each launch event is a
+        # complete receipt boundary: never carry identity fields from an older
+        # episode into a newer malformed/legacy one.
+        plan_root_node_id = None
+        approved_plan_tree = None
+        research_identity = {}
+        launch_emitted_at = (
+            ev.get("emitted_at") if isinstance(ev.get("emitted_at"), str) else None
+        )
+        payload = ev.get("payload", {}) if isinstance(ev.get("payload"), dict) else {}
+        generation = payload.get("launch_generation")
+        if (
+            isinstance(generation, int)
+            and not isinstance(generation, bool)
+            and generation > 0
+        ):
+            launch_generation = generation
+        root = payload.get("plan_root_node_id")
+        if isinstance(root, str) and root:
+            plan_root_node_id = root
+        snapshot = payload.get("approved_plan_tree")
+        approved_plan_tree = snapshot if isinstance(snapshot, dict) else None
+        launched = payload.get("researches")
+        if isinstance(launched, list):
+            for item in launched:
+                if not isinstance(item, dict):
+                    continue
+                iid = item.get("investigation_id")
+                sub_question = item.get("sub_question")
+                qid = item.get("question_node_id")
+                local_id = item.get("plan_node_local_id")
+                if (
+                    isinstance(iid, str) and iid
+                    and isinstance(sub_question, str) and sub_question
+                    and (qid is None or isinstance(qid, str))
+                    and (local_id is None or isinstance(local_id, str))
+                ):
+                    research_identity[iid] = (sub_question, qid, local_id)
+    researches: list[ResearchState] = []
+    if research_identity:
+        # New receipts use a monotonic generation copied into every child
+        # lifecycle event. Timestamp filtering remains only for legacy receipts.
+        for iid, (sub_q, qid, local_id) in sorted(research_identity.items()):
+            state = RunState.PENDING
+            for ev in trajectory(iid, events_dir=resolved):
+                at = ev.get("action_type")
+                payload = ev.get("payload", {}) if isinstance(ev.get("payload"), dict) else {}
+                if launch_generation is not None:
+                    if payload.get("cascade_launch_generation") != launch_generation:
+                        continue
+                else:
+                    emitted_at = ev.get("emitted_at")
+                    if launch_emitted_at is not None and (
+                        not isinstance(emitted_at, str) or emitted_at <= launch_emitted_at
+                    ):
+                        continue
+                if at == ActionType.INVESTIGATION_START_REQUESTED.value:
+                    sub_q = payload.get("sub_question", sub_q)
+                    state = RunState.RUNNING
+                elif at in _TERMINAL_ACTION:
+                    state = _TERMINAL_ACTION[at]
+            researches.append(ResearchState(iid, sub_q, state.value, qid, local_id))
+    else:
+        # Legacy sessions have no complete receipt mapping. Preserve the old
+        # membership recovery, but never invent plan identity for the UI.
+        researches = _reconstruct_legacy_researches(
+            session_id,
+            resolved,
+            generation_boundary=launch_emitted_at,
+            launch_generation=launch_generation,
+        )
+    researches.sort(key=lambda r: r.investigation_id)
+    tail_error = _recover_synthesis_tail_error(
+        session_id,
+        events_dir=resolved,
+        generation_boundary=launch_emitted_at,
+        launch_generation=launch_generation,
+    )
+    return SessionRecovery(
+        session_id=session_id,
+        researches=researches,
+        plan_root_node_id=plan_root_node_id,
+        approved_plan_tree=approved_plan_tree,
+        synthesis_tail_error=tail_error,
+    )
+
+
+def _reconstruct_legacy_researches(
+    session_id: str,
+    resolved: str,
+    *,
+    generation_boundary: str | None = None,
+    launch_generation: int | None = None,
+) -> list[ResearchState]:
     researches: list[ResearchState] = []
     for iid in _list_investigation_ids(resolved):
         rows = trajectory(iid, events_dir=resolved)
@@ -460,25 +880,37 @@ def reconstruct_session(session_id: str, *, events_dir: str | None = None) -> Se
             if at == ActionType.INVESTIGATION_SPAWNED_FROM.value:
                 parent = payload.get("parent_investigation_id")
                 sub_q = payload.get("sub_question", sub_q)
-            elif at == ActionType.INVESTIGATION_START_REQUESTED.value:
+            if launch_generation is not None:
+                if payload.get("cascade_launch_generation") != launch_generation:
+                    continue
+            else:
+                emitted_at = ev.get("emitted_at")
+                if generation_boundary is not None and (
+                    not isinstance(emitted_at, str) or emitted_at <= generation_boundary
+                ):
+                    continue
+            if at == ActionType.INVESTIGATION_SPAWNED_FROM.value:
+                # Membership was captured above even when the spawn precedes a
+                # legacy launch receipt; state remains generation-bounded.
+                continue
+            if at == ActionType.INVESTIGATION_START_REQUESTED.value:
                 sub_q = payload.get("sub_question", sub_q)
-                if state == RunState.PENDING:
-                    state = RunState.RUNNING
+                # Deterministic leaf ids can relaunch. A new start is a new
+                # generation boundary and supersedes an older terminal state.
+                state = RunState.RUNNING
             elif at in _TERMINAL_ACTION:
                 state = _TERMINAL_ACTION[at]
         if parent == session_id:
             researches.append(ResearchState(iid, sub_q, state.value))
-    researches.sort(key=lambda r: r.investigation_id)
-    tail_error = _recover_synthesis_tail_error(session_id, events_dir=resolved)
-    return SessionRecovery(
-        session_id=session_id,
-        researches=researches,
-        synthesis_tail_error=tail_error,
-    )
+    return researches
 
 
 def _recover_synthesis_tail_error(
-    session_id: str, *, events_dir: str | None = None
+    session_id: str,
+    *,
+    events_dir: str | None = None,
+    generation_boundary: str | None = None,
+    launch_generation: int | None = None,
 ) -> str | None:
     """The last ``cascade.synthesis_tail.failed`` audit event recorded on the
     session's own trajectory, or None if none was emitted. Honest by
@@ -486,7 +918,16 @@ def _recover_synthesis_tail_error(
     failure or a success the event log cannot prove)."""
     last: str | None = None
     for ev in trajectory(session_id, events_dir=events_dir):
+        payload = ev.get("payload", {}) if isinstance(ev.get("payload"), dict) else {}
+        if launch_generation is not None:
+            if payload.get("cascade_launch_generation") != launch_generation:
+                continue
+        else:
+            emitted_at = ev.get("emitted_at")
+            if generation_boundary is not None and (
+                not isinstance(emitted_at, str) or emitted_at <= generation_boundary
+            ):
+                continue
         if ev.get("action_type") == SYNTHESIS_TAIL_FAILED:
-            payload = ev.get("payload", {}) if isinstance(ev.get("payload"), dict) else {}
             last = payload.get("error") or last
     return last

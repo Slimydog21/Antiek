@@ -103,6 +103,7 @@ describe("DeepResearchWorkspace deterministic session relaunch", () => {
       ],
       all_terminal: true,
       cost: null,
+      plan: null,
     });
     const experiences: string[] = [];
     const listener = (event: Event) =>

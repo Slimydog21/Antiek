@@ -21,11 +21,13 @@ import {
   TERMINAL_STATES,
   type ResearchStatus,
   type SessionCost,
+  type SessionPlan,
 } from "../../api/research";
 
 export interface SessionView {
   researches: ResearchStatus[];
   cost: SessionCost | null;
+  plan: SessionPlan | null;
   live: boolean;
   allTerminal: boolean;
   loading: boolean;
@@ -36,6 +38,7 @@ export interface SessionView {
 const EMPTY: SessionView = {
   researches: [],
   cost: null,
+  plan: null,
   live: false,
   allTerminal: false,
   loading: true,
@@ -68,6 +71,7 @@ export function useResearchSession(
         setView({
           researches: s.researches,
           cost: s.cost ?? null,
+          plan: s.plan ?? null,
           live: s.live,
           allTerminal,
           loading: false,

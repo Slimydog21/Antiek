@@ -13,6 +13,7 @@ import json
 import os
 import tempfile
 import time
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,6 +45,7 @@ def client(monkeypatch):
     monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
     cr._SESSIONS.clear()
     cr._SESSION_TASKS.clear()
+    cr._LAUNCHING.clear()
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     return TestClient(app)
 
@@ -128,6 +130,100 @@ def test_launch_refuses_unapproved_plan(client):
     assert "not approved" in r.json()["detail"]
 
 
+def test_live_and_recovered_status_preserve_the_approved_plan(client):
+    root = _make_approved_plan(client, ("alpha", "beta"))
+    launched = client.post(f"/research/plans/{root}/launch", json={})
+    assert launched.status_code == 200, launched.text
+    sid = launched.json()["session_id"]
+
+    live = client.get(f"/research/sessions/{sid}").json()
+    assert live["plan"]["root_node_id"] == root
+    assert [n["question"] for n in live["plan"]["tree"]["root"]["children"]] == [
+        "alpha", "beta"
+    ]
+    live_map = {
+        r["investigation_id"]: (
+            r["question_node_id"], r["plan_node_local_id"], r["control_available"]
+        ) for r in live["researches"]
+    }
+    assert all(qid and local_id and control is True for qid, local_id, control in live_map.values())
+
+    # The session displays its immutable launch receipt, not a later mutable
+    # graph-plan read.
+    first_local = live["plan"]["tree"]["root"]["children"][0]["local_id"]
+    edited = client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "reword", "target_local_id": first_local, "question": "changed later"},
+    )
+    assert edited.status_code == 200, edited.text
+    assert client.get(f"/research/sessions/{sid}").json()["plan"] == live["plan"]
+
+    _poll_until_terminal(client, sid)
+    cr._SESSIONS.clear()
+    recovered = client.get(f"/research/sessions/{sid}")
+    assert recovered.status_code == 200, recovered.text
+    body = recovered.json()
+    assert body["live"] is False
+    assert body["plan"] == live["plan"]
+    assert {
+        r["investigation_id"]: (
+            r["question_node_id"], r["plan_node_local_id"], True
+        ) for r in body["researches"]
+    } == live_map
+    assert all(r["control_available"] is False for r in body["researches"])
+
+
+def test_malformed_launch_snapshot_degrades_to_no_plan(client):
+    from substrate.event_log import log_event
+
+    root = _make_approved_plan(client, ("alpha",))
+    launched = client.post(f"/research/plans/{root}/launch", json={}).json()
+    sid = launched["session_id"]
+    _poll_until_terminal(client, sid)
+    log_event(
+        sid,
+        "cascade.launched",
+        payload={
+            "plan_root_node_id": root,
+            "launch_generation": 2,
+            "approved_plan_tree": {},
+            "researches": [{
+                "investigation_id": launched["researches"][0]["investigation_id"],
+                "plan_node_local_id": launched["researches"][0]["plan_node_local_id"],
+            }],
+        },
+        role="user_agent",
+    )
+    cr._SESSIONS.clear()
+    body = client.get(f"/research/sessions/{sid}").json()
+    assert body["plan"] is None
+    assert body["researches"]
+
+
+@pytest.mark.parametrize("corruption", ["root", "question"])
+def test_inconsistent_launch_snapshot_degrades_to_no_plan(client, corruption):
+    root = _make_approved_plan(client, ("alpha",))
+    launched = client.post(f"/research/plans/{root}/launch", json={}).json()
+    sid = launched["session_id"]
+    live = client.get(f"/research/sessions/{sid}").json()
+    if corruption == "root":
+        live["plan"]["root_node_id"] = "unrelated-root"
+    else:
+        live["researches"][0]["sub_question"] = "different executed question"
+    researches = [SimpleNamespace(**research) for research in live["researches"]]
+    assert cr._plan_envelope(
+        live["plan"]["root_node_id"], live["plan"]["tree"], researches
+    ) is None
+
+
+def test_hostile_launch_snapshot_degrades_to_no_plan():
+    snapshot = {
+        "root": {},
+        "approval": {"state": "approved", "plan_version": float("inf")},
+    }
+    assert cr._plan_envelope("root", snapshot, []) is None
+
+
 @pytest.mark.parametrize("value", [0, -1, float("nan"), float("inf")])
 def test_launch_request_rejects_invalid_aggregate_stop_limit(value):
     with pytest.raises(ValueError):
@@ -157,6 +253,21 @@ def test_launch_watch_and_cost(client):
     cost = client.get(f"/research/sessions/{sid}/cost").json()
     assert cost["session_total_usd"] == pytest.approx(0.06)
     assert cost["session_total_usd"] == pytest.approx(sum(cost["per_research"].values()))
+
+
+def test_concurrent_launch_of_same_plan_is_rejected(client):
+    root = _make_approved_plan(client, ("a",))
+    first = client.post(f"/research/plans/{root}/launch", json={})
+    assert first.status_code == 200
+    sid = first.json()["session_id"]
+    # Model the ownership window directly; the guard must reject before any
+    # second runner can emit against the same deterministic ids.
+    cr._LAUNCHING.add(sid)
+    try:
+        second = client.post(f"/research/plans/{root}/launch", json={})
+    finally:
+        cr._LAUNCHING.discard(sid)
+    assert second.status_code == 409
 
 
 # --------------------------------------------------------------------------
