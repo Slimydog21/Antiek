@@ -33,10 +33,14 @@ procedural captures are retained under
 `docs/evidence/werner-arcade-authored-field/` as fallback proof; loader and
 paint-order tests cover error and teardown without game-state drift.
 
-The three authored captures replace the legacy-slug Playing baselines, so the
-next remote run compares rather than silently adding them. A second scoped
-run compared fresh captures at 0.14%, 0.17% and 0.23% difference respectively,
-all inside the repository's 0.4% threshold. Production game
+The first canonical active-wave baselines proved timing-dependent in remote CI
+(4.60–7.40%) because targets advance continuously. That nominally successful
+job is also rejected: the repository does not currently set
+`failOnDifference`. The canonical Playing baselines therefore capture the
+deterministic authored ready plate at the corrected generated slug. The
+inspected active-wave matrix is retained separately under
+`docs/evidence/werner-arcade-authored-field/` as human contrast evidence, not
+as a false deterministic regression oracle. Production game
 initialization, focus and input do not wait on visual proof instrumentation.
 SPR-19 is now counted as implemented. The existing feature flag remains
 production-default-off; this transport grants no deployment authority.
