@@ -69,6 +69,7 @@ from substrate.multimedia.read_model import (
     SteeringPreviewResponse,
 )
 from substrate.multimedia.research_intent import ResearchIntentLedger
+from substrate.multimedia.research_plan import ResearchPlanLedger
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
     MultimediaShipCostEvidenceUnavailable,
@@ -133,6 +134,11 @@ from .multimedia_research_intent_routes import (
     get_multimedia_research_intent_runtime,
     multimedia_research_intent_router,
 )
+from .multimedia_research_plan_routes import (
+    ResearchPlanRouteRuntime,
+    get_multimedia_research_plan_runtime,
+    multimedia_research_plan_router,
+)
 from .multimedia_reviewed_visual_routes import (
     get_multimedia_reviewed_visual_runtime,
     multimedia_reviewed_visual_router,
@@ -177,6 +183,7 @@ multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_paid_audio_playback_router)
 multimedia_router.include_router(multimedia_listening_progress_router)
 multimedia_router.include_router(multimedia_research_intent_router)
+multimedia_router.include_router(multimedia_research_plan_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
@@ -836,6 +843,14 @@ def register_multimedia_routes(app: FastAPI) -> None:
         )
         app.dependency_overrides[get_multimedia_research_intent_runtime] = lambda: (
             research_intent_runtime
+        )
+        research_plan_runtime = ResearchPlanRouteRuntime(
+            plans=ResearchPlanLedger(get_store().root),
+            intents=research_intent_runtime.ledger,
+            owner_digest_resolver=_owner_digest,
+        )
+        app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: (
+            research_plan_runtime
         )
     # Listening progress: resolve audio identity from the store's audio_production_link
     # or the local audible playback runtime.  Both local and paid audio use the same
