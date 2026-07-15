@@ -9,13 +9,14 @@ import socket
 import sqlite3
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+import substrate.multimedia.research_plan as research_plan_module
 from substrate.multimedia.research_intent import ResearchIntentLedger
 from substrate.multimedia.research_plan import (
     InvestigationActivationAuthorization,
@@ -372,7 +373,7 @@ def test_exact_v1_store_migrates_transactionally_with_stable_root_id(tmp_path) -
     assert replay.tree["root"]["node_id"] == migrated.tree["root"]["node_id"]
     assert migrated.plan_version == plan.plan_version
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
 
 
 def test_tampered_receipt_tree_is_a_stored_integrity_error(tmp_path) -> None:
@@ -487,7 +488,7 @@ def test_concurrent_prepare_creates_exactly_one_v3_row(tmp_path) -> None:
     assert sum(created for _, created in results) == 1
     assert len({prepared.investigation_id for prepared, _ in results}) == 1
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
         assert connection.execute(
             "SELECT count(*) FROM multimedia_prepared_investigations"
         ).fetchone()[0] == 1
@@ -505,7 +506,7 @@ def test_exact_v2_store_migrates_atomically_to_v3(tmp_path) -> None:
         connection.execute("PRAGMA user_version=2")
     assert ledger.get(owner_identity_digest=owner, plan_id=plan.plan_id) == plan
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
         assert connection.execute(
             "SELECT count(*) FROM multimedia_prepared_investigations"
         ).fetchone()[0] == 0
@@ -697,7 +698,7 @@ def test_activation_authorization_is_exact_private_and_non_executing(tmp_path) -
             owner_identity_digest="b" * 64, investigation_id=prepared.investigation_id
         )
     with sqlite3.connect(ledger.path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
         tables = {row[0] for row in connection.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )}
@@ -934,3 +935,226 @@ def test_activation_expiry_boundary_is_inclusive() -> None:
     assert InvestigationActivationAuthorization(
         **base, expires_at=timestamp(now + timedelta(minutes=1)),
     ).is_expired is False
+
+
+def test_activation_consumption_reserves_complete_band_and_replays_exactly(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    authorization, _ = ledger.authorize_investigation_activation(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600, quote_resolver=lambda *_: quote,
+    )
+    kwargs = dict(owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+                  authorization_id=authorization.authorization_id,
+                  idempotency_key="consume-12345678", quote_resolver=lambda *_: quote,
+                  supported_maximum_cents=(1 << 62) - 1)
+    reservation, created = ledger.consume_investigation_activation(**kwargs)
+    replay, replay_created = ledger.consume_investigation_activation(**kwargs)
+    assert created is True and replay_created is False and replay == reservation
+    assert reservation.reserved_cents == authorization.approved_ceiling_cents == 300
+    assert reservation.launch_reservation_id.startswith("mlr_")
+    assert reservation.spend_run_id.startswith("mlsr_")
+    assert reservation.session_id.startswith("mls_")
+    assert reservation.execution_started is reservation.background_work_authorized is False
+    with pytest.raises(ResearchPlanError, match="consumption conflicts"):
+        ledger.consume_investigation_activation(
+            **{**kwargs, "idempotency_key": "consume-other-123"}
+        )
+
+
+def test_activation_consumption_rejects_semantic_quote_drift_without_row(tmp_path) -> None:
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    authorization, _ = ledger.authorize_investigation_activation(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-12345678", route_policy="balanced",
+        approved_ceiling_cents=300, ttl_seconds=3600, quote_resolver=lambda *_: quote,
+    )
+    with pytest.raises(ResearchPlanError, match="drifted"):
+        ledger.consume_investigation_activation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+            authorization_id=authorization.authorization_id,
+            idempotency_key="consume-12345678",
+            quote_resolver=lambda *_: replace(quote, model="changed-model"),
+            supported_maximum_cents=(1 << 62) - 1,
+        )
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM multimedia_investigation_launch_reservations"
+        ).fetchone()[0] == 0
+
+
+def _authorized_consumption(tmp_path, approved_cents: int = 300):
+    ledger, owner, prepared, quote = _activation_fixture(tmp_path)
+    authorization, _ = ledger.authorize_investigation_activation(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        idempotency_key="activate-consume-123", route_policy="balanced",
+        approved_ceiling_cents=approved_cents, ttl_seconds=3600,
+        quote_resolver=lambda *_: quote,
+    )
+    kwargs = dict(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        authorization_id=authorization.authorization_id,
+        idempotency_key="consume-rigorous-123", supported_maximum_cents=(1 << 62) - 1,
+    )
+    return ledger, owner, prepared, quote, authorization, kwargs
+
+
+def test_launch_replay_after_expiry_is_exact_and_does_not_resolve(tmp_path, monkeypatch) -> None:
+    ledger, _owner, _prepared, quote, authorization, kwargs = _authorized_consumption(tmp_path)
+    created, _ = ledger.consume_investigation_activation(
+        **kwargs, quote_resolver=lambda *_: quote,
+    )
+    future = datetime.fromisoformat(authorization.expires_at.replace("Z", "+00:00"))
+
+    class ExpiredDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return future
+
+    monkeypatch.setattr(research_plan_module, "datetime", ExpiredDateTime)
+    replay, was_created = ledger.consume_investigation_activation(
+        **kwargs, quote_resolver=lambda *_: pytest.fail("exact replay resolved a quote"),
+    )
+    assert was_created is False and replay == created
+
+
+def test_launch_first_use_rejects_inclusive_authorization_expiry(tmp_path, monkeypatch) -> None:
+    ledger, _owner, _prepared, quote, authorization, kwargs = _authorized_consumption(tmp_path)
+    boundary = datetime.fromisoformat(authorization.expires_at.replace("Z", "+00:00"))
+
+    class BoundaryDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return boundary
+
+    monkeypatch.setattr(research_plan_module, "datetime", BoundaryDateTime)
+    with pytest.raises(ResearchPlanError, match="expired"):
+        ledger.consume_investigation_activation(**kwargs, quote_resolver=lambda *_: quote)
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM multimedia_investigation_launch_reservations"
+        ).fetchone()[0] == 0
+
+
+def test_launch_accepts_refreshed_quote_identity_and_timestamps(tmp_path) -> None:
+    ledger, _owner, _prepared, quote, _authorization, kwargs = _authorized_consumption(tmp_path)
+    now = datetime.now(UTC)
+    refreshed = replace(
+        quote, quote_id="refreshed-quote-identity",
+        issued_at=(now - timedelta(seconds=1)).isoformat().replace("+00:00", "Z"),
+        expires_at=(now + timedelta(hours=1)).isoformat().replace("+00:00", "Z"),
+    )
+    reservation, created = ledger.consume_investigation_activation(
+        **kwargs, quote_resolver=lambda *_: refreshed,
+    )
+    assert created is True and reservation.reserved_cents == 300
+
+
+def test_concurrent_launch_consumption_has_one_winner(tmp_path) -> None:
+    ledger, _owner, _prepared, quote, _authorization, kwargs = _authorized_consumption(tmp_path)
+    barrier = threading.Barrier(2)
+
+    def resolve(*_args):
+        barrier.wait(timeout=5)
+        return quote
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(
+            lambda _: ledger.consume_investigation_activation(**kwargs, quote_resolver=resolve),
+            range(2),
+        ))
+    assert sum(created for _, created in results) == 1
+    assert results[0][0] == results[1][0]
+
+
+def test_launch_consumption_starts_no_network_task_thread_or_background_path(tmp_path) -> None:
+    ledger, _owner, _prepared, quote, _authorization, kwargs = _authorized_consumption(tmp_path)
+    with (
+        patch.object(asyncio, "create_task") as create_task,
+        patch.object(socket, "create_connection") as create_connection,
+        patch.object(threading.Thread, "start") as thread_start,
+    ):
+        reservation, created = ledger.consume_investigation_activation(
+            **kwargs, quote_resolver=lambda *_: quote,
+        )
+    assert created is True
+    assert reservation.execution_started is False
+    assert reservation.background_work_authorized is False
+    create_task.assert_not_called()
+    create_connection.assert_not_called()
+    thread_start.assert_not_called()
+
+
+@pytest.mark.parametrize("delta, commits", [(0, True), (1, False)])
+def test_launch_supported_authority_boundary_is_enforced_before_commit(
+    tmp_path, delta: int, commits: bool,
+) -> None:
+    maximum = (1 << 62) - 1
+    ledger, _owner, _prepared, quote, _authorization, kwargs = _authorized_consumption(
+        tmp_path, maximum + delta,
+    )
+    if commits:
+        reservation, created = ledger.consume_investigation_activation(
+            **kwargs, quote_resolver=lambda *_: quote,
+        )
+        assert created is True and reservation.reserved_cents == maximum
+    else:
+        with pytest.raises(ResearchPlanError, match="exceeds supported"):
+            ledger.consume_investigation_activation(**kwargs, quote_resolver=lambda *_: quote)
+        with sqlite3.connect(ledger.path) as connection:
+            assert connection.execute(
+                "SELECT count(*) FROM multimedia_investigation_launch_reservations"
+            ).fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("column", ["provider", "launch_manifest_digest", "reserved_cents"])
+def test_launch_explicit_scalar_tamper_fails_closed(tmp_path, column: str) -> None:
+    ledger, owner, prepared, quote, _authorization, kwargs = _authorized_consumption(tmp_path)
+    ledger.consume_investigation_activation(**kwargs, quote_resolver=lambda *_: quote)
+    value = 301 if column == "reserved_cents" else "f" * 64
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute(
+            f"UPDATE multimedia_investigation_launch_reservations SET {column}=?",
+            (value,),
+        )
+    with pytest.raises(ResearchPlanError, match="integrity"):
+        ledger.get_investigation_launch_reservation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        )
+
+
+def test_launch_noncanonical_json_tamper_fails_closed(tmp_path) -> None:
+    ledger, owner, prepared, quote, _authorization, kwargs = _authorized_consumption(tmp_path)
+    ledger.consume_investigation_activation(**kwargs, quote_resolver=lambda *_: quote)
+    with sqlite3.connect(ledger.path) as connection:
+        raw = connection.execute(
+            "SELECT reservation_json FROM multimedia_investigation_launch_reservations"
+        ).fetchone()[0]
+        connection.execute(
+            "UPDATE multimedia_investigation_launch_reservations SET reservation_json=?",
+            (json.dumps(json.loads(raw), indent=2),),
+        )
+    with pytest.raises(ResearchPlanError, match="integrity"):
+        ledger.get_investigation_launch_reservation(
+            owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+        )
+
+
+def test_v4_to_v5_migration_preserves_activation_authorization(tmp_path) -> None:
+    ledger, owner, prepared, _quote, authorization, _kwargs = _authorized_consumption(tmp_path)
+    with sqlite3.connect(ledger.path) as connection:
+        connection.execute("DROP TABLE multimedia_investigation_launch_reservations")
+        connection.execute("PRAGMA user_version=4")
+    reopened = ledger.get_investigation_activation_authorization(
+        owner_identity_digest=owner, investigation_id=prepared.investigation_id,
+    )
+    assert reopened == authorization
+    with sqlite3.connect(ledger.path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 5
+        columns = {
+            row[1] for row in connection.execute(
+                "PRAGMA table_info(multimedia_investigation_launch_reservations)"
+            )
+        }
+    assert "launch_manifest_digest" in columns
+    assert "authorization_integrity_digest" in columns

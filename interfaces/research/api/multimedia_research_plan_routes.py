@@ -20,6 +20,7 @@ from substrate.multimedia.research_intent import (
 from substrate.multimedia.research_plan import (
     InvestigationActivationAuthorization,
     InvestigationActivationQuote,
+    InvestigationLaunchReservation,
     PreparedInvestigation,
     ResearchPlan,
     ResearchPlanError,
@@ -29,6 +30,15 @@ from substrate.multimedia.research_plan import (
     ResearchPlanUnavailableError,
     ResearchPlanValidationError,
 )
+from substrate.research_spend import (
+    BindingConflict,
+    IdempotencyConflict,
+    LedgerIntegrityError,
+    ResearchSpendLedger,
+    RunBinding,
+    RunStatus,
+)
+from substrate.research_spend.ledger import MAX_AUTHORITY_CENTS
 
 from .multimedia_reconciliation_routes import authenticated_multimedia_operator
 
@@ -85,6 +95,13 @@ class InvestigationActivationAuthorizationBody(BaseModel):
     route_policy: Literal["cheapest", "balanced", "highest_quality"]
     approved_ceiling_cents: int = Field(gt=0, le=9_223_372_036_854_775_807, strict=True)
     ttl_seconds: int = Field(ge=60, le=86400, strict=True)
+
+
+class InvestigationActivationConsumptionBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    authorization_id: str = Field(pattern=r"^mia_[0-9a-f]{48}$")
+    idempotency_key: str = Field(min_length=16, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
 
 
 class ResearchPlanAddChildOperation(BaseModel):
@@ -247,6 +264,48 @@ class InvestigationActivationAuthorizationResponse(BaseModel):
     background_work_authorized: Literal[False]
 
 
+class InvestigationLaunchReservationResponse(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    launch_reservation_id: str
+    authorization_id: str
+    investigation_id: str
+    prepared_integrity_digest: str
+    authorization_integrity_digest: str
+    source_plan_id: str
+    source_plan_version: int
+    source_plan_integrity_digest: str
+    source_intent_id: str
+    source_intent_digest: str
+    source_evidence_digest: str
+    total_node_count: int
+    leaf_question_count: int
+    route_policy: Literal["cheapest", "balanced", "highest_quality"]
+    resolved_tier: str
+    provider: str
+    model: str
+    dispatch_config_digest: str
+    pricing_source: str
+    pricing_digest: str
+    workload_digest: str
+    quoted_ceiling_cents: int
+    approved_ceiling_cents: int
+    launch_manifest_digest: str
+    request_digest: str
+    spend_run_id: str
+    session_id: str
+    reserved_cents: int
+    reserved_at: str
+    state: Literal["launch_reserved"]
+    ready: bool
+    execution_started: Literal[False]
+    background_work_authorized: Literal[False]
+    event_authority_digest: None
+    graph_authority_digest: None
+    provider_authority_digest: None
+    task_authority_digest: None
+
+
 @dataclass(frozen=True)
 class ResearchPlanRouteRuntime:
     plans: ResearchPlanLedger
@@ -255,6 +314,7 @@ class ResearchPlanRouteRuntime:
     activation_quote_resolver: (
         Callable[[PreparedInvestigation, str], InvestigationActivationQuote] | None
     ) = None
+    spend_ledger: ResearchSpendLedger | None = None
 
 
 def get_multimedia_research_plan_runtime() -> ResearchPlanRouteRuntime:
@@ -502,6 +562,134 @@ def get_multimedia_investigation_activation_authorization(
         ) from exc
 
 
+@multimedia_research_plan_router.post(
+    "/investigations/{investigation_id}/activation-consumptions",
+    response_model=InvestigationLaunchReservationResponse,
+)
+def consume_multimedia_investigation_activation(
+    investigation_id: str,
+    body: InvestigationActivationConsumptionBody,
+    response: Response,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
+) -> InvestigationLaunchReservationResponse:
+    try:
+        owner = runtime.owner_digest_resolver(operator_id)
+
+        def resolve_quote(
+            prepared: PreparedInvestigation, route_policy: str,
+        ) -> InvestigationActivationQuote:
+            if runtime.activation_quote_resolver is None:
+                raise HTTPException(
+                    status_code=503, detail="activation consumption is unavailable",
+                    headers=_PRIVATE,
+                )
+            try:
+                quote = runtime.activation_quote_resolver(prepared, route_policy)
+            except HTTPException:
+                raise
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=503, detail="activation consumption is unavailable",
+                    headers=_PRIVATE,
+                ) from exc
+            if not isinstance(quote, InvestigationActivationQuote):
+                raise HTTPException(
+                    status_code=503, detail="activation consumption is unavailable",
+                    headers=_PRIVATE,
+                )
+            return quote
+
+        reservation, created = runtime.plans.consume_investigation_activation(
+            owner_identity_digest=owner, investigation_id=investigation_id,
+            authorization_id=body.authorization_id,
+            idempotency_key=body.idempotency_key, quote_resolver=resolve_quote,
+            supported_maximum_cents=MAX_AUTHORITY_CENTS,
+        )
+        _bootstrap_spend_run(runtime.spend_ledger, owner, reservation, create=True)
+    except ResearchPlanUnavailableError as exc:
+        raise _private_investigation_not_found() from exc
+    except ResearchPlanValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc), headers=_PRIVATE) from exc
+    except ResearchPlanStorageError as exc:
+        raise _private_unavailable() from exc
+    except (BindingConflict, IdempotencyConflict, LedgerIntegrityError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="launch reservation integrity conflicts", headers=_PRIVATE
+        ) from exc
+    except ResearchPlanError as exc:
+        raise HTTPException(
+            status_code=409, detail="activation consumption conflicts", headers=_PRIVATE
+        ) from exc
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="activation consumption is unavailable", headers=_PRIVATE
+        ) from exc
+    response.status_code = 201 if created else 200
+    return _launch_response(reservation, ready=True)
+
+
+@multimedia_research_plan_router.get(
+    "/investigations/{investigation_id}/launch-reservation",
+    response_model=InvestigationLaunchReservationResponse,
+)
+def get_multimedia_investigation_launch_reservation(
+    investigation_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
+) -> InvestigationLaunchReservationResponse:
+    try:
+        owner = runtime.owner_digest_resolver(operator_id)
+        reservation = runtime.plans.get_investigation_launch_reservation(
+            owner_identity_digest=owner, investigation_id=investigation_id,
+        )
+        _bootstrap_spend_run(runtime.spend_ledger, owner, reservation, create=False)
+        return _launch_response(reservation, ready=True)
+    except ResearchPlanUnavailableError as exc:
+        raise _private_investigation_not_found() from exc
+    except ResearchPlanStorageError as exc:
+        raise _private_unavailable() from exc
+    except (BindingConflict, IdempotencyConflict, LedgerIntegrityError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="launch reservation integrity conflicts", headers=_PRIVATE
+        ) from exc
+    except ResearchPlanError as exc:
+        raise HTTPException(
+            status_code=409, detail="launch reservation integrity conflicts", headers=_PRIVATE
+        ) from exc
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503, detail="activation consumption is unavailable", headers=_PRIVATE
+        ) from exc
+
+
+def _bootstrap_spend_run(
+    ledger: ResearchSpendLedger | None, owner: str,
+    reservation: InvestigationLaunchReservation, *, create: bool,
+) -> None:
+    if ledger is None:
+        raise RuntimeError("spend ledger unavailable")
+    if create:
+        ledger.ensure_schema()
+    binding = RunBinding(
+        run_id=reservation.spend_run_id, owner_id=owner,
+        session_id=reservation.session_id,
+        plan_digest=reservation.launch_manifest_digest,
+        approval_revision=reservation.source_plan_version,
+    )
+    command_key = "mlrc_" + reservation.launch_reservation_id.removeprefix("mlr_")
+    if create:
+        ledger.create_or_reopen_run(command_key, binding, reservation.reserved_cents)
+    snapshot = ledger.balance(reservation.spend_run_id)
+    if (snapshot.binding != binding or snapshot.ceiling_cents != reservation.reserved_cents
+            or snapshot.authorized_spent_cents != 0
+            or snapshot.observed_provider_spend_cents != 0 or snapshot.held_cents != 0
+            or snapshot.status is not RunStatus.ACTIVE or snapshot.ceiling_breached):
+        raise BindingConflict("research spend run is not pristine")
+
+
 def _private_not_found() -> HTTPException:
     return HTTPException(status_code=404, detail="research plan is unavailable", headers=_PRIVATE)
 
@@ -536,8 +724,15 @@ def _authorization_response(
     )
 
 
+def _launch_response(
+    reservation: InvestigationLaunchReservation, *, ready: bool,
+) -> InvestigationLaunchReservationResponse:
+    return InvestigationLaunchReservationResponse(**asdict(reservation), ready=ready)
+
+
 __all__ = [
     "InvestigationActivationAuthorizationBody", "InvestigationActivationAuthorizationResponse",
+    "InvestigationActivationConsumptionBody", "InvestigationLaunchReservationResponse",
     "PreparedInvestigationBody", "PreparedInvestigationResponse", "ResearchPlanApproveBody",
     "ResearchPlanEditBody", "ResearchPlanHandoffBody", "ResearchPlanResponse",
     "ResearchPlanRouteRuntime", "get_multimedia_research_plan_runtime",

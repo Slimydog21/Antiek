@@ -27,6 +27,7 @@ from substrate.research_spend import (
     ZeroCostIntent,
     ZeroCostState,
     ZeroReplayClass,
+    default_research_spend_db_path,
 )
 from substrate.research_spend.ledger import (
     _DDL,
@@ -39,6 +40,19 @@ from substrate.research_spend.ledger import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_default_research_spend_path_is_shared_and_respects_overrides(
+    tmp_path, monkeypatch,
+) -> None:
+    graph = tmp_path / "graph.duckdb"
+    monkeypatch.delenv("ANTIEK_RESEARCH_SPEND_DB", raising=False)
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(graph))
+    assert default_research_spend_db_path() == tmp_path / "graph.duckdb.research-spend.sqlite3"
+
+    configured = tmp_path / "authority.sqlite3"
+    monkeypatch.setenv("ANTIEK_RESEARCH_SPEND_DB", str(configured))
+    assert default_research_spend_db_path() == configured
 
 
 def _binding(run_id: str = "run-1") -> RunBinding:

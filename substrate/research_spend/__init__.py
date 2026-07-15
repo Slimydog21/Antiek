@@ -20,6 +20,7 @@ from .ledger import (
     ZeroCostIntent,
     ZeroCostState,
     ZeroReplayClass,
+    default_research_spend_db_path,
 )
 
 __all__ = [
@@ -42,4 +43,5 @@ __all__ = [
     "ZeroCostIntent",
     "ZeroCostState",
     "ZeroReplayClass",
+    "default_research_spend_db_path",
 ]

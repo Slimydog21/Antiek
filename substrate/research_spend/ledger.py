@@ -15,6 +15,7 @@ from __future__ import annotations
 import contextlib
 import hashlib
 import json
+import os
 import sqlite3
 import uuid
 from collections.abc import Callable, Generator, Mapping
@@ -26,6 +27,7 @@ from typing import Final, cast
 
 __all__ = [
     "BindingConflict",
+    "default_research_spend_db_path",
     "IdempotencyConflict",
     "InvalidTransition",
     "LedgerIntegrityError",
@@ -54,6 +56,17 @@ BUSY_TIMEOUT_MS: Final = 30_000
 
 JsonScalar = str | int | bool | None
 FailureInjector = Callable[[str], None]
+
+
+def default_research_spend_db_path() -> Path:
+    """Resolve the authority ledger shared by research launch and execution."""
+    configured = os.environ.get("ANTIEK_RESEARCH_SPEND_DB")
+    if configured:
+        return Path(configured).expanduser()
+    from substrate.graph import default_db_path
+
+    graph = Path(default_db_path())
+    return graph.with_name(f"{graph.name}.research-spend.sqlite3")
 
 
 class RunStatus(StrEnum):
@@ -526,6 +539,8 @@ class ResearchSpendLedger:
     def _connect(self, *, initialize: bool = False) -> sqlite3.Connection:
         if initialize:
             Path(self._db_path).expanduser().parent.mkdir(parents=True, exist_ok=True)
+        elif not Path(self._db_path).expanduser().is_file():
+            raise sqlite3.OperationalError("research spend ledger is unavailable")
         connection = sqlite3.connect(
             self._db_path,
             timeout=BUSY_TIMEOUT_MS / 1000,

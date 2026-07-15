@@ -45,6 +45,20 @@ _AUTHORIZATION_COLUMNS = (
     "ttl_seconds", "issued_at", "expires_at", "authorization_json",
     "authorization_integrity_digest",
 )
+_LAUNCH_COLUMNS = (
+    "launch_reservation_id", "owner_identity_digest", "authorization_id",
+    "investigation_id", "idempotency_key", "request_digest",
+    "prepared_integrity_digest", "authorization_integrity_digest", "source_plan_id",
+    "source_plan_version", "source_plan_integrity_digest", "source_intent_id",
+    "source_intent_digest", "source_evidence_digest", "total_node_count",
+    "leaf_question_count", "route_policy", "resolved_tier", "provider", "model",
+    "dispatch_config_digest", "pricing_source", "pricing_digest", "workload_digest",
+    "quoted_ceiling_cents", "approved_ceiling_cents", "launch_manifest_digest",
+    "spend_run_id", "session_id", "reserved_cents", "reserved_at", "state",
+    "execution_started", "background_work_authorized", "event_authority_digest",
+    "graph_authority_digest", "provider_authority_digest", "task_authority_digest",
+    "reservation_json", "reservation_integrity_digest",
+)
 _V1_SCHEMA = """
 CREATE TABLE IF NOT EXISTS multimedia_research_plans (
   plan_id TEXT PRIMARY KEY, owner_identity_digest TEXT NOT NULL,
@@ -125,6 +139,43 @@ CREATE TABLE IF NOT EXISTS multimedia_investigation_activation_authorizations (
   authorization_integrity_digest TEXT NOT NULL CHECK(length(authorization_integrity_digest) = 64),
   UNIQUE(owner_identity_digest, investigation_id, idempotency_key),
   UNIQUE(owner_identity_digest, investigation_id),
+  FOREIGN KEY(investigation_id) REFERENCES multimedia_prepared_investigations(investigation_id)
+)
+"""
+_V5_LAUNCH_SCHEMA = """
+CREATE TABLE IF NOT EXISTS multimedia_investigation_launch_reservations (
+  launch_reservation_id TEXT PRIMARY KEY, owner_identity_digest TEXT NOT NULL,
+  authorization_id TEXT NOT NULL, investigation_id TEXT NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  request_digest TEXT NOT NULL CHECK(length(request_digest) = 64),
+  prepared_integrity_digest TEXT NOT NULL CHECK(length(prepared_integrity_digest) = 64),
+  authorization_integrity_digest TEXT NOT NULL CHECK(length(authorization_integrity_digest) = 64),
+  source_plan_id TEXT NOT NULL, source_plan_version INTEGER NOT NULL CHECK(source_plan_version >= 1),
+  source_plan_integrity_digest TEXT NOT NULL CHECK(length(source_plan_integrity_digest) = 64),
+  source_intent_id TEXT NOT NULL,
+  source_intent_digest TEXT NOT NULL CHECK(length(source_intent_digest) = 64),
+  source_evidence_digest TEXT NOT NULL CHECK(length(source_evidence_digest) = 64),
+  total_node_count INTEGER NOT NULL CHECK(total_node_count >= 1),
+  leaf_question_count INTEGER NOT NULL CHECK(leaf_question_count >= 1),
+  route_policy TEXT NOT NULL, resolved_tier TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+  dispatch_config_digest TEXT NOT NULL CHECK(length(dispatch_config_digest) = 64),
+  pricing_source TEXT NOT NULL, pricing_digest TEXT NOT NULL CHECK(length(pricing_digest) = 64),
+  workload_digest TEXT NOT NULL CHECK(length(workload_digest) = 64),
+  quoted_ceiling_cents INTEGER NOT NULL CHECK(quoted_ceiling_cents > 0 AND quoted_ceiling_cents <= 9223372036854775807),
+  approved_ceiling_cents INTEGER NOT NULL CHECK(approved_ceiling_cents > 0 AND approved_ceiling_cents <= 9223372036854775807),
+  launch_manifest_digest TEXT NOT NULL CHECK(length(launch_manifest_digest) = 64),
+  spend_run_id TEXT NOT NULL UNIQUE, session_id TEXT NOT NULL UNIQUE,
+  reserved_cents INTEGER NOT NULL CHECK(reserved_cents > 0 AND reserved_cents <= 9223372036854775807),
+  reserved_at TEXT NOT NULL, state TEXT NOT NULL CHECK(state = 'launch_reserved'),
+  execution_started INTEGER NOT NULL CHECK(execution_started = 0),
+  background_work_authorized INTEGER NOT NULL CHECK(background_work_authorized = 0),
+  event_authority_digest TEXT, graph_authority_digest TEXT, provider_authority_digest TEXT,
+  task_authority_digest TEXT, reservation_json TEXT NOT NULL,
+  reservation_integrity_digest TEXT NOT NULL CHECK(length(reservation_integrity_digest) = 64),
+  UNIQUE(owner_identity_digest, authorization_id, idempotency_key),
+  UNIQUE(owner_identity_digest, authorization_id),
+  UNIQUE(owner_identity_digest, investigation_id),
+  FOREIGN KEY(authorization_id) REFERENCES multimedia_investigation_activation_authorizations(authorization_id),
   FOREIGN KEY(investigation_id) REFERENCES multimedia_prepared_investigations(investigation_id)
 )
 """
@@ -240,6 +291,46 @@ class InvestigationActivationAuthorization:
     @property
     def is_expired(self) -> bool:
         return datetime.now(UTC) >= _parse_timestamp(self.expires_at)
+
+
+@dataclass(frozen=True)
+class InvestigationLaunchReservation:
+    launch_reservation_id: str
+    authorization_id: str
+    investigation_id: str
+    prepared_integrity_digest: str
+    authorization_integrity_digest: str
+    source_plan_id: str
+    source_plan_version: int
+    source_plan_integrity_digest: str
+    source_intent_id: str
+    source_intent_digest: str
+    source_evidence_digest: str
+    total_node_count: int
+    leaf_question_count: int
+    route_policy: str
+    resolved_tier: str
+    provider: str
+    model: str
+    dispatch_config_digest: str
+    pricing_source: str
+    pricing_digest: str
+    workload_digest: str
+    quoted_ceiling_cents: int
+    approved_ceiling_cents: int
+    launch_manifest_digest: str
+    request_digest: str
+    spend_run_id: str
+    session_id: str
+    reserved_cents: int
+    reserved_at: str
+    state: str = "launch_reserved"
+    execution_started: bool = False
+    background_work_authorized: bool = False
+    event_authority_digest: None = None
+    graph_authority_digest: None = None
+    provider_authority_digest: None = None
+    task_authority_digest: None = None
 
 
 @dataclass(frozen=True)
@@ -750,6 +841,213 @@ class ResearchPlanLedger:
         finally:
             connection.close()
 
+    def consume_investigation_activation(
+        self, *, owner_identity_digest: str, investigation_id: str,
+        authorization_id: str, idempotency_key: str,
+        quote_resolver: Callable[[PreparedInvestigation, str], InvestigationActivationQuote],
+        supported_maximum_cents: int,
+    ) -> tuple[InvestigationLaunchReservation, bool]:
+        _validate_owner(owner_identity_digest)
+        _validate_investigation_id(investigation_id)
+        _validate_authorization_id(authorization_id)
+        _validate_key(idempotency_key)
+        if (type(supported_maximum_cents) is not int
+                or not 1 <= supported_maximum_cents <= _MAX_CENTS):
+            raise ResearchPlanValidationError("supported launch maximum is invalid")
+        request_digest = _digest({
+            "owner_identity_digest": owner_identity_digest,
+            "investigation_id": investigation_id,
+            "authorization_id": authorization_id,
+            "idempotency_key": idempotency_key,
+        })
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            replay = self._select_launch(connection, owner_identity_digest, investigation_id)
+            if replay is not None:
+                reservation = self._decode_launch_row(replay, owner_identity_digest, connection)
+                if (reservation.authorization_id != authorization_id
+                        or replay[4] != idempotency_key
+                        or reservation.request_digest != request_digest):
+                    raise ResearchPlanError("activation consumption conflicts")
+                return reservation, False
+            authorization_row = connection.execute(
+                "SELECT " + ",".join(_AUTHORIZATION_COLUMNS)
+                + " FROM multimedia_investigation_activation_authorizations "
+                "WHERE owner_identity_digest=? AND investigation_id=? AND authorization_id=?",
+                (owner_identity_digest, investigation_id, authorization_id),
+            ).fetchone()
+            if authorization_row is None:
+                raise ResearchPlanUnavailableError("activation authorization is unavailable")
+            authorization = self._decode_authorization_row(
+                authorization_row, owner_identity_digest, connection
+            )
+            prepared_row = connection.execute(
+                "SELECT " + ",".join(_PREPARED_COLUMNS)
+                + " FROM multimedia_prepared_investigations WHERE owner_identity_digest=? "
+                "AND investigation_id=?", (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if prepared_row is None:
+                raise ResearchPlanUnavailableError("prepared investigation is unavailable")
+            prepared = self._decode_prepared_row(prepared_row, owner_identity_digest)
+        finally:
+            connection.close()
+        quote = quote_resolver(prepared, authorization.route_policy)
+        if not isinstance(quote, InvestigationActivationQuote):
+            raise ResearchPlanError("activation quote is malformed")
+        _assert_quote_integrity(quote, authorization.route_policy, prepared)
+
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            connection.execute("BEGIN IMMEDIATE")
+            replay = self._select_launch(connection, owner_identity_digest, investigation_id)
+            if replay is not None:
+                reservation = self._decode_launch_row(replay, owner_identity_digest, connection)
+                if (reservation.authorization_id != authorization_id
+                        or replay[4] != idempotency_key
+                        or reservation.request_digest != request_digest):
+                    raise ResearchPlanError("activation consumption conflicts")
+                connection.commit()
+                return reservation, False
+            locked_auth = connection.execute(
+                "SELECT " + ",".join(_AUTHORIZATION_COLUMNS)
+                + " FROM multimedia_investigation_activation_authorizations "
+                "WHERE owner_identity_digest=? AND investigation_id=? AND authorization_id=?",
+                (owner_identity_digest, investigation_id, authorization_id),
+            ).fetchone()
+            locked_prepared = connection.execute(
+                "SELECT " + ",".join(_PREPARED_COLUMNS)
+                + " FROM multimedia_prepared_investigations WHERE owner_identity_digest=? "
+                "AND investigation_id=?", (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if locked_auth is None or locked_prepared is None:
+                raise ResearchPlanUnavailableError("activation authorization is unavailable")
+            current_auth = self._decode_authorization_row(
+                locked_auth, owner_identity_digest, connection
+            )
+            self._decode_prepared_row(locked_prepared, owner_identity_digest)
+            if locked_auth != authorization_row or locked_prepared != prepared_row:
+                raise ResearchPlanError("activation authority changed during consumption")
+            now = datetime.now(UTC)
+            if now >= _parse_timestamp(current_auth.expires_at):
+                raise ResearchPlanError("activation authorization is expired")
+            if current_auth.approved_ceiling_cents > supported_maximum_cents:
+                raise ResearchPlanError("activation ceiling exceeds supported authority")
+            quote_issued, quote_expires = (
+                _parse_timestamp(quote.issued_at), _parse_timestamp(quote.expires_at)
+            )
+            if quote_issued > now + timedelta(seconds=30) or now >= quote_expires:
+                raise ResearchPlanError("activation quote is stale")
+            semantic = (
+                quote.route_policy, quote.resolved_tier, quote.provider, quote.model,
+                quote.dispatch_config_digest, quote.pricing_source, quote.pricing_digest,
+                quote.workload_digest, quote.quoted_ceiling_cents,
+            )
+            authorized_semantic = (
+                current_auth.route_policy, current_auth.resolved_tier, current_auth.provider,
+                current_auth.model, current_auth.dispatch_config_digest,
+                current_auth.pricing_source, current_auth.pricing_digest,
+                current_auth.workload_digest, current_auth.quoted_ceiling_cents,
+            )
+            if semantic != authorized_semantic:
+                raise ResearchPlanError("activation quote authority drifted")
+            authorization_integrity = str(locked_auth[32])
+            launch_id = _derived_id(
+                "multimedia-launch-reservation-v1", "mlr_", owner_identity_digest,
+                authorization_id, authorization_integrity, current_auth.prepared_integrity_digest,
+            )
+            spend_run_id = _derived_id(
+                "multimedia-spend-run-v1", "mlsr_", owner_identity_digest,
+                authorization_id, authorization_integrity, current_auth.prepared_integrity_digest,
+            )
+            session_id = _derived_id(
+                "multimedia-research-session-v1", "mls_", owner_identity_digest,
+                authorization_id, authorization_integrity, current_auth.prepared_integrity_digest,
+            )
+            manifest_digest = _launch_manifest_digest(current_auth, authorization_integrity)
+            reservation = InvestigationLaunchReservation(
+                launch_reservation_id=launch_id, authorization_id=authorization_id,
+                investigation_id=investigation_id,
+                prepared_integrity_digest=current_auth.prepared_integrity_digest,
+                authorization_integrity_digest=authorization_integrity,
+                source_plan_id=current_auth.source_plan_id,
+                source_plan_version=current_auth.source_plan_version,
+                source_plan_integrity_digest=current_auth.source_plan_integrity_digest,
+                source_intent_id=current_auth.source_intent_id,
+                source_intent_digest=current_auth.source_intent_digest,
+                source_evidence_digest=current_auth.source_evidence_digest,
+                total_node_count=current_auth.total_node_count,
+                leaf_question_count=current_auth.leaf_question_count,
+                route_policy=current_auth.route_policy, resolved_tier=current_auth.resolved_tier,
+                provider=current_auth.provider, model=current_auth.model,
+                dispatch_config_digest=current_auth.dispatch_config_digest,
+                pricing_source=current_auth.pricing_source,
+                pricing_digest=current_auth.pricing_digest,
+                workload_digest=current_auth.workload_digest,
+                quoted_ceiling_cents=current_auth.quoted_ceiling_cents,
+                approved_ceiling_cents=current_auth.approved_ceiling_cents,
+                launch_manifest_digest=manifest_digest,
+                request_digest=request_digest, spend_run_id=spend_run_id,
+                session_id=session_id, reserved_cents=current_auth.approved_ceiling_cents,
+                reserved_at=_format_timestamp(now),
+            )
+            raw = _canonical(asdict(reservation))
+            _check_size(raw, "launch reservation is too large")
+            values = (
+                launch_id, owner_identity_digest, authorization_id, investigation_id,
+                idempotency_key, request_digest, reservation.prepared_integrity_digest,
+                reservation.authorization_integrity_digest, reservation.source_plan_id,
+                reservation.source_plan_version, reservation.source_plan_integrity_digest,
+                reservation.source_intent_id, reservation.source_intent_digest,
+                reservation.source_evidence_digest, reservation.total_node_count,
+                reservation.leaf_question_count, reservation.route_policy,
+                reservation.resolved_tier, reservation.provider, reservation.model,
+                reservation.dispatch_config_digest, reservation.pricing_source,
+                reservation.pricing_digest, reservation.workload_digest,
+                reservation.quoted_ceiling_cents, reservation.approved_ceiling_cents,
+                reservation.launch_manifest_digest, spend_run_id, session_id,
+                reservation.reserved_cents, reservation.reserved_at, reservation.state,
+                reservation.execution_started, reservation.background_work_authorized,
+                reservation.event_authority_digest, reservation.graph_authority_digest,
+                reservation.provider_authority_digest, reservation.task_authority_digest,
+                raw, _launch_digest(reservation),
+            )
+            connection.execute(
+                "INSERT INTO multimedia_investigation_launch_reservations VALUES ("
+                + ",".join("?" for _ in values) + ")", values,
+            )
+            connection.commit()
+            return reservation, True
+        except sqlite3.IntegrityError as exc:
+            connection.rollback()
+            raise ResearchPlanError("activation consumption conflicts") from exc
+        except sqlite3.Error as exc:
+            connection.rollback()
+            raise ResearchPlanStorageError("research plan ledger is unavailable") from exc
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def get_investigation_launch_reservation(
+        self, *, owner_identity_digest: str, investigation_id: str,
+    ) -> InvestigationLaunchReservation:
+        _validate_owner(owner_identity_digest)
+        _validate_investigation_id(investigation_id)
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            row = self._select_launch(connection, owner_identity_digest, investigation_id)
+            if row is None:
+                raise ResearchPlanUnavailableError("launch reservation is unavailable")
+            return self._decode_launch_row(row, owner_identity_digest, connection)
+        except sqlite3.Error as exc:
+            raise ResearchPlanStorageError("research plan ledger is unavailable") from exc
+        finally:
+            connection.close()
+
     def _initialize(self, connection: sqlite3.Connection) -> None:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
         exists = connection.execute(
@@ -764,7 +1062,8 @@ class ResearchPlanLedger:
                 connection.execute(_V2_RECEIPT_SCHEMA)
                 connection.execute(_V3_PREPARED_SCHEMA)
                 connection.execute(_V4_AUTHORIZATION_SCHEMA)
-                connection.execute("PRAGMA user_version=4")
+                connection.execute(_V5_LAUNCH_SCHEMA)
+                connection.execute("PRAGMA user_version=5")
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -775,6 +1074,8 @@ class ResearchPlanLedger:
             self._migrate_v2(connection)
         elif version == 3:
             self._migrate_v3(connection)
+        elif version == 4:
+            self._migrate_v4(connection)
         self._assert_schema(connection)
 
     def _migrate_v1(self, connection: sqlite3.Connection) -> None:
@@ -804,7 +1105,8 @@ class ResearchPlanLedger:
             connection.execute("DROP TABLE multimedia_research_plans_v1")
             connection.execute(_V3_PREPARED_SCHEMA)
             connection.execute(_V4_AUTHORIZATION_SCHEMA)
-            connection.execute("PRAGMA user_version=4")
+            connection.execute(_V5_LAUNCH_SCHEMA)
+            connection.execute("PRAGMA user_version=5")
             connection.commit()
         except Exception:
             connection.rollback()
@@ -822,7 +1124,8 @@ class ResearchPlanLedger:
             self._assert_v2_schema(connection)
             connection.execute(_V3_PREPARED_SCHEMA)
             connection.execute(_V4_AUTHORIZATION_SCHEMA)
-            connection.execute("PRAGMA user_version=4")
+            connection.execute(_V5_LAUNCH_SCHEMA)
+            connection.execute("PRAGMA user_version=5")
             connection.commit()
         except Exception:
             connection.rollback()
@@ -833,7 +1136,19 @@ class ResearchPlanLedger:
         connection.execute("BEGIN IMMEDIATE")
         try:
             connection.execute(_V4_AUTHORIZATION_SCHEMA)
-            connection.execute("PRAGMA user_version=4")
+            connection.execute(_V5_LAUNCH_SCHEMA)
+            connection.execute("PRAGMA user_version=5")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+
+    def _migrate_v4(self, connection: sqlite3.Connection) -> None:
+        self._assert_v4_schema(connection)
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            connection.execute(_V5_LAUNCH_SCHEMA)
+            connection.execute("PRAGMA user_version=5")
             connection.commit()
         except Exception:
             connection.rollback()
@@ -846,13 +1161,15 @@ class ResearchPlanLedger:
             raise ResearchPlanError("research plan ledger schema conflicts")
 
     def _assert_schema(self, connection: sqlite3.Connection) -> None:
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 5:
             raise ResearchPlanError("research plan ledger schema conflicts")
         if (self._columns(connection, "multimedia_research_plans") != _PLAN_COLUMNS
                 or self._columns(connection, "multimedia_research_plan_mutations") != _RECEIPT_COLUMNS
                 or self._columns(connection, "multimedia_prepared_investigations") != _PREPARED_COLUMNS
                 or self._columns(connection, "multimedia_investigation_activation_authorizations")
-                != _AUTHORIZATION_COLUMNS):
+                != _AUTHORIZATION_COLUMNS
+                or self._columns(connection, "multimedia_investigation_launch_reservations")
+                != _LAUNCH_COLUMNS):
             raise ResearchPlanError("research plan ledger schema conflicts")
         plan_sql = self._schema_sql(connection, "multimedia_research_plans")
         receipt_sql = self._schema_sql(connection, "multimedia_research_plan_mutations")
@@ -860,11 +1177,32 @@ class ResearchPlanLedger:
         authorization_sql = self._schema_sql(
             connection, "multimedia_investigation_activation_authorizations"
         )
+        launch_sql = self._schema_sql(connection, "multimedia_investigation_launch_reservations")
         if (_normalized_schema(plan_sql) != _normalized_schema(_V2_PLAN_SCHEMA)
                 or _normalized_schema(receipt_sql) != _normalized_schema(_V2_RECEIPT_SCHEMA)
                 or _normalized_schema(prepared_sql) != _normalized_schema(_V3_PREPARED_SCHEMA)
                 or _normalized_schema(authorization_sql)
-                != _normalized_schema(_V4_AUTHORIZATION_SCHEMA)):
+                != _normalized_schema(_V4_AUTHORIZATION_SCHEMA)
+                or _normalized_schema(launch_sql) != _normalized_schema(_V5_LAUNCH_SCHEMA)):
+            raise ResearchPlanError("research plan ledger schema conflicts")
+
+    def _assert_v4_schema(self, connection: sqlite3.Connection) -> None:
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+            raise ResearchPlanError("research plan ledger schema conflicts")
+        if (self._columns(connection, "multimedia_research_plans") != _PLAN_COLUMNS
+                or self._columns(connection, "multimedia_research_plan_mutations") != _RECEIPT_COLUMNS
+                or self._columns(connection, "multimedia_prepared_investigations") != _PREPARED_COLUMNS
+                or self._columns(connection, "multimedia_investigation_activation_authorizations")
+                != _AUTHORIZATION_COLUMNS
+                or _normalized_schema(self._schema_sql(connection, "multimedia_research_plans"))
+                != _normalized_schema(_V2_PLAN_SCHEMA)
+                or _normalized_schema(self._schema_sql(connection, "multimedia_research_plan_mutations"))
+                != _normalized_schema(_V2_RECEIPT_SCHEMA)
+                or _normalized_schema(self._schema_sql(connection, "multimedia_prepared_investigations"))
+                != _normalized_schema(_V3_PREPARED_SCHEMA)
+                or _normalized_schema(self._schema_sql(connection, "multimedia_investigation_activation_authorizations"))
+                != _normalized_schema(_V4_AUTHORIZATION_SCHEMA)
+                or self._schema_sql(connection, "multimedia_investigation_launch_reservations")):
             raise ResearchPlanError("research plan ledger schema conflicts")
 
     def _assert_v3_schema(self, connection: sqlite3.Connection) -> None:
@@ -909,6 +1247,86 @@ class ResearchPlanLedger:
             "SELECT " + ",".join(_PLAN_COLUMNS) + " FROM multimedia_research_plans "
             "WHERE owner_identity_digest=? AND plan_id=?", (owner, plan_id)
         ).fetchone()
+
+    @staticmethod
+    def _select_launch(connection: sqlite3.Connection, owner: str, investigation_id: str):
+        return connection.execute(
+            "SELECT " + ",".join(_LAUNCH_COLUMNS)
+            + " FROM multimedia_investigation_launch_reservations "
+            "WHERE owner_identity_digest=? AND investigation_id=?",
+            (owner, investigation_id),
+        ).fetchone()
+
+    @staticmethod
+    def _decode_launch_row(
+        row: tuple[object, ...], owner: str, connection: sqlite3.Connection,
+    ) -> InvestigationLaunchReservation:
+        fields = dict(zip(_LAUNCH_COLUMNS, row, strict=True))
+        try:
+            raw = fields["reservation_json"]
+            if not isinstance(raw, str) or len(raw.encode()) > _MAX_RECORD_BYTES:
+                raise ValueError
+            value = json.loads(raw)
+            if (not isinstance(value, dict)
+                    or set(value) != set(InvestigationLaunchReservation.__dataclass_fields__)):
+                raise ValueError
+            reservation = InvestigationLaunchReservation(**value)
+            _assert_launch_integrity(reservation)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ResearchPlanError("stored launch reservation is malformed") from exc
+        authorization_row = connection.execute(
+            "SELECT " + ",".join(_AUTHORIZATION_COLUMNS)
+            + " FROM multimedia_investigation_activation_authorizations "
+            "WHERE owner_identity_digest=? AND investigation_id=? AND authorization_id=?",
+            (owner, reservation.investigation_id, reservation.authorization_id),
+        ).fetchone()
+        if authorization_row is None:
+            raise ResearchPlanError("stored launch reservation integrity conflicts")
+        authorization = ResearchPlanLedger._decode_authorization_row(
+            authorization_row, owner, connection
+        )
+        request_digest = _digest({
+            "owner_identity_digest": owner,
+            "investigation_id": reservation.investigation_id,
+            "authorization_id": reservation.authorization_id,
+            "idempotency_key": fields["idempotency_key"],
+        })
+        auth_digest = str(authorization_row[32])
+        identities = (
+            _derived_id("multimedia-launch-reservation-v1", "mlr_", owner,
+                        reservation.authorization_id, auth_digest,
+                        authorization.prepared_integrity_digest),
+            _derived_id("multimedia-spend-run-v1", "mlsr_", owner,
+                        reservation.authorization_id, auth_digest,
+                        authorization.prepared_integrity_digest),
+            _derived_id("multimedia-research-session-v1", "mls_", owner,
+                        reservation.authorization_id, auth_digest,
+                        authorization.prepared_integrity_digest),
+        )
+        scalar_fields = {
+            name: getattr(reservation, name) for name in
+            InvestigationLaunchReservation.__dataclass_fields__
+        }
+        scalar_fields.update({
+            "owner_identity_digest": owner,
+            "idempotency_key": fields["idempotency_key"],
+            "reservation_json": _canonical(asdict(reservation)),
+            "reservation_integrity_digest": _launch_digest(reservation),
+        })
+        expected = tuple(scalar_fields[name] for name in _LAUNCH_COLUMNS)
+        reserved_at = _parse_timestamp(reservation.reserved_at)
+        issued_at = _parse_timestamp(authorization.issued_at)
+        expires_at = _parse_timestamp(authorization.expires_at)
+        if (not _valid_key(fields["idempotency_key"]) or tuple(row) != expected
+                or reservation.request_digest != request_digest
+                or identities != (reservation.launch_reservation_id,
+                                   reservation.spend_run_id, reservation.session_id)
+                or reservation.launch_manifest_digest
+                != _launch_manifest_digest(authorization, auth_digest)
+                or reservation.reserved_cents != authorization.approved_ceiling_cents
+                or not issued_at <= reserved_at < expires_at):
+            raise ResearchPlanError("stored launch reservation integrity conflicts")
+        return reservation
 
     @staticmethod
     def _decode_row(row: tuple[object, ...], owner: str) -> ResearchPlan:
@@ -1463,6 +1881,11 @@ def _validate_investigation_id(value: object) -> None:
         raise ResearchPlanUnavailableError("prepared investigation is unavailable")
 
 
+def _validate_authorization_id(value: object) -> None:
+    if not _opaque_id(value, prefix="mia_", hex_length=48):
+        raise ResearchPlanUnavailableError("activation authorization is unavailable")
+
+
 def _valid_key(value: object) -> bool:
     return (isinstance(value, str) and 16 <= len(value) <= 128
             and all(character.isascii() and (character.isalnum() or character in "_-") for character in value))
@@ -1525,6 +1948,90 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical(value).encode()).hexdigest()
 
 
+def _launch_digest(reservation: InvestigationLaunchReservation) -> str:
+    return _digest({"domain": "multimedia-investigation-launch-reservation-v1",
+                    "reservation": asdict(reservation)})
+
+
+def _launch_manifest_digest(
+    authorization: InvestigationActivationAuthorization, authorization_integrity_digest: str,
+) -> str:
+    return _digest({
+        "domain": "multimedia-investigation-launch-manifest-v1",
+        "prepared_integrity_digest": authorization.prepared_integrity_digest,
+        "authorization_integrity_digest": authorization_integrity_digest,
+        "source_plan_id": authorization.source_plan_id,
+        "source_plan_version": authorization.source_plan_version,
+        "source_plan_integrity_digest": authorization.source_plan_integrity_digest,
+        "source_intent_id": authorization.source_intent_id,
+        "source_intent_digest": authorization.source_intent_digest,
+        "source_evidence_digest": authorization.source_evidence_digest,
+        "total_node_count": authorization.total_node_count,
+        "leaf_question_count": authorization.leaf_question_count,
+        "route_policy": authorization.route_policy,
+        "resolved_tier": authorization.resolved_tier,
+        "provider": authorization.provider,
+        "model": authorization.model,
+        "dispatch_config_digest": authorization.dispatch_config_digest,
+        "pricing_source": authorization.pricing_source,
+        "pricing_digest": authorization.pricing_digest,
+        "workload_digest": authorization.workload_digest,
+        "quoted_ceiling_cents": authorization.quoted_ceiling_cents,
+        "approved_ceiling_cents": authorization.approved_ceiling_cents,
+    })
+
+
+def _assert_launch_integrity(reservation: InvestigationLaunchReservation) -> None:
+    text_fields = (
+        reservation.route_policy, reservation.resolved_tier, reservation.provider,
+        reservation.model, reservation.pricing_source,
+    )
+    if (not _opaque_id(reservation.launch_reservation_id, prefix="mlr_", hex_length=48)
+            or not _opaque_id(reservation.authorization_id, prefix="mia_", hex_length=48)
+            or not _opaque_id(reservation.investigation_id, prefix="mpi_", hex_length=48)
+            or not _hex_digest(reservation.prepared_integrity_digest)
+            or not _hex_digest(reservation.authorization_integrity_digest)
+            or not _opaque_id(reservation.source_plan_id, prefix="mrp_", hex_length=48)
+            or type(reservation.source_plan_version) is not int
+            or reservation.source_plan_version < 1
+            or not _hex_digest(reservation.source_plan_integrity_digest)
+            or not _opaque_id(reservation.source_intent_id, prefix="mmri_", hex_length=48)
+            or not _hex_digest(reservation.source_intent_digest)
+            or not _hex_digest(reservation.source_evidence_digest)
+            or type(reservation.total_node_count) is not int
+            or type(reservation.leaf_question_count) is not int
+            or not 1 <= reservation.leaf_question_count <= reservation.total_node_count <= _MAX_NODES
+            or reservation.route_policy not in {"cheapest", "balanced", "highest_quality"}
+            or any(type(value) is not str or not value or len(value) > 256 for value in text_fields)
+            or not _hex_digest(reservation.dispatch_config_digest)
+            or not _hex_digest(reservation.pricing_digest)
+            or not _hex_digest(reservation.workload_digest)
+            or type(reservation.quoted_ceiling_cents) is not int
+            or type(reservation.approved_ceiling_cents) is not int
+            or type(reservation.reserved_cents) is not int
+            or not 0 < reservation.quoted_ceiling_cents <= reservation.approved_ceiling_cents
+            or reservation.reserved_cents != reservation.approved_ceiling_cents
+            or reservation.approved_ceiling_cents > _MAX_CENTS
+            or not _hex_digest(reservation.launch_manifest_digest)
+            or not _hex_digest(reservation.request_digest)
+            or not _opaque_id(reservation.spend_run_id, prefix="mlsr_", hex_length=48)
+            or not _opaque_id(reservation.session_id, prefix="mls_", hex_length=48)
+            or not _timestamp(reservation.reserved_at)
+            or reservation.state != "launch_reserved"
+            or reservation.execution_started is not False
+            or reservation.background_work_authorized is not False
+            or any(value is not None for value in (
+                reservation.event_authority_digest, reservation.graph_authority_digest,
+                reservation.provider_authority_digest, reservation.task_authority_digest,
+            ))):
+        raise ValueError("launch reservation integrity conflicts")
+
+
+def _derived_id(domain: str, prefix: str, *parts: str) -> str:
+    digest = hashlib.sha256(_canonical({"domain": domain, "parts": parts}).encode()).hexdigest()
+    return prefix + digest[:48]
+
+
 def _new_node_id() -> str:
     return "mrpn_" + secrets.token_hex(24)
 
@@ -1534,7 +2041,8 @@ def _now() -> str:
 
 
 __all__ = [
-    "InvestigationActivationAuthorization", "InvestigationActivationQuote", "PreparedInvestigation",
+    "InvestigationActivationAuthorization", "InvestigationActivationQuote",
+    "InvestigationLaunchReservation", "PreparedInvestigation",
     "ResearchPlan", "ResearchPlanError", "ResearchPlanLedger", "ResearchPlanStorageError",
     "ResearchPlanTooLargeError", "ResearchPlanUnavailableError", "ResearchPlanValidationError",
 ]

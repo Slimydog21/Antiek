@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sqlite3
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from unittest.mock import Mock, patch
@@ -20,6 +21,8 @@ from substrate.multimedia.research_plan import (
     ResearchPlanLedger,
     ResearchPlanStorageError,
 )
+from substrate.research_spend import ResearchSpendLedger, RunBinding
+from substrate.research_spend.ledger import MAX_AUTHORITY_CENTS
 from tests.test_multimedia_research_intent import _create
 
 
@@ -63,6 +66,7 @@ def _client(tmp_path) -> TestClient:
         intents=intents,
         owner_digest_resolver=lambda owner: ("a" if owner == "owner-1" else "b") * 64,
         activation_quote_resolver=quote,
+        spend_ledger=ResearchSpendLedger(tmp_path / "research-spend.sqlite3"),
     )
     app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: runtime
     return TestClient(app)
@@ -283,6 +287,155 @@ def test_activation_authorization_routes_are_private_strict_and_owner_scoped(tmp
     assert created.json()["background_work_authorized"] is False
     assert all(response.headers["cache-control"] == "private, no-store"
                for response in (created, replay, read, foreign, malformed))
+
+
+def test_activation_consumption_bootstraps_exact_pristine_run_and_replays(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime = client.app.dependency_overrides[get_multimedia_research_plan_runtime]()
+    intent, _ = _create(runtime.intents, key="consume-intent-123")
+    plan = client.post(
+        f"/multimedia/research-intents/{intent.intent_id}/plan",
+        json={"idempotency_key": "handoff-consume-123"},
+    ).json()
+    client.post(f"/multimedia/research-plans/{plan['plan_id']}/approve",
+                json={"expected_plan_version": 1})
+    prepared = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation",
+        json={"idempotency_key": "prepare-consume-123", "expected_plan_version": 1},
+    ).json()
+    path = f"/multimedia/investigations/{prepared['investigation_id']}"
+    authorization = client.post(path + "/activation-authorizations", json={
+        "idempotency_key": "activate-consume-12", "route_policy": "balanced",
+        "approved_ceiling_cents": 300, "ttl_seconds": 3600,
+    }).json()
+    body = {"authorization_id": authorization["authorization_id"],
+            "idempotency_key": "consume-request-123"}
+    created = client.post(path + "/activation-consumptions", json=body)
+    replay = client.post(path + "/activation-consumptions", json=body)
+    read = client.get(path + "/launch-reservation")
+    assert created.status_code == 201 and replay.status_code == read.status_code == 200
+    assert created.json() == replay.json() == read.json()
+    receipt = created.json()
+    assert receipt["ready"] is True and receipt["reserved_cents"] == 300
+    assert "idempotency_key" not in receipt and "owner_identity_digest" not in receipt
+    balance = runtime.spend_ledger.balance(receipt["spend_run_id"])
+    assert balance.ceiling_cents == 300
+    assert balance.authorized_spent_cents == balance.held_cents == 0
+    foreign = client.get(path + "/launch-reservation", headers={"x-owner": "owner-2"})
+    assert foreign.status_code == 404
+
+
+def _launch_api_fixture(client: TestClient, approved_cents: int = 300):
+    runtime = client.app.dependency_overrides[get_multimedia_research_plan_runtime]()
+    intent, _ = _create(runtime.intents, key="launch-fixture-intent")
+    plan = client.post(
+        f"/multimedia/research-intents/{intent.intent_id}/plan",
+        json={"idempotency_key": "launch-fixture-handoff"},
+    ).json()
+    client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/approve",
+        json={"expected_plan_version": 1},
+    )
+    prepared = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation",
+        json={"idempotency_key": "launch-fixture-prepare", "expected_plan_version": 1},
+    ).json()
+    path = f"/multimedia/investigations/{prepared['investigation_id']}"
+    authorization = client.post(path + "/activation-authorizations", json={
+        "idempotency_key": "launch-fixture-authorize", "route_policy": "balanced",
+        "approved_ceiling_cents": approved_cents, "ttl_seconds": 3600,
+    }).json()
+    body = {
+        "authorization_id": authorization["authorization_id"],
+        "idempotency_key": "launch-fixture-consume",
+    }
+    return runtime, path, body
+
+
+def test_launch_api_enforces_supported_ceiling_boundary_and_above(tmp_path) -> None:
+    boundary_root = tmp_path / "boundary"
+    boundary_root.mkdir()
+    boundary_client = _client(boundary_root)
+    _runtime, path, body = _launch_api_fixture(boundary_client, MAX_AUTHORITY_CENTS)
+    accepted = boundary_client.post(path + "/activation-consumptions", json=body)
+    assert accepted.status_code == 201
+    assert accepted.json()["reserved_cents"] == MAX_AUTHORITY_CENTS
+
+    above_root = tmp_path / "above"
+    above_root.mkdir()
+    above_client = _client(above_root)
+    runtime, path, body = _launch_api_fixture(above_client, MAX_AUTHORITY_CENTS + 1)
+    rejected = above_client.post(path + "/activation-consumptions", json=body)
+    assert rejected.status_code == 409
+    assert rejected.json() == {"detail": "activation consumption conflicts"}
+    with sqlite3.connect(runtime.plans.path) as connection:
+        assert connection.execute(
+            "SELECT count(*) FROM multimedia_investigation_launch_reservations"
+        ).fetchone()[0] == 0
+
+
+def test_committed_launch_recovers_by_exact_post_while_get_never_creates(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime, path, body = _launch_api_fixture(client)
+    unavailable = ResearchPlanRouteRuntime(
+        plans=runtime.plans, intents=runtime.intents,
+        owner_digest_resolver=runtime.owner_digest_resolver,
+        activation_quote_resolver=runtime.activation_quote_resolver, spend_ledger=None,
+    )
+    client.app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: unavailable
+    failed = client.post(path + "/activation-consumptions", json=body)
+    assert failed.status_code == 503
+    reservation = runtime.plans.get_investigation_launch_reservation(
+        owner_identity_digest="a" * 64, investigation_id=path.rsplit("/", 1)[-1],
+    )
+
+    fresh_path = tmp_path / "recovery-spend.sqlite3"
+    fresh_ledger = ResearchSpendLedger(fresh_path)
+    recovery_runtime = ResearchPlanRouteRuntime(
+        plans=runtime.plans, intents=runtime.intents,
+        owner_digest_resolver=runtime.owner_digest_resolver,
+        activation_quote_resolver=Mock(side_effect=AssertionError("replay resolved quote")),
+        spend_ledger=fresh_ledger,
+    )
+    client.app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: recovery_runtime
+    verify_only = client.get(path + "/launch-reservation")
+    assert verify_only.status_code == 503
+    assert not fresh_path.exists()
+    recovered = client.post(path + "/activation-consumptions", json=body)
+    assert recovered.status_code == 200 and recovered.json()["ready"] is True
+    assert recovered.json()["launch_reservation_id"] == reservation.launch_reservation_id
+    recovery_runtime.activation_quote_resolver.assert_not_called()
+    with sqlite3.connect(fresh_path) as connection:
+        assert connection.execute("SELECT count(*) FROM research_spend_holds").fetchone()[0] == 0
+
+
+def test_conflicting_existing_spend_run_is_private_409(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime, path, body = _launch_api_fixture(client)
+    no_spend = ResearchPlanRouteRuntime(
+        plans=runtime.plans, intents=runtime.intents,
+        owner_digest_resolver=runtime.owner_digest_resolver,
+        activation_quote_resolver=runtime.activation_quote_resolver, spend_ledger=None,
+    )
+    client.app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: no_spend
+    assert client.post(path + "/activation-consumptions", json=body).status_code == 503
+    reservation = runtime.plans.get_investigation_launch_reservation(
+        owner_identity_digest="a" * 64, investigation_id=path.rsplit("/", 1)[-1],
+    )
+    runtime.spend_ledger.ensure_schema()
+    binding = RunBinding(
+        run_id=reservation.spend_run_id, owner_id="a" * 64,
+        session_id=reservation.session_id,
+        plan_digest=reservation.launch_manifest_digest,
+        approval_revision=reservation.source_plan_version,
+    )
+    runtime.spend_ledger.create_or_reopen_run(
+        "conflicting-bootstrap-command", binding, reservation.reserved_cents - 1,
+    )
+    client.app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: runtime
+    conflict = client.post(path + "/activation-consumptions", json=body)
+    assert conflict.status_code == 409
+    assert conflict.json() == {"detail": "launch reservation integrity conflicts"}
 
 
 def test_activation_absence_does_not_invoke_quote_resolver(tmp_path) -> None:
