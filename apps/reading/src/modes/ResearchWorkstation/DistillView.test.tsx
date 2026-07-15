@@ -59,6 +59,10 @@ describe("DistillView — first-class insights + questions (M2)", () => {
     expect(screen.getByText("Insights")).toBeTruthy();
     expect(screen.getByText("Open questions")).toBeTruthy();
     expect(screen.getByText("What is the moat?")).toBeTruthy();
+    expect(screen.getByText("Filed findings")).toBeTruthy();
+    expect(screen.getByText("Unresolved threads")).toBeTruthy();
+    expect(screen.getByLabelText("1 insight").textContent).toBe("01");
+    expect(screen.getByLabelText("1 open question").textContent).toBe("01");
     // grounding shown in human terms, never a raw id label.
     expect(screen.getByText("grounded in a source")).toBeTruthy();
     expect(screen.queryByText("doc-1")).toBeNull();
@@ -90,6 +94,7 @@ describe("DistillView — honest no-result (M4)", () => {
     await waitFor(() =>
       expect(screen.getByText(/distilled no insights or open questions/)).toBeTruthy(),
     );
+    expect(document.querySelector(".distillation-empty__image")?.getAttribute("aria-hidden")).toBe("true");
   });
 
   it("shows the failure surface when the fetch fails", async () => {
