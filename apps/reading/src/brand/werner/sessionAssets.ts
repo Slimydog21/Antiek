@@ -5,22 +5,24 @@
  * Canonical four-mood product mark remains `Werner.tsx` (anchor transparent
  * poses). These session assets are cabinet key-art + optional emote polish.
  *
- * Alpha honesty (2026-07-15): ice-fishing + zombies product PNGs are residual-
- * fringe flood-cut so all four canvas corners are alpha=0 (see
- * cut_session_fringe.py + sessionAssets.integrity.test.ts). Opaque provenance
- * lives beside them as `*_opaque_provenance.png`.
+ * Alpha honesty (2026-07-15/16): ice-fishing + zombies + clam-catcher product
+ * PNGs are residual-fringe flood-cut so all four canvas corners are alpha=0
+ * (see cut_session_fringe.py + sessionAssets.integrity.test.ts). Opaque
+ * provenance lives beside them as `*_opaque_provenance.png`.
  */
 
 import celebrate from "./poses/session/werner_celebrate_session_v1.png";
 import thinking from "./poses/session/werner_thinking_session_v1.png";
 import iceFishing from "./poses/session/werner_ice_fishing_session_v1.png";
 import zombies from "./poses/session/werner_zombies_session_v1.png";
+import clamCatcher from "./poses/session/werner_clam_catcher_session_v1.png";
 
 export const SESSION_BRAND_ASSETS = {
   celebrate,
   thinking,
   iceFishing,
   zombies,
+  clamCatcher,
 } as const;
 
 export type SessionBrandAssetId = keyof typeof SESSION_BRAND_ASSETS;
@@ -35,4 +37,5 @@ export const SESSION_BRAND_ASSET_IDS: readonly SessionBrandAssetId[] = [
   "thinking",
   "iceFishing",
   "zombies",
+  "clamCatcher",
 ] as const;

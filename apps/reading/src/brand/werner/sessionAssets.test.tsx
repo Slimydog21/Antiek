@@ -11,8 +11,8 @@ import {
 } from "./sessionAssets";
 
 describe("session brand assets integration", () => {
-  it("exports four session assets with non-empty module URLs", () => {
-    expect(SESSION_BRAND_ASSET_IDS).toHaveLength(4);
+  it("exports five session assets with non-empty module URLs", () => {
+    expect(SESSION_BRAND_ASSET_IDS).toHaveLength(5);
     for (const id of SESSION_BRAND_ASSET_IDS) {
       const url = sessionBrandAssetUrl(id);
       expect(typeof url).toBe("string");
@@ -22,9 +22,10 @@ describe("session brand assets integration", () => {
     }
   });
 
-  it("cabinet imports use ice fishing + zombies keys", () => {
+  it("cabinet imports use ice fishing + zombies + clam catcher keys", () => {
     expect(SESSION_BRAND_ASSETS.iceFishing).toBeTruthy();
     expect(SESSION_BRAND_ASSETS.zombies).toBeTruthy();
+    expect(SESSION_BRAND_ASSETS.clamCatcher).toBeTruthy();
   });
 
   it("Werner mark renders thinking + celebrate using session asset module URLs", () => {
@@ -54,5 +55,6 @@ describe("session brand assets integration", () => {
     expect(wernerSrc).toMatch(/werner_celebrate_session_v1\.png/);
     expect(cabinetSrc).toMatch(/cabinet-brand-thinking/);
     expect(cabinetSrc).toMatch(/cabinet-brand-celebrate/);
+    expect(cabinetSrc).toMatch(/werner_clam_catcher_session_v1\.png/);
   });
 });

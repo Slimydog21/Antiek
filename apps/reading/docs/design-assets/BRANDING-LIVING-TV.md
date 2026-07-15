@@ -10,7 +10,7 @@ not a pure Flipbook pixel stream, but Flipbook *feel* over real product chrome.
 |---|---|
 | Flipbook scenery hotspots | Edge-only adaptive rects; click → product routes; peak-left ambient for honesty proof |
 | Product map | igloo→`/arcade`, horizon→`/`, peak-right→`/library`, sky-aurora→`/home` |
-| Session brand PNGs | thinking/celebrate moods + ice fishing/zombies cabinet key art (alpha integrity gated) |
+| Session brand PNGs | thinking/celebrate moods + ice fishing/zombies/clam catcher cabinet key art (alpha integrity gated) |
 | Arcade cabinet | Club Penguin–style Ice Fishing + Clam Catcher + Paperclip Zombies easter egg; play emits Werner highlight |
 | Research wait arcade | Same session key art during deep research waits |
 | LoadingGameHost | Opt-in wait host with pure policy (`waitHostLogic`) + shared cartridge factory |

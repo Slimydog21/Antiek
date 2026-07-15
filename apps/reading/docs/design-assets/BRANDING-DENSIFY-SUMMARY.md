@@ -33,9 +33,15 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 ## Honest gaps still open
 
 - Pure Flipbook sole UI NO-GO
-- Clam Catcher Imagine not alpha-promoted to product PNG
 - CF Pages external-pending often
 - Operator merge wall on #2416
+
+## Clam Catcher session promote (2026-07-16)
+
+- Invent `session-20260715/werner_clam_catcher_refedit_v1.jpg` →
+  `poses/session/werner_clam_catcher_session_v1.png` via `cut_session_fringe.py`
+- Opaque provenance retained; four corners alpha=0; cabinet card uses session PNG
+- Authored webp key art remains for in-game visual kit (no Werner on sprites)
 
 ## Living-TV product-door emotes (choreography)
 

@@ -13,8 +13,9 @@ import iceFishingArt from "../brand/werner/poses/session/werner_ice_fishing_sess
 import zombiesArt from "../brand/werner/poses/session/werner_zombies_session_v1.png";
 import thinkingArt from "../brand/werner/poses/session/werner_thinking_session_v1.png";
 import celebrateArt from "../brand/werner/poses/session/werner_celebrate_session_v1.png";
-// Clam Catcher keeps authored webp key art (no session PNG yet).
-import clamCatcherArt from "../brand/werner/arcade/clam-catcher-station-key-art-v1.webp";
+// Clam Catcher: session Imagine refedit promoted via cut_session_fringe (2026-07-16).
+// Authored webp remains for in-game station chrome / visual kit only.
+import clamCatcherArt from "../brand/werner/poses/session/werner_clam_catcher_session_v1.png";
 
 type CabinetGame = ArcadeGameKind;
 

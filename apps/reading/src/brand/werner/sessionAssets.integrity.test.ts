@@ -1,9 +1,10 @@
 /**
  * Session brand PNG integrity — no baked white/gray box on product paths.
  *
- * Cabinet key-art (ice fishing, zombies) and mood poses (thinking, celebrate)
- * must have fully transparent corners so they composite over glass/dark chrome
- * without an opaque plate. Opaque provenance files remain on disk for redo.
+ * Cabinet key-art (ice fishing, zombies, clam catcher) and mood poses
+ * (thinking, celebrate) must have fully transparent corners so they composite
+ * over glass/dark chrome without an opaque plate. Opaque provenance files
+ * remain on disk for redo.
  */
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -51,6 +52,7 @@ const PRODUCT_SESSION_PNGS = [
   "./poses/session/werner_celebrate_session_v1.png",
   "./poses/session/werner_ice_fishing_session_v1.png",
   "./poses/session/werner_zombies_session_v1.png",
+  "./poses/session/werner_clam_catcher_session_v1.png",
 ] as const;
 
 describe("session brand PNG alpha integrity", () => {
@@ -75,17 +77,21 @@ describe("session brand PNG alpha integrity", () => {
     },
   );
 
-  it("opaque provenance still proves the ice-fishing/zombies fringe defect", () => {
-    // Before the residual-fringe flood, TR (and sometimes BL) corners were
-    // fully opaque light-gray — the integrity gap this wave closed.
+  it("opaque provenance still proves the ice-fishing/zombies/clam fringe defect", () => {
+    // Before the residual-fringe flood, corners were fully opaque light-gray —
+    // the integrity gap this wave closed for cabinet key-art.
     const ice = decode(
       "./poses/session/werner_ice_fishing_session_v1_opaque_provenance.png",
     );
     const zombies = decode(
       "./poses/session/werner_zombies_session_v1_opaque_provenance.png",
     );
+    const clam = decode(
+      "./poses/session/werner_clam_catcher_session_v1_opaque_provenance.png",
+    );
     const iceCorners = corners(ice).map((c) => c[3]);
     const zombieCorners = corners(zombies).map((c) => c[3]);
+    const clamCorners = corners(clam).map((c) => c[3]);
     expect(
       iceCorners.some((a) => a === 255),
       "ice fishing provenance must retain at least one opaque corner",
@@ -93,6 +99,10 @@ describe("session brand PNG alpha integrity", () => {
     expect(
       zombieCorners.some((a) => a === 255),
       "zombies provenance must retain at least one opaque corner",
+    ).toBe(true);
+    expect(
+      clamCorners.some((a) => a === 255),
+      "clam catcher provenance must retain at least one opaque corner",
     ).toBe(true);
   });
 
