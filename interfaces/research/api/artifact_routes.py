@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-import stat
 import sys
 from pathlib import Path
 
@@ -26,11 +25,13 @@ from substrate.research_artifact import (  # noqa: E402
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
-)
-from substrate.research_artifact.compose import (  # noqa: E402
-    composition_id_for,
-    render_composition_index,
     validate_investigation_ids,
+)
+from substrate.research_artifact import (  # noqa: E402
+    read_composition_store_file as _read_store_file,
+)
+from substrate.research_artifact import (  # noqa: E402
+    verify_composition_index as _verified_index,
 )
 from substrate.research_artifact.paths import (  # noqa: E402
     composition_member_path_for,
@@ -40,95 +41,12 @@ from substrate.research_artifact.paths import (  # noqa: E402
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
 
-def _read_store_file(*parts: str) -> bytes:
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    directory_flags = flags | getattr(os, "O_DIRECTORY", 0)
-    root = os.open(os.fspath(composition_path_for("cmp-" + "0" * 64).parent), directory_flags)
-    descriptor = root
-    try:
-        for part in parts[:-1]:
-            next_descriptor = os.open(part, directory_flags, dir_fd=descriptor)
-            if descriptor != root:
-                os.close(descriptor)
-            descriptor = next_descriptor
-        file_descriptor = os.open(parts[-1], flags, dir_fd=descriptor)
-        try:
-            info = os.fstat(file_descriptor)
-            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
-                raise FileNotFoundError
-            chunks: list[bytes] = []
-            while chunk := os.read(file_descriptor, 1024 * 1024):
-                chunks.append(chunk)
-            return b"".join(chunks)
-        finally:
-            os.close(file_descriptor)
-    finally:
-        if descriptor != root:
-            os.close(descriptor)
-        os.close(root)
-
-
 def _html_response(content: bytes) -> Response:
     return Response(
         content,
         media_type="text/html",
         headers={"Cache-Control": "private, no-store", "X-Content-Type-Options": "nosniff"},
     )
-
-
-def _verified_index(content: bytes, composition_id: str) -> dict[str, object]:
-    marker = b'id="composition-metadata">'
-    metadata = json.loads(content.split(marker, 1)[1].split(b"</script>", 1)[0])
-    members = metadata["members"]
-    if (
-        not isinstance(members, list)
-        or not 2 <= len(members) <= 20
-        or any(
-            not isinstance(member, dict)
-            or set(member) != {"investigation_id", "content_hash", "rendered_sha256"}
-            or not isinstance(member.get("investigation_id"), str)
-            or not isinstance(member.get("content_hash"), str)
-            or not isinstance(member.get("rendered_sha256"), str)
-            or len(member["content_hash"]) != 64
-            or len(member["rendered_sha256"]) != 64
-            for member in members
-        )
-    ):
-        raise ValueError("invalid composition members")
-    identity = [
-        (
-            str(member["investigation_id"]),
-            str(member["content_hash"]),
-            str(member["rendered_sha256"]),
-        )
-        for member in members
-    ]
-    expected_conflicts: list[list[str]] = []
-    first_by_hash: dict[str, str] = {}
-    for investigation_id, content_hash, _rendered_sha256 in identity:
-        if content_hash in first_by_hash:
-            expected_conflicts.append([first_by_hash[content_hash], investigation_id])
-        else:
-            first_by_hash[content_hash] = investigation_id
-    if (
-        set(metadata)
-        != {
-            "composition_id",
-            "hash_conflicts",
-            "members",
-            "ordered_set_digest",
-            "schema_version",
-        }
-        or type(metadata.get("schema_version")) is not int
-        or metadata.get("schema_version") != 1
-        or metadata.get("hash_conflicts") != expected_conflicts
-        or metadata.get("composition_id") != composition_id
-        or metadata.get("ordered_set_digest") != composition_id.removeprefix("cmp-")
-        or composition_id_for(identity) != composition_id
-        or render_composition_index(metadata).encode("utf-8") != content
-    ):
-        raise ValueError("composition index integrity failure")
-    return metadata
 
 
 def _db() -> str:

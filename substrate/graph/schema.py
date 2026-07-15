@@ -364,6 +364,8 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "embeddings_meta",
     "multimedia_twin_runs",
     "multimedia_distillation_claims",
+    "deliverable_compositions",
+    "deliverable_composition_members",
 )
 
 
@@ -1173,6 +1175,37 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_meta_fingerprint
 """
 
 
+# Cycle 41: normalized immutable research-composition provenance for Write drafts.
+ANTIEK_GRAPH_SCHEMA_V16_COMPOSITION_DRAFT_SQL = """
+CREATE TABLE IF NOT EXISTS deliverable_compositions (
+    deliverable_id TEXT PRIMARY KEY REFERENCES deliverables(deliverable_id),
+    owner_user_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_digest TEXT NOT NULL,
+    composition_id TEXT NOT NULL,
+    ordered_set_digest TEXT NOT NULL,
+    composition_schema_version INTEGER NOT NULL CHECK (composition_schema_version = 1),
+    analysis_section_id TEXT NOT NULL REFERENCES deliverable_sections(section_id),
+    imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_user_id, idempotency_key)
+);
+CREATE TABLE IF NOT EXISTS deliverable_composition_members (
+    deliverable_id TEXT NOT NULL REFERENCES deliverables(deliverable_id),
+    member_index INTEGER NOT NULL CHECK (member_index >= 0),
+    investigation_id TEXT NOT NULL,
+    content_hash TEXT NOT NULL,
+    rendered_sha256 TEXT NOT NULL,
+    source_section_id TEXT NOT NULL REFERENCES deliverable_sections(section_id),
+    evidence_count INTEGER NOT NULL CHECK (evidence_count >= 0),
+    insufficient_evidence BOOLEAN NOT NULL,
+    PRIMARY KEY (deliverable_id, member_index),
+    UNIQUE (deliverable_id, investigation_id)
+);
+CREATE INDEX IF NOT EXISTS idx_deliverable_compositions_identity
+    ON deliverable_compositions(composition_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1249,6 +1282,7 @@ def init_database(con: LockedConnection) -> None:
     # GF-7 — chunk embedding provider/model/dimension pinning. Soft chunk_id
     # reference; pure idempotent CREATE IF NOT EXISTS.
     con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V16_COMPOSITION_DRAFT_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1289,7 +1323,16 @@ def _schema_is_present(db_path: str) -> bool:
             "information_schema.tables WHERE table_schema='main' "
             "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
-            "AND table_name='multimedia_distillation_claims'))"
+            "AND table_name='multimedia_distillation_claims') AND EXISTS "
+            "(SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name='deliverable_compositions') AND EXISTS (SELECT 1 FROM "
+            "information_schema.tables WHERE table_schema='main' AND "
+            "table_name='deliverable_composition_members') AND EXISTS (SELECT 1 "
+            "FROM information_schema.columns WHERE table_schema='main' AND "
+            "table_name='deliverable_compositions' AND column_name='request_digest') "
+            "AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='deliverable_composition_members' "
+            "AND column_name='rendered_sha256'))"
         ).fetchone()
     except Exception:
         return False

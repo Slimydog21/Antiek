@@ -4,7 +4,7 @@ import { NavLink, useParams } from "react-router-dom";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
-import { API_BASE, composeResearchArtifacts } from "../../lib/api";
+import { API_BASE, composeResearchArtifacts, createCompositionDraft } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 
 /**
@@ -25,10 +25,51 @@ export default function InvestigationSidebar() {
   const [selected, setSelected] = useState<string[]>([]);
   const [composeError, setComposeError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [draftRequest, setDraftRequest] = useState<{
+    compositionId: string;
+    idempotencyKey: string;
+    title: string;
+  } | null>(null);
 
   const toggle = (id: string) => {
     setComposeError(null);
+    setDraftRequest(null);
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+  const createDraft = async () => {
+    const preview = window.open("", "_blank");
+    if (preview) preview.opener = null;
+    setPending(true);
+    setComposeError(null);
+    try {
+      let exactRequest = draftRequest;
+      if (!exactRequest) {
+        const composition = await composeResearchArtifacts(selected);
+        const first = selected[0];
+        const firstQuestion = investigations.find((item) => item.investigation_id === first)?.question;
+        exactRequest = {
+          compositionId: composition.composition_id,
+          idempotencyKey: crypto.randomUUID(),
+          title: firstQuestion ? `Analysis: ${firstQuestion}` : "Research analysis",
+        };
+        setDraftRequest(exactRequest);
+      }
+      const draft = await createCompositionDraft({
+        composition_id: exactRequest.compositionId,
+        idempotency_key: exactRequest.idempotencyKey,
+        title: exactRequest.title,
+      });
+      if (preview) {
+        preview.location.replace(new URL(`/write/${draft.deliverable_id}`, window.location.origin).toString());
+      } else {
+        setComposeError("Allow pop-ups to open the review draft");
+      }
+    } catch (cause) {
+      preview?.close();
+      setComposeError(cause instanceof Error ? cause.message : "Could not create the review draft");
+    } finally {
+      setPending(false);
+    }
   };
   const compose = async () => {
     const preview = window.open("", "_blank");
@@ -76,10 +117,16 @@ export default function InvestigationSidebar() {
         <div className="mb-3 border border-ink-mute/30 rounded p-2" aria-label="Composition selection">
           <div className="font-mono text-[10px] mb-1" aria-live="polite">{selected.length}/20 selected</div>
           {selected.length > 0 && <ol className="list-decimal ml-4 mb-2">{selected.map((id) => <li key={id}>{id}</li>)}</ol>}
-          <button onClick={compose} disabled={pending || selected.length < 2 || selected.length > 20}
-            className="bg-sun text-ink px-2 py-1 rounded disabled:opacity-40">
-            {pending ? "Composing…" : "Compose HTML"}
-          </button>
+          <div className="flex flex-wrap gap-1">
+            <button onClick={createDraft} disabled={pending || selected.length < 2 || selected.length > 20}
+              className="bg-sun text-ink px-2 py-1 rounded disabled:opacity-40">
+              {pending ? "Working…" : "Create review draft"}
+            </button>
+            <button onClick={compose} disabled={pending || selected.length < 2 || selected.length > 20}
+              className="border border-ink-mute/40 px-2 py-1 rounded disabled:opacity-40">
+              Open HTML
+            </button>
+          </div>
           {composeError && <div role="alert" className="text-emperor font-mono text-[10px] mt-2">{composeError}</div>}
         </div>
       )}

@@ -342,6 +342,48 @@ export async function composeResearchArtifacts(
   return resp.json();
 }
 
+export interface CompositionDraftResponse {
+  deliverable_id: string;
+  composition_id: string;
+  ordered_set_digest: string;
+  analysis_section_id: string;
+  review_state: "source_scaffold";
+  generated: false;
+  replayed: boolean;
+  members: Array<{
+    member_index: number;
+    investigation_id: string;
+    content_hash: string;
+    rendered_sha256: string;
+    source_section_id: string;
+    evidence_count: number;
+    insufficient_evidence: boolean;
+  }>;
+  insufficient_evidence_members: string[];
+}
+
+export async function createCompositionDraft(req: {
+  composition_id: string;
+  idempotency_key: string;
+  title: string;
+  deliverable_kind?: "research_memo" | "book_chapter" | "biography_section" | "investor_brief" | "general_essay";
+}): Promise<CompositionDraftResponse> {
+  const resp = await apiFetch(`${API_BASE}/write/deliverables/from-composition`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!resp.ok) {
+    let message = `Draft creation failed (HTTP ${resp.status})`;
+    try {
+      const payload = await resp.json() as { detail?: string };
+      if (payload.detail) message = payload.detail;
+    } catch { /* retain status fallback */ }
+    throw new ApiError(message, resp.status, message);
+  }
+  return resp.json();
+}
+
 // ── Brainstorming Workstation — watch-for-later folder ──
 //
 // Mirrors interfaces/research/api/app.py ParkedQuestionEntry +
