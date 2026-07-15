@@ -31,6 +31,7 @@ def _setup(tmp_path: Path, *, operator: str = "owner-1"):
             mode="video",
             route_policy="balanced",
             sources=("Evidence",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )

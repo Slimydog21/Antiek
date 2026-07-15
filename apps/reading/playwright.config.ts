@@ -33,13 +33,13 @@ export default defineConfig({
     {
       name: "chromium",
       testIgnore:
-        /(ams-shell|glass-surface|glass-reduced-motion|windows-default|hotkeys-command-scheme|navrail-labels|token-retone|ams-v2-experience-matrix|ams-v2-resilience-matrix|feel-rw-ide-exempt|feel-experience-matrix|login-magic-link|passkey-roundtrip)\.spec\.ts/,
+        /(ams-shell|glass-surface|glass-reduced-motion|windows-default|hotkeys-command-scheme|navrail-labels|token-retone|ams-v2-experience-matrix|ams-v2-resilience-matrix|feel-rw-ide-exempt|feel-experience-matrix|research-hard-ceiling|login-magic-link|passkey-roundtrip)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {
       name: "ams-real",
       testMatch:
-        /(ams-shell|glass-surface|glass-reduced-motion|windows-default|hotkeys-command-scheme|navrail-labels|token-retone|ams-v2-experience-matrix|ams-v2-resilience-matrix|feel-rw-ide-exempt|feel-experience-matrix)\.spec\.ts/,
+        /(ams-shell|glass-surface|glass-reduced-motion|windows-default|hotkeys-command-scheme|navrail-labels|token-retone|ams-v2-experience-matrix|ams-v2-resilience-matrix|feel-rw-ide-exempt|feel-experience-matrix|research-hard-ceiling)\.spec\.ts/,
       use: { ...devices["Desktop Chrome"], baseURL: AMS_APP_BASE },
     },
     {

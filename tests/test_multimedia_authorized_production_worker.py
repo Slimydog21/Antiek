@@ -61,6 +61,7 @@ def _state(tmp_path: Path):
             mode="video",
             route_policy="balanced",
             sources=("Grounded production evidence.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )
