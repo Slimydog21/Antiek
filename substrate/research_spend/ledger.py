@@ -39,6 +39,10 @@ __all__ = [
     "PaidHoldIntent",
     "PaidHoldSnapshot",
     "PaidHoldState",
+    "ProviderObservationSnapshot",
+    "ProviderSubmissionIntent",
+    "ProviderSubmissionSnapshot",
+    "ProviderSubmissionState",
     "RecoveryItem",
     "ResearchSpendLedger",
     "RunBinding",
@@ -54,7 +58,7 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 3
+SCHEMA_VERSION: Final = 4
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
@@ -109,6 +113,18 @@ class LaunchOperationState(StrEnum):
     SETTLED = "settled"
     SUCCEEDED = "succeeded"
     FAILED_TERMINAL = "failed_terminal"
+
+
+class ProviderSubmissionState(StrEnum):
+    PREPARED = "prepared"
+    SUBMIT_POSSIBLE = "submit_possible"
+    CREATE_OUTCOME_UNKNOWN = "create_outcome_unknown"
+    IDENTITY_BOUND = "identity_bound"
+    RUNNING = "running"
+    PROVIDER_TERMINAL = "provider_terminal"
+    BILLING_PENDING = "billing_pending"
+    FAILED_PRE_ACCEPTANCE = "failed_pre_acceptance"
+    INTEGRITY_CONFLICT = "integrity_conflict"
 
 
 class LedgerIntegrityError(RuntimeError):
@@ -381,6 +397,73 @@ class LaunchExecutionSnapshot:
         if LaunchOperationState.PENDING in states:
             return "runnable"
         return "materialized"
+
+
+@dataclass(frozen=True)
+class ProviderSubmissionIntent:
+    submission_id: str
+    operation_id: str
+    provider: str
+    model: str
+    adapter_contract: str
+    account_digest: str
+    region: str
+    provider_model_id: str
+    client_request_token: str
+    create_request_json: str
+    recovery_strategy: str
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            _required_text(name, cast(str, getattr(self, name)))
+        if len(self.client_request_token) != 64 or any(
+            char not in "0123456789abcdef" for char in self.client_request_token
+        ):
+            raise ValueError("client_request_token must be a lowercase SHA-256")
+        try:
+            parsed = json.loads(self.create_request_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("create_request_json must be canonical JSON") from exc
+        def validate_scalar_tree(value: object) -> None:
+            if value is None or isinstance(value, (str, int, bool)):
+                return
+            if isinstance(value, list):
+                for item in value:
+                    validate_scalar_tree(item)
+                return
+            if isinstance(value, dict) and all(isinstance(key, str) for key in value):
+                for item in value.values():
+                    validate_scalar_tree(item)
+                return
+            raise ValueError("create_request_json accepts JSON scalars without floats")
+        validate_scalar_tree(parsed)
+        if json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True) != self.create_request_json:
+            raise ValueError("create_request_json must be canonical JSON")
+
+
+@dataclass(frozen=True)
+class ProviderSubmissionSnapshot:
+    intent: ProviderSubmissionIntent
+    run_id: str
+    owner_id: str
+    hold_id: str
+    state: ProviderSubmissionState
+    job_arn: str | None
+    attempt_count: int
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class ProviderObservationSnapshot:
+    observation_id: str
+    submission_id: str
+    source: str
+    evidence_json: str
+    raw_digest: str
+    provider_identity: str | None
+    provider_status: str | None
+    created_at: str
 
 
 _DDL: Final[tuple[str, ...]] = (
@@ -663,6 +746,113 @@ _MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
         BEGIN SELECT RAISE(ABORT, 'research launch operations are immutable'); END
         """,
     ),
+    3: (
+        "DROP TRIGGER research_launch_operations_no_update",
+        """
+        CREATE TRIGGER research_launch_operations_guard_update
+        BEFORE UPDATE ON research_launch_operations
+        WHEN NEW.operation_id != OLD.operation_id
+          OR NEW.execution_id != OLD.execution_id OR NEW.ordinal != OLD.ordinal
+          OR NEW.stable_source_id != OLD.stable_source_id OR NEW.question != OLD.question
+          OR NEW.payload_digest != OLD.payload_digest OR NEW.provider != OLD.provider
+          OR NEW.model != OLD.model OR NEW.logical_operation_id != OLD.logical_operation_id
+          OR NEW.blocked_reason IS NOT OLD.blocked_reason OR NEW.intent_json != OLD.intent_json
+          OR NEW.intent_sha256 != OLD.intent_sha256 OR NEW.created_at != OLD.created_at
+        BEGIN SELECT RAISE(ABORT, 'research launch operations are immutable'); END
+        """,
+        """
+        CREATE TABLE research_provider_submissions (
+            submission_id TEXT PRIMARY KEY,
+            operation_id TEXT NOT NULL UNIQUE REFERENCES research_launch_operations(operation_id),
+            hold_id TEXT NOT NULL UNIQUE REFERENCES research_spend_holds(hold_id),
+            run_id TEXT NOT NULL REFERENCES research_spend_runs(run_id),
+            owner_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            adapter_contract TEXT NOT NULL,
+            account_digest TEXT NOT NULL,
+            region TEXT NOT NULL,
+            provider_model_id TEXT NOT NULL,
+            client_request_token TEXT NOT NULL UNIQUE CHECK(length(client_request_token)=64),
+            create_request_json TEXT NOT NULL,
+            create_request_sha256 TEXT NOT NULL,
+            recovery_strategy TEXT NOT NULL,
+            intent_json TEXT NOT NULL,
+            intent_sha256 TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('prepared','submit_possible',
+                'create_outcome_unknown','identity_bound','running','provider_terminal',
+                'billing_pending','failed_pre_acceptance','integrity_conflict')),
+            job_arn TEXT UNIQUE,
+            attempt_count INTEGER NOT NULL DEFAULT 0 CHECK(attempt_count >= 0),
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        ) STRICT
+        """,
+        """
+        CREATE TABLE research_provider_observations (
+            observation_seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            observation_id TEXT NOT NULL UNIQUE,
+            submission_id TEXT NOT NULL REFERENCES research_provider_submissions(submission_id),
+            source TEXT NOT NULL,
+            evidence_json TEXT NOT NULL,
+            evidence_sha256 TEXT NOT NULL,
+            raw_digest TEXT NOT NULL,
+            provider_identity TEXT,
+            provider_status TEXT,
+            created_at TEXT NOT NULL
+        ) STRICT
+        """,
+        "CREATE INDEX research_provider_observations_submission_idx ON research_provider_observations(submission_id, observation_seq)",
+        """
+        CREATE TRIGGER research_provider_submissions_guard_update
+        BEFORE UPDATE ON research_provider_submissions
+        WHEN NEW.submission_id != OLD.submission_id OR NEW.operation_id != OLD.operation_id
+          OR NEW.hold_id != OLD.hold_id OR NEW.run_id != OLD.run_id OR NEW.owner_id != OLD.owner_id
+          OR NEW.provider != OLD.provider OR NEW.model != OLD.model
+          OR NEW.adapter_contract != OLD.adapter_contract OR NEW.account_digest != OLD.account_digest
+          OR NEW.region != OLD.region OR NEW.provider_model_id != OLD.provider_model_id
+          OR NEW.client_request_token != OLD.client_request_token
+          OR NEW.create_request_json != OLD.create_request_json
+          OR NEW.create_request_sha256 != OLD.create_request_sha256
+          OR NEW.recovery_strategy != OLD.recovery_strategy OR NEW.intent_json != OLD.intent_json
+          OR NEW.intent_sha256 != OLD.intent_sha256 OR NEW.created_at != OLD.created_at
+        BEGIN SELECT RAISE(ABORT, 'research provider submission immutable fields changed'); END
+        """,
+        """
+        CREATE TRIGGER research_provider_submissions_guard_transition
+        BEFORE UPDATE ON research_provider_submissions
+        WHEN NOT (
+          (OLD.state='prepared' AND NEW.state='submit_possible')
+          OR (OLD.state='submit_possible' AND NEW.state IN ('create_outcome_unknown','identity_bound','failed_pre_acceptance','integrity_conflict'))
+          OR (OLD.state='create_outcome_unknown' AND NEW.state IN ('create_outcome_unknown','identity_bound','integrity_conflict'))
+          OR (OLD.state='identity_bound' AND NEW.state IN ('identity_bound','running','billing_pending','integrity_conflict'))
+          OR (OLD.state='running' AND NEW.state IN ('running','billing_pending','integrity_conflict'))
+        )
+        OR NEW.attempt_count < OLD.attempt_count
+        OR NEW.attempt_count > OLD.attempt_count + 1
+        OR (OLD.job_arn IS NOT NULL AND NEW.job_arn IS NOT OLD.job_arn)
+        OR (NEW.state IN ('prepared','submit_possible','create_outcome_unknown',
+                          'failed_pre_acceptance') AND NEW.job_arn IS NOT NULL)
+        OR (NEW.state IN ('identity_bound','running','provider_terminal','billing_pending')
+            AND NEW.job_arn IS NULL)
+        BEGIN SELECT RAISE(ABORT, 'research provider submission transition rejected'); END
+        """,
+        """
+        CREATE TRIGGER research_provider_submissions_no_delete
+        BEFORE DELETE ON research_provider_submissions
+        BEGIN SELECT RAISE(ABORT, 'research provider submissions are durable'); END
+        """,
+        """
+        CREATE TRIGGER research_provider_observations_no_update
+        BEFORE UPDATE ON research_provider_observations
+        BEGIN SELECT RAISE(ABORT, 'research provider observations are append-only'); END
+        """,
+        """
+        CREATE TRIGGER research_provider_observations_no_delete
+        BEFORE DELETE ON research_provider_observations
+        BEGIN SELECT RAISE(ABORT, 'research provider observations are append-only'); END
+        """,
+    ),
 }
 
 
@@ -765,7 +955,9 @@ class ResearchSpendLedger:
                 raise LedgerIntegrityError("research spend schema has no matching application id")
             if version == 0:
                 connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
-                for index, statement in enumerate((*_DDL, *_MIGRATIONS[2]), start=1):
+                for index, statement in enumerate(
+                    (*_DDL, *_MIGRATIONS[2], *_MIGRATIONS[3]), start=1
+                ):
                     connection.execute(statement)
                     self._checkpoint(f"schema:after_statement:{index}")
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -1748,6 +1940,226 @@ class ResearchSpendLedger:
                 )
             return snapshot
 
+    def prepare_provider_submission(
+        self,
+        command_key: str,
+        binding: RunBinding,
+        hold_intent: PaidHoldIntent,
+        projected_max_cents: int,
+        intent: ProviderSubmissionIntent,
+    ) -> ProviderSubmissionSnapshot:
+        """Atomically claim one launch operation, reserve its hold, and bind replay intent."""
+        _bounded_int("projected_max_cents", projected_max_cents, minimum=1, maximum=MAX_AUTHORITY_CENTS)
+        if (hold_intent.provider, hold_intent.model) != (intent.provider, intent.model):
+            raise BindingConflict("submission and hold provider route changed")
+        hold_json = self._paid_intent_json(binding, hold_intent, projected_max_cents)
+        submission_json = self._provider_submission_json(intent)
+        command_intent = _canonical({
+            "hold_intent_sha256": _sha256(hold_json),
+            "owner_id": binding.owner_id,
+            "run_id": binding.run_id,
+            "submission_id": intent.submission_id,
+            "submission_intent_sha256": _sha256(submission_json),
+        })
+        with self._write("prepare_provider_submission") as connection:
+            replay = self._replay(connection, command_key, "prepare_provider_submission", intent.submission_id, command_intent)
+            if replay is not None:
+                return self._load_provider_submission(connection, intent.submission_id, binding.owner_id)
+            run = self._require_binding(connection, binding)
+            if run.status is not RunStatus.ACTIVE:
+                raise InvalidTransition(binding.run_id, run.status.value, "prepare provider submission")
+            operation = connection.execute(
+                "SELECT o.state,o.provider,o.model,o.logical_operation_id FROM research_launch_operations o "
+                "JOIN research_launch_executions e ON e.execution_id=o.execution_id "
+                "WHERE operation_id=? AND e.run_id=? AND e.owner_id=?",
+                (intent.operation_id, binding.run_id, binding.owner_id),
+            ).fetchone()
+            if operation is None:
+                raise BindingConflict("launch operation is unavailable")
+            if str(operation["state"]) != LaunchOperationState.PENDING.value:
+                raise InvalidTransition(intent.operation_id, str(operation["state"]), "prepare provider submission")
+            if (str(operation["provider"]), str(operation["model"])) != (intent.provider, intent.model):
+                raise BindingConflict("launch operation provider route changed")
+            if hold_intent.provider_idempotency_key != intent.client_request_token:
+                raise BindingConflict("provider hold does not bind the launch operation")
+            if connection.execute(
+                "SELECT 1 FROM research_provider_submissions WHERE submission_id=? OR operation_id=? OR client_request_token=?",
+                (intent.submission_id, intent.operation_id, intent.client_request_token),
+            ).fetchone() is not None:
+                raise IdempotencyConflict("provider submission identity already exists")
+            if connection.execute(
+                "SELECT 1 FROM research_spend_holds WHERE (run_id=? AND reservation_key=?) OR (provider=? AND provider_idempotency_key=?)",
+                (binding.run_id, hold_intent.reservation_key, hold_intent.provider, hold_intent.provider_idempotency_key),
+            ).fetchone() is not None:
+                raise IdempotencyConflict("reservation or provider identity already exists")
+            now = _now()
+            if connection.execute(
+                "UPDATE research_spend_runs SET held_cents=held_cents+?,updated_at=? WHERE run_id=? "
+                "AND owner_id=? AND session_id=? AND plan_digest=? AND approval_revision=? "
+                "AND status='active' AND ceiling_breached=0 "
+                "AND ? <= ceiling_cents-authorized_spent_cents-held_cents RETURNING run_id",
+                (projected_max_cents, now, binding.run_id, binding.owner_id, binding.session_id,
+                 binding.plan_digest, binding.approval_revision, projected_max_cents),
+            ).fetchone() is None:
+                raise SpendCeilingExceeded(binding.run_id, projected_max_cents, run.available_cents)
+            self._checkpoint("prepare_provider_submission:after_authority")
+            hold_id = uuid.uuid4().hex
+            connection.execute(
+                "INSERT INTO research_spend_holds (hold_id,run_id,reservation_key,intent_json,intent_sha256,seam_id,provider,model,operation,operation_digest,projection_digest,rate_snapshot,provider_idempotency_key,projected_max_cents,state,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'reserved',?,?)",
+                (hold_id,binding.run_id,hold_intent.reservation_key,hold_json,_sha256(hold_json),hold_intent.seam_id,
+                 hold_intent.provider,hold_intent.model,hold_intent.operation,hold_intent.operation_digest,
+                 hold_intent.projection_digest,hold_intent.rate_snapshot,hold_intent.provider_idempotency_key,
+                 projected_max_cents,now,now),
+            )
+            self._checkpoint("prepare_provider_submission:after_hold")
+            connection.execute(
+                "INSERT INTO research_provider_submissions (submission_id,operation_id,hold_id,run_id,owner_id,provider,model,adapter_contract,account_digest,region,provider_model_id,client_request_token,create_request_json,create_request_sha256,recovery_strategy,intent_json,intent_sha256,state,created_at,updated_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'prepared',?,?)",
+                (intent.submission_id,intent.operation_id,hold_id,binding.run_id,binding.owner_id,intent.provider,
+                 intent.model,intent.adapter_contract,intent.account_digest,intent.region,intent.provider_model_id,
+                 intent.client_request_token,intent.create_request_json,_sha256(intent.create_request_json),
+                 intent.recovery_strategy,submission_json,_sha256(submission_json),now,now),
+            )
+            connection.execute(
+                "UPDATE research_launch_operations SET state='claimed',hold_id=?,updated_at=? WHERE operation_id=? AND state='pending'",
+                (hold_id,now,intent.operation_id),
+            )
+            self._checkpoint("prepare_provider_submission:after_submission")
+            snapshot = self._load_provider_submission(connection, intent.submission_id, binding.owner_id)
+            self._record_command(connection, command_key, "prepare_provider_submission", intent.submission_id,
+                                 command_intent, _canonical({"hold_id": hold_id, "submission_id": intent.submission_id}))
+            self._append_event(connection, self._load_run(connection, binding.run_id), command_key=command_key,
+                               event_kind="provider_submission_prepared", hold_id=hold_id,
+                               held_delta_cents=projected_max_cents, evidence_json=command_intent)
+            return snapshot
+
+    def transition_provider_submission(
+        self, command_key: str, submission_id: str, owner_id: str,
+        target: ProviderSubmissionState, *, job_arn: str | None = None,
+        source: str, evidence_json: str, raw_digest: str,
+        provider_status: str | None = None, increment_attempt: bool = False,
+    ) -> ProviderSubmissionSnapshot:
+        """Apply one guarded provider transition and append exactly one observation."""
+        if not isinstance(target, ProviderSubmissionState):
+            raise TypeError("target must be ProviderSubmissionState")
+        for name, value in (("source", source), ("evidence_json", evidence_json), ("raw_digest", raw_digest)):
+            _required_text(name, value)
+        try:
+            parsed_evidence = json.loads(evidence_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("evidence_json must be canonical JSON") from exc
+        if json.dumps(parsed_evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=True) != evidence_json:
+            raise ValueError("evidence_json must be canonical JSON")
+        intent_json = _canonical({"evidence_sha256": _sha256(evidence_json), "job_arn": job_arn,
+                                  "owner_id": owner_id, "raw_digest": raw_digest,
+                                  "source": source, "submission_id": submission_id,
+                                  "target": target.value})
+        allowed = {
+            ProviderSubmissionState.PREPARED: {ProviderSubmissionState.SUBMIT_POSSIBLE},
+            ProviderSubmissionState.SUBMIT_POSSIBLE: {ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN, ProviderSubmissionState.IDENTITY_BOUND, ProviderSubmissionState.FAILED_PRE_ACCEPTANCE, ProviderSubmissionState.INTEGRITY_CONFLICT},
+            ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN: {ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN, ProviderSubmissionState.IDENTITY_BOUND, ProviderSubmissionState.INTEGRITY_CONFLICT},
+            ProviderSubmissionState.IDENTITY_BOUND: {ProviderSubmissionState.IDENTITY_BOUND, ProviderSubmissionState.RUNNING, ProviderSubmissionState.BILLING_PENDING, ProviderSubmissionState.INTEGRITY_CONFLICT},
+            ProviderSubmissionState.RUNNING: {ProviderSubmissionState.RUNNING, ProviderSubmissionState.BILLING_PENDING, ProviderSubmissionState.INTEGRITY_CONFLICT},
+        }
+        with self._write("transition_provider_submission") as connection:
+            replay = self._replay(connection, command_key, "transition_provider_submission", submission_id, intent_json)
+            if replay is not None:
+                return self._load_provider_submission(connection, submission_id, owner_id)
+            current = self._load_provider_submission(connection, submission_id, owner_id)
+            if target not in allowed.get(current.state, set()):
+                raise InvalidTransition(submission_id, current.state.value, target.value)
+            bound_arn = current.job_arn
+            if target is ProviderSubmissionState.IDENTITY_BOUND:
+                if job_arn is None and bound_arn is None:
+                    raise BindingConflict("provider identity is required")
+                if job_arn is not None:
+                    bound_arn = job_arn
+            elif job_arn is not None and job_arn != bound_arn:
+                raise BindingConflict("provider identity changed")
+            now = _now()
+            operation_state = {
+                ProviderSubmissionState.SUBMIT_POSSIBLE: "dispatch_possible",
+                ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN: "unknown",
+                ProviderSubmissionState.IDENTITY_BOUND: "unknown",
+                ProviderSubmissionState.RUNNING: "unknown",
+                ProviderSubmissionState.BILLING_PENDING: "unknown",
+                ProviderSubmissionState.INTEGRITY_CONFLICT: "unknown",
+                ProviderSubmissionState.FAILED_PRE_ACCEPTANCE: "failed_terminal",
+            }.get(target)
+            if target is ProviderSubmissionState.SUBMIT_POSSIBLE:
+                connection.execute("UPDATE research_spend_holds SET state='dispatch_possible',dispatch_possible_at=?,updated_at=? WHERE hold_id=? AND state='reserved'", (now,now,current.hold_id))
+            elif target in {
+                ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN,
+                ProviderSubmissionState.IDENTITY_BOUND,
+                ProviderSubmissionState.RUNNING,
+                ProviderSubmissionState.BILLING_PENDING,
+                ProviderSubmissionState.INTEGRITY_CONFLICT,
+            }:
+                connection.execute("UPDATE research_spend_holds SET state='unknown',updated_at=? WHERE hold_id=? AND state IN ('dispatch_possible','unknown')", (now,current.hold_id))
+            elif target is ProviderSubmissionState.FAILED_PRE_ACCEPTANCE:
+                hold = self._load_hold(connection, current.hold_id)
+                if hold.state is not PaidHoldState.DISPATCH_POSSIBLE:
+                    raise LedgerIntegrityError("pre-acceptance failure has no releasable hold")
+                connection.execute(
+                    "UPDATE research_spend_holds SET state='released',actual_cents=NULL,"
+                    "authorized_applied_cents=0,resolution_key=?,resolution_intent_json=?,"
+                    "resolution_intent_sha256=?,resolution_evidence_json=?,resolved_at=?,updated_at=? "
+                    "WHERE hold_id=? AND state='dispatch_possible'",
+                    (
+                        command_key, intent_json, _sha256(intent_json), evidence_json,
+                        now, now, current.hold_id,
+                    ),
+                )
+                if connection.execute(
+                    "UPDATE research_spend_runs SET held_cents=held_cents-?,updated_at=? "
+                    "WHERE run_id=? AND held_cents>=? RETURNING run_id",
+                    (hold.projected_max_cents, now, current.run_id, hold.projected_max_cents),
+                ).fetchone() is None:
+                    raise LedgerIntegrityError("pre-acceptance release could not consume authority")
+            connection.execute(
+                "UPDATE research_provider_submissions SET state=?,job_arn=?,attempt_count=attempt_count+?,updated_at=? WHERE submission_id=? AND state=?",
+                (target.value,bound_arn,int(increment_attempt),now,submission_id,current.state.value),
+            )
+            if operation_state is not None:
+                connection.execute("UPDATE research_launch_operations SET state=?,updated_at=? WHERE operation_id=?", (operation_state,now,current.intent.operation_id))
+            observation_id = hashlib.sha256(f"{submission_id}:{command_key}".encode()).hexdigest()
+            connection.execute(
+                "INSERT INTO research_provider_observations (observation_id,submission_id,source,evidence_json,evidence_sha256,raw_digest,provider_identity,provider_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
+                (observation_id,submission_id,source,evidence_json,_sha256(evidence_json),raw_digest,bound_arn,provider_status,now),
+            )
+            self._record_command(connection,command_key,"transition_provider_submission",submission_id,intent_json,
+                                 _canonical({"observation_id": observation_id, "state": target.value}))
+            return self._load_provider_submission(connection, submission_id, owner_id)
+
+    def provider_submission(self, submission_id: str, owner_id: str) -> ProviderSubmissionSnapshot:
+        connection = self._connect()
+        try:
+            return self._load_provider_submission(connection, submission_id, owner_id)
+        finally:
+            connection.close()
+
+    def provider_observations(self, submission_id: str, owner_id: str) -> tuple[ProviderObservationSnapshot, ...]:
+        connection = self._connect()
+        try:
+            self._load_provider_submission(connection, submission_id, owner_id)
+            rows = connection.execute("SELECT * FROM research_provider_observations WHERE submission_id=? ORDER BY observation_seq", (submission_id,)).fetchall()
+            snapshots = []
+            for row in rows:
+                evidence_json = str(row["evidence_json"])
+                if str(row["evidence_sha256"]) != _sha256(evidence_json):
+                    raise LedgerIntegrityError("provider observation evidence conflicts")
+                snapshots.append(ProviderObservationSnapshot(
+                    str(row["observation_id"]), submission_id, str(row["source"]),
+                    evidence_json, str(row["raw_digest"]),
+                    None if row["provider_identity"] is None else str(row["provider_identity"]),
+                    None if row["provider_status"] is None else str(row["provider_status"]),
+                    str(row["created_at"]),
+                ))
+            return tuple(snapshots)
+        finally:
+            connection.close()
+
     @staticmethod
     def _launch_operation_json(intent: LaunchOperationIntent) -> str:
         return _canonical(
@@ -1800,7 +2212,7 @@ class ResearchSpendLedger:
             except (TypeError, ValueError, json.JSONDecodeError) as exc:
                 raise LedgerIntegrityError("launch operation is malformed") from exc
             expected = self._launch_operation_json(operation_intent)
-            scalar = (
+            initial_scalar = (
                 operation_intent.operation_id,
                 execution_id,
                 operation_intent.ordinal,
@@ -1810,7 +2222,6 @@ class ResearchSpendLedger:
                 operation_intent.provider,
                 operation_intent.model,
                 operation_intent.logical_operation_id,
-                operation_intent.state.value,
                 operation_intent.blocked_reason,
             )
             actual = tuple(
@@ -1825,13 +2236,12 @@ class ResearchSpendLedger:
                     "provider",
                     "model",
                     "logical_operation_id",
-                    "state",
                     "blocked_reason",
                 )
             )
             if (
                 ordinal != operation_intent.ordinal
-                or actual != scalar
+                or actual != initial_scalar
                 or op_raw != expected
                 or str(op["intent_sha256"]) != _sha256(op_raw)
                 or (
@@ -1843,7 +2253,10 @@ class ResearchSpendLedger:
             operations.append(
                 LaunchOperationSnapshot(
                     execution_id=execution_id,
-                    intent=operation_intent,
+                    intent=replace(
+                        operation_intent,
+                        state=LaunchOperationState(str(op["state"])),
+                    ),
                     hold_id=None if op["hold_id"] is None else str(op["hold_id"]),
                     result_json=None if op["result_json"] is None else str(op["result_json"]),
                     created_at=str(op["created_at"]),
@@ -1874,6 +2287,26 @@ class ResearchSpendLedger:
                 self._load_launch_execution(
                     connection, str(row["execution_id"]), str(row["owner_id"])
                 )
+            submissions = connection.execute(
+                "SELECT submission_id,owner_id FROM research_provider_submissions ORDER BY submission_id"
+            ).fetchall()
+            for row in submissions:
+                snapshot = self._load_provider_submission(
+                    connection, str(row["submission_id"]), str(row["owner_id"])
+                )
+                observations = connection.execute(
+                    "SELECT evidence_json,evidence_sha256 FROM research_provider_observations WHERE submission_id=?",
+                    (snapshot.intent.submission_id,),
+                ).fetchall()
+                for observation in observations:
+                    evidence_json = str(observation["evidence_json"])
+                    try:
+                        parsed = json.loads(evidence_json)
+                    except json.JSONDecodeError as exc:
+                        raise LedgerIntegrityError("provider observation evidence is invalid") from exc
+                    canonical = json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+                    if canonical != evidence_json or str(observation["evidence_sha256"]) != _sha256(evidence_json):
+                        raise LedgerIntegrityError("provider observation evidence conflicts")
             return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
         finally:
             connection.close()
@@ -1900,6 +2333,61 @@ class ResearchSpendLedger:
         if run.binding != binding:
             raise BindingConflict("owner, session, plan, revision, mode, or currency changed")
         return run
+
+    @staticmethod
+    def _provider_submission_json(intent: ProviderSubmissionIntent) -> str:
+        return _canonical({name: cast(JsonScalar, getattr(intent, name)) for name in intent.__dataclass_fields__})
+
+    def _load_provider_submission(
+        self, connection: sqlite3.Connection, submission_id: str, owner_id: str
+    ) -> ProviderSubmissionSnapshot:
+        row = connection.execute(
+            "SELECT * FROM research_provider_submissions WHERE submission_id=? AND owner_id=?",
+            (submission_id, owner_id),
+        ).fetchone()
+        if row is None:
+            raise RunNotFound(submission_id)
+        intent = ProviderSubmissionIntent(
+            submission_id=str(row["submission_id"]), operation_id=str(row["operation_id"]),
+            provider=str(row["provider"]), model=str(row["model"]),
+            adapter_contract=str(row["adapter_contract"]), account_digest=str(row["account_digest"]),
+            region=str(row["region"]), provider_model_id=str(row["provider_model_id"]),
+            client_request_token=str(row["client_request_token"]),
+            create_request_json=str(row["create_request_json"]), recovery_strategy=str(row["recovery_strategy"]),
+        )
+        raw = str(row["intent_json"])
+        if (
+            raw != self._provider_submission_json(intent)
+            or str(row["intent_sha256"]) != _sha256(raw)
+            or str(row["create_request_sha256"]) != _sha256(intent.create_request_json)
+        ):
+            raise LedgerIntegrityError("provider submission intent does not match columns")
+        binding = connection.execute(
+            "SELECT o.hold_id,o.state AS operation_state,e.run_id,e.owner_id,"
+            "h.run_id AS hold_run_id,h.provider AS hold_provider,h.model AS hold_model,"
+            "h.provider_idempotency_key,h.operation_digest,h.state AS hold_state "
+            "FROM research_launch_operations o "
+            "JOIN research_launch_executions e ON e.execution_id=o.execution_id "
+            "JOIN research_spend_holds h ON h.hold_id=? WHERE o.operation_id=?",
+            (str(row["hold_id"]), intent.operation_id),
+        ).fetchone()
+        if binding is None or (
+            str(binding["hold_id"]) != str(row["hold_id"])
+            or str(binding["run_id"]) != str(row["run_id"])
+            or str(binding["hold_run_id"]) != str(row["run_id"])
+            or str(binding["owner_id"]) != str(row["owner_id"])
+            or str(binding["hold_provider"]) != intent.provider
+            or str(binding["hold_model"]) != intent.model
+            or str(binding["provider_idempotency_key"]) != intent.client_request_token
+        ):
+            raise LedgerIntegrityError("provider submission cross-table binding conflicts")
+        return ProviderSubmissionSnapshot(
+            intent=intent, run_id=str(row["run_id"]), owner_id=str(row["owner_id"]),
+            hold_id=str(row["hold_id"]), state=ProviderSubmissionState(str(row["state"])),
+            job_arn=None if row["job_arn"] is None else str(row["job_arn"]),
+            attempt_count=int(row["attempt_count"]), created_at=str(row["created_at"]),
+            updated_at=str(row["updated_at"]),
+        )
 
     def _load_run(self, connection: sqlite3.Connection, run_id: str) -> RunSnapshot:
         row = connection.execute(
