@@ -2,6 +2,7 @@ import { API_BASE, apiFetch } from "../lib/api";
 
 export type MultimediaMode = "video" | "audio" | "hybrid";
 export type MultimediaRoutePolicy = "cheapest" | "balanced" | "highest_quality";
+export type MultimediaDepth = "overview" | "intermediate" | "deep";
 export type MultimediaKind = "information_video" | "documentary_video" | "audio_experience";
 export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
 export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
@@ -11,11 +12,14 @@ export interface CreateMultimediaDraftRequest {
   target_minutes: number;
   mode: MultimediaMode;
   route_policy: MultimediaRoutePolicy;
+  source_scope?: string | null;
   sources?: string[];
   must_cover?: string[];
   avoid?: string[];
   audience?: string;
   style?: string | null;
+  depth?: MultimediaDepth;
+  selected_arc_ids?: string[];
 }
 
 export interface MultimediaAssetSummary {
@@ -88,6 +92,23 @@ export interface MultimediaAssetList {
   count: number;
 }
 
+export interface MultimediaEvidenceCandidate {
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  section_path: string | null;
+  excerpt: string;
+  text_sha256: string;
+  similarity: number;
+}
+
+export interface MultimediaEvidenceSearchResult {
+  asset_id: string;
+  revision_id: string;
+  query: string;
+  candidates: MultimediaEvidenceCandidate[];
+}
+
 export interface GateResult {
   gate_id: string;
   status: "pass" | "fail" | "manual";
@@ -111,12 +132,14 @@ export interface MultimediaAssetRecord {
     title: string;
     route_policy: MultimediaRoutePolicy;
     requested_duration_minutes: number;
+    parent_asset_id?: string | null;
     parent_revision_id?: string | null;
     steering_event_id?: string | null;
     manifest: unknown;
   };
   plan: unknown;
   mode: MultimediaMode;
+  derived_from_revision_id?: string | null;
   style: string | null;
   hardening_report: MultimediaHardeningReport | null;
   latest_steering_intent: unknown | null;
@@ -126,6 +149,75 @@ export interface MultimediaAssetRecord {
   production_link?: MultimediaProductionLink | null;
   audio_production_link?: MultimediaAudioProductionLink | null;
 }
+
+export interface MultimediaSteeringRequest {
+  expected_parent_revision_id: string;
+  prompt: string;
+  raw_voice_transcript?: string | null;
+  corrected_voice_transcript?: string | null;
+}
+
+export interface MultimediaSteeringOperation {
+  operation_id: string;
+  kind: string;
+  target_kind: string;
+  target_id: string;
+  value: string | null;
+  reason: string;
+}
+
+export interface MultimediaSteeringIntent {
+  steering_event_id: string;
+  prompt: string;
+  status: "ready" | "needs_clarification";
+  operations: MultimediaSteeringOperation[];
+  clarifications: string[];
+  transcript: {
+    transcript_id: string;
+    raw_text: string;
+    corrected_text: string | null;
+    confidence: number | null;
+  } | null;
+}
+
+export interface MultimediaSteeringPreviewClarification {
+  status: "needs_clarification";
+  asset_id: string;
+  parent_revision_id: string;
+  intent: MultimediaSteeringIntent;
+}
+
+export interface MultimediaSteeringPreviewReady {
+  status: "ready";
+  asset_id: string;
+  parent_revision_id: string;
+  proposed_revision_id: string;
+  route_policy: MultimediaRoutePolicy;
+  intent: MultimediaSteeringIntent;
+  operations: MultimediaSteeringOperation[];
+  affected_segment_ids: string[];
+  segment_reuse: Array<{
+    segment_id: string;
+    reused: boolean;
+    reason: string;
+    file_ids: string[];
+    file_sha256s: string[];
+  }>;
+  changes: Array<{
+    operation_id: string;
+    target_id: string;
+    changed_segment_ids: string[];
+    estimated_cost_delta_usd: number;
+    explanation: string;
+  }>;
+  estimated_cost_delta_usd: number;
+  preview_token: string;
+  expires_at_epoch_seconds: number;
+}
+
+export type MultimediaSteeringPreview =
+  | MultimediaSteeringPreviewClarification
+  | MultimediaSteeringPreviewReady;
 
 export interface MultimediaProductionLink {
   schema_version: "antiek.multimedia-production-link.v1";
@@ -148,10 +240,12 @@ export interface MultimediaAudioProductionLink {
   revision_id: string;
   receipt_sha256: string;
   audio_sha256: string;
+  audio_size_bytes: number;
   duration_seconds: number;
   chapter_ids: string[];
   retention_marker_count: number;
   learned_claim_count: number;
+  source_count: number;
 }
 
 export interface MultimediaSourceCitationWire {
@@ -161,21 +255,44 @@ export interface MultimediaSourceCitationWire {
   quote_sha256: string | null;
 }
 
+export interface MultimediaEvidenceSpanWire {
+  chunk_id: string;
+  document_id: string;
+  authority_kind: "canonical_graph" | "operator_excerpt";
+  chunk_sha256: string;
+  start_utf8_byte: number;
+  end_utf8_byte: number;
+  span_sha256: string;
+  exact_text: string;
+}
+
+export interface MultimediaEvidenceDerivationWire {
+  method: "verbatim_span";
+  recipe_version: "antiek.evidence-narration.v1";
+  spans: MultimediaEvidenceSpanWire[];
+  output_sha256: string;
+}
+
 export interface MultimediaScriptLineWire {
   line_id: string;
   sequence: number;
   text: string;
   kind: "factual" | "transition" | "narration" | "opinion" | "instruction";
   citations: MultimediaSourceCitationWire[];
+  evidence_derivation?: MultimediaEvidenceDerivationWire | null;
   unsourced_reason: string | null;
 }
 
 export interface MultimediaPlanWire {
+  grounding_contract?: "citation_presence_v1" | "exact_extract_v2" | "audible_transform_v1";
   request: {
     topic: string;
     target_minutes: number;
     mode: MultimediaMode;
     route_policy: MultimediaRoutePolicy;
+    depth?: MultimediaDepth;
+    source_scope?: string | null;
+    selected_arc_ids?: string[];
   };
   suggestions: Array<{
     arc_id: string;
@@ -295,16 +412,344 @@ export interface MultimediaLocalAudiblePlayback {
   audio_size_bytes: number;
   duration_seconds: number;
   chapter_ids: string[];
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    sequence: number;
+    start_offset_seconds: number;
+    end_offset_seconds: number;
+  }>;
   retention_marker_count: number;
   learned_claim_count: number;
   source_count: number;
   learned_claims: Array<{
+    line_id: string;
     chapter_id: string;
     claim_text: string;
     source_count: number;
     follow_up_prompt: string;
+    source_chunk_ids: string[];
+    evidence_status: "verified_exact" | "unavailable_legacy";
+    evidence_sources: Array<{
+      chunk_id: string;
+      document_id: string;
+      locator: string | null;
+      authority_kind: "canonical_graph" | "operator_excerpt";
+      chunk_sha256: string;
+      start_utf8_byte: number;
+      end_utf8_byte: number;
+      span_sha256: string;
+      exact_text: string;
+    }>;
   }>;
   audio_url: string;
+}
+
+export type MultimediaPaidAudioPlayback = MultimediaLocalAudiblePlayback;
+
+export interface MultimediaResearchIntent {
+  intent_id: string;
+  state: "prepared";
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  audio_sha256: string;
+  chapter_id: string;
+  line_id: string;
+  question: string;
+  claim_text: string;
+  follow_up_prompt: string;
+  evidence_sources: MultimediaLocalAudiblePlayback["learned_claims"][number]["evidence_sources"];
+  evidence_digest: string;
+  request_digest: string;
+  created_at: string;
+  plan_handoff_status: "blocked_unowned_plan_store";
+  provider_launch_authorized: false;
+  spend_authority_digest: null;
+  plan_seed: { question: string; intent_id: string; intent_digest: string; evidence_digest: string };
+}
+
+export async function prepareResearchIntent(
+  assetId: string,
+  revisionId: string,
+  receiptSha256: string,
+  audioSha256: string,
+  claim: MultimediaLocalAudiblePlayback["learned_claims"][number],
+  question: string,
+  idempotencyKey: string,
+): Promise<MultimediaResearchIntent> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/research-intents`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        line_id: claim.line_id,
+        question,
+        idempotency_key: idempotencyKey,
+      }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_research_intent_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_research_intent_conflict");
+  if (!resp.ok) throw new Error(`POST research-intents: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaResearchIntent;
+  const evidencePayload = {
+    asset_id: assetId,
+    revision_id: revisionId,
+    receipt_sha256: receiptSha256,
+    audio_sha256: audioSha256,
+    chapter_id: claim.chapter_id,
+    line_id: claim.line_id,
+    claim_text: claim.claim_text,
+    follow_up_prompt: claim.follow_up_prompt,
+    evidence_sources: claim.evidence_sources,
+  };
+  const expectedEvidenceDigest = await sha256Canonical(evidencePayload);
+  const expectedRequestDigest = await sha256Canonical({ ...evidencePayload, question });
+  if (
+    result.state !== "prepared" || result.asset_id !== assetId ||
+    result.revision_id !== revisionId || result.receipt_sha256 !== receiptSha256 ||
+    result.audio_sha256 !== audioSha256 || result.chapter_id !== claim.chapter_id ||
+    result.line_id !== claim.line_id || result.question !== question ||
+    result.claim_text !== claim.claim_text || result.follow_up_prompt !== claim.follow_up_prompt ||
+    !sameResearchEvidence(result.evidence_sources, claim.evidence_sources) ||
+    result.plan_handoff_status !== "blocked_unowned_plan_store" ||
+    result.provider_launch_authorized !== false || result.spend_authority_digest !== null ||
+    !/^mmri_[0-9a-f]{48}$/.test(result.intent_id) ||
+    result.evidence_digest !== expectedEvidenceDigest ||
+    result.request_digest !== expectedRequestDigest ||
+    typeof result.created_at !== "string" || !Number.isFinite(Date.parse(result.created_at)) ||
+    result.plan_seed?.intent_id !== result.intent_id ||
+    result.plan_seed?.question !== question || result.plan_seed?.evidence_digest !== result.evidence_digest
+  ) throw new Error("multimedia_research_intent_identity_conflict");
+  const expectedIntentDigest = await sha256Canonical({
+    intent_id: result.intent_id,
+    state: result.state,
+    asset_id: result.asset_id,
+    revision_id: result.revision_id,
+    receipt_sha256: result.receipt_sha256,
+    audio_sha256: result.audio_sha256,
+    chapter_id: result.chapter_id,
+    line_id: result.line_id,
+    question: result.question,
+    claim_text: result.claim_text,
+    follow_up_prompt: result.follow_up_prompt,
+    evidence_sources: result.evidence_sources,
+    evidence_digest: result.evidence_digest,
+    request_digest: result.request_digest,
+    created_at: result.created_at,
+  });
+  if (result.plan_seed.intent_digest !== expectedIntentDigest) {
+    throw new Error("multimedia_research_intent_identity_conflict");
+  }
+  return result;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => (
+    `${JSON.stringify(key)}:${canonicalJson(record[key])}`
+  )).join(",")}}`;
+}
+
+async function sha256Canonical(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson(value)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function sameResearchEvidence(
+  actual: MultimediaResearchIntent["evidence_sources"],
+  expected: MultimediaLocalAudiblePlayback["learned_claims"][number]["evidence_sources"],
+): boolean {
+  return Array.isArray(actual) && actual.length === expected.length && actual.every((source, index) => {
+    const row = expected[index];
+    return source.chunk_id === row.chunk_id && source.document_id === row.document_id &&
+      source.locator === row.locator && source.authority_kind === row.authority_kind &&
+      source.chunk_sha256 === row.chunk_sha256 && source.start_utf8_byte === row.start_utf8_byte &&
+      source.end_utf8_byte === row.end_utf8_byte && source.span_sha256 === row.span_sha256 &&
+      source.exact_text === row.exact_text;
+  });
+}
+
+// ── Cycle 22: listening progress ─────────────────────────────────
+
+export interface MultimediaListeningProgressResponse {
+  resume_available: boolean;
+  asset_id: string;
+  revision_id: string;
+  audio_sha256: string;
+  position_milliseconds: number;
+  duration_milliseconds: number;
+  completed: boolean;
+  session_id: string;
+  sequence: number;
+  updated_at: number;
+  applied: boolean | null;
+}
+
+export interface MultimediaListeningProgressCheckpoint {
+  revision_id: string;
+  position_milliseconds: number;
+  session_id: string;
+  sequence: number;
+}
+
+function isValidListeningProgressResponse(
+  result: MultimediaListeningProgressResponse,
+  assetId: string,
+  revisionId: string,
+  audioSha256: string,
+  durationMilliseconds: number,
+  expectedApplied: "read" | "write",
+): boolean {
+  if (
+    typeof result.resume_available !== "boolean" ||
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.audio_sha256 !== audioSha256 ||
+    !Number.isSafeInteger(result.position_milliseconds) || result.position_milliseconds < 0 ||
+    !Number.isSafeInteger(result.duration_milliseconds) || result.duration_milliseconds <= 0 ||
+    result.position_milliseconds > result.duration_milliseconds ||
+    typeof result.completed !== "boolean" ||
+    typeof result.session_id !== "string" ||
+    !Number.isSafeInteger(result.sequence) || result.sequence < 0 ||
+    result.duration_milliseconds !== durationMilliseconds ||
+    !Number.isFinite(result.updated_at) || result.updated_at < 0 ||
+    !(result.applied === null || typeof result.applied === "boolean")
+  ) return false;
+  if (
+    (expectedApplied === "read" && result.applied !== null) ||
+    (expectedApplied === "write" && typeof result.applied !== "boolean")
+  ) return false;
+  if (result.resume_available) {
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(result.session_id) || result.updated_at <= 0) return false;
+    if (result.completed !== (result.duration_milliseconds - result.position_milliseconds <= 5000)) return false;
+  } else if (
+    result.position_milliseconds !== 0 || result.completed || result.session_id !== "" ||
+    result.sequence !== 0 || result.updated_at !== 0 || result.applied !== null
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export async function getListeningProgress(
+  assetId: string,
+  revisionId: string,
+  audioSha256: string,
+  durationSeconds: number,
+): Promise<MultimediaListeningProgressResponse> {
+  const durationMilliseconds = Math.round(durationSeconds * 1000);
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/listening-progress?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_listening_progress_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_listening_progress_conflict");
+  if (resp.status === 503) throw new Error("multimedia_listening_progress_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET listening-progress: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaListeningProgressResponse;
+  if (!isValidListeningProgressResponse(
+    result, assetId, revisionId, audioSha256, durationMilliseconds, "read",
+  )) {
+    throw new Error("multimedia_listening_progress_identity_conflict");
+  }
+  return result;
+}
+
+export async function putListeningProgress(
+  assetId: string,
+  checkpoint: MultimediaListeningProgressCheckpoint,
+  audioSha256: string,
+  durationSeconds: number,
+  keepalive = false,
+): Promise<MultimediaListeningProgressResponse> {
+  const durationMilliseconds = Math.round(durationSeconds * 1000);
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/listening-progress`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(checkpoint),
+      keepalive,
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_listening_progress_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_listening_progress_conflict");
+  if (resp.status === 503) throw new Error("multimedia_listening_progress_runtime_unavailable");
+  if (!resp.ok) throw new Error(`PUT listening-progress: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaListeningProgressResponse;
+  if (!isValidListeningProgressResponse(
+    result, assetId, checkpoint.revision_id, audioSha256, durationMilliseconds, "write",
+  )) {
+    throw new Error("multimedia_listening_progress_identity_conflict");
+  }
+  return result;
+}
+
+function hasValidAudioTimeline(result: MultimediaLocalAudiblePlayback): boolean {
+  if (!Array.isArray(result.chapters) || result.chapters.length !== result.chapter_ids.length) return false;
+  let expectedStart = 0;
+  const ids = new Set<string>();
+  const sequences = new Set<number>();
+  for (let index = 0; index < result.chapters.length; index += 1) {
+    const chapter = result.chapters[index];
+    if (
+      !chapter || typeof chapter.chapter_id !== "string" || !chapter.chapter_id ||
+      typeof chapter.title !== "string" || !chapter.title.trim() ||
+      !Number.isSafeInteger(chapter.sequence) || chapter.sequence !== index ||
+      ids.has(chapter.chapter_id) || sequences.has(chapter.sequence) ||
+      chapter.chapter_id !== result.chapter_ids[index] ||
+      !Number.isFinite(chapter.start_offset_seconds) || !Number.isFinite(chapter.end_offset_seconds) ||
+      chapter.start_offset_seconds < 0 || chapter.end_offset_seconds <= chapter.start_offset_seconds ||
+      Math.abs(chapter.start_offset_seconds - expectedStart) > 0.001
+    ) return false;
+    ids.add(chapter.chapter_id);
+    sequences.add(chapter.sequence);
+    expectedStart = chapter.end_offset_seconds;
+  }
+  return Math.abs(expectedStart - result.duration_seconds) <= 0.001;
+}
+
+function hasValidAudioClaims(result: MultimediaLocalAudiblePlayback): boolean {
+  if (!Array.isArray(result.learned_claims) || result.learned_claims.length !== result.learned_claim_count) return false;
+  const lineIds = new Set<string>();
+  return result.learned_claims.every((claim) => {
+    if (
+      !claim || typeof claim.line_id !== "string" || !claim.line_id || lineIds.has(claim.line_id) ||
+      !result.chapter_ids.includes(claim.chapter_id) || typeof claim.claim_text !== "string" || !claim.claim_text ||
+      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 ||
+      typeof claim.follow_up_prompt !== "string" || !claim.follow_up_prompt ||
+      !Array.isArray(claim.source_chunk_ids) || claim.source_chunk_ids.length !== claim.source_count ||
+      new Set(claim.source_chunk_ids).size !== claim.source_chunk_ids.length ||
+      claim.source_chunk_ids.some((chunkId) => typeof chunkId !== "string" || !chunkId) ||
+      (claim.evidence_status !== "verified_exact" && claim.evidence_status !== "unavailable_legacy") ||
+      !Array.isArray(claim.evidence_sources) ||
+      (claim.evidence_status === "verified_exact" && claim.evidence_sources.length !== claim.source_count) ||
+      (claim.evidence_status === "unavailable_legacy" && claim.evidence_sources.length !== 0)
+    ) return false;
+    lineIds.add(claim.line_id);
+    const chunks = new Set<string>();
+    return claim.evidence_sources.every((source, index) => {
+      if (!source || chunks.has(source.chunk_id) || source.chunk_id !== claim.source_chunk_ids[index]) return false;
+      chunks.add(source.chunk_id);
+      return (
+        typeof source.chunk_id === "string" && source.chunk_id.length > 0 && source.chunk_id.length <= 128 &&
+        typeof source.document_id === "string" && source.document_id.length > 0 && source.document_id.length <= 128 &&
+        (source.locator === null || (typeof source.locator === "string" && source.locator.length <= 1024)) &&
+        (source.authority_kind === "canonical_graph" || source.authority_kind === "operator_excerpt") &&
+        /^[0-9a-f]{64}$/.test(source.chunk_sha256) && /^[0-9a-f]{64}$/.test(source.span_sha256) &&
+        Number.isSafeInteger(source.start_utf8_byte) && Number.isSafeInteger(source.end_utf8_byte) &&
+        source.start_utf8_byte >= 0 && source.end_utf8_byte > source.start_utf8_byte &&
+        typeof source.exact_text === "string" && source.exact_text === claim.claim_text &&
+        new TextEncoder().encode(source.exact_text).length === source.end_utf8_byte - source.start_utf8_byte
+      );
+    });
+  });
 }
 
 export interface MultimediaNarrationAuthorization {
@@ -503,6 +948,76 @@ export async function getMultimediaAsset(assetId: string): Promise<MultimediaAss
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
   if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+export async function searchMultimediaEvidence(
+  assetId: string,
+  revisionId: string,
+  limit = 12,
+): Promise<MultimediaEvidenceSearchResult> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/evidence-search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expected_revision_id: revisionId, limit }),
+  });
+  if (resp.status === 409) throw new Error("multimedia_evidence_conflict");
+  if (resp.status === 503) throw new Error("multimedia_evidence_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST multimedia evidence-search: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaEvidenceSearchResult;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    typeof result.query !== "string" ||
+    !result.query ||
+    !Array.isArray(result.candidates) ||
+    result.candidates.length > 20 ||
+    result.candidates.some((candidate) => !validEvidenceCandidate(candidate)) ||
+    new Set(result.candidates.map((candidate) => candidate.chunk_id)).size !== result.candidates.length
+  ) {
+    throw new Error("multimedia_evidence_identity_conflict");
+  }
+  return result;
+}
+
+export async function createGroundedMultimediaDraft(
+  assetId: string,
+  revisionId: string,
+  candidates: MultimediaEvidenceCandidate[],
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/grounded-drafts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expected_parent_revision_id: revisionId,
+      selections: candidates.map(({ chunk_id, text_sha256 }) => ({ chunk_id, text_sha256 })),
+    }),
+  });
+  if (resp.status === 409) throw new Error("multimedia_evidence_conflict");
+  if (resp.status === 503) throw new Error("multimedia_evidence_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST multimedia grounded-drafts: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaAssetRecord;
+  if (
+    result.asset.parent_asset_id !== assetId ||
+    result.derived_from_revision_id !== revisionId ||
+    result.asset.asset_id === assetId
+  ) {
+    throw new Error("multimedia_evidence_identity_conflict");
+  }
+  return result;
+}
+
+function validEvidenceCandidate(candidate: MultimediaEvidenceCandidate): boolean {
+  return Boolean(
+    candidate &&
+    typeof candidate.chunk_id === "string" && candidate.chunk_id &&
+    typeof candidate.document_id === "string" && candidate.document_id &&
+    typeof candidate.document_title === "string" && candidate.document_title &&
+    (candidate.section_path === null || typeof candidate.section_path === "string") &&
+    typeof candidate.excerpt === "string" && candidate.excerpt &&
+    typeof candidate.text_sha256 === "string" && /^[0-9a-f]{64}$/.test(candidate.text_sha256) &&
+    typeof candidate.similarity === "number" && Number.isFinite(candidate.similarity) &&
+    candidate.similarity >= -1 && candidate.similarity <= 1
+  );
 }
 
 export async function getMultimediaPlayback(
@@ -773,19 +1288,43 @@ export async function getMultimediaLocalAudiblePlayback(
     !Number.isSafeInteger(result.audio_size_bytes) || result.audio_size_bytes <= 0 ||
     !Array.isArray(result.chapter_ids) || result.chapter_ids.length < 1 ||
     new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !hasValidAudioTimeline(result) ||
     !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
     !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
     !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
-    !Array.isArray(result.learned_claims) ||
-    result.learned_claims.length !== result.learned_claim_count ||
-    result.learned_claims.some((claim) =>
-      !result.chapter_ids.includes(claim.chapter_id) || !claim.claim_text ||
-      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 ||
-      !claim.follow_up_prompt
-    )
+    !hasValidAudioClaims(result)
   ) {
     throw new Error("multimedia_local_audible_playback_identity_conflict");
   }
+  return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
+}
+
+export async function getMultimediaPaidAudioPlayback(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaPaidAudioPlayback> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/audio-playback?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_paid_audio_playback_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_paid_audio_playback_conflict");
+  if (resp.status === 503) throw new Error("multimedia_paid_audio_playback_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET paid audio playback: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaPaidAudioPlayback;
+  const expectedPath = `/multimedia/assets/${encodeURIComponent(assetId)}/audio-playback/${encodeURIComponent(revisionId)}/audio`;
+  if (
+    result.asset_id !== assetId || result.revision_id !== revisionId ||
+    result.audio_url !== expectedPath || !Number.isFinite(result.duration_seconds) ||
+    result.duration_seconds <= 0 || !Number.isSafeInteger(result.audio_size_bytes) ||
+    result.audio_size_bytes <= 0 || !Array.isArray(result.chapter_ids) ||
+    result.chapter_ids.length < 1 || new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !hasValidAudioTimeline(result) ||
+    !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
+    !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
+    !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
+    !hasValidAudioClaims(result)
+  ) throw new Error("multimedia_paid_audio_playback_identity_conflict");
   return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
 }
 
@@ -1159,6 +1698,34 @@ export async function produceAuthorizedMultimedia(
   return record;
 }
 
+export async function produceAuthorizedAudio(
+  assetId: string,
+  expectedRevisionId: string,
+  chapterAuthorities: Array<{
+    chapter_id: string;
+    authorization: MultimediaNarrationAuthorization["authorization"];
+  }>,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/audio-production`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      expected_revision_id: expectedRevisionId, chapter_authorities: chapterAuthorities,
+    }) },
+  );
+  if (resp.status === 404) throw new Error("multimedia_audio_production_worker_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_audio_production_worker_conflict");
+  if (resp.status === 503) throw new Error("multimedia_audio_production_worker_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/audio-production: HTTP ${resp.status}`);
+  const record = (await resp.json()) as MultimediaAssetRecord;
+  if (!record.audio_production_link || record.asset.asset_id !== assetId ||
+      record.asset.revision_id !== expectedRevisionId ||
+      record.audio_production_link.asset_id !== assetId ||
+      record.audio_production_link.revision_id !== expectedRevisionId) {
+    throw new Error("multimedia_audio_production_worker_identity_conflict");
+  }
+  return record;
+}
+
 export async function listMultimediaJobs(assetId: string): Promise<MultimediaJobList> {
   const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/jobs`);
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
@@ -1174,18 +1741,43 @@ export async function approveMultimediaDryRun(assetId: string): Promise<Multimed
   return (await resp.json()) as MultimediaAssetRecord;
 }
 
+export async function previewMultimediaSteering(
+  assetId: string,
+  request: MultimediaSteeringRequest,
+): Promise<MultimediaSteeringPreview> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/steering-preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (resp.status === 409) throw new Error(await multimediaSteeringConflict(resp));
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/steering-preview: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaSteeringPreview;
+}
+
 export async function steerMultimediaAsset(
   assetId: string,
-  request: { prompt: string; raw_voice_transcript?: string | null; corrected_voice_transcript?: string | null },
+  request: MultimediaSteeringRequest & { preview_token: string },
 ): Promise<MultimediaAssetRecord> {
   const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/steer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  if (resp.status === 409) throw new Error("multimedia_steering_needs_clarification");
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (resp.status === 409) throw new Error(await multimediaSteeringConflict(resp));
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/steer: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+async function multimediaSteeringConflict(resp: Response): Promise<string> {
+  try {
+    const body = (await resp.json()) as { detail?: unknown };
+    return typeof body.detail === "string" ? body.detail : "multimedia_steering_conflict";
+  } catch {
+    return "multimedia_steering_conflict";
+  }
 }
 
 export async function runMultimediaHardening(assetId: string): Promise<MultimediaAssetRecord> {

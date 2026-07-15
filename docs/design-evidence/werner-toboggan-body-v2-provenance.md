@@ -1,7 +1,7 @@
 # Werner toboggan body v2 — generation provenance
 
-Date: 2026-07-14  
-Tool: built-in ChatGPT Image (`image_gen`)  
+Date: 2026-07-14
+Tool: built-in ChatGPT Image (`image_gen`)
 Mode: identity-preserving precise-object edit, followed by local chroma-key removal
 
 ## Edit target
