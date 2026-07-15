@@ -24,6 +24,7 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
+import { notifyResearchStarted } from "../../werner";
 import { emitSourceRead, isRead } from "./sourceRead";
 
 /**
@@ -200,6 +201,13 @@ export default function BookReader() {
     (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
       window.getSelection()?.removeAllRanges(); // collapse so the menu closes
+      // Living Werner: highlight → deep-research is a real product launch edge.
+      // Deterministic per passage+thread so remount monitors can claim provenance
+      // without inventing a second mascot.
+      // Same launch boundary DR workspace uses — Werner goes thinking.
+      notifyResearchStarted(
+        `float-chase:${readingThreadId}:${safeSpawnText.slice(0, 96)}`,
+      );
       openPanel(
         "ChaseThread",
         { spawnContext: safeSpawnText, parentInvestigationId: readingThreadId },
