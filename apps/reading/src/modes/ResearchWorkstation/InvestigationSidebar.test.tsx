@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 
@@ -307,8 +307,8 @@ describe("ResearchIndexView — tree structure", () => {
     expect(screen.getByText("Root")).toBeTruthy();
     expect(screen.getByText("Child 1")).toBeTruthy();
     expect(screen.getByText("Child 2")).toBeTruthy();
-    const lists = screen.getAllByRole("list");
-    expect(lists.length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByRole("tree", { name: "Investigations" })).toBeTruthy();
+    expect(screen.getByRole("group")).toBeTruthy();
   });
 
   it("renders 3-generation depth correctly", () => {
@@ -339,5 +339,171 @@ describe("ResearchIndexView — tree structure", () => {
     const target = document.getElementById(disclosure.getAttribute("aria-controls") ?? "");
     expect(disclosure.getAttribute("aria-expanded")).toBe("true");
     expect(target).toBeTruthy();
+  });
+});
+
+describe("ResearchIndexView — keyboard tree", () => {
+  const keyboardTree = [
+    node(inv({ investigation_id: "root", question: "Root" }), [
+      node(inv({ investigation_id: "child", question: "Child" }), [
+        node(inv({ investigation_id: "grandchild", question: "Grandchild" })),
+      ]),
+    ]),
+    node(inv({ investigation_id: "other", question: "Other" })),
+  ];
+
+  it("exposes tree semantics and one roving tab stop", () => {
+    renderView({ tree: keyboardTree });
+    expect(screen.getByRole("tree", { name: "Investigations" })).toBeTruthy();
+    expect(screen.getAllByRole("group")).toHaveLength(2);
+    const items = screen.getAllByRole("treeitem");
+    expect(items.map((item) => item.getAttribute("aria-level"))).toEqual(["1", "2", "3", "1"]);
+    expect(items.filter((item) => item.tabIndex === 0)).toHaveLength(1);
+    expect(screen.getAllByRole("link").every((link) => link.tabIndex === -1)).toBe(true);
+    expect(screen.getAllByRole("button", { name: "Collapse" }).every((button) => button.tabIndex === -1)).toBe(true);
+  });
+
+  it("initially roves to the routed active item", () => {
+    renderView({ tree: keyboardTree, activeId: "grandchild" });
+    expect(screen.getByRole("treeitem", { name: /Grandchild/ }).tabIndex).toBe(0);
+  });
+
+  it("moves in visible preorder with arrows and Home/End without changing route-current", async () => {
+    const user = userEvent.setup();
+    renderView({ tree: keyboardTree, activeId: "root" });
+    const root = screen.getByRole("treeitem", { name: /Root/ });
+    root.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: /Child/ }));
+    await user.keyboard("{End}");
+    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: /Other/ }));
+    await user.keyboard("{Home}");
+    expect(document.activeElement).toBe(root);
+    expect(document.querySelector('a[aria-current="page"]')?.getAttribute("href")).toBe("/inv/root");
+  });
+
+  it("uses Right to enter children and Left to collapse or return to a parent", async () => {
+    const user = userEvent.setup();
+    renderView({ tree: keyboardTree });
+    const root = screen.getByRole("treeitem", { name: /Root/ });
+    root.focus();
+    await user.keyboard("{ArrowRight}");
+    const child = screen.getByRole("treeitem", { name: /Child/ });
+    expect(document.activeElement).toBe(child);
+    await user.keyboard("{ArrowLeft}");
+    expect(child.getAttribute("aria-expanded")).toBe("false");
+    await user.keyboard("{ArrowLeft}");
+    expect(document.activeElement).toBe(root);
+  });
+
+  it("skips collapsed descendants and returns descendant focus to the collapsing ancestor", async () => {
+    const user = userEvent.setup();
+    renderView({ tree: keyboardTree });
+    const child = screen.getByRole("treeitem", { name: /Child/ });
+    child.focus();
+    await user.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: /Grandchild/ }));
+    await user.click(screen.getAllByRole("button", { name: "Collapse" })[1]);
+    expect(document.activeElement).toBe(child);
+    await user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: /Other/ }));
+  });
+
+  it("activates the existing link with Enter", async () => {
+    const user = userEvent.setup();
+    renderView({ tree: keyboardTree });
+    const other = screen.getByRole("treeitem", { name: /Other/ });
+    const link = screen.getByRole("link", { name: /Other/ });
+    const click = vi.fn((event: Event) => event.preventDefault());
+    link.addEventListener("click", click);
+    other.focus();
+    await user.keyboard("{Enter}");
+    expect(click).toHaveBeenCalledOnce();
+    expect(link.getAttribute("href")).toBe("/inv/other");
+  });
+
+  it("does not activate the row link when Enter originates on a disclosure", async () => {
+    const user = userEvent.setup();
+    renderView({ tree: keyboardTree });
+    const disclosure = screen.getAllByRole("button", { name: "Collapse" })[0];
+    const link = screen.getByRole("link", { name: /Root/ });
+    const click = vi.fn((event: Event) => event.preventDefault());
+    link.addEventListener("click", click);
+    await user.click(disclosure);
+    await user.keyboard("{Enter}");
+    expect(click).not.toHaveBeenCalled();
+  });
+
+  it("reveals active ancestors without expanding unrelated branches", () => {
+    const unrelated = node(inv({ investigation_id: "closed", question: "Closed" }), [
+      node(inv({ investigation_id: "closed-child", question: "Closed child" })),
+    ]);
+    renderView({ tree: [...keyboardTree, unrelated], activeId: "grandchild", initialExpandedIds: [] });
+    expect(screen.getByRole("treeitem", { name: /Root/ }).getAttribute("aria-expanded")).toBe("true");
+    expect(screen.getByRole("treeitem", { name: /Child/ }).getAttribute("aria-expanded")).toBe("true");
+    const closed = screen.getByText("Closed").closest('[role="treeitem"]');
+    expect(closed?.getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("does not undo a user collapse on an equivalent rerender", async () => {
+    const user = userEvent.setup();
+    const rendered = renderView({ tree: keyboardTree, activeId: "grandchild" });
+    await user.click(screen.getAllByRole("button", { name: "Collapse" })[0]);
+    rendered.rerender(
+      <MemoryRouter>
+        <ResearchIndexView tree={[...keyboardTree]} activeId="grandchild" loading={false} error={null} onRefresh={() => {}} nowMs={FIXED_NOW_MS} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("button", { name: "Expand" }).getAttribute("aria-expanded")).toBe("false");
+  });
+
+  it("ignores unknown active IDs and reveals an active ID that appears later", () => {
+    const rendered = renderView({ tree: [], activeId: "grandchild", initialExpandedIds: [] });
+    expect(screen.queryByRole("tree")).toBeNull();
+    rendered.rerender(
+      <MemoryRouter>
+        <ResearchIndexView tree={keyboardTree} activeId="grandchild" loading={false} error={null} onRefresh={() => {}} nowMs={FIXED_NOW_MS} initialExpandedIds={[]} />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("treeitem", { name: /Grandchild/ })).toBeTruthy();
+  });
+
+  it("reveals the active ancestry again after polling removes and restores it", async () => {
+    const user = userEvent.setup();
+    const rendered = renderView({ tree: keyboardTree, activeId: "grandchild", initialExpandedIds: [] });
+    await user.click(screen.getAllByRole("button", { name: "Collapse" })[0]);
+    expect(screen.queryByRole("treeitem", { name: /Grandchild/ })).toBeNull();
+
+    rendered.rerender(
+      <MemoryRouter>
+        <ResearchIndexView tree={[]} activeId="grandchild" loading={false} error={null} onRefresh={() => {}} nowMs={FIXED_NOW_MS} initialExpandedIds={[]} />
+      </MemoryRouter>,
+    );
+    rendered.rerender(
+      <MemoryRouter>
+        <ResearchIndexView tree={keyboardTree} activeId="grandchild" loading={false} error={null} onRefresh={() => {}} nowMs={FIXED_NOW_MS} initialExpandedIds={[]} />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("treeitem", { name: /Grandchild/ })).toBeTruthy();
+  });
+
+  it("restores DOM focus to the visible fallback when polling removes the focused row", async () => {
+    const rendered = renderView({ tree: keyboardTree });
+    screen.getByRole("treeitem", { name: /Grandchild/ }).focus();
+    rendered.rerender(
+      <MemoryRouter>
+        <ResearchIndexView tree={[keyboardTree[0],]} activeId={null} loading={false} error={null} onRefresh={() => {}} nowMs={FIXED_NOW_MS} />
+      </MemoryRouter>,
+    );
+    // Remove the entire focused branch on a second poll while retaining a root.
+    rendered.rerender(
+      <MemoryRouter>
+        <ResearchIndexView tree={[node(inv({ investigation_id: "root", question: "Root" }))]} activeId={null} loading={false} error={null} onRefresh={() => {}} nowMs={FIXED_NOW_MS} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByRole("treeitem", { name: /Root/ }));
+    });
   });
 });
