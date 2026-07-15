@@ -1,0 +1,334 @@
+/**
+ * research-index-sidebar.css — structural lineage rail for the sidebar
+ * tree (ResearchIndexView / InvestigationSidebar).
+ *
+ * Every visual is token-only — var(--rule) for the rail, var(--sun) for
+ * active accents, var(--ink)/var(--shadow-1) for text. No magic hexes.
+ *
+ * The trunk line (vertical) runs inside the nested <ul> coordinate space.
+ * Branch arms (horizontal) draw from the trunk to each disclosure button
+ * via ::before on the <li>. The rail is structural lineage — visible at
+ * every depth so the user always sees the tree's shape.
+ *
+ * The final scoped reduced-motion guard is deliberate even though the app's
+ * global motion.css is also authoritative: the isolated component remains
+ * honest when rendered by a consumer that imports only this stylesheet.
+ */
+
+.ris {
+  padding: 0.75rem;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--ink);
+}
+
+.ris__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+.ris__title {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--shadow-1);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__title { color: var(--shadow-2); }
+}
+
+.ris__refresh {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--shadow-1);
+  transition: color var(--motion-base) var(--ease-standard);
+}
+.ris__refresh:hover {
+  color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__refresh { color: var(--shadow-2); }
+  .ris__refresh:hover { color: var(--ink); }
+}
+.ris__stale {
+  margin-bottom: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--sun-deep);
+  background: color-mix(in srgb, var(--sun) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--sun) 20%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__stale {
+    color: var(--sun-glow);
+    background: color-mix(in srgb, var(--sun-glow) 6%, transparent);
+    border-color: color-mix(in srgb, var(--sun-glow) 15%, transparent);
+  }
+}
+
+.ris__empty,
+.ris__loading {
+  color: var(--shadow-1);
+  font-style: italic;
+  font-family: var(--serif);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__empty, .ris__loading { color: var(--shadow-2); }
+}
+.ris__loading {
+  font-family: var(--mono);
+}
+.ris__error {
+  color: var(--emperor);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.ris__retry {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0.25rem 0.75rem;
+  margin-top: 0.375rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  transition: background-color var(--motion-base) var(--ease-standard);
+}
+.ris__retry:hover {
+  background-color: color-mix(in srgb, var(--ink) 3%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__retry { border-color: var(--border); color: var(--ink); }
+  .ris__retry:hover { background-color: color-mix(in srgb, var(--ink) 4%, transparent); }
+}
+
+.ris__tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.ris__tree .ris__tree {
+  position: relative;
+  margin-left: 22px;
+}
+/* Vertical trunk line: runs from the top of the first child down to
+   the bottom of the last child. Every nested list advances 22px, so
+   each generation owns a distinct rail coordinate. */
+.ris__tree .ris__tree::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0.5rem;
+  width: 0;
+  border-left: 1.5px solid var(--rule);
+}
+
+.ris__row {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+  margin-bottom: 1px;
+}
+
+.ris__disclosure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 44px;
+  min-height: 44px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--shadow-1);
+  font-size: 10px;
+  transition: color var(--motion-base) var(--ease-standard);
+}
+.ris__disclosure:hover {
+  color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__disclosure { color: var(--shadow-2); }
+  .ris__disclosure:hover { color: var(--ink); }
+}
+/* Spacer for leaf nodes (no children, no button). */
+.ris__leaf-spacer {
+  flex-shrink: 0;
+  width: 44px;
+  min-height: 44px;
+}
+
+.ris__tree .ris__tree .ris__row::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 22px;
+  width: 22px;
+  height: 0;
+  border-top: 1.5px solid var(--rule);
+}
+
+.ris__tree .ris__tree > li > .ris__row {
+  position: relative;
+}
+
+.ris__link {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+  padding: 0.25rem 0.375rem;
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  color: var(--ink);
+  transition: background-color var(--motion-base) var(--ease-standard);
+  position: relative;
+}
+.ris__link:hover {
+  background-color: color-mix(in srgb, var(--ink) 4%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__link:hover { background-color: color-mix(in srgb, var(--ink) 5%, transparent); }
+}
+
+.ris__link--active {
+  background-color: color-mix(in srgb, var(--sun) 12%, transparent);
+}
+.ris__link--active:hover {
+  background-color: color-mix(in srgb, var(--sun) 18%, transparent);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__link--active {
+    background-color: color-mix(in srgb, var(--sun) 10%, transparent);
+  }
+  .ris__link--active:hover {
+    background-color: color-mix(in srgb, var(--sun) 15%, transparent);
+  }
+}
+/* Active structural marker — bold left-edge accent bar. */
+.ris__link--active::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 1px;
+  background-color: var(--ink);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__link--active::before {
+    background-color: var(--sun);
+  }
+}
+
+.ris__status {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  margin-top: 0.25rem;
+}
+/* Shape indicator — non-color, visible regardless of color vision. */
+.ris__status-shape {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+}
+/* in_progress: circle */
+.ris__status-shape--in_progress {
+  border-radius: 50%;
+  background-color: var(--sun);
+}
+/* completed: filled square */
+.ris__status-shape--completed {
+  border-radius: 1px;
+  background-color: var(--aurora);
+}
+/* failed: diamond (rotated square) */
+.ris__status-shape--failed {
+  width: 7px;
+  height: 7px;
+  border-radius: 1px;
+  background-color: var(--emperor);
+  transform: rotate(45deg);
+}
+/* stopped: hollow circle */
+.ris__status-shape--stopped {
+  border-radius: 50%;
+  border: 1.5px solid var(--shadow-1);
+  background: transparent;
+}
+/* not_found: dashed circle */
+.ris__status-shape--not_found {
+  border-radius: 50%;
+  border: 1.5px dashed var(--shadow-1);
+  background: transparent;
+}
+.ris__status-shape--unknown {
+  border: 1.5px dotted var(--shadow-1);
+  background: transparent;
+}
+/* Status label text — always visible, not just colour. */
+.ris__status-label {
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: lowercase;
+  color: var(--shadow-1);
+}
+@media (prefers-color-scheme: dark) {
+  .ris__status-label { color: var(--shadow-2); }
+}
+
+.ris__body {
+  flex: 1;
+  min-width: 0;
+}
+.ris__question {
+  font-family: var(--serif);
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ris__meta {
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--shadow-1);
+  margin-top: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ris *,
+  .ris *::before,
+  .ris *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  .ris__meta { color: var(--shadow-2); }
+}

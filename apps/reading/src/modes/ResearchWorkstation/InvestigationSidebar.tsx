@@ -1,156 +1,30 @@
-import { useState } from "react";
-import { NavLink, useParams } from "react-router-dom";
+import { useId, useState } from "react";
+import { Link, useParams } from "react-router-dom";
 
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
 import type { InvestigationSummary } from "../../lib/api";
 
-/**
- * Left sidebar showing past investigations as a tree. Each node carries
- * its question (truncated), status badge, and total cost. Click any
- * node to navigate to /inv/<id>.
- *
- * The tree is built from substrate-side parent_investigation_id fields
- * (canonical) with localStorage as a defensive secondary source — see
- * useInvestigationTree.
- */
-export default function InvestigationSidebar() {
-  const { investigations, loading, error, refetch } = useInvestigationList();
-  const tree = useInvestigationTree(investigations);
-  const params = useParams<{ investigationId?: string }>();
-  const activeId = params.investigationId ?? null;
+import "./research-index-sidebar.css";
 
-  return (
-    <div className="p-3 text-xs text-ink dark:text-bright">
-      <div className="flex items-center justify-between mb-3">
-        <div className="font-mono text-shadow-1 dark:text-moonlight font-semibold uppercase tracking-wider">
-          Investigations
-        </div>
-        <button
-          onClick={refetch}
-          className="text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors"
-          aria-label="Refresh"
-        >
-          ⟳
-        </button>
-      </div>
-      {loading && investigations.length === 0 && (
-        <div className="text-ink-mute dark:text-moonlight italic font-mono">Loading…</div>
-      )}
-      {error && (
-        <div className="text-emperor font-mono text-[10px]">{error}</div>
-      )}
-      {!loading && investigations.length === 0 && !error && (
-        <div className="text-ink-mute dark:text-moonlight italic font-serif">
-          No investigations yet. Ask a question to start.
-        </div>
-      )}
-      <ul className="space-y-1">
-        {tree.map((node) => (
-          <TreeRow key={node.investigationId} node={node} depth={0} activeId={activeId} />
-        ))}
-      </ul>
-    </div>
-  );
-}
+export type { TreeNode };
 
-function TreeRow({
-  node,
-  depth,
-  activeId,
-}: {
-  node: TreeNode;
-  depth: number;
-  activeId: string | null;
-}) {
-  const [expanded, setExpanded] = useState(true);
-  const summary = node.summary;
-  const isActive = activeId === node.investigationId;
-  return (
-    <li>
-      <div className="flex items-start gap-1.5">
-        {node.children.length > 0 ? (
-          <button
-            onClick={() => setExpanded((v) => !v)}
-            className="text-ink-mute dark:text-moonlight hover:text-ink dark:text-bright transition-colors w-3 text-center text-[10px] mt-1 shrink-0"
-            aria-label={expanded ? "Collapse" : "Expand"}
-          >
-            {expanded ? "▾" : "▸"}
-          </button>
-        ) : (
-          <span className="w-3 shrink-0" />
-        )}
-        <NavLink
-          to={`/inv/${node.investigationId}`}
-          className={`flex-1 min-w-0 py-1 px-1.5 rounded transition-colors relative ${
-            isActive
-              ? "bg-sun text-ink"
-              : "hover:bg-sun/20 dark:hover:bg-sun/15 text-ink dark:text-bright"
-          }`}
-          style={{ marginLeft: depth * 8 }}
-        >
-          {isActive && (
-            <span aria-hidden="true" className="absolute left-0 top-1 bottom-1 w-0.5 bg-ink" />
-          )}
-          <div className="flex items-start gap-1.5">
-            <StatusDot status={summary?.status ?? "in_progress"} />
-            <div className="flex-1 min-w-0">
-              <div className="font-serif leading-snug truncate">
-                {truncate(summary?.question ?? node.investigationId, 60)}
-              </div>
-              <div className="font-mono text-[9px] text-ink-mute dark:text-moonlight mt-0.5">
-                {summary?.cost_usd_total
-                  ? `$${summary.cost_usd_total.toFixed(4)}`
-                  : "$0"}
-                {summary?.started_at && ` · ${formatRelative(summary.started_at)}`}
-              </div>
-            </div>
-          </div>
-        </NavLink>
-      </div>
-      {expanded && node.children.length > 0 && (
-        <ul className="space-y-1 mt-1">
-          {node.children.map((child) => (
-            <TreeRow
-              key={child.investigationId}
-              node={child}
-              depth={depth + 1}
-              activeId={activeId}
-            />
-          ))}
-        </ul>
-      )}
-    </li>
-  );
-}
+const STATUS_LABELS: Record<InvestigationSummary["status"], string> = {
+  in_progress: "in progress",
+  completed: "completed",
+  failed: "failed",
+  stopped: "stopped",
+  not_found: "not found",
+};
 
-function StatusDot({ status }: { status: InvestigationSummary["status"] }) {
-  const color =
-    status === "in_progress"
-      ? "bg-sun animate-pulse"
-      : status === "completed"
-        ? "bg-aurora"
-        : status === "failed"
-          ? "bg-emperor"
-          : "bg-ink-mute dark:bg-moonlight";
-  return (
-    <span
-      className={`w-1.5 h-1.5 rounded-full mt-1.5 shrink-0 ${color}`}
-      aria-label={status}
-    />
-  );
-}
-
-function truncate(s: string, n: number): string {
-  if (s.length <= n) return s;
-  return s.slice(0, n - 1) + "…";
-}
-
-function formatRelative(iso: string): string {
+function formatRelative(iso: string | null, nowMs: number): string {
+  if (!iso) return "";
   try {
     const then = new Date(iso).getTime();
-    const ago = Date.now() - then;
+    if (!Number.isFinite(then)) return "";
+    const ago = nowMs - then;
+    if (ago < 0) return "";
     const seconds = Math.floor(ago / 1000);
     if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
@@ -159,8 +33,196 @@ function formatRelative(iso: string): string {
     if (hours < 24) return `${hours}h ago`;
     const days = Math.floor(hours / 24);
     if (days < 30) return `${days}d ago`;
-    return new Date(iso).toLocaleDateString();
+    return new Date(then).toISOString().slice(0, 10);
   } catch {
     return "";
   }
+}
+
+function truncate(s: string, n: number): string {
+  if (s.length <= n) return s;
+  return s.slice(0, n - 1) + "\u2026";
+}
+
+/**
+ * Keep data, lineage, and route authority in the existing production hooks;
+ * the exported view is only a deterministic rendering seam.
+ */
+export default function InvestigationSidebar() {
+  const { investigations, loading, error, refetch } = useInvestigationList();
+  const tree = useInvestigationTree(investigations);
+  const params = useParams<{ investigationId?: string }>();
+  const activeId = params.investigationId ?? null;
+
+  return (
+    <ResearchIndexView
+      tree={tree}
+      activeId={activeId}
+      loading={loading}
+      error={error}
+      onRefresh={refetch}
+    />
+  );
+}
+
+export interface ResearchIndexViewProps {
+  tree: TreeNode[];
+  activeId: string | null;
+  loading: boolean;
+  error: string | null;
+  onRefresh: () => void;
+  /** Fixed clock for deterministic age display. Production naturally
+   *  uses Date.now(); fixtures pin this. */
+  nowMs?: number;
+}
+
+export function ResearchIndexView({
+  tree,
+  activeId,
+  loading,
+  error,
+  onRefresh,
+  nowMs = Date.now(),
+}: ResearchIndexViewProps) {
+  const hasRows = tree.length > 0;
+  const isInitialLoading = loading && !hasRows;
+  const isStale = !!error && hasRows;
+  const isTerminalError = !!error && !hasRows;
+
+  return (
+    <nav className="ris" aria-label="Research index" aria-busy={loading}>
+      <div className="ris__header">
+        <h2 className="ris__title">Research index</h2>
+        <button
+          onClick={onRefresh}
+          className="ris__refresh"
+          aria-label="Refresh investigations"
+        >
+          <span className="ris__refresh-icon" aria-hidden="true">
+            &#x27F3;
+          </span>
+        </button>
+      </div>
+
+      {isStale && (
+        <div className="ris__stale" role="status">
+          Could not refresh — showing cached data.
+        </div>
+      )}
+
+      {isInitialLoading && (
+        <div className="ris__loading" role="status" aria-live="polite">
+          Loading research index&hellip;
+        </div>
+      )}
+
+      {isTerminalError && (
+        <div role="alert">
+          <div className="ris__error">{error}</div>
+          <button className="ris__retry" onClick={onRefresh}>
+            Retry
+          </button>
+        </div>
+      )}
+
+      {!loading && !error && tree.length === 0 && (
+        <div className="ris__empty">
+          No investigations yet. Ask a question to start.
+        </div>
+      )}
+
+      {tree.length > 0 && (
+        <ul className="ris__tree">
+          {tree.map((node) => (
+            <TreeRow
+              key={node.investigationId}
+              node={node}
+              depth={0}
+              activeId={activeId}
+              nowMs={nowMs}
+            />
+          ))}
+        </ul>
+      )}
+    </nav>
+  );
+}
+
+function TreeRow({
+  node,
+  depth,
+  activeId,
+  nowMs,
+}: {
+  node: TreeNode;
+  depth: number;
+  activeId: string | null;
+  nowMs: number;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const childrenId = `research-index-children-${useId().replace(/:/g, "")}`;
+  const summary = node.summary;
+  const isActive = activeId === node.investigationId;
+  const hasChildren = node.children.length > 0;
+  const status = summary?.status ?? "unknown";
+  const statusLabel = status === "unknown" ? "status unavailable" : STATUS_LABELS[status];
+  const age = formatRelative(summary?.started_at ?? null, nowMs);
+
+  return (
+    <li data-depth={depth}>
+      <div className="ris__row">
+        {hasChildren ? (
+          <button
+            onClick={() => setExpanded((v) => !v)}
+            className="ris__disclosure"
+            aria-label={expanded ? "Collapse" : "Expand"}
+            aria-expanded={expanded}
+            aria-controls={childrenId}
+          >
+            {expanded ? "\u25BE" : "\u25B8"}
+          </button>
+        ) : (
+          <span className="ris__leaf-spacer" aria-hidden="true" />
+        )}
+        <Link
+          to={`/inv/${node.investigationId}`}
+          className={`ris__link${isActive ? " ris__link--active" : ""}`}
+          aria-current={isActive ? "page" : undefined}
+          title={summary?.question ?? node.investigationId}
+        >
+          <div className="ris__status">
+            <span
+              className={`ris__status-shape ris__status-shape--${status}`}
+              aria-hidden="true"
+            />
+            <span className="ris__status-label">{statusLabel}</span>
+          </div>
+          <div className="ris__body">
+            <div className="ris__question">
+              {truncate(summary?.question ?? node.investigationId, 60)}
+            </div>
+            <div className="ris__meta">
+              {summary?.cost_usd_total != null
+                ? `$${summary.cost_usd_total.toFixed(4)}`
+                : "cost unavailable"}
+              {age ? ` \u00B7 ${age}` : null}
+            </div>
+          </div>
+        </Link>
+      </div>
+      {hasChildren && (
+        <ul id={childrenId} className="ris__tree" hidden={!expanded}>
+          {node.children.map((child) => (
+            <TreeRow
+              key={child.investigationId}
+              node={child}
+              depth={depth + 1}
+              activeId={activeId}
+              nowMs={nowMs}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
 }
