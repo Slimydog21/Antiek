@@ -10,10 +10,18 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createCartridge = vi.hoisted(() => vi.fn());
 const teardown = vi.hoisted(() => vi.fn());
+const receivedSceneArt = vi.hoisted(() => vi.fn());
 
 vi.mock("./ResearchWaitArcadeGame", () => ({
-  default: ({ game }: { game: "clam-catcher" | "ice-fishing" | "zombies" }) => {
+  default: ({
+    game,
+    sceneArtSrc,
+  }: {
+    game: "clam-catcher" | "ice-fishing" | "zombies";
+    sceneArtSrc: string;
+  }) => {
     createCartridge(game);
+    receivedSceneArt(sceneArtSrc);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     useEffect(() => {
       canvasRef.current?.focus();
@@ -103,6 +111,7 @@ beforeEach(() => {
   vi.useFakeTimers();
   createCartridge.mockReset();
   teardown.mockReset();
+  receivedSceneArt.mockReset();
   createCartridge.mockImplementation(cartridge);
 });
 
@@ -289,5 +298,18 @@ describe("ResearchWaitArcade", () => {
         image.getAttribute("src")?.startsWith("/src/brand/werner/arcade/"),
       ),
     ).toBe(true);
+  });
+
+  it("propagates the selected art to the playing scene-continuity layer", async () => {
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+    fireEvent.click(screen.getByRole("radio", { name: /Ice Fishing/ }));
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Play while waiting" }),
+      );
+    });
+    expect(receivedSceneArt).toHaveBeenCalledTimes(1);
+    expect(receivedSceneArt.mock.calls[0]?.[0]).toContain("ice-fishing");
   });
 });

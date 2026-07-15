@@ -108,6 +108,9 @@ export default function ResearchWaitArcade({
     offerReady,
     optedIn,
   });
+  const selectedChoice =
+    ARCADE_CHOICES.find((choice) => choice.id === selectedGame) ??
+    ARCADE_CHOICES[0];
 
   // The focused canvas becomes the pointer instrument during explicit play.
   // Acquire before paint so the route-derived research lens cannot flash over
@@ -231,10 +234,7 @@ export default function ResearchWaitArcade({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="font-serif text-sm font-semibold text-ink dark:text-bright">
-                {
-                  ARCADE_CHOICES.find((choice) => choice.id === selectedGame)
-                    ?.title
-                }
+                {selectedChoice.title}
               </p>
               <p className="text-xs text-shadow-1 dark:text-moonlight">
                 Research stays live above the game.
@@ -249,6 +249,7 @@ export default function ResearchWaitArcade({
               <LazyResearchWaitArcadeGame
                 game={selectedGame}
                 reducedMotion={effectiveReducedMotion}
+                sceneArtSrc={selectedChoice.art}
               />
             </Suspense>
           </div>
