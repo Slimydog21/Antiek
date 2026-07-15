@@ -379,6 +379,9 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "derived_asset_merge_reviews",
     "derived_asset_merge_operations",
     "derived_asset_merge_outbox",
+    "derived_evidence_collections",
+    "derived_evidence_collection_members",
+    "derived_evidence_collection_operations",
 )
 
 

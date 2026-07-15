@@ -2361,6 +2361,87 @@ def create_app(
             start_event_id=event_id,
         )
 
+    @app.post(
+        "/research/derived-assets/evidence-collections/{collection_id}/launch",
+        response_model=InvestigationStartResponse,
+        status_code=202,
+    )
+    async def launch_evidence_collection(
+        collection_id: str,
+        body: dict[str, Any],
+        request: Request,
+    ) -> InvestigationStartResponse:
+        from substrate.research_artifact.derived_asset_library import (
+            DerivedAssetIntegrity,
+            DerivedAssetUnavailable,
+        )
+        from substrate.research_artifact.derived_asset_retrieval import (
+            DerivedAssetRetrievalIntegrity,
+        )
+        from substrate.research_artifact.derived_citation_source import (
+            DerivedCitationConflict,
+            canonical_derived_sources_context,
+        )
+        from substrate.research_artifact.evidence_collection_repository import (
+            EvidenceCollectionConflict,
+            EvidenceCollectionPrecondition,
+            EvidenceCollectionRepository,
+            EvidenceCollectionUnavailable,
+        )
+        from substrate.event_log import append_persisted_event
+
+        from .merge_asset_routes import EvidenceCollectionLaunchBody
+        from .multimedia_reconciliation_routes import authenticated_multimedia_operator
+
+        try:
+            launch = EvidenceCollectionLaunchBody.model_validate(body)
+        except Exception as exc:
+            raise HTTPException(422, "evidence collection launch request is invalid") from exc
+        if_match = request.headers.get("If-Match")
+        key = request.headers.get("Idempotency-Key")
+        if if_match is None or key is None:
+            raise HTTPException(428, "If-Match and Idempotency-Key are required")
+        owner = authenticated_multimedia_operator(request)
+        repository = EvidenceCollectionRepository(db_path=default_db_path())
+        options = launch.model_dump(mode="json")
+        try:
+            prepared = repository.prepare_launch(
+                owner_user_id=owner, collection_id=collection_id, if_match=if_match,
+                idempotency_key=key, options=options,
+            )
+        except EvidenceCollectionUnavailable:
+            raise HTTPException(404, "evidence collection is unavailable") from None
+        except EvidenceCollectionPrecondition:
+            raise HTTPException(412, "evidence collection ETag is stale") from None
+        except (EvidenceCollectionConflict, DerivedAssetIntegrity, DerivedAssetUnavailable,
+                DerivedAssetRetrievalIntegrity, DerivedCitationConflict):
+            raise HTTPException(409, "evidence collection integrity conflict") from None
+        except ValueError:
+            raise HTTPException(422, "evidence collection launch request is invalid") from None
+        if prepared.replay_response is not None:
+            return InvestigationStartResponse.model_validate(prepared.replay_response)
+
+        if prepared.delivery_event is None or prepared.lease_token is None:
+            raise HTTPException(409, "evidence collection delivery integrity conflict")
+        event = Event.model_validate(prepared.delivery_event)
+        try:
+            append_persisted_event(event)
+        except Exception as exc:
+            raise HTTPException(503, "evidence collection event delivery is unavailable") from exc
+        # The append is durable before this at-least-once live broadcast. A crash
+        # here redelivers the same event id; handlers must remain logically
+        # idempotent, while append_persisted_event prevents a second physical row.
+        await bus.broadcast(event)
+        result = InvestigationStartResponse(
+            investigation_id=prepared.investigation_id, status="started",
+            start_event_id=event.event_id,
+        )
+        repository.complete_launch(
+            owner_user_id=owner, idempotency_key=key, lease_token=prepared.lease_token,
+            response=result.model_dump(mode="json"),
+        )
+        return result
+
     @app.get(
         "/investigations/{investigation_id}",
         response_model=InvestigationStatusResponse,

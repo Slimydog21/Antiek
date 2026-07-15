@@ -336,6 +336,88 @@ CREATE TABLE IF NOT EXISTS derived_asset_merge_outbox (
     FOREIGN KEY (owner_user_id,operation_id)
         REFERENCES derived_asset_merge_operations(owner_user_id,operation_id)
 );
+
+CREATE TABLE IF NOT EXISTS derived_evidence_collections (
+    collection_id TEXT PRIMARY KEY CHECK (
+        regexp_full_match(collection_id,'dec_[0-9a-f]{32}')
+    ),
+    owner_user_id TEXT NOT NULL,
+    label TEXT NOT NULL CHECK (octet_length(encode(label)) BETWEEN 1 AND 2048),
+    derived_asset_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    revision_content_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(revision_content_sha256,'[0-9a-f]{64}')
+    ),
+    revision_generation BIGINT NOT NULL CHECK (revision_generation>=1),
+    version BIGINT NOT NULL DEFAULT 1 CHECK (version>=1),
+    member_count INTEGER NOT NULL CHECK (member_count BETWEEN 2 AND 6),
+    collection_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(collection_sha256,'[0-9a-f]{64}')
+    ),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_user_id,collection_id),
+    FOREIGN KEY (derived_asset_id,revision_id,revision_content_sha256)
+        REFERENCES derived_asset_revisions(derived_asset_id,revision_id,content_sha256)
+);
+CREATE INDEX IF NOT EXISTS idx_evidence_collections_owner_scope
+    ON derived_evidence_collections(owner_user_id,derived_asset_id,revision_id);
+
+CREATE TABLE IF NOT EXISTS derived_evidence_collection_members (
+    collection_id TEXT NOT NULL REFERENCES derived_evidence_collections(collection_id),
+    member_ordinal INTEGER NOT NULL CHECK (member_ordinal>=0),
+    derived_asset_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    revision_content_sha256 TEXT NOT NULL,
+    revision_generation BIGINT NOT NULL CHECK (revision_generation>=1),
+    citation_id TEXT NOT NULL,
+    chunk_ordinal INTEGER NOT NULL CHECK (chunk_ordinal>=0),
+    chunk_text_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(chunk_text_sha256,'[0-9a-f]{64}')
+    ),
+    excerpt TEXT NOT NULL,
+    PRIMARY KEY (collection_id,member_ordinal),
+    UNIQUE (collection_id,citation_id),
+    UNIQUE (collection_id,chunk_ordinal,chunk_text_sha256),
+    FOREIGN KEY (derived_asset_id,revision_id,chunk_ordinal)
+        REFERENCES derived_asset_revision_chunks(derived_asset_id,revision_id,chunk_ordinal)
+);
+
+CREATE TABLE IF NOT EXISTS derived_evidence_collection_operations (
+    owner_user_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL CHECK (
+        octet_length(encode(idempotency_key)) BETWEEN 1 AND 256
+    ),
+    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('create','launch')),
+    request_sha256 TEXT NOT NULL CHECK (regexp_full_match(request_sha256,'[0-9a-f]{64}')),
+    state TEXT NOT NULL CHECK (state IN ('delivering','completed')),
+    collection_id TEXT NOT NULL,
+    investigation_id TEXT,
+    response_json TEXT,
+    response_sha256 TEXT,
+    delivery_event_json TEXT,
+    delivery_event_sha256 TEXT,
+    delivery_lease_token TEXT,
+    delivery_lease_expires_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    PRIMARY KEY (owner_user_id,idempotency_key),
+    FOREIGN KEY (owner_user_id,collection_id)
+        REFERENCES derived_evidence_collections(owner_user_id,collection_id),
+    CHECK ((operation_kind='create' AND state='completed' AND investigation_id IS NULL
+            AND delivery_event_json IS NULL AND delivery_event_sha256 IS NULL
+            AND delivery_lease_token IS NULL AND delivery_lease_expires_at IS NULL)
+        OR (operation_kind='launch' AND investigation_id IS NOT NULL
+            AND delivery_event_json IS NOT NULL
+            AND delivery_event_sha256=sha256(delivery_event_json)
+            AND delivery_lease_token IS NOT NULL
+            AND state IN ('delivering','completed'))),
+    CHECK ((state='delivering' AND response_json IS NULL AND response_sha256 IS NULL
+            AND delivery_lease_expires_at IS NOT NULL AND completed_at IS NULL)
+        OR (state='completed' AND response_json IS NOT NULL
+            AND response_sha256=sha256(response_json)
+            AND delivery_lease_expires_at IS NULL AND completed_at IS NOT NULL))
+);
 """
 
 SENTINEL_TABLES = (
@@ -349,6 +431,9 @@ SENTINEL_TABLES = (
     "derived_asset_merge_reviews",
     "derived_asset_merge_operations",
     "derived_asset_merge_outbox",
+    "derived_evidence_collections",
+    "derived_evidence_collection_members",
+    "derived_evidence_collection_operations",
 )
 
 

@@ -89,6 +89,7 @@ def _client(temp_substrate):
         register_providers=False,
         cors_origins=[],
     )
+
     return TestClient(app)
 
 
@@ -271,6 +272,74 @@ def test_invalid_derived_citation_set_emits_no_event(temp_substrate, monkeypatch
     })
     assert response.status_code == 409
     assert client.get("/trajectory/inv-derived-curated-refused").json()["events"] == []
+
+
+def test_collection_launch_uses_stored_sources_and_rejects_client_context(
+    temp_substrate, monkeypatch,
+):
+    from substrate.research_artifact.evidence_collection_repository import (
+        PreparedCollectionLaunch,
+    )
+    from datetime import UTC, datetime
+    from substrate.constants import ANTIEK_PARAM_VERSION
+    from substrate.schemas import (
+        DEFAULT_POLICY_ID, EVENT_SCHEMA_VERSION, Event,
+        InvestigationStartRequestedPayload,
+    )
+
+    sources = [_derived_source(), {
+        **_derived_source(), "citation_id": "dchunk_" + "f" * 64,
+        "chunk_ordinal": 4, "chunk_text_sha256": "1" * 64,
+        "excerpt": "Second exact passage.",
+    }]
+    collection = {"sources": sources, "etag": '"collection-etag"'}
+    payload = InvestigationStartRequestedPayload(
+        question="Compare the saved evidence.", context="persisted context",
+        spawn_context="persisted context", derived_sources=sources,
+    )
+    event = Event(
+        event_id="evt-dec-api-proof", investigation_id="inv-collection-authority",
+        role="operator", action_type=payload.action_type, payload=payload,
+        policy_id=DEFAULT_POLICY_ID, param_version=ANTIEK_PARAM_VERSION,
+        schema_version=EVENT_SCHEMA_VERSION, emitted_at=datetime.now(UTC),
+    )
+    monkeypatch.setattr(
+        "substrate.research_artifact.evidence_collection_repository."
+        "EvidenceCollectionRepository.prepare_launch",
+        lambda *_args, **_kwargs: PreparedCollectionLaunch(
+            investigation_id="inv-collection-authority", collection=collection,
+            delivery_event=event.model_dump(mode="json"), lease_token="lease-one",
+        ),
+    )
+    monkeypatch.setattr(
+        "substrate.research_artifact.evidence_collection_repository."
+        "EvidenceCollectionRepository.complete_launch", lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "substrate.research_artifact.derived_citation_source."
+        "verify_derived_citation_sources", lambda **kwargs: tuple(kwargs["sources"]),
+    )
+    monkeypatch.setattr(
+        "interfaces.research.api.multimedia_reconciliation_routes."
+        "authenticated_multimedia_operator", lambda _request: "owner-a",
+    )
+    client = _client(temp_substrate)
+    response = client.post(
+        "/research/derived-assets/evidence-collections/dec_" + "d" * 32 + "/launch",
+        headers={"If-Match": '"collection-etag"', "Idempotency-Key": "launch-one"},
+        json={"question": "Compare the saved evidence."},
+    )
+    assert response.status_code == 202
+    events = client.get("/trajectory/inv-collection-authority").json()["events"]
+    started = next(event for event in events if event["action_type"]
+                   == ActionType.INVESTIGATION_START_REQUESTED.value)
+    assert started["payload"]["derived_sources"] == sources
+    rejected = client.post(
+        "/research/derived-assets/evidence-collections/dec_" + "d" * 32 + "/launch",
+        headers={"If-Match": '"collection-etag"', "Idempotency-Key": "launch-two"},
+        json={"question": "Compare the saved evidence.", "context": "client authority"},
+    )
+    assert rejected.status_code == 422
 
 
 # ── 3. GET /chunks/{id} ──────────────────────────────────────────────

@@ -478,6 +478,42 @@ export interface DerivedCompanionConversationResponse {
     & { question: string }>;
 }
 
+export interface DerivedEvidenceSource {
+  derived_asset_id: string;
+  revision_id: string;
+  content_sha256: string;
+  generation: number;
+  citation_id: string;
+  chunk_ordinal: number;
+  chunk_text_sha256: string;
+  excerpt: string;
+}
+
+export interface DerivedEvidenceCollectionSummary {
+  collection_id: string;
+  label: string;
+  derived_asset_id: string;
+  revision_id: string;
+  content_sha256: string;
+  generation: number;
+  version: number;
+  member_count: number;
+  collection_sha256: string;
+  created_at: string;
+  updated_at: string;
+  etag: string;
+}
+
+export interface DerivedEvidenceCollection extends DerivedEvidenceCollectionSummary {
+  sources: DerivedEvidenceSource[];
+  is_current: boolean;
+}
+
+export interface DerivedEvidenceCollectionList {
+  collections: DerivedEvidenceCollectionSummary[];
+  limits: { collections: number };
+}
+
 /** Owner-scoped verified current twin-note revisions. */
 export function listTwinNotes(): Promise<TwinNoteListResponse> {
   return get("/research/twin-notes");
@@ -566,6 +602,44 @@ export function getDerivedCompanionConversation(
   return get(model.is_current
     ? `/research/derived-assets/assets/${asset}/companion`
     : `/research/derived-assets/assets/${asset}/revisions/${encodeURIComponent(model.revision_id)}/companion`);
+}
+
+export function createDerivedEvidenceCollection(
+  label: string, sources: DerivedEvidenceSource[], idempotencyKey: string,
+): Promise<DerivedEvidenceCollection> {
+  const path = "/research/derived-assets/evidence-collections";
+  return apiFetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify({ label, sources }),
+  }).then((response) => jsonOrThrow<DerivedEvidenceCollection>(response, `POST ${path}`));
+}
+
+export function listDerivedEvidenceCollections(
+  assetId: string, revisionId: string,
+): Promise<DerivedEvidenceCollectionList> {
+  return get(`/research/derived-assets/evidence-collections?asset_id=${encodeURIComponent(assetId)}&revision_id=${encodeURIComponent(revisionId)}`);
+}
+
+export function getDerivedEvidenceCollection(
+  collectionId: string,
+): Promise<DerivedEvidenceCollection> {
+  return get(`/research/derived-assets/evidence-collections/${encodeURIComponent(collectionId)}`);
+}
+
+export function launchDerivedEvidenceCollection(
+  collectionId: string,
+  etag: string,
+  idempotencyKey: string,
+  body: { question: string; parent_investigation_id?: string; research_tier?: "fast" | "deep" },
+): Promise<{ investigation_id: string; status: string; start_event_id: string }> {
+  const path = `/research/derived-assets/evidence-collections/${encodeURIComponent(collectionId)}/launch`;
+  return apiFetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "If-Match": etag,
+      "Idempotency-Key": idempotencyKey },
+    body: JSON.stringify(body),
+  }).then((response) => jsonOrThrow(response, `POST ${path}`));
 }
 
 export function restoreDerivedAsset(
