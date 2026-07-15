@@ -1,0 +1,103 @@
+{
+  "generated_at": "2026-07-15T16:53:25.255955+00:00",
+  "lint": "reachability_gate_py",
+  "schema_version": 1,
+  "violations": [
+    {
+      "col": 0,
+      "kind": "export:uncalled:execute_authorized_call",
+      "line": 439,
+      "path": "substrate/multimedia/execution_authorization.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:revoke_execution_authorization",
+      "line": 572,
+      "path": "substrate/multimedia/execution_authorization.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:revoke_async_execution_authorization",
+      "line": 667,
+      "path": "substrate/multimedia/execution_authorization.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:exclude_provider_executions",
+      "line": 31,
+      "path": "substrate/multimedia/local_provider_exclusion.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:get_execution",
+      "line": 112,
+      "path": "substrate/multimedia/operations.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:list_executions",
+      "line": 125,
+      "path": "substrate/multimedia/operations.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:cancel_execution",
+      "line": 154,
+      "path": "substrate/multimedia/operations.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:begin_provider_submission",
+      "line": 267,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:bind_provider_job",
+      "line": 498,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:request_provider_cancellation",
+      "line": 633,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:mark_submission_outcome_unknown",
+      "line": 774,
+      "path": "substrate/multimedia/provider_execution.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:validate_settled_execution",
+      "line": 181,
+      "path": "substrate/multimedia/ship_cost_snapshot.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:issue_visual_rights_decision",
+      "line": 123,
+      "path": "substrate/multimedia/visual_evidence_authority.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:is_author_claimed",
+      "line": 73,
+      "path": "substrate/payouts/contact_guard.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:guarded_send_to_author",
+      "line": 90,
+      "path": "substrate/payouts/contact_guard.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:guard_servable_body",
+      "line": 223,
+      "path": "substrate/rights/arxiv_tiers.py"
+    }
+  ]
+}

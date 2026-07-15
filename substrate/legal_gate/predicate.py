@@ -40,7 +40,7 @@ def _normalize_host(host: str) -> str:
 
 
 def host_matches_banned_domain(
-    host: str, banned: Iterable[str] = None,
+    host: str, banned: Iterable[str] | None = None,
 ) -> str | None:
     """Return the matching banned-domain entry if ``host`` is on
     or below any banned suffix. None otherwise.
@@ -67,7 +67,7 @@ def host_matches_banned_domain(
 def url_blocked_reason(
     url: str,
     *,
-    banned_domains: Iterable[str] = None,
+    banned_domains: Iterable[str] | None = None,
 ) -> str | None:
     """Return a human-readable rejection reason if the URL's host
     is on the banned list. None if allowed.
@@ -107,7 +107,7 @@ def _ci_substring_match(
 
 
 def author_blocked_reason(
-    author: str, banned: Iterable[str] = None,
+    author: str, banned: Iterable[str] | None = None,
 ) -> str | None:
     """Author substring match against `BANNED_AUTHORS`. Returns
     the matching banned entry on hit (so the audit trail records
@@ -121,7 +121,7 @@ def author_blocked_reason(
 
 
 def title_blocked_reason(
-    title: str, banned: Iterable[str] = None,
+    title: str, banned: Iterable[str] | None = None,
 ) -> str | None:
     """Title substring match against `BANNED_TITLE_SUBSTRINGS`."""
     if banned is None:
@@ -133,7 +133,7 @@ def title_blocked_reason(
 
 
 def corpus_blocked_reason(
-    source_corpus: str, banned: Iterable[str] = None,
+    source_corpus: str, banned: Iterable[str] | None = None,
 ) -> str | None:
     """Exact (case-folded) match against `BANNED_CORPUS_IDS`.
     Source-corpus identifiers are programmatic; exact match avoids
@@ -152,7 +152,7 @@ def corpus_blocked_reason(
 
 
 def content_hash_blocked_reason(
-    content_hash: str, banned: Iterable[str] = None,
+    content_hash: str, banned: Iterable[str] | None = None,
 ) -> str | None:
     """Hex-prefix match. Strips any ``"sha256:"`` algorithm prefix
     so callers can pass the raw payload field unchanged."""
@@ -179,6 +179,11 @@ def document_blocked_reason(
     title: str | None = None,
     source_corpus: str | None = None,
     content_hash: str | None = None,
+    banned_domains: Iterable[str] | None = None,
+    banned_corpus_ids: Iterable[str] | None = None,
+    banned_authors: Iterable[str] | None = None,
+    banned_title_substrings: Iterable[str] | None = None,
+    banned_content_hash_prefixes: Iterable[str] | None = None,
 ) -> str | None:
     """Compose all matchers. Returns the FIRST matching reason in
     a stable order (domain → corpus → author → title → hash) so
@@ -188,23 +193,25 @@ def document_blocked_reason(
     skipped. A document with no provenance fields is allowed by
     default (the registry has nothing to match against)."""
     if url:
-        r = url_blocked_reason(url)
+        r = url_blocked_reason(url, banned_domains=banned_domains)
         if r:
             return r
     if source_corpus:
-        r = corpus_blocked_reason(source_corpus)
+        r = corpus_blocked_reason(source_corpus, banned_corpus_ids)
         if r:
             return r
     if author:
-        r = author_blocked_reason(author)
+        r = author_blocked_reason(author, banned_authors)
         if r:
             return r
     if title:
-        r = title_blocked_reason(title)
+        r = title_blocked_reason(title, banned_title_substrings)
         if r:
             return r
     if content_hash:
-        r = content_hash_blocked_reason(content_hash)
+        r = content_hash_blocked_reason(
+            content_hash, banned_content_hash_prefixes
+        )
         if r:
             return r
     return None

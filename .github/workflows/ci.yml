@@ -302,6 +302,16 @@ jobs:
         run: |
           python tools/lint/reachability_gate.py
 
+      - name: Python reachability gate (backend anti-purgatory)
+        # Backend sibling of the reading-surface reachability gate. Reds on a
+        # NEW unmounted API router, uncalled register_*_routes wrapper, or
+        # uncalled enforcement export after the shrink-only baseline at
+        # tools/lints/baselines/reachability_py.json. This is a hard CI gate:
+        # no exit-code swallowing, so the step result is exactly the tool result.
+        run: |
+          python -m tools.lint.reachability_gate_py \
+            --baseline tools/lints/baselines/reachability_py.json
+
       - name: Invariant-registry meta-check
         # SPR-02 (Antiek Flywheel Foundation) KEYSTONE. The registry under
         # substrate/invariants/ enumerates the load-bearing invariants; this

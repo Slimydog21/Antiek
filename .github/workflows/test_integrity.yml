@@ -6,7 +6,7 @@
 # tool exit, and always exits 0 so the job never reds on a grandfathered backlog.
 # Flip-to-blocking is operator-only, one gate at a time, per
 # docs/decisions/test-integrity-ci-floor.md. ci.yml and the other four
-# workflows are NOT edited here.
+# workflows own hard gates such as Python reachability.
 
 name: test-integrity
 
