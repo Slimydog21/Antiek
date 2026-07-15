@@ -33,6 +33,10 @@ export function notifyModelEvidenceCompared(): void {
   emitWernerExperience("model_evidence_compared");
 }
 
+export function notifyResearchDraftComposed(): void {
+  emitWernerExperience("research_draft_composed");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);

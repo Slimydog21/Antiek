@@ -52,6 +52,9 @@ const BASELINE = join(HERE, "motion_guard_baseline.json");
  */
 const SANCTIONED = new Set<string>([
   "src/brand/werner/animated/animations.css",
+  // One-shot semantic props live beside their shared reaction renderer. This
+  // is the closed Werner reaction-motion home, not a route-local animation.
+  "src/brand/werner/reactions/semantic-reactions.css",
   "src/design/motion.css",
   "src/design/motion.ts",
   // The reactive Werner mascot's waddle/bump poses (AMS SPR-05/10) — a

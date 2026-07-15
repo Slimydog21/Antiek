@@ -17,11 +17,13 @@
  * boundaries, so this is a true unit of the monitor (no network, no socket).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { StrictMode } from "react";
 
 import type { InvestigationSummary } from "../../lib/api";
-import type { ComposeWriteWorkspace } from "../../api/research";
+import type { ComposeWriteWorkspace, ResearchCompose } from "../../api/research";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner/reactionBus";
 
 const { listState, budgetState, authState, navigateMock, previewComposeMock, createComposeMock, createWriteWorkspaceMock } = vi.hoisted(() => ({
   listState: {
@@ -80,6 +82,19 @@ vi.mock("react-router-dom", async (orig) => {
 
 import MyResearch from "./MyResearch";
 
+function captureWernerExperiences() {
+  const seen: string[] = [];
+  const listener = (event: Event) => {
+    const experience = (event as CustomEvent).detail?.experience;
+    if (experience) seen.push(experience);
+  };
+  window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+  return {
+    seen,
+    stop: () => window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener),
+  };
+}
+
 function inv(over: Partial<InvestigationSummary> & { investigation_id: string }): InvestigationSummary {
   return {
     question: "A question",
@@ -94,9 +109,11 @@ function inv(over: Partial<InvestigationSummary> & { investigation_id: string })
 
 function renderMonitor() {
   return render(
-    <MemoryRouter>
-      <MyResearch />
-    </MemoryRouter>,
+    <StrictMode>
+      <MemoryRouter>
+        <MyResearch />
+      </MemoryRouter>
+    </StrictMode>,
   );
 }
 
@@ -238,6 +255,7 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
 
 describe("MyResearch — compose light table", () => {
   it("selects only completed research and creates after exact-hash review", async () => {
+    const experiences = captureWernerExperiences();
     listState.current.investigations = [
       inv({ investigation_id: "inv-one", question: "One", status: "completed" }),
       inv({ investigation_id: "inv-two", question: "Two", status: "completed" }),
@@ -269,10 +287,12 @@ describe("MyResearch — compose light table", () => {
     await user.click(screen.getByRole("checkbox", { name: /Select One/ }));
     await user.click(screen.getByRole("checkbox", { name: /Select Two/ }));
     await user.click(screen.getByRole("button", { name: "Review sources" }));
+    expect(experiences.seen).toEqual([]);
     expect(previewComposeMock).toHaveBeenCalledWith(["inv-one", "inv-two"]);
     expect(await screen.findByText("a".repeat(64))).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Create HTML draft" }));
     expect(createComposeMock).toHaveBeenCalledWith(["inv-one", "inv-two"], "fingerprint");
+    expect(experiences.seen).toEqual(["research_draft_composed"]);
     const link = await screen.findByRole("link", { name: /Open HTML draft/ }) as HTMLAnchorElement;
     expect(link.getAttribute("href")).toBe("/research/artifact-composes/cmp-created/view");
     await user.click(screen.getByRole("button", { name: "Start writing from these sources" }));
@@ -282,6 +302,70 @@ describe("MyResearch — compose light table", () => {
     expect((screen.getByRole("link", { name: /Open in Write/ }) as HTMLAnchorElement).getAttribute("href")).toBe("/write/dlv-write");
     expect(screen.getByRole("link", { name: /Open HTML draft/ })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Start writing from these sources" })).toBeNull();
+    experiences.stop();
+  });
+
+  it("keeps an idempotently reused compose draft silent", async () => {
+    const experiences = captureWernerExperiences();
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", status: "completed" }),
+      inv({ investigation_id: "inv-two", status: "completed" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [], view_url: null, reused: false,
+    });
+    createComposeMock.mockResolvedValue({
+      compose_id: "cmp-existing", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [],
+      view_url: "/research/artifact-composes/cmp-existing/view", reused: true,
+    });
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    await user.click(await screen.findByRole("button", { name: "Create HTML draft" }));
+    expect(await screen.findByText(/Existing identical draft reused/)).toBeTruthy();
+    expect(experiences.seen).toEqual([]);
+    experiences.stop();
+  });
+
+  it("discards a new draft reaction when its reviewed selection becomes stale", async () => {
+    const experiences = captureWernerExperiences();
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", status: "completed" }),
+      inv({ investigation_id: "inv-two", status: "completed" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "fingerprint",
+      members: [], identical_content: [], view_url: null, reused: false,
+    });
+    let resolveCompose!: (value: ResearchCompose) => void;
+    createComposeMock.mockReturnValue(new Promise((resolve) => { resolveCompose = resolve; }));
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    const view = renderMonitor();
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    await user.click(await screen.findByRole("button", { name: "Create HTML draft" }));
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", status: "completed" }),
+      inv({ investigation_id: "inv-two", status: "failed" }),
+    ];
+    view.rerender(<StrictMode><MemoryRouter><MyResearch /></MemoryRouter></StrictMode>);
+    await act(async () => {
+      resolveCompose({
+        compose_id: "cmp-stale", selection_fingerprint: "fingerprint",
+        members: [], identical_content: [],
+        view_url: "/research/artifact-composes/cmp-stale/view", reused: false,
+      });
+    });
+    expect(experiences.seen).toEqual([]);
+    expect(screen.queryByRole("link", { name: /Open HTML draft/ })).toBeNull();
+    experiences.stop();
   });
 
   it("keeps the draft and permits retry when opening Write fails", async () => {

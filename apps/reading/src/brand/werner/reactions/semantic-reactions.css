@@ -115,6 +115,68 @@
   animation: werner-verified-beat var(--werner-semantic-duration) ease-out both;
 }
 
+@keyframes werner-folio-bind {
+  0%, 30% { opacity: 0; transform: translateY(12%) scale(0.9); }
+  56%, 100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes werner-slip-one-bind {
+  0%, 18% { opacity: 1; transform: translate(-24%, -14%) rotate(-12deg); }
+  58%, 100% { opacity: 0; transform: translate(18%, 34%) rotate(0); }
+}
+
+@keyframes werner-slip-two-bind {
+  0%, 18% { opacity: 1; transform: translate(24%, -16%) rotate(11deg); }
+  58%, 100% { opacity: 0; transform: translate(-18%, 34%) rotate(0); }
+}
+
+@keyframes werner-slip-three-bind {
+  0%, 18% { opacity: 1; transform: translateY(-24%) rotate(2deg); }
+  58%, 100% { opacity: 0; transform: translateY(38%) rotate(0); }
+}
+
+@keyframes werner-bind-settle {
+  0%, 44% { transform: translateY(0); }
+  62% { transform: translateY(-3%); }
+  82%, 100% { transform: translateY(0); }
+}
+
+.werner-semantic--composed .werner-semantic__mark {
+  animation: werner-bind-settle var(--werner-semantic-duration) ease-out both;
+}
+
+.werner-semantic__folio {
+  left: -16%;
+  bottom: -4%;
+  width: 66%;
+  height: 54%;
+  fill: var(--card);
+}
+
+.werner-semantic__folio-cover {
+  fill: color-mix(in srgb, var(--sun) 18%, var(--card));
+  animation: werner-folio-bind var(--werner-semantic-duration) ease-out both;
+  transform-origin: 50% 80%;
+}
+
+.werner-semantic__folio-slip {
+  fill: var(--card);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.werner-semantic__folio-slip--one {
+  animation: werner-slip-one-bind var(--werner-semantic-duration) ease-in-out both;
+}
+
+.werner-semantic__folio-slip--two {
+  animation: werner-slip-two-bind var(--werner-semantic-duration) ease-in-out both;
+}
+
+.werner-semantic__folio-slip--three {
+  animation: werner-slip-three-bind var(--werner-semantic-duration) ease-in-out both;
+}
+
 @keyframes werner-paperclip-orbit {
   0% {
     opacity: 0;
@@ -200,6 +262,15 @@
   transform: rotate(-8deg);
 }
 
+.werner-semantic[data-reduced="true"] .werner-semantic__folio-cover {
+  opacity: 1;
+  transform: none;
+}
+
+.werner-semantic[data-reduced="true"] .werner-semantic__folio-slips {
+  display: none;
+}
+
 .werner-semantic[data-reduced="true"] .werner-semantic__mark {
   transform: none;
 }
@@ -221,7 +292,12 @@
 
   .werner-semantic__evidence,
   .werner-semantic__stamp,
+  .werner-semantic__folio-cover,
   .werner-semantic__orbit {
     opacity: 1;
+  }
+
+  .werner-semantic__folio-slips {
+    display: none;
   }
 }

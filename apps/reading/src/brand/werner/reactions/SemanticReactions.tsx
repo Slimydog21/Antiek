@@ -4,11 +4,12 @@ import Werner, { type WernerMood } from "../../Werner";
 import WernerAuthoredPose from "../WernerAuthoredPose";
 import "./semantic-reactions.css";
 
-type SemanticReactionKind = "curious" | "happy" | "dizzy" | "hit";
+type SemanticReactionKind = "curious" | "happy" | "composed" | "dizzy" | "hit";
 
 const DURATION_MS: Record<SemanticReactionKind, number> = {
   curious: 1200,
   happy: 800,
+  composed: 1500,
   dizzy: 1300,
   hit: 800,
 };
@@ -16,6 +17,7 @@ const DURATION_MS: Record<SemanticReactionKind, number> = {
 const MOOD: Record<SemanticReactionKind, WernerMood> = {
   curious: "thinking",
   happy: "idle",
+  composed: "idle",
   dizzy: "empty",
   hit: "idle",
 };
@@ -23,6 +25,7 @@ const MOOD: Record<SemanticReactionKind, WernerMood> = {
 const LABEL: Record<SemanticReactionKind, string> = {
   curious: "Werner examines the evidence",
   happy: "Werner marks the work verified",
+  composed: "Werner binds the research into one folio",
   dizzy: "Werner regains his bearings",
   hit: "Werner bumps the control",
 };
@@ -73,6 +76,26 @@ function PaperclipOrbit() {
   );
 }
 
+function ResearchFolio() {
+  return (
+    <svg
+      className="werner-semantic__folio"
+      viewBox="0 0 64 46"
+      aria-hidden="true"
+    >
+      <g className="werner-semantic__folio-slips">
+        <path className="werner-semantic__folio-slip werner-semantic__folio-slip--one" d="M4 4h20v27H4zM9 10h10M9 15h8" />
+        <path className="werner-semantic__folio-slip werner-semantic__folio-slip--two" d="M40 2h20v27H40zM45 8h10M45 13h8" />
+        <path className="werner-semantic__folio-slip werner-semantic__folio-slip--three" d="M22 0h20v27H22zM27 6h10M27 11h8" />
+      </g>
+      <g className="werner-semantic__folio-cover">
+        <path d="M15 16h35v27H15z" />
+        <path d="M20 16v27M25 23h18M25 28h14" />
+      </g>
+    </svg>
+  );
+}
+
 function BrassTab() {
   return (
     <svg
@@ -89,6 +112,7 @@ function BrassTab() {
 const CHROME: Record<SemanticReactionKind, ReactNode> = {
   curious: <EvidenceCard />,
   happy: <VerificationStamp />,
+  composed: <ResearchFolio />,
   dizzy: <PaperclipOrbit />,
   hit: <BrassTab />,
 };
@@ -133,6 +157,10 @@ export function WernerCurious(props: Props) {
 
 export function WernerHappy(props: Props) {
   return <SemanticReaction kind="happy" {...props} />;
+}
+
+export function WernerComposed(props: Props) {
+  return <SemanticReaction kind="composed" {...props} />;
 }
 
 export function WernerDizzy(props: Props) {

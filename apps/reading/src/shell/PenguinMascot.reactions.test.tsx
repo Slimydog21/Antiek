@@ -56,6 +56,9 @@ describe("PenguinMascot product reactions", () => {
 
     act(() => emitWernerExperience("model_evidence_compared"));
     expect(mascot.getAttribute("data-werner-emote")).toBe("curious");
+
+    act(() => emitWernerExperience("research_draft_composed"));
+    expect(mascot.getAttribute("data-werner-emote")).toBe("composed");
   });
 
   it("removes the shared reaction listener on unmount", () => {
