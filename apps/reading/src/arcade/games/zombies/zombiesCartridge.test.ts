@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { GameContext, InputState } from "../../engine/types";
 import { createZombiesCartridge } from "./zombiesCartridge";
+import type { ZombiesVisualKit } from "./zombiesVisuals";
 
 const input = (keys: string[] = []): InputState => ({
   pointer: null,
@@ -20,6 +21,27 @@ const pointerPress = (): InputState => ({
 });
 
 describe("Paperclip Zombies cartridge lifecycle", () => {
+  it("loads only on init and disposes the authored visual kit on teardown", () => {
+    const visualKit: ZombiesVisualKit = {
+      image: null,
+      ready: false,
+      load: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const cart = createZombiesCartridge({ visualKit });
+    expect(visualKit.load).not.toHaveBeenCalled();
+    cart.init({
+      width: 100,
+      height: 80,
+      rng: () => 0.5,
+      saveBestScore: vi.fn(),
+      readBestScore: () => 0,
+    });
+    expect(visualKit.load).toHaveBeenCalledTimes(1);
+    cart.teardown();
+    expect(visualKit.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it("saves best score once when the fort first falls", () => {
     const saveBestScore = vi.fn();
     const ctx: GameContext = {

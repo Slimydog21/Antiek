@@ -3,7 +3,12 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 import { createZombiesState, startZombies, type ZombiesState } from "./logic";
-import { drawZombiesScene, zombiesVisualLayout } from "./zombiesVisuals";
+import {
+  createZombiesVisualKit,
+  drawZombiesScene,
+  type ZombiesVisualKit,
+  zombiesVisualLayout,
+} from "./zombiesVisuals";
 
 function recordingContext() {
   const calls: Array<[string, ...unknown[]]> = [];
@@ -28,6 +33,7 @@ function recordingContext() {
     restore: method("restore"),
     translate: method("translate"),
     rotate: method("rotate"),
+    drawImage: method("drawImage"),
   } as unknown as CanvasRenderingContext2D;
   return { context, calls };
 }
@@ -50,6 +56,69 @@ function scene(phase: ZombiesState["phase"]): ZombiesState {
 }
 
 describe("Paperclip Zombies field-station visuals", () => {
+  it("loads fresh project-atlas images and ignores stale callbacks after disposal", () => {
+    const first = { decoding: "auto", onload: null, onerror: null, src: "" };
+    const second = { decoding: "auto", onload: null, onerror: null, src: "" };
+    const createImage = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockReturnValueOnce(second);
+    const kit = createZombiesVisualKit(
+      createImage as unknown as () => HTMLImageElement,
+    );
+    expect(createImage).not.toHaveBeenCalled();
+    kit.load();
+    const staleOnload = first.onload as unknown as () => void;
+    expect(first.src).toMatch(/paperclip-zombies-visual-kit-v1\.webp$/);
+    expect(first.decoding).toBe("async");
+    kit.dispose();
+    staleOnload();
+    expect(kit.ready).toBe(false);
+    expect(first.onload).toBeNull();
+    expect(first.onerror).toBeNull();
+    kit.load();
+    expect(createImage).toHaveBeenCalledTimes(2);
+    expect(kit.image).toBe(second);
+  });
+
+  it("aspect-fits each authored HP silhouette inside its authoritative rectangle", () => {
+    const state = {
+      ...scene("playing"),
+      zombies: [
+        { id: 1, x: 100, y: 80, hp: 1, speed: 0, w: 18, h: 18 },
+        { id: 2, x: 140, y: 100, hp: 2, speed: 0, w: 18, h: 18 },
+        { id: 3, x: 180, y: 120, hp: 3, speed: 0, w: 18, h: 18 },
+      ],
+    };
+    const { context, calls } = recordingContext();
+    const kit: ZombiesVisualKit = {
+      image: {} as CanvasImageSource,
+      ready: true,
+      load() {},
+      dispose() {},
+    };
+    drawZombiesScene(context, state, 480, 300, kit);
+    const images = calls.filter(([name]) => name === "drawImage");
+    expect(images.map((call) => call.slice(2, 6))).toEqual([
+      [720, 706, 348, 432],
+      [250, 165, 208, 332],
+      [782, 80, 204, 462],
+      [112, 699, 437, 392],
+    ]);
+    for (const [index, zombie] of state.zombies.entries()) {
+      const [, , , , , , dx, dy, dw, dh] = images[index + 1] ?? [];
+      expect(dx as number).toBeGreaterThanOrEqual(zombie.x);
+      expect(dy as number).toBeGreaterThanOrEqual(zombie.y);
+      expect((dx as number) + (dw as number)).toBeLessThanOrEqual(
+        zombie.x + zombie.w,
+      );
+      expect((dy as number) + (dh as number)).toBeLessThanOrEqual(
+        zombie.y + zombie.h,
+      );
+    }
+    expect(calls).toContainEqual(["fillRect", -7, 5.040000000000001, 2, 2]);
+  });
+
   it.each(["ready", "playing", "gameover", "exited"] as const)(
     "renders the exact %s phase plate",
     (phase) => {
@@ -204,11 +273,15 @@ describe("Paperclip Zombies field-station visuals", () => {
     expect(source).not.toMatch(/#[\da-f]{3,8}\b/i);
     expect(source).not.toContain("system-ui");
     expect(source).not.toMatch(
-      /state\.elapsed|Date\.|performance\.|Math\.random|requestAnimationFrame|setTimeout|setInterval|drawImage|createImageBitmap|fetch\(|localStorage|sessionStorage/,
+      /state\.elapsed|Date\.|performance\.|Math\.random|requestAnimationFrame|setTimeout|setInterval|createImageBitmap|fetch\(|localStorage|sessionStorage/,
     );
     expect(source).toContain("type.mono");
     expect(
       [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
-    ).toEqual(["../../../design/tokens", "./logic"]);
+    ).toEqual([
+      "../../../brand/werner/arcade/paperclip-zombies-visual-kit-v1.webp",
+      "../../../design/tokens",
+      "./logic",
+    ]);
   });
 });
