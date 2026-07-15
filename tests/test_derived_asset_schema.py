@@ -170,7 +170,7 @@ def test_populated_global_key_v18_fails_closed(db_path: str) -> None:
         con.execute("INSERT INTO derived_asset_merge_operations VALUES ('op_legacy')")
     graph_schema._INITIALIZED_PATHS.discard(db_path)
 
-    with pytest.raises(RuntimeError, match="legacy V18 merge ledger is populated"):
+    with pytest.raises(RuntimeError, match="legacy merge ledger is populated"):
         init_database_at_path(db_path)
 
 

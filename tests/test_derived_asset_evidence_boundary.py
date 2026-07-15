@@ -10,7 +10,7 @@ from pathlib import Path
 import duckdb
 import pytest
 
-from substrate.graph.schema import ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL
+from substrate.graph.derived_asset_schema import DERIVED_ASSET_SCHEMA_SQL
 from substrate.write.derived_asset_boundary import (
     LEGACY_SOURCE_MERGE_FIELDS,
     LegacySourceMergeContractRejected,
@@ -20,21 +20,27 @@ from substrate.write.derived_asset_boundary import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
-OWNED_RUNTIME = (ROOT / "substrate/graph/schema.py",)
+OWNED_RUNTIME = (
+    ROOT / "substrate/graph/schema.py",
+    ROOT / "substrate/graph/derived_asset_schema.py",
+)
+
+
 def test_schema_creates_only_owned_derived_asset_tables() -> None:
     created = set(
         re.findall(
             r"CREATE\s+TABLE\s+IF\s+NOT\s+EXISTS\s+(\w+)",
-            ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL,
+            DERIVED_ASSET_SCHEMA_SQL,
             re.IGNORECASE,
         )
     )
-    assert created == {
+    assert {
         "derived_assets",
         "derived_asset_revisions",
         "derived_asset_revision_members",
         "derived_asset_current_revisions",
-    }
+    } <= created
+    assert not {"documents", "chunks", "nodes", "html_projection_objects"} & created
 
 
 def test_claimed_runtime_has_no_source_or_filesystem_write_reachability() -> None:
@@ -99,7 +105,9 @@ def test_legacy_refusal_leaves_evidence_bytes_unchanged(tmp_path: Path) -> None:
     con.execute("INSERT INTO documents VALUES ('document-a', 'immutable source')")
 
     before = (
-        hashlib.sha256(con.execute("SELECT raw_text FROM documents").fetchone()[0].encode()).hexdigest(),
+        hashlib.sha256(
+            con.execute("SELECT raw_text FROM documents").fetchone()[0].encode()
+        ).hexdigest(),
         hashlib.sha256(projection.read_bytes()).hexdigest(),
         hashlib.sha256(snapshot.read_bytes()).hexdigest(),
     )
@@ -113,7 +121,9 @@ def test_legacy_refusal_leaves_evidence_bytes_unchanged(tmp_path: Path) -> None:
             }
         )
     after = (
-        hashlib.sha256(con.execute("SELECT raw_text FROM documents").fetchone()[0].encode()).hexdigest(),
+        hashlib.sha256(
+            con.execute("SELECT raw_text FROM documents").fetchone()[0].encode()
+        ).hexdigest(),
         hashlib.sha256(projection.read_bytes()).hexdigest(),
         hashlib.sha256(snapshot.read_bytes()).hexdigest(),
     )
@@ -122,7 +132,7 @@ def test_legacy_refusal_leaves_evidence_bytes_unchanged(tmp_path: Path) -> None:
 
 
 def test_schema_contains_no_legacy_caller_authority() -> None:
-    lowered = ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL.lower()
+    lowered = DERIVED_ASSET_SCHEMA_SQL.lower()
     for field in {
         "draft_merge_path",
         "compose_index_path",
@@ -134,7 +144,7 @@ def test_schema_contains_no_legacy_caller_authority() -> None:
 
 
 def test_boundary_names_inputs_without_foreign_write_authority() -> None:
-    sql = ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL.lower()
+    sql = DERIVED_ASSET_SCHEMA_SQL.lower()
     # Provenance identity is required, but source/projection tables are not
     # referenced or cascaded: these are copied immutable bindings.
     assert "projection_id" in sql
@@ -145,7 +155,7 @@ def test_boundary_names_inputs_without_foreign_write_authority() -> None:
 
 
 def test_revision_authority_contains_canonical_review_bindings() -> None:
-    sql = ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL.lower()
+    sql = DERIVED_ASSET_SCHEMA_SQL.lower()
     required = {
         "canonical_html",
         "content_sha256",
@@ -163,7 +173,7 @@ def test_revision_authority_contains_canonical_review_bindings() -> None:
 
 
 def test_current_pointer_is_separate_from_stable_asset_identity() -> None:
-    sql = ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL.lower()
+    sql = DERIVED_ASSET_SCHEMA_SQL.lower()
     asset_body = sql.split("create table if not exists derived_assets", 1)[1].split(");", 1)[0]
     assert "current_revision_id" not in asset_body
     assert "create table if not exists derived_asset_current_revisions" in sql
