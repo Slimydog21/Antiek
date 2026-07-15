@@ -23,6 +23,7 @@ vi.mock("../../hooks/useInvestigationList", () => ({
     ],
   }),
 }));
+vi.mock("./TwinNotesPanel", () => ({ default: () => null }));
 
 describe("Cycle 40 investigation composition", () => {
   beforeEach(() => { composeMock.mockReset(); draftMock.mockReset(); });

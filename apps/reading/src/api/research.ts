@@ -188,6 +188,57 @@ function get<T>(path: string): Promise<T> {
   return apiFetch(`${API_BASE}${path}`).then((r) => jsonOrThrow<T>(r, `GET ${path}`));
 }
 
+// ── Immutable twin notes (Cycle 48) ───────────────────────────────────
+
+export interface TwinNoteRevision {
+  revision_id: string;
+  asset_id: string;
+  note_count: number;
+  source_count: number;
+  created_at?: string;
+}
+
+export interface TwinNoteAsset {
+  asset_id: string;
+  asset_label: string;
+  current_revision: TwinNoteRevision;
+  revision_count: number;
+}
+
+export interface TwinNoteListResponse {
+  assets: TwinNoteAsset[];
+}
+
+export interface TwinNoteHistoryResponse {
+  asset_id: string;
+  revisions: TwinNoteRevision[];
+}
+
+export interface TwinNoteCompositionResponse {
+  composition_id: string;
+  url: string;
+  members: Array<TwinNoteRevision & { member_ordinal: number }>;
+}
+
+/** Owner-scoped verified current twin-note revisions. */
+export function listTwinNotes(): Promise<TwinNoteListResponse> {
+  return get("/research/twin-notes");
+}
+
+/** Verified current-to-root history for one owner-scoped asset. */
+export function getTwinNoteHistory(assetId: string): Promise<TwinNoteHistoryResponse> {
+  return get(`/research/twin-notes/assets/${encodeURIComponent(assetId)}/revisions`);
+}
+
+/** Create or replay a composition from exact revisions in semantic order. */
+export function composeTwinNotes(revisionIds: string[]): Promise<TwinNoteCompositionResponse> {
+  return post("/research/twin-notes/compositions", { revision_ids: revisionIds });
+}
+
+export function twinNoteRevisionUrl(revisionId: string): string {
+  return `/research/twin-notes/revisions/${encodeURIComponent(revisionId)}`;
+}
+
 // ── Plan lifecycle (SPR-05 over HTTP) ───────────────────────────────────
 
 export function getBudgetDefaults(): Promise<BudgetDefaults> {

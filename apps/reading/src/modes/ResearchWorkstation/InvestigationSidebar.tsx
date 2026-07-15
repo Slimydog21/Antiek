@@ -6,6 +6,7 @@ import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
 import { API_BASE, composeResearchArtifacts, createCompositionDraft } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
+import TwinNotesPanel from "./TwinNotesPanel";
 
 /**
  * Left sidebar showing past investigations as a tree. Each node carries
@@ -147,6 +148,7 @@ export default function InvestigationSidebar() {
             selecting={selecting} selected={selected} onToggle={toggle} pending={pending} />
         ))}
       </ul>
+      <TwinNotesPanel />
     </div>
   );
 }

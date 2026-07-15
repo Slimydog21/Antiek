@@ -1348,6 +1348,93 @@ CREATE INDEX IF NOT EXISTS idx_twin_note_effects_pending
     ON twin_note_publication_effects(state, created_at);
 """
 
+ANTIEK_GRAPH_SCHEMA_V22_TWIN_NOTE_SERVING_SQL = """
+CREATE TABLE IF NOT EXISTS twin_note_compositions (
+    composition_id TEXT PRIMARY KEY,
+    account_id TEXT NOT NULL,
+    composition_version INTEGER NOT NULL CHECK (composition_version = 1),
+    ordered_members_sha256 TEXT NOT NULL,
+    html_bytes BLOB NOT NULL,
+    html_sha256 TEXT NOT NULL,
+    member_count INTEGER NOT NULL CHECK (member_count BETWEEN 2 AND 20),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (account_id, ordered_members_sha256)
+);
+CREATE TABLE IF NOT EXISTS twin_note_composition_members (
+    composition_id TEXT NOT NULL,
+    member_ordinal INTEGER NOT NULL CHECK (member_ordinal BETWEEN 0 AND 19),
+    revision_id TEXT NOT NULL,
+    asset_id TEXT NOT NULL,
+    body_sha256 TEXT NOT NULL,
+    html_sha256 TEXT NOT NULL,
+    PRIMARY KEY (composition_id, member_ordinal),
+    UNIQUE (composition_id, revision_id),
+    FOREIGN KEY (composition_id) REFERENCES twin_note_compositions(composition_id)
+);
+CREATE INDEX IF NOT EXISTS idx_twin_note_compositions_owner
+    ON twin_note_compositions(account_id, created_at);
+"""
+
+_V22_REQUIRED_DESCRIBE = {
+    "twin_note_compositions": [
+        ("composition_id", "VARCHAR", "NO", "PRI", None), ("account_id", "VARCHAR", "NO", "UNI", None),
+        ("composition_version", "INTEGER", "NO", None, None), ("ordered_members_sha256", "VARCHAR", "NO", "UNI", None),
+        ("html_bytes", "BLOB", "NO", None, None), ("html_sha256", "VARCHAR", "NO", None, None),
+        ("member_count", "INTEGER", "NO", None, None), ("created_at", "TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+    ],
+    "twin_note_composition_members": [
+        ("composition_id", "VARCHAR", "NO", "PRI", None), ("member_ordinal", "INTEGER", "NO", "PRI", None),
+        ("revision_id", "VARCHAR", "NO", "UNI", None), ("asset_id", "VARCHAR", "NO", None, None),
+        ("body_sha256", "VARCHAR", "NO", None, None), ("html_sha256", "VARCHAR", "NO", None, None),
+    ],
+}
+_V22_KEY_CHECK_CONSTRAINTS = {
+    "twin_note_compositions": {
+        ("PRIMARY KEY", ("composition_id",), "PRIMARY KEY(composition_id)"),
+        ("CHECK", ("composition_version",), "CHECK((composition_version = 1))"),
+        ("CHECK", ("member_count",), "CHECK((member_count BETWEEN 2 AND 20))"),
+        ("UNIQUE", ("account_id", "ordered_members_sha256"), "UNIQUE(account_id, ordered_members_sha256)"),
+    },
+    "twin_note_composition_members": {
+        ("CHECK", ("member_ordinal",), "CHECK((member_ordinal BETWEEN 0 AND 19))"),
+        ("PRIMARY KEY", ("composition_id", "member_ordinal"), "PRIMARY KEY(composition_id, member_ordinal)"),
+        ("UNIQUE", ("composition_id", "revision_id"), "UNIQUE(composition_id, revision_id)"),
+        ("FOREIGN KEY", ("composition_id",), "REFERENCES:twin_note_compositions(composition_id)"),
+    },
+}
+
+
+def _v22_twin_note_shape_is_valid(con: LockedConnection) -> bool:
+    for table, expected in _V22_REQUIRED_DESCRIBE.items():
+        if [tuple(row[:5]) for row in con.execute(f"DESCRIBE main.{table}").fetchall()] != expected:
+            return False
+        rows = con.execute(
+            "SELECT constraint_type,constraint_column_names,constraint_text,referenced_table,referenced_column_names "
+            "FROM duckdb_constraints() WHERE schema_name='main' AND table_name=? AND constraint_type IN "
+            "('PRIMARY KEY','UNIQUE','CHECK','FOREIGN KEY')", [table]).fetchall()
+        actual = {(row[0], tuple(row[1]), f"REFERENCES:{row[3]}({','.join(row[4])})" if row[0] == "FOREIGN KEY" else row[2]) for row in rows}
+        if actual != _V22_KEY_CHECK_CONSTRAINTS[table]:
+            return False
+    indexes = {(row[0], row[1]) for row in con.execute(
+        "SELECT index_name,sql FROM duckdb_indexes() WHERE schema_name='main' AND table_name IN "
+        "('twin_note_compositions','twin_note_composition_members')").fetchall()}
+    return indexes == {("idx_twin_note_compositions_owner", "CREATE INDEX idx_twin_note_compositions_owner ON twin_note_compositions(account_id, created_at);")}
+
+
+def _repair_empty_partial_v22_twin_notes(con: LockedConnection) -> None:
+    names = tuple(_V22_REQUIRED_DESCRIBE)
+    existing = {row[0] for row in con.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema='main' AND table_name IN (?,?)", list(names)).fetchall()}
+    if not existing:
+        return
+    if existing == set(names) and _v22_twin_note_shape_is_valid(con):
+        return
+    if any(con.execute(f"SELECT COUNT(*) FROM main.{table}").fetchone()[0] for table in existing):
+        raise RuntimeError("populated partial V22 twin-note schema requires explicit recovery")
+    for table in ("twin_note_composition_members", "twin_note_compositions"):
+        if table in existing:
+            con.execute(f"DROP TABLE main.{table}")
+
 _V21_REQUIRED_DESCRIBE = {
     "twin_note_revisions": [
         ("revision_id", "VARCHAR", "NO", "PRI", None), ("account_id", "VARCHAR", "NO", "UNI", None),
@@ -1422,7 +1509,8 @@ def _v21_twin_note_shape_is_valid(con: LockedConnection) -> bool:
         if constraints != _V21_KEY_CHECK_CONSTRAINTS[table]:
             return False
     indexes = {(row[0], row[1]) for row in con.execute(
-        "SELECT index_name,sql FROM duckdb_indexes() WHERE schema_name='main' AND table_name LIKE 'twin_note_%'"
+        "SELECT index_name,sql FROM duckdb_indexes() WHERE schema_name='main' AND table_name IN "
+        "('twin_note_revisions','twin_note_revision_members','twin_note_publication_effects')"
     ).fetchall()}
     return indexes == {
         ("idx_twin_note_revisions_current", "CREATE INDEX idx_twin_note_revisions_current ON twin_note_revisions(account_id, asset_id, supersedes_revision_id);"),
@@ -1432,7 +1520,8 @@ def _v21_twin_note_shape_is_valid(con: LockedConnection) -> bool:
 
 def _repair_empty_partial_v21_twin_notes(con: LockedConnection) -> None:
     existing = {row[0] for row in con.execute(
-        "SELECT table_name FROM information_schema.tables WHERE table_schema='main' AND table_name LIKE 'twin_note_%'"
+        "SELECT table_name FROM information_schema.tables WHERE table_schema='main' AND table_name IN "
+        "('twin_note_revisions','twin_note_revision_members','twin_note_publication_effects')"
     ).fetchall()}
     if not existing:
         return
@@ -1698,6 +1787,8 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL)
     _repair_empty_partial_v21_twin_notes(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V21_TWIN_NOTE_COMPRESSION_SQL)
+    _repair_empty_partial_v22_twin_notes(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V22_TWIN_NOTE_SERVING_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1765,10 +1856,13 @@ def _schema_is_present(db_path: str) -> bool:
             " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
             "table_schema='main' AND table_name='twin_note_revisions' "
             "AND column_name='membership_sha256')"
+            " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='twin_note_compositions' "
+            "AND column_name='ordered_members_sha256')"
         ).fetchone()
         present = bool(row and row[0])
         if present:
-            present = _v21_twin_note_shape_is_valid(con)
+            present = _v21_twin_note_shape_is_valid(con) and _v22_twin_note_shape_is_valid(con)
     except Exception:
         return False
     finally:
