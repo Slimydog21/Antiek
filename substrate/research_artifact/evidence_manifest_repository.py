@@ -235,6 +235,7 @@ class EvidenceManifestRepository:
                 )
                 payload = InvestigationStartRequestedPayload(
                     **options,
+                    owner_user_id=owner_user_id,
                     context=context,
                     spawn_context=context,
                     evidence_manifest=provenance,

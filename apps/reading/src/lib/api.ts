@@ -382,6 +382,94 @@ export interface CompositionDraftResponse {
   insufficient_evidence_members: string[];
 }
 
+// ── Cycle 72: composition launch ──────────────────────────────────
+
+/** Response envelope for compose that includes the ETag header (the
+ *  composition's integrity token for If-Match on the launch call). */
+export interface ComposeWithETagResult {
+  composition: ComposedArtifactResponse;
+  etag: string;
+}
+
+/**
+ * Like ``composeResearchArtifacts`` but returns the HTTP ``ETag``
+ * header alongside the parsed body. The ETag is the composition's
+ * integrity token — the frontend must send it as ``If-Match`` on the
+ * subsequent launch call (see ``launchComposition``).
+ */
+export async function composeResearchArtifactsWithETag(
+  investigationIds: string[],
+): Promise<ComposeWithETagResult> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/compose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ investigation_ids: investigationIds }),
+  });
+  if (!resp.ok) {
+    let message = `Composition failed (HTTP ${resp.status})`;
+    try {
+      const body = await resp.json() as { detail?: string };
+      if (body.detail) message = body.detail;
+    } catch { /* retain the useful status fallback */ }
+    throw new ApiError(message, resp.status, message);
+  }
+  const composition = await resp.json() as ComposedArtifactResponse;
+  const etag = resp.headers.get("ETag") ?? "";
+  return { composition, etag };
+}
+
+export interface CompositionLaunchResponse {
+  investigation_id: string;
+  status: string;
+  start_event_id: string;
+}
+
+/**
+ * Launch a composed research investigation. Requires the composition's
+ * ``ETag`` (from ``composeResearchArtifactsWithETag``) as ``If-Match``
+ * and a caller-generated idempotency key. The server uses deterministic
+ * event identity so retries with the same key are safe.
+ *
+ * Error mapping per spec:
+ * - 404: composition unavailable (opaque)
+ * - 409: integrity/idempotency conflict
+ * - 412: stale ETag (composition changed since compose)
+ * - 422: invalid body
+ * - 428: missing If-Match or Idempotency-Key
+ * - 503: append/broadcast/receipt unavailable
+ */
+export async function launchComposition(
+  compositionId: string,
+  body: {
+    question: string;
+    parent_investigation_id?: string;
+    research_tier?: ResearchTier;
+  },
+  etag: string,
+  idempotencyKey: string,
+): Promise<CompositionLaunchResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/research/artifacts/compositions/${encodeURIComponent(compositionId)}/launch`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": etag,
+        "Idempotency-Key": idempotencyKey,
+      },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!resp.ok) {
+    throw new ApiError(
+      `POST /compositions/${compositionId}/launch failed: HTTP ${resp.status}`,
+      resp.status,
+      await resp.text(),
+    );
+  }
+  return resp.json();
+}
+
 export async function createCompositionDraft(req: {
   composition_id: string;
   idempotency_key: string;

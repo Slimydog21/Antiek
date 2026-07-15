@@ -766,7 +766,9 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v36: investigation.start_requested gains compact, first-class evidence
 #     manifest provenance. The null default keeps historical events valid and
 #     the validator preserves the singleton/same-revision source invariant.
-EVENT_SCHEMA_VERSION: int = 36
+# v37: investigation.start_requested gains compact immutable research
+#     composition provenance. Exact member HTML remains in the artifact store.
+EVENT_SCHEMA_VERSION: int = 37
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2210,6 +2212,37 @@ class EvidenceManifestProvenance(BaseModel):
         return self
 
 
+class ResearchCompositionMemberRef(BaseModel):
+    """One ordered immutable HTML member in a collective research launch."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    investigation_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
+    content_hash: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rendered_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordinal: int = Field(ge=0, le=7)
+
+
+class ResearchCompositionProvenance(BaseModel):
+    """Compact provenance for server-verified immutable composition HTML."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    composition_id: str = Field(pattern=r"^cmp-[0-9a-f]{64}$")
+    ordered_set_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    composition_schema_version: Literal[1] = 1
+    members: tuple[ResearchCompositionMemberRef, ...] = Field(min_length=2, max_length=8)
+    member_count: int = Field(ge=2, le=8)
+
+    @model_validator(mode="after")
+    def _ordered_and_counted(self) -> ResearchCompositionProvenance:
+        if self.member_count != len(self.members):
+            raise ValueError("research composition member count mismatch")
+        if [item.ordinal for item in self.members] != list(range(len(self.members))):
+            raise ValueError("research composition member order mismatch")
+        if len({item.investigation_id for item in self.members}) != len(self.members):
+            raise ValueError("research composition members must be unique")
+        return self
+
+
 class InvestigationStartRequestedPayload(_PayloadBase):
     """Cold-question entry point. The orchestrator subscribes to this
     action_type and spawns a per-investigation coroutine that walks
@@ -2227,6 +2260,7 @@ class InvestigationStartRequestedPayload(_PayloadBase):
         ActionType.INVESTIGATION_START_REQUESTED
     )
     question: str
+    owner_user_id: str | None = Field(default=None, min_length=1, max_length=512)
     context: str = ""
     topic_slug: str | None = None
     # Cap on parallel evidence_retrieve dispatches (one per sub-question
@@ -2239,11 +2273,13 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     derived_source: DerivedCitationSource | None = None
     derived_sources: tuple[DerivedCitationSource, ...] = ()
     evidence_manifest: EvidenceManifestProvenance | None = None
+    research_composition: ResearchCompositionProvenance | None = None
 
     @model_validator(mode="after")
     def _valid_derived_sources(self) -> InvestigationStartRequestedPayload:
         populated = sum((self.derived_source is not None, bool(self.derived_sources),
-                         self.evidence_manifest is not None))
+                         self.evidence_manifest is not None,
+                         self.research_composition is not None))
         if populated > 1:
             raise ValueError("derived source fields are mutually exclusive")
         if self.derived_sources:

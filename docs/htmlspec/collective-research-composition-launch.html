@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cycle 72 - Collective research composition launch</title></head>
+<body>
+<main>
+  <h1>Cycle 72: Collective research composition launch</h1>
+  <p><strong>Status:</strong> executable specification. <strong>Base:</strong> Cycle 71, commit 0762369a4.</p>
+
+  <section id="outcome">
+    <h2>Outcome</h2>
+    <p>An operator selects 2-8 completed investigations in the existing Research Workstation sidebar, creates one immutable HTML composition, inspects the ordered member outputs, asks a cohesive follow-up, and launches exactly one new investigation after an explicit confirmation. The server, never the browser, rebuilds the launch context from verified immutable composition members.</p>
+  </section>
+
+  <section id="values">
+    <h2>Five values</h2>
+    <ol>
+      <li><strong>Information density:</strong> retain each completed subagent's complete human-readable HTML artifact rather than a client summary.</li>
+      <li><strong>Provenance:</strong> persist composition ID, ordered-set digest, member investigation IDs, content hashes, rendered hashes, and ordinals on the launch event.</li>
+      <li><strong>Operator control:</strong> compose and inspect are spend-free; only the explicit Follow-up confirmation emits research.</li>
+      <li><strong>Integrity:</strong> owner authority and every immutable member are revalidated immediately before event append.</li>
+      <li><strong>HTML first:</strong> composition inspection remains canonical HTML; no PDF or markdown shadow format is introduced.</li>
+    </ol>
+  </section>
+
+  <section id="bounds">
+    <h2>Bounds</h2>
+    <ul>
+      <li>Exactly 2-8 unique completed investigations, in caller-selected order.</li>
+      <li>Canonical collective context is at most 192 KiB UTF-8. Oversize compositions fail before persistence or launch.</li>
+      <li>One owner may retain at most 200 authoritative compositions.</li>
+      <li>Launch accepts only question, optional parent investigation ID, and fast/deep tier. It rejects context, member arrays, provider, model, spend, and digest.</li>
+      <li>No edit, delete, public share, nested composition, automatic launch, or implicit model choice is added in this cycle.</li>
+    </ul>
+  </section>
+
+  <section id="persistence">
+    <h2>Persistence</h2>
+    <p>Add owner-scoped composition authority, ordered member bindings, and idempotent launch-operation tables to the graph schema. Composition creation writes immutable HTML first, verifies it, then transactionally records the owner binding. Replays with the same owner and composition identity return the existing authority; foreign owners receive opaque not-found behavior.</p>
+  </section>
+
+  <section id="event">
+    <h2>Event contract</h2>
+    <p>Event schema v37 adds <code>research_composition</code> provenance to <code>investigation.start_requested</code>. It is mutually exclusive with derived source, derived sources, and evidence manifest provenance. Exact HTML remains in the immutable composition store; the event carries compact hashes and order.</p>
+  </section>
+
+  <section id="api">
+    <h2>API</h2>
+    <ul>
+      <li><code>POST /research/artifacts/compose</code> keeps its response shape but records owner authority and returns an ETag header.</li>
+      <li><code>GET /research/artifacts/compositions/{id}</code> requires owner authority and revalidates the index and every member before serving HTML.</li>
+      <li><code>POST /research/artifacts/compositions/{id}/launch</code> requires <code>If-Match</code> and <code>Idempotency-Key</code>; it uses deterministic event identity and crash-safe delivery receipts.</li>
+      <li>Error mapping: 404 opaque unavailable, 409 integrity/idempotency conflict, 412 stale ETag, 422 invalid closed body, 428 missing headers, 503 append/broadcast/receipt unavailable.</li>
+    </ul>
+  </section>
+
+  <section id="ui">
+    <h2>Workstation interaction</h2>
+    <ol>
+      <li>Select mode exposes checkboxes only for <code>artifact_composable</code> completed investigations.</li>
+      <li>The existing Open HTML action creates and opens the owner-bound composition without launching research.</li>
+      <li>A new Research together action first creates the composition, then shows ordered investigation questions and a follow-up textarea.</li>
+      <li>One explicit confirmation calls the authoritative launch endpoint. Navigation is disabled while delivery is pending; retries reuse the same idempotency key.</li>
+      <li>Success navigates to the new live investigation. Stale async results cannot replace a newer selection.</li>
+    </ol>
+  </section>
+
+  <section id="acceptance">
+    <h2>Acceptance evidence</h2>
+    <ul>
+      <li>Repository tests: owner opacity, order, cardinality, digest/member tamper, capacity, oversize context, replay, key conflict, stale ETag, expired lease recovery, and physical event deduplication.</li>
+      <li>Route tests: authentication, forbidden fields, all status mappings, ETag, replay, broadcast failure, and receipt recovery.</li>
+      <li>Frontend tests: only composable selection, zero launch on compose/inspect, one confirmation/one launch, retry-key reuse, pending navigation lock, stale-response suppression, and error recovery.</li>
+      <li>TypeScript, production build, schema codegen/staleness, Ruff, diff check, HardenX strict, and independent hostile review pass.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

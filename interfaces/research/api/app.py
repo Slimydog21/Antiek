@@ -2304,6 +2304,7 @@ def create_app(
                 investigation_id,
                 InvestigationStartRequestedPayload(
                     question=req.question,
+                    owner_user_id=getattr(request.state, "user_id", None) or "__operator__",
                     context=req.context,
                     topic_slug=req.topic_slug,
                     max_sub_questions=req.max_sub_questions,

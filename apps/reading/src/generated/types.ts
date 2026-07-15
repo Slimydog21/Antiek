@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 36;
+export const EVENT_SCHEMA_VERSION = 37;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -231,6 +231,27 @@ export interface EvidenceManifestProvenance {
   collections: EvidenceManifestCollectionRef[];
   collection_count: number;
   total_passage_count: number;
+}
+
+/**
+ * One ordered immutable HTML member in a collective research launch.
+ */
+export interface ResearchCompositionMemberRef {
+  investigation_id: string;
+  content_hash: string;
+  rendered_sha256: string;
+  ordinal: number;
+}
+
+/**
+ * Compact provenance for server-verified immutable composition HTML.
+ */
+export interface ResearchCompositionProvenance {
+  composition_id: string;
+  ordered_set_digest: string;
+  composition_schema_version?: 1;
+  members: ResearchCompositionMemberRef[];
+  member_count: number;
 }
 
 /**
@@ -1625,6 +1646,7 @@ export interface AuditFindingPayload {
 export interface InvestigationStartRequestedPayload {
   action_type: "investigation.start_requested";
   question: string;
+  owner_user_id?: string | null;
   context?: string;
   topic_slug?: string | null;
   max_sub_questions?: number;
@@ -1633,6 +1655,7 @@ export interface InvestigationStartRequestedPayload {
   derived_source?: DerivedCitationSource | null;
   derived_sources?: DerivedCitationSource[];
   evidence_manifest?: EvidenceManifestProvenance | null;
+  research_composition?: ResearchCompositionProvenance | null;
   chase_mode?: "off" | "depth" | "duration";
   chase_value?: number;
   chase_budget_usd?: number;

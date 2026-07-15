@@ -1567,7 +1567,8 @@ def _v23_twin_note_shape_is_valid(con: LockedConnection) -> bool:
             return False
         rows=con.execute("SELECT constraint_type,constraint_column_names,constraint_text,referenced_table,referenced_column_names FROM duckdb_constraints() WHERE schema_name='main' AND table_name=? AND constraint_type IN ('PRIMARY KEY','UNIQUE','CHECK','FOREIGN KEY')",[table]).fetchall()
         actual={(r[0],tuple(r[1]),f"REFERENCES:{r[3]}({','.join(r[4])})" if r[0]=="FOREIGN KEY" else r[2]) for r in rows}
-        if actual != _V23_CONSTRAINTS[table]: return False
+        if actual != _V23_CONSTRAINTS[table]:
+            return False
     indexes = {(r[0], r[1]) for r in con.execute(
         "SELECT index_name,sql FROM duckdb_indexes() WHERE schema_name='main' AND table_name IN (?,?,?,?)",
         list(_V23_TABLES)).fetchall()}
@@ -1952,6 +1953,9 @@ def init_database(con: LockedConnection) -> None:
     from .twin_note_merge_bridge_schema import install as _install_twin_note_merge_bridge_schema
 
     _install_twin_note_merge_bridge_schema(con)
+    from .research_composition_schema import install as _install_research_composition_schema
+
+    _install_research_composition_schema(con)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -2041,6 +2045,10 @@ def _schema_is_present(db_path: str) -> bool:
             from .twin_note_merge_bridge_schema import sentinel_is_present as bridge_sentinel
 
             present = bridge_sentinel(con)
+        if present:
+            from .research_composition_schema import sentinel_is_present as composition_sentinel
+
+            present = composition_sentinel(con)
     except Exception:
         return False
     finally:
