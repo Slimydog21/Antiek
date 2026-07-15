@@ -19,6 +19,10 @@ from interfaces.research.api.merge_asset_routes import (
 from runtime.db_lock import connect_write
 from substrate.contracts.html_projection import HtmlProjectionContract, derive_projection_id
 from substrate.graph.schema import init_database_at_path
+from substrate.research_artifact.derived_companion import (
+    build_derived_revision_evidence_pack,
+    canonical_evidence_json,
+)
 from substrate.research_artifact.merge_draft import MergeDraftRepository
 
 
@@ -350,8 +354,126 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert exact_search.json()["revision_id"] == first_revision
     assert exact_search.json()["is_current"] is False
     assert current_search.json()["retrieval_mode"] == "deterministic_lexical_v1"
+    assert current_search.json()["generation"] == 3
+    assert len(current_search.json()["index_sha256"]) == 64
     assert current_search.json()["results"][0]["citation_id"].startswith("dchunk_")
     assert current_search.json()["results"][0]["text"] == "Ready\n\nup"
+    assert len(current_search.json()["results"][0]["text_sha256"]) == 64
+    pack = build_derived_revision_evidence_pack(
+        db_path=db_path,
+        owner_user_id="owner-a",
+        asset_id=asset_id,
+        revision_id=restored["revision_id"],
+        question="Ready",
+        top_k=3,
+    )
+    replay = build_derived_revision_evidence_pack(
+        db_path=db_path,
+        owner_user_id="owner-a",
+        asset_id=asset_id,
+        revision_id=restored["revision_id"],
+        question="Ready",
+        top_k=3,
+    )
+    assert replay == pack
+    assert json.loads(canonical_evidence_json(pack)) == pack
+    assert pack["pack_sha256"] == hashlib.sha256(
+        canonical_evidence_json({key: value for key, value in pack.items()
+                                 if key != "pack_sha256"}).encode()
+    ).hexdigest()
+    assert pack["citations"][0]["citation_id"] == current_search.json()["results"][0][
+        "citation_id"
+    ]
+    assert build_derived_revision_evidence_pack(
+        db_path=db_path,
+        owner_user_id="owner-a",
+        asset_id=asset_id,
+        question="absent",
+    )["citations"] == []
+    companion_path = f"/research/derived-assets/assets/{asset_id}/companion/evidence"
+    companion_command = {
+        "client_turn_id": "reader-turn-0001",
+        "question": "Ready",
+        "expected_revision_id": restored["revision_id"],
+        "expected_content_sha256": restored["content_sha256"],
+    }
+    prepared = client.post(companion_path, json=companion_command)
+    assert prepared.status_code == 200
+    assert prepared.headers["cache-control"] == "private, no-store"
+    assert prepared.json()["state"] == "evidence_ready"
+    assert prepared.json()["replayed"] is False
+    assert prepared.json()["execution"] == {
+        "available": False,
+        "reason": "paid_route_not_qualified",
+        "pricing_status": "unknown",
+    }
+    replayed = client.post(companion_path, json=companion_command)
+    assert replayed.status_code == 200 and replayed.json()["replayed"] is True
+    conflict = client.post(companion_path, json={**companion_command, "question": "up"})
+    assert conflict.status_code == 409
+    abstained = client.post(companion_path, json={
+        **companion_command,
+        "client_turn_id": "reader-turn-0002",
+        "question": "absent",
+    })
+    assert abstained.status_code == 200
+    assert abstained.json()["state"] == "insufficient_evidence"
+    assert abstained.json()["evidence_pack"]["citations"] == []
+    stale = client.post(companion_path, json={
+        **companion_command,
+        "client_turn_id": "reader-turn-0003",
+        "expected_revision_id": first_revision,
+        "expected_content_sha256": created["content_sha256"],
+    })
+    assert stale.status_code == 409
+    assert stale.json()["current"]["revision_id"] == restored["revision_id"]
+    exact_companion_path = (
+        f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}"
+        "/companion/evidence"
+    )
+    historical = client.post(exact_companion_path, json={
+        "client_turn_id": "reader-turn-0004", "question": "Ready"
+    })
+    assert historical.status_code == 200
+    assert historical.json()["scope"]["revision_id"] == first_revision
+    assert historical.json()["scope"]["is_current"] is False
+    conversation = client.get(
+        f"/research/derived-assets/assets/{asset_id}/companion"
+    )
+    assert conversation.status_code == 200
+    assert conversation.headers["cache-control"] == "private, no-store"
+    assert [turn["question"] for turn in conversation.json()["turns"]] == [
+        "Ready", "absent"
+    ]
+    exact_conversation = client.get(
+        f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/companion"
+    )
+    assert [turn["question"] for turn in exact_conversation.json()["turns"]] == ["Ready"]
+    with duckdb.connect(db_path, read_only=True) as con:
+        turns = con.execute(
+            "SELECT state,count(*) FROM derived_asset_companion_turns GROUP BY state ORDER BY state"
+        ).fetchall()
+        assert turns == [("evidence_ready", 2), ("insufficient_evidence", 1)]
+        assert con.execute(
+            "SELECT count(*) FROM derived_asset_companion_turn_citations"
+        ).fetchone() == (2,)
+        assert "<article" not in "".join(str(row[0]) for row in con.execute(
+            "SELECT evidence_pack_json FROM derived_asset_companion_turns"
+        ).fetchall())
+    with connect_write(db_path, purpose="companion-composite-constraint-proof") as con:
+        with pytest.raises(duckdb.ConstraintException):
+            con.execute(
+                "UPDATE derived_asset_companion_threads SET derived_asset_id=?",
+                ["ast_" + "f" * 32],
+            )
+        with pytest.raises(duckdb.ConstraintException):
+            con.execute(
+                "UPDATE derived_asset_companion_turn_citations "
+                "SET revision_id=? WHERE turn_id=?",
+                [first_revision, "dturn_" + hashlib.sha256(
+                    b"owner-a\0reader-turn-0001"
+                ).hexdigest()[:32]],
+            )
     assert client.post(current_search_path, json={"query": "absent"}).json()["results"] == []
     assert client.post(current_search_path, json={"query": "x", "unknown": True}).status_code == 422
     assert client.post(current_search_path, json={"query": "😀" * 3000}).status_code == 422
@@ -385,9 +507,9 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         ).status_code == 404
     with connect_write(db_path, purpose="derived-index-tamper-proof") as con:
         con.execute(
-            "UPDATE derived_asset_revision_chunks SET citation_id=? "
+            "UPDATE derived_asset_revision_indexes SET index_sha256=? "
             "WHERE derived_asset_id=? AND revision_id=?",
-            ["dchunk_" + "f" * 64, asset_id, restored["revision_id"]],
+            ["f" * 64, asset_id, restored["revision_id"]],
         )
     assert client.post(current_search_path, json={"query": "Ready"}).status_code == 409
 

@@ -123,6 +123,66 @@ CREATE TABLE IF NOT EXISTS derived_asset_revision_indexes (
         REFERENCES derived_asset_revisions(derived_asset_id,revision_id,content_sha256)
 );
 
+CREATE TABLE IF NOT EXISTS derived_asset_companion_threads (
+    thread_id TEXT PRIMARY KEY CHECK (regexp_full_match(thread_id,'dct_[0-9a-f]{32}')),
+    derived_asset_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    revision_content_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(revision_content_sha256,'[0-9a-f]{64}')
+    ),
+    revision_generation BIGINT NOT NULL CHECK (revision_generation>=1),
+    last_turn_ordinal BIGINT NOT NULL DEFAULT 0 CHECK (last_turn_ordinal>=0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (derived_asset_id,revision_id),
+    UNIQUE (thread_id,derived_asset_id,revision_id),
+    FOREIGN KEY (derived_asset_id,revision_id,revision_content_sha256)
+        REFERENCES derived_asset_revisions(derived_asset_id,revision_id,content_sha256)
+);
+
+CREATE TABLE IF NOT EXISTS derived_asset_companion_turns (
+    turn_id TEXT PRIMARY KEY CHECK (regexp_full_match(turn_id,'dturn_[0-9a-f]{32}')),
+    thread_id TEXT NOT NULL,
+    client_turn_id TEXT NOT NULL,
+    turn_ordinal BIGINT NOT NULL CHECK (turn_ordinal>=1),
+    question TEXT NOT NULL,
+    question_sha256 TEXT NOT NULL CHECK (regexp_full_match(question_sha256,'[0-9a-f]{64}')),
+    request_sha256 TEXT NOT NULL CHECK (regexp_full_match(request_sha256,'[0-9a-f]{64}')),
+    state TEXT NOT NULL CHECK (state IN ('evidence_ready','insufficient_evidence')),
+    evidence_pack_json TEXT NOT NULL,
+    evidence_pack_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(evidence_pack_sha256,'[0-9a-f]{64}')
+    ),
+    failure_code TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (thread_id,turn_ordinal),
+    UNIQUE (turn_id,thread_id),
+    FOREIGN KEY (thread_id)
+        REFERENCES derived_asset_companion_threads(thread_id),
+    CHECK (
+        (state='evidence_ready' AND failure_code IS NULL)
+        OR (state='insufficient_evidence' AND failure_code='no_matching_revision_evidence')
+    )
+);
+
+CREATE TABLE IF NOT EXISTS derived_asset_companion_turn_citations (
+    turn_id TEXT NOT NULL REFERENCES derived_asset_companion_turns(turn_id),
+    thread_id TEXT NOT NULL,
+    derived_asset_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    citation_order INTEGER NOT NULL CHECK (citation_order>=0),
+    chunk_ordinal INTEGER NOT NULL CHECK (chunk_ordinal>=0),
+    used_in_answer BOOLEAN NOT NULL DEFAULT FALSE,
+    PRIMARY KEY (turn_id,citation_order),
+    FOREIGN KEY (turn_id,thread_id)
+        REFERENCES derived_asset_companion_turns(turn_id,thread_id),
+    FOREIGN KEY (thread_id,derived_asset_id,revision_id)
+        REFERENCES derived_asset_companion_threads(
+            thread_id,derived_asset_id,revision_id
+        ),
+    FOREIGN KEY (derived_asset_id,revision_id,chunk_ordinal)
+        REFERENCES derived_asset_revision_chunks(derived_asset_id,revision_id,chunk_ordinal)
+);
+
 CREATE TABLE IF NOT EXISTS derived_asset_current_revisions (
     derived_asset_id TEXT PRIMARY KEY REFERENCES derived_assets(derived_asset_id),
     current_revision_id TEXT NOT NULL,
@@ -251,6 +311,9 @@ SENTINEL_TABLES = (
     "derived_asset_current_revisions",
     "derived_asset_revision_chunks",
     "derived_asset_revision_indexes",
+    "derived_asset_companion_threads",
+    "derived_asset_companion_turns",
+    "derived_asset_companion_turn_citations",
     "derived_asset_merge_reviews",
     "derived_asset_merge_operations",
     "derived_asset_merge_outbox",

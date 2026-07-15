@@ -379,6 +379,38 @@ export interface DerivedAssetReadingResponse {
   exact_reader_path: string;
 }
 
+export interface DerivedCompanionEvidenceResponse {
+  client_turn_id: string;
+  state: "evidence_ready" | "insufficient_evidence";
+  failure_code: "no_matching_revision_evidence" | null;
+  replayed: boolean;
+  scope: Pick<DerivedAssetReadingResponse,
+    "derived_asset_id" | "revision_id" | "content_sha256" | "generation" | "is_current">;
+  evidence_pack: {
+    pack_sha256: string;
+    citations: Array<{
+      citation_id: string;
+      chunk_ordinal: number;
+      member_index: number;
+      section_anchor: string;
+      section_path: string;
+      text: string;
+      text_sha256: string;
+    }>;
+  };
+  execution: {
+    available: false;
+    reason: "paid_route_not_qualified";
+    pricing_status: "unknown";
+  };
+}
+
+export interface DerivedCompanionConversationResponse {
+  scope: DerivedCompanionEvidenceResponse["scope"] & { exact_reader_path: string };
+  turns: Array<Pick<DerivedCompanionEvidenceResponse,
+    "client_turn_id" | "state" | "failure_code" | "evidence_pack"> & { question: string }>;
+}
+
 /** Owner-scoped verified current twin-note revisions. */
 export function listTwinNotes(): Promise<TwinNoteListResponse> {
   return get("/research/twin-notes");
@@ -441,6 +473,32 @@ export function getDerivedAssetReading(
   return get(revisionId
     ? `/research/derived-assets/assets/${asset}/revisions/${encodeURIComponent(revisionId)}/reading`
     : `/research/derived-assets/assets/${asset}/reading`);
+}
+
+export function prepareDerivedCompanionEvidence(
+  model: DerivedAssetReadingResponse,
+  clientTurnId: string,
+  question: string,
+): Promise<DerivedCompanionEvidenceResponse> {
+  const asset = encodeURIComponent(model.derived_asset_id);
+  const path = model.is_current
+    ? `/research/derived-assets/assets/${asset}/companion/evidence`
+    : `/research/derived-assets/assets/${asset}/revisions/${encodeURIComponent(model.revision_id)}/companion/evidence`;
+  return post(path, {
+    client_turn_id: clientTurnId,
+    question,
+    expected_revision_id: model.is_current ? model.revision_id : null,
+    expected_content_sha256: model.is_current ? model.content_sha256 : null,
+  });
+}
+
+export function getDerivedCompanionConversation(
+  model: DerivedAssetReadingResponse,
+): Promise<DerivedCompanionConversationResponse> {
+  const asset = encodeURIComponent(model.derived_asset_id);
+  return get(model.is_current
+    ? `/research/derived-assets/assets/${asset}/companion`
+    : `/research/derived-assets/assets/${asset}/revisions/${encodeURIComponent(model.revision_id)}/companion`);
 }
 
 export function restoreDerivedAsset(

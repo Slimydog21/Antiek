@@ -11,7 +11,7 @@ vi.mock("../../api/research", () => ({
 vi.mock("../../workspace/WorkspaceStore", () => ({
   useWorkspace: (selector: (state: { open: typeof mocks.open }) => unknown) => selector({ open: mocks.open }),
 }));
-vi.mock("./ReadingCompanion", () => ({ default: (props: { documentId: string; readingThreadId: string }) => <aside data-testid="companion" data-document-id={props.documentId} data-thread-id={props.readingThreadId} /> }));
+vi.mock("./DerivedRevisionCompanion", () => ({ default: (props: { model: { derived_asset_id: string; revision_id: string } }) => <aside data-testid="companion" data-document-id={props.model.derived_asset_id} data-revision-id={props.model.revision_id} /> }));
 vi.mock("../shared/FloatMenu/FloatMenu", () => ({ default: (props: { investigationId: string }) => <div data-testid="float-menu" data-thread-id={props.investigationId} /> }));
 
 const assetId = `ast_${"a".repeat(32)}`;
@@ -52,8 +52,8 @@ describe("Cycle 57 derived HTML reader", () => {
     expect(article.dataset.contentSha256).toBe(hash);
     expect(article.innerHTML).toBe(model.canonical_html);
     expect(screen.getByTestId("companion").dataset.documentId).toBe(assetId);
+    expect(screen.getByTestId("companion").dataset.revisionId).toBe(revisionId);
     const threadId = `read-${assetId}:${revisionId}`;
-    expect(screen.getByTestId("companion").dataset.threadId).toBe(threadId);
     expect(screen.getByTestId("float-menu").dataset.threadId).toBe(threadId);
     expect(mocks.getReading).toHaveBeenCalledWith(assetId, undefined);
   });

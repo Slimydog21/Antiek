@@ -1,0 +1,137 @@
+import { BookOpenText, LoaderCircle, Search } from "lucide-react";
+import { FormEvent, RefObject, useEffect, useRef, useState } from "react";
+
+import {
+  getDerivedCompanionConversation,
+  prepareDerivedCompanionEvidence,
+  type DerivedAssetReadingResponse,
+  type DerivedCompanionEvidenceResponse,
+} from "../../api/research";
+import { LemonButton, LemonTag } from "../../components/lemon";
+
+interface Props {
+  model: DerivedAssetReadingResponse;
+  articleRef: RefObject<HTMLElement>;
+}
+
+type PersistedTurn = Awaited<ReturnType<typeof getDerivedCompanionConversation>>["turns"][number];
+
+function clientTurnId(): string {
+  return `reader-${crypto.randomUUID()}`;
+}
+
+export default function DerivedRevisionCompanion({ model, articleRef }: Props) {
+  const activeClientId = useRef<string | null>(null);
+  const requestGeneration = useRef(0);
+  const [question, setQuestion] = useState("");
+  const [result, setResult] = useState<DerivedCompanionEvidenceResponse | null>(null);
+  const [turns, setTurns] = useState<PersistedTurn[]>([]);
+  const [working, setWorking] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const generation = ++requestGeneration.current;
+    activeClientId.current = null;
+    setWorking(false);
+    setResult(null);
+    setError(null);
+    setTurns([]);
+    void getDerivedCompanionConversation(model).then((conversation) => {
+      if (generation !== requestGeneration.current) return;
+      if (conversation.scope.revision_id !== model.revision_id
+          || conversation.scope.content_sha256 !== model.content_sha256) return;
+      setTurns(conversation.turns);
+    }).catch(() => {
+      if (generation === requestGeneration.current) {
+        setError("Saved companion evidence could not be loaded.");
+      }
+    });
+    return () => { requestGeneration.current += 1; };
+  }, [model]);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    const normalized = question.trim();
+    if (!normalized || working) return;
+    const generation = ++requestGeneration.current;
+    activeClientId.current ??= clientTurnId();
+    setWorking(true);
+    setError(null);
+    try {
+      const next = await prepareDerivedCompanionEvidence(
+        model, activeClientId.current, normalized,
+      );
+      if (generation !== requestGeneration.current) return;
+      if (next.scope.derived_asset_id !== model.derived_asset_id
+          || next.scope.revision_id !== model.revision_id
+          || next.scope.content_sha256 !== model.content_sha256) {
+        throw new Error("companion identity conflict");
+      }
+      setResult(next);
+      setTurns((current) => [...current.filter(
+        (turn) => turn.client_turn_id !== next.client_turn_id,
+      ), {
+        client_turn_id: next.client_turn_id,
+        question: normalized,
+        state: next.state,
+        failure_code: next.failure_code,
+        evidence_pack: next.evidence_pack,
+      }]);
+      activeClientId.current = null;
+    } catch {
+      if (generation === requestGeneration.current) {
+        setError("The evidence request could not be verified. Retry keeps the same request identity.");
+      }
+    } finally {
+      if (generation === requestGeneration.current) setWorking(false);
+    }
+  }
+
+  function showCitation(anchor: string) {
+    const escaped = CSS.escape(anchor);
+    const target = articleRef.current?.querySelector<HTMLElement>(`#${escaped}`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.animate(
+      [{ outline: "3px solid #f9bd2b" }, { outline: "3px solid transparent" }],
+      { duration: 1800, easing: "ease-out" },
+    );
+  }
+
+  return <aside className="hidden w-80 flex-shrink-0 overflow-y-auto border-l border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex lg:flex-col" aria-label="Derived revision companion">
+    <header className="border-b border-rule px-4 pb-3 pt-4 dark:border-charcoal-1">
+      <div className="flex items-center justify-between gap-2">
+        <p className="font-serif text-sm text-ink dark:text-bright">Question this revision</p>
+        <LemonTag colour={model.is_current ? "aurora" : "sun"}>{model.is_current ? "Current" : "Historical"}</LemonTag>
+      </div>
+      <p className="mt-1 font-mono text-[10px] text-shadow-1 dark:text-moonlight">Generation {model.generation} · exact citations</p>
+    </header>
+    <form className="border-b border-rule p-4 dark:border-charcoal-1" onSubmit={submit}>
+      <label htmlFor="derived-companion-question" className="sr-only">Question about this revision</label>
+      <textarea id="derived-companion-question" value={question} disabled={working} onChange={(event) => {
+        setQuestion(event.target.value);
+        activeClientId.current = null;
+        setResult(null);
+      }} rows={4} maxLength={8000} placeholder="What does this revision say about..." className="w-full resize-y border border-rule bg-white p-2 font-serif text-sm text-ink outline-none focus:border-ink dark:border-charcoal-1 dark:bg-charcoal-3 dark:text-bright" />
+      <div className="mt-2 flex items-center justify-between gap-2">
+        <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">Cost unavailable</span>
+        <LemonButton type="submit" size="sm" disabled={working || question.trim().length === 0}>
+          {working ? <LoaderCircle className="animate-spin" size={14} /> : <Search size={14} />} Find evidence
+        </LemonButton>
+      </div>
+    </form>
+    {error ? <p role="alert" className="border-b border-rule px-4 py-3 text-xs text-danger dark:border-charcoal-1">{error}</p> : null}
+    <div className="min-h-0 flex-1 p-4">
+      {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until pricing and spend recovery are qualified.</p></div> : null}
+      {result?.state === "insufficient_evidence" ? <p className="font-serif text-sm leading-relaxed text-ink-mute dark:text-moonlight">No matching evidence was found in this revision. No model was called.</p> : null}
+      {result?.state === "evidence_ready" ? <ol className="space-y-3" aria-label="Matching revision evidence">{result.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-3 dark:border-charcoal-1">
+        <button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button>
+        <blockquote className="mt-1 font-serif text-sm leading-relaxed text-ink dark:text-bright">{citation.text}</blockquote>
+      </li>)}</ol> : null}
+      {!result && turns.length > 0 ? <ol className="space-y-4" aria-label="Saved revision evidence">{turns.map((turn) => <li key={turn.client_turn_id}>
+        <p className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">{turn.question}</p>
+        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : <ol className="space-y-2">{turn.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-2 dark:border-charcoal-1"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><blockquote className="mt-1 font-serif text-sm text-ink dark:text-bright">{citation.text}</blockquote></li>)}</ol>}
+      </li>)}</ol> : null}
+    </div>
+  </aside>;
+}
