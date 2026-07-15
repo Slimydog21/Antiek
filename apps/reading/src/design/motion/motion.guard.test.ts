@@ -52,6 +52,10 @@ const BASELINE = join(HERE, "motion_guard_baseline.json");
  */
 const SANCTIONED = new Set<string>([
   "src/brand/werner/animated/animations.css",
+  // Semantic reactions are a single, token-driven Werner motion home. Keep
+  // their seven one-shot beats consolidated here instead of baselining them
+  // as unrelated ad-hoc motion.
+  "src/brand/werner/reactions/semantic-reactions.css",
   "src/design/motion.css",
   "src/design/motion.ts",
   // The reactive Werner mascot's waddle/bump poses (AMS SPR-05/10) — a
