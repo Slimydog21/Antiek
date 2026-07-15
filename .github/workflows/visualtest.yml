@@ -1,9 +1,9 @@
 name: visualtest
 
-# Reading-app Storybook visual evidence. The authored arcade story owns a
-# blocking, 0.001%-ceiling three-breakpoint gate. The legacy repository-wide sweep
-# remains advisory because LostPixel 3.22 exits zero for differences under this
-# repository's generateOnly:false configuration.
+# Reading-app Storybook visual evidence. Bounded authored stories own blocking
+# three-breakpoint gates. The legacy repository-wide sweep remains advisory
+# because LostPixel 3.22 exits zero for differences under this repository's
+# generateOnly:false configuration.
 
 on:
   pull_request:
@@ -93,6 +93,30 @@ jobs:
           fi
           if find .lostpixel/diff -type f -print -quit | grep -q .; then
             echo "::error::Research route instrument differs from its canonical baselines"
+            exit 1
+          fi
+
+      - name: Gate Werner semantic motion proof against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: brand-werner-semantic-motion-proof--contact-sheet
+        run: |
+          for width in 768 1024 1280; do
+            plate=".lostpixel/baseline/brand-werner-semantic-motion-proof--contact-sheet__[w${width}px].png"
+            if [ ! -s "$plate" ]; then
+              echo "::error file=${plate}::Missing canonical Werner semantic-motion baseline"
+              exit 1
+            fi
+          done
+          npx lost-pixel
+          for width in 768 1024 1280; do
+            current=".lostpixel/current/brand-werner-semantic-motion-proof--contact-sheet__[w${width}px].png"
+            if [ ! -s "$current" ]; then
+              echo "::error file=${current}::Missing Werner semantic-motion capture"
+              exit 1
+            fi
+          done
+          if find .lostpixel/diff -type f -print -quit | grep -q .; then
+            echo "::error::Werner semantic motion proof differs from its canonical baselines"
             exit 1
           fi
 
