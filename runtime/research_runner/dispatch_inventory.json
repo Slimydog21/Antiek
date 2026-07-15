@@ -1,0 +1,83 @@
+[
+  {
+    "seam_id": "cascade.operator.spend_approval",
+    "stage": "approval",
+    "source": "interfaces/research/api/cascade_routes.py",
+    "function": "_hard_ceiling_approval_receipt",
+    "call_symbol": "gateway.prepare_zero_cost",
+    "classification": "zero_cost_local",
+    "reason": "the exact operator authority is durably receipted before launch and has no provider charge"
+  },
+  {
+    "seam_id": "cascade.session.launch",
+    "stage": "launch",
+    "source": "interfaces/research/api/cascade_routes.py",
+    "function": "_hard_ceiling_launch_receipt",
+    "call_symbol": "gateway.prepare_zero_cost",
+    "classification": "zero_cost_local",
+    "reason": "host-local task creation has no provider charge; its receipt is the durable proof that launch setup completed"
+  },
+  {
+    "seam_id": "cascade.plan.decomposer",
+    "stage": "pre_launch_plan",
+    "source": "roles/cascade_planner/planner.py",
+    "function": "DispatchDecomposer.decompose",
+    "call_symbol": "dispatch",
+    "classification": "paid_ineligible",
+    "reason": "LLM catalog prices are zero placeholders; fallback attempts lack durable idempotency and reconciliation"
+  },
+  {
+    "seam_id": "cascade.gather.contract_stub",
+    "stage": "gather",
+    "source": "runtime/research_runner/host_local.py",
+    "function": "make_contract_gather_stub._loop",
+    "call_symbol": "ctx.step",
+    "classification": "zero_cost_local",
+    "reason": "contract fixture performs no provider or network call; emitted cost is simulated accounting"
+  },
+  {
+    "seam_id": "cascade.gather.exa.search",
+    "stage": "gather",
+    "source": "acquisition/search/exa/client.py",
+    "function": "ExaClient._post._send",
+    "call_symbol": "client.post",
+    "classification": "paid_ineligible",
+    "reason": "estimate is not an authoritative rate; client retries and has no durable idempotency or invoice reconciliation"
+  },
+  {
+    "seam_id": "cascade.gather.url.fetch",
+    "stage": "promotion",
+    "source": "acquisition/urls/client.py",
+    "function": "fetch._send",
+    "call_symbols": ["client.get", "c.get"],
+    "classification": "zero_cost_external",
+    "reason": "ordinary origin HTTP fetch has no metered provider charge; Browserbase escalation is disabled at this reachable call site"
+  },
+  {
+    "seam_id": "cascade.gather.embedding.bootstrap",
+    "stage": "promotion",
+    "source": "processing/embedding/embed.py",
+    "function": "default_embedding_provider",
+    "call_symbol": "SentenceTransformerEmbedding",
+    "classification": "zero_cost_local",
+    "reason": "local model inference has no metered provider charge; first-use model download is network I/O but not a billable API dispatch"
+  },
+  {
+    "seam_id": "cascade.tail.synthesizer",
+    "stage": "synthesis_tail",
+    "source": "interfaces/research/api/synthesizer.py",
+    "function": "_dispatch_once",
+    "call_symbol": "dispatch",
+    "classification": "paid_ineligible",
+    "reason": "cascade supplies no constraints, so one call plus one parse-repair can each traverse three providers (six physical sends); prices are placeholders and attempts are not reconcilable"
+  },
+  {
+    "seam_id": "cascade.tail.knowledge_extractor",
+    "stage": "synthesis_tail",
+    "source": "skills/domain/extract.py",
+    "function": "default_llm_call_factory._call",
+    "call_symbol": "dispatch",
+    "classification": "paid_ineligible",
+    "reason": "up to six matched domains, two parse attempts per domain, and three provider fallbacks produce at most 36 physical sends; prices are zero placeholders and attempts are not reconcilable"
+  }
+]
