@@ -231,6 +231,21 @@ def test_budget_operator_cap_differs_from_daemon_cap_stays_consistent(
     assert budget.remaining_usd != 1.0
 
 
+def test_budget_reports_persisted_daemon_cap_over_changed_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", "5")
+    DaemonBudget.from_env().reserve(1.0)
+    monkeypatch.setenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", "10")
+
+    budget = read_operator_budget()
+
+    assert budget.enforcement_cap_usd == 5.0
+    assert budget.spent_usd == 1.0
+
+
 def test_budget_signed_remaining_exposes_overrun_magnitude(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

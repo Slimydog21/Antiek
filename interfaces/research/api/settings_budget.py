@@ -420,7 +420,7 @@ def _resolve_enforcement_cap(notes: list[str]) -> tuple[float, str | None]:
     return DEFAULT_DAILY_CAP_USD, None
 
 
-def _read_sidecar_reserved_usd() -> float | None:
+def _read_sidecar_budget() -> tuple[float, float] | None:
     """Read reserved-estimate spend from the daemon sidecar JSON.
 
     Does **not** call ``DaemonBudget.remaining_today()`` (that re-bases on
@@ -459,7 +459,7 @@ def _read_sidecar_reserved_usd() -> float | None:
         )
     if not math.isfinite(stored_cap) or stored_cap < 0.0:
         raise ValueError("budget sidecar cap_usd must be finite and non-negative")
-    return value
+    return value, stored_cap
 
 
 def read_operator_budget() -> BudgetResponse:
@@ -467,15 +467,8 @@ def read_operator_budget() -> BudgetResponse:
     notes: list[str] = []
     daily_cap, cap_env = _resolve_display_cap(notes)
     enforcement_cap, enforcement_cap_env = _resolve_enforcement_cap(notes)
+    enforcement_cap_source = enforcement_cap_env or "daemon default"
     caps_aligned = abs(float(daily_cap) - float(enforcement_cap)) < 1e-9
-    if not caps_aligned:
-        notes.append(
-            f"display cap ${float(daily_cap):.2f}/day"
-            f" ({cap_env or 'default'}) differs from enforcement cap"
-            f" ${float(enforcement_cap):.2f}/day"
-            f" ({enforcement_cap_env or 'daemon default'}) —"
-            f" daemon halt uses enforcement; Settings bar uses display"
-        )
 
     reserved: float | None = None
     remaining: float | None = None
@@ -483,10 +476,15 @@ def read_operator_budget() -> BudgetResponse:
     spend_basis: SpendBasis = "unknown"
     over_budget: bool | None = None
     try:
-        reserved = _read_sidecar_reserved_usd()
-        if reserved is None:
+        sidecar_budget = _read_sidecar_budget()
+        if sidecar_budget is None:
             notes.append("spent ledger unavailable: daemon sidecar missing")
         else:
+            reserved, persisted_enforcement_cap = sidecar_budget
+            enforcement_cap = persisted_enforcement_cap
+            enforcement_cap_env = None
+            enforcement_cap_source = "persisted daemon sidecar"
+            caps_aligned = abs(float(daily_cap) - enforcement_cap) < 1e-9
             # Signed remaining on the Settings/display cap — no clamp.
             remaining = float(daily_cap) - float(reserved)
             spent_status = "known"
@@ -508,6 +506,15 @@ def read_operator_budget() -> BudgetResponse:
         spend_basis = "unknown"
         over_budget = None
         notes.append(f"spent ledger unavailable: {type(exc).__name__}")
+
+    if not caps_aligned:
+        notes.append(
+            f"display cap ${float(daily_cap):.2f}/day"
+            f" ({cap_env or 'default'}) differs from enforcement cap"
+            f" ${float(enforcement_cap):.2f}/day"
+            f" ({enforcement_cap_source}) —"
+            f" daemon halt uses enforcement; Settings bar uses display"
+        )
 
     over_budget_usd = (
         max(0.0, reserved - float(daily_cap)) if reserved is not None else None
