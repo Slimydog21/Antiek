@@ -9,6 +9,7 @@ from interfaces.research.api.multimedia_hardening_routes import (
 SIGNING_HEX = (b"provider-execution-signing-domain-1").hex()
 SNAPSHOT_HEX = (b"ship-cost-snapshot-signing-domain-2").hex()
 LOCAL_ZERO_HEX = (b"local-zero-snapshot-signing-domain-3").hex()
+PRODUCTION_HEX = (b"production-byte-snapshot-domain-4").hex()
 
 
 def test_hardening_runtime_is_optional_only_when_entirely_unconfigured() -> None:
@@ -31,7 +32,11 @@ def test_hardening_runtime_requires_independent_strong_keys() -> None:
     assert runtime.signing_key != runtime.snapshot_key
 
     local_runtime = multimedia_hardening_runtime_from_environment(
-        {**base, "ANTIEK_MULTIMEDIA_HARDENING_LOCAL_ZERO_KEY_HEX": LOCAL_ZERO_HEX}
+        {
+            **base,
+            "ANTIEK_MULTIMEDIA_HARDENING_LOCAL_ZERO_KEY_HEX": LOCAL_ZERO_HEX,
+            "ANTIEK_MULTIMEDIA_HARDENING_PRODUCTION_KEY_HEX": PRODUCTION_HEX,
+        }
     )
     assert local_runtime is not None
     assert local_runtime.local_zero_snapshot_key is not None
@@ -40,8 +45,9 @@ def test_hardening_runtime_requires_independent_strong_keys() -> None:
             local_runtime.signing_key,
             local_runtime.snapshot_key,
             local_runtime.local_zero_snapshot_key,
+            local_runtime.production_snapshot_key,
         }
-    ) == 3
+    ) == 4
 
     with pytest.raises(RuntimeError, match="independent"):
         multimedia_hardening_runtime_from_environment(
@@ -50,4 +56,20 @@ def test_hardening_runtime_requires_independent_strong_keys() -> None:
     with pytest.raises(RuntimeError, match="independent"):
         multimedia_hardening_runtime_from_environment(
             {**base, "ANTIEK_MULTIMEDIA_HARDENING_LOCAL_ZERO_KEY_HEX": SIGNING_HEX}
+        )
+    with pytest.raises(RuntimeError, match="independent"):
+        multimedia_hardening_runtime_from_environment(
+            {**base, "ANTIEK_MULTIMEDIA_HARDENING_PRODUCTION_KEY_HEX": SNAPSHOT_HEX}
+        )
+    with pytest.raises(RuntimeError, match="independent"):
+        multimedia_hardening_runtime_from_environment(
+            {**base, "ANTIEK_MULTIMEDIA_HARDENING_PRODUCTION_KEY_HEX": SIGNING_HEX}
+        )
+    with pytest.raises(RuntimeError, match="independent"):
+        multimedia_hardening_runtime_from_environment(
+            {
+                **base,
+                "ANTIEK_MULTIMEDIA_HARDENING_PRODUCTION_KEY_HEX": PRODUCTION_HEX,
+                "ANTIEK_MULTIMEDIA_HARDENING_LOCAL_ZERO_KEY_HEX": PRODUCTION_HEX,
+            }
         )
