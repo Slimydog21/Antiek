@@ -12,7 +12,10 @@ const researchRoutes = [
   "/",
   ...MODE_TAXONOMY.filter((mode) => mode.workflow === "research" && mode.route)
     .map((mode) => mode.route!.replace(/:[^/]+/g, "fixture")),
-].filter((route, index, routes) => routes.indexOf(route) === index);
+].filter(
+  (route, index, routes) =>
+    route !== "/brainstorm" && routes.indexOf(route) === index,
+);
 
 describe("ResearchObservatoryAtmosphere (SPR-25)", () => {
   it("is one decorative, pointer-inert image", () => {

@@ -99,7 +99,10 @@ export default function BrainstormStation() {
         },
       ]}
     >
-      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+      {/* SceneChrome owns Brainstorm's tested glass contrast surface. Keep the
+          route canvas transparent so its route-scoped idea coast remains
+          perceptible; panels and interactive cards retain their own fills. */}
+      <main className="h-full overflow-y-auto bg-transparent">
         {selected ? (
           <ParkedQuestion
             question={selected}
@@ -158,7 +161,7 @@ function EmptyState({
   showFjordSkip: boolean;
 }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
+    <div className="flex min-h-full flex-1 flex-col items-center justify-start gap-6 p-8 xl:justify-center">
       <div className="max-w-md text-center space-y-3">
         <h2 className="text-lg font-serif text-ink dark:text-bright">
           The watch-for-later folder

@@ -107,6 +107,10 @@ const STORIES: string[] = [
   // SPR-28 — Read environment in isolation and through real SceneChrome.
   "shell-read-glacial-cloister-atmosphere-spr-28--html-authority-plate",
   "shell-read-glacial-cloister-atmosphere-spr-28--scene-chrome-integration",
+  // SPR-38 — Brainstorm's one route-scoped visual exception.
+  "shell-brainstorm-fjord-atmosphere-spr-38--html-authority-plate",
+  "shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-offer",
+  "shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-playing",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",

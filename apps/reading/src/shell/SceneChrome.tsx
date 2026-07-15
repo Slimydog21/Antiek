@@ -16,6 +16,7 @@ import { ResearchObservatoryAtmosphere } from "./atmosphere/ResearchObservatoryA
 import { ReadGlacialCloisterAtmosphere } from "./atmosphere/ReadGlacialCloisterAtmosphere";
 import { WriteScriptoriumAtmosphere } from "./atmosphere/WriteScriptoriumAtmosphere";
 import { SpeakListeningRoomAtmosphere } from "./atmosphere/SpeakListeningRoomAtmosphere";
+import { BrainstormFjordAtmosphere } from "./atmosphere/BrainstormFjordAtmosphere";
 import type { Thread, ThreadHop } from "./threadModel";
 
 /**
@@ -164,7 +165,17 @@ export function SceneChrome({
 
   const meta = WORKFLOWS[wf];
   const scene = SCENES[wf];
-  const Atmosphere = WORKFLOW_ATMOSPHERES[wf];
+  // Brainstorm remains a Research workflow for verbs, tabs, and product
+  // authority. Its authored idea-coast is one explicit visual exception;
+  // this does not widen the workflow taxonomy or create a per-mode registry.
+  const Atmosphere =
+    pathname === "/brainstorm"
+      ? BrainstormFjordAtmosphere
+      : WORKFLOW_ATMOSPHERES[wf];
+  const contentSurface =
+    pathname === "/brainstorm"
+      ? "bg-glass"
+      : "bg-glass backdrop-blur-glass";
   const built = workflowHasBuiltMode(wf);
 
   const runAction = (a: Action) => {
@@ -283,7 +294,7 @@ export function SceneChrome({
         <Atmosphere />
         <div
           data-scene-chrome-content=""
-          className="relative z-10 h-full bg-glass backdrop-blur-glass"
+          className={`relative z-10 h-full ${contentSurface}`}
         >
           {built ? children : <WorkflowStub workflow={wf} />}
         </div>

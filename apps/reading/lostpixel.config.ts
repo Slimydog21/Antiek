@@ -8,6 +8,9 @@ const includesNarrowIceHoleProof = scopedStoryIds.some((id) =>
 const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
   id.startsWith("brainstorm-fjord-skip--"),
 );
+const includesNarrowBrainstormAtmosphereProof = scopedStoryIds.some((id) =>
+  id.startsWith("shell-brainstorm-fjord-atmosphere-spr-38--"),
+);
 
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
@@ -20,6 +23,12 @@ const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
  *   npm run visualtest         # check current vs baseline
  *   npm run visualtest:update  # accept current as the new baseline
  *
+ * Canonical blocking plates are rendered by the visualtest workflow's pinned
+ * Ubuntu + Playwright Chromium environment. Local macOS captures are useful
+ * review evidence but must not replace canonical plates: system-font metrics
+ * and rasterization differ across operating systems even at identical viewport
+ * dimensions.
+ *
  * Known flaky story `workspace-demo--scene` (framer-motion spring
  * timing) is skipped via `shotsExcludeList` — the spring physics
  * lands at slightly different stages on each Chromium run. The skip
@@ -27,10 +36,19 @@ const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
  * the spring should be replaced with a deterministic transition.
  */
 export const config: CustomProjectConfig = {
-  configureBrowser: ({ id }) =>
-    id === "loop-1-researchrouteinstrument--dark"
-      ? { colorScheme: "dark" }
-      : {},
+  configureBrowser: ({ id }) => ({
+    ...(id === "loop-1-researchrouteinstrument--dark"
+      ? { colorScheme: "dark" as const }
+      : {}),
+    // A still image cannot prove continuous animation. Capture the authentic
+    // Playing state under reduced motion so the canvas redraws only on
+    // discrete input; normal-motion loop behavior is covered by engine and
+    // cartridge tests instead of timing-dependent pixels.
+    ...(id ===
+    "shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-playing"
+      ? { reducedMotion: "reduce" as const }
+      : {}),
+  }),
   storybookShots: {
     storybookUrl: "./storybook-static",
     /**
@@ -51,7 +69,9 @@ export const config: CustomProjectConfig = {
      * splash.
      */
     breakpoints:
-      includesNarrowIceHoleProof || includesNarrowFjordSkipProof
+      includesNarrowIceHoleProof ||
+      includesNarrowFjordSkipProof ||
+      includesNarrowBrainstormAtmosphereProof
         ? [1280, 1024, 768, 375]
         : [1280, 1024, 768],
   },
