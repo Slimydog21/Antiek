@@ -45,10 +45,22 @@ describe("ArcadeCabinet host entry", () => {
     expect(celebrate.getAttribute("src")).toBeTruthy();
   });
 
-  it("renders ice fishing and zombies cards", () => {
+  it("renders ice fishing, clam catcher, and zombies cards", () => {
     render(<ArcadeCabinet />);
     expect(screen.getByTestId("cabinet-ice-fishing")).toBeTruthy();
+    expect(screen.getByTestId("cabinet-clam-catcher")).toBeTruthy();
     expect(screen.getByTestId("cabinet-zombies")).toBeTruthy();
+  });
+
+  it("starts clam-catcher cartridge from cabinet click via shared factory", () => {
+    render(<ArcadeCabinet />);
+    fireEvent.click(screen.getByTestId("cabinet-clam-catcher"));
+    expect(screen.getByTestId("cabinet-play-surface")).toBeTruthy();
+    expect(screen.getByTestId("cabinet-arcade-mount")).toBeTruthy();
+    const cart = createArcadeCartridge("clam-catcher", { reducedMotion: true });
+    expect(cart.id).toBe("clam-catcher");
+    const { score } = progressCartridge(cart, 40, { fire: true, seed: 4 });
+    expect(score).toBeGreaterThanOrEqual(0);
   });
 
   it("starts ice-fishing cartridge from cabinet click and progresses score via factory", () => {

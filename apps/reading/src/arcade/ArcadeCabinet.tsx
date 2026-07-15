@@ -12,6 +12,8 @@ import iceFishingArt from "../brand/werner/poses/session/werner_ice_fishing_sess
 import zombiesArt from "../brand/werner/poses/session/werner_zombies_session_v1.png";
 import thinkingArt from "../brand/werner/poses/session/werner_thinking_session_v1.png";
 import celebrateArt from "../brand/werner/poses/session/werner_celebrate_session_v1.png";
+// Clam Catcher keeps authored webp key art (no session PNG yet).
+import clamCatcherArt from "../brand/werner/arcade/clam-catcher-station-key-art-v1.webp";
 
 type CabinetGame = ArcadeGameKind;
 
@@ -44,9 +46,9 @@ export function ArcadeCabinet() {
           Mini-games
         </h1>
         <p className="mt-1 max-w-xl text-sm text-ink-mute dark:text-moonlight">
-          Club Penguin–inspired Ice Fishing and a wholesome Paperclip Zombies
-          easter egg for long deep-research waits. Opt-in only — never blocks
-          work.
+          Club Penguin–inspired Ice Fishing and Clam Catcher, plus a wholesome
+          Paperclip Zombies easter egg for long deep-research waits. Opt-in only
+          — never blocks work.
         </p>
       </header>
 
@@ -72,7 +74,7 @@ export function ArcadeCabinet() {
         </span>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <CabinetCard
           title="Ice Fishing"
           blurb="Drop the line. Catch fish. Avoid the boot."
@@ -80,6 +82,14 @@ export function ArcadeCabinet() {
           selected={active === "ice-fishing"}
           onPlay={() => setActive("ice-fishing")}
           testId="cabinet-ice-fishing"
+        />
+        <CabinetCard
+          title="Clam Catcher"
+          blurb="Scoop clams on the tide. Club Penguin energy."
+          art={clamCatcherArt}
+          selected={active === "clam-catcher"}
+          onPlay={() => setActive("clam-catcher")}
+          testId="cabinet-clam-catcher"
         />
         <CabinetCard
           title="Paperclip Zombies"
