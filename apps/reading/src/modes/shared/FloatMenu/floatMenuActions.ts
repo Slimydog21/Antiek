@@ -208,6 +208,9 @@ export async function dialogueOverSelection(args: {
   selection: FloatMenuSelection;
   followUp?: string;
 }): Promise<DialogueReply> {
+  if (outboundText(args.selection) === null) {
+    throw new ApiError(WITHHELD_OUTBOUND_REASON, 403, WITHHELD_OUTBOUND_REASON);
+  }
   const prompt = buildDialoguePrompt(args.selection, args.followUp);
   const resp = await apiFetch("/thought-partner", {
     method: "POST",
