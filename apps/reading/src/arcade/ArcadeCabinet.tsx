@@ -6,10 +6,12 @@ import {
   type ArcadeGameKind,
 } from "./cartridgeFactory";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
-import iceFishingArt from "../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
-import zombiesArt from "../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
-import thinkingArt from "../brand/werner/poses/werner_thinking_v1_transparent.png";
-import celebrateArt from "../brand/werner/poses/werner_caught_a_fish_v1_transparent.png";
+// Session brand PNGs — UI-consumed cabinet key art + chrome marks.
+// Inventory: brand/werner/sessionAssets.ts (alpha integrity gated).
+import iceFishingArt from "../brand/werner/poses/session/werner_ice_fishing_session_v1.png";
+import zombiesArt from "../brand/werner/poses/session/werner_zombies_session_v1.png";
+import thinkingArt from "../brand/werner/poses/session/werner_thinking_session_v1.png";
+import celebrateArt from "../brand/werner/poses/session/werner_celebrate_session_v1.png";
 
 type CabinetGame = ArcadeGameKind;
 
@@ -65,7 +67,8 @@ export function ArcadeCabinet() {
           className="h-14 w-14 object-contain"
         />
         <span className="text-xs text-ink-mute dark:text-moonlight">
-          Authored key art + transparent poses drive the cabinet chrome.
+          Session brand marks (thinking + celebrate) + game key art drive the
+          cabinet chrome — Imagine-refined, alpha-gated PNGs.
         </span>
       </div>
 
