@@ -69,3 +69,35 @@
     paused !important;
   animation-delay: var(--werner-review-delay) !important;
 }
+
+.werner-motion-proof__frame
+  .werner-semantic--noted[data-reduced="false"]
+  .werner-semantic__note-slip {
+  animation: werner-note-tuck var(--werner-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+/* Keep the note-filed contact sheet legible even when the capture host itself
+   requests reduced motion. These are story-only frozen keyframes; production
+   continues to use the real one-shot above. */
+.werner-motion-proof__frame[data-review-frame="start"]
+  .werner-semantic--noted
+  .werner-semantic__note-slip {
+  opacity: 0 !important;
+  transform: translate(20%, 12%) rotate(5deg) !important;
+}
+
+.werner-motion-proof__frame[data-review-frame="semantic-beat"]
+  .werner-semantic--noted
+  .werner-semantic__note-slip {
+  opacity: 1 !important;
+  transform: translate(-18%, 16%) rotate(-3deg) scale(0.92) !important;
+}
+
+.werner-motion-proof__frame[data-review-frame="settle"]
+  .werner-semantic--noted
+  .werner-semantic__note-slip {
+  opacity: 0.56 !important;
+  transform: translate(-34%, 34%) rotate(-4deg) scale(0.84) !important;
+}

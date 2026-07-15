@@ -6,11 +6,12 @@ import {
   WernerDizzy,
   WernerHappy,
   WernerHit,
+  WernerNoted,
   WERNER_SEMANTIC_DURATION_MS,
 } from ".";
 import "./semantic-reactions.review.css";
 
-type Reaction = "curious" | "happy" | "dizzy" | "hit";
+type Reaction = "curious" | "happy" | "dizzy" | "hit" | "noted";
 type ReactionComponent = ComponentType<{ size: number; reduced: boolean }>;
 
 const REACTIONS: Record<Reaction, ReactionComponent> = {
@@ -18,6 +19,7 @@ const REACTIONS: Record<Reaction, ReactionComponent> = {
   happy: WernerHappy,
   dizzy: WernerDizzy,
   hit: WernerHit,
+  noted: WernerNoted,
 };
 
 const SEMANTIC_BEAT_MS: Record<Reaction, number> = {
@@ -25,6 +27,7 @@ const SEMANTIC_BEAT_MS: Record<Reaction, number> = {
   happy: 544,
   dizzy: 650,
   hit: 224,
+  noted: 620,
 };
 
 const meta = {
@@ -38,7 +41,7 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-const reactionOrder: Reaction[] = ["curious", "happy", "dizzy", "hit"];
+const reactionOrder: Reaction[] = ["curious", "happy", "dizzy", "hit", "noted"];
 
 export const ContactSheet: Story = {
   render: () => (

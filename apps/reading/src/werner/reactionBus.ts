@@ -8,6 +8,7 @@ export const PRODUCT_EXPERIENCES = [
   "deep_research_error",
   "idle",
   "fail",
+  "note_saved",
 ] as const;
 
 export type ProductExperience = (typeof PRODUCT_EXPERIENCES)[number];
@@ -19,6 +20,7 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   deep_research_error: "dizzy",
   idle: "sleeping",
   fail: "dizzy",
+  note_saved: "noted",
 };
 
 export const WERNER_EXPERIENCE_EVENT = "antiek:werner-experience";
@@ -27,7 +29,9 @@ export interface WernerExperienceDetail {
   experience: ProductExperience;
 }
 
-export function isProductExperience(value: unknown): value is ProductExperience {
+export function isProductExperience(
+  value: unknown,
+): value is ProductExperience {
   return (
     typeof value === "string" &&
     (PRODUCT_EXPERIENCES as readonly string[]).includes(value)

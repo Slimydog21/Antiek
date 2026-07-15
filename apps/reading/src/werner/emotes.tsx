@@ -7,6 +7,7 @@ import {
   WernerDizzy,
   WernerHappy,
   WernerHit,
+  WernerNoted,
 } from "../brand/werner/reactions";
 
 /**
@@ -25,12 +26,13 @@ import {
  *   sleeping  → WernerSleeping      (the breathing + zZz idle pose)
  *   dizzy     → WernerDizzy         (one paperclip orbit)
  *   hit       → WernerHit           (brass-tab squash and rebound)
+ *   noted     → WernerNoted         (archival note-slip align-and-tuck)
  *
  * The SVGs are decorative props only; canonical Werner remains the identity.
  */
 
 export type EmoteKind =
-  "curious" | "happy" | "thinking" | "sleeping" | "dizzy" | "hit";
+  "curious" | "happy" | "thinking" | "sleeping" | "dizzy" | "hit" | "noted";
 
 export const EMOTE_KINDS: readonly EmoteKind[] = [
   "curious",
@@ -39,6 +41,7 @@ export const EMOTE_KINDS: readonly EmoteKind[] = [
   "sleeping",
   "dizzy",
   "hit",
+  "noted",
 ];
 
 /**
@@ -53,6 +56,7 @@ export const EMOTE_DURATION_MS: Record<EmoteKind, number> = {
   sleeping: 2400, // one full breath cycle
   dizzy: 1300, // one paperclip orbit
   hit: 800, // brass-tab squash and rebound
+  noted: 1000, // archival note-slip align-and-tuck
 };
 
 /** Default emote duration when a caller asks for one not in the table. */
@@ -83,13 +87,7 @@ export function EmoteView({ kind, size, reduced }: EmoteViewProps): ReactNode {
   }
 
   if (reduced && kind === "sleeping") {
-    return (
-      <WernerSleeping
-        size={size}
-        label="Werner sleeping"
-        reduced
-      />
-    );
+    return <WernerSleeping size={size} label="Werner sleeping" reduced />;
   }
 
   switch (kind) {
@@ -105,6 +103,8 @@ export function EmoteView({ kind, size, reduced }: EmoteViewProps): ReactNode {
       return <WernerSleeping size={size} label="Werner sleeping" />;
     case "dizzy":
       return <WernerDizzy size={size} reduced={reduced} />;
+    case "noted":
+      return <WernerNoted size={size} reduced={reduced} />;
     default:
       return null;
   }

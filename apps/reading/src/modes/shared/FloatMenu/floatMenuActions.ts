@@ -7,6 +7,7 @@ import {
 } from "../../../lib/api";
 import type { MarginaliaNotedPayload } from "../../../generated/types";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 
 /**
  * floatMenuActions — the four float-menu actions' data paths, in one place so
@@ -83,7 +84,8 @@ export async function saveFloatMenuNote(
   args: SaveNoteArgs,
 ): Promise<{ eventId: string }> {
   const { investigationId, selection, noteText } = args;
-  const noteId = args.noteId ?? `mn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+  const noteId =
+    args.noteId ?? `mn-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const payload: MarginaliaNotedPayload = {
     action_type: "marginalia.noted",
     note_id: noteId,
@@ -105,6 +107,17 @@ export async function saveFloatMenuNote(
     document_id: selection.provenance.documentId ?? undefined,
     payload,
   });
+  // Metadata-only Werner experience: emit note_saved only after postTypedEvent
+  // resolves with a nonempty trimmed event_id. Pending, rejection, empty /
+  // missing / malformed id are silent — the mascot never reacts to a
+  // not-yet-confirmed save.
+  if (
+    emitted.action_type === "marginalia.noted" &&
+    typeof emitted.event_id === "string" &&
+    emitted.event_id.trim()
+  ) {
+    emitWernerExperience("note_saved");
+  }
   return { eventId: emitted.event_id };
 }
 
