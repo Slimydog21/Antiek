@@ -104,8 +104,10 @@ def test_catalog_distinguishes_malformed_metadata_from_absent_asset_metadata(
     _insert(con, "missing", "pdf", {})
 
     records = ProjectionSourceCatalog(con, tmp_path).list()
+    unresolved = [item for item in records if isinstance(item, UnresolvedProjectionSource)]
 
-    assert [(item.document_id, item.reason_code) for item in records] == [
+    assert len(unresolved) == len(records)
+    assert [(item.document_id, item.reason_code) for item in unresolved] == [
         ("malformed", "invalid_asset_metadata"),
         ("missing", "missing_asset_metadata"),
     ]
