@@ -1,0 +1,218 @@
+/**
+ * research-lineage-board.css — CSS-only tree connectors for the research
+ * lineage board (MyResearch family/cascade view).
+ *
+ * The tree trunk and branch arms are pure CSS on marker divs inside each
+ * research row. No SVG, no JS, no generated art. The connector colour uses
+ * the same design-token neutral as the existing `border-rule` (calm
+ * blue-grey, WCAG-safe on both day and night surfaces).
+ *
+ * Responsive: on viewports below 768px, the tree connectors collapse to
+ * simple left-border accents — the full tree is only legible on wider
+ * screens where horizontal branch arms don't crowd the question text.
+ */
+
+/* ── Research family section ────────────────────────────────────────── */
+
+.research-lineage {
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+.research-lineage--standalone {
+  /* Standalone: flat card, no tree chrome. */
+}
+
+/* ── Family header ──────────────────────────────────────────────────── */
+
+.research-lineage__header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  padding: 0.625rem 1rem;
+}
+.research-lineage__eyebrow {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--shadow-1);
+}
+.research-lineage__title {
+  font-family: 'Noto Serif', Georgia, serif;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.research-lineage__count {
+  flex-shrink: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: var(--shadow-1);
+}
+/* ── Members list ───────────────────────────────────────────────────── */
+
+.research-lineage__members {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Family tree: the ol becomes the trunk's coordinate space. The trunk
+   runs from the origin's marker level (py-2 + 50% ≈ 1rem) down to the
+   midpoint of the last child. left: 10px centres the 1.5px line within
+   the child's 24px marker column. */
+.research-lineage__members[data-tree-role="family"] {
+  position: relative;
+}
+.research-lineage__members[data-tree-role="family"]::before {
+  content: "";
+  position: absolute;
+  top: 1rem;             /* ≈ origin marker vertical centre */
+  left: 10px;
+  bottom: 0.5rem;        /* stops at last-child midpoint */
+  width: 0;
+  border-left: 1.5px solid var(--rule);
+}
+
+/* ── Individual research row ────────────────────────────────────────── */
+
+.research-lineage__member {
+  /* Divider between siblings. */
+  border-top: 1px solid var(--border);
+}
+.research-lineage__member:first-child {
+  border-top: none;
+}
+.research-lineage__research {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  padding: 0.5rem 1rem;
+  transition: background-color 150ms ease;
+}
+.research-lineage__member[data-lineage-role="branch"]
+  > .research-lineage__research {
+  padding-left: calc(1rem + (var(--lineage-depth) - 1) * 1.25rem);
+}
+.research-lineage__research:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+@media (prefers-color-scheme: dark) {
+  .research-lineage__research:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+  }
+}
+
+.research-lineage__body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ── Tree marker — the connector visualisation element ─────────────── */
+
+.research-lineage__marker {
+  flex-shrink: 0;
+  width: 24px;
+  height: 100%;
+  position: relative;
+}
+
+/* Origin (root): a horizontal right-pointing arrow from the trunk. */
+.research-lineage__member[data-lineage-role="origin"]
+  > .research-lineage__research
+  > .research-lineage__marker::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  width: 14px;
+  height: 0;
+  border-top: 2px solid var(--rule);
+  transform: translateY(-50%);
+}
+
+/* Branch (child): a horizontal arm from the trunk to the marker centre.
+   The trunk pseudo-element on the ol provides the vertical line. */
+.research-lineage__member[data-lineage-role="branch"]
+  > .research-lineage__research
+  > .research-lineage__marker::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 10px;
+  width: 14px;
+  height: 0;
+  border-top: 1.5px solid var(--rule);
+  transform: translateY(-50%);
+}
+
+/* ── Role label (Origin / Branch NN) ───────────────────────────────── */
+
+.research-lineage__role {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--shadow-1);
+  margin-bottom: 0.125rem;
+}
+/* ── Responsive: simplify tree on narrow viewports ────────────────────
+   Below 768px, the full tree with horizontal arms crowds the question
+   text. Collapse to a subtle left-border accent on branch rows. */
+
+@media (max-width: 767px) {
+  /* Hide trunk line. */
+  .research-lineage__members[data-tree-role="family"]::before {
+    display: none;
+  }
+  /* Hide horizontal arms on origin + branch markers. */
+  .research-lineage__member[data-lineage-role="origin"]
+    > .research-lineage__research
+    > .research-lineage__marker::before,
+  .research-lineage__member[data-lineage-role="branch"]
+    > .research-lineage__research
+    > .research-lineage__marker::before {
+    display: none;
+  }
+  /* Shrink the marker column — just a colour accent remains. */
+  .research-lineage__marker {
+    width: 6px;
+  }
+  /* Branch rows get a left-border accent to hint at the hierarchy. */
+  .research-lineage__member[data-lineage-role="branch"]
+    > .research-lineage__research {
+    padding-left: 1.5rem;
+    border-left: 3px solid var(--sun);
+    margin-left: 0.5rem;
+  }
+  /* Origin rows in families get a subtle left accent too. */
+  .research-lineage__member[data-lineage-role="origin"]
+    > .research-lineage__research {
+    border-left: 3px solid var(--rule);
+    margin-left: 0.5rem;
+  }
+  .research-lineage__summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .research-lineage__summary > a,
+  .research-lineage__summary > a > p {
+    width: 100%;
+  }
+  .research-lineage__summary > a > p {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+  }
+  .research-lineage__meta {
+    align-self: flex-end;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+}
