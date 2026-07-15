@@ -11,6 +11,7 @@ from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.merge_asset_routes import (
+    derived_asset_router,
     get_merge_draft_repository,
     merge_asset_router,
     register_merge_asset_routes,
@@ -73,6 +74,7 @@ def fixture(tmp_path: Path) -> Iterator[tuple[TestClient, MergeDraftRepository, 
         request.state.auth_method = "bearer_token"
         return await call_next(request)  # type: ignore[operator]
 
+    app.include_router(derived_asset_router)
     app.include_router(merge_asset_router)
     app.dependency_overrides[get_merge_draft_repository] = lambda: repository
     with TestClient(app) as client:
@@ -186,18 +188,11 @@ def test_review_apply_route_is_id_only_private_and_owner_scoped(
         "expected_content_sha256": content_sha256,
         "expected_generation": 1,
     }
-    restored = client.post(
+    refused_no_op = client.post(
         f"/research/derived-assets/merge/assets/{asset_id}/restore", json=restore_body
     )
-    assert restored.status_code == 200
-    assert restored.headers["cache-control"] == "no-store"
-    assert restored.json()["generation"] == 2
-    assert (
-        client.post(
-            f"/research/derived-assets/merge/assets/{asset_id}/restore", json=restore_body
-        ).json()["replayed"]
-        is True
-    )
+    assert refused_no_op.status_code == 409
+    assert refused_no_op.headers["cache-control"] == "no-store"
 
     stale = client.post(
         f"/research/derived-assets/merge/assets/{asset_id}/restore",
@@ -233,6 +228,158 @@ def test_review_apply_route_is_id_only_private_and_owner_scoped(
     assert foreign.status_code == 404
     assert foreign.headers["cache-control"] == "no-store"
     assert foreign.json() == {"detail": "merge authority not found"}
+
+
+def test_derived_asset_library_history_exact_previews_and_owner_scope(
+    fixture: tuple[TestClient, MergeDraftRepository, str, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _repository, db_path, _object_path, projection_id = fixture
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    draft = client.post("/research/derived-assets/merge/drafts", json=payload(projection_id)).json()
+    review = client.post(
+        f"/research/derived-assets/merge/drafts/{draft['draft_id']}/reviews"
+    ).json()
+    created = client.post(
+        f"/research/derived-assets/merge/reviews/{review['review_id']}/apply",
+        json={"operation_id": "op_" + "8" * 32},
+    ).json()
+    asset_id, first_revision = created["derived_asset_id"], created["revision_id"]
+    revise_draft = client.post(
+        "/research/derived-assets/merge/drafts",
+        json={
+            **payload(projection_id),
+            "intent": "revise",
+            "target_asset_id": asset_id,
+            "expected_parent_revision_id": first_revision,
+            "expected_parent_sha256": created["content_sha256"],
+        },
+    ).json()
+    revise_review = client.post(
+        f"/research/derived-assets/merge/drafts/{revise_draft['draft_id']}/reviews"
+    ).json()
+    revised = client.post(
+        f"/research/derived-assets/merge/reviews/{revise_review['review_id']}/apply",
+        json={"operation_id": "op_" + "7" * 32, "expected_generation": 1},
+    ).json()
+    restored = client.post(
+        f"/research/derived-assets/merge/assets/{asset_id}/restore",
+        json={
+            "operation_id": "op_" + "9" * 32,
+            "selected_revision_id": first_revision,
+            "expected_revision_id": revised["revision_id"],
+            "expected_content_sha256": revised["content_sha256"],
+            "expected_generation": 2,
+        },
+    ).json()
+
+    discovered = client.get("/research/derived-assets")
+    assert discovered.status_code == 200
+    assert discovered.headers["cache-control"] == "private, no-store"
+    assert client.get("/research/derived-assets?owner=owner-b").status_code == 422
+    asset = discovered.json()["assets"][0]
+    assert set(asset) == {"derived_asset_id", "title", "asset_kind", "current", "revision_count"}
+    assert asset["derived_asset_id"] == asset_id and asset["revision_count"] == 3
+    assert asset["current"] == {
+        "revision_id": restored["revision_id"],
+        "content_sha256": restored["content_sha256"],
+        "generation": 3,
+        "member_count": 1,
+        "preview_url": f"/research/derived-assets/assets/{asset_id}/current/frame-preview",
+    }
+
+    history = client.get(f"/research/derived-assets/assets/{asset_id}/revisions")
+    assert history.status_code == 200
+    body = history.json()
+    assert [item["revision_id"] for item in body["revisions"]] == [
+        restored["revision_id"], revised["revision_id"], first_revision
+    ]
+    assert body["revisions"][0]["operation_kind"] == "restore"
+    assert body["revisions"][0]["restored_from_revision_id"] == first_revision
+    assert body["revisions"][1]["operation_kind"] == "revise"
+    assert body["revisions"][2]["operation_kind"] == "create"
+    assert all("created_at" not in repr(item) and "manifest" not in repr(item)
+               for item in body["revisions"])
+
+    current_preview = client.get(asset["current"]["preview_url"])
+    exact_preview = client.get(body["revisions"][2]["preview_url"])
+    assert current_preview.content == exact_preview.content
+    for preview in (current_preview, exact_preview):
+        assert preview.status_code == 200
+        assert preview.headers["cache-control"] == "private, no-store"
+        assert "frame-ancestors 'self'" in preview.headers["content-security-policy"]
+        assert "sandbox" in preview.headers["content-security-policy"]
+        assert preview.headers["x-content-type-options"] == "nosniff"
+        assert preview.headers["referrer-policy"] == "no-referrer"
+
+    assert client.get(
+        "/research/derived-assets", headers={"x-owner": "owner-b"}
+    ).json()["assets"] == []
+    for path in (
+        f"/research/derived-assets/assets/{asset_id}/revisions",
+        asset["current"]["preview_url"],
+        body["revisions"][2]["preview_url"],
+    ):
+        assert client.get(path, headers={"x-owner": "owner-b"}).status_code == 404
+
+
+def test_derived_asset_library_refuses_member_drift(
+    fixture: tuple[TestClient, MergeDraftRepository, str, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _repository, db_path, _object_path, projection_id = fixture
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    draft = client.post("/research/derived-assets/merge/drafts", json=payload(projection_id)).json()
+    review = client.post(
+        f"/research/derived-assets/merge/drafts/{draft['draft_id']}/reviews"
+    ).json()
+    applied = client.post(
+        f"/research/derived-assets/merge/reviews/{review['review_id']}/apply",
+        json={"operation_id": "op_" + "a" * 32},
+    ).json()
+    with connect_write(db_path, purpose="derived-library-member-drift") as con:
+        con.execute(
+            "UPDATE derived_asset_revision_members SET source_document_id='drifted' "
+            "WHERE derived_asset_id=?",
+            [applied["derived_asset_id"]],
+        )
+    assert client.get("/research/derived-assets").status_code == 409
+    assert client.get(
+        f"/research/derived-assets/assets/{applied['derived_asset_id']}/revisions"
+    ).status_code == 409
+
+
+def test_derived_asset_library_refuses_owned_missing_head_and_generation_drift(
+    fixture: tuple[TestClient, MergeDraftRepository, str, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _repository, db_path, _object_path, projection_id = fixture
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    with connect_write(db_path, purpose="derived-library-missing-head") as con:
+        con.execute(
+            "INSERT INTO derived_assets (derived_asset_id,title,asset_kind,owner_user_id) "
+            "VALUES (?,?,?,?)",
+            ["ast_" + "f" * 32, "Foreign incomplete", "analysis", "owner-b"],
+        )
+    assert client.get("/research/derived-assets").json()["assets"] == []
+    assert client.get(
+        "/research/derived-assets", headers={"x-owner": "owner-b"}
+    ).status_code == 409
+
+    draft = client.post("/research/derived-assets/merge/drafts", json=payload(projection_id)).json()
+    review = client.post(
+        f"/research/derived-assets/merge/drafts/{draft['draft_id']}/reviews"
+    ).json()
+    applied = client.post(
+        f"/research/derived-assets/merge/reviews/{review['review_id']}/apply",
+        json={"operation_id": "op_" + "b" * 32},
+    ).json()
+    with connect_write(db_path, purpose="derived-library-generation-drift") as con:
+        con.execute(
+            "UPDATE derived_asset_current_revisions SET generation=9 WHERE derived_asset_id=?",
+            [applied["derived_asset_id"]],
+        )
+    assert client.get("/research/derived-assets").status_code == 409
 
 
 def test_owner_scope_is_indistinguishable_404(

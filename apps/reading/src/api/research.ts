@@ -329,6 +329,42 @@ export interface DerivedMergeApplyResponse {
   replayed: boolean;
 }
 
+export interface DerivedAssetCurrent {
+  revision_id: string;
+  content_sha256: string;
+  generation: number;
+  member_count: number;
+  preview_url: string;
+}
+
+export interface DerivedAssetSummary {
+  derived_asset_id: string;
+  title: string;
+  asset_kind: "document" | "analysis" | "synthesis" | "composite";
+  current: DerivedAssetCurrent;
+  revision_count: number;
+}
+
+export interface DerivedAssetRevision {
+  revision_id: string;
+  operation_kind: "create" | "revise" | "restore";
+  content_sha256: string;
+  parent_revision_id: string | null;
+  restored_from_revision_id: string | null;
+  member_count: number;
+  is_current: boolean;
+  preview_url: string;
+}
+
+export interface DerivedAssetDiscoveryResponse {
+  assets: DerivedAssetSummary[];
+  limits: { assets: number; revisions_per_asset: number };
+}
+
+export interface DerivedAssetHistoryResponse extends DerivedAssetSummary {
+  revisions: DerivedAssetRevision[];
+}
+
 /** Owner-scoped verified current twin-note revisions. */
 export function listTwinNotes(): Promise<TwinNoteListResponse> {
   return get("/research/twin-notes");
@@ -373,6 +409,27 @@ export function applyDerivedMergeReview(
     operation_id: operationId,
     expected_generation: null,
   });
+}
+
+export function discoverDerivedAssets(): Promise<DerivedAssetDiscoveryResponse> {
+  return get("/research/derived-assets");
+}
+
+export function getDerivedAssetHistory(assetId: string): Promise<DerivedAssetHistoryResponse> {
+  return get(`/research/derived-assets/assets/${encodeURIComponent(assetId)}/revisions`);
+}
+
+export function restoreDerivedAsset(
+  assetId: string,
+  request: {
+    operation_id: string;
+    selected_revision_id: string;
+    expected_revision_id: string;
+    expected_content_sha256: string;
+    expected_generation: number;
+  },
+): Promise<DerivedMergeApplyResponse> {
+  return post(`/research/derived-assets/merge/assets/${encodeURIComponent(assetId)}/restore`, request);
 }
 
 /** Verified current-to-root history for one owner-scoped asset. */

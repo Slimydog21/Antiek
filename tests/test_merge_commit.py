@@ -205,6 +205,81 @@ def test_stale_and_command_drift_leave_no_residue(tmp_path: Path) -> None:
             owner_user_id="owner-a",
             db_path=db,
         )
+    with pytest.raises(MergeCommitError, match="historical"):
+        restore(
+            derived_asset_id=created.derived_asset_id,
+            selected_revision_id=created.revision_id,
+            expected_revision_id=created.revision_id,
+            expected_content_sha256=created.content_sha256,
+            expected_generation=1,
+            operation_id=_id("op"),
+            owner_user_id="owner-a",
+            db_path=db,
+        )
+
+
+def test_restore_refuses_historical_authority_field_drift(tmp_path: Path) -> None:
+    db = str(tmp_path / "graph.duckdb")
+    init_database_at_path(db)
+    asset_id = "ast_" + "d" * 32
+    historical_id = "rev_" + "d" * 32
+    revised_id = "rev_" + "e" * 32
+    html = "<article>reviewed</article>"
+    manifest = json.dumps([{
+        "converter_id": "c", "converter_version": "1", "hosted_html_sha256": "b" * 64,
+        "member_index": 0, "projection_id": "projection-a",
+        "projection_sanitizer_policy": "p", "projection_sanitizer_version": "1",
+        "source_asset_id": "source-a", "source_document_id": "document-a",
+        "source_sha256": "a" * 64,
+    }], sort_keys=True, separators=(",", ":"))
+    content_hash = hashlib.sha256(html.encode()).hexdigest()
+    manifest_hash = hashlib.sha256(manifest.encode()).hexdigest()
+    with connect_write(db, purpose="merge-authority-field-drift") as con:
+        con.execute(
+            "INSERT INTO derived_assets (derived_asset_id,title,asset_kind,owner_user_id) "
+            "VALUES (?,?,?,?)", [asset_id, "Drift", "analysis", "owner-a"],
+        )
+        con.execute(
+            "INSERT INTO derived_asset_revisions (derived_asset_id,revision_id,operation_kind,"
+            "canonical_html,canonical_byte_count,content_sha256,manifest_json,manifest_sha256,"
+            "sanitizer_policy,sanitizer_version,review_id,acknowledgement_version,"
+            "parent_revision_id,restored_from_revision_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [asset_id, historical_id, "create", html, len(html.encode()), content_hash,
+             manifest, manifest_hash, "antiek-derived-asset-merge", "drifted", _id("rvw"),
+             "DERIVED_ASSET_MERGE_ACK_V1", None, None],
+        )
+        con.execute(
+            "INSERT INTO derived_asset_revision_members VALUES (?,?,?,?,?,?,?,?,?)",
+            [asset_id, historical_id, 0, "projection-a", "source-a", "document-a",
+             "a" * 64, "b" * 64, None],
+        )
+        con.execute(
+            "INSERT INTO derived_asset_revisions (derived_asset_id,revision_id,operation_kind,"
+            "canonical_html,canonical_byte_count,content_sha256,manifest_json,manifest_sha256,"
+            "sanitizer_policy,sanitizer_version,review_id,acknowledgement_version,"
+            "parent_revision_id,restored_from_revision_id) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            [asset_id, revised_id, "revise", html, len(html.encode()), content_hash,
+             manifest, manifest_hash, "antiek-derived-asset-merge", "1", _id("rvw"),
+             "DERIVED_ASSET_MERGE_ACK_V1", historical_id, None],
+        )
+        con.execute(
+            "INSERT INTO derived_asset_revision_members VALUES (?,?,?,?,?,?,?,?,?)",
+            [asset_id, revised_id, 0, "projection-a", "source-a", "document-a",
+             "a" * 64, "b" * 64, None],
+        )
+        con.execute(
+            "INSERT INTO derived_asset_current_revisions VALUES (?,?,?,?,CURRENT_TIMESTAMP)",
+            [asset_id, revised_id, content_hash, 2],
+        )
+    with pytest.raises(MergeCommitError, match="stored revision is invalid"):
+        restore(
+            derived_asset_id=asset_id,
+            selected_revision_id=historical_id,
+            expected_revision_id=revised_id,
+            expected_content_sha256=content_hash,
+            expected_generation=2,
+            operation_id=_id("op"), owner_user_id="owner-a", db_path=db,
+        )
 
 
 def test_operation_identity_is_owner_scoped(tmp_path: Path) -> None:

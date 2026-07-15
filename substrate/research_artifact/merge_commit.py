@@ -217,6 +217,8 @@ def _restore(con: Any, command: dict[str, Any], digest: str, hook: FaultHook) ->
         command["expected_generation"],
     ):
         raise MergeCommitError("derived asset command is stale")
+    if command["selected_revision_id"] == pointer[0]:
+        raise MergeCommitError("restore source must be historical")
     selected = con.execute(
         "SELECT canonical_html,content_sha256,manifest_json,manifest_sha256,sanitizer_policy,"
         "sanitizer_version,review_id,acknowledgement_version FROM derived_asset_revisions "
@@ -226,7 +228,10 @@ def _restore(con: Any, command: dict[str, Any], digest: str, hook: FaultHook) ->
     if selected is None:
         raise MergeCommitNotFound("revision unavailable")
     manifest = _manifest(str(selected[2]), str(selected[3]))
-    if _sha(str(selected[0])) != str(selected[1]):
+    if (_sha(str(selected[0])) != str(selected[1])
+            or (str(selected[4]), str(selected[5])) != (POLICY, VERSION)
+            or str(selected[7]) != ACKNOWLEDGEMENT_VERSION
+            or not isinstance(selected[6], str) or not selected[6]):
         raise MergeCommitError("stored revision is invalid")
     revision_id = _id("rev", command["owner_user_id"], command["operation_id"])
     generation = int(pointer[2]) + 1
@@ -411,7 +416,9 @@ def _replay(con: Any, command: dict[str, Any]) -> MergeCommitResult | None:
     ):
         raise MergeCommitError("operation replay does not match")
     revision = con.execute(
-        "SELECT content_sha256,manifest_json FROM derived_asset_revisions "
+        "SELECT canonical_html,canonical_byte_count,content_sha256,manifest_json,manifest_sha256,"
+        "sanitizer_policy,sanitizer_version,acknowledgement_version "
+        "FROM derived_asset_revisions "
         "WHERE derived_asset_id=? AND revision_id=?",
         [row[0], row[1]],
     ).fetchone()
@@ -430,13 +437,17 @@ def _replay(con: Any, command: dict[str, Any]) -> MergeCommitResult | None:
     if (
         stored_result != expected_result
         or revision is None
-        or revision[0] != row[2]
+        or revision[2] != row[2]
+        or len(str(revision[0]).encode()) != revision[1]
+        or _sha(str(revision[0])) != str(revision[2])
+        or (str(revision[5]), str(revision[6])) != (POLICY, VERSION)
+        or str(revision[7]) != ACKNOWLEDGEMENT_VERSION
         or len(outbox) != 1
         or _sha(str(outbox[0][0])) != str(outbox[0][1])
         or str(outbox[0][0]) != _json(expected_result)
     ):
         raise MergeCommitError("operation replay state drifted")
-    manifest = _manifest(str(revision[1]), _sha(str(revision[1])))
+    manifest = _manifest(str(revision[3]), str(revision[4]))
     members = con.execute(
         "SELECT member_index,projection_id,source_asset_id,source_document_id,source_sha256,"
         "hosted_html_sha256 FROM derived_asset_revision_members "
