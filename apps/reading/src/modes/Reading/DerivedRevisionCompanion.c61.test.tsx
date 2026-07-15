@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -105,6 +105,23 @@ describe("Cycle 61 companion execution qualification", () => {
         state: "evidence_ready",
         failure_code: null,
         evidence_pack: { pack_sha256: "f".repeat(64), citations: [citation] },
+        briefing: {
+          schema_version: "antiek.derived-evidence-briefing.v1",
+          question: "What changed?",
+          question_sha256: "4".repeat(64),
+          derived_asset_id: model.derived_asset_id,
+          revision_id: model.revision_id,
+          content_sha256: model.content_sha256,
+          generation: model.generation,
+          evidence_pack_sha256: "f".repeat(64),
+          section_count: 1,
+          passage_count: 1,
+          sections: [{ section_path: "Engines", passages: [citation] }],
+          briefing_json_sha256: "5".repeat(64),
+          briefing_html: "<script>briefing must not be injected</script>",
+          briefing_html_sha256: "6".repeat(64),
+          artifact_sha256: "7".repeat(64),
+        },
         answer: {
           schema_version: "antiek.derived-companion-answer.v1",
           answer_id: `dans_${"1".repeat(64)}`,
@@ -132,7 +149,83 @@ describe("Cycle 61 companion execution qualification", () => {
     expect(screen.getByText("Open hypothesis.")).toBeTruthy();
     expect(screen.getByText("Unsupported by this evidence pack")).toBeTruthy();
     expect(screen.getByRole("button", { name: "[1] Engines" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Evidence briefing" })).toBeTruthy();
+    expect(screen.getByText("1 sections · 1 passages")).toBeTruthy();
+    expect(screen.getByText("A grounded passage.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Open section" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Follow this" })).toBeTruthy();
     expect(container.querySelector("script")).toBeNull();
     expect(screen.queryByRole("button", { name: /generate answer/i })).toBeNull();
+  });
+
+  it("renders an immediate briefing and wires both passage actions", async () => {
+    const citation = {
+      citation_id: `dchunk_${"8".repeat(64)}`,
+      chunk_ordinal: 0,
+      member_index: 0,
+      section_anchor: "bypass-ratio",
+      section_path: "Propulsion",
+      text: "High bypass ratios improve propulsive efficiency.",
+      text_sha256: "9".repeat(64),
+    };
+    const briefing = {
+      schema_version: "antiek.derived-evidence-briefing.v1" as const,
+      question: "Why high bypass?",
+      question_sha256: "1".repeat(64),
+      derived_asset_id: model.derived_asset_id,
+      revision_id: model.revision_id,
+      content_sha256: model.content_sha256,
+      generation: model.generation,
+      evidence_pack_sha256: "2".repeat(64),
+      section_count: 1,
+      passage_count: 1,
+      sections: [{ section_path: "Propulsion", passages: [citation] }],
+      briefing_json_sha256: "3".repeat(64),
+      briefing_html: "<script>not rendered</script>",
+      briefing_html_sha256: "4".repeat(64),
+      artifact_sha256: "5".repeat(64),
+    };
+    mocks.conversation.mockResolvedValue({
+      scope: { ...execution.scope, is_current: true, exact_reader_path: model.exact_reader_path },
+      execution,
+      turns: [],
+    });
+    mocks.prepare.mockResolvedValue({
+      client_turn_id: "reader-turn-immediate",
+      state: "evidence_ready",
+      failure_code: null,
+      replayed: false,
+      scope: { ...execution.scope, is_current: true },
+      evidence_pack: { pack_sha256: briefing.evidence_pack_sha256, citations: [citation] },
+      briefing,
+      answer: null,
+      execution,
+    });
+    const target = document.createElement("section");
+    target.id = citation.section_anchor;
+    target.scrollIntoView = vi.fn();
+    target.animate = vi.fn();
+    const article = document.createElement("article");
+    article.append(target);
+    const articleRef = createRef<HTMLElement>();
+    Object.defineProperty(articleRef, "current", { value: article });
+    Object.defineProperty(globalThis, "CSS", {
+      value: { escape: (value: string) => value }, configurable: true,
+    });
+    const onFollowCitation = vi.fn();
+    render(<DerivedRevisionCompanion
+      model={model}
+      articleRef={articleRef}
+      onFollowCitation={onFollowCitation}
+    />);
+    fireEvent.change(screen.getByLabelText("Question about this revision"), {
+      target: { value: briefing.question },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /find evidence/i }));
+    expect(await screen.findByText(citation.text)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Open section" }));
+    expect(target.scrollIntoView).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Follow this" }));
+    expect(onFollowCitation).toHaveBeenCalledWith(citation);
   });
 });

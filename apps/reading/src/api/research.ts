@@ -433,6 +433,27 @@ export interface DerivedCompanionExecutionProjection {
   }>;
 }
 
+export interface DerivedEvidenceBriefing {
+  schema_version: "antiek.derived-evidence-briefing.v1";
+  question: string;
+  question_sha256: string;
+  derived_asset_id: string;
+  revision_id: string;
+  content_sha256: string;
+  generation: number;
+  evidence_pack_sha256: string;
+  section_count: number;
+  passage_count: number;
+  sections: Array<{
+    section_path: string;
+    passages: DerivedCompanionCitation[];
+  }>;
+  briefing_json_sha256: string;
+  briefing_html: string;
+  briefing_html_sha256: string;
+  artifact_sha256: string;
+}
+
 export interface DerivedCompanionEvidenceResponse {
   client_turn_id: string;
   state: "evidence_ready" | "insufficient_evidence";
@@ -444,6 +465,7 @@ export interface DerivedCompanionEvidenceResponse {
     pack_sha256: string;
     citations: DerivedCompanionCitation[];
   };
+  briefing: DerivedEvidenceBriefing | null;
   answer: DerivedCompanionAnswer | null;
   execution: DerivedCompanionExecutionProjection;
 }
@@ -452,7 +474,7 @@ export interface DerivedCompanionConversationResponse {
   scope: DerivedCompanionEvidenceResponse["scope"] & { exact_reader_path: string };
   execution: DerivedCompanionExecutionProjection;
   turns: Array<Pick<DerivedCompanionEvidenceResponse,
-    "client_turn_id" | "state" | "failure_code" | "evidence_pack" | "answer">
+    "client_turn_id" | "state" | "failure_code" | "evidence_pack" | "briefing" | "answer">
     & { question: string }>;
 }
 

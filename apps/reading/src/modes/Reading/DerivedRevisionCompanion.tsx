@@ -9,6 +9,7 @@ import {
   type DerivedCompanionAnswer,
   type DerivedCompanionEvidenceResponse,
   type DerivedCompanionExecutionProjection,
+  type DerivedEvidenceBriefing,
 } from "../../api/research";
 import { LemonButton, LemonTag } from "../../components/lemon";
 
@@ -44,6 +45,31 @@ function GroundedAnswer({
         </span> : null;
       })}</div> : <p className="mt-1 font-mono text-[10px] text-warning">Unsupported by this evidence pack</p>}
     </li>)}</ol>
+  </section>;
+}
+
+export function EvidenceBriefing({
+  briefing, showCitation, onFollowCitation,
+}: {
+  briefing: DerivedEvidenceBriefing;
+  showCitation: (anchor: string) => void;
+  onFollowCitation: (citation: DerivedCompanionCitation) => void;
+}) {
+  return <section aria-label="Evidence briefing">
+    <div className="mb-3 flex items-baseline justify-between gap-2 border-b border-rule pb-2 dark:border-charcoal-1">
+      <h3 className="font-serif text-sm font-semibold text-ink dark:text-bright">Evidence briefing</h3>
+      <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">{briefing.section_count} sections · {briefing.passage_count} passages</span>
+    </div>
+    <div className="space-y-4">{briefing.sections.map((section, sectionIndex) => <section key={`${section.section_path}:${sectionIndex}`}>
+      <h4 className="mb-2 font-mono text-[10px] font-semibold uppercase text-shadow-1 dark:text-moonlight">{section.section_path || "Untitled section"}</h4>
+      <ol className="space-y-3">{section.passages.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-3 dark:border-charcoal-1">
+        <blockquote className="font-serif text-sm leading-relaxed text-ink dark:text-bright">{citation.text}</blockquote>
+        <div className="mt-1 flex items-center justify-between gap-2">
+          <button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">Open section</button>
+          <button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button>
+        </div>
+      </li>)}</ol>
+    </section>)}</div>
   </section>;
 }
 
@@ -122,6 +148,7 @@ export default function DerivedRevisionCompanion({
         state: next.state,
         failure_code: next.failure_code,
         evidence_pack: next.evidence_pack,
+        briefing: next.briefing,
         answer: next.answer,
       }]);
       activeClientId.current = null;
@@ -174,14 +201,11 @@ export default function DerivedRevisionCompanion({
       {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until a route has verified idempotency, pricing, and spend recovery.</p></div> : null}
       {result?.state === "insufficient_evidence" ? <p className="font-serif text-sm leading-relaxed text-ink-mute dark:text-moonlight">No matching evidence was found in this revision. No model was called.</p> : null}
       {result?.answer ? <GroundedAnswer answer={result.answer} citations={result.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
-      {result?.state === "evidence_ready" ? <ol className="space-y-3" aria-label="Matching revision evidence">{result.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-3 dark:border-charcoal-1">
-        <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button></div>
-        <blockquote className="mt-1 font-serif text-sm leading-relaxed text-ink dark:text-bright">{citation.text}</blockquote>
-      </li>)}</ol> : null}
+      {result?.briefing ? <EvidenceBriefing briefing={result.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
       {!result && turns.length > 0 ? <ol className="space-y-4" aria-label="Saved revision evidence">{turns.map((turn) => <li key={turn.client_turn_id}>
         <p className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">{turn.question}</p>
         {turn.answer ? <GroundedAnswer answer={turn.answer} citations={turn.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
-        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : <ol className="space-y-2">{turn.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-2 dark:border-charcoal-1"><div className="flex items-center justify-between gap-2"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button></div><blockquote className="mt-1 font-serif text-sm text-ink dark:text-bright">{citation.text}</blockquote></li>)}</ol>}
+        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : turn.briefing ? <EvidenceBriefing briefing={turn.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
       </li>)}</ol> : null}
     </div>
   </aside>;

@@ -6,7 +6,7 @@ import contextlib
 import hashlib
 import json
 import re
-from typing import Any, Final
+from typing import Any, Final, cast
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.research_artifact.derived_asset_library import DerivedAssetLibrary
@@ -15,6 +15,7 @@ from substrate.research_artifact.derived_companion import (
     build_derived_revision_evidence_pack,
     canonical_evidence_json,
 )
+from substrate.research_artifact.derived_evidence_briefing import build_evidence_briefing
 from substrate.research_artifact.grounded_companion_answer import (
     AnswerAdmissionExpectation,
     CompanionExecutionReceiptVerifier,
@@ -94,7 +95,9 @@ class DerivedCompanionRepository:
         request_sha = _sha(_json(request))
         with connect_read(self.db_path) as con:
             replay = con.execute(
-                "SELECT t.request_sha256,t.evidence_pack_json,n.artifact_json,n.artifact_sha256 "
+                "SELECT t.request_sha256,t.evidence_pack_json,t.evidence_pack_sha256,"
+                "h.derived_asset_id,h.revision_id,h.revision_content_sha256,h.revision_generation,"
+                "n.artifact_json,n.artifact_sha256 "
                 "FROM derived_asset_companion_turns t "
                 "JOIN derived_asset_companion_threads h USING (thread_id) "
                 "JOIN derived_assets a USING (derived_asset_id) "
@@ -105,8 +108,8 @@ class DerivedCompanionRepository:
         if replay is not None:
             if replay[0] != request_sha:
                 raise CompanionIdempotencyConflict
-            return _public(json.loads(str(replay[1])), client_turn_id, replayed=True,
-                           answer=_answer_from_row(replay[2], replay[3]))
+            return _public(_stored_pack(replay[1:7]), normalized, client_turn_id, replayed=True,
+                           answer=_answer_from_row(replay[7], replay[8]))
         pack = build_derived_revision_evidence_pack(
             db_path=self.db_path,
             owner_user_id=owner_user_id,
@@ -147,7 +150,9 @@ class DerivedCompanionRepository:
                             ),
                         })
                 replay = con.execute(
-                    "SELECT t.request_sha256,t.evidence_pack_json,n.artifact_json,n.artifact_sha256 "
+                    "SELECT t.request_sha256,t.evidence_pack_json,t.evidence_pack_sha256,"
+                    "h.derived_asset_id,h.revision_id,h.revision_content_sha256,"
+                    "h.revision_generation,n.artifact_json,n.artifact_sha256 "
                     "FROM derived_asset_companion_turns t "
                     "JOIN derived_asset_companion_threads h USING (thread_id) "
                     "JOIN derived_assets a USING (derived_asset_id) "
@@ -159,8 +164,9 @@ class DerivedCompanionRepository:
                     if replay[0] != request_sha:
                         raise CompanionIdempotencyConflict
                     con.execute("ROLLBACK")
-                    return _public(json.loads(str(replay[1])), client_turn_id, replayed=True,
-                                   answer=_answer_from_row(replay[2], replay[3]))
+                    return _public(_stored_pack(replay[1:7]), normalized, client_turn_id,
+                                   replayed=True,
+                                   answer=_answer_from_row(replay[7], replay[8]))
                 con.execute(
                     "INSERT INTO derived_asset_companion_threads "
                     "(thread_id,derived_asset_id,revision_id,"
@@ -197,7 +203,7 @@ class DerivedCompanionRepository:
                 with contextlib.suppress(Exception):
                     con.execute("ROLLBACK")
                 raise
-        return _public(pack, client_turn_id, replayed=False)
+        return _public(pack, normalized, client_turn_id, replayed=False)
 
     def conversation(
         self, *, owner_user_id: str, asset_id: str, revision_id: str | None = None
@@ -208,7 +214,8 @@ class DerivedCompanionRepository:
         with connect_read(self.db_path) as con:
             rows = con.execute(
                 "SELECT t.client_turn_id,t.question,t.state,t.failure_code,"
-                "t.evidence_pack_json,n.artifact_json,n.artifact_sha256 "
+                "t.evidence_pack_json,t.evidence_pack_sha256,h.derived_asset_id,h.revision_id,"
+                "h.revision_content_sha256,h.revision_generation,n.artifact_json,n.artifact_sha256 "
                 "FROM derived_asset_companion_turns t "
                 "JOIN derived_asset_companion_threads h ON h.thread_id=t.thread_id "
                 "JOIN derived_assets a USING (derived_asset_id) "
@@ -219,14 +226,7 @@ class DerivedCompanionRepository:
             ).fetchall()
         return {
             "scope": _scope(reading),
-            "turns": [{
-                "client_turn_id": str(row[0]),
-                "question": str(row[1]),
-                "state": str(row[2]),
-                "failure_code": None if row[3] is None else str(row[3]),
-                "evidence_pack": json.loads(str(row[4])),
-                "answer": _answer_from_row(row[5], row[6]),
-            } for row in rows],
+            "turns": [_conversation_turn(row) for row in rows],
         }
 
     def admit_answer(
@@ -322,7 +322,7 @@ class DerivedCompanionRepository:
 
 
 def _public(
-    pack: dict[str, Any], client_turn_id: str, *, replayed: bool,
+    pack: dict[str, Any], question: str, client_turn_id: str, *, replayed: bool,
     answer: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     evidence = bool(pack["citations"])
@@ -339,7 +339,43 @@ def _public(
             "is_current": pack["is_current"],
         },
         "evidence_pack": pack,
+        "briefing": _briefing_from_pack(question, pack),
         "answer": answer,
+    }
+
+
+def _briefing_from_pack(question: str, pack: dict[str, Any]) -> dict[str, Any] | None:
+    return build_evidence_briefing(question, pack) if pack["citations"] else None
+
+
+def _stored_pack(values: tuple[Any, ...]) -> dict[str, Any]:
+    raw, digest, asset_id, revision_id, content_sha256, generation = values
+    try:
+        pack = json.loads(str(raw))
+        payload = {key: value for key, value in pack.items() if key != "pack_sha256"}
+        canonical_digest = _sha(_json(payload))
+    except (AttributeError, TypeError, ValueError, UnicodeError, OverflowError) as exc:
+        raise CompanionCommandError("stored companion evidence integrity conflict") from exc
+    if (not isinstance(pack, dict) or pack.get("pack_sha256") != str(digest)
+            or canonical_digest != str(digest)
+            or pack.get("derived_asset_id") != str(asset_id)
+            or pack.get("revision_id") != str(revision_id)
+            or pack.get("content_sha256") != str(content_sha256)
+            or pack.get("generation") != int(generation)):
+        raise CompanionCommandError("stored companion evidence integrity conflict")
+    return pack
+
+
+def _conversation_turn(row: tuple[Any, ...]) -> dict[str, Any]:
+    pack = _stored_pack(row[4:10])
+    return {
+        "client_turn_id": str(row[0]),
+        "question": str(row[1]),
+        "state": str(row[2]),
+        "failure_code": None if row[3] is None else str(row[3]),
+        "evidence_pack": pack,
+        "briefing": _briefing_from_pack(str(row[1]), pack),
+        "answer": _answer_from_row(row[10], row[11]),
     }
 
 
@@ -354,7 +390,7 @@ def _artifact_from_row(raw: object, digest: object) -> dict[str, Any]:
 def _answer_from_row(raw: object, digest: object) -> dict[str, Any] | None:
     if raw is None or digest is None:
         return None
-    return public_grounded_answer(_artifact_from_row(raw, digest))
+    return cast(dict[str, Any], public_grounded_answer(_artifact_from_row(raw, digest)))
 
 
 def _scope(reading: dict[str, Any]) -> dict[str, Any]:
