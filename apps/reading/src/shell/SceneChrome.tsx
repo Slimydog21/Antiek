@@ -12,6 +12,7 @@ import {
 } from "./workflowTaxonomy";
 import { WorkflowStub } from "./WorkflowStub";
 import { ThreadBreadcrumb } from "./ThreadBreadcrumb";
+import { ResearchObservatoryAtmosphere } from "./atmosphere/ResearchObservatoryAtmosphere";
 import type { Thread, ThreadHop } from "./threadModel";
 
 /**
@@ -264,9 +265,24 @@ export function SceneChrome({
           we keep the blur+frost, which is already legible on a frozen frame.
           A maintainer may raise the scrim alpha if a future busier scene
           drops contrast; the seam is this one className. */}
-      <div className="flex-1 min-h-0 bg-glass backdrop-blur-glass">
-        {built ? children : <WorkflowStub workflow={wf} />}
-      </div>
+      {wf === "research" ? (
+        <div
+          data-scene-chrome-body=""
+          className="relative flex-1 min-h-0 overflow-hidden"
+        >
+          <ResearchObservatoryAtmosphere />
+          <div
+            data-scene-chrome-content=""
+            className="relative z-10 h-full bg-glass backdrop-blur-glass"
+          >
+            {built ? children : <WorkflowStub workflow={wf} />}
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 min-h-0 bg-glass backdrop-blur-glass">
+          {built ? children : <WorkflowStub workflow={wf} />}
+        </div>
+      )}
     </div>
   );
 }
