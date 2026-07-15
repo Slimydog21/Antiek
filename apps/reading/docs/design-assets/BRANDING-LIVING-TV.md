@@ -17,6 +17,7 @@ not a pure Flipbook pixel stream, but Flipbook *feel* over real product chrome.
 | Reaction bus | Product experiences → Werner emotes (highlight, deep research lifecycle, fail) |
 | Settings | Live decision tree (server) + heuristic tree + NotDiamond shadow + Midnight Oil preflight |
 | Budget projection | Over budget → Werner `fail`; within budget → `highlight` |
+| Product doors | Library + Research home: session thinking mark; Write home: session celebrate mark; Antiek-bench panel: thinking mark |
 | Cursor / station | Werner does **not** chase the cursor; ice bait is the cursor instrument |
 
 ## Imagine inventory (not product-mapped)
