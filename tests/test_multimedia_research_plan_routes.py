@@ -160,3 +160,47 @@ def test_edit_route_is_strict_private_and_reopens_approval(tmp_path) -> None:
     assert malformed.status_code == 422
     assert all(response.headers["cache-control"] == "private, no-store"
                for response in (edited, replay, malformed))
+
+
+def test_prepared_investigation_routes_are_strict_private_and_immutable(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime = client.app.dependency_overrides[get_multimedia_research_plan_runtime]()
+    intent, _ = _create(runtime.intents, key="other-key-1234567")
+    plan = client.post(
+        f"/multimedia/research-intents/{intent.intent_id}/plan",
+        json={"idempotency_key": "handoff-123456789"},
+    ).json()
+    client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/approve",
+        json={"expected_plan_version": 1},
+    )
+    body = {"idempotency_key": "prepare-123456789", "expected_plan_version": 1}
+    created = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation", json=body
+    )
+    replay = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation", json=body
+    )
+    read = client.get(f"/multimedia/investigations/{created.json()['investigation_id']}")
+    foreign = client.get(
+        f"/multimedia/investigations/{created.json()['investigation_id']}",
+        headers={"x-owner": "owner-2"},
+    )
+    absent = client.get("/multimedia/investigations/mpi_missing")
+    malformed = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation",
+        json={**body, "owner_identity_digest": "a" * 64},
+    )
+    padded_key = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation",
+        json={**body, "idempotency_key": " prepare-123456789"},
+    )
+    assert created.status_code == 201 and replay.status_code == read.status_code == 200
+    assert created.json() == replay.json() == read.json()
+    assert "idempotency_key" not in created.json() and "owner_identity_digest" not in created.json()
+    assert created.json()["background_work_authorized"] is False
+    assert foreign.status_code == absent.status_code == 404 and foreign.json() == absent.json()
+    assert malformed.status_code == 422
+    assert padded_key.status_code == 422
+    assert all(response.headers["cache-control"] == "private, no-store"
+               for response in (created, replay, read, foreign, absent, malformed, padded_key))

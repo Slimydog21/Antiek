@@ -18,6 +18,7 @@ from substrate.multimedia.research_intent import (
     ResearchIntentUnavailableError,
 )
 from substrate.multimedia.research_plan import (
+    PreparedInvestigation,
     ResearchPlan,
     ResearchPlanError,
     ResearchPlanLedger,
@@ -65,6 +66,13 @@ class ResearchPlanHandoffBody(BaseModel):
 class ResearchPlanApproveBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
+    expected_plan_version: int = Field(ge=1, strict=True)
+
+
+class PreparedInvestigationBody(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    idempotency_key: str = Field(min_length=16, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
     expected_plan_version: int = Field(ge=1, strict=True)
 
 
@@ -159,6 +167,29 @@ class ResearchPlanResponse(BaseModel):
     approved_at: str | None
     research_launched: Literal[False]
     provider_launch_authorized: Literal[False]
+    spend_authority_digest: None
+
+
+class PreparedInvestigationResponse(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    investigation_id: str
+    source_plan_id: str
+    source_plan_version: int
+    source_intent_id: str
+    source_intent_digest: str
+    source_evidence_digest: str
+    tree: ResearchPlanTreeResponse
+    total_node_count: int
+    leaf_question_count: int
+    request_digest: str
+    state: Literal["prepared"]
+    created_at: str
+    execution_started: Literal[False]
+    background_work_authorized: Literal[False]
+    event_authority_digest: None
+    graph_authority_digest: None
+    provider_authority_digest: None
     spend_authority_digest: None
 
 
@@ -284,8 +315,63 @@ def edit_multimedia_research_plan(
         raise HTTPException(status_code=409, detail=str(exc), headers=_PRIVATE) from exc
 
 
+@multimedia_research_plan_router.post(
+    "/research-plans/{plan_id}/investigation", response_model=PreparedInvestigationResponse
+)
+def prepare_multimedia_investigation(
+    plan_id: str,
+    body: PreparedInvestigationBody,
+    response: Response,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
+) -> PreparedInvestigationResponse:
+    try:
+        prepared, created = runtime.plans.prepare_investigation(
+            owner_identity_digest=runtime.owner_digest_resolver(operator_id), plan_id=plan_id,
+            idempotency_key=body.idempotency_key,
+            expected_plan_version=body.expected_plan_version,
+        )
+    except ResearchPlanUnavailableError as exc:
+        raise _private_investigation_not_found() from exc
+    except ResearchPlanTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc), headers=_PRIVATE) from exc
+    except ResearchPlanStorageError as exc:
+        raise _private_unavailable() from exc
+    except (ResearchPlanError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc), headers=_PRIVATE) from exc
+    response.status_code = 201 if created else 200
+    return _prepared_response(prepared)
+
+
+@multimedia_research_plan_router.get(
+    "/investigations/{investigation_id}", response_model=PreparedInvestigationResponse
+)
+def get_multimedia_prepared_investigation(
+    investigation_id: str,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
+) -> PreparedInvestigationResponse:
+    try:
+        return _prepared_response(runtime.plans.get_prepared_investigation(
+            owner_identity_digest=runtime.owner_digest_resolver(operator_id),
+            investigation_id=investigation_id,
+        ))
+    except ResearchPlanUnavailableError as exc:
+        raise _private_investigation_not_found() from exc
+    except ResearchPlanStorageError as exc:
+        raise _private_unavailable() from exc
+    except (ResearchPlanError, ValueError) as exc:
+        raise HTTPException(
+            status_code=409, detail="prepared investigation integrity conflicts", headers=_PRIVATE
+        ) from exc
+
+
 def _private_not_found() -> HTTPException:
     return HTTPException(status_code=404, detail="research plan is unavailable", headers=_PRIVATE)
+
+
+def _private_investigation_not_found() -> HTTPException:
+    return HTTPException(status_code=404, detail="investigation is unavailable", headers=_PRIVATE)
 
 
 def _private_unavailable() -> HTTPException:
@@ -300,9 +386,15 @@ def _response(plan: ResearchPlan) -> ResearchPlanResponse:
     return ResearchPlanResponse(**payload)
 
 
+def _prepared_response(prepared: PreparedInvestigation) -> PreparedInvestigationResponse:
+    payload = asdict(prepared)
+    payload.pop("source_plan_integrity_digest")
+    return PreparedInvestigationResponse(**payload)
+
+
 __all__ = [
-    "ResearchPlanApproveBody", "ResearchPlanEditBody", "ResearchPlanHandoffBody",
-    "ResearchPlanResponse",
+    "PreparedInvestigationBody", "PreparedInvestigationResponse", "ResearchPlanApproveBody",
+    "ResearchPlanEditBody", "ResearchPlanHandoffBody", "ResearchPlanResponse",
     "ResearchPlanRouteRuntime", "get_multimedia_research_plan_runtime",
     "multimedia_research_plan_router",
 ]
