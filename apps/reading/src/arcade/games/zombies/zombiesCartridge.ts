@@ -1,15 +1,21 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
 import { createZombiesState, stepZombies, type ZombiesState } from "./logic";
-import { drawZombiesScene } from "./zombiesVisuals";
+import {
+  createZombiesVisualKit,
+  drawZombiesScene,
+  type ZombiesVisualKit,
+} from "./zombiesVisuals";
 
 /** BO1 arcade zombies–inspired wait easter egg (paperclip undead, wholesome). */
 export function createZombiesCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;
+  visualKit?: ZombiesVisualKit;
 }): Cartridge {
   let state: ZombiesState | null = null;
   const reduced = Boolean(options?.reducedMotion);
   let terminalReported = false;
+  const visualKit = options?.visualKit ?? createZombiesVisualKit();
 
   return {
     id: "paperclip-zombies",
@@ -19,6 +25,7 @@ export function createZombiesCartridge(options?: {
       style: "zombies-arcade",
     },
     init(ctx: GameContext) {
+      visualKit.load();
       terminalReported = false;
       state = createZombiesState({
         width: ctx.width,
@@ -49,11 +56,12 @@ export function createZombiesCartridge(options?: {
     render(c2d, ctx) {
       if (!state) return;
       c2d.clearRect(0, 0, ctx.width, ctx.height);
-      drawZombiesScene(c2d, state, ctx.width, ctx.height);
+      drawZombiesScene(c2d, state, ctx.width, ctx.height, visualKit);
     },
     teardown() {
       state = null;
       terminalReported = false;
+      visualKit.dispose();
     },
     getScore: () => state?.score ?? 0,
     isGameOver: () => state?.phase === "gameover" || state?.phase === "exited",

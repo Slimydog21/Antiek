@@ -1,3 +1,4 @@
+import visualKitUrl from "../../../brand/werner/arcade/paperclip-zombies-visual-kit-v1.webp";
 import {
   accent,
   rule,
@@ -11,6 +12,72 @@ import type { Zombie, ZombiesPhase, ZombiesState } from "./logic";
 const HUD_HEIGHT = 20;
 const STATUS_HEIGHT = 28;
 const FORT_WIDTH = 28;
+
+type AtlasImage = CanvasImageSource & { complete?: boolean };
+
+export interface ZombiesVisualKit {
+  readonly image: AtlasImage | null;
+  readonly ready: boolean;
+  load(): void;
+  dispose(): void;
+}
+
+interface MutableVisualKit {
+  image: HTMLImageElement | null;
+  ready: boolean;
+  load(): void;
+  dispose(): void;
+}
+
+const ATLAS = Object.freeze({
+  hp1: { sx: 250, sy: 165, sw: 208, sh: 332 },
+  hp2: { sx: 782, sy: 80, sw: 204, sh: 462 },
+  hp3: { sx: 112, sy: 699, sw: 437, sh: 392 },
+  fort: { sx: 720, sy: 706, sw: 348, sh: 432 },
+});
+
+/** One bounded local asset, instantiated only when the cartridge is initialized. */
+export function createZombiesVisualKit(
+  createImage: (() => HTMLImageElement) | null = typeof Image === "undefined"
+    ? null
+    : () => new Image(),
+): ZombiesVisualKit {
+  if (!createImage) return EMPTY_VISUAL_KIT;
+
+  const kit: MutableVisualKit = {
+    image: null,
+    ready: false,
+    load() {
+      kit.dispose();
+      const image = createImage();
+      kit.image = image;
+      image.decoding = "async";
+      image.onload = () => {
+        if (kit.image === image) kit.ready = true;
+      };
+      image.onerror = () => {
+        if (kit.image === image) kit.ready = false;
+      };
+      image.src = visualKitUrl;
+    },
+    dispose() {
+      if (kit.image) {
+        kit.image.onload = null;
+        kit.image.onerror = null;
+      }
+      kit.image = null;
+      kit.ready = false;
+    },
+  };
+  return kit;
+}
+
+const EMPTY_VISUAL_KIT: ZombiesVisualKit = Object.freeze({
+  image: null,
+  ready: false,
+  load() {},
+  dispose() {},
+});
 
 export const ZOMBIES_PHASE_COPY: Record<ZombiesPhase, string> = {
   ready: "OPEN THE NIGHT FILE · CLICK OR ENTER",
@@ -51,16 +118,17 @@ export function drawZombiesScene(
   state: ZombiesState,
   width: number,
   height: number,
+  kit: ZombiesVisualKit = EMPTY_VISUAL_KIT,
 ): void {
   const layout = zombiesVisualLayout(width, height);
   drawField(c2d, width, height, layout);
   drawEvidenceTraces(c2d, state, width, layout);
-  drawFort(c2d, state, layout);
+  drawFort(c2d, state, layout, kit);
   drawHud(c2d, state, width);
   drawStatusPlate(c2d, state.phase, width, height, layout);
   // Targets render above chrome because their authoritative hitboxes may enter
   // the HUD/status bands; visual position must never drift from hit-testing.
-  for (const zombie of state.zombies) drawPaperclip(c2d, zombie);
+  for (const zombie of state.zombies) drawPaperclip(c2d, zombie, kit);
 }
 
 function drawField(
@@ -127,6 +195,7 @@ function drawFort(
   c2d: CanvasRenderingContext2D,
   state: ZombiesState,
   layout: ZombiesVisualLayout,
+  kit: ZombiesVisualKit,
 ): void {
   const top = layout.fieldTop + 12;
   const bottom = layout.fieldBottom - 8;
@@ -138,16 +207,28 @@ function drawFort(
   c2d.lineWidth = 2;
   c2d.strokeRect(1, top + 1, layout.fortRight - 3, Math.max(0, fortHeight - 2));
 
-  const diamondRadius = Math.min(7, Math.max(2, fortHeight * 0.2));
   const diamondY = top + fortHeight / 2;
-  c2d.fillStyle = sun.base;
-  c2d.beginPath();
-  c2d.moveTo(layout.fortRight / 2, diamondY - diamondRadius);
-  c2d.lineTo(layout.fortRight / 2 + diamondRadius, diamondY);
-  c2d.lineTo(layout.fortRight / 2, diamondY + diamondRadius);
-  c2d.lineTo(layout.fortRight / 2 - diamondRadius, diamondY);
-  c2d.closePath();
-  c2d.fill();
+  if (kit.ready && kit.image) {
+    drawAtlasFit(
+      c2d,
+      kit.image,
+      ATLAS.fort,
+      5,
+      Math.max(top + 2, diamondY - 11),
+      18,
+      Math.min(22, Math.max(0, fortHeight - 4)),
+    );
+  } else {
+    const diamondRadius = Math.min(7, Math.max(2, fortHeight * 0.2));
+    c2d.fillStyle = sun.base;
+    c2d.beginPath();
+    c2d.moveTo(layout.fortRight / 2, diamondY - diamondRadius);
+    c2d.lineTo(layout.fortRight / 2 + diamondRadius, diamondY);
+    c2d.lineTo(layout.fortRight / 2, diamondY + diamondRadius);
+    c2d.lineTo(layout.fortRight / 2 - diamondRadius, diamondY);
+    c2d.closePath();
+    c2d.fill();
+  }
 
   c2d.strokeStyle = surface.night[7];
   c2d.lineWidth = 1;
@@ -160,9 +241,29 @@ function drawFort(
   }
 }
 
-function drawPaperclip(c2d: CanvasRenderingContext2D, zombie: Zombie): void {
+function drawPaperclip(
+  c2d: CanvasRenderingContext2D,
+  zombie: Zombie,
+  kit: ZombiesVisualKit,
+): void {
   const cx = zombie.x + zombie.w / 2;
   const cy = zombie.y + zombie.h / 2;
+  if (kit.ready && kit.image) {
+    const cell =
+      zombie.hp === 1 ? ATLAS.hp1 : zombie.hp === 2 ? ATLAS.hp2 : ATLAS.hp3;
+    drawAtlasFit(c2d, kit.image, cell, zombie.x, zombie.y, zombie.w, zombie.h);
+    drawHealthPips(c2d, zombie, cx, cy);
+  } else {
+    drawFallbackPaperclip(c2d, zombie, cx, cy);
+  }
+}
+
+function drawFallbackPaperclip(
+  c2d: CanvasRenderingContext2D,
+  zombie: Zombie,
+  cx: number,
+  cy: number,
+): void {
   c2d.save();
   c2d.translate(cx, cy);
   c2d.strokeStyle = surface.night[8];
@@ -183,6 +284,26 @@ function drawPaperclip(c2d: CanvasRenderingContext2D, zombie: Zombie): void {
   c2d.lineTo(zombie.w * 0.42, 3);
   c2d.stroke();
 
+  drawHealthPipsAtOrigin(c2d, zombie);
+  c2d.restore();
+}
+
+function drawHealthPips(
+  c2d: CanvasRenderingContext2D,
+  zombie: Zombie,
+  cx: number,
+  cy: number,
+): void {
+  c2d.save();
+  c2d.translate(cx, cy);
+  drawHealthPipsAtOrigin(c2d, zombie);
+  c2d.restore();
+}
+
+function drawHealthPipsAtOrigin(
+  c2d: CanvasRenderingContext2D,
+  zombie: Zombie,
+): void {
   const pipWidth = Math.min(2, 14 / zombie.hp);
   const pipStart = zombie.hp === 1 ? -1 : -7;
   const pipStep = zombie.hp === 1 ? 0 : (14 - pipWidth) / (zombie.hp - 1);
@@ -190,7 +311,32 @@ function drawPaperclip(c2d: CanvasRenderingContext2D, zombie: Zombie): void {
     c2d.fillStyle = sun.base;
     c2d.fillRect(pipStart + hp * pipStep, zombie.h * 0.28, pipWidth, 2);
   }
-  c2d.restore();
+}
+
+function drawAtlasFit(
+  c2d: CanvasRenderingContext2D,
+  image: CanvasImageSource,
+  cell: { sx: number; sy: number; sw: number; sh: number },
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): void {
+  if (width <= 0 || height <= 0) return;
+  const scale = Math.min(width / cell.sw, height / cell.sh);
+  const drawWidth = cell.sw * scale;
+  const drawHeight = cell.sh * scale;
+  c2d.drawImage(
+    image,
+    cell.sx,
+    cell.sy,
+    cell.sw,
+    cell.sh,
+    x + (width - drawWidth) / 2,
+    y + (height - drawHeight) / 2,
+    drawWidth,
+    drawHeight,
+  );
 }
 
 function drawHud(
