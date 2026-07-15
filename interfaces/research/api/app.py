@@ -32,6 +32,7 @@ import asyncio
 import contextlib
 import os
 import sys
+import threading
 from collections.abc import Awaitable, Callable
 from dataclasses import replace
 from datetime import UTC, datetime
@@ -6650,8 +6651,30 @@ def create_app(
                     "worker_alive": True,
                 }
 
+    def _recover_note_taker_replay() -> None:
+        from substrate.graph import default_db_path
+
+        from .note_taking import start_replay_recovery
+
+        stop = threading.Event()
+        app.state.note_taker_recovery_stop = stop
+        app.state.note_taker_recovery_worker = start_replay_recovery(
+            db_path=default_db_path(),
+            stop_event=stop,
+        )
+
+    def _stop_note_taker_replay() -> None:
+        stop = getattr(app.state, "note_taker_recovery_stop", None)
+        worker = getattr(app.state, "note_taker_recovery_worker", None)
+        if stop is not None:
+            stop.set()
+        if worker is not None:
+            worker.join(timeout=1.0)
+
     app.router.on_startup.append(_recover_knowledge_event_projector)
+    app.router.on_startup.append(_recover_note_taker_replay)
     app.router.on_shutdown.append(_stop_knowledge_event_projector)
+    app.router.on_shutdown.append(_stop_note_taker_replay)
     return app
 
 
