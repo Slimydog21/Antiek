@@ -20,7 +20,7 @@ that drove the 348-PR runaway:
     so the paid Krea path still fires on api-key-presence alone.
 
 All three are Python/backend — outside the reading-surface gate's scan. This
-gate closes the class with two mechanical, AST-based checks.
+gate closes the class with three mechanical, AST-based checks.
 
 Design note (mirrors the TS gate's rigor #1 — one gate, one surface): this is a
 NEW sibling, not an edit to ``reachability_gate.py``. That gate owns the reading
@@ -29,7 +29,7 @@ baseline machinery in ``tools/lints/baseline.py`` VERBATIM (no re-invented
 serialization).
 
 ────────────────────────────────────────────────────────────────────────────
-THE TWO CHECKS
+THE THREE CHECKS
 ────────────────────────────────────────────────────────────────────────────
 
 **Check A — unmounted API routers.** In ``interfaces/**/api/*_routes.py``, a
@@ -79,6 +79,14 @@ not falsely flagged; an aliased import that is never used still credits nothing.
 A symbol only ever exercised by tests reads as uncalled. Catches
 ``execute_authorized_call`` / ``complete_spawn``.
 
+**Check C — uncalled router-registration wrappers.** A module-level
+``register_*_routes`` function in an API routes module that contains an
+``include_router`` call must itself be called by non-test product code. Calls
+are resolved back to the defining module through direct imports, aliases, and
+the same bounded trusted re-export chain as Check A. This catches the subtler
+dead surface where a router looks mounted inside its own wrapper, but the real
+app factory never invokes that wrapper.
+
 The enforcement lexicon (tunable — ``_ENFORCEMENT_LEXICON`` below): the symbol
 name and its module path are split into ``[a-z0-9]+`` word tokens, and a
 candidate is in scope iff SOME token *starts with* a lexicon entry —
@@ -116,13 +124,11 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
     by a dependency-injection container (``Depends``, a provider registry, an
     entry-point plugin loader) has no literal call site the scan sees. Out of
     reach → review-owned.
-  - **Register-fn defined but never called** — a ``register_*_routes(app)`` that
-    DOES ``include_router(r)`` inside its body makes ``r`` read as MOUNTED here
-    even if nothing ever calls ``register_*_routes``. The scan gates the
-    falsifiable "is there an ``include_router`` that names this router, resolved
-    to its defining module, at all" floor; whether the enclosing register fn is
-    itself reached from the app factory is a call-graph question left to review
-    (the same advisory line the TS gate draws at "imported only by its own test").
+  - **Dynamic register-wrapper dispatch** — ordinary ``register_*_routes(app)``
+    wrappers that contain ``include_router`` are checked module-awarely and must
+    themselves be called by non-test product code. A wrapper invoked only via
+    reflection, a string registry, or a DI container has no statically resolvable
+    call and is conservatively flagged; that dynamic wiring is review-owned.
   - **Module-object mount form (Check A)** — ``import m_routes; m_routes.router``
     passed to ``include_router`` mounts via a module OBJECT, not a name imported
     FROM the defining module, so the resolver does not tie it to the product and
@@ -374,6 +380,19 @@ def _include_router_arg_names(tree: ast.Module) -> set[str]:
                 elif isinstance(sub, ast.Attribute):
                     names.add(sub.attr)
     return names
+
+
+def _called_local_names(tree: ast.Module) -> set[str]:
+    """Local identifiers used as call targets in this module."""
+    called: set[str] = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if isinstance(node.func, ast.Name):
+            called.add(node.func.id)
+        elif isinstance(node.func, ast.Attribute):
+            called.add(node.func.attr)
+    return called
 
 
 def _resolve_from_module(importer: Path, module: str | None, level: int) -> str | None:
@@ -640,6 +659,85 @@ def find_unmounted_routers(
     return findings
 
 
+def _registration_wrappers(tree: ast.Module) -> list[tuple[str, int]]:
+    """Module-level register wrappers that own at least one router mount."""
+    wrappers: list[tuple[str, int]] = []
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if not (node.name.startswith("register_") and node.name.endswith("_routes")):
+            continue
+        if any(
+            isinstance(call, ast.Call)
+            and (
+                (isinstance(call.func, ast.Attribute) and call.func.attr == "include_router")
+                or (isinstance(call.func, ast.Name) and call.func.id == "include_router")
+            )
+            for call in ast.walk(node)
+        ):
+            wrappers.append((node.name, node.lineno))
+    return wrappers
+
+
+def _wrapper_is_called(
+    defining_rel: str,
+    wrapper: str,
+    called_local: dict[str, set[str]],
+    import_map: dict[str, dict[str, set[tuple[str, str]]]],
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
+) -> bool:
+    """Resolve a call target back to its defining registration wrapper."""
+    for caller_rel, names in called_local.items():
+        if caller_rel == defining_rel:
+            # A same-module call is reachable. Recursive registration wrappers
+            # are not a supported pattern and remain review-owned.
+            if wrapper in names:
+                return True
+            continue
+        for local in names:
+            for origin_rel, origin_name in import_map.get(caller_rel, {}).get(local, ()):
+                if _resolves_to(
+                    origin_rel,
+                    origin_name,
+                    defining_rel,
+                    wrapper,
+                    reexport_map,
+                ):
+                    return True
+    return False
+
+
+def find_uncalled_registration_wrappers(
+    trees: dict[Path, ast.Module],
+    called_local: dict[str, set[str]],
+    import_map: dict[str, dict[str, set[tuple[str, str]]]],
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
+) -> list[Finding]:
+    """Router-owning register wrappers no product module ever calls."""
+    findings: list[Finding] = []
+    for path in _routes_files():
+        tree = trees.get(path)
+        if tree is None:
+            continue
+        rel = path.relative_to(_REPO).as_posix()
+        for name, line in _registration_wrappers(tree):
+            if _wrapper_is_called(rel, name, called_local, import_map, reexport_map):
+                continue
+            findings.append(
+                (
+                    path,
+                    line,
+                    f"router:registration-uncalled:{name}",
+                    f"{rel}:{line}: reachability — registration wrapper '{name}' "
+                    f"contains include_router() but is called by zero non-test "
+                    f"product modules. Its router is locally assembled but absent "
+                    f"from the running app. Call it from the app factory or remove "
+                    f"the dormant surface.",
+                )
+            )
+    return findings
+
+
 # ── Check B — exported-but-uncalled enforcement symbols ─────────────────────
 def _dunder_all(tree: ast.Module) -> list[str] | None:
     """The list of string names in a module-level ``__all__ = [...]`` / ``(...)``,
@@ -747,11 +845,11 @@ def _finding_to_key(finding: Finding) -> ViolationKey:
 
 
 def find_all() -> list[Finding]:
-    """All Python-surface reachability findings: unmounted routers + uncalled
-    enforcement exports."""
+    """All router, registration-wrapper, and enforcement reachability findings."""
     product_files = _product_py_files()
     trees: dict[Path, ast.Module] = {}
     include_local: dict[str, set[str]] = {}
+    called_local: dict[str, set[str]] = {}
     import_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
     reexport_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
     referenced: set[str] = set()
@@ -762,20 +860,25 @@ def find_all() -> list[Finding]:
         rel = f.relative_to(_REPO).as_posix()
         trees[f] = tree
         include_local[rel] = _include_router_arg_names(tree)
+        called_local[rel] = _called_local_names(tree)
         import_map[rel] = _import_map(f, tree)
         reexport_map[rel] = _reexport_map(f, tree)
         referenced |= _reachability_reference_names(tree)
     routers = find_unmounted_routers(trees, include_local, import_map, reexport_map)
+    wrappers = find_uncalled_registration_wrappers(
+        trees, called_local, import_map, reexport_map
+    )
     exports = find_uncalled_enforcement_exports(trees, referenced)
-    return routers + exports
+    return routers + wrappers + exports
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="reachability_gate_py",
         description=(
-            "Flag stranded backend code: unmounted API routers and uncalled "
-            "enforcement exports. Informational-first; shrink-only baseline."
+            "Flag stranded backend code: unmounted routers, uncalled route "
+            "registration wrappers, and uncalled enforcement exports. "
+            "Informational-first; shrink-only baseline."
         ),
     )
     parser.add_argument(

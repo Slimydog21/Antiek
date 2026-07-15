@@ -116,7 +116,8 @@ jobs:
 
       - name: Reachability gate — Python surface (informational)
         # Backend sibling of tools/lint/reachability_gate.py. Flags unmounted
-        # API routers (interfaces/**/api/*_routes.py never include_router'd) and
+        # API routers (interfaces/**/api/*_routes.py never include_router'd),
+        # router registration wrappers never called by product code, and
         # uncalled enforcement exports (substrate/** __all__ callables in the
         # enforcement lexicon with zero non-test callers). Prints every
         # path:line finding, exits 1 ONLY on a NEW stranding not in
@@ -127,6 +128,6 @@ jobs:
             --baseline tools/lints/baselines/reachability_py.json
           rc=$?
           if [ "$rc" -ne 0 ]; then
-            echo "::warning title=Reachability gate (Python) is informational on CI::NEW unmounted router / uncalled enforcement export (exit $rc). Full path:line list above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
+            echo "::warning title=Reachability gate (Python) is informational on CI::NEW unmounted router / uncalled registration wrapper / uncalled enforcement export (exit $rc). Full path:line list above. Flip to blocking per docs/decisions/test-integrity-ci-floor.md when the reconsider-if is met."
           fi
           exit 0

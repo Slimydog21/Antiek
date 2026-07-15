@@ -107,11 +107,19 @@ def enforce_the_gate(x: int) -> int:
 # A non-test product module that CALLS the clean enforcement export (so it is
 # referenced) — mirrors a real product path consuming the seam.
 _CLEAN_CONSUMER = '''\
+from fastapi import FastAPI
+from interfaces.research.api.good_routes import register_good_routes
 from substrate.enforcement.gatekeeper import enforce_the_gate
 
 
 def run(x: int) -> int:
     return enforce_the_gate(x)
+
+
+def create_app() -> FastAPI:
+    app = FastAPI()
+    register_good_routes(app)
+    return app
 '''
 
 
@@ -233,6 +241,40 @@ def test_unmounted_router_reds_then_greens(tmp_path: Path) -> None:
         f"expected GREEN=0 after mounting the router, got {green.returncode}\n"
         f"{green.stdout}\n{green.stderr}"
     )
+
+
+def test_uncalled_registration_wrapper_reds_then_greens(tmp_path: Path) -> None:
+    """A local include_router is not production wiring until its wrapper runs."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+    assert (
+        _run([sys.executable, str(gate), "--write-baseline"], cwd=root).returncode == 0
+    )
+
+    _write(
+        root / "interfaces" / "research" / "api" / "dormant_routes.py",
+        "from fastapi import APIRouter, FastAPI\n\n"
+        "dormant_router = APIRouter(prefix='/dormant')\n\n\n"
+        "def register_dormant_routes(app: FastAPI) -> None:\n"
+        "    app.include_router(dormant_router)\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "register_dormant_routes" in combined
+    assert "registration wrapper" in combined
+
+    _write(
+        root / "interfaces" / "research" / "api" / "mount_dormant.py",
+        "from fastapi import FastAPI\n"
+        "from .dormant_routes import register_dormant_routes as mount_dormant\n\n\n"
+        "def mount(app: FastAPI) -> None:\n"
+        "    mount_dormant(app)\n"
+        "\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
 
 
 # =========================================================================== #
