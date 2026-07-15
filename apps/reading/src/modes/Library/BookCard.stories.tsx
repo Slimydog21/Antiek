@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
 import type { BookSummary } from "../../api/books";
+import realCover from "../../brand/werner/marks/social-card-1200.png";
 import BookCard from "./BookCard";
 
 const base: BookSummary = {
@@ -45,6 +46,26 @@ export const PreviewOnlyGated: Story = {
 
 export const AntiekOriginal: Story = {
   args: { book: { ...base, title: "An Antiek-Authored Book", servability: "platform_authored" } },
+};
+
+export const LongTitleFallback: Story = {
+  args: {
+    book: {
+      ...base,
+      document_id: "long-form-archive-title",
+      title: "The Polar Archive and the Shape of Memory Across Many Generations",
+      cover_uri: null,
+    },
+  },
+};
+
+export const RealCoverAuthority: Story = {
+  args: {
+    book: {
+      ...base,
+      cover_uri: realCover,
+    },
+  },
 };
 
 /** The shelf: a grid of mixed servability, the way Library renders them. */

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import type { BookSummary, CorpusStatus } from "../../api/books";
@@ -7,11 +7,13 @@ import { listInvestigations } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import GlassSurface from "../../shell/GlassSurface";
+import libraryEnvironment from "../../brand/werner/library/library_archive_environment_v1.webp";
 import BookCard from "./BookCard";
 import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
 import { documentsByTheme } from "./documentsByTheme";
 import type { FeedOrdering } from "./documentsByTheme";
+import "./library-archive-shelf.css";
 
 /**
  * Library — the home of the Read workflow (Read SPR-02; re-homed as the Read
@@ -38,7 +40,15 @@ const FILTERS: { key: CorpusStatus; label: string; hint: string }[] = [
   { key: "all", label: "All", hint: "Everything, flagged" },
 ];
 
-export default function Library() {
+export interface LibraryProps {
+  loadBooks?: typeof listBooks;
+  loadInvestigations?: typeof listInvestigations;
+}
+
+export default function Library({
+  loadBooks = listBooks,
+  loadInvestigations = listInvestigations,
+}: LibraryProps = {}) {
   const navigate = useNavigate();
   // SPR-09 window-adaptation contract: in a WorkspaceWindow, fill the
   // container (h-full) and drop the opaque full-bleed bg so the glass shows
@@ -51,6 +61,9 @@ export default function Library() {
   const [investigations, setInvestigations] = useState<InvestigationSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const loadGeneration = useRef(0);
+  const curateGeneration = useRef(0);
+  const mounted = useRef(true);
 
   // Prompt-to-curate (SPR-04): an ordered list of servable document_ids,
   // or null when no prompt is active. Curated books are a re-ranked subset
@@ -59,11 +72,31 @@ export default function Library() {
   const [curatePrompt, setCuratePrompt] = useState<string>("");
   const [curateBusy, setCurateBusy] = useState(false);
 
+  useEffect(() => {
+    // React StrictMode replays setup → cleanup → setup in development.
+    // Reasserting true here keeps the live setup authoritative while the
+    // cleanup still fences completions after a real unmount.
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      loadGeneration.current += 1;
+      curateGeneration.current += 1;
+    };
+  }, []);
+
   const reload = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    curateGeneration.current += 1;
+    setBooks([]);
+    setInvestigations([]);
+    setCuratedOrder(null);
+    setCuratePrompt("");
+    setCurateBusy(false);
     setLoading(true);
     setError(null);
     try {
-      const data = await listBooks(status);
+      const data = await loadBooks(status);
+      if (!mounted.current || generation !== loadGeneration.current) return;
       setBooks(data.books);
       // Pull active research themes only for the default servable shelf — the
       // theme-ranked feed is the Read DOOR's first view. Best-effort: if the
@@ -71,41 +104,44 @@ export default function Library() {
       // investigations set → documentsByTheme returns ordering "recency").
       if (status === "servable") {
         try {
-          const inv = await listInvestigations({ status: "in_progress" });
+          const inv = await loadInvestigations({ status: "in_progress" });
+          if (!mounted.current || generation !== loadGeneration.current) return;
           setInvestigations(inv.investigations);
         } catch {
+          if (!mounted.current || generation !== loadGeneration.current) return;
           setInvestigations([]); // thin signal → recency fallback, honestly
         }
       } else {
         setInvestigations([]);
       }
     } catch (e: unknown) {
+      if (!mounted.current || generation !== loadGeneration.current) return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setLoading(false);
+      if (mounted.current && generation === loadGeneration.current) setLoading(false);
     }
-  }, [status]);
+  }, [loadBooks, loadInvestigations, status]);
 
   useEffect(() => {
     void reload();
-    // Switching shelves clears any active curation.
-    setCuratedOrder(null);
-    setCuratePrompt("");
   }, [reload]);
 
   const onCurate = useCallback(async (prompt: string) => {
+    const generation = ++curateGeneration.current;
     setCurateBusy(true);
     setError(null);
     try {
       const res = await curateBooks(prompt);
+      if (!mounted.current || generation !== curateGeneration.current || status !== "servable") return;
       setCuratedOrder(res.books.map((b) => b.document_id));
       setCuratePrompt(prompt);
     } catch (e: unknown) {
+      if (!mounted.current || generation !== curateGeneration.current || status !== "servable") return;
       setError(e instanceof Error ? e.message : String(e));
     } finally {
-      setCurateBusy(false);
+      if (mounted.current && generation === curateGeneration.current) setCurateBusy(false);
     }
-  }, []);
+  }, [status]);
 
   const onClearCurate = useCallback(() => {
     setCuratedOrder(null);
@@ -167,10 +203,11 @@ export default function Library() {
 
   const subtitle = useMemo(() => {
     if (loading) return "Loading the shelf…";
+    if (error) return "Shelf count unavailable";
     if (status === "servable") return `${books.length} books readable in full`;
     if (status === "gated") return `${books.length} preview-only titles`;
     return `${books.length} titles`;
-  }, [loading, status, books.length]);
+  }, [loading, error, status, books.length]);
 
   // The Library shelf body. Two surfaces:
   //  - inWindow (SPR-09 contract): a WorkspaceWindow already owns the glass, so
@@ -180,7 +217,7 @@ export default function Library() {
   //    instead of the old opaque bg-ice-0 dark:bg-charcoal-2 wall; the scrim
   //    keeps the shelf header + body text legible (WCAG-AA owned by the glass).
   const shelfBody = (
-    <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
+    <div className="library-archive__content max-w-5xl mx-auto px-5 py-8 sm:px-8 sm:py-10 space-y-6">
           <header className="space-y-2">
             <div className="flex items-start justify-between gap-4">
               <h1 className="text-2xl font-serif text-ink dark:text-bright">Library</h1>
@@ -229,7 +266,19 @@ export default function Library() {
                 aria-selected={status === f.key}
                 type="button"
                 title={f.hint}
-                onClick={() => setStatus(f.key)}
+                onClick={() => {
+                  if (f.key === status) return;
+                  loadGeneration.current += 1;
+                  curateGeneration.current += 1;
+                  setBooks([]);
+                  setInvestigations([]);
+                  setError(null);
+                  setLoading(true);
+                  setCuratedOrder(null);
+                  setCuratePrompt("");
+                  setCurateBusy(false);
+                  setStatus(f.key);
+                }}
                 className={`px-3 py-1 rounded-md text-xs font-mono transition-colors ${
                   status === f.key
                     ? "bg-ink text-white"
@@ -303,24 +352,33 @@ export default function Library() {
             </p>
           )}
 
+          <section aria-label="Library shelf" aria-busy={loading || undefined}>
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
+            <div role="alert" className="library-archive__state library-archive__state--error">
+              <p className="font-serif text-lg text-ink dark:text-bright">The archive door did not open.</p>
+              <p className="text-sm text-shadow-1 dark:text-moonlight">Shelf contents are unavailable. Try the current view again.</p>
+              <button type="button" onClick={() => void reload()} className="library-archive__retry">Try again</button>
+            </div>
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <div role="status" aria-live="polite" className="library-archive__state">
+              <span className="library-archive__loader" aria-hidden="true" />
+              <p className="font-serif text-lg text-ink dark:text-bright">Opening the archive…</p>
+              <p className="text-sm text-shadow-1 dark:text-moonlight">Checking what this shelf may honestly place in your hands.</p>
+            </div>
           )}
 
           {!loading && !error && displayed.length === 0 && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
+            <div className="library-archive__state">
+            <p className="max-w-xl text-sm text-shadow-1 dark:text-moonlight">
               {curatedOrder !== null
                 ? "No servable books matched that prompt. Try different words, or clear to see the whole shelf."
                 : status === "servable"
                   ? "Nothing is readable in full on the shelf yet — the library only shows what can be legally aggregated. Check the Preview tab for titles you can sample, or bring your own PDF to read it here."
                   : "Nothing here."}
             </p>
+            </div>
           )}
 
           {displayed.length > 0 && (
@@ -334,20 +392,31 @@ export default function Library() {
               ))}
             </section>
           )}
+          </section>
     </div>
   );
 
   return (
-    <div className={`flex flex-col ${inWindow ? "h-full" : "h-screen"}`}>
+    <div className={`library-archive relative isolate flex flex-col overflow-hidden ${inWindow ? "h-full" : "h-screen"}`}>
       {inWindow ? (
         // SPR-09 contract preserved: the host WorkspaceWindow owns the glass;
         // the body stays bg-transparent and is NOT re-glassed.
         <main className="flex-1 overflow-y-auto bg-transparent">{shelfBody}</main>
       ) : (
-        // Full-page Read door landing → glass over the living scene.
-        <GlassSurface as="main" className="flex-1 overflow-y-auto">
+        <>
+        <img
+          src={libraryEnvironment}
+          alt=""
+          aria-hidden="true"
+          data-testid="library-archive-environment"
+          decoding="async"
+          draggable={false}
+          className="pointer-events-none absolute inset-0 z-0 h-full w-full select-none object-cover object-center"
+        />
+        <GlassSurface as="main" className="relative z-10 flex-1 overflow-y-auto !backdrop-blur-none">
           {shelfBody}
         </GlassSurface>
+        </>
       )}
     </div>
   );
