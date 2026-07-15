@@ -19,6 +19,7 @@ import {
 import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 import { track, trackException } from "../../lib/analytics";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 import "./Login.css";
 
@@ -163,6 +164,8 @@ export default function Login() {
       await finishPasskeyLogin(ceremony_id, credential);
       await refresh();
       track("passkey_login_succeeded");
+      // Living-TV: welcome beat as Antiek unlocks.
+      emitWernerExperience("highlight");
       navigate(nextPath, { replace: true });
     } catch (error) {
       if (isPasskeyCancellation(error)) {
@@ -173,6 +176,7 @@ export default function Login() {
       setErrorMsg(message);
       setErrorHint("Try again, use a nearby device, or recover with email.");
       setPasskeyState("error");
+      emitWernerExperience("fail");
       trackException(error instanceof Error ? error : new Error(message));
     }
   }
@@ -187,6 +191,7 @@ export default function Login() {
       await finishPasskeyRegistration(ceremony_id, credential, deviceLabel());
       track("passkey_registered");
       setPasskeyState("ready");
+      emitWernerExperience("highlight");
       navigate(nextPath, { replace: true });
     } catch (error) {
       if (isPasskeyCancellation(error)) {
