@@ -389,7 +389,7 @@ def resolve_composer_projection(
             model=ranked.candidate.model,
             quality_score=ranked.quality_score,
             quality_basis=ranked.quality_basis,
-            eligible=ranked.eligible,
+            eligible=ranked.operationally_eligible,
             pricing_status=_pricing_status(ranked.candidate),
             estimated_usd_low=ranked.candidate.estimated_usd_low,
             estimated_usd_high=ranked.candidate.estimated_usd_high,
