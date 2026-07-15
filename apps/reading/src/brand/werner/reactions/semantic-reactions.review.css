@@ -47,6 +47,95 @@
 }
 
 .werner-motion-proof__frame
+  .werner-semantic--composed[data-reduced="false"]
+  .werner-semantic__mark {
+  animation: werner-bind-settle var(--werner-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--composed[data-reduced="false"]
+  .werner-semantic__folio-cover {
+  animation: werner-folio-bind var(--werner-semantic-duration) ease-out both
+    paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--composed[data-reduced="false"]
+  .werner-semantic__folio-slip--one {
+  animation: werner-slip-one-bind var(--werner-semantic-duration) ease-in-out
+    both paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--composed[data-reduced="false"]
+  .werner-semantic__folio-slip--two {
+  animation: werner-slip-two-bind var(--werner-semantic-duration) ease-in-out
+    both paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+.werner-motion-proof__frame
+  .werner-semantic--composed[data-reduced="false"]
+  .werner-semantic__folio-slip--three {
+  animation: werner-slip-three-bind var(--werner-semantic-duration) ease-in-out
+    both paused !important;
+  animation-delay: var(--werner-review-delay) !important;
+}
+
+/* SVG animation sampling is not stable across capture hosts. Pin the new
+   composition's review cells to the same authored states the keyframes use. */
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="start"]
+  .werner-semantic__folio-cover {
+  opacity: 0 !important;
+  transform: translateY(12%) scale(0.9) !important;
+}
+
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="start"]
+  .werner-semantic__folio-slip--one {
+  opacity: 1 !important;
+  transform: translate(-24%, -14%) rotate(-12deg) !important;
+}
+
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="start"]
+  .werner-semantic__folio-slip--two {
+  opacity: 1 !important;
+  transform: translate(24%, -16%) rotate(11deg) !important;
+}
+
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="start"]
+  .werner-semantic__folio-slip--three {
+  opacity: 1 !important;
+  transform: translateY(-24%) rotate(2deg) !important;
+}
+
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="semantic-beat"]
+  .werner-semantic__folio-cover {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="semantic-beat"]
+  .werner-semantic__folio-slip {
+  opacity: 0.45 !important;
+  transform: translateY(20%) scale(0.92) !important;
+}
+
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="settle"]
+  .werner-semantic__folio-cover {
+  opacity: 1 !important;
+  transform: none !important;
+}
+
+.werner-motion-proof__frame[data-reaction="composed"][data-review-frame="settle"]
+  .werner-semantic__folio-slips {
+  display: none;
+}
+
+.werner-motion-proof__frame
   .werner-semantic--dizzy[data-reduced="false"]
   .werner-semantic__orbit {
   animation: werner-paperclip-orbit var(--werner-semantic-duration) linear both

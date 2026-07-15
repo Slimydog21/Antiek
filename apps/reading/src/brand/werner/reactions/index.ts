@@ -1,5 +1,6 @@
 export {
   WernerCurious,
+  WernerComposed,
   WernerDizzy,
   WernerHappy,
   WernerHit,

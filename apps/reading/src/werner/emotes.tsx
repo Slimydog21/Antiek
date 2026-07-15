@@ -4,6 +4,7 @@ import Werner from "../brand/Werner";
 import { WernerSleeping, WernerThinking } from "../brand/werner/animated";
 import {
   WernerCurious,
+  WernerComposed,
   WernerDizzy,
   WernerHappy,
   WernerHit,
@@ -30,11 +31,12 @@ import {
  */
 
 export type EmoteKind =
-  "curious" | "happy" | "thinking" | "sleeping" | "dizzy" | "hit";
+  "curious" | "happy" | "composed" | "thinking" | "sleeping" | "dizzy" | "hit";
 
 export const EMOTE_KINDS: readonly EmoteKind[] = [
   "curious",
   "happy",
+  "composed",
   "thinking",
   "sleeping",
   "dizzy",
@@ -49,6 +51,7 @@ export const EMOTE_KINDS: readonly EmoteKind[] = [
 export const EMOTE_DURATION_MS: Record<EmoteKind, number> = {
   curious: 1200, // evidence-card arrival and head tilt
   happy: 800, // verification stamp and quiet proud lift
+  composed: 1500, // three research slips settle into one bound folio
   thinking: 1400, // a touch over one aurora cycle so it doesn't snap mid-pulse
   sleeping: 2400, // one full breath cycle
   dizzy: 1300, // one paperclip orbit
@@ -99,6 +102,8 @@ export function EmoteView({ kind, size, reduced }: EmoteViewProps): ReactNode {
       return <WernerThinking size={size} label={`Werner ${kind}`} />;
     case "happy":
       return <WernerHappy size={size} reduced={reduced} />;
+    case "composed":
+      return <WernerComposed size={size} reduced={reduced} />;
     case "hit":
       return <WernerHit size={size} reduced={reduced} />;
     case "sleeping":

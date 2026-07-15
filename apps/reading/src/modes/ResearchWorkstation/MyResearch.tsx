@@ -54,6 +54,7 @@ import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
 import SuggestedResearch from "./SuggestedResearch";
+import { notifyResearchDraftComposed } from "../../werner/shellExperienceSignals";
 
 // ── Status → plain language (SPR-02 narration vocabulary) ─────────────────
 //
@@ -206,6 +207,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   const [writeError, setWriteError] = useState<string | null>(null);
   const [openingWrite, setOpeningWrite] = useState(false);
   const openingWriteRef = useRef(false);
+  const mountedRef = useRef(true);
   const composePreviewRef = useRef(composePreview);
   composePreviewRef.current = composePreview;
   const selectionRef = useRef(selected);
@@ -221,6 +223,12 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
       });
     return () => {
       cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
     };
   }, []);
 
@@ -264,10 +272,11 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     setComposeError(null);
     try {
       const response = await createResearchCompose(requested, composePreview.selection_fingerprint);
-      if (sameSelection(selectionRef.current, requested)) {
+      if (mountedRef.current && sameSelection(selectionRef.current, requested)) {
         setComposePreview(response);
         setWriteWorkspace(null);
         setWriteError(null);
+        if (!response.reused) notifyResearchDraftComposed();
       }
     } catch (err) {
       setComposePreview(null);

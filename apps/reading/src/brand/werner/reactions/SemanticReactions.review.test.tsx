@@ -8,8 +8,8 @@ const storySource = fs.readFileSync(storyPath, "utf8");
 const cssSource = fs.readFileSync(cssPath, "utf8");
 
 describe("semantic motion proof sheet", () => {
-  it("covers all four reactions and all four named review frames", () => {
-    for (const reaction of ["curious", "happy", "dizzy", "hit"]) {
+  it("covers all five reactions and all four named review frames", () => {
+    for (const reaction of ["curious", "happy", "composed", "dizzy", "hit"]) {
       expect(storySource).toContain(`${reaction}: Werner`);
     }
     for (const frame of ["start", "semantic-beat", "settle", "reduced"]) {
@@ -39,6 +39,11 @@ describe("semantic motion proof sheet", () => {
       "werner-evidence-arrive",
       "werner-proud-lift",
       "werner-verified-beat",
+      "werner-folio-bind",
+      "werner-slip-one-bind",
+      "werner-slip-two-bind",
+      "werner-slip-three-bind",
+      "werner-bind-settle",
       "werner-paperclip-orbit",
       "werner-hit-rebound",
       "werner-tab-impact",

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EMOTE_DURATION_MS, EmoteView } from "../../../werner/emotes";
 import {
   WernerCurious,
+  WernerComposed,
   WernerDizzy,
   WernerHappy,
   WernerHit,
@@ -16,6 +17,7 @@ import {
 const semantic = [
   ["curious", WernerCurious, "examines the evidence"],
   ["happy", WernerHappy, "marks the work verified"],
+  ["composed", WernerComposed, "binds the research into one folio"],
   ["dizzy", WernerDizzy, "regains his bearings"],
   ["hit", WernerHit, "bumps the control"],
 ] as const;
@@ -48,12 +50,14 @@ describe("Werner semantic reactions", () => {
     expect(WERNER_SEMANTIC_DURATION_MS).toEqual({
       curious: 1200,
       happy: 800,
+      composed: 1500,
       dizzy: 1300,
       hit: 800,
     });
     expect(WERNER_SEMANTIC_DURATION_MS).toEqual({
       curious: EMOTE_DURATION_MS.curious,
       happy: EMOTE_DURATION_MS.happy,
+      composed: EMOTE_DURATION_MS.composed,
       dizzy: EMOTE_DURATION_MS.dizzy,
       hit: EMOTE_DURATION_MS.hit,
     });
@@ -86,6 +90,7 @@ describe("Werner semantic reactions", () => {
 
     for (const [Reaction, source] of [
       [WernerHappy, "werner_default"],
+      [WernerComposed, "werner_default"],
       [WernerDizzy, "werner_lost"],
       [WernerHit, "werner_default"],
     ] as const) {
@@ -132,6 +137,7 @@ describe("Werner semantic reactions", () => {
     const source = readFileSync("src/werner/emotes.tsx", "utf8");
     expect(source).toContain("<WernerCurious");
     expect(source).toContain("<WernerHappy");
+    expect(source).toContain("<WernerComposed");
     expect(source).toContain("<WernerDizzy");
     expect(source).toContain("<WernerHit");
     expect(source).not.toMatch(/<WernerCaughtAFish|<WernerTobogganSpinner/);
@@ -153,6 +159,7 @@ describe("Werner semantic reactions", () => {
     expect(mediaGuard).toContain("animation: none !important");
     expect(mediaGuard).toContain(".werner-semantic__evidence");
     expect(mediaGuard).toContain(".werner-semantic__stamp");
+    expect(mediaGuard).toContain(".werner-semantic__folio-cover");
     expect(mediaGuard).toContain(".werner-semantic__orbit");
     expect(css).not.toContain("infinite");
     expect(source).not.toMatch(

@@ -6,6 +6,7 @@ import {
   notifyResearchStarted,
   notifyShellFailure,
   notifyModelEvidenceCompared,
+  notifyResearchDraftComposed,
   notifyOutlineBlockCommitted,
   notifySpeakInviteCommitted,
   notifySourceReadCommitted,
@@ -70,6 +71,13 @@ describe("Werner shell experience edges", () => {
     const capture = captureExperiences();
     notifyModelEvidenceCompared();
     expect(capture.seen).toEqual(["model_evidence_compared"]);
+    capture.teardown();
+  });
+
+  it("maps a newly composed research draft to one composed experience", () => {
+    const capture = captureExperiences();
+    notifyResearchDraftComposed();
+    expect(capture.seen).toEqual(["research_draft_composed"]);
     capture.teardown();
   });
 
