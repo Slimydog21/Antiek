@@ -53,7 +53,9 @@ class _PrivateNoStoreRoute(APIRoute):
             try:
                 response = await handler(request)
             except RequestValidationError as exc:
-                return JSONResponse(status_code=422, content={"detail": exc.errors()}, headers=_PRIVATE)
+                return JSONResponse(
+                    status_code=422, content={"detail": exc.errors()}, headers=_PRIVATE
+                )
             except HTTPException as exc:
                 exc.headers = {**(exc.headers or {}), **_PRIVATE}
                 raise
@@ -138,8 +140,10 @@ class ResearchPlanRemoveSubtreeOperation(BaseModel):
 
 
 ResearchPlanEditOperation = Annotated[
-    ResearchPlanAddChildOperation | ResearchPlanUpdateQuestionOperation
-    | ResearchPlanMoveSubtreeOperation | ResearchPlanRemoveSubtreeOperation,
+    ResearchPlanAddChildOperation
+    | ResearchPlanUpdateQuestionOperation
+    | ResearchPlanMoveSubtreeOperation
+    | ResearchPlanRemoveSubtreeOperation,
     Field(discriminator="type"),
 ]
 
@@ -318,7 +322,9 @@ class ResearchPlanRouteRuntime:
 
 
 def get_multimedia_research_plan_runtime() -> ResearchPlanRouteRuntime:
-    raise HTTPException(status_code=503, detail="research plan runtime is unavailable", headers=_PRIVATE)
+    raise HTTPException(
+        status_code=503, detail="research plan runtime is unavailable", headers=_PRIVATE
+    )
 
 
 multimedia_research_plan_router = APIRouter(
@@ -355,7 +361,9 @@ def handoff_multimedia_research_plan(
     except ResearchIntentUnavailableError as exc:
         raise _private_not_found() from exc
     except (ResearchIntentError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail="research plan authority conflicts", headers=_PRIVATE) from exc
+        raise HTTPException(
+            status_code=409, detail="research plan authority conflicts", headers=_PRIVATE
+        ) from exc
     response.status_code = 201 if created else 200
     return _response(plan)
 
@@ -369,15 +377,19 @@ def get_multimedia_research_plan(
     runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
 ) -> ResearchPlanResponse:
     try:
-        return _response(runtime.plans.get(
-            owner_identity_digest=runtime.owner_digest_resolver(operator_id), plan_id=plan_id
-        ))
+        return _response(
+            runtime.plans.get(
+                owner_identity_digest=runtime.owner_digest_resolver(operator_id), plan_id=plan_id
+            )
+        )
     except ResearchPlanUnavailableError as exc:
         raise _private_not_found() from exc
     except ResearchPlanStorageError as exc:
         raise _private_unavailable() from exc
     except (ResearchPlanError, ValueError) as exc:
-        raise HTTPException(status_code=409, detail="research plan integrity conflicts", headers=_PRIVATE) from exc
+        raise HTTPException(
+            status_code=409, detail="research plan integrity conflicts", headers=_PRIVATE
+        ) from exc
 
 
 @multimedia_research_plan_router.post(
@@ -390,11 +402,13 @@ def approve_multimedia_research_plan(
     runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
 ) -> ResearchPlanResponse:
     try:
-        return _response(runtime.plans.approve(
-            owner_identity_digest=runtime.owner_digest_resolver(operator_id),
-            plan_id=plan_id,
-            expected_plan_version=body.expected_plan_version,
-        ))
+        return _response(
+            runtime.plans.approve(
+                owner_identity_digest=runtime.owner_digest_resolver(operator_id),
+                plan_id=plan_id,
+                expected_plan_version=body.expected_plan_version,
+            )
+        )
     except ResearchPlanUnavailableError as exc:
         raise _private_not_found() from exc
     except ResearchPlanStorageError as exc:
@@ -413,13 +427,15 @@ def edit_multimedia_research_plan(
     runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
 ) -> ResearchPlanResponse:
     try:
-        return _response(runtime.plans.edit(
-            owner_identity_digest=runtime.owner_digest_resolver(operator_id),
-            plan_id=plan_id,
-            idempotency_key=body.idempotency_key,
-            expected_plan_version=body.expected_plan_version,
-            operations=[operation.model_dump() for operation in body.operations],
-        ))
+        return _response(
+            runtime.plans.edit(
+                owner_identity_digest=runtime.owner_digest_resolver(operator_id),
+                plan_id=plan_id,
+                idempotency_key=body.idempotency_key,
+                expected_plan_version=body.expected_plan_version,
+                operations=[operation.model_dump() for operation in body.operations],
+            )
+        )
     except ResearchPlanUnavailableError as exc:
         raise _private_not_found() from exc
     except ResearchPlanTooLargeError as exc:
@@ -444,7 +460,8 @@ def prepare_multimedia_investigation(
 ) -> PreparedInvestigationResponse:
     try:
         prepared, created = runtime.plans.prepare_investigation(
-            owner_identity_digest=runtime.owner_digest_resolver(operator_id), plan_id=plan_id,
+            owner_identity_digest=runtime.owner_digest_resolver(operator_id),
+            plan_id=plan_id,
             idempotency_key=body.idempotency_key,
             expected_plan_version=body.expected_plan_version,
         )
@@ -469,10 +486,12 @@ def get_multimedia_prepared_investigation(
     runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
 ) -> PreparedInvestigationResponse:
     try:
-        return _prepared_response(runtime.plans.get_prepared_investigation(
-            owner_identity_digest=runtime.owner_digest_resolver(operator_id),
-            investigation_id=investigation_id,
-        ))
+        return _prepared_response(
+            runtime.plans.get_prepared_investigation(
+                owner_identity_digest=runtime.owner_digest_resolver(operator_id),
+                investigation_id=investigation_id,
+            )
+        )
     except ResearchPlanUnavailableError as exc:
         raise _private_investigation_not_found() from exc
     except ResearchPlanStorageError as exc:
@@ -496,12 +515,15 @@ def authorize_multimedia_investigation_activation(
 ) -> InvestigationActivationAuthorizationResponse:
     try:
         owner = runtime.owner_digest_resolver(operator_id)
+
         def resolve_quote(
-            prepared: PreparedInvestigation, route_policy: str,
+            prepared: PreparedInvestigation,
+            route_policy: str,
         ) -> InvestigationActivationQuote:
             if runtime.activation_quote_resolver is None:
                 raise HTTPException(
-                    status_code=503, detail="activation quote authority is unavailable",
+                    status_code=503,
+                    detail="activation quote authority is unavailable",
                     headers=_PRIVATE,
                 )
             try:
@@ -510,20 +532,26 @@ def authorize_multimedia_investigation_activation(
                 raise
             except Exception as exc:
                 raise HTTPException(
-                    status_code=503, detail="activation quote authority is unavailable",
+                    status_code=503,
+                    detail="activation quote authority is unavailable",
                     headers=_PRIVATE,
                 ) from exc
             if not isinstance(quote, InvestigationActivationQuote):
                 raise HTTPException(
-                    status_code=503, detail="activation quote authority is unavailable",
+                    status_code=503,
+                    detail="activation quote authority is unavailable",
                     headers=_PRIVATE,
                 )
             return quote
+
         authorization, created = runtime.plans.authorize_investigation_activation(
-            owner_identity_digest=owner, investigation_id=investigation_id,
-            idempotency_key=body.idempotency_key, route_policy=body.route_policy,
+            owner_identity_digest=owner,
+            investigation_id=investigation_id,
+            idempotency_key=body.idempotency_key,
+            route_policy=body.route_policy,
             approved_ceiling_cents=body.approved_ceiling_cents,
-            ttl_seconds=body.ttl_seconds, quote_resolver=resolve_quote,
+            ttl_seconds=body.ttl_seconds,
+            quote_resolver=resolve_quote,
         )
     except ResearchPlanUnavailableError as exc:
         raise _private_investigation_not_found() from exc
@@ -577,11 +605,13 @@ def consume_multimedia_investigation_activation(
         owner = runtime.owner_digest_resolver(operator_id)
 
         def resolve_quote(
-            prepared: PreparedInvestigation, route_policy: str,
+            prepared: PreparedInvestigation,
+            route_policy: str,
         ) -> InvestigationActivationQuote:
             if runtime.activation_quote_resolver is None:
                 raise HTTPException(
-                    status_code=503, detail="activation consumption is unavailable",
+                    status_code=503,
+                    detail="activation consumption is unavailable",
                     headers=_PRIVATE,
                 )
             try:
@@ -590,20 +620,24 @@ def consume_multimedia_investigation_activation(
                 raise
             except Exception as exc:
                 raise HTTPException(
-                    status_code=503, detail="activation consumption is unavailable",
+                    status_code=503,
+                    detail="activation consumption is unavailable",
                     headers=_PRIVATE,
                 ) from exc
             if not isinstance(quote, InvestigationActivationQuote):
                 raise HTTPException(
-                    status_code=503, detail="activation consumption is unavailable",
+                    status_code=503,
+                    detail="activation consumption is unavailable",
                     headers=_PRIVATE,
                 )
             return quote
 
         reservation, created = runtime.plans.consume_investigation_activation(
-            owner_identity_digest=owner, investigation_id=investigation_id,
+            owner_identity_digest=owner,
+            investigation_id=investigation_id,
             authorization_id=body.authorization_id,
-            idempotency_key=body.idempotency_key, quote_resolver=resolve_quote,
+            idempotency_key=body.idempotency_key,
+            quote_resolver=resolve_quote,
             supported_maximum_cents=MAX_AUTHORITY_CENTS,
         )
         _bootstrap_spend_run(runtime.spend_ledger, owner, reservation, create=True)
@@ -643,7 +677,8 @@ def get_multimedia_investigation_launch_reservation(
     try:
         owner = runtime.owner_digest_resolver(operator_id)
         reservation = runtime.plans.get_investigation_launch_reservation(
-            owner_identity_digest=owner, investigation_id=investigation_id,
+            owner_identity_digest=owner,
+            investigation_id=investigation_id,
         )
         _bootstrap_spend_run(runtime.spend_ledger, owner, reservation, create=False)
         return _launch_response(reservation, ready=True)
@@ -666,15 +701,19 @@ def get_multimedia_investigation_launch_reservation(
 
 
 def _bootstrap_spend_run(
-    ledger: ResearchSpendLedger | None, owner: str,
-    reservation: InvestigationLaunchReservation, *, create: bool,
+    ledger: ResearchSpendLedger | None,
+    owner: str,
+    reservation: InvestigationLaunchReservation,
+    *,
+    create: bool,
 ) -> None:
     if ledger is None:
         raise RuntimeError("spend ledger unavailable")
     if create:
         ledger.ensure_schema()
     binding = RunBinding(
-        run_id=reservation.spend_run_id, owner_id=owner,
+        run_id=reservation.spend_run_id,
+        owner_id=owner,
         session_id=reservation.session_id,
         plan_digest=reservation.launch_manifest_digest,
         approval_revision=reservation.source_plan_version,
@@ -683,10 +722,19 @@ def _bootstrap_spend_run(
     if create:
         ledger.create_or_reopen_run(command_key, binding, reservation.reserved_cents)
     snapshot = ledger.balance(reservation.spend_run_id)
-    if (snapshot.binding != binding or snapshot.ceiling_cents != reservation.reserved_cents
-            or snapshot.authorized_spent_cents != 0
-            or snapshot.observed_provider_spend_cents != 0 or snapshot.held_cents != 0
-            or snapshot.status is not RunStatus.ACTIVE or snapshot.ceiling_breached):
+    execution = ledger.launch_execution_for_run(reservation.spend_run_id, owner)
+    if (
+        snapshot.binding != binding
+        or snapshot.ceiling_cents != reservation.reserved_cents
+        or snapshot.status is not RunStatus.ACTIVE
+        or snapshot.ceiling_breached
+    ):
+        raise BindingConflict("research spend run binding conflicts")
+    if execution is None and (
+        snapshot.authorized_spent_cents != 0
+        or snapshot.observed_provider_spend_cents != 0
+        or snapshot.held_cents != 0
+    ):
         raise BindingConflict("research spend run is not pristine")
 
 
@@ -725,16 +773,25 @@ def _authorization_response(
 
 
 def _launch_response(
-    reservation: InvestigationLaunchReservation, *, ready: bool,
+    reservation: InvestigationLaunchReservation,
+    *,
+    ready: bool,
 ) -> InvestigationLaunchReservationResponse:
     return InvestigationLaunchReservationResponse(**asdict(reservation), ready=ready)
 
 
 __all__ = [
-    "InvestigationActivationAuthorizationBody", "InvestigationActivationAuthorizationResponse",
-    "InvestigationActivationConsumptionBody", "InvestigationLaunchReservationResponse",
-    "PreparedInvestigationBody", "PreparedInvestigationResponse", "ResearchPlanApproveBody",
-    "ResearchPlanEditBody", "ResearchPlanHandoffBody", "ResearchPlanResponse",
-    "ResearchPlanRouteRuntime", "get_multimedia_research_plan_runtime",
+    "InvestigationActivationAuthorizationBody",
+    "InvestigationActivationAuthorizationResponse",
+    "InvestigationActivationConsumptionBody",
+    "InvestigationLaunchReservationResponse",
+    "PreparedInvestigationBody",
+    "PreparedInvestigationResponse",
+    "ResearchPlanApproveBody",
+    "ResearchPlanEditBody",
+    "ResearchPlanHandoffBody",
+    "ResearchPlanResponse",
+    "ResearchPlanRouteRuntime",
+    "get_multimedia_research_plan_runtime",
     "multimedia_research_plan_router",
 ]
