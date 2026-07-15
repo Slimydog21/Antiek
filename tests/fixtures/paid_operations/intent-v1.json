@@ -1,0 +1,78 @@
+{
+  "profile": "antiek.paid-operation.intent.v1",
+  "vectors": [
+    {
+      "account_id": "acct-1",
+      "canonical_json": "{\"account_id\":\"acct-1\",\"answer_schema_version\":\"answer-schema-v1\",\"ceiling_cents\":20,\"compose_fingerprint\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"compose_id\":\"compose-1\",\"context_packet_bytes\":2048,\"context_packet_hash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"created_at_ms\":1000,\"expires_at_ms\":2000,\"frozen_member_body_hashes\":[\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\"],\"frozen_member_ids\":[\"member-1\",\"member-2\"],\"kind\":\"collective_interrogation_v1\",\"max_input_tokens\":4096,\"max_output_tokens\":1024,\"model_id\":\"model-1\",\"operation_id\":\"op-1\",\"owner_user_id\":\"owner-1\",\"pricing_snapshot_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"pricing_snapshot_id\":\"price-1\",\"provider_id\":\"provider-1\",\"question\":\"Where do these sources disagree?\",\"quote_cents\":12,\"route_id\":\"route-1\",\"schema_version\":1,\"source_policy_version\":\"source-policy-v1\",\"temperature_millionths\":250000}",
+      "intent_hash": "e48c5c0c9a256e24e1668a78841e0f842c86d66e23c2ea2f73577450571fa925",
+      "kind": "collective_interrogation_v1",
+      "operation_id": "op-1",
+      "owner_user_id": "owner-1",
+      "payload": {
+        "answer_schema_version": "answer-schema-v1",
+        "ceiling_cents": 20,
+        "compose_fingerprint": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "compose_id": "compose-1",
+        "context_packet_bytes": 2048,
+        "context_packet_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "created_at_ms": 1000,
+        "expires_at_ms": 2000,
+        "frozen_member_body_hashes": [
+          "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+        ],
+        "frozen_member_ids": [
+          "member-1",
+          "member-2"
+        ],
+        "max_input_tokens": 4096,
+        "max_output_tokens": 1024,
+        "model_id": "model-1",
+        "pricing_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "pricing_snapshot_id": "price-1",
+        "provider_id": "provider-1",
+        "question": "Where do these sources disagree?",
+        "quote_cents": 12,
+        "route_id": "route-1",
+        "schema_version": 1,
+        "source_policy_version": "source-policy-v1",
+        "temperature_millionths": 250000
+      }
+    },
+    {
+      "account_id": "acct-1",
+      "canonical_json": "{\"acceptance_policy_hash\":\"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc\",\"acceptance_policy_version\":\"accept-v1\",\"account_id\":\"acct-1\",\"ceiling_cents\":45,\"created_at_ms\":1000,\"deposit_policy_version\":\"deposit-v1\",\"duration_minutes\":90,\"expires_at_ms\":2000,\"goals\":[\"read carefully\",\"write synthesis\"],\"job_id\":\"job-1\",\"kind\":\"midnight_oil_v1\",\"max_input_tokens\":8000,\"max_output_tokens\":2000,\"max_steps\":12,\"model_id\":\"model-1\",\"operation_id\":\"op-2\",\"owner_user_id\":\"owner-1\",\"pricing_snapshot_hash\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"pricing_snapshot_id\":\"price-1\",\"provider_id\":\"provider-1\",\"quote_cents\":30,\"research_brief_hash\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"retrieval_source_policy_version\":\"retrieval-v1\",\"route_id\":\"route-1\",\"schema_version\":1,\"temperature_millionths\":100000}",
+      "intent_hash": "7938dd04adcbe4ce68155d8b107c26b7a0e9bb24621dd6b29018a3d9452ad618",
+      "kind": "midnight_oil_v1",
+      "operation_id": "op-2",
+      "owner_user_id": "owner-1",
+      "payload": {
+        "acceptance_policy_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "acceptance_policy_version": "accept-v1",
+        "ceiling_cents": 45,
+        "created_at_ms": 1000,
+        "deposit_policy_version": "deposit-v1",
+        "duration_minutes": 90,
+        "expires_at_ms": 2000,
+        "goals": [
+          "read carefully",
+          "write synthesis"
+        ],
+        "job_id": "job-1",
+        "max_input_tokens": 8000,
+        "max_output_tokens": 2000,
+        "max_steps": 12,
+        "model_id": "model-1",
+        "pricing_snapshot_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "pricing_snapshot_id": "price-1",
+        "provider_id": "provider-1",
+        "quote_cents": 30,
+        "research_brief_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "retrieval_source_policy_version": "retrieval-v1",
+        "route_id": "route-1",
+        "schema_version": 1,
+        "temperature_millionths": 100000
+      }
+    }
+  ]
+}
