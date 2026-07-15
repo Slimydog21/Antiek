@@ -98,21 +98,23 @@ class ProjectionStore:
 
     def load(self, projection_id: str) -> HtmlProjectionContract:
         row = self._con.execute(
-            "SELECT projection_json FROM html_projections WHERE projection_id = ?", [projection_id]
+            "SELECT projection_id, identity_json, projection_json FROM html_projections "
+            "WHERE projection_id = ?", [projection_id]
         ).fetchone()
         if row is None:
             raise KeyError(projection_id)
-        return HtmlProjectionContract.model_validate_json(str(row[0]))
+        return self._validated_row(row)
 
     def list(self) -> tuple[HtmlProjectionContract, ...]:
         rows = self._con.execute(
-            "SELECT projection_json FROM html_projections ORDER BY projection_id"
+            "SELECT projection_id, identity_json, projection_json "
+            "FROM html_projections ORDER BY projection_id"
         ).fetchall()
-        return tuple(HtmlProjectionContract.model_validate_json(str(row[0])) for row in rows)
+        return tuple(self._validated_row(row) for row in rows)
 
     def _find(self, projection: HtmlProjectionContract) -> HtmlProjectionContract | None:
         rows = self._con.execute(
-            "SELECT projection_json FROM html_projections "
+            "SELECT projection_id, identity_json, projection_json FROM html_projections "
             "WHERE projection_id = ? OR identity_json = ?",
             [projection.projection_id, _json(projection.identity())],
         ).fetchall()
@@ -120,7 +122,18 @@ class ProjectionStore:
             return None
         if len(rows) != 1:
             raise ProjectionConflict("projection id and canonical identity refer to different rows")
-        return HtmlProjectionContract.model_validate_json(str(rows[0][0]))
+        return self._validated_row(rows[0])
+
+    @staticmethod
+    def _validated_row(row: tuple[Any, ...]) -> HtmlProjectionContract:
+        projection = HtmlProjectionContract.model_validate_json(str(row[2]))
+        try:
+            identity = json.loads(str(row[1]))
+        except (ValueError, TypeError) as exc:
+            raise ProjectionConflict("stored projection identity is invalid") from exc
+        if str(row[0]) != projection.projection_id or identity != projection.identity():
+            raise ProjectionConflict("stored projection row conflicts with canonical identity")
+        return projection
 
 
 def _json(value: object) -> str:

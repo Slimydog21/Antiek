@@ -27,6 +27,11 @@ from substrate.twin_note_taker.merge_bridge import (
     SelectedNote,
     TwinNoteMergeBridge,
 )
+from substrate.twin_note_taker.merge_context import (
+    MergeContextIntegrity,
+    MergeContextUnavailable,
+    TwinNoteMergeContext,
+)
 from substrate.twin_note_taker.serving import (
     TwinNoteInputError,
     TwinNoteIntegrityError,
@@ -44,6 +49,10 @@ from substrate.twin_note_taker.workflow import (
 NO_STORE = {"Cache-Control": "private, no-store"}
 CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
 HTML_HEADERS = {**NO_STORE, "X-Content-Type-Options": "nosniff", "Content-Security-Policy": CSP}
+FRAME_CSP = ("default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; "
+             "frame-ancestors 'self'; base-uri 'none'; form-action 'none'; sandbox")
+FRAME_HEADERS = {**NO_STORE, "X-Content-Type-Options": "nosniff",
+                 "Content-Security-Policy": FRAME_CSP, "Referrer-Policy": "no-referrer"}
 
 class _TwinNotePrivateRoute(APIRoute):
     def get_route_handler(self):
@@ -140,6 +149,13 @@ def _merge_bridge() -> TwinNoteMergeBridge:
     return TwinNoteMergeBridge(db_path=default_db_path(), publication_root=Path(root))
 
 
+def _merge_context() -> TwinNoteMergeContext:
+    root = os.environ.get("ANTIEK_HTML_OBJECT_ROOT", "").strip()
+    if not root:
+        raise RuntimeError("HTML object root is not configured")
+    return TwinNoteMergeContext(db_path=default_db_path(), projection_root=Path(root))
+
+
 def _map_error(exc: Exception) -> HTTPException:
     if isinstance(exc, TwinNoteUnavailable):
         return HTTPException(404, "twin-note resource is unavailable", headers=NO_STORE)
@@ -171,6 +187,60 @@ async def get_revision_candidates(request: Request) -> Response:
         raise HTTPException(409, "twin-note discovery integrity conflict", headers=NO_STORE) from None
     return Response(content=json.dumps(result, separators=(",", ":")),
                     media_type="application/json", headers=NO_STORE)
+
+
+@twin_note_router.get("/merge-context")
+async def get_merge_context(request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "twin-note request is invalid", headers=NO_STORE)
+    try:
+        result = _merge_context().discover(_account(request))
+    except HTTPException:
+        raise
+    except MergeContextUnavailable:
+        raise HTTPException(404, "twin-note merge context is unavailable", headers=NO_STORE) from None
+    except MergeContextIntegrity:
+        raise HTTPException(409, "twin-note merge context conflict", headers=NO_STORE) from None
+    except RuntimeError:
+        raise HTTPException(503, "twin-note merge service is unavailable", headers=NO_STORE) from None
+    return Response(content=json.dumps(result, separators=(",", ":")),
+                    media_type="application/json", headers=NO_STORE)
+
+
+@twin_note_router.get("/merge-context/source-projections/{projection_id}/preview")
+async def get_merge_source_preview(projection_id: str, request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "twin-note request is invalid", headers=NO_STORE)
+    try:
+        content = _merge_context().source_preview(_account(request), projection_id)
+    except HTTPException:
+        raise
+    except MergeContextUnavailable:
+        raise HTTPException(404, "twin-note merge preview is unavailable", headers=NO_STORE) from None
+    except MergeContextIntegrity:
+        raise HTTPException(409, "twin-note merge context conflict", headers=NO_STORE) from None
+    except RuntimeError:
+        raise HTTPException(503, "twin-note merge service is unavailable", headers=NO_STORE) from None
+    return Response(content=content, media_type="text/html", headers=FRAME_HEADERS)
+
+
+@twin_note_router.get("/merge-context/{kind}/{source_id}/preview")
+async def get_merge_twin_preview(
+    kind: Literal["revision", "composition"], source_id: str, request: Request
+) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "twin-note request is invalid", headers=NO_STORE)
+    try:
+        content = _merge_context().twin_preview(_account(request), kind, source_id)
+    except HTTPException:
+        raise
+    except MergeContextUnavailable:
+        raise HTTPException(404, "twin-note merge preview is unavailable", headers=NO_STORE) from None
+    except MergeContextIntegrity:
+        raise HTTPException(409, "twin-note merge context conflict", headers=NO_STORE) from None
+    except RuntimeError:
+        raise HTTPException(503, "twin-note merge service is unavailable", headers=NO_STORE) from None
+    return Response(content=content, media_type="text/html", headers=FRAME_HEADERS)
 
 @twin_note_router.post("/revision-previews")
 def post_revision_preview(body: PreviewIn, request: Request) -> Response:

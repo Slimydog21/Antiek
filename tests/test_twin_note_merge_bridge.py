@@ -10,7 +10,7 @@ import pytest
 from runtime.db_lock import connect_read, connect_write
 from substrate.contracts.html_projection import HtmlProjectionContract, derive_projection_id
 from substrate.graph.schema import init_database_at_path
-from substrate.research_artifact.merge_draft import MergeDraftRepository
+from substrate.research_artifact.merge_draft import MergeDraftError, MergeDraftRepository
 from substrate.twin_note_taker.compression import DurableTwinNoteCompression
 from substrate.twin_note_taker.merge_bridge import (
     MergeBridgeConflict,
@@ -130,6 +130,68 @@ def test_revision_bridge_is_deterministic_script_free_and_replayable(bridge_fixt
             tuple(con.execute("SELECT * FROM note_taker_windows ORDER BY window_id").fetchall()),
         )
     assert immutable_after == immutable_before
+
+
+def test_projection_row_key_substitution_refuses_bridge_and_draft(bridge_fixture) -> None:
+    db, root, source, first, _second = bridge_fixture
+    replacement_identity = {**source.identity(), "source_sha256": "b" * 64}
+    replacement = HtmlProjectionContract(
+        **replacement_identity,
+        projection_id=derive_projection_id(**replacement_identity),
+        status="ready",
+        hosted_html_locator=source.hosted_html_locator,
+        hosted_html_sha256=source.hosted_html_sha256,
+    )
+    with connect_write(db, purpose="bridge-row-key-substitution") as con:
+        con.execute(
+            "UPDATE html_projections SET identity_json=?, projection_json=? WHERE projection_id=?",
+            [_json(replacement.identity()), replacement.model_dump_json(), source.projection_id],
+        )
+    bridge = TwinNoteMergeBridge(db_path=db, publication_root=root)
+    with pytest.raises(MergeBridgeUnavailable):
+        bridge.create(
+            owner_user_id="owner-a",
+            source_projection_id=source.projection_id,
+            source_kind="revision",
+            source_id=first.revision_id,
+            selected_notes=[SelectedNote(first.revision_id, 0)],
+            idempotency_key="row-key-substitution",
+        )
+    with pytest.raises(MergeDraftError):
+        MergeDraftRepository(db_path=db, projection_root=root).create_draft(
+            owner_user_id="owner-a",
+            projection_ids=(source.projection_id,),
+            intent="create",
+            title="Substituted",
+            asset_kind="analysis",
+        )
+
+
+def test_projection_row_key_substitution_after_draft_refuses_review(bridge_fixture) -> None:
+    db, root, source, _first, _second = bridge_fixture
+    repository = MergeDraftRepository(db_path=db, projection_root=root)
+    draft = repository.create_draft(
+        owner_user_id="owner-a",
+        projection_ids=(source.projection_id,),
+        intent="create",
+        title="Review binding",
+        asset_kind="analysis",
+    )
+    replacement_identity = {**source.identity(), "source_sha256": "b" * 64}
+    replacement = HtmlProjectionContract(
+        **replacement_identity,
+        projection_id=derive_projection_id(**replacement_identity),
+        status="ready",
+        hosted_html_locator=source.hosted_html_locator,
+        hosted_html_sha256=source.hosted_html_sha256,
+    )
+    with connect_write(db, purpose="review-row-key-substitution") as con:
+        con.execute(
+            "UPDATE html_projections SET identity_json=?, projection_json=? WHERE projection_id=?",
+            [_json(replacement.identity()), replacement.model_dump_json(), source.projection_id],
+        )
+    with pytest.raises(MergeDraftError):
+        repository.create_review(owner_user_id="owner-a", draft_id=draft.draft_id)
 
 
 def test_composition_allows_explicit_cross_member_order_and_converges(bridge_fixture) -> None:

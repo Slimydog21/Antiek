@@ -85,6 +85,56 @@ def test_merge_projection_route_is_id_only_owner_derived_and_strict(client, serv
     assert rejected.json() == {"detail": "twin-note request is invalid"}
 
 
+def test_merge_context_routes_are_parameter_free_owner_derived_and_frame_safe(
+    client, served, monkeypatch
+):
+    from interfaces.research.api import twin_note_routes
+
+    _db, _service, first, _second = served
+    projection_id = "hproj-" + "a" * 64
+    seen = []
+
+    class FakeContext:
+        def discover(self, owner):
+            seen.append(("discover", owner))
+            return {"source_projections": [], "twin_sources": [], "limits": {
+                "source_projections": 200, "twin_sources": 400, "notes": 1000,
+            }}
+
+        def source_preview(self, owner, identity):
+            seen.append(("source", owner, identity))
+            return b"<p>source</p>"
+
+        def twin_preview(self, owner, kind, identity):
+            seen.append(("twin", owner, kind, identity))
+            return b"<p>twin</p>"
+
+    monkeypatch.setattr(twin_note_routes, "_merge_context", FakeContext)
+    context = client.get("/research/twin-notes/merge-context")
+    assert context.status_code == 200
+    assert client.get("/research/twin-notes/merge-context?owner=foreign").status_code == 422
+    source = client.get(
+        f"/research/twin-notes/merge-context/source-projections/{projection_id}/preview"
+    )
+    twin = client.get(
+        f"/research/twin-notes/merge-context/revision/{first.revision_id}/preview"
+    )
+    for response in (source, twin):
+        assert response.status_code == 200
+        assert response.headers["cache-control"] == "private, no-store"
+        assert response.headers["referrer-policy"] == "no-referrer"
+        assert "frame-ancestors 'self'" in response.headers["content-security-policy"]
+        assert "sandbox" in response.headers["content-security-policy"]
+    assert client.get(
+        f"/research/twin-notes/merge-context/source-projections/{projection_id}/preview?path=x"
+    ).status_code == 422
+    assert seen == [
+        ("discover", "__operator__"),
+        ("source", "__operator__", projection_id),
+        ("twin", "__operator__", "revision", first.revision_id),
+    ]
+
+
 @pytest.fixture
 def authenticated_accounts(served, tmp_path, monkeypatch):
     db, _, own_a, own_b = served
