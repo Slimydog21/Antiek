@@ -1,5 +1,6 @@
 import { postTypedEvent } from "../../lib/api";
 import type { SourceReadPayload } from "../../generated/types";
+import { notifySourceReadCommitted } from "../../werner/shellExperienceSignals";
 
 /**
  * source.read emit — light SiteSee's "read" tint with a REAL dwell signal
@@ -85,6 +86,7 @@ export async function emitSourceRead(args: {
       document_id: args.documentId,
       payload,
     });
+    notifySourceReadCommitted();
   } catch {
     /* best-effort — a missed read-tint never disrupts reading */
   }
