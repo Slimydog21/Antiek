@@ -6,6 +6,7 @@ import {
   notifyResearchStarted,
   notifyShellFailure,
   notifyOutlineBlockCommitted,
+  notifySpeakInviteCommitted,
   notifySourceReadCommitted,
 } from "./shellExperienceSignals";
 import {
@@ -54,6 +55,13 @@ describe("Werner shell experience edges", () => {
     const capture = captureExperiences();
     notifyOutlineBlockCommitted();
     expect(capture.seen).toEqual(["outline_block_committed"]);
+    capture.teardown();
+  });
+
+  it("maps a committed Speak invitation to one happy experience", () => {
+    const capture = captureExperiences();
+    notifySpeakInviteCommitted();
+    expect(capture.seen).toEqual(["speak_invite_committed"]);
     capture.teardown();
   });
 

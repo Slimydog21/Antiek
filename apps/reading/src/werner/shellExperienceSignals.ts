@@ -25,6 +25,10 @@ export function notifyOutlineBlockCommitted(): void {
   emitWernerExperience("outline_block_committed");
 }
 
+export function notifySpeakInviteCommitted(): void {
+  emitWernerExperience("speak_invite_committed");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);

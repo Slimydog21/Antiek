@@ -8,6 +8,7 @@ export const PRODUCT_EXPERIENCES = [
   "deep_research_error",
   "source_read_committed",
   "outline_block_committed",
+  "speak_invite_committed",
   "fail",
 ] as const;
 
@@ -20,6 +21,7 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   deep_research_error: "dizzy",
   source_read_committed: "happy",
   outline_block_committed: "curious",
+  speak_invite_committed: "happy",
   fail: "dizzy",
 };
 
