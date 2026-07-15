@@ -389,6 +389,26 @@ export interface DerivedCompanionCitation {
   text_sha256: string;
 }
 
+export interface DerivedCompanionAnswer {
+  schema_version: "antiek.derived-companion-answer.v1";
+  answer_id: string;
+  evidence_pack_sha256: string;
+  provider: string;
+  model: string;
+  claims: Array<{
+    claim_id: string;
+    ordinal: number;
+    text: string;
+    citation_ids: string[];
+    supported: boolean;
+  }>;
+  cited_citation_ids: string[];
+  unsupported_claim_count: number;
+  answer_html: string;
+  answer_html_sha256: string;
+  artifact_sha256: string;
+}
+
 export interface DerivedCompanionExecutionProjection {
   schema_version: "antiek.derived-companion-execution.v1";
   scope: Pick<DerivedAssetReadingResponse,
@@ -424,6 +444,7 @@ export interface DerivedCompanionEvidenceResponse {
     pack_sha256: string;
     citations: DerivedCompanionCitation[];
   };
+  answer: DerivedCompanionAnswer | null;
   execution: DerivedCompanionExecutionProjection;
 }
 
@@ -431,7 +452,8 @@ export interface DerivedCompanionConversationResponse {
   scope: DerivedCompanionEvidenceResponse["scope"] & { exact_reader_path: string };
   execution: DerivedCompanionExecutionProjection;
   turns: Array<Pick<DerivedCompanionEvidenceResponse,
-    "client_turn_id" | "state" | "failure_code" | "evidence_pack"> & { question: string }>;
+    "client_turn_id" | "state" | "failure_code" | "evidence_pack" | "answer">
+    & { question: string }>;
 }
 
 /** Owner-scoped verified current twin-note revisions. */

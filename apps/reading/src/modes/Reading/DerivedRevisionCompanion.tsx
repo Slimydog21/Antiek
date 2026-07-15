@@ -6,6 +6,7 @@ import {
   prepareDerivedCompanionEvidence,
   type DerivedAssetReadingResponse,
   type DerivedCompanionCitation,
+  type DerivedCompanionAnswer,
   type DerivedCompanionEvidenceResponse,
   type DerivedCompanionExecutionProjection,
 } from "../../api/research";
@@ -18,6 +19,33 @@ interface Props {
 }
 
 type PersistedTurn = Awaited<ReturnType<typeof getDerivedCompanionConversation>>["turns"][number];
+
+function GroundedAnswer({
+  answer, citations, showCitation, onFollowCitation,
+}: {
+  answer: DerivedCompanionAnswer;
+  citations: DerivedCompanionCitation[];
+  showCitation: (anchor: string) => void;
+  onFollowCitation: (citation: DerivedCompanionCitation) => void;
+}) {
+  const byId = new Map(citations.map((citation) => [citation.citation_id, citation]));
+  return <section className="mb-4 border-b border-rule pb-3 dark:border-charcoal-1" aria-label="Grounded companion answer">
+    <div className="mb-2 flex items-center justify-between gap-2">
+      <p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">{answer.provider} · {answer.model}</p>
+      {answer.unsupported_claim_count > 0 ? <LemonTag colour="sun">{answer.unsupported_claim_count} unsupported</LemonTag> : <LemonTag colour="aurora">Grounded</LemonTag>}
+    </div>
+    <ol className="space-y-2">{answer.claims.map((claim) => <li key={claim.claim_id}>
+      <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">{claim.text}</p>
+      {claim.supported ? <div className="mt-1 flex flex-wrap gap-2">{claim.citation_ids.map((citationId, index) => {
+        const citation = byId.get(citationId);
+        return citation ? <span key={citationId} className="inline-flex items-center gap-2">
+          <button type="button" onClick={() => showCitation(citation.section_anchor)} className="font-mono text-[10px] text-link underline">[{index + 1}] {citation.section_path || "Cited section"}</button>
+          <button type="button" aria-label={`Follow citation ${index + 1}`} onClick={() => onFollowCitation(citation)} className="text-link"><Telescope size={12} /></button>
+        </span> : null;
+      })}</div> : <p className="mt-1 font-mono text-[10px] text-warning">Unsupported by this evidence pack</p>}
+    </li>)}</ol>
+  </section>;
+}
 
 function executionLabel(execution: DerivedCompanionExecutionProjection | null): string {
   if (!execution) return "Checking route evidence";
@@ -94,6 +122,7 @@ export default function DerivedRevisionCompanion({
         state: next.state,
         failure_code: next.failure_code,
         evidence_pack: next.evidence_pack,
+        answer: next.answer,
       }]);
       activeClientId.current = null;
     } catch {
@@ -144,12 +173,14 @@ export default function DerivedRevisionCompanion({
     <div className="min-h-0 flex-1 p-4">
       {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until a route has verified idempotency, pricing, and spend recovery.</p></div> : null}
       {result?.state === "insufficient_evidence" ? <p className="font-serif text-sm leading-relaxed text-ink-mute dark:text-moonlight">No matching evidence was found in this revision. No model was called.</p> : null}
+      {result?.answer ? <GroundedAnswer answer={result.answer} citations={result.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
       {result?.state === "evidence_ready" ? <ol className="space-y-3" aria-label="Matching revision evidence">{result.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-3 dark:border-charcoal-1">
         <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button></div>
         <blockquote className="mt-1 font-serif text-sm leading-relaxed text-ink dark:text-bright">{citation.text}</blockquote>
       </li>)}</ol> : null}
       {!result && turns.length > 0 ? <ol className="space-y-4" aria-label="Saved revision evidence">{turns.map((turn) => <li key={turn.client_turn_id}>
         <p className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">{turn.question}</p>
+        {turn.answer ? <GroundedAnswer answer={turn.answer} citations={turn.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
         {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : <ol className="space-y-2">{turn.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-2 dark:border-charcoal-1"><div className="flex items-center justify-between gap-2"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button></div><blockquote className="mt-1 font-serif text-sm text-ink dark:text-bright">{citation.text}</blockquote></li>)}</ol>}
       </li>)}</ol> : null}
     </div>

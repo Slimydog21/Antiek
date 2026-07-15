@@ -27,6 +27,17 @@ from substrate.research_artifact.derived_companion import (
     build_derived_revision_evidence_pack,
     canonical_evidence_json,
 )
+from substrate.research_artifact.derived_companion_repository import (
+    CompanionAnswerConflict,
+    CompanionAnswerUnavailable,
+    DerivedCompanionRepository,
+)
+from substrate.research_artifact.grounded_companion_answer import (
+    AnswerAdmissionExpectation,
+    AnswerClaimInput,
+    GroundedAnswerCandidate,
+    VerifiedCompanionExecutionReceipt,
+)
 from substrate.research_artifact.merge_draft import MergeDraftRepository
 from substrate.schemas import DerivedCitationSource
 
@@ -448,6 +459,71 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     ]
     replayed = client.post(companion_path, json=companion_command)
     assert replayed.status_code == 200 and replayed.json()["replayed"] is True
+    answer_candidate = GroundedAnswerCandidate(claims=(
+        AnswerClaimInput(
+            text="The revision is ready.",
+            citation_ids=(prepared.json()["evidence_pack"]["citations"][0]["citation_id"],),
+        ),
+        AnswerClaimInput(text="This remains an explicit unsupported observation."),
+    ))
+    admission_key = "answer-admission-0001"
+    with pytest.raises(CompanionAnswerUnavailable):
+        DerivedCompanionRepository(db_path=db_path).admit_answer(
+            owner_user_id="owner-a", client_turn_id="reader-turn-0001",
+            admission_key=admission_key, candidate=answer_candidate,
+        )
+
+    verified_expectations = []
+
+    def verify_answer(
+        expectation: AnswerAdmissionExpectation,
+    ) -> VerifiedCompanionExecutionReceipt:
+        verified_expectations.append(expectation)
+        return VerifiedCompanionExecutionReceipt(
+            receipt_id="rex_" + "1" * 64,
+            receipt_digest="2" * 64,
+            status="settled",
+            provider="verified-provider",
+            model="grounded-model",
+            turn_id=expectation.turn_id,
+            evidence_pack_sha256=expectation.evidence_pack_sha256,
+            output_digest=expectation.output_digest,
+        )
+
+    admitted = DerivedCompanionRepository(
+        db_path=db_path, receipt_verifier=verify_answer,
+    ).admit_answer(
+        owner_user_id="owner-a", client_turn_id="reader-turn-0001",
+        admission_key=admission_key, candidate=answer_candidate,
+    )
+    assert admitted["replayed"] is False
+    assert admitted["unsupported_claim_count"] == 1
+    assert "execution_receipt_id" not in admitted
+    assert "execution_receipt_digest" not in admitted
+    assert len(verified_expectations) == 1
+    replayed_answer = DerivedCompanionRepository(db_path=db_path).admit_answer(
+        owner_user_id="owner-a", client_turn_id="reader-turn-0001",
+        admission_key=admission_key, candidate=answer_candidate,
+    )
+    assert replayed_answer == {**admitted, "replayed": True}
+    assert len(verified_expectations) == 1
+    with pytest.raises(CompanionAnswerConflict):
+        DerivedCompanionRepository(db_path=db_path).admit_answer(
+            owner_user_id="owner-a", client_turn_id="reader-turn-0001",
+            admission_key=admission_key,
+            candidate=GroundedAnswerCandidate(claims=(AnswerClaimInput(text="changed"),)),
+        )
+    with pytest.raises(CompanionAnswerUnavailable):
+        DerivedCompanionRepository(db_path=db_path).admit_answer(
+            owner_user_id="owner-b", client_turn_id="reader-turn-0001",
+            admission_key=admission_key, candidate=answer_candidate,
+        )
+    refreshed = client.post(companion_path, json=companion_command).json()
+    assert refreshed["answer"] == {key: value for key, value in replayed_answer.items()
+                                    if key != "replayed"}
+    assert client.post(companion_path.removesuffix("/evidence") + "/answer", json={}).status_code in (
+        404, 405,
+    )
     conflict = client.post(companion_path, json={**companion_command, "question": "up"})
     assert conflict.status_code == 409
     abstained = client.post(companion_path, json={
@@ -482,6 +558,7 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert conversation.status_code == 200
     assert conversation.headers["cache-control"] == "private, no-store"
     assert conversation.json()["execution"] == execution
+    assert conversation.json()["turns"][0]["answer"] == refreshed["answer"]
     assert [turn["question"] for turn in conversation.json()["turns"]] == [
         "Ready", "absent"
     ]
@@ -498,6 +575,13 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         assert con.execute(
             "SELECT count(*) FROM derived_asset_companion_turn_citations"
         ).fetchone() == (2,)
+        assert con.execute(
+            "SELECT count(*) FROM derived_asset_companion_turn_citations "
+            "WHERE used_in_answer=TRUE"
+        ).fetchone() == (1,)
+        assert con.execute(
+            "SELECT count(*) FROM derived_asset_companion_answers"
+        ).fetchone() == (1,)
         assert "<article" not in "".join(str(row[0]) for row in con.execute(
             "SELECT evidence_pack_json FROM derived_asset_companion_turns"
         ).fetchall())
