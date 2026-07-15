@@ -1,11 +1,13 @@
 import { useState } from "react";
 
 import LemonCard from "../../components/lemon/LemonCard";
+import fieldStation from "../../brand/werner/sources/source_intake_field_station_v1.webp";
 import {
   ingestSource,
   type IngestSourceResponse,
   type SourceKind,
 } from "../../lib/api";
+import "./source-intake-field-station.css";
 
 type Status = "idle" | "ingesting" | "done";
 
@@ -15,7 +17,7 @@ interface IngestRow {
   startedAt: number;
   finishedAt?: number;
   result?: IngestSourceResponse;
-  error?: string;
+  failed?: boolean;
 }
 
 function detectKindLabel(url: string): SourceKind {
@@ -34,7 +36,7 @@ function detectKindLabel(url: string): SourceKind {
 }
 
 function StatusBadge({ row }: { row: IngestRow }) {
-  if (row.error) {
+  if (row.failed) {
     return (
       <span className="px-2 py-0.5 rounded text-xs font-medium bg-emperor/20 text-emperor">
         error
@@ -67,6 +69,32 @@ function StatusBadge({ row }: { row: IngestRow }) {
     <span className="px-2 py-0.5 rounded text-xs font-medium bg-emperor/20 text-emperor">
       error
     </span>
+  );
+}
+
+export function SourceIntakeFieldStationFrame({
+  phase,
+  visualFixture = false,
+  children,
+}: {
+  phase: "Ready" | "Receiving" | "Filed" | "Needs attention";
+  visualFixture?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={`source-intake-station ${visualFixture ? "source-intake-station--fixture" : ""}`}>
+      <img src={fieldStation} alt="" aria-hidden="true" draggable={false} decoding="sync" data-testid="source-intake-station-art" />
+      <div className="source-intake-station__veil" aria-hidden="true" />
+      <header className="source-intake-station__masthead">
+        <div>
+          <p className="source-intake-station__eyebrow">Antiek · source intake field station</p>
+          <h1>Bring the evidence into range</h1>
+          <p>File papers, talks, feeds, and web sources into the substrate before you interrogate them.</p>
+        </div>
+        <div className="source-intake-station__phase"><span aria-hidden="true" /><strong>{phase}</strong></div>
+      </header>
+      <div className="source-intake-station__console">{children}</div>
+    </div>
   );
 }
 
@@ -127,12 +155,11 @@ export default function Sources() {
               : r,
           ),
         );
-      } catch (exc) {
-        const msg = exc instanceof Error ? exc.message : String(exc);
+      } catch {
         setRows((prev) =>
           prev.map((r) =>
             r === row || (r.url === row.url && r.startedAt === row.startedAt)
-              ? { ...r, error: msg, finishedAt: Date.now() }
+              ? { ...r, failed: true, finishedAt: Date.now() }
               : r,
           ),
         );
@@ -142,27 +169,19 @@ export default function Sources() {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-ice-1 dark:bg-charcoal-2">
-      <main className="flex-1 overflow-y-auto">
-        <div className="max-w-3xl mx-auto px-6 py-8">
-          <h1 className="text-2xl font-semibold tracking-tight text-ink dark:text-bright">
-            Sources
-          </h1>
-          <p className="mt-1 text-sm text-ink-soft dark:text-starlight">
-            Add arXiv papers, YouTube transcripts, podcast feeds, or any
-            URL into the substrate graph. Auto-detects source kind from
-            the URL.
-          </p>
+    <SourceIntakeFieldStationFrame phase={status === "ingesting" ? "Receiving" : rows.some((row) => row.failed || row.result?.status === "error") ? "Needs attention" : rows.length > 0 ? "Filed" : "Ready"}>
+        <div className="source-intake-station__workspace">
 
           <form
             onSubmit={handleSubmit}
-            className="mt-6 bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg p-5 space-y-4"
+            className="source-intake-station__form bg-ice-0 dark:bg-charcoal-2 border border-rule dark:border-charcoal-1 rounded-lg p-5 space-y-4"
           >
             <div>
               <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
                 URLs (one per line)
               </label>
               <textarea
+                aria-label="Source URLs"
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 placeholder={
@@ -190,12 +209,13 @@ export default function Sources() {
               )}
             </div>
 
-            <div className="grid grid-cols-3 gap-3">
+            <div className="source-intake-station__settings grid grid-cols-3 gap-3">
               <div>
                 <label className="block text-xs font-medium text-ink dark:text-bright mb-1.5">
                   Kind
                 </label>
                 <select
+                  aria-label="Source kind"
                   value={kindOverride}
                   onChange={(e) =>
                     setKindOverride(e.target.value as SourceKind | "auto")
@@ -214,6 +234,7 @@ export default function Sources() {
                   Investigation id
                 </label>
                 <input
+                  aria-label="Investigation id"
                   type="text"
                   value={investigationId}
                   onChange={(e) => setInvestigationId(e.target.value)}
@@ -226,6 +247,7 @@ export default function Sources() {
                   Max episodes (podcast)
                 </label>
                 <input
+                  aria-label="Maximum podcast episodes"
                   type="number"
                   value={maxEpisodes}
                   onChange={(e) =>
@@ -250,7 +272,7 @@ export default function Sources() {
           </form>
 
           {rows.length > 0 && (
-            <section className="mt-8">
+            <section className="source-intake-station__manifest">
               <h2 className="text-sm font-semibold text-ink dark:text-bright mb-3">
                 Recent ingests
               </h2>
@@ -284,14 +306,14 @@ export default function Sources() {
                           Skipped: {row.result.skipped_reason}
                         </p>
                       )}
-                      {row.error && (
+                      {row.failed && (
                         <p className="mt-0.5 text-xs text-emperor break-all">
-                          {row.error}
+                          This source could not be received. Check the address and try again.
                         </p>
                       )}
                       {row.result?.error_message && (
                         <p className="mt-0.5 text-xs text-emperor break-all">
-                          {row.result.error_message}
+                          This source could not be received. Check the address and try again.
                         </p>
                       )}
                     </div>
@@ -314,7 +336,6 @@ export default function Sources() {
             </section>
           )}
         </div>
-      </main>
-    </div>
+    </SourceIntakeFieldStationFrame>
   );
 }
