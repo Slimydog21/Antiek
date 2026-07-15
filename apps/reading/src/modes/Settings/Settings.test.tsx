@@ -1,10 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  fetchModelDecision,
-  type ModelDecisionResponse,
-} from "../../api/settings";
+import { fetchModelDecision, type ModelDecisionResponse } from "../../api/settings";
 import Settings from "./index";
 import type { BudgetResponse } from "../../api/settings";
 
@@ -170,9 +167,7 @@ describe("Settings SPR-01", () => {
     render(<Settings />);
     const overview = screen.getByRole("tab", { name: "Overview" });
     const decision = screen.getByRole("tab", { name: "Decision tree" });
-    expect(overview.getAttribute("aria-controls")).toBe(
-      "settings-overview-panel",
-    );
+    expect(overview.getAttribute("aria-controls")).toBe("settings-overview-panel");
     overview.focus();
     await user.keyboard("{ArrowRight}");
     expect(decision.getAttribute("aria-selected")).toBe("true");
@@ -184,10 +179,7 @@ describe("Settings SPR-01", () => {
   it("does not render an in-flight result after the task changes", async () => {
     let resolveDecision: ((value: ModelDecisionResponse) => void) | undefined;
     vi.mocked(fetchModelDecision).mockImplementationOnce(
-      () =>
-        new Promise<ModelDecisionResponse>((resolve) => {
-          resolveDecision = resolve;
-        }),
+      () => new Promise<ModelDecisionResponse>((resolve) => { resolveDecision = resolve; }),
     );
     const user = userEvent.setup();
     render(<Settings />);
@@ -203,9 +195,7 @@ describe("Settings SPR-01", () => {
       notes: [],
       candidates: [],
     });
-    await waitFor(() =>
-      expect(screen.queryByText(/Recommended tier:/)).toBeNull(),
-    );
+    await waitFor(() => expect(screen.queryByText(/Recommended tier:/)).toBeNull());
   });
 
   it("surfaces dual display vs enforcement caps when misaligned", async () => {
@@ -257,7 +247,9 @@ describe("Settings SPR-01", () => {
       expect(screen.getByText(/budget status: cap exceeded/i)).toBeTruthy(),
     );
     expect(screen.getByText("$-2.0000 (over display cap)")).toBeTruthy();
-    expect(screen.getByLabelText(/budget usage: cap exceeded/i)).toBeTruthy();
+    expect(
+      screen.getByLabelText(/budget usage: cap exceeded/i),
+    ).toBeTruthy();
   });
 
   it("keeps unknown spend as unknown — never invents $0", async () => {
