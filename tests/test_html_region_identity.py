@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 from pathlib import Path
 
 import duckdb
@@ -14,6 +16,10 @@ from substrate.contracts.html_projection import (
     derive_projection_id,
 )
 from substrate.reading.projection import ProjectionStore
+from substrate.reading.projection.source_catalog import (
+    ProjectionSourceCandidate,
+    enumerate_projection_sources,
+)
 from substrate.reading.regions import (
     CanonicalDocumentRegion,
     RegionConflict,
@@ -102,6 +108,11 @@ def test_store_replay_guards_and_reopen(tmp_path: Path) -> None:
     reopened = duckdb.connect(str(db))
     assert RegionStore(reopened).load(region.region_id) == region
     assert RegionStore(reopened).list(document_id="doc") == (region,)
+    assert RegionStore(reopened).list(
+        projection_id=projection.projection_id, document_id="doc"
+    ) == (region,)
+    with pytest.raises(KeyError):
+        RegionStore(reopened).load("region-" + "f" * 64)
 
 
 def test_store_rejects_nonready_unmapped_and_cross_document() -> None:
@@ -139,3 +150,66 @@ def test_store_rejects_nonready_unmapped_and_cross_document() -> None:
         RegionStore(con).claim(unmapped)
     with pytest.raises(RegionConflict, match="canonical validation"):
         RegionStore(con).claim(valid.model_copy(update={"html_anchor_id": "forged"}))
+
+
+def test_discovered_source_projects_into_a_canonical_region(tmp_path: Path) -> None:
+    source = b"%PDF-1.7\nsource"
+    object_path = tmp_path / "pdf/source.pdf"
+    object_path.parent.mkdir()
+    object_path.write_bytes(source)
+    con = duckdb.connect(":memory:")
+    con.execute(
+        "CREATE TABLE documents(document_id TEXT, document_type TEXT, raw_text TEXT, metadata TEXT)"
+    )
+    con.execute(
+        "INSERT INTO documents VALUES (?, ?, ?, ?)",
+        [
+            "doc",
+            "pdf",
+            "never projection bytes",
+            json.dumps(
+                {
+                    "html_projection_source": {
+                        "source_asset_id": "asset",
+                        "object_key": "pdf/source.pdf",
+                        "sha256": hashlib.sha256(source).hexdigest(),
+                        "byte_size": len(source),
+                        "media_type": "application/pdf",
+                    }
+                }
+            ),
+        ],
+    )
+
+    (candidate,) = enumerate_projection_sources(con, tmp_path)
+    assert isinstance(candidate, ProjectionSourceCandidate)
+    ready = _projection(document_id=candidate.document_id).model_copy(
+        update={
+            "source_asset_id": candidate.source_asset_id,
+            "source_sha256": candidate.sha256,
+        }
+    )
+    identity = ready.identity()
+    ready = ready.model_copy(
+        update={
+            "projection_id": derive_projection_id(**identity),
+            "anchor_mappings": (),
+        }
+    )
+    locator = SemanticLocator(semantic_id="section")
+    ready = ready.model_copy(
+        update={
+            "anchor_mappings": (
+                AnchorMapping(
+                    source_locator=locator,
+                    state="resolved",
+                    html_anchor_id=derive_anchor_id(ready.projection_id, locator),
+                ),
+            )
+        }
+    )
+    ready = HtmlProjectionContract.model_validate(ready.model_dump())
+    _persist_ready(con, ready)
+
+    region = _region(ready)
+    assert RegionStore(con).claim(region).projection_id == ready.projection_id

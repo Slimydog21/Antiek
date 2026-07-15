@@ -113,7 +113,10 @@ class ProjectionSourceCatalog:
                 document_id, UnresolvedSourceReason.INVALID_ASSET_METADATA
             )
         object_key = asset["object_key"]
-        assert isinstance(object_key, str)
+        if not isinstance(object_key, str):  # defensive if validation is refactored
+            return UnresolvedProjectionSource(
+                document_id, UnresolvedSourceReason.INVALID_ASSET_METADATA
+            )
         if not _safe_object_key(object_key):
             return UnresolvedProjectionSource(document_id, UnresolvedSourceReason.UNSAFE_OBJECT_KEY)
         if asset["media_type"] != "application/pdf":
@@ -212,6 +215,7 @@ def _safe_object_key(value: str) -> bool:
         or value.startswith("/")
         or "\\" in value
         or "%" in value
+        or any(ord(character) < 32 or ord(character) == 127 for character in value)
         or path.is_absolute()
         or any(part in {"", ".", ".."} for part in value.split("/"))
     )

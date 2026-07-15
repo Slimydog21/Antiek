@@ -11,6 +11,7 @@ from substrate.reading.projection.source_catalog import (
     ProjectionSourceCatalog,
     UnresolvedProjectionSource,
     UnresolvedSourceReason,
+    enumerate_projection_sources,
 )
 
 
@@ -59,6 +60,7 @@ def test_catalog_is_ordered_read_only_and_does_not_overmatch(tmp_path: Path) -> 
     assert isinstance(result[1], UnresolvedProjectionSource)
     assert result[1].reason is UnresolvedSourceReason.MISSING_ASSET_METADATA
     assert isinstance(result[2], ProjectionSourceCandidate)
+    assert enumerate_projection_sources(con, tmp_path) == result
     assert con.execute("SELECT * FROM documents ORDER BY document_id").fetchall() == before
     assert {row[0] for row in con.execute("SHOW TABLES").fetchall()} == {"documents"}
 
@@ -74,6 +76,7 @@ def test_catalog_closes_all_resolution_failures(tmp_path: Path) -> None:
     cases = {
         "bad-meta": ({"html_projection_source": []}, "invalid_asset_metadata"),
         "unsafe": ({"html_projection_source": _asset(data, "../outside.pdf")}, "unsafe_object_key"),
+        "control": ({"html_projection_source": _asset(data, "bad\x00.pdf")}, "unsafe_object_key"),
         "symlink": ({"html_projection_source": _asset(data, "escape.pdf")}, "unsafe_object_key"),
         "missing": ({"html_projection_source": _asset(data, "absent.pdf")}, "missing_source_bytes"),
         "size": ({"html_projection_source": _asset(data, "good.pdf", byte_size=1)}, "source_size_mismatch"),

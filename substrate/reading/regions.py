@@ -7,6 +7,7 @@ import json
 import re
 from typing import Any
 
+import duckdb
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from substrate.contracts.html_projection import SourceLocator, derive_anchor_id
@@ -26,7 +27,7 @@ class CanonicalDocumentRegion(BaseModel):
     char_end: int | None = Field(default=None, gt=0)
     exact_text_sha256: str | None = None
     created_event_id: str | None = Field(default=None, min_length=1, max_length=512)
-    region_id: str
+    region_id: str = Field(pattern=r"^region-[0-9a-f]{64}$")
 
     @model_validator(mode="after")
     def validate_region(self) -> CanonicalDocumentRegion:
@@ -34,7 +35,8 @@ class CanonicalDocumentRegion(BaseModel):
         if (self.char_start is None) != (self.char_end is None):
             raise ValueError("char_start and char_end must be supplied together")
         if has_span:
-            assert self.char_start is not None and self.char_end is not None
+            if self.char_start is None or self.char_end is None:  # type-safe invariant guard
+                raise ValueError("char_start and char_end must be supplied together")
             if self.char_end <= self.char_start:
                 raise ValueError("char_end must be greater than char_start")
             if self.exact_text_sha256 is None:
@@ -125,11 +127,33 @@ class RegionStore:
         if matches[0].html_anchor_id != region.html_anchor_id:
             raise RegionConflict("region anchor does not match resolved projection mapping")
 
-        self._connection.execute(
-            "INSERT INTO document_regions VALUES (?, ?, ?, ?, ?, ?)",
-            [region.region_id, region.projection_id, region.document_id, region.html_anchor_id,
-             _json(region.identity()), _json(region.model_dump())],
-        )
+        try:
+            self._connection.execute(
+                "INSERT INTO document_regions VALUES (?, ?, ?, ?, ?, ?)",
+                [
+                    region.region_id,
+                    region.projection_id,
+                    region.document_id,
+                    region.html_anchor_id,
+                    _json(region.identity()),
+                    _json(region.model_dump()),
+                ],
+            )
+        except duckdb.ConstraintException as exc:
+            # A concurrent exact replay may win after the lookup above. Preserve
+            # idempotency, but never leak storage exceptions across this boundary.
+            rows = self._connection.execute(
+                "SELECT region_json FROM document_regions "
+                "WHERE region_id = ? OR identity_json = ?",
+                [region.region_id, _json(region.identity())],
+            ).fetchall()
+            if len(rows) == 1:
+                stored = CanonicalDocumentRegion.model_validate_json(str(rows[0][0]))
+                if stored == region:
+                    return stored
+            raise RegionConflict(
+                "region id or canonical identity conflicts with stored data"
+            ) from exc
         return region
 
     def load(self, region_id: str) -> CanonicalDocumentRegion:
