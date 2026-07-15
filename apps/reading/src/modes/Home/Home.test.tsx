@@ -1,5 +1,5 @@
 /**
- * Home.test.tsx — SPR-12 M1 acceptance.
+ * Home.test.tsx — SPR-12 M1 acceptance + Cycle 7 authored atmosphere.
  *
  * Load-bearing claims:
  *  - a real branded home renders (not a placeholder);
@@ -8,7 +8,9 @@
  *    is honoured automatically);
  *  - biographies are featured AND the CTA opens the dedicated /biography
  *    landing (SPR-11) — a template over research + writing + voices, not a
- *    separate place.
+ *    separate place;
+ *  - the knowledge-home artwork is wired as a decorative pointer-inert
+ *    layer behind the GlassSurface (Cycle 7 authored atmosphere).
  */
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -16,6 +18,8 @@ import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import Home from "./Home";
 import { WORKFLOWS, WORKFLOW_ORDER } from "../../shell/workflowTaxonomy";
+
+let reduceMotion = false;
 
 // Home now lands through GlassSurface (SPR-03 M2 landing-glass), which reads
 // prefers-reduced-motion via usePrefersReducedMotion → window.matchMedia.
@@ -26,7 +30,7 @@ beforeEach(() => {
     writable: true,
     configurable: true,
     value: (query: string) => ({
-      matches: false,
+      matches: query === "(prefers-reduced-motion: reduce)" && reduceMotion,
       media: query,
       onchange: null,
       addEventListener: () => {},
@@ -38,7 +42,10 @@ beforeEach(() => {
   });
 });
 
-afterEach(cleanup);
+afterEach(() => {
+  reduceMotion = false;
+  cleanup();
+});
 
 function mount() {
   return render(
@@ -56,6 +63,53 @@ function mount() {
     </MemoryRouter>,
   );
 }
+
+describe("Home — authored environment (Cycle 7)", () => {
+  it("renders the decorative environment image with the correct DOM contract", () => {
+    mount();
+    const img = screen.getByTestId("home-environment") as HTMLImageElement;
+    expect(img).toBeTruthy();
+    // Decorative: empty alt, aria-hidden
+    expect(img.alt).toBe("");
+    expect(img.getAttribute("aria-hidden")).toBe("true");
+    // Pointer-inert: no pointer events, not draggable
+    expect(img.className).toContain("pointer-events-none");
+    expect(img.draggable).toBe(false);
+    // Async decoding (non-blocking)
+    expect(img.getAttribute("decoding")).toBe("async");
+  });
+
+  it("keeps the authored workbench on mobile and the full scene on wider screens", () => {
+    mount();
+    const img = screen.getByTestId("home-environment");
+    expect(img.className).toContain("object-cover");
+    expect(img.className).toContain("object-[24%_center]");
+    expect(img.className).toContain("sm:object-center");
+  });
+
+  it("places the environment beneath the real GlassSurface scrim", () => {
+    const { container } = mount();
+    const img = screen.getByTestId("home-environment");
+    const glass = container.querySelector("[data-glass-surface]");
+    expect(glass, "GlassSurface must render").toBeTruthy();
+    expect(glass!.contains(img)).toBe(false);
+    expect(img.parentElement).toBe(glass!.parentElement);
+    expect(img.className).toContain("absolute");
+    expect(img.className).toContain("z-0");
+    expect(glass!.className).toContain("z-10");
+    expect(glass!.className).toContain("!backdrop-blur-none");
+    expect(glass!.querySelector("[data-glass-scrim]")).toBeTruthy();
+  });
+
+  it("retains the static art while reduced motion invokes the solid contrast floor", () => {
+    reduceMotion = true;
+    mount();
+    expect(screen.getByTestId("home-environment")).toBeTruthy();
+    const glass = document.querySelector("[data-glass-surface]");
+    expect(glass?.getAttribute("data-glass-surface")).toBe("solid");
+    expect(glass?.querySelector("[data-glass-scrim]")).toBeNull();
+  });
+});
 
 describe("Home (SPR-12 M1)", () => {
   it("renders a real branded home, not a placeholder", () => {
