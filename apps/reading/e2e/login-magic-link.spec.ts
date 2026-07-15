@@ -36,17 +36,38 @@ test.describe("login magic-link surface", () => {
   test("B-POLICY-ALLOWLIST-SILENT shows Check your email on 200 sent", async ({
     page,
   }) => {
+    await page.route("**/auth/claim", (route) => route.fulfill({ status: 202 }));
     await page.route("**/auth/request", (route) =>
       route.fulfill({
         status: 200,
         contentType: "application/json",
-        body: JSON.stringify({ sent: true }),
+        body: JSON.stringify({
+          sent: true,
+          attempt_id: "attempt-1234567890",
+          claim_secret: "secret-1234567890",
+          device_code: "4821",
+        }),
       }),
     );
     await page.goto("/login");
     await page.getByPlaceholder("you@example.com").fill("not-on-allowlist@example.com");
     await page.getByRole("button", { name: /continue with email/i }).click();
-    await expect(page.getByRole("heading", { name: "Check your phone." })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Now check your phone." })).toBeVisible();
+    await expect(page.getByText("4821")).toBeVisible();
+    await expect(page.getByText("this screen will open itself", { exact: false })).toBeVisible();
+  });
+
+  test("phone approval requires the matching code and leaves a clear receipt", async ({ page }) => {
+    await page.route("**/auth/approve", (route) => route.fulfill({ status: 204 }));
+    await page.goto("/login?approve=attempt-1234567890&code=4821");
+
+    await expect(page.getByRole("heading", { name: "Same four digits?" })).toBeVisible();
+    await expect(page.getByLabel("Device code 4821")).toHaveText("4821");
+    await page.getByRole("button", { name: /yes, open that screen/i }).click();
+
+    await expect(page.getByText("Approved")).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your other screen is opening." })).toBeVisible();
+    await expect(page.getByText("You can close this page.", { exact: false })).toBeVisible();
   });
 
   test("B-POLICY-CALLBACK-INVALID shows message from ?error= param", async ({
@@ -75,5 +96,33 @@ test.describe("login magic-link surface", () => {
     await expect(page.getByRole("button", { name: /unlock with passkey/i })).toBeVisible();
     await expect(page.getByPlaceholder("you@example.com")).toBeHidden();
     await expect(page.getByText("Use email recovery")).toBeVisible();
+  });
+
+  test("visual review states", async ({ page }) => {
+    test.skip(!process.env.LOGIN_VISUAL, "Operator-only visual review harness");
+    await page.route("**/auth/claim", (route) => route.fulfill({ status: 202 }));
+    await page.route("**/auth/request", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          sent: true,
+          attempt_id: "attempt-1234567890",
+          claim_secret: "secret-1234567890",
+          device_code: "4821",
+        }),
+      }),
+    );
+    await page.goto("/login");
+    await page.screenshot({ path: "test-results/login-first-unlock.png", fullPage: true });
+
+    await page.getByPlaceholder("you@example.com").fill("operator@antiek.test");
+    await page.getByRole("button", { name: /continue with email/i }).click();
+    await expect(page.getByText("4821")).toBeVisible();
+    await page.screenshot({ path: "test-results/login-waiting.png", fullPage: true });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/login?approve=attempt-1234567890&code=4821");
+    await page.screenshot({ path: "test-results/login-phone-approval.png", fullPage: true });
   });
 });
