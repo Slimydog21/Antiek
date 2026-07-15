@@ -12,21 +12,25 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
-          role="img"
-          style="width: 44px; height: 44px;"
+          data-testid="speak-home-werner-brand"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            aria-label="Speak"
+            class="inline-block align-middle"
+            role="img"
+            style="width: 44px; height: 44px;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class=""
+              draggable="false"
+              height="44"
+              src="/src/brand/werner/poses/session/werner_thinking_session_v1.png"
+              style="display: block; width: 44px; height: 44px; object-fit: contain;"
+              width="44"
+            />
+          </span>
         </span>
         <div>
           <h1
@@ -172,21 +176,25 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
-          role="img"
-          style="width: 44px; height: 44px;"
+          data-testid="speak-home-werner-brand"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            aria-label="Speak"
+            class="inline-block align-middle"
+            role="img"
+            style="width: 44px; height: 44px;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class=""
+              draggable="false"
+              height="44"
+              src="/src/brand/werner/poses/session/werner_thinking_session_v1.png"
+              style="display: block; width: 44px; height: 44px; object-fit: contain;"
+              width="44"
+            />
+          </span>
         </span>
         <div>
           <h1
@@ -261,21 +269,25 @@ exports[`SpeakIndex — the warm door > frozen-shell snapshots (SPR-01 M2) > mat
         class="mb-7 flex items-start gap-3"
       >
         <span
-          aria-label="Werner idle"
-          class="inline-block align-middle"
-          role="img"
-          style="width: 44px; height: 44px;"
+          data-testid="speak-home-werner-brand"
         >
-          <img
-            alt=""
-            aria-hidden="true"
-            class="werner-idle"
-            draggable="false"
-            height="44"
-            src="/src/brand/werner/poses/anchor/werner_default_v5_transparent.png"
-            style="display: block; width: 44px; height: 44px; object-fit: contain;"
-            width="44"
-          />
+          <span
+            aria-label="Speak"
+            class="inline-block align-middle"
+            role="img"
+            style="width: 44px; height: 44px;"
+          >
+            <img
+              alt=""
+              aria-hidden="true"
+              class=""
+              draggable="false"
+              height="44"
+              src="/src/brand/werner/poses/session/werner_thinking_session_v1.png"
+              style="display: block; width: 44px; height: 44px; object-fit: contain;"
+              width="44"
+            />
+          </span>
         </span>
         <div>
           <h1

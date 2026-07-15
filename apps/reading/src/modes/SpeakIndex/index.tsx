@@ -116,7 +116,12 @@ export default function SpeakIndex() {
     <div className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
       <div className="mx-auto max-w-2xl px-6 py-10">
         <header className="mb-7 flex items-start gap-3">
-          <Werner mood="idle" size={44} />
+          {/* Session thinking mark — densify Speak door with the same living-TV
+              brand chrome as Library / Research / Write (idle→thinking so the
+              product path consumes session Imagine PNGs, not inventory-only). */}
+          <span data-testid="speak-home-werner-brand">
+            <Werner mood="thinking" size={44} label="Speak" />
+          </span>
           <div>
             <h1 className="font-serif text-2xl font-semibold text-ink dark:text-bright">
               Who do you want to remember?

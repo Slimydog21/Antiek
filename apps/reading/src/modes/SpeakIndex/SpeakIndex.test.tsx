@@ -54,6 +54,12 @@ describe("SpeakIndex — the warm door", () => {
     expect(screen.queryByText(/subject status|publish intent/i)).toBeNull();
   });
 
+  it("renders session thinking brand mark on the Speak door (living-TV densify)", async () => {
+    mount();
+    await screen.findByText(/who do you want to remember/i);
+    expect(screen.getByTestId("speak-home-werner-brand")).toBeTruthy();
+  });
+
   it("naming a person creates a project and lands on it", async () => {
     createPersonMock.mockResolvedValue("proj-abc");
     mount();
