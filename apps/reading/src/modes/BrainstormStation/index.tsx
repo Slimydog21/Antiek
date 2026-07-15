@@ -1,162 +1,240 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
-import { PanelHost } from "../../workspace/PanelHost";
+import Werner from "../../brand/Werner";
+import observatoryEnvironment from "../../brand/werner/brainstorm/curiosity_observatory_environment_v1.webp";
 import { track } from "../../lib/analytics";
 import {
   launchParkedQuestion,
   listWatchForLater,
   type ParkedQuestionEntry,
 } from "../../lib/api";
+import { PanelHost } from "../../workspace/PanelHost";
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
+import "./curiosity-observatory.css";
+
+export interface BrainstormStationProps {
+  loadQuestions?: typeof listWatchForLater;
+  launchQuestion?: typeof launchParkedQuestion;
+  /** Deterministic central-surface stories omit self-fetching workspace panels. */
+  withWorkspacePanels?: boolean;
+  /** Story fixtures freeze local ambience; production remains animated. */
+  animateAmbience?: boolean;
+}
+
+const STARTER_PANELS = [
+  {
+    kind: "BrainstormWatchList" as const,
+    mode: "docked-left" as const,
+    title: "Watch for later",
+    id: "brainstorm:watchlist",
+  },
+  {
+    kind: "BrainstormThoughtPartner" as const,
+    mode: "docked-right" as const,
+    title: "Thought partner",
+    id: "brainstorm:thought-partner",
+  },
+];
 
 /**
- * Mode E — Brainstorming Workstation.
- *
- * Operator's stated preferred product direction (master-spec §4.5).
- * The surface where curiosity-capture-as-primitive lives (§2.6).
- *
- * Sprint 17 scope (per docs/sprints/sprint17-*.md §1.6):
- *   - Watch-for-later folder: parked unsharpened open questions
- *     across all investigations
- *   - Launch-investigation affordance per parked question
- *   - Voice-note input placeholder (full ship Sprint 18)
- *   - Thought-partner pane placeholder (full ship Sprint 18 with
- *     the new `thought_partner` role)
- *
- * Three columns:
- *   Left  — Watch-for-later folder (parked questions)
- *   Center — Selected parked question detail + launch button
- *   Right — Thought-partner pane (Sprint 18 placeholder)
+ * The Curiosity Observatory is the central desk of the brainstorming
+ * workstation. PanelHost continues to own the watch list and thought-partner
+ * wings; this component owns only the honest central question lifecycle.
  */
-export default function BrainstormStation() {
+export default function BrainstormStation({
+  loadQuestions = listWatchForLater,
+  launchQuestion = launchParkedQuestion,
+  withWorkspacePanels = true,
+  animateAmbience = true,
+}: BrainstormStationProps = {}) {
   const [parked, setParked] = useState<ParkedQuestionEntry[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [launchError, setLaunchError] = useState(false);
   const [selected, setSelected] = useState<ParkedQuestionEntry | null>(null);
-  const [launching, setLaunching] = useState<boolean>(false);
+  const [launching, setLaunching] = useState(false);
+  const mounted = useRef(true);
+  const loadGeneration = useRef(0);
+  const launchGeneration = useRef(0);
+  const launchInFlight = useRef(false);
   const navigate = useNavigate();
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const resp = await listWatchForLater({ limit: 200 });
-      setParked(resp.questions);
-    } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
+  useEffect(() => {
+    // React StrictMode replays setup → cleanup → setup in development.
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      loadGeneration.current += 1;
+      launchGeneration.current += 1;
+      launchInFlight.current = false;
+    };
   }, []);
+
+  const reload = useCallback(async () => {
+    const generation = ++loadGeneration.current;
+    setLoading(true);
+    setLoadError(false);
+    try {
+      const response = await loadQuestions({ limit: 200 });
+      if (!mounted.current || generation !== loadGeneration.current) return;
+      setParked(response.questions);
+      setSelected((current) =>
+        response.questions.find((question) => question.question_id === current?.question_id) ??
+        response.questions[0] ??
+        null,
+      );
+    } catch {
+      if (!mounted.current || generation !== loadGeneration.current) return;
+      setLoadError(true);
+    } finally {
+      if (mounted.current && generation === loadGeneration.current) setLoading(false);
+    }
+  }, [loadQuestions]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
   const handleLaunch = useCallback(
-    async (q: ParkedQuestionEntry) => {
+    async (question: ParkedQuestionEntry) => {
+      if (launchInFlight.current) return;
+      launchInFlight.current = true;
+      const generation = ++launchGeneration.current;
       setLaunching(true);
+      setLaunchError(false);
       try {
-        const handle = await launchParkedQuestion(q.question_id);
+        const handle = await launchQuestion(question.question_id);
+        if (!mounted.current || generation !== launchGeneration.current) return;
         track("brainstorm_question_launched");
-        // The folder reloads to hide this question (now sharpened);
-        // operator follows the launched investigation in Mode A.
+        // Refresh is best-effort presentation cleanup. The successful launch
+        // handle remains authoritative even if that refresh cannot complete.
         await reload();
+        if (!mounted.current || generation !== launchGeneration.current) return;
         navigate(`/inv/${handle.investigation_id}`);
-      } catch (e: unknown) {
-        const msg = e instanceof Error ? e.message : String(e);
-        setError(`Launch failed: ${msg}`);
+      } catch {
+        if (!mounted.current || generation !== launchGeneration.current) return;
+        setLaunchError(true);
       } finally {
-        setLaunching(false);
+        if (mounted.current && generation === launchGeneration.current) {
+          launchInFlight.current = false;
+          setLaunching(false);
+        }
       }
     },
-    [navigate, reload],
+    [launchQuestion, navigate, reload],
   );
 
-  // S10 row 10.8 — BrainstormStation wraps the main parked-question
-  // view in PanelHost with the spec's two side panels as starters.
-  // The watch-list panel self-fetches (mirrors the parent's `parked`
-  // state independently); the thought-partner panel surfaces a CTA
-  // to ⌘/ the AISidecar (the actual thought-partner pane).
-  return (
-    <PanelHost
-      starters={[
-        {
-          kind: "BrainstormWatchList",
-          mode: "docked-left",
-          title: "Watch for later",
-          id: "brainstorm:watchlist",
-        },
-        {
-          kind: "BrainstormThoughtPartner",
-          mode: "docked-right",
-          title: "Thought partner",
-          id: "brainstorm:thought-partner",
-        },
-      ]}
+  const centralSurface = (
+    <main
+      className={`curiosity-observatory relative isolate h-full overflow-y-auto ${animateAmbience ? "" : "curiosity-observatory--still"}`}
+      aria-busy={loading || launching || undefined}
     >
-      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        {selected ? (
-          <ParkedQuestion
-            question={selected}
-            launching={launching}
-            onLaunch={() => handleLaunch(selected)}
+      <img
+        src={observatoryEnvironment}
+        alt=""
+        aria-hidden="true"
+        data-testid="curiosity-observatory-environment"
+        decoding="sync"
+        draggable={false}
+        className="pointer-events-none absolute inset-0 -z-20 h-full w-full select-none object-cover object-center"
+      />
+      <div className="curiosity-observatory__veil pointer-events-none absolute inset-0 -z-10" />
+
+      <header className="curiosity-observatory__masthead">
+        <div>
+          <p className="curiosity-observatory__eyebrow">Antiek · curiosity desk</p>
+          <h1>Curiosity observatory</h1>
+          <p>Questions wait here without losing where they came from.</p>
+        </div>
+        <div className="curiosity-observatory__count" aria-label={`${parked.length} parked ${parked.length === 1 ? "question" : "questions"}`}>
+          <strong>{parked.length}</strong>
+          <span>parked</span>
+        </div>
+      </header>
+
+      <div className="curiosity-observatory__stage">
+        <aside className="curiosity-observatory__werner" aria-label="Werner's fixed thought station">
+          <Werner
+            mood={loadError || launchError ? "empty" : loading || selected ? "thinking" : "idle"}
+            size={104}
+            label={loading ? "Werner checking the observatory" : "Werner at the thought station"}
           />
-        ) : (
-          <EmptyState parkedCount={parked.length} />
-        )}
-        {/* Inline watch-for-later kept for operators on small screens
-            where the dock auto-collapses. Empty rendering when the
-            list is empty avoids a duplicate empty-state. */}
-        {parked.length > 0 && (
-          <div className="md:hidden border-t border-rule dark:border-charcoal-1">
-            <WatchForLaterFolder
-              questions={parked}
-              loading={loading}
-              error={error}
-              selectedId={selected?.question_id ?? null}
-              onSelect={setSelected}
-            />
-          </div>
-        )}
-      </main>
-    </PanelHost>
+          <span aria-hidden="true" className="curiosity-observatory__lamp" />
+        </aside>
+
+        <section className="curiosity-observatory__desk" aria-label="Question desk">
+          {loadError && (
+            <div role="alert" className="curiosity-observatory__notice curiosity-observatory__notice--error">
+              <div>
+                <strong>The observatory could not refresh.</strong>
+                <p>{parked.length > 0 ? "Showing the last questions received." : "No question list is available yet."}</p>
+              </div>
+              <button type="button" onClick={() => void reload()}>Try again</button>
+            </div>
+          )}
+
+          {launchError && (
+            <div role="alert" className="curiosity-observatory__notice curiosity-observatory__notice--error">
+              <div>
+                <strong>That question stayed parked.</strong>
+                <p>No investigation was opened. You can try again when ready.</p>
+              </div>
+            </div>
+          )}
+
+          {loading && parked.length === 0 && !loadError ? (
+            <div role="status" aria-live="polite" className="curiosity-observatory__state">
+              <span className="curiosity-observatory__orbit motion-safe:animate-spin" aria-hidden="true" />
+              <h2>Listening for unfinished questions…</h2>
+              <p>Reopening their source trails before placing anything on the desk.</p>
+            </div>
+          ) : selected ? (
+            <div className="curiosity-observatory__question">
+              <ParkedQuestion
+                question={selected}
+                launching={launching}
+                onLaunch={() => void handleLaunch(selected)}
+              />
+            </div>
+          ) : !loadError ? (
+            <EmptyState />
+          ) : null}
+        </section>
+      </div>
+
+      {parked.length > 0 && (
+        <div className="curiosity-observatory__mobile-list md:hidden">
+          <WatchForLaterFolder
+            questions={parked}
+            loading={false}
+            error={null}
+            selectedId={selected?.question_id ?? null}
+            onSelect={(question) => {
+              setLaunchError(false);
+              setSelected(question);
+            }}
+          />
+        </div>
+      )}
+    </main>
   );
+
+  return withWorkspacePanels ? (
+    <PanelHost starters={STARTER_PANELS}>{centralSurface}</PanelHost>
+  ) : centralSurface;
 }
 
-function EmptyState({ parkedCount }: { parkedCount: number }) {
+function EmptyState() {
   return (
-    <div className="flex-1 flex items-center justify-center p-8">
-      <div className="max-w-md text-center space-y-3">
-        <h2 className="text-lg font-serif text-ink dark:text-bright">
-          The watch-for-later folder
-        </h2>
-        <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-          Research is gated by curiosity, not by tooling. Curiosity
-          surfaces in fragments throughout the day. This folder is
-          where unsharpened questions live until you decide to chase
-          them.
-        </p>
-        {parkedCount === 0 ? (
-          <p className="text-xs text-shadow-1 dark:text-moonlight italic">
-            No parked questions yet. As you wrestle with documents
-            and run investigations, the substrate identifies open
-            questions and parks them here.
-          </p>
-        ) : (
-          <p className="text-xs text-shadow-1 dark:text-moonlight">
-            Select a question on the left to see its context and
-            launch an investigation.
-          </p>
-        )}
-      </div>
+    <div className="curiosity-observatory__state" data-testid="curiosity-observatory-empty">
+      <p className="curiosity-observatory__state-kicker">The desk is clear</p>
+      <h2>Nothing is waiting to be chased.</h2>
+      <p>
+        As you read and research, unfinished questions can be parked here with
+        their source intact. Werner will keep the station warm until one arrives.
+      </p>
     </div>
   );
 }
-
-// ThoughtPartnerPlaceholder superseded by ThoughtPartnerPanel
-// (registered as PanelKind="BrainstormThoughtPartner" + opened as a
-// docked-right starter via PanelHost).

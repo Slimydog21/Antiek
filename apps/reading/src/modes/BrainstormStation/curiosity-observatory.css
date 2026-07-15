@@ -1,0 +1,184 @@
+.curiosity-observatory {
+  min-height: 100%;
+  color: var(--ink);
+}
+
+.curiosity-observatory__veil {
+  background:
+    linear-gradient(180deg, rgb(8 18 34 / 0.18), rgb(248 250 249 / 0.32) 34%, rgb(248 250 249 / 0.72)),
+    radial-gradient(circle at 50% 72%, rgb(255 255 255 / 0.12), rgb(255 255 255 / 0.55));
+}
+
+.curiosity-observatory__masthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 1.5rem clamp(1.25rem, 4vw, 3.25rem) 0;
+  text-shadow: 0 1px 18px rgb(255 255 255 / 0.75);
+}
+
+.curiosity-observatory__masthead h1 {
+  margin-top: 0.15rem;
+  font-family: var(--serif);
+  font-size: clamp(1.8rem, 3.5vw, 2.8rem);
+  line-height: 1;
+}
+
+.curiosity-observatory__masthead p:last-child {
+  margin-top: 0.55rem;
+  max-width: 34rem;
+  font-family: var(--serif);
+  font-size: 0.92rem;
+  color: var(--shadow-1);
+}
+
+.curiosity-observatory__eyebrow,
+.curiosity-observatory__count span,
+.curiosity-observatory__state-kicker {
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.curiosity-observatory__count {
+  display: grid;
+  min-width: 4.2rem;
+  place-items: center;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgb(16 31 46 / 0.4);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.7);
+  box-shadow: var(--shadow-z1);
+}
+
+.curiosity-observatory__count strong { font: 700 1.1rem/1 var(--serif); }
+
+.curiosity-observatory__stage {
+  position: relative;
+  display: grid;
+  min-height: calc(100% - 7.5rem);
+  grid-template-columns: minmax(7.5rem, 0.28fr) minmax(0, 1fr) minmax(1rem, 0.12fr);
+  align-items: end;
+  gap: clamp(0.5rem, 2vw, 1.5rem);
+  padding: 1.25rem clamp(1rem, 3vw, 2.5rem) 2.25rem;
+}
+
+.curiosity-observatory__werner {
+  position: sticky;
+  bottom: 1.75rem;
+  display: grid;
+  justify-items: center;
+  align-self: end;
+  transform-origin: 50% 100%;
+}
+
+.curiosity-observatory__lamp {
+  width: 5.5rem;
+  height: 0.6rem;
+  margin-top: -0.35rem;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, var(--sun-hl-day), transparent 70%);
+  filter: blur(2px);
+}
+
+.curiosity-observatory__desk {
+  align-self: center;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid rgb(22 39 55 / 0.35);
+  border-radius: 1rem;
+  background: rgb(250 250 246 / 0.82);
+  box-shadow: 6px 7px 0 rgb(18 30 43 / 0.86);
+}
+
+.curiosity-observatory__question > div { max-width: none; }
+
+.curiosity-observatory__state {
+  display: grid;
+  min-height: 18rem;
+  place-items: center;
+  align-content: center;
+  gap: 0.6rem;
+  padding: clamp(1.5rem, 5vw, 4rem);
+  text-align: center;
+}
+
+.curiosity-observatory__state h2 {
+  font-family: var(--serif);
+  font-size: clamp(1.25rem, 2.5vw, 1.7rem);
+}
+
+.curiosity-observatory__state > p { max-width: 32rem; color: var(--shadow-1); }
+
+.curiosity-observatory__orbit {
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 2px solid rgb(17 34 51 / 0.18);
+  border-top-color: var(--sun-deep);
+  border-radius: 50%;
+}
+
+.curiosity-observatory__notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1rem;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.6rem;
+  background: rgb(255 255 255 / 0.82);
+  font-size: 0.82rem;
+}
+
+.curiosity-observatory__notice p { margin-top: 0.15rem; color: var(--shadow-1); }
+.curiosity-observatory__notice button { text-decoration: underline; text-underline-offset: 3px; }
+.curiosity-observatory__notice--error { border-color: rgb(142 56 45 / 0.45); }
+
+.curiosity-observatory__mobile-list {
+  margin: 0 1rem 1.5rem;
+  overflow: hidden;
+  border: 1px solid rgb(22 39 55 / 0.35);
+  border-radius: 0.75rem;
+  background: rgb(250 250 246 / 0.9);
+}
+
+@media (max-width: 767px) {
+  .curiosity-observatory__masthead { padding-top: 1rem; }
+  .curiosity-observatory__stage {
+    min-height: 29rem;
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+    padding: 1rem 0.75rem 1.5rem;
+  }
+  .curiosity-observatory__werner span[role="img"] { width: 72px !important; height: 72px !important; }
+  .curiosity-observatory__desk { grid-column: 2; }
+  .curiosity-observatory__question > div { padding: 1.25rem; }
+}
+
+.curiosity-observatory--still .curiosity-observatory__orbit,
+.curiosity-observatory--still .werner-idle { animation: none !important; }
+
+/* Lost-Pixel opens several differently scaled pages concurrently. Chromium's
+   WebP compositor can drift by one colour level between those pages, creating
+   false 10–18% diffs. Story fixtures keep the real layout and states but use
+   this deterministic observatory wash; direct browser proof covers the raster. */
+.curiosity-observatory--still {
+  background:
+    radial-gradient(circle at 50% 72%, rgb(255 255 255 / 0.92) 0 12%, transparent 32%),
+    linear-gradient(180deg, rgb(159 173 187) 0 31%, rgb(232 234 231) 31% 100%);
+}
+
+.curiosity-observatory--still > [data-testid="curiosity-observatory-environment"] {
+  visibility: hidden;
+}
+
+@media (prefers-color-scheme: dark) {
+  .curiosity-observatory__veil { background: linear-gradient(180deg, rgb(5 11 23 / 0.32), rgb(5 11 23 / 0.74)); }
+  .curiosity-observatory__desk,
+  .curiosity-observatory__notice,
+  .curiosity-observatory__mobile-list { background: rgb(19 28 40 / 0.88); border-color: rgb(230 237 242 / 0.22); }
+  .curiosity-observatory__count { background: rgb(19 28 40 / 0.8); border-color: rgb(230 237 242 / 0.35); }
+}
