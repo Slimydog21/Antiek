@@ -1,0 +1,14 @@
+# Design assets — session 2026-07-15
+
+Staged Imagine + reference-edit inventory for branding craft. **Not** product-
+mapped unless promoted through `sessionAssets` alpha integrity + UI import.
+
+| File | Source | Intent |
+|---|---|---|
+| werner_living_tv_imagine_v1.jpg | Grok Imagine gen | Living TV-show mascot in workstation scenery |
+| werner_ice_fishing_imagine_v1.jpg | Grok Imagine gen | Club Penguin–style ice fishing key art |
+| werner_living_tv_refedit_v1.jpg | image_edit from product thinking pose | Character-consistent living TV beat |
+| werner_ice_fishing_refedit_v1.jpg | image_edit from product thinking pose | Character-consistent ice fishing beat |
+
+Product path remains:
+`src/brand/werner/poses/session/werner_*_session_v1.png` + `sessionAssets.ts`.

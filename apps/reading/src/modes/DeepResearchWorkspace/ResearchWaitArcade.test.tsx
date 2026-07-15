@@ -294,8 +294,26 @@ describe("ResearchWaitArcade", () => {
       images.every((image) => image.getAttribute("aria-hidden") === "true"),
     ).toBe(true);
     expect(
-      images.every((image) =>
-        image.getAttribute("src")?.startsWith("/src/brand/werner/arcade/"),
+      images.every((image) => {
+        const src = image.getAttribute("src") ?? "";
+        // Ice fishing + zombies use session brand PNGs; clam-catcher keeps arcade webp.
+        return (
+          src.startsWith("/src/brand/werner/arcade/") ||
+          src.startsWith("/src/brand/werner/poses/session/")
+        );
+      }),
+    ).toBe(true);
+    // Session product key art for the two Club-Penguin-style wait games.
+    expect(
+      images.some((image) =>
+        (image.getAttribute("src") ?? "").includes(
+          "werner_ice_fishing_session_v1",
+        ),
+      ),
+    ).toBe(true);
+    expect(
+      images.some((image) =>
+        (image.getAttribute("src") ?? "").includes("werner_zombies_session_v1"),
       ),
     ).toBe(true);
   });
@@ -310,6 +328,8 @@ describe("ResearchWaitArcade", () => {
       );
     });
     expect(receivedSceneArt).toHaveBeenCalledTimes(1);
-    expect(receivedSceneArt.mock.calls[0]?.[0]).toContain("ice-fishing");
+    expect(receivedSceneArt.mock.calls[0]?.[0]).toContain(
+      "werner_ice_fishing_session_v1",
+    );
   });
 });

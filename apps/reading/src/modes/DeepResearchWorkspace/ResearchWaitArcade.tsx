@@ -10,8 +10,9 @@ import {
 
 import LemonButton from "../../components/lemon/LemonButton";
 import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
-import iceFishingArt from "../../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
-import paperclipArt from "../../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
+// Session brand key art (alpha-gated) unifies wait-arcade with ArcadeCabinet.
+import iceFishingArt from "../../brand/werner/poses/session/werner_ice_fishing_session_v1.png";
+import paperclipArt from "../../brand/werner/poses/session/werner_zombies_session_v1.png";
 import clamCatcherArt from "../../brand/werner/arcade/clam-catcher-station-key-art-v1.webp";
 import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
 import {
