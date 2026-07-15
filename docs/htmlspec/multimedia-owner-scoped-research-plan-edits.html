@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Cycle 25 - Owner-scoped research plan edits</title>
+  <style>
+    body { margin: 0 auto; max-width: 980px; padding: 32px 24px 72px; color: #18181b; background: #fafafa; font: 16px/1.55 system-ui, sans-serif; }
+    h1, h2 { letter-spacing: 0; line-height: 1.2; } h1 { font-size: 32px; } h2 { margin-top: 36px; font-size: 21px; }
+    code { background: #e4e4e7; padding: 2px 4px; } table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border: 1px solid #d4d4d8; text-align: left; vertical-align: top; }
+    .gate { border-left: 4px solid #b91c1c; padding-left: 14px; } li { margin: 7px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Owner-scoped research plan edits</h1>
+  <p><strong>Cycle:</strong> 25. <strong>Base:</strong> Cycle 24 opaque owner-plan authority. <strong>Status:</strong> execution contract.</p>
+
+  <h2>Outcome</h2>
+  <p>An authenticated owner can manually shape a multimedia research plan as an ordered question tree. Every committed edit is owner-bound, exactly idempotent, version-CAS protected, and approval reopening. Editing remains a local planning operation: it cannot decompose automatically, project into the graph, launch research, emit events, call providers, or authorize spend.</p>
+
+  <h2>Five values</h2>
+  <table>
+    <tr><th>Value</th><th>Required consequence</th></tr>
+    <tr><td>Truth</td><td>An edit response reports only a historical mutation result and literal no-execution authority.</td></tr>
+    <tr><td>Ownership</td><td>Plan lookup, mutation receipt, and approval reopening bind the authenticated owner digest.</td></tr>
+    <tr><td>Determinism</td><td>An exact mutation replay returns its original stored result even after later edits; changed input under the same key conflicts.</td></tr>
+    <tr><td>Control</td><td>Exact version CAS rejects lost updates. Every real edit advances once and requires fresh approval.</td></tr>
+    <tr><td>Least authority</td><td>The edit module imports or invokes no graph, event, investigation, provider, spend, embedding, network, or background-work collaborator.</td></tr>
+  </table>
+
+  <h2>Tree authority</h2>
+  <ul>
+    <li>Every node has a server-generated immutable <code>mrpn_</code> plus 48-lowercase-hex ID. Clients reference existing IDs but never mint new IDs.</li>
+    <li>The root retains immutable source intent and evidence provenance and cannot be reworded, moved, or removed.</li>
+    <li>Sibling order is array order. IDs remain stable through question updates and moves.</li>
+    <li>Bounds: 256 nodes, depth 8 including root, 64 children per node, 64 operations per batch, 3-2000 characters per trimmed question, 128 KiB canonical plan and mutation response.</li>
+    <li>Node IDs are unique within a tree. Trees are acyclic, connected, rooted, and strictly shaped; unknown fields and malformed decoded types fail closed.</li>
+  </ul>
+
+  <h2>Edit contract</h2>
+  <p><code>POST /multimedia/research-plans/{plan_id}/edits</code> accepts a strict body with <code>idempotency_key</code>, <code>expected_plan_version</code>, and one to 64 ordered operations. The batch is all-or-nothing.</p>
+  <table>
+    <tr><th>Operation</th><th>Required fields and semantics</th></tr>
+    <tr><td><code>add_child</code></td><td><code>parent_node_id</code>, required insertion <code>position</code>, and <code>question</code>. The server generates the child ID.</td></tr>
+    <tr><td><code>update_question</code></td><td><code>node_id</code> and <code>question</code>. Non-root only; unchanged normalized text is rejected.</td></tr>
+    <tr><td><code>move_subtree</code></td><td><code>node_id</code>, <code>new_parent_node_id</code>, and post-removal destination <code>position</code>. Non-root; cycles and no-op moves are rejected.</td></tr>
+    <tr><td><code>remove_subtree</code></td><td><code>node_id</code>. Non-root; removes the complete descendant subtree.</td></tr>
+  </table>
+  <p>Cycle 25 deliberately excludes split, merge, full-tree replacement, budgets, depth policy, client-generated node IDs, and references to nodes created earlier in the same batch.</p>
+
+  <h2>Transaction order</h2>
+  <ol>
+    <li>Validate owner, opaque IDs, key syntax, strict body, operation count, and canonical request size.</li>
+    <li>Inside <code>BEGIN IMMEDIATE</code>, check the owner-plan-key mutation receipt before current-version CAS.</li>
+    <li>An exact receipt replay returns the stored historical response without mutating current state. Request drift conflicts.</li>
+    <li>Load and integrity-check the current owner plan; require exact expected version.</li>
+    <li>Apply all operations to a deep copy, validating targets and intermediate/final bounds. Any failure rolls back the entire batch.</li>
+    <li>Increment plan version exactly once, set state to draft, and clear both approval fields.</li>
+    <li>CAS-update the plan row and insert the mutation receipt in the same transaction.</li>
+  </ol>
+
+  <h2>Mutation receipt</h2>
+  <p>The private mutation table binds owner, plan ID, key, canonical request digest, base/result versions, before/after plan integrity digests, canonical historical response, and server timestamp. Unique constraints cover owner-plan-key and owner-plan-result-version. Receipt drift fails closed.</p>
+
+  <h2>Schema evolution</h2>
+  <p>Fresh stores create schema v2 with root node identity, plan integrity digest, mutation receipts, checks, and <code>PRAGMA user_version=2</code>. Existing exact v1 stores migrate transactionally: verify the complete old schema and every record, generate one root node ID, preserve owner/plan/source/approval/version/timestamps, rebuild canonical authority, create mutation storage, and commit only when every row proves valid. Migration is idempotent and never repairs or deletes unprovable records.</p>
+
+  <h2>HTTP semantics</h2>
+  <ul>
+    <li><code>200</code> for a new mutation and exact replay.</li>
+    <li>Opaque private <code>404</code> for absent and foreign plans.</li>
+    <li><code>409</code> for version, idempotency, or stored-integrity conflicts.</li>
+    <li><code>422</code> for invalid operation, target, root restriction, cycle, no-op, position, or tree bound.</li>
+    <li><code>413</code> for canonical request/result size overflow; private <code>500</code> for operational storage failure.</li>
+    <li>Every success, validation error, and failure includes <code>Cache-Control: private, no-store</code> and discloses no owner digest or hidden question.</li>
+  </ul>
+
+  <h2 class="gate">Non-negotiable refusals</h2>
+  <ul>
+    <li>No legacy <code>PlanTree</code>, graph root ID, graph persistence, embedding, or decomposition adapter.</li>
+    <li>No event, investigation/session, provider, spend, launch, network, or background scheduling operation.</li>
+    <li>No stale-write merge, automatic rebase, partial batch, no-op success, or approval inheritance.</li>
+    <li>No caller-authored owner, node identity, approval principal, timestamp, integrity digest, or mutation result.</li>
+  </ul>
+
+  <h2>Acceptance</h2>
+  <ol>
+    <li>Fresh handoff and v1 migration produce one stable opaque root ID and preserve all Cycle 24 authority.</li>
+    <li>Add, update, move/reorder, and remove preserve unaffected IDs and exact sibling order.</li>
+    <li>Root mutations, cycles, unknown targets, invalid positions, no-ops, malformed unions, and every limit+1 fail without state change.</li>
+    <li>A batch advances version once; any failed operation leaves plan, approval, and receipt storage unchanged.</li>
+    <li>Two concurrent same-version edits produce one commit and one conflict.</li>
+    <li>Exact replay after later edits or reapproval returns the historical result and changes nothing current.</li>
+    <li>Changed expected version, operation order, target, position, or text under one key conflicts.</li>
+    <li>Editing approved state clears approval; old-version approval fails and new-version approval succeeds.</li>
+    <li>Foreign and absent plan behavior is indistinguishable. Storage and all route responses remain private.</li>
+    <li>Row/envelope/tree/digest/receipt tampering, duplicate node IDs, malformed types, unsafe paths, schema drift, and oversized records fail closed.</li>
+    <li>Spies prove no forbidden collaborator is called by handoff, read, edit, replay, or approval.</li>
+    <li>Focused tests, full multimedia backend/frontend tests, TypeScript, build, Ruff, HTML parse, diff hygiene, independent reviews, and HardenX pass.</li>
+  </ol>
+</main>
+</body>
+</html>

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -22,7 +22,9 @@ from substrate.multimedia.research_plan import (
     ResearchPlanError,
     ResearchPlanLedger,
     ResearchPlanStorageError,
+    ResearchPlanTooLargeError,
     ResearchPlanUnavailableError,
+    ResearchPlanValidationError,
 )
 
 from .multimedia_reconciliation_routes import authenticated_multimedia_operator
@@ -66,15 +68,73 @@ class ResearchPlanApproveBody(BaseModel):
     expected_plan_version: int = Field(ge=1, strict=True)
 
 
+class ResearchPlanAddChildOperation(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    type: Literal["add_child"]
+    parent_node_id: str = Field(pattern=r"^mrpn_[0-9a-f]{48}$")
+    position: int = Field(ge=0, strict=True)
+    question: str = Field(min_length=3, max_length=2000)
+
+
+class ResearchPlanUpdateQuestionOperation(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    type: Literal["update_question"]
+    node_id: str = Field(pattern=r"^mrpn_[0-9a-f]{48}$")
+    question: str = Field(min_length=3, max_length=2000)
+
+
+class ResearchPlanMoveSubtreeOperation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["move_subtree"]
+    node_id: str = Field(pattern=r"^mrpn_[0-9a-f]{48}$")
+    new_parent_node_id: str = Field(pattern=r"^mrpn_[0-9a-f]{48}$")
+    position: int = Field(ge=0, strict=True)
+
+
+class ResearchPlanRemoveSubtreeOperation(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal["remove_subtree"]
+    node_id: str = Field(pattern=r"^mrpn_[0-9a-f]{48}$")
+
+
+ResearchPlanEditOperation = Annotated[
+    ResearchPlanAddChildOperation | ResearchPlanUpdateQuestionOperation
+    | ResearchPlanMoveSubtreeOperation | ResearchPlanRemoveSubtreeOperation,
+    Field(discriminator="type"),
+]
+
+
+class ResearchPlanEditBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    idempotency_key: str = Field(min_length=16, max_length=128, pattern=r"^[A-Za-z0-9_-]+$")
+    expected_plan_version: int = Field(ge=1, strict=True)
+    operations: list[ResearchPlanEditOperation] = Field(min_length=1, max_length=64)
+
+
+class ResearchPlanNodeResponse(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    node_id: str
+    kind: Literal["research_question"]
+    question: str
+    children: tuple[ResearchPlanNodeResponse, ...]
+
+
 class ResearchPlanRootResponse(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
+    node_id: str
     kind: Literal["research_question"]
     question: str
     source_intent_id: str
     source_intent_digest: str
     source_evidence_digest: str
-    children: tuple[()]
+    children: tuple[ResearchPlanNodeResponse, ...]
 
 
 class ResearchPlanTreeResponse(BaseModel):
@@ -97,7 +157,6 @@ class ResearchPlanResponse(BaseModel):
     created_at: str
     updated_at: str
     approved_at: str | None
-    approved_by_owner_digest: str | None
     research_launched: Literal[False]
     provider_launch_authorized: Literal[False]
     spend_authority_digest: None
@@ -196,6 +255,35 @@ def approve_multimedia_research_plan(
         raise HTTPException(status_code=409, detail=str(exc), headers=_PRIVATE) from exc
 
 
+@multimedia_research_plan_router.post(
+    "/research-plans/{plan_id}/edits", response_model=ResearchPlanResponse
+)
+def edit_multimedia_research_plan(
+    plan_id: str,
+    body: ResearchPlanEditBody,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: ResearchPlanRouteRuntime = Depends(get_multimedia_research_plan_runtime),
+) -> ResearchPlanResponse:
+    try:
+        return _response(runtime.plans.edit(
+            owner_identity_digest=runtime.owner_digest_resolver(operator_id),
+            plan_id=plan_id,
+            idempotency_key=body.idempotency_key,
+            expected_plan_version=body.expected_plan_version,
+            operations=[operation.model_dump() for operation in body.operations],
+        ))
+    except ResearchPlanUnavailableError as exc:
+        raise _private_not_found() from exc
+    except ResearchPlanTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc), headers=_PRIVATE) from exc
+    except ResearchPlanValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc), headers=_PRIVATE) from exc
+    except ResearchPlanStorageError as exc:
+        raise _private_unavailable() from exc
+    except (ResearchPlanError, ValueError) as exc:
+        raise HTTPException(status_code=409, detail=str(exc), headers=_PRIVATE) from exc
+
+
 def _private_not_found() -> HTTPException:
     return HTTPException(status_code=404, detail="research plan is unavailable", headers=_PRIVATE)
 
@@ -207,11 +295,14 @@ def _private_unavailable() -> HTTPException:
 
 
 def _response(plan: ResearchPlan) -> ResearchPlanResponse:
-    return ResearchPlanResponse(**asdict(plan))
+    payload = asdict(plan)
+    payload.pop("approved_by_owner_digest")
+    return ResearchPlanResponse(**payload)
 
 
 __all__ = [
-    "ResearchPlanApproveBody", "ResearchPlanHandoffBody", "ResearchPlanResponse",
+    "ResearchPlanApproveBody", "ResearchPlanEditBody", "ResearchPlanHandoffBody",
+    "ResearchPlanResponse",
     "ResearchPlanRouteRuntime", "get_multimedia_research_plan_runtime",
     "multimedia_research_plan_router",
 ]
