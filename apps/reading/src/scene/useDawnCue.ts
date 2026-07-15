@@ -1,3 +1,5 @@
+import { useRef } from "react";
+
 import type { SceneMood } from "./mood";
 import { useSceneMomentCue } from "./useSceneMomentCue";
 
@@ -31,9 +33,11 @@ export function useDawnCue(
   mood: SceneMood,
   onTransition?: (cue: SceneMomentCue) => void,
 ): void {
+  const dawnSequenceRef = useRef(0);
   useSceneMomentCue(mood, (cue) => {
     if (cue.moment === "daybreak") {
-      onTransition?.({ sequence: cue.sequence, moment: "daybreak" });
+      dawnSequenceRef.current += 1;
+      onTransition?.({ sequence: dawnSequenceRef.current, moment: "daybreak" });
     }
   });
 }

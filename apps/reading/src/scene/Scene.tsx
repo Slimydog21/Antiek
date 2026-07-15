@@ -60,7 +60,7 @@ export interface SceneProps {
   reducedMotion?: boolean;
   /**
    * One-way typed callback: Scene detects committed authored mood transitions
-   * (`night → dawn`, first `non-dusk → dusk`) and transports the cue to the shell. The shell passes it to
+   * (nightfall, daybreak, dusk-settle) and transports the cue to the shell. The shell passes it to
    * PenguinMascot, the sole foreground arbiter. Scene never emits a false
    * cue on mount, StrictMode, identical rerender, weather-only change, explicit mood override,
    * or unmount. (SPR-22)

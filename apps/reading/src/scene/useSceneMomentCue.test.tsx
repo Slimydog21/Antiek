@@ -10,7 +10,7 @@ const DUSK: SceneMood = { dayPart: "dusk", weather: "clear" };
 const NIGHT: SceneMood = { dayPart: "night", weather: "clear" };
 const DAWN: SceneMood = { dayPart: "dawn", weather: "clear" };
 
-describe("useSceneMomentCue (SPR-29)", () => {
+describe("useSceneMomentCue (SPR-29/30)", () => {
   it("emits the first committed day → dusk edge once", () => {
     const onCue = vi.fn();
     const { rerender } = renderHook(({ mood }) => useSceneMomentCue(mood, onCue), {
@@ -29,7 +29,7 @@ describe("useSceneMomentCue (SPR-29)", () => {
     expect(onCue).not.toHaveBeenCalled();
   });
 
-  it("uses one monotonic identity across dusk and daybreak", () => {
+  it("uses one monotonic identity across dusk, nightfall, and daybreak", () => {
     const onCue = vi.fn();
     const { rerender } = renderHook(({ mood }) => useSceneMomentCue(mood, onCue), {
       initialProps: { mood: DAY },
@@ -39,8 +39,18 @@ describe("useSceneMomentCue (SPR-29)", () => {
     rerender({ mood: DAWN });
     expect(onCue.mock.calls).toEqual([
       [{ sequence: 1, moment: "dusk-settle" }],
-      [{ sequence: 2, moment: "daybreak" }],
+      [{ sequence: 2, moment: "nightfall" }],
+      [{ sequence: 3, moment: "daybreak" }],
     ]);
+  });
+
+  it("stays silent on initial night and weather-only night changes", () => {
+    const onCue = vi.fn();
+    const { rerender } = renderHook(({ mood }) => useSceneMomentCue(mood, onCue), {
+      initialProps: { mood: NIGHT },
+    });
+    rerender({ mood: { ...NIGHT, weather: "snow" as const } });
+    expect(onCue).not.toHaveBeenCalled();
   });
 
   it("does not duplicate dusk under StrictMode", () => {
