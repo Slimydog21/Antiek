@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { Event } from "../../generated/types";
 import type { InvestigationState } from "../../hooks/useInvestigation";
@@ -20,12 +20,22 @@ import type { InvestigationState } from "../../hooks/useInvestigation";
  *    running, not as decoration.
  */
 
-const { useInvestigationMock } = vi.hoisted(() => ({
+const { useInvestigationMock, investigationList, previewComposeMock, createComposeMock } = vi.hoisted(() => ({
   useInvestigationMock: vi.fn(),
+  investigationList: { investigations: [] as Array<Record<string, unknown>> },
+  previewComposeMock: vi.fn(),
+  createComposeMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigation", () => ({
   useInvestigation: useInvestigationMock,
+}));
+vi.mock("../../hooks/useInvestigationList", () => ({
+  useInvestigationList: () => ({ ...investigationList, loading: false, error: null, refetch: vi.fn() }),
+}));
+vi.mock("../../api/research", () => ({
+  previewResearchCompose: previewComposeMock,
+  createResearchCompose: createComposeMock,
 }));
 
 import ReadingCompanion from "./ReadingCompanion";
@@ -55,7 +65,12 @@ function state(over: Partial<InvestigationState>): InvestigationState {
   } as InvestigationState;
 }
 
-beforeEach(() => useInvestigationMock.mockReset());
+beforeEach(() => {
+  useInvestigationMock.mockReset();
+  previewComposeMock.mockReset();
+  createComposeMock.mockReset();
+  investigationList.investigations = [];
+});
 afterEach(() => cleanup());
 
 function renderCompanion() {
@@ -140,5 +155,50 @@ describe("ReadingCompanion (Read SPR-06 M2)", () => {
     // The reading-thread id is passed to the hook, never rendered.
     expect(container.textContent).not.toContain("read-doc-1");
     expect(container.textContent).not.toMatch(/inv-/);
+  });
+
+  it("keeps an explicitly empty chase selection empty and disables review", () => {
+    useInvestigationMock.mockReturnValue(state({}));
+    investigationList.investigations = [
+      { investigation_id: "chase-one", question: "Origins of the dichotomy", status: "completed", parent_investigation_id: "read-doc-1" },
+      { investigation_id: "chase-two", question: "The role of assent", status: "completed", parent_investigation_id: "read-doc-1" },
+    ];
+    const view = renderCompanion();
+    const first = screen.getByRole("checkbox", { name: "Origins of the dichotomy" }) as HTMLInputElement;
+    const second = screen.getByRole("checkbox", { name: "The role of assent" }) as HTMLInputElement;
+    expect(first.checked).toBe(true);
+    expect(second.checked).toBe(true);
+    fireEvent.click(first);
+    fireEvent.click(second);
+    expect(first.checked).toBe(false);
+    expect(second.checked).toBe(false);
+    investigationList.investigations = [
+      ...investigationList.investigations,
+      { investigation_id: "chase-three", question: "A newly completed chase", status: "completed", parent_investigation_id: "read-doc-1" },
+    ];
+    view.rerender(
+      <ReadingCompanion documentId="doc-1" title="Meditations" readingThreadId="read-doc-1" />,
+    );
+    expect((screen.getByRole("checkbox", { name: "A newly completed chase" }) as HTMLInputElement).checked).toBe(false);
+    expect((screen.getByRole("button", { name: "Review selected chases" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("reviews and creates the exact selected completed chases in document order", async () => {
+    useInvestigationMock.mockReturnValue(state({}));
+    investigationList.investigations = [
+      { investigation_id: "chase-three", question: "Third", status: "completed", parent_investigation_id: "read-doc-1" },
+      { investigation_id: "chase-live", question: "Still working", status: "in_progress", parent_investigation_id: "read-doc-1" },
+      { investigation_id: "chase-one", question: "First", status: "completed", parent_investigation_id: "read-doc-1" },
+      { investigation_id: "chase-two", question: "Second", status: "completed", parent_investigation_id: "read-doc-1" },
+    ];
+    previewComposeMock.mockResolvedValue({ compose_id: "preview", selection_fingerprint: "hash", members: [{ investigation_id: "chase-three", content_hash: "3" }, { investigation_id: "chase-two", content_hash: "2" }], identical_content: [], view_url: null, reused: false });
+    createComposeMock.mockResolvedValue({ compose_id: "created", selection_fingerprint: "hash", members: [], identical_content: [], view_url: "/research/artifact-composes/created/view", reused: false });
+    renderCompanion();
+    fireEvent.click(screen.getByRole("checkbox", { name: "First" }));
+    fireEvent.click(screen.getByRole("button", { name: "Review selected chases" }));
+    await waitFor(() => expect(previewComposeMock).toHaveBeenCalledWith(["chase-three", "chase-two"]));
+    fireEvent.click(await screen.findByRole("button", { name: "Create collective reading" }));
+    await waitFor(() => expect(createComposeMock).toHaveBeenCalledWith(["chase-three", "chase-two"], "hash"));
+    expect((await screen.findByRole("link", { name: /Open collective reading/ })).getAttribute("href")).toBe("/research/artifact-composes/created/view");
   });
 });
