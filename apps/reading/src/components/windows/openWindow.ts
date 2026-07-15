@@ -57,8 +57,12 @@ import type { OpenWindowOptions } from "../../workspace/windowsStore";
  */
 
 export type WindowPageRenderer =
-  | ComponentType<Record<string, unknown>>
-  | LazyExoticComponent<ComponentType<Record<string, unknown>>>;
+  // The registry is intentionally heterogeneous: each window kind validates
+  // and owns its payload at its renderer boundary.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | ComponentType<any>
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  | LazyExoticComponent<ComponentType<any>>;
 
 /**
  * Window-hostable pages. Two flavours live here, both contract-safe to float:
@@ -95,6 +99,10 @@ export const WINDOW_PAGES: Record<string, { title: string; renderer: WindowPageR
   subaction: {
     title: "Sub-actions",
     renderer: lazy(() => import("./SubActionList")),
+  },
+  readingChase: {
+    title: "Deep research",
+    renderer: lazy(() => import("../../modes/Reading/ReadingChaseWindow")),
   },
 };
 

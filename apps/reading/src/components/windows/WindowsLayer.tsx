@@ -48,7 +48,7 @@ export function WindowsLayer() {
                       </div>
                     }
                   >
-                    <Renderer {...win.payload} />
+                    <Renderer {...win.payload} workspaceWindowId={id} />
                   </Suspense>
                 ) : (
                   <div className="p-6 text-sm text-emperor">
