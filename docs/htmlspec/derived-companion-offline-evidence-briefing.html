@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Derived Companion Offline Evidence Briefing</title></head>
+<body>
+<main>
+  <h1>Derived Companion Offline Evidence Briefing</h1>
+  <p><strong>Status:</strong> Cycle 67 executable spec. Provider-free, deterministic, owner-scoped.</p>
+
+  <section>
+    <h2>Objective</h2>
+    <p>Turn an admitted derived-revision evidence pack into an immediately useful reading brief while model execution remains unavailable. The brief organizes retrieved passages; it does not summarize, infer, answer, rank truth, or manufacture claims.</p>
+  </section>
+
+  <section>
+    <h2>Artifact contract</h2>
+    <ol>
+      <li>Bind the exact question, derived asset, revision, content hash, generation, and evidence-pack digest.</li>
+      <li>Group citations by their existing section path in first-seen order. Preserve citation order and exact excerpt text inside each group.</li>
+      <li>Expose counts for sections and passages plus stable citation IDs, anchors, paths, chunk ordinals, and text hashes.</li>
+      <li>Render canonical escaped HTML using only the bound question, section labels, and exact excerpts. No raw HTML from evidence may execute.</li>
+      <li>Compute independent JSON, HTML, and artifact SHA-256 digests. Rebuilding the same pack must be byte-identical.</li>
+      <li>Reject malformed packs, digest mismatch, duplicate citation IDs, missing scope, oversized output, and citations outside the exact pack.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>API and UI</h2>
+    <p><code>prepare_evidence</code> and saved conversation turns return a public briefing only for <code>evidence_ready</code>. The reading rail presents the question, section groups, exact excerpts, open-section action, and follow-citation action. The existing provider qualification status remains visible. A model answer, when later admitted, remains a distinct artifact above the briefing.</p>
+  </section>
+
+  <section>
+    <h2>Non-authority</h2>
+    <ul>
+      <li>No model, provider, SDK, credential, network, spend, reservation, dispatch, or adapter registration.</li>
+      <li>No claim of summary, answer, support, contradiction, completeness, or relevance beyond the existing deterministic retrieval result.</li>
+      <li>No write back into canonical revision content, twin notes, knowledge graph, or merge drafts.</li>
+      <li>No client-side rendering of server HTML; React renders typed fields as text.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>Artifact unit tests cover determinism, grouping, escaping, malformed packs, duplicate citations, digest drift, and byte limits.</li>
+      <li>Repository/API tests prove replay equality, saved-turn reconstruction, owner isolation, and insufficient-evidence omission.</li>
+      <li>Frontend tests prove immediate and saved briefing rendering, citation actions, no server-HTML injection, and no wording that implies model synthesis.</li>
+      <li>Backend tests, frontend tests, strict typing, Ruff, frontend typecheck, production build, visual inspection, diff check, and HardenX pass.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>

@@ -36,6 +36,7 @@ from substrate.research_artifact.derived_companion import (
 from substrate.research_artifact.derived_companion_repository import (
     CompanionAnswerConflict,
     CompanionAnswerUnavailable,
+    CompanionCommandError,
     DerivedCompanionRepository,
 )
 from substrate.research_artifact.grounded_companion_answer import (
@@ -455,6 +456,14 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert prepared.headers["cache-control"] == "private, no-store"
     assert prepared.json()["state"] == "evidence_ready"
     assert prepared.json()["replayed"] is False
+    briefing = prepared.json()["briefing"]
+    assert briefing["schema_version"] == "antiek.derived-evidence-briefing.v1"
+    assert briefing["question"] == "Ready"
+    assert briefing["evidence_pack_sha256"] == prepared.json()["evidence_pack"][
+        "pack_sha256"
+    ]
+    assert briefing["passage_count"] == len(prepared.json()["evidence_pack"]["citations"])
+    assert "<script" not in briefing["briefing_html"]
     execution = prepared.json()["execution"]
     assert execution["schema_version"] == "antiek.derived-companion-execution.v1"
     assert execution["scope"] == {
@@ -606,6 +615,7 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert abstained.status_code == 200
     assert abstained.json()["state"] == "insufficient_evidence"
     assert abstained.json()["evidence_pack"]["citations"] == []
+    assert abstained.json()["briefing"] is None
     stale = client.post(
         companion_path,
         json={
@@ -631,11 +641,49 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert conversation.headers["cache-control"] == "private, no-store"
     assert conversation.json()["execution"] == execution
     assert conversation.json()["turns"][0]["answer"] == refreshed["answer"]
+    assert conversation.json()["turns"][0]["briefing"] == briefing
     assert [turn["question"] for turn in conversation.json()["turns"]] == ["Ready", "absent"]
     exact_conversation = client.get(
         f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/companion"
     )
     assert [turn["question"] for turn in exact_conversation.json()["turns"]] == ["Ready"]
+    with connect_write(db_path, purpose="companion-stored-pack-corruption-proof") as con:
+        con.execute(
+            "UPDATE derived_asset_companion_turns SET evidence_pack_sha256=? "
+            "WHERE client_turn_id=?",
+            ["f" * 64, "reader-turn-0001"],
+        )
+    with pytest.raises(CompanionCommandError, match="evidence integrity"):
+        DerivedCompanionRepository(db_path=db_path).conversation(
+            owner_user_id="owner-a", asset_id=asset_id
+        )
+    with connect_write(db_path, purpose="companion-stored-pack-corruption-restore") as con:
+        con.execute(
+            "UPDATE derived_asset_companion_turns SET evidence_pack_sha256=? "
+            "WHERE client_turn_id=?",
+            [prepared.json()["evidence_pack"]["pack_sha256"], "reader-turn-0001"],
+        )
+    with connect_write(db_path, purpose="companion-empty-pack-corruption-proof") as con:
+        raw_empty = str(con.execute(
+            "SELECT evidence_pack_json FROM derived_asset_companion_turns "
+            "WHERE client_turn_id=?", ["reader-turn-0002"]
+        ).fetchone()[0])
+        changed_empty = json.loads(raw_empty)
+        changed_empty["is_current"] = not changed_empty["is_current"]
+        con.execute(
+            "UPDATE derived_asset_companion_turns SET evidence_pack_json=? "
+            "WHERE client_turn_id=?",
+            [canonical_evidence_json(changed_empty), "reader-turn-0002"],
+        )
+    with pytest.raises(CompanionCommandError, match="evidence integrity"):
+        DerivedCompanionRepository(db_path=db_path).conversation(
+            owner_user_id="owner-a", asset_id=asset_id
+        )
+    with connect_write(db_path, purpose="companion-empty-pack-corruption-restore") as con:
+        con.execute(
+            "UPDATE derived_asset_companion_turns SET evidence_pack_json=? "
+            "WHERE client_turn_id=?", [raw_empty, "reader-turn-0002"],
+        )
     assert ResearchSpendLedger(spend_db).integrity_check() == "ok"
     with duckdb.connect(db_path, read_only=True) as con:
         turns = con.execute(
