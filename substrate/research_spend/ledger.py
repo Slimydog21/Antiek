@@ -31,6 +31,11 @@ __all__ = [
     "IdempotencyConflict",
     "InvalidTransition",
     "LedgerIntegrityError",
+    "LaunchExecutionIntent",
+    "LaunchExecutionSnapshot",
+    "LaunchOperationIntent",
+    "LaunchOperationSnapshot",
+    "LaunchOperationState",
     "PaidHoldIntent",
     "PaidHoldSnapshot",
     "PaidHoldState",
@@ -49,7 +54,7 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 2
+SCHEMA_VERSION: Final = 3
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
@@ -93,6 +98,17 @@ class ZeroCostState(StrEnum):
 class ZeroReplayClass(StrEnum):
     PURE = "pure"
     CHECKPOINT_RESUMABLE = "checkpoint_resumable"
+
+
+class LaunchOperationState(StrEnum):
+    PENDING = "pending"
+    BLOCKED_PROVIDER_INELIGIBLE = "blocked_provider_ineligible"
+    CLAIMED = "claimed"
+    DISPATCH_POSSIBLE = "dispatch_possible"
+    UNKNOWN = "unknown"
+    SETTLED = "settled"
+    SUCCEEDED = "succeeded"
+    FAILED_TERMINAL = "failed_terminal"
 
 
 class LedgerIntegrityError(RuntimeError):
@@ -271,6 +287,100 @@ class RecoveryItem:
     kind: str
     state: str
     action: str
+
+
+@dataclass(frozen=True)
+class LaunchExecutionIntent:
+    execution_id: str
+    authority_kind: str
+    launch_reservation_id: str
+    launch_manifest_digest: str
+    prepared_integrity_digest: str
+    provider: str
+    model: str
+    route_digest: str
+    pricing_digest: str
+    workload_digest: str
+    operation_count: int
+    request_digest: str
+
+    def __post_init__(self) -> None:
+        for name in self.__dataclass_fields__:
+            value = getattr(self, name)
+            if name == "operation_count":
+                _bounded_int(name, value, minimum=1, maximum=10_000)
+            else:
+                _required_text(name, cast(str, value))
+
+
+@dataclass(frozen=True)
+class LaunchOperationIntent:
+    operation_id: str
+    ordinal: int
+    stable_source_id: str
+    question: str
+    payload_digest: str
+    provider: str
+    model: str
+    logical_operation_id: str
+    state: LaunchOperationState
+    blocked_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        for name in (
+            "operation_id",
+            "stable_source_id",
+            "question",
+            "payload_digest",
+            "provider",
+            "model",
+            "logical_operation_id",
+        ):
+            _required_text(name, cast(str, getattr(self, name)))
+        _bounded_int("ordinal", self.ordinal, minimum=0, maximum=9_999)
+        if not isinstance(self.state, LaunchOperationState):
+            raise TypeError("state must be LaunchOperationState")
+        if (self.state is LaunchOperationState.BLOCKED_PROVIDER_INELIGIBLE) != (
+            self.blocked_reason is not None
+        ):
+            raise ValueError("blocked reason must exactly match blocked state")
+
+
+@dataclass(frozen=True)
+class LaunchOperationSnapshot:
+    execution_id: str
+    intent: LaunchOperationIntent
+    hold_id: str | None
+    result_json: str | None
+    created_at: str
+    updated_at: str
+
+
+@dataclass(frozen=True)
+class LaunchExecutionSnapshot:
+    run_id: str
+    owner_id: str
+    intent: LaunchExecutionIntent
+    operations: tuple[LaunchOperationSnapshot, ...]
+    created_at: str
+
+    @property
+    def state(self) -> str:
+        states = {item.intent.state for item in self.operations}
+        if (
+            LaunchOperationState.UNKNOWN in states
+            or LaunchOperationState.DISPATCH_POSSIBLE in states
+        ):
+            return "recovery_required"
+        if LaunchOperationState.CLAIMED in states or LaunchOperationState.SETTLED in states:
+            return "active"
+        if states == {LaunchOperationState.BLOCKED_PROVIDER_INELIGIBLE}:
+            return "blocked"
+        if states <= {LaunchOperationState.SUCCEEDED, LaunchOperationState.FAILED_TERMINAL}:
+            return "terminal"
+        if LaunchOperationState.PENDING in states:
+            return "runnable"
+        return "materialized"
 
 
 _DDL: Final[tuple[str, ...]] = (
@@ -452,12 +562,9 @@ _DDL: Final[tuple[str, ...]] = (
         CHECK ((hold_id IS NULL) OR (attempt_id IS NULL))
     ) STRICT
     """,
-    "CREATE INDEX research_spend_holds_recovery_idx "
-    "ON research_spend_holds(run_id, state)",
-    "CREATE INDEX research_spend_zero_recovery_idx "
-    "ON research_spend_zero_attempts(run_id, state)",
-    "CREATE INDEX research_spend_events_run_idx "
-    "ON research_spend_events(run_id, event_seq)",
+    "CREATE INDEX research_spend_holds_recovery_idx ON research_spend_holds(run_id, state)",
+    "CREATE INDEX research_spend_zero_recovery_idx ON research_spend_zero_attempts(run_id, state)",
+    "CREATE INDEX research_spend_events_run_idx ON research_spend_events(run_id, event_seq)",
     """
     CREATE TRIGGER research_spend_events_no_update
     BEFORE UPDATE ON research_spend_events
@@ -484,6 +591,77 @@ _MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
     1: (
         "ALTER TABLE research_spend_runs ADD COLUMN mode TEXT NOT NULL "
         "DEFAULT 'hard_ceiling' CHECK (mode = 'hard_ceiling')",
+    ),
+    2: (
+        """
+        CREATE TABLE research_launch_executions (
+            execution_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL UNIQUE REFERENCES research_spend_runs(run_id),
+            owner_id TEXT NOT NULL,
+            authority_kind TEXT NOT NULL,
+            launch_reservation_id TEXT NOT NULL UNIQUE,
+            launch_manifest_digest TEXT NOT NULL,
+            prepared_integrity_digest TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            route_digest TEXT NOT NULL,
+            pricing_digest TEXT NOT NULL,
+            workload_digest TEXT NOT NULL,
+            operation_count INTEGER NOT NULL CHECK(operation_count BETWEEN 1 AND 10000),
+            request_digest TEXT NOT NULL,
+            intent_json TEXT NOT NULL,
+            intent_sha256 TEXT NOT NULL,
+            created_at TEXT NOT NULL
+        ) STRICT
+        """,
+        """
+        CREATE TABLE research_launch_operations (
+            operation_id TEXT PRIMARY KEY,
+            execution_id TEXT NOT NULL REFERENCES research_launch_executions(execution_id),
+            ordinal INTEGER NOT NULL CHECK(ordinal BETWEEN 0 AND 9999),
+            stable_source_id TEXT NOT NULL,
+            question TEXT NOT NULL,
+            payload_digest TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            logical_operation_id TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('pending','blocked_provider_ineligible','claimed',
+                'dispatch_possible','unknown','settled','succeeded','failed_terminal')),
+            blocked_reason TEXT,
+            intent_json TEXT NOT NULL,
+            intent_sha256 TEXT NOT NULL,
+            hold_id TEXT REFERENCES research_spend_holds(hold_id),
+            result_json TEXT,
+            result_sha256 TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            UNIQUE(execution_id, ordinal), UNIQUE(execution_id, stable_source_id),
+            UNIQUE(execution_id, logical_operation_id),
+            CHECK((state='blocked_provider_ineligible')=(blocked_reason IS NOT NULL)),
+            CHECK((result_json IS NULL)=(result_sha256 IS NULL))
+        ) STRICT
+        """,
+        "CREATE INDEX research_launch_operations_order_idx ON research_launch_operations(execution_id, ordinal)",
+        """
+        CREATE TRIGGER research_launch_executions_no_update
+        BEFORE UPDATE ON research_launch_executions
+        BEGIN SELECT RAISE(ABORT, 'research launch executions are immutable'); END
+        """,
+        """
+        CREATE TRIGGER research_launch_executions_no_delete
+        BEFORE DELETE ON research_launch_executions
+        BEGIN SELECT RAISE(ABORT, 'research launch executions are immutable'); END
+        """,
+        """
+        CREATE TRIGGER research_launch_operations_no_update
+        BEFORE UPDATE ON research_launch_operations
+        BEGIN SELECT RAISE(ABORT, 'research launch operations are immutable'); END
+        """,
+        """
+        CREATE TRIGGER research_launch_operations_no_delete
+        BEFORE DELETE ON research_launch_operations
+        BEGIN SELECT RAISE(ABORT, 'research launch operations are immutable'); END
+        """,
     ),
 }
 
@@ -587,7 +765,7 @@ class ResearchSpendLedger:
                 raise LedgerIntegrityError("research spend schema has no matching application id")
             if version == 0:
                 connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
-                for index, statement in enumerate(_DDL, start=1):
+                for index, statement in enumerate((*_DDL, *_MIGRATIONS[2]), start=1):
                     connection.execute(statement)
                     self._checkpoint(f"schema:after_statement:{index}")
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -622,12 +800,12 @@ class ResearchSpendLedger:
         ceiling_cents: int,
     ) -> RunSnapshot:
         _required_text("command_key", command_key)
-        _bounded_int(
-            "ceiling_cents", ceiling_cents, minimum=1, maximum=MAX_AUTHORITY_CENTS
-        )
+        _bounded_int("ceiling_cents", ceiling_cents, minimum=1, maximum=MAX_AUTHORITY_CENTS)
         intent_json = _canonical({**_binding_payload(binding), "ceiling_cents": ceiling_cents})
         with self._write("create_run") as connection:
-            replay = self._replay(connection, command_key, "create_run", binding.run_id, intent_json)
+            replay = self._replay(
+                connection, command_key, "create_run", binding.run_id, intent_json
+            )
             if replay is not None:
                 return self._load_run(connection, binding.run_id)
             existing = connection.execute(
@@ -805,8 +983,7 @@ class ResearchSpendLedger:
             if run.status is not RunStatus.ACTIVE:
                 raise InvalidTransition(binding.run_id, run.status.value, "prepare local work")
             if connection.execute(
-                "SELECT 1 FROM research_spend_zero_attempts "
-                "WHERE run_id = ? AND attempt_key = ?",
+                "SELECT 1 FROM research_spend_zero_attempts WHERE run_id = ? AND attempt_key = ?",
                 (binding.run_id, intent.attempt_key),
             ).fetchone():
                 raise IdempotencyConflict("zero-cost attempt identity already exists")
@@ -847,9 +1024,7 @@ class ResearchSpendLedger:
             )
             return attempt
 
-    def mark_dispatch_possible(
-        self, command_key: str, hold_id: str
-    ) -> PaidHoldSnapshot:
+    def mark_dispatch_possible(self, command_key: str, hold_id: str) -> PaidHoldSnapshot:
         _required_text("command_key", command_key)
         _required_text("hold_id", hold_id)
         intent_json = _canonical({"hold_id": hold_id})
@@ -943,9 +1118,7 @@ class ResearchSpendLedger:
         actual_cents: int,
         evidence: Mapping[str, JsonScalar],
     ) -> RunSnapshot:
-        _bounded_int(
-            "actual_cents", actual_cents, minimum=0, maximum=MAX_ACTUAL_CENTS
-        )
+        _bounded_int("actual_cents", actual_cents, minimum=0, maximum=MAX_ACTUAL_CENTS)
         evidence_json = _canonical(evidence)
         if evidence_json == "{}":
             raise ValueError("settlement requires authoritative provider evidence")
@@ -1017,7 +1190,9 @@ class ResearchSpendLedger:
             self._advance_closed_reconciliation(connection, hold.run_id, now)
             run = self._load_run(connection, hold.run_id)
             result_json = self._run_result(run)
-            self._record_command(connection, command_key, "settle", hold_id, intent_json, result_json)
+            self._record_command(
+                connection, command_key, "settle", hold_id, intent_json, result_json
+            )
             self._checkpoint("settle:after_command")
             self._append_event(
                 connection,
@@ -1096,7 +1271,9 @@ class ResearchSpendLedger:
             self._advance_closed_reconciliation(connection, hold.run_id, now)
             run = self._load_run(connection, hold.run_id)
             result_json = self._run_result(run)
-            self._record_command(connection, command_key, "release", hold_id, intent_json, result_json)
+            self._record_command(
+                connection, command_key, "release", hold_id, intent_json, result_json
+            )
             self._checkpoint("release:after_command")
             self._append_event(
                 connection,
@@ -1130,9 +1307,7 @@ class ResearchSpendLedger:
     ) -> ZeroCostAttemptSnapshot:
         _required_text("outcome_digest", outcome_digest)
         kind = "complete_zero" if success else "fail_zero"
-        intent_json = _canonical(
-            {"attempt_id": attempt_id, "outcome_digest": outcome_digest}
-        )
+        intent_json = _canonical({"attempt_id": attempt_id, "outcome_digest": outcome_digest})
         with self._write(kind) as connection:
             replay = self._replay(connection, command_key, kind, attempt_id, intent_json)
             if replay is not None:
@@ -1163,7 +1338,9 @@ class ResearchSpendLedger:
             self._checkpoint(f"{kind}:after_state_update")
             attempt = self._load_zero(connection, attempt_id)
             result_json = self._zero_result(attempt)
-            self._record_command(connection, command_key, kind, attempt_id, intent_json, result_json)
+            self._record_command(
+                connection, command_key, kind, attempt_id, intent_json, result_json
+            )
             self._checkpoint(f"{kind}:after_command")
             self._append_event(
                 connection,
@@ -1176,15 +1353,11 @@ class ResearchSpendLedger:
             self._checkpoint(f"{kind}:after_event")
             return attempt
 
-    def close_execution(
-        self, command_key: str, run_id: str, reason: str
-    ) -> RunSnapshot:
+    def close_execution(self, command_key: str, run_id: str, reason: str) -> RunSnapshot:
         _required_text("reason", reason)
         intent_json = _canonical({"reason": reason, "run_id": run_id})
         with self._write("close_execution") as connection:
-            replay = self._replay(
-                connection, command_key, "close_execution", run_id, intent_json
-            )
+            replay = self._replay(connection, command_key, "close_execution", run_id, intent_json)
             if replay is not None:
                 return self._load_run(connection, run_id)
             run = self._load_run(connection, run_id)
@@ -1248,11 +1421,7 @@ class ResearchSpendLedger:
                     (run_id,),
                 ).fetchone()[0]
             )
-            status = (
-                RunStatus.CLOSED_UNRESOLVED
-                if unresolved
-                else RunStatus.CLOSED_RECONCILED
-            )
+            status = RunStatus.CLOSED_UNRESOLVED if unresolved else RunStatus.CLOSED_RECONCILED
             updated_run = connection.execute(
                 "UPDATE research_spend_runs SET held_cents = held_cents - ?, "
                 "status = ?, closed_at = ?, updated_at = ? WHERE run_id = ? "
@@ -1348,9 +1517,7 @@ class ResearchSpendLedger:
             if not rows:
                 return None
             if len(rows) != 1:
-                raise LedgerIntegrityError(
-                    "hard-ceiling session is bound to multiple owners"
-                )
+                raise LedgerIntegrityError("hard-ceiling session is bound to multiple owners")
             return str(rows[0]["owner_id"])
         finally:
             connection.close()
@@ -1369,9 +1536,7 @@ class ResearchSpendLedger:
         finally:
             connection.close()
 
-    def zero_attempt_for_key(
-        self, run_id: str, attempt_key: str
-    ) -> ZeroCostAttemptSnapshot | None:
+    def zero_attempt_for_key(self, run_id: str, attempt_key: str) -> ZeroCostAttemptSnapshot | None:
         """Return the durable receipt for one logical zero-cost operation."""
         _required_text("run_id", run_id)
         _required_text("attempt_key", attempt_key)
@@ -1429,6 +1594,270 @@ class ResearchSpendLedger:
         finally:
             connection.close()
 
+    def materialize_launch_execution(
+        self,
+        command_key: str,
+        binding: RunBinding,
+        intent: LaunchExecutionIntent,
+        operations: tuple[LaunchOperationIntent, ...],
+    ) -> tuple[LaunchExecutionSnapshot, bool]:
+        """Atomically fix a complete, ordered launch manifest and its receipt."""
+        _required_text("command_key", command_key)
+        if len(operations) != intent.operation_count:
+            raise BindingConflict("launch operation count changed")
+        if tuple(item.ordinal for item in operations) != tuple(range(len(operations))):
+            raise BindingConflict("launch operations are not exactly ordered")
+        if any(
+            item.provider != intent.provider or item.model != intent.model for item in operations
+        ):
+            raise BindingConflict("launch operation provider route changed")
+        execution_json = _canonical(
+            {name: cast(JsonScalar, getattr(intent, name)) for name in intent.__dataclass_fields__}
+        )
+        operation_jsons = tuple(self._launch_operation_json(item) for item in operations)
+        manifest_digest = _sha256("[" + ",".join(operation_jsons) + "]")
+        command_intent = _canonical(
+            {
+                "execution_intent_digest": _sha256(execution_json),
+                "execution_id": intent.execution_id,
+                "manifest_digest": manifest_digest,
+                "operation_count": len(operations),
+                "owner_id": binding.owner_id,
+                "run_id": binding.run_id,
+            }
+        )
+        with self._write("materialize_launch") as connection:
+            replay = self._replay(
+                connection, command_key, "materialize_launch", intent.execution_id, command_intent
+            )
+            if replay is not None:
+                return self._load_launch_execution(
+                    connection, intent.execution_id, binding.owner_id
+                ), False
+            self._require_binding(connection, binding)
+            collision = connection.execute(
+                "SELECT execution_id FROM research_launch_executions "
+                "WHERE run_id=? OR launch_reservation_id=? OR execution_id=?",
+                (binding.run_id, intent.launch_reservation_id, intent.execution_id),
+            ).fetchone()
+            if collision is not None:
+                raise IdempotencyConflict("launch execution identity already exists")
+            now = _now()
+            values = (
+                intent.execution_id,
+                binding.run_id,
+                binding.owner_id,
+                intent.authority_kind,
+                intent.launch_reservation_id,
+                intent.launch_manifest_digest,
+                intent.prepared_integrity_digest,
+                intent.provider,
+                intent.model,
+                intent.route_digest,
+                intent.pricing_digest,
+                intent.workload_digest,
+                intent.operation_count,
+                intent.request_digest,
+                execution_json,
+                _sha256(execution_json),
+                now,
+            )
+            connection.execute(
+                "INSERT INTO research_launch_executions VALUES ("
+                + ",".join("?" for _ in values)
+                + ")",
+                values,
+            )
+            for operation, raw in zip(operations, operation_jsons, strict=True):
+                connection.execute(
+                    "INSERT INTO research_launch_operations "
+                    "(operation_id,execution_id,ordinal,stable_source_id,question,payload_digest,"
+                    "provider,model,logical_operation_id,state,blocked_reason,intent_json,"
+                    "intent_sha256,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    (
+                        operation.operation_id,
+                        intent.execution_id,
+                        operation.ordinal,
+                        operation.stable_source_id,
+                        operation.question,
+                        operation.payload_digest,
+                        operation.provider,
+                        operation.model,
+                        operation.logical_operation_id,
+                        operation.state.value,
+                        operation.blocked_reason,
+                        raw,
+                        _sha256(raw),
+                        now,
+                        now,
+                    ),
+                )
+                self._checkpoint(f"materialize_launch:after_operation:{operation.ordinal}")
+            result = _canonical(
+                {"execution_id": intent.execution_id, "manifest_digest": manifest_digest}
+            )
+            self._record_command(
+                connection,
+                command_key,
+                "materialize_launch",
+                intent.execution_id,
+                command_intent,
+                result,
+            )
+            return self._load_launch_execution(
+                connection, intent.execution_id, binding.owner_id
+            ), True
+
+    def launch_execution_for_run(
+        self, run_id: str, owner_id: str
+    ) -> LaunchExecutionSnapshot | None:
+        _required_text("run_id", run_id)
+        _required_text("owner_id", owner_id)
+        connection = self._connect()
+        try:
+            row = connection.execute(
+                "SELECT execution_id FROM research_launch_executions WHERE run_id=? AND owner_id=?",
+                (run_id, owner_id),
+            ).fetchone()
+            return (
+                None
+                if row is None
+                else self._load_launch_execution(connection, str(row["execution_id"]), owner_id)
+            )
+        finally:
+            connection.close()
+
+    def record_launch_advance(
+        self, command_key: str, execution_id: str, owner_id: str
+    ) -> LaunchExecutionSnapshot:
+        """Record a pull command; blocked/terminal manifests remain stable and effect-free."""
+        command_intent = _canonical({"execution_id": execution_id, "owner_id": owner_id})
+        with self._write("advance_launch") as connection:
+            replay = self._replay(
+                connection, command_key, "advance_launch", execution_id, command_intent
+            )
+            snapshot = self._load_launch_execution(connection, execution_id, owner_id)
+            if replay is None:
+                self._record_command(
+                    connection,
+                    command_key,
+                    "advance_launch",
+                    execution_id,
+                    command_intent,
+                    _canonical({"execution_id": execution_id}),
+                )
+            return snapshot
+
+    @staticmethod
+    def _launch_operation_json(intent: LaunchOperationIntent) -> str:
+        return _canonical(
+            {
+                "blocked_reason": intent.blocked_reason,
+                "logical_operation_id": intent.logical_operation_id,
+                "model": intent.model,
+                "operation_id": intent.operation_id,
+                "ordinal": intent.ordinal,
+                "payload_digest": intent.payload_digest,
+                "provider": intent.provider,
+                "question": intent.question,
+                "stable_source_id": intent.stable_source_id,
+                "state": intent.state.value,
+            }
+        )
+
+    def _load_launch_execution(
+        self, connection: sqlite3.Connection, execution_id: str, owner_id: str
+    ) -> LaunchExecutionSnapshot:
+        row = connection.execute(
+            "SELECT * FROM research_launch_executions WHERE execution_id=? AND owner_id=?",
+            (execution_id, owner_id),
+        ).fetchone()
+        if row is None:
+            raise RunNotFound(execution_id)
+        raw = str(row["intent_json"])
+        if raw != _canonical(
+            {
+                name: cast(JsonScalar, row[name])
+                for name in LaunchExecutionIntent.__dataclass_fields__
+            }
+        ) or str(row["intent_sha256"]) != _sha256(raw):
+            raise LedgerIntegrityError("launch execution integrity conflict")
+        intent = LaunchExecutionIntent(**json.loads(raw))
+        op_rows = connection.execute(
+            "SELECT * FROM research_launch_operations WHERE execution_id=? ORDER BY ordinal",
+            (execution_id,),
+        ).fetchall()
+        if len(op_rows) != intent.operation_count:
+            raise LedgerIntegrityError("launch operation count conflict")
+        operations: list[LaunchOperationSnapshot] = []
+        for ordinal, op in enumerate(op_rows):
+            op_raw = str(op["intent_json"])
+            try:
+                value = json.loads(op_raw)
+                operation_intent = LaunchOperationIntent(
+                    **{**value, "state": LaunchOperationState(value["state"])}
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise LedgerIntegrityError("launch operation is malformed") from exc
+            expected = self._launch_operation_json(operation_intent)
+            scalar = (
+                operation_intent.operation_id,
+                execution_id,
+                operation_intent.ordinal,
+                operation_intent.stable_source_id,
+                operation_intent.question,
+                operation_intent.payload_digest,
+                operation_intent.provider,
+                operation_intent.model,
+                operation_intent.logical_operation_id,
+                operation_intent.state.value,
+                operation_intent.blocked_reason,
+            )
+            actual = tuple(
+                op[name]
+                for name in (
+                    "operation_id",
+                    "execution_id",
+                    "ordinal",
+                    "stable_source_id",
+                    "question",
+                    "payload_digest",
+                    "provider",
+                    "model",
+                    "logical_operation_id",
+                    "state",
+                    "blocked_reason",
+                )
+            )
+            if (
+                ordinal != operation_intent.ordinal
+                or actual != scalar
+                or op_raw != expected
+                or str(op["intent_sha256"]) != _sha256(op_raw)
+                or (
+                    (op["result_json"] is not None)
+                    and str(op["result_sha256"]) != _sha256(str(op["result_json"]))
+                )
+            ):
+                raise LedgerIntegrityError("launch operation integrity conflict")
+            operations.append(
+                LaunchOperationSnapshot(
+                    execution_id=execution_id,
+                    intent=operation_intent,
+                    hold_id=None if op["hold_id"] is None else str(op["hold_id"]),
+                    result_json=None if op["result_json"] is None else str(op["result_json"]),
+                    created_at=str(op["created_at"]),
+                    updated_at=str(op["updated_at"]),
+                )
+            )
+        return LaunchExecutionSnapshot(
+            run_id=str(row["run_id"]),
+            owner_id=owner_id,
+            intent=intent,
+            operations=tuple(operations),
+            created_at=str(row["created_at"]),
+        )
+
     def integrity_check(self) -> str:
         connection = self._connect()
         try:
@@ -1437,6 +1866,14 @@ class ResearchSpendLedger:
             ).fetchall()
             for row in run_ids:
                 self._load_run(connection, str(row["run_id"]))
+            executions = connection.execute(
+                "SELECT execution_id, owner_id FROM research_launch_executions "
+                "ORDER BY execution_id"
+            ).fetchall()
+            for row in executions:
+                self._load_launch_execution(
+                    connection, str(row["execution_id"]), str(row["owner_id"])
+                )
             return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
         finally:
             connection.close()
@@ -1458,9 +1895,7 @@ class ResearchSpendLedger:
                 (now, run_id),
             )
 
-    def _require_binding(
-        self, connection: sqlite3.Connection, binding: RunBinding
-    ) -> RunSnapshot:
+    def _require_binding(self, connection: sqlite3.Connection, binding: RunBinding) -> RunSnapshot:
         run = self._load_run(connection, binding.run_id)
         if run.binding != binding:
             raise BindingConflict("owner, session, plan, revision, mode, or currency changed")
@@ -1510,9 +1945,7 @@ class ResearchSpendLedger:
             closed_at=None if row["closed_at"] is None else str(row["closed_at"]),
         )
 
-    def _load_hold(
-        self, connection: sqlite3.Connection, hold_id: str
-    ) -> PaidHoldSnapshot:
+    def _load_hold(self, connection: sqlite3.Connection, hold_id: str) -> PaidHoldSnapshot:
         row = connection.execute(
             "SELECT * FROM research_spend_holds WHERE hold_id = ?", (hold_id,)
         ).fetchone()
@@ -1559,9 +1992,7 @@ class ResearchSpendLedger:
                 else int(row["authorized_applied_cents"])
             ),
             dispatch_possible_at=(
-                None
-                if row["dispatch_possible_at"] is None
-                else str(row["dispatch_possible_at"])
+                None if row["dispatch_possible_at"] is None else str(row["dispatch_possible_at"])
             ),
             resolved_at=None if row["resolved_at"] is None else str(row["resolved_at"]),
             created_at=str(row["created_at"]),
@@ -1600,9 +2031,7 @@ class ResearchSpendLedger:
                 replay_class=ZeroReplayClass(str(row["replay_class"])),
             ),
             state=ZeroCostState(str(row["state"])),
-            outcome_digest=(
-                None if row["outcome_digest"] is None else str(row["outcome_digest"])
-            ),
+            outcome_digest=(None if row["outcome_digest"] is None else str(row["outcome_digest"])),
             resolved_at=None if row["resolved_at"] is None else str(row["resolved_at"]),
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
@@ -1812,9 +2241,7 @@ class ResearchSpendLedger:
                 if value["dispatch_possible_at"] is None
                 else str(value["dispatch_possible_at"])
             ),
-            resolved_at=(
-                None if value["resolved_at"] is None else str(value["resolved_at"])
-            ),
+            resolved_at=(None if value["resolved_at"] is None else str(value["resolved_at"])),
             created_at=str(value["created_at"]),
             updated_at=str(value["updated_at"]),
         )
@@ -1857,9 +2284,7 @@ class ResearchSpendLedger:
             outcome_digest=(
                 None if value["outcome_digest"] is None else str(value["outcome_digest"])
             ),
-            resolved_at=(
-                None if value["resolved_at"] is None else str(value["resolved_at"])
-            ),
+            resolved_at=(None if value["resolved_at"] is None else str(value["resolved_at"])),
             created_at=str(value["created_at"]),
             updated_at=str(value["updated_at"]),
         )

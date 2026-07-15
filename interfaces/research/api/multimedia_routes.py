@@ -73,6 +73,7 @@ from substrate.multimedia.read_model import (
     SteeringPreviewResponse,
 )
 from substrate.multimedia.research_intent import ResearchIntentLedger
+from substrate.multimedia.research_launch_executor import MultimediaResearchLaunchExecutor
 from substrate.multimedia.research_plan import (
     InvestigationActivationQuote,
     PreparedInvestigation,
@@ -142,6 +143,12 @@ from .multimedia_research_intent_routes import (
     ResearchIntentRouteRuntime,
     get_multimedia_research_intent_runtime,
     multimedia_research_intent_router,
+)
+from .multimedia_research_launch_routes import (
+    get_multimedia_research_launch_executor,
+)
+from .multimedia_research_launch_routes import (
+    router as multimedia_research_launch_router,
 )
 from .multimedia_research_plan_routes import (
     ResearchPlanRouteRuntime,
@@ -221,9 +228,11 @@ def _jsonable(value: object) -> object:
 
 
 def _canonical_digest(value: object) -> str:
-    return hashlib.sha256(json.dumps(
-        _jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")).hexdigest()
+    return hashlib.sha256(
+        json.dumps(
+            _jsonable(value), ensure_ascii=False, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+    ).hexdigest()
 
 
 def _production_activation_quote_resolver(
@@ -240,6 +249,7 @@ def _production_activation_quote_resolver(
     decomposition/internal-node work and leaf retrieval/synthesis work; cached
     pricing is never assumed.
     """
+
     def resolve(prepared: PreparedInvestigation, route_policy: str) -> InvestigationActivationQuote:
         tier_name = _ACTIVATION_POLICY_TIERS.get(route_policy)
         if tier_name is None:
@@ -258,7 +268,12 @@ def _production_activation_quote_resolver(
             if not isinstance(tier, dict) or not isinstance(limits, dict):
                 raise ValueError
             provider, model, pricing = tier["provider"], tier["model"], tier["pricing"]
-            if not isinstance(provider, str) or not provider or not isinstance(model, str) or not model:
+            if (
+                not isinstance(provider, str)
+                or not provider
+                or not isinstance(model, str)
+                or not model
+            ):
                 raise ValueError
             if not isinstance(pricing, dict):
                 raise ValueError
@@ -267,25 +282,40 @@ def _production_activation_quote_resolver(
             cached_rate = Decimal(str(pricing["cached_input_per_mtok"]))
             context_tokens = limits["context_budget_tokens"]
             output_tokens = limits["max_tokens"]
-            if (type(context_tokens) is not int or context_tokens <= 0
-                    or type(output_tokens) is not int or output_tokens <= 0
-                    or any(not rate.is_finite() or rate <= 0
-                           for rate in (input_rate, output_rate, cached_rate))):
+            if (
+                type(context_tokens) is not int
+                or context_tokens <= 0
+                or type(output_tokens) is not int
+                or output_tokens <= 0
+                or any(
+                    not rate.is_finite() or rate <= 0
+                    for rate in (input_rate, output_rate, cached_rate)
+                )
+            ):
                 raise ValueError
             call_count = prepared.total_node_count + prepared.leaf_question_count
-            if (type(prepared.total_node_count) is not int
-                    or type(prepared.leaf_question_count) is not int or call_count <= 0):
+            if (
+                type(prepared.total_node_count) is not int
+                or type(prepared.leaf_question_count) is not int
+                or call_count <= 0
+            ):
                 raise ValueError
-            ceiling_usd = Decimal(call_count) * (
-                Decimal(context_tokens) * input_rate
-                + Decimal(output_tokens) * output_rate
-            ) / _MILLION
+            ceiling_usd = (
+                Decimal(call_count)
+                * (Decimal(context_tokens) * input_rate + Decimal(output_tokens) * output_rate)
+                / _MILLION
+            )
             ceiling_cents = int((ceiling_usd * 100).to_integral_value(rounding=ROUND_CEILING))
             if not 0 < ceiling_cents <= _MAX_QUOTE_CENTS:
                 raise ValueError
         except (
-            KeyError, OSError, OverflowError, TypeError, ValueError,
-            InvalidOperation, yaml.YAMLError,
+            KeyError,
+            OSError,
+            OverflowError,
+            TypeError,
+            ValueError,
+            InvalidOperation,
+            yaml.YAMLError,
         ) as exc:
             raise ValueError("activation quote unavailable") from exc
 
@@ -303,39 +333,56 @@ def _production_activation_quote_resolver(
         }
         pricing_digest = _canonical_digest(pricing_binding)
         prepared_digest = _canonical_digest(vars(prepared))
-        workload_digest = _canonical_digest({
-            "investigation_id": prepared.investigation_id,
-            "prepared_integrity_digest": prepared_digest,
-            "total_node_count": prepared.total_node_count,
-            "leaf_question_count": prepared.leaf_question_count,
-        })
-        quote_id = "aq_" + _canonical_digest({
-            "dispatch_config_digest": dispatch_digest,
-            "pricing_digest": pricing_digest,
-            "route_policy": route_policy,
-            "workload_digest": workload_digest,
-        })[:48]
+        workload_digest = _canonical_digest(
+            {
+                "investigation_id": prepared.investigation_id,
+                "prepared_integrity_digest": prepared_digest,
+                "total_node_count": prepared.total_node_count,
+                "leaf_question_count": prepared.leaf_question_count,
+            }
+        )
+        quote_id = (
+            "aq_"
+            + _canonical_digest(
+                {
+                    "dispatch_config_digest": dispatch_digest,
+                    "pricing_digest": pricing_digest,
+                    "route_policy": route_policy,
+                    "workload_digest": workload_digest,
+                }
+            )[:48]
+        )
         clock_value = clock()
         if clock_value.tzinfo is None or clock_value.utcoffset() is None:
             raise ValueError("activation quote unavailable")
         issued = clock_value.astimezone(UTC).replace(microsecond=0)
         expires = issued + timedelta(hours=24)
         return InvestigationActivationQuote(
-            schema_version=1, route_policy=route_policy, resolved_tier=tier_name,
-            provider=provider, model=model, dispatch_config_digest=dispatch_digest,
-            pricing_source=_PRICING_SOURCE, pricing_digest=pricing_digest,
-            workload_digest=workload_digest, quoted_ceiling_cents=ceiling_cents,
-            quote_id=quote_id, issued_at=issued.isoformat().replace("+00:00", "Z"),
+            schema_version=1,
+            route_policy=route_policy,
+            resolved_tier=tier_name,
+            provider=provider,
+            model=model,
+            dispatch_config_digest=dispatch_digest,
+            pricing_source=_PRICING_SOURCE,
+            pricing_digest=pricing_digest,
+            workload_digest=workload_digest,
+            quoted_ceiling_cents=ceiling_cents,
+            quote_id=quote_id,
+            issued_at=issued.isoformat().replace("+00:00", "Z"),
             expires_at=expires.isoformat().replace("+00:00", "Z"),
         )
 
     return resolve
+
+
 multimedia_router.include_router(multimedia_local_audible_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_paid_audio_playback_router)
 multimedia_router.include_router(multimedia_listening_progress_router)
 multimedia_router.include_router(multimedia_research_intent_router)
 multimedia_router.include_router(multimedia_research_plan_router)
+multimedia_router.include_router(multimedia_research_launch_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
@@ -803,7 +850,10 @@ def _resolve_research_audio_authority(
                 plan=record.plan,
             )
         else:
-            if production_worker_runtime is None or production_worker_runtime.audio_playback is None:
+            if (
+                production_worker_runtime is None
+                or production_worker_runtime.audio_playback is None
+            ):
                 raise LookupError("research intent authority is unavailable")
             metadata = production_worker_runtime.audio_playback.metadata(
                 asset_id=asset_id,
@@ -968,6 +1018,7 @@ def register_multimedia_routes(app: FastAPI) -> None:
             app.dependency_overrides[get_multimedia_paid_audio_playback_runtime] = lambda: (
                 paid_audio_runtime
             )
+
     def _owner_digest(operator_id: str) -> str:
         encoded = operator_id.strip().encode("utf-8")
         if not encoded or len(encoded) > 512 or any(byte < 32 or byte == 127 for byte in encoded):
@@ -1006,6 +1057,14 @@ def register_multimedia_routes(app: FastAPI) -> None:
         app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: (
             research_plan_runtime
         )
+        research_launch_executor = MultimediaResearchLaunchExecutor(
+            research_plan_runtime.plans, research_plan_runtime.spend_ledger
+        )
+        research_launch_executor.owner_digest_resolver = _owner_digest
+        app.dependency_overrides[get_multimedia_research_launch_executor] = lambda: (
+            research_launch_executor
+        )
+
     # Listening progress: resolve audio identity from the store's audio_production_link
     # or the local audible playback runtime.  Both local and paid audio use the same
     # progress contract and store.
@@ -1023,6 +1082,7 @@ def register_multimedia_routes(app: FastAPI) -> None:
             kind=str(record.asset.kind),
             mode=record.mode,
         )
+
     # Always available — the store is always present; the audio_identity_resolver
     # raises LookupError when the asset has no registered audio.
     _lp_store = ListeningProgressStore(get_store().root)

@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cycle 29: Durable Research Launch Executor</title></head>
+<body>
+<main>
+  <h1>Cycle 29: Durable research launch executor</h1>
+  <p><strong>Status:</strong> executable specification. <strong>Base:</strong> Cycle 28 reviewed head <code>c74d012c8df93442f011fec326be6e814b59ed7a</code>.</p>
+
+  <section id="verdict">
+    <h2>Architecture verdict</h2>
+    <p>Cycle 29 does not call the legacy cascade launch route. Its JSONL events are best-effort, graph promotion and task queues are process-local, and no production provider adapter currently proves the durable idempotency, hidden-retry, result-recovery, and authoritative reconciliation contract required by <code>ResearchProviderGateway</code>. Treating those mechanisms as execution authority would make crash recovery guess whether work or spend occurred.</p>
+    <p>The first truthful executor boundary is a durable, pull-driven operation manifest in the same research-spend SQLite authority as the Cycle 28 run. Materialization fixes every leaf operation before work may be claimed. Advancement processes at most one operation and may only dispatch through an exact eligible adapter; otherwise it records a stable blocked state without a provider call.</p>
+  </section>
+
+  <section id="values">
+    <h2>Five load-bearing values</h2>
+    <ol>
+      <li><strong>One authority domain:</strong> executable state, operation identity, spend holds, and recovery evidence live in the shared spend SQLite database.</li>
+      <li><strong>Effectively-once honesty:</strong> local transitions are transactional; external effects are at-least-once recovery attempts made effectively once only where a provider enforces the same immutable key and supports reconciliation.</li>
+      <li><strong>Intent before effect:</strong> the complete operation manifest commits before a lease, hold, event, task, graph mutation, network request, or provider call.</li>
+      <li><strong>Unknown is durable:</strong> uncertainty after the dispatch-possible marker is never retried blindly, released from local inference, or projected as failure/success.</li>
+      <li><strong>Projection is not authority:</strong> JSONL, DuckDB, UI state, asyncio registries, and future HTML output may project execution but cannot determine what runs next.</li>
+    </ol>
+  </section>
+
+  <section id="schema">
+    <h2>Spend-ledger schema v3</h2>
+    <p>Add one <code>research_launch_executions</code> row per Cycle 28 run and one ordered <code>research_launch_operations</code> row per prepared-tree leaf. Both use explicit scalar columns, bounded canonical JSON, SHA-256 integrity digests, append-only command receipts, and foreign keys to <code>research_spend_runs</code>. Schema v2 migrates transactionally without rewriting existing runs, holds, attempts, commands, or audit events.</p>
+    <p>The execution binds owner, launch reservation, run, session, launch manifest, prepared integrity, provider, model, route/config/pricing/workload digests, operation count, request digest, and creation time. Its state is derived from operations: <code>materialized</code>, <code>runnable</code>, <code>active</code>, <code>blocked</code>, <code>recovery_required</code>, or <code>terminal</code>.</p>
+    <p>Each operation has a deterministic <code>mlop_</code> identity over the launch reservation, manifest digest, stable leaf node ID, ordinal, and contract version. It binds the exact question and provider-visible payload digest, provider/model, deterministic gateway logical-operation identity, state, optional hold/result authority, and timestamps. Valid states are <code>pending</code>, <code>blocked_provider_ineligible</code>, <code>claimed</code>, <code>dispatch_possible</code>, <code>unknown</code>, <code>settled</code>, <code>succeeded</code>, and <code>failed_terminal</code>.</p>
+  </section>
+
+  <section id="materialize">
+    <h2>Atomic materialization</h2>
+    <ol>
+      <li>Authenticate the owner and reopen the exact Cycle 28 launch reservation, prepared snapshot, and spend run.</li>
+      <li>Require the run binding and ceiling to match the reservation. Unlike Cycle 28 readiness, an existing execution may legitimately have holds or spend; replay validates rather than requires pristine balances.</li>
+      <li>Derive ordered leaves only from the immutable prepared tree. Reject missing/duplicate leaf node IDs, count drift, malformed questions, or any manifest/source mismatch.</li>
+      <li>Build the complete bounded execution and operation records before entering the transaction.</li>
+      <li>Under one spend-ledger <code>BEGIN IMMEDIATE</code>, replay the exact command or insert the execution plus every operation. Any failure rolls back the complete manifest.</li>
+      <li>Classify the exact bound provider/model route through a server-owned adapter registry. Absence or ineligibility creates durable blocked operations; it never reroutes or calls a provider.</li>
+    </ol>
+    <p>Materialization creates no asyncio task, scheduler entry, JSONL event, graph row, provider hold, network request, or provider call.</p>
+  </section>
+
+  <section id="advance">
+    <h2>One-operation advancement</h2>
+    <p><code>advance</code> is synchronous and advances at most one lowest-ordinal nonterminal operation. A deterministic command key and short durable lease prevent routine concurrent claims. Leases coordinate workers but do not prove provider exactly-once behavior.</p>
+    <p>For an eligible route, the executor uses <code>ResearchProviderGateway.dispatch_paid</code> with the existing run binding, exact logical operation ID, server-owned projection, immutable operation payload, and exact adapter. The gateway remains the sole creator of provider holds and dispatch-possible markers. Settled responses persist only a bounded canonical result envelope or content-addressed artifact reference before the operation becomes succeeded.</p>
+    <p>On restart: expired claims without a hold return to pending; reserved holds without a dispatch marker are safely released by the existing ledger recovery rule; dispatch-possible or unknown holds reconcile and never resend blindly; settled work missing a recoverable result remains blocked; succeeded and failed-terminal operations never call the provider again.</p>
+  </section>
+
+  <section id="api">
+    <h2>Private API</h2>
+    <ul>
+      <li><code>POST /multimedia/investigations/{investigation_id}/launch-executions</code> accepts only <code>launch_reservation_id</code> and a strict 16-128 character idempotency key. It returns <code>201</code> for first materialization and <code>200</code> for exact replay.</li>
+      <li><code>POST /multimedia/investigations/{investigation_id}/launch-execution/advance</code> accepts a strict command key and advances no more than one operation.</li>
+      <li><code>GET /multimedia/investigations/{investigation_id}/launch-execution</code> verifies and projects the durable execution without mutation.</li>
+    </ul>
+    <p>The public receipt exposes execution state, operation totals by state, next ordinal, blocked/recovery reason, execution-started truth, and bounded spend totals. It omits owner digests, internal commands, leases, raw provider idempotency keys/evidence, private paths, and exceptions. Every response is <code>private, no-store</code>; missing and foreign resources are indistinguishable.</p>
+  </section>
+
+  <section id="acceptance">
+    <h2>Acceptance evidence</h2>
+    <ul>
+      <li>Migration, rollback, exact replay, changed-intent conflict, owner isolation, concurrency, deterministic identity, strict canonical decoding, scalar tamper, tree/count drift, and bounded-record tests pass.</li>
+      <li>Materialization tests prove exactly one execution and the complete ordered leaf set commit together, with no task, event, graph, hold, network, or provider side effect.</li>
+      <li>Blocked-route tests prove missing, mismatched, hidden-retry, non-idempotent, or non-reconcilable adapters persist stable refusal and make zero provider calls.</li>
+      <li>Advancement tests cover at most one operation, exact command replay, concurrent claims, hold reservation, dispatch-possible crash, provider acceptance timeout, reconciliation, settlement, breach, bounded result persistence, and terminal replay.</li>
+      <li>Fresh-executor crash tests after every durable checkpoint prove no rematerialization, blind resend, double hold, double settlement, fabricated result, or authority widening.</li>
+      <li>JSONL disabled/failing, DuckDB unavailable, and all asyncio tasks destroyed do not alter executable state or spend truth.</li>
+      <li>Focused and full multimedia/cascade/spend/provider tests, Ruff, compileall, HTML parsing, frontend typecheck/build, HardenX strict, and heterogeneous adversarial review pass before publication.</li>
+    </ul>
+  </section>
+
+  <section id="exclusions">
+    <h2>Explicit exclusions</h2>
+    <p>This cycle does not call <code>CascadeSession.launch</code>, create background tasks, fan out leaves concurrently, run Exa/Browserbase, use an adapter that cannot reconcile, append authoritative JSONL lifecycle events, promote into DuckDB, create graph edges, run synthesis, close the spend run, or claim exactly-once. If no eligible production adapter exists, the shipped product truth is an inspectable blocked execution manifest ready for a later adapter cycle.</p>
+  </section>
+</main>
+</body>
+</html>
