@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
@@ -20,6 +21,14 @@ const semantic = [
 ] as const;
 
 afterEach(cleanup);
+
+function sourceFiles(directory: string): string[] {
+  return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(directory, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return /\.[cm]?[jt]sx?$/.test(entry.name) ? [path] : [];
+  });
+}
 
 describe("Werner semantic reactions", () => {
   it.each(semantic)(
@@ -55,6 +64,52 @@ describe("Werner semantic reactions", () => {
     const src = container.querySelector("img")?.getAttribute("src") ?? "";
     expect(src).toContain("werner_default");
     expect(src).not.toContain("caught_a_fish");
+  });
+
+  it("uses the authored head tilt only for the public curious/thinking semantic", () => {
+    const curious = render(<WernerCurious size={64} reduced={false} />);
+    const root = curious.container.firstElementChild;
+    expect(root?.getAttribute("data-werner-mood")).toBe("thinking");
+    expect(root?.getAttribute("data-duration-ms")).toBe("1200");
+    expect(
+      curious.container.querySelector(
+        'img[data-werner-authored-pose="headTilt"]',
+      ),
+    ).toBeTruthy();
+    expect(
+      curious.container.querySelector("img")?.getAttribute("src"),
+    ).toContain("werner_head_tilt");
+    expect(
+      curious.container.querySelector(".werner-semantic__evidence"),
+    ).toBeTruthy();
+    curious.unmount();
+
+    for (const [Reaction, source] of [
+      [WernerHappy, "werner_default"],
+      [WernerDizzy, "werner_lost"],
+      [WernerHit, "werner_default"],
+    ] as const) {
+      const other = render(<Reaction size={64} reduced={false} />);
+      expect(other.container.querySelector("img")?.getAttribute("src")).toContain(
+        source,
+      );
+      expect(
+        other.container.querySelector('[data-werner-authored-pose="headTilt"]'),
+      ).toBeNull();
+      other.unmount();
+    }
+  });
+
+  it("keeps the head-tilt raster import exclusive to the private pose map", () => {
+    expect(
+      sourceFiles("src")
+        .filter((path) => !/\.(?:test|stories)\.[cm]?[jt]sx?$/.test(path))
+        .filter((path) =>
+          readFileSync(path, "utf8").includes(
+            "werner_head_tilt_v1_transparent.png",
+          ),
+        ),
+    ).toEqual([join("src", "brand", "werner", "WernerAuthoredPose.tsx")]);
   });
 
   it.each(semantic)("renders a motionless but meaningful %s frame", (kind) => {
@@ -105,6 +160,6 @@ describe("Werner semantic reactions", () => {
     );
     expect(
       [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
-    ).toEqual(["react", "../../Werner"]);
+    ).toEqual(["react", "../../Werner", "../WernerAuthoredPose"]);
   });
 });

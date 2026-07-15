@@ -88,12 +88,17 @@
 .werner-sleep-body {
   animation: werner-sleep-breath 2400ms ease-in-out infinite;
   transform-origin: 50% 70%;
+  clip-path: inset(38.6% 0 0 0);
 }
-.werner-zzz {
+.werner-sleep-zzz-layer {
   animation: werner-zzz-drift 2400ms ease-out infinite;
+  clip-path: inset(0 0 61.4% 0);
 }
-.werner-zzz-2 { animation-delay: 800ms; }
-.werner-zzz-3 { animation-delay: 1600ms; }
+.werner-sleep-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 
 /* ─── Thinking dots (right-to-left aurora pulse) ──────────────────── */
 @keyframes werner-thinking-dot {
@@ -174,7 +179,7 @@
   .werner-waddle-foot-l,
   .werner-waddle-foot-r,
   .werner-sleep-body,
-  .werner-zzz,
+  .werner-sleep-zzz-layer,
   .werner-thinking-dot-1,
   .werner-thinking-dot-2,
   .werner-thinking-dot-3,
@@ -190,7 +195,7 @@
      tell a Werner is animating in spirit, just without motion. */
   .werner-toboggan { transform: rotate(0deg); }
   .werner-waddle { transform: rotate(0deg); }
-  .werner-zzz { opacity: 0.7; }
+  .werner-sleep-zzz-layer { opacity: 0.8; transform: translate(0, 0); }
   .werner-thinking-dot-1,
   .werner-thinking-dot-2,
   .werner-thinking-dot-3,

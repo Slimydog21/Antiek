@@ -38,11 +38,13 @@ under `prefers-reduced-motion: reduce`.
 ```text
 Werner.tsx                Canonical live mark and four-mood pose map.
 werner/
+  WernerAuthoredPose.tsx  Private sleeping + head-tilt source map.
   animated/               Thin wrappers that compose Werner with motion.
     animations.css        Keyframes and the reduced-motion collapse.
     WernerThinking.tsx    Thinking pose + external aurora thinking dots.
     WernerWaddle.tsx      Idle pose with route-transition waddle.
-    WernerCaughtAFish.tsx / WernerSleeping.tsx / WernerTobogganSpinner.tsx
+    WernerSleeping.tsx    Authored sleep body + Z layers from one source.
+    WernerCaughtAFish.tsx / WernerTobogganSpinner.tsx
     Animations.stories.tsx, index.ts
   poses/                  Krea-generated source and transparent runtime PNGs.
     anchor/               Default runtime pose + hero source art.
@@ -70,7 +72,8 @@ Werner appears in exactly four slots and nowhere else:
 Never mid-content. Never over controls. Never more than one on screen. Adding a
 fifth surface or mood is a brand decision, not an import.
 
-Dedicated sleeping and tobogganing rasters remain source candidates, not live
-canonical moods. Using them requires a separate decision about private
-animation poses versus the public four-mood API; wrappers must not silently
-fork Werner's identity in the meantime.
+Authored animation poses are private illustration sources, not public moods.
+`WernerAuthoredPose.tsx` centralizes those sources so wrappers cannot import
+rasters ad hoc. Sleeping and curious head-tilt are live through that seam.
+Tobogganing remains a candidate until its baked speed marks can be separated
+from the overlapping body without duplicate effects.

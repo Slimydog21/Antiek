@@ -79,17 +79,48 @@ describe("Werner mark", () => {
     expect(css).toContain("transform-origin: 50% 53%");
   });
 
-  it("composes the crop inside sleeping motion and the dizzy reduced still", () => {
-    const sleeping = render(<WernerSleeping size={96} />);
-    const sleepViewport = sleeping.container.querySelector(
-      ".werner-sleep-body.werner-pose-viewport--empty",
+  it("layers the authored sleeping pose without widening the mood API", () => {
+    const sleeping = render(
+      <WernerSleeping size={96} label="Werner is resting" />,
     );
-    expect(sleepViewport).toBeTruthy();
-    expect(sleepViewport?.querySelector("img")?.className).toBe(
-      "werner-pose--empty",
+    const root = sleeping.getByRole("img", { name: "Werner is resting" });
+    const layers = root.querySelectorAll(
+      'img[data-werner-authored-pose="sleeping"]',
     );
+    expect(layers).toHaveLength(2);
+    expect(layers[0]?.getAttribute("src")).toBe(layers[1]?.getAttribute("src"));
+    expect(layers[0]?.className).toContain("werner-sleep-body");
+    expect(layers[1]?.className).toContain("werner-sleep-zzz-layer");
+    expect(root.querySelectorAll('[aria-hidden="true"]')).toHaveLength(2);
+
+    const empty = render(<Werner mood="empty" size={96} />);
+    expect(layers[0]?.getAttribute("src")).not.toBe(
+      empty.container.querySelector("img")?.getAttribute("src"),
+    );
+    empty.unmount();
     sleeping.unmount();
 
+    const still = render(<WernerSleeping size={96} reduced />);
+    expect(still.getByRole("img").getAttribute("data-reduced")).toBe("true");
+    expect(
+      still.container.querySelectorAll(
+        'img[data-werner-authored-pose="sleeping"]',
+      ),
+    ).toHaveLength(1);
+    expect(still.container.querySelector(".werner-sleep-still")).toBeTruthy();
+    expect(still.container.querySelector(".werner-sleep-body")).toBeNull();
+    expect(still.container.querySelector(".werner-sleep-zzz-layer")).toBeNull();
+
+    const css = fs.readFileSync(
+      path.join(__dirname, "werner/animated/animations.css"),
+      "utf8",
+    );
+    expect(css).toContain("clip-path: inset(38.6% 0 0 0)");
+    expect(css).toContain("clip-path: inset(0 0 61.4% 0)");
+    expect(css).toContain(".werner-sleep-zzz-layer");
+  });
+
+  it("keeps the Cycle 563 empty crop in the reduced dizzy still", () => {
     const dizzy = render(<WernerDizzy size={88} reduced />);
     const reaction = dizzy.container.querySelector(
       '[data-werner-reaction="dizzy"][data-reduced="true"]',

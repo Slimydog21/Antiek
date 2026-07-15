@@ -78,11 +78,18 @@ interface EmoteViewProps {
  * one-shot composition per semantic event.
  */
 export function EmoteView({ kind, size, reduced }: EmoteViewProps): ReactNode {
-  if (reduced && (kind === "thinking" || kind === "sleeping")) {
-    // Thinking/sleeping retain their existing canonical stills. The four
-    // semantic reactions own meaningful static chrome in their reduced path.
-    const mood = kind === "sleeping" ? "empty" : "thinking";
-    return <Werner mood={mood} size={size} label={`Werner ${kind}`} />;
+  if (reduced && kind === "thinking") {
+    return <Werner mood="thinking" size={size} label="Werner thinking" />;
+  }
+
+  if (reduced && kind === "sleeping") {
+    return (
+      <WernerSleeping
+        size={size}
+        label="Werner sleeping"
+        reduced
+      />
+    );
   }
 
   switch (kind) {

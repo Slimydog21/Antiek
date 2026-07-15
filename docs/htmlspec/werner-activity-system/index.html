@@ -247,6 +247,8 @@
           ><span class="tag green">SPR-11 implemented</span
           ><span class="tag green">SPR-12 implemented</span
           ><span class="tag green">SPR-13 implemented</span
+          ><span class="tag green">SPR-14 implemented</span
+          ><span class="tag green">SPR-15 implemented</span
           ><span class="tag yellow">Owner: Antiek design goal</span
           ><span class="tag blue">HTML-native</span
           ><span class="tag">Updated 2026-07-14</span>
@@ -587,6 +589,32 @@
               ><span class="tag">Depends on SPR-12</span>
             </div></a
           >
+          <a class="card" href="sprint-14-authored-sleeping-pose.html"
+            ><span class="id">SPR-14</span
+            ><strong>Authored sleeping pose</strong
+            ><span
+              >Replace the lost-pose approximation with the existing authored
+              sleeping illustration while keeping private poses distinct from
+              the four public moods.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-13</span>
+            </div></a
+          >
+          <a class="card" href="sprint-15-authored-curious-pose.html"
+            ><span class="id">SPR-15</span
+            ><strong>Authored curious pose</strong
+            ><span
+              >Give the curious reaction its authored head-tilt illustration
+              without changing the public thinking semantic or reaction
+              evidence contract.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-14</span>
+            </div></a
+          >
         </div>
         <h3>Freshness-gated next candidates</h3>
         <table>
@@ -725,11 +753,11 @@
         class="block"
         id="harness-hint-run"
         data-harness-default-pattern="adversarial-verification"
-        data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07,SPR-08,SPR-09,SPR-10,SPR-11,SPR-12,SPR-13"
+        data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07,SPR-08,SPR-09,SPR-10,SPR-11,SPR-12,SPR-13,SPR-14,SPR-15"
       >
         <h2>Execution harness hint</h2>
         <p>
-          All thirteen sprints are file-coupled and run inline. Verification must
+          All fifteen sprints are file-coupled and run inline. Verification must
           be heterogeneous and try to prove behavioral drift: route determinism,
           transition cleanup, exactly-one-instrument mounting, custom-cursor
           visibility, edge-only product reactions, fixed-step input cardinality,
