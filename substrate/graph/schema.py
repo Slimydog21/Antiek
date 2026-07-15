@@ -922,10 +922,10 @@ CREATE TABLE IF NOT EXISTS outline_blocks (
     section_id        TEXT NOT NULL REFERENCES deliverable_sections(section_id),
     block_kind        TEXT NOT NULL CHECK (block_kind IN (
         'insight', 'open_question', 'operator_note', 'claim',
-        'user_authored', 'synthesized'
+        'user_authored', 'synthesized', 'machine_note'
     )),
     provenance_kind   TEXT NOT NULL CHECK (provenance_kind IN (
-        'graph_node', 'user_authored', 'synthesized', 'brainstorm'
+        'graph_node', 'user_authored', 'synthesized', 'brainstorm', 'machine_note'
     )),
     -- Soft reference to the source graph node (NULL for user-originated
     -- blocks). No FK — see the module note on dangling detection.
@@ -1375,6 +1375,60 @@ CREATE INDEX IF NOT EXISTS idx_twin_note_compositions_owner
     ON twin_note_compositions(account_id, created_at);
 """
 
+ANTIEK_GRAPH_SCHEMA_V23_TWIN_NOTE_WORKFLOW_SQL = """
+CREATE TABLE IF NOT EXISTS twin_note_revision_commands (
+    account_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL,
+    preview_sha256 TEXT NOT NULL,
+    asset_id TEXT NOT NULL,
+    expected_predecessor TEXT,
+    revision_id TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (account_id, idempotency_key),
+    UNIQUE (account_id, revision_id, request_sha256)
+);
+CREATE TABLE IF NOT EXISTS deliverable_twin_note_imports (
+    deliverable_id TEXT PRIMARY KEY REFERENCES deliverables(deliverable_id),
+    owner_user_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL,
+    source_kind TEXT NOT NULL CHECK (source_kind IN ('revision','composition')),
+    source_id TEXT NOT NULL,
+    source_digest TEXT NOT NULL,
+    analysis_section_id TEXT NOT NULL REFERENCES deliverable_sections(section_id),
+    imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_user_id, idempotency_key)
+);
+CREATE TABLE IF NOT EXISTS deliverable_twin_note_sources (
+    deliverable_id TEXT NOT NULL REFERENCES deliverable_twin_note_imports(deliverable_id),
+    source_ordinal INTEGER NOT NULL CHECK (source_ordinal >= 0),
+    composition_member_ordinal INTEGER,
+    revision_id TEXT NOT NULL,
+    asset_id TEXT NOT NULL,
+    body_sha256 TEXT NOT NULL,
+    html_sha256 TEXT NOT NULL,
+    source_section_id TEXT NOT NULL REFERENCES deliverable_sections(section_id),
+    note_count INTEGER NOT NULL CHECK (note_count >= 0),
+    PRIMARY KEY (deliverable_id, source_ordinal),
+    UNIQUE (deliverable_id, revision_id)
+);
+CREATE TABLE IF NOT EXISTS deliverable_twin_note_blocks (
+    outline_block_id TEXT PRIMARY KEY REFERENCES outline_blocks(outline_block_id),
+    deliverable_id TEXT NOT NULL,
+    occurrence_kind TEXT NOT NULL CHECK (occurrence_kind IN ('source','analysis')),
+    source_ordinal INTEGER NOT NULL CHECK (source_ordinal >= 0),
+    note_ordinal INTEGER NOT NULL CHECK (note_ordinal >= 0),
+    snapshot_sha256 TEXT NOT NULL,
+    UNIQUE (deliverable_id, occurrence_kind, source_ordinal, note_ordinal),
+    FOREIGN KEY (deliverable_id, source_ordinal) REFERENCES deliverable_twin_note_sources(deliverable_id, source_ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_twin_note_revision_commands_revision
+    ON twin_note_revision_commands(account_id, revision_id);
+CREATE INDEX IF NOT EXISTS idx_deliverable_twin_note_import_source
+    ON deliverable_twin_note_imports(owner_user_id, source_kind, source_id);
+"""
+
 _V22_REQUIRED_DESCRIBE = {
     "twin_note_compositions": [
         ("composition_id", "VARCHAR", "NO", "PRI", None), ("account_id", "VARCHAR", "NO", "UNI", None),
@@ -1432,6 +1486,92 @@ def _repair_empty_partial_v22_twin_notes(con: LockedConnection) -> None:
     if any(con.execute(f"SELECT COUNT(*) FROM main.{table}").fetchone()[0] for table in existing):
         raise RuntimeError("populated partial V22 twin-note schema requires explicit recovery")
     for table in ("twin_note_composition_members", "twin_note_compositions"):
+        if table in existing:
+            con.execute(f"DROP TABLE main.{table}")
+
+_V23_TABLES = (
+    "twin_note_revision_commands", "deliverable_twin_note_imports",
+    "deliverable_twin_note_sources", "deliverable_twin_note_blocks",
+)
+_V23_COLUMNS = {
+    "twin_note_revision_commands": [
+        ("account_id","VARCHAR","NO","PRI",None),("idempotency_key","VARCHAR","NO","PRI",None),
+        ("request_sha256","VARCHAR","NO","UNI",None),("preview_sha256","VARCHAR","NO",None,None),
+        ("asset_id","VARCHAR","NO",None,None),("expected_predecessor","VARCHAR","YES",None,None),
+        ("revision_id","VARCHAR","NO","UNI",None),("created_at","TIMESTAMP","NO",None,"CURRENT_TIMESTAMP")],
+    "deliverable_twin_note_imports": [
+        ("deliverable_id","VARCHAR","NO","PRI",None),("owner_user_id","VARCHAR","NO","UNI",None),
+        ("idempotency_key","VARCHAR","NO","UNI",None),("request_sha256","VARCHAR","NO",None,None),
+        ("source_kind","VARCHAR","NO",None,None),("source_id","VARCHAR","NO",None,None),
+        ("source_digest","VARCHAR","NO",None,None),("analysis_section_id","VARCHAR","NO",None,None),
+        ("imported_at","TIMESTAMP","NO",None,"CURRENT_TIMESTAMP")],
+    "deliverable_twin_note_sources": [
+        ("deliverable_id","VARCHAR","NO","PRI",None),("source_ordinal","INTEGER","NO","PRI",None),
+        ("composition_member_ordinal","INTEGER","YES",None,None),("revision_id","VARCHAR","NO","UNI",None),
+        ("asset_id","VARCHAR","NO",None,None),("body_sha256","VARCHAR","NO",None,None),
+        ("html_sha256","VARCHAR","NO",None,None),("source_section_id","VARCHAR","NO",None,None),
+        ("note_count","INTEGER","NO",None,None)],
+    "deliverable_twin_note_blocks": [
+        ("outline_block_id","VARCHAR","NO","PRI",None),("deliverable_id","VARCHAR","NO","UNI",None),
+        ("occurrence_kind","VARCHAR","NO","UNI",None),
+        ("source_ordinal","INTEGER","NO","UNI",None),("note_ordinal","INTEGER","NO","UNI",None),
+        ("snapshot_sha256","VARCHAR","NO",None,None)],
+}
+_V23_CONSTRAINTS = {
+    "twin_note_revision_commands": {
+        ("PRIMARY KEY",("account_id","idempotency_key"),"PRIMARY KEY(account_id, idempotency_key)"),
+        ("UNIQUE",("account_id","revision_id","request_sha256"),"UNIQUE(account_id, revision_id, request_sha256)"),
+    },
+    "deliverable_twin_note_imports": {
+        ("PRIMARY KEY",("deliverable_id",),"PRIMARY KEY(deliverable_id)"),
+        ("UNIQUE",("owner_user_id","idempotency_key"),"UNIQUE(owner_user_id, idempotency_key)"),
+        ("CHECK",("source_kind",),"CHECK((source_kind IN ('revision', 'composition')))"),
+        ("FOREIGN KEY",("deliverable_id",),"REFERENCES:deliverables(deliverable_id)"),
+        ("FOREIGN KEY",("analysis_section_id",),"REFERENCES:deliverable_sections(section_id)"),
+    },
+    "deliverable_twin_note_sources": {
+        ("PRIMARY KEY",("deliverable_id","source_ordinal"),"PRIMARY KEY(deliverable_id, source_ordinal)"),
+        ("UNIQUE",("deliverable_id","revision_id"),"UNIQUE(deliverable_id, revision_id)"),
+        ("CHECK",("source_ordinal",),"CHECK((source_ordinal >= 0))"),("CHECK",("note_count",),"CHECK((note_count >= 0))"),
+        ("FOREIGN KEY",("deliverable_id",),"REFERENCES:deliverable_twin_note_imports(deliverable_id)"),
+        ("FOREIGN KEY",("source_section_id",),"REFERENCES:deliverable_sections(section_id)"),
+    },
+    "deliverable_twin_note_blocks": {
+        ("PRIMARY KEY",("outline_block_id",),"PRIMARY KEY(outline_block_id)"),
+        ("UNIQUE",("deliverable_id","occurrence_kind","source_ordinal","note_ordinal"),"UNIQUE(deliverable_id, occurrence_kind, source_ordinal, note_ordinal)"),
+        ("CHECK",("occurrence_kind",),"CHECK((occurrence_kind IN ('source', 'analysis')))"),
+        ("CHECK",("source_ordinal",),"CHECK((source_ordinal >= 0))"),("CHECK",("note_ordinal",),"CHECK((note_ordinal >= 0))"),
+        ("FOREIGN KEY",("outline_block_id",),"REFERENCES:outline_blocks(outline_block_id)"),
+        ("FOREIGN KEY",("deliverable_id","source_ordinal"),"REFERENCES:deliverable_twin_note_sources(deliverable_id,source_ordinal)"),
+    },
+}
+
+def _v23_twin_note_shape_is_valid(con: LockedConnection) -> bool:
+    for table, expected in _V23_COLUMNS.items():
+        if [tuple(row[:5]) for row in con.execute(f"DESCRIBE main.{table}").fetchall()] != expected:
+            return False
+        rows=con.execute("SELECT constraint_type,constraint_column_names,constraint_text,referenced_table,referenced_column_names FROM duckdb_constraints() WHERE schema_name='main' AND table_name=? AND constraint_type IN ('PRIMARY KEY','UNIQUE','CHECK','FOREIGN KEY')",[table]).fetchall()
+        actual={(r[0],tuple(r[1]),f"REFERENCES:{r[3]}({','.join(r[4])})" if r[0]=="FOREIGN KEY" else r[2]) for r in rows}
+        if actual != _V23_CONSTRAINTS[table]: return False
+    indexes = {(r[0], r[1]) for r in con.execute(
+        "SELECT index_name,sql FROM duckdb_indexes() WHERE schema_name='main' AND table_name IN (?,?,?,?)",
+        list(_V23_TABLES)).fetchall()}
+    return indexes == {
+        ("idx_twin_note_revision_commands_revision", "CREATE INDEX idx_twin_note_revision_commands_revision ON twin_note_revision_commands(account_id, revision_id);"),
+        ("idx_deliverable_twin_note_import_source", "CREATE INDEX idx_deliverable_twin_note_import_source ON deliverable_twin_note_imports(owner_user_id, source_kind, source_id);"),
+    }
+
+def _repair_empty_partial_v23_twin_notes(con: LockedConnection) -> None:
+    existing = {r[0] for r in con.execute(
+        "SELECT table_name FROM information_schema.tables WHERE table_schema='main' AND table_name IN (?,?,?,?)",
+        list(_V23_TABLES)).fetchall()}
+    if not existing:
+        return
+    if existing == set(_V23_TABLES) and _v23_twin_note_shape_is_valid(con):
+        return
+    if any(con.execute(f"SELECT COUNT(*) FROM main.{table}").fetchone()[0] for table in existing):
+        raise RuntimeError("populated partial V23 twin-note schema requires explicit recovery")
+    for table in reversed(_V23_TABLES):
         if table in existing:
             con.execute(f"DROP TABLE main.{table}")
 
@@ -1789,6 +1929,8 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V21_TWIN_NOTE_COMPRESSION_SQL)
     _repair_empty_partial_v22_twin_notes(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V22_TWIN_NOTE_SERVING_SQL)
+    _repair_empty_partial_v23_twin_notes(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V23_TWIN_NOTE_WORKFLOW_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1859,10 +2001,17 @@ def _schema_is_present(db_path: str) -> bool:
             " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
             "table_schema='main' AND table_name='twin_note_compositions' "
             "AND column_name='ordered_members_sha256')"
+            " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='twin_note_revision_commands' "
+            "AND column_name='preview_sha256')"
+            " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='deliverable_twin_note_imports' "
+            "AND column_name='source_digest')"
         ).fetchone()
         present = bool(row and row[0])
         if present:
-            present = _v21_twin_note_shape_is_valid(con) and _v22_twin_note_shape_is_valid(con)
+            present = (_v21_twin_note_shape_is_valid(con) and _v22_twin_note_shape_is_valid(con)
+                       and _v23_twin_note_shape_is_valid(con))
     except Exception:
         return False
     finally:

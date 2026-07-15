@@ -25,6 +25,7 @@ from substrate.research_artifact.schema import ResearchArtifactBody
 from substrate.schemas.events import NoteCompressedDocWrittenPayload
 from substrate.write.event_outbox import (
     build_typed_envelope,
+    canonical_event_json,
     dispatch_aggregate_pending,
     enqueue_event,
 )
@@ -66,6 +67,22 @@ class TwinNoteRevision:
     def body(self) -> ResearchArtifactBody:
         return ResearchArtifactBody.model_validate_json(self.body_json)
 
+@dataclass(frozen=True)
+class WindowAdmission:
+    account_id: str
+    asset_id: str
+    window_ids: tuple[str, ...]
+    rows: tuple[tuple[Any, ...], ...]
+    member_json: tuple[str, ...]
+    attributed_json: tuple[str, ...]
+    source_event_ids: tuple[str, ...]
+
+    def members(self) -> list[dict[str, Any]]:
+        return [json.loads(value) for value in self.member_json]
+
+    def attributed(self) -> list[dict[str, Any]]:
+        return [json.loads(value) for value in self.attributed_json]
+
 
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
@@ -79,6 +96,65 @@ def _safe_identity(value: str, label: str) -> str:
     if type(value) is not str or not value or value != value.strip() or len(value) > 512:
         raise TwinNoteCompressionError(f"{label} must be a canonical non-empty string")
     return value
+
+def build_window_admission(*, db_path: str, ownership_resolver: OwnershipResolver,
+                           account_id: str, asset_id: str,
+                           window_ids: Sequence[str]) -> WindowAdmission:
+    account_id = _safe_identity(account_id, "account_id")
+    asset_id = _safe_identity(asset_id, "asset_id")
+    if type(window_ids) not in (tuple, list) or not window_ids or len(window_ids) > MAX_MEMBERS:
+        raise TwinNoteCompressionError("window_ids must be an ordered non-empty bounded sequence")
+    ids = tuple(_safe_identity(value, "window_id") for value in window_ids)
+    if len(set(ids)) != len(ids):
+        raise TwinNoteCompressionError("duplicate window members are forbidden")
+    select = ("SELECT window_id,consumer_version,investigation_id,ordinal,source_event_ids_json,"
+              "source_digest,request_json,request_sha256,state,raw_result,raw_result_sha256 "
+              f"FROM note_taker_windows WHERE window_id IN ({','.join('?' for _ in ids)})")
+    with connect_read(db_path) as con:
+        fetched = con.execute(select, list(ids)).fetchall()
+    by_id = {row[0]: tuple(row) for row in fetched}
+    if set(by_id) != set(ids):
+        raise TwinNoteCompressionError("a requested window is missing")
+    rows = tuple(by_id[window_id] for window_id in ids)
+    for row in rows:
+        if not ownership_resolver(account_id, asset_id, row[2]):
+            raise TwinNoteCompressionError("ownership resolver rejected a member")
+    members: list[dict[str, Any]] = []
+    attributed: list[dict[str, Any]] = []
+    seen_notes: set[str] = set()
+    all_sources: set[str] = set()
+    for ordinal, row in enumerate(rows):
+        window_id, consumer_version, investigation_id, window_ordinal, source_json, source_digest, request_json, request_sha, state, raw, raw_sha = row
+        if state != "completed" or raw is None or raw_sha is None:
+            raise TwinNoteCompressionError("only completed windows with stored output are eligible")
+        if _sha(request_json) != request_sha or _sha(raw) != raw_sha or _sha(source_json) != source_digest:
+            raise TwinNoteCompressionError("window evidence digest mismatch")
+        try:
+            sources, request = json.loads(source_json), json.loads(request_json)
+        except (TypeError, ValueError) as exc:
+            raise TwinNoteCompressionError("window evidence is not canonical JSON") from exc
+        if (not isinstance(sources, list) or not sources or any(type(x) is not str for x in sources)
+                or _canonical(sources) != source_json or _canonical(request) != request_json
+                or not isinstance(request, dict) or request.get("investigation_id") != investigation_id
+                or request.get("source_event_ids") != sources):
+            raise TwinNoteCompressionError("window request is not bound to its investigation and sources")
+        all_sources.update(sources)
+        members.append({"member_ordinal":ordinal,"investigation_id":investigation_id,
+            "window_id":window_id,"consumer_version":consumer_version,"window_ordinal":window_ordinal,
+            "source_digest":source_digest,"request_sha256":request_sha,"raw_result_sha256":raw_sha})
+        for note in parse_notes_response(raw, canonical_event_ids=sources):
+            identity = _canonical({"text":note.text,"confidence":note.confidence,
+                                   "source_event_ids":list(note.source_event_ids)})
+            if identity not in seen_notes:
+                seen_notes.add(identity)
+                attributed.append({"text":note.text,"confidence":note.confidence,
+                    "source_event_ids":list(note.source_event_ids),"investigation_id":investigation_id,
+                    "window_id":window_id})
+    if len(attributed) > MAX_NOTES or len(all_sources) > MAX_SOURCE_EVENTS:
+        raise TwinNoteCompressionError("note or source-event ceiling exceeded")
+    return WindowAdmission(account_id,asset_id,ids,rows,tuple(_canonical(x) for x in members),
+                           tuple(_canonical(x) for x in attributed),
+                           tuple(sorted(all_sources)))
 
 
 def _static_html(body: ResearchArtifactBody, *, revision_id: str, authority: str,
@@ -125,15 +201,42 @@ class DurableTwinNoteCompression:
         if self.checkpoint:
             self.checkpoint(name, identity)
 
+    def verify_replay_ledgers(self, revision: Any) -> None:
+        with connect_read(self.db_path) as con:
+            path_row = con.execute("SELECT relative_path FROM twin_note_revisions WHERE revision_id=?",
+                                   [revision.revision_id]).fetchone()
+        if path_row is None:
+            raise TwinNoteCompressionError("revision is missing during replay")
+        relative_path = path_row[0]
+        effect_id = "tne-" + _sha(_canonical([revision.revision_id,relative_path,
+                                               revision.html_sha256]))[:32]
+        event_time = datetime(2000,1,1,tzinfo=UTC)+timedelta(seconds=int(_sha(revision.revision_id)[:8],16))
+        event = build_typed_envelope(revision.revision_id,
+            NoteCompressedDocWrittenPayload(output_path=relative_path,
+                note_count=revision.note_count,byte_size=len(revision.html_bytes)),
+            role="twin_note_compressor",policy_id=COMPRESSION_AUTHORITY,document_id=revision.asset_id,
+            event_id="evt-compress-"+_sha(revision.revision_id)[:24],emitted_at=event_time)
+        encoded = canonical_event_json(event)
+        expected_outbox = (event.event_id,f"twin-note-compress:{revision.revision_id}",
+            revision.revision_id,"twin_note_revision",revision.revision_id,encoded,_sha(encoded))
+        with connect_read(self.db_path) as con:
+            effects = con.execute("SELECT effect_id,revision_id,expected_path,expected_sha256 "
+                "FROM twin_note_publication_effects WHERE revision_id=?",[revision.revision_id]).fetchall()
+            outbox = con.execute("SELECT event_id,operation_id,investigation_id,aggregate_kind,aggregate_id,"
+                "event_json,event_sha256 FROM write_event_outbox WHERE aggregate_kind='twin_note_revision' "
+                "AND aggregate_id=?",[revision.revision_id]).fetchall()
+        if effects != [(effect_id,revision.revision_id,relative_path,revision.html_sha256)]:
+            raise TwinNoteCompressionError("publication effect conflicts with immutable bytes")
+        if outbox != [expected_outbox]:
+            raise TwinNoteCompressionError("outbox conflicts with immutable event bytes")
+
     def compress(self, *, account_id: str, asset_id: str, window_ids: Sequence[str],
-                 expected_predecessor: str | None = None) -> TwinNoteRevision:
-        account_id = _safe_identity(account_id, "account_id")
-        asset_id = _safe_identity(asset_id, "asset_id")
-        if type(window_ids) not in (tuple, list) or not window_ids or len(window_ids) > MAX_MEMBERS:
-            raise TwinNoteCompressionError("window_ids must be an ordered non-empty bounded sequence")
-        ids = tuple(_safe_identity(value, "window_id") for value in window_ids)
-        if len(set(ids)) != len(ids):
-            raise TwinNoteCompressionError("duplicate window members are forbidden")
+                 expected_predecessor: str | None = None,
+                 command_receipt: tuple[str, str, str] | None = None) -> TwinNoteRevision:
+        admission = build_window_admission(db_path=self.db_path,
+            ownership_resolver=self.ownership_resolver, account_id=account_id,
+            asset_id=asset_id, window_ids=window_ids)
+        account_id, asset_id, ids = admission.account_id, admission.asset_id, admission.window_ids
         if expected_predecessor is not None:
             _safe_identity(expected_predecessor, "expected_predecessor")
 
@@ -142,64 +245,15 @@ class DurableTwinNoteCompression:
             "source_digest, request_json, request_sha256, state, raw_result, raw_result_sha256 "
             f"FROM note_taker_windows WHERE window_id IN ({','.join('?' for _ in ids)})"
         )
-        # The resolver may consult this database (or another service), so it must
-        # never run while the process-wide writer lock is held.
-        with connect_read(self.db_path) as admission_con:
-            admission_rows = admission_con.execute(select_windows, list(ids)).fetchall()
-        admission_by_id = {row[0]: row for row in admission_rows}
-        if set(admission_by_id) != set(ids):
-            raise TwinNoteCompressionError("a requested window is missing")
-        for window_id in ids:
-            if not self.ownership_resolver(account_id, asset_id, admission_by_id[window_id][2]):
-                raise TwinNoteCompressionError("ownership resolver rejected a member")
-
         with connect_write(self.db_path, purpose="twin_note/compress") as con:
             con.execute("BEGIN TRANSACTION")
             rows = con.execute(select_windows, list(ids)).fetchall()
-            by_id = {row[0]: row for row in rows}
-            if by_id != admission_by_id:
+            exact_rows = tuple({row[0]: tuple(row) for row in rows}[window_id] for window_id in ids)
+            if exact_rows != admission.rows:
                 con.execute("ROLLBACK")
                 raise TwinNoteCompressionError("window evidence changed after ownership resolution")
-            members: list[dict[str, Any]] = []
-            attributed: list[dict[str, Any]] = []
-            seen_notes: set[str] = set()
-            all_sources: set[str] = set()
-            for ordinal, window_id in enumerate(ids):
-                row = by_id[window_id]
-                _, consumer_version, investigation_id, window_ordinal, source_json, source_digest, request_json, request_sha, state, raw, raw_sha = row
-                if state != "completed" or raw is None or raw_sha is None:
-                    raise TwinNoteCompressionError("only completed windows with stored output are eligible")
-                if _sha(request_json) != request_sha or _sha(raw) != raw_sha or _sha(source_json) != source_digest:
-                    raise TwinNoteCompressionError("window evidence digest mismatch")
-                try:
-                    sources = json.loads(source_json)
-                    request = json.loads(request_json)
-                except (TypeError, ValueError) as exc:
-                    raise TwinNoteCompressionError("window evidence is not canonical JSON") from exc
-                if not isinstance(sources, list) or not sources or any(type(x) is not str for x in sources):
-                    raise TwinNoteCompressionError("window source list is invalid")
-                if _canonical(sources) != source_json or _canonical(request) != request_json:
-                    raise TwinNoteCompressionError("window JSON bytes are not canonical")
-                if (not isinstance(request, dict)
-                        or request.get("investigation_id") != investigation_id
-                        or request.get("source_event_ids") != sources):
-                    raise TwinNoteCompressionError("window request is not bound to its investigation and sources")
-                all_sources.update(sources)
-                members.append({"member_ordinal": ordinal, "investigation_id": investigation_id,
-                    "window_id": window_id, "consumer_version": consumer_version,
-                    "window_ordinal": window_ordinal, "source_digest": source_digest,
-                    "request_sha256": request_sha, "raw_result_sha256": raw_sha})
-                for note in parse_notes_response(raw, canonical_event_ids=sources):
-                    identity = _canonical({"text": note.text, "confidence": note.confidence,
-                                           "source_event_ids": list(note.source_event_ids)})
-                    if identity in seen_notes:
-                        continue
-                    seen_notes.add(identity)
-                    attributed.append({"text": note.text, "confidence": note.confidence,
-                        "source_event_ids": list(note.source_event_ids),
-                        "investigation_id": investigation_id, "window_id": window_id})
-            if len(attributed) > MAX_NOTES or len(all_sources) > MAX_SOURCE_EVENTS:
-                raise TwinNoteCompressionError("note or source-event ceiling exceeded")
+            members, attributed = admission.members(), admission.attributed()
+            all_sources = admission.source_event_ids
             membership = _sha(_canonical(members))
             identity = _canonical({"account_id": account_id, "asset_id": asset_id,
                 "supersedes_revision_id": expected_predecessor, "membership_sha256": membership,
@@ -229,7 +283,10 @@ class DurableTwinNoteCompression:
             ).fetchall()
             existing = con.execute("SELECT * FROM twin_note_revisions WHERE revision_id=?", [revision_id]).fetchone()
             expected_current = [] if expected_predecessor is None else [(expected_predecessor,)]
-            if existing is None and current_rows != expected_current:
+            # A command key is the authority for materialization.  A different
+            # key may not adopt deterministic bytes created from a predecessor
+            # that ceased to be current while admission was in flight.
+            if current_rows != expected_current and (existing is None or command_receipt is not None):
                 raise TwinNoteCompressionError("expected predecessor is stale")
             immutable = (revision_id, account_id, asset_id, expected_predecessor, COMPRESSOR_VERSION,
                 RENDERER_VERSION, membership, body_json, body_sha, html_bytes, html_sha, relative_path,
@@ -259,6 +316,21 @@ class DurableTwinNoteCompression:
                     if effect != [(effect_id, revision_id, relative_path, html_sha)]:
                         raise TwinNoteCompressionError("publication effect conflicts with immutable bytes")
                     enqueue_event(con, operation_id=f"twin-note-compress:{revision_id}", aggregate_kind="twin_note_revision", aggregate_id=revision_id, event=event)
+                if command_receipt is not None:
+                    idempotency_key, request_sha, preview_sha = command_receipt
+                    receipt = con.execute(
+                        "SELECT request_sha256,preview_sha256,asset_id,expected_predecessor,revision_id,created_at "
+                        "FROM twin_note_revision_commands WHERE account_id=? AND idempotency_key=?",
+                        [account_id, idempotency_key]).fetchone()
+                    expected_receipt = (request_sha, preview_sha, asset_id, expected_predecessor,
+                                        revision_id, created_at)
+                    if receipt is None:
+                        con.execute("INSERT INTO twin_note_revision_commands "
+                            "(account_id,idempotency_key,request_sha256,preview_sha256,asset_id,expected_predecessor,revision_id,created_at) "
+                            "VALUES (?,?,?,?,?,?,?,?)", [account_id,idempotency_key,request_sha,preview_sha,
+                            asset_id,expected_predecessor,revision_id,created_at])
+                    elif receipt != expected_receipt:
+                        raise TwinNoteCompressionError("idempotency receipt conflicts with immutable command")
                 con.execute("COMMIT")
             except Exception:
                 con.execute("ROLLBACK")
