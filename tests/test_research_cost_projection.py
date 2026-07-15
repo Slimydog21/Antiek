@@ -367,6 +367,16 @@ def test_all_cascade_dispatchers_classified() -> None:
                 "make_contract_gather_stub._loop",
                 "ctx.step",
             ): 1,
+            (
+                "interfaces/research/api/cascade_routes.py",
+                "_hard_ceiling_launch_receipt",
+                "gateway.prepare_zero_cost",
+            ): 1,
+            (
+                "interfaces/research/api/cascade_routes.py",
+                "_hard_ceiling_approval_receipt",
+                "gateway.prepare_zero_cost",
+            ): 1,
         }
     )
     assert declared - non_dispatch_marker == reachable
