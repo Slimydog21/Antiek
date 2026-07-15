@@ -14,6 +14,7 @@ from substrate.multimedia.authorized_production_worker import (
     AuthorizedProductionRuntime,
     AuthorizedProductionUnavailable,
     ChapterNarrationAuthority,
+    produce_authorized_audio,
     produce_authorized_multimedia,
 )
 from substrate.multimedia.execution_authorization import (
@@ -109,9 +110,60 @@ def produce_multimedia_asset(
         ) from exc
 
 
+@multimedia_production_worker_router.post(
+    "/assets/{asset_id}/audio-production", response_model=MultimediaAssetRecord
+)
+def produce_multimedia_audio_asset(
+    asset_id: str,
+    body: AuthorizedProductionBody,
+    operator_id: str = Depends(authenticated_multimedia_operator),
+    runtime: AuthorizedProductionRuntime = Depends(
+        get_multimedia_production_worker_runtime
+    ),
+) -> MultimediaAssetRecord:
+    try:
+        request = AuthorizedProductionRequest(
+            expected_revision_id=body.expected_revision_id,
+            chapter_authorities=tuple(
+                ChapterNarrationAuthority(
+                    chapter_id=row.chapter_id,
+                    authorization=MultimediaExecutionAuthorizationV2.from_dict(
+                        row.authorization.model_dump()
+                    ),
+                )
+                for row in body.chapter_authorities
+            ),
+            voice=body.voice,
+            speed=body.speed,
+            sample_rate_hz=body.sample_rate_hz,
+            channels=body.channels,
+        )
+        return produce_authorized_audio(
+            asset_id, request, owner_id=operator_id, runtime=runtime
+        )
+    except AuthorizedProductionUnavailable as exc:
+        raise HTTPException(
+            status_code=404, detail="multimedia production authority is unavailable"
+        ) from exc
+    except (
+        AuthorizedProductionError,
+        ExecutionAuthorizationIntegrityError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(
+            status_code=409, detail="multimedia production authority conflicts"
+        ) from exc
+    except RuntimeError as exc:
+        _LOG.exception("paid audio production runtime failed")
+        raise HTTPException(
+            status_code=503, detail="multimedia production worker is unavailable"
+        ) from exc
+
+
 __all__ = [
     "AuthorizedProductionBody",
     "ChapterNarrationAuthorityBody",
     "get_multimedia_production_worker_runtime",
     "multimedia_production_worker_router",
+    "produce_multimedia_audio_asset",
 ]

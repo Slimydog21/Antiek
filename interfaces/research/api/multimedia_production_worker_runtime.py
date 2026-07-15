@@ -12,6 +12,9 @@ from substrate.multimedia.diagram_evidence_authority import DiagramEvidenceAutho
 from substrate.multimedia.read_model import MultimediaAssetStore
 from substrate.multimedia.reviewed_visual_registry import ReviewedVisualRegistry
 from substrate.multimedia.tts_gateway import GatewayPoster, TTSSynthesisGateway
+from substrate.multimedia.verified_paid_audio_playback import (
+    VerifiedPaidAudioPlaybackRuntime,
+)
 from substrate.multimedia.verified_playback import VerifiedPlaybackRuntime
 from substrate.multimedia.visual_evidence_authority import VisualEvidenceAuthority
 
@@ -77,22 +80,23 @@ def multimedia_production_worker_runtime_from_environment(
         raise RuntimeError("multimedia production worker configuration is invalid") from None
     if len(verify_key) != 32:
         raise RuntimeError("multimedia production worker configuration is invalid")
-    if len(
-        {
-            signing_key,
-            narration_key,
-            visual_key,
-            evidence_key,
-            render_key,
-            receipt_key,
-            reviewed_key,
-        }
-    ) != 7:
+    if (
+        len(
+            {
+                signing_key,
+                narration_key,
+                visual_key,
+                evidence_key,
+                render_key,
+                receipt_key,
+                reviewed_key,
+            }
+        )
+        != 7
+    ):
         raise RuntimeError("multimedia production worker keys must be independent")
     reviewers = frozenset(
-        value.strip()
-        for value in fields["VISUAL_REVIEWER_IDS"].split(",")
-        if value.strip()
+        value.strip() for value in fields["VISUAL_REVIEWER_IDS"].split(",") if value.strip()
     )
     if not reviewers or len(reviewers) > 32:
         raise RuntimeError("multimedia production worker configuration is invalid")
@@ -129,6 +133,11 @@ def multimedia_production_worker_runtime_from_environment(
         visual_key=visual_key,
         render_key=render_key,
     )
+    audio_playback = VerifiedPaidAudioPlaybackRuntime(
+        receipt_root=fields["RECEIPT_OUTPUT_DIR"],
+        receipt_key=receipt_key,
+        narration_key=narration_key,
+    )
     evidence = VisualEvidenceAuthority(
         db_path=fields["VISUAL_EVIDENCE_DB_PATH"],
         operator_verify_key=verify_key,
@@ -146,6 +155,7 @@ def multimedia_production_worker_runtime_from_environment(
         store=store,
         reviewed_visual_registry=reviewed_registry,
         playback=playback,
+        audio_playback=audio_playback,
         signing_key=signing_key,
         narration_integrity_key=narration_key,
         visual_integrity_key=visual_key,

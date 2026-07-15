@@ -1,0 +1,639 @@
+"""Operator Settings — user-added model providers (add-model vertical).
+
+Settings SPR-01 shipped the read-only model inventory and deferred "add
+model" to a later sprint. This module is that vertical: the operator
+registers their own provider endpoint + model (BYOK — bring your own key)
+from Settings through the same low-level seam ``register_default_providers``
+populates: ``register_provider`` plus the
+``app.state.registered_providers`` name set. Registration is deliberately
+distinct from route authority: this vertical does not silently bind a new
+provider to an active tier. ``GET /settings/models`` therefore reports it as
+registered but not route-ready until the model-selection vertical explicitly
+chooses where it may drive a prompt.
+
+SECRET HANDLING — reuses the house BYOK mechanism, decision (a)
+────────────────────────────────────────────────────────────────
+The API key is stored ENCRYPTED AT REST via ``runtime.byok.store``
+directly (libsodium SecretBox, master key in a 0600 key file, plaintext
+returned only as a redacting ``SecretStr``). ``CredentialMetadata``
+generalizes cleanly: the key lands with ``pipeline_kind="model_provider"``
+and the record id as its non-secret handle, so ``list_credentials`` can
+answer ``key_present`` without ever touching key material. The only
+X-flavored residue is the opaque ``cred-x-`` id prefix — cosmetic, not
+semantic — so building a parallel store on the raw primitives (option (b))
+would have duplicated artifact/key-file plumbing for zero security gain.
+
+The plaintext key is NEVER in any response, log, repr, or exception
+message. Three load-bearing consequences in the code:
+
+* ``POST /settings/models/user`` parses its body BY HAND. FastAPI's
+  ``RequestValidationError`` echoes the offending input back in the 422
+  body — and for a missing-field error the echoed input is the WHOLE
+  body, api_key included. Manual parsing keeps every 4xx value-free.
+* Keys travel ONLY in ``api_key``. ``base_url`` is structurally prevented
+  from carrying credentials: it must be scheme + host + optional path,
+  and any userinfo (``user:secret@host``), query string (``?key=...``),
+  or fragment is rejected value-free — otherwise a key-bearing URL would
+  land PLAINTEXT in the registry file and echo in every response that
+  carries base_url. Lengths are bounded too (api_key ≤ 512, base_url
+  ≤ 2048) so a paste accident cannot balloon the ciphertext artifact.
+* Registered providers resolve their key AT CALL TIME (decrypt-on-use via
+  ``_ByokResolvedKeyMixin``), never holding plaintext in instance state.
+  Resolution re-checks the durable registry first, so a DELETE is
+  effective immediately even though the in-process dispatch registry has
+  no public unregister: a removed/disabled record can no longer resolve a
+  key, making any lingering registry entry inert until the next boot.
+
+DELETE leaves the SecretBox ciphertext orphaned in the byok artifact:
+``runtime/byok/store.py`` exposes no delete and that package is owned by
+another lane (and off-limits per the sprint contract). An orphaned blob is
+ciphertext-only — unreadable without the 0600 master key and unreachable
+without the registry record — so this is stated honestly rather than
+worked around with a second write path into the byok artifact. The same
+applies to delete→re-add: the store is APPEND-ONLY (no replace API), so
+re-adding a model stores a fresh credential and each delete→re-add cycle
+orphans one more ciphertext blob. Accumulation is bounded by operator
+behavior (a manual Settings action), documented in the DELETE response
+notes, and never a plaintext hazard.
+
+PERSISTENCE — non-secret registry
+─────────────────────────────────
+``(ANTIEK_HOME|~/.antiek)/settings/user_models.json`` (override:
+``ANTIEK_USER_MODELS_PATH``), mirroring the DaemonBudget JSON-sidecar
+precedent. No DuckDB, so the single-writer/db_lock rule is untouched; the
+API process is the only writer (``--workers 1`` house invariant). Reads
+are lenient like ``store._read_artifact`` (corrupt file → empty registry),
+writes are ``indent=2, sort_keys=True`` like ``store._write_artifact``.
+
+Mount: ``register_settings_budget_routes`` (settings_budget.py) calls
+``register_settings_models_admin_routes`` — the settings-local pattern;
+app.py is untouched. Boot-time reload of user providers runs as a startup
+event handler because ``create_app`` assigns
+``app.state.registered_providers`` AFTER the settings routes are mounted;
+startup events fire later still, so the union lands on the real set.
+
+Non-goals honored: no implicit dispatch-tier mutation, no per-key usage ledger,
+no budget writes, no live provider validation calls. A dispatch-time picker is
+the explicit follow-up that grants these registered providers route authority.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import re
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Literal, cast
+from urllib.parse import urlsplit
+
+from fastapi import APIRouter, FastAPI, HTTPException, Request
+from pydantic import BaseModel, Field, ValidationError
+
+from runtime.byok.store import (
+    CredentialMetadata,
+    list_credentials,
+    load_credential,
+    store_credential,
+)
+from substrate.dispatch.base import Provider, ProviderError
+from substrate.dispatch.providers.anthropic import AnthropicProvider
+from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
+from substrate.dispatch.router import register_provider
+
+_ENV_REGISTRY_PATH = "ANTIEK_USER_MODELS_PATH"
+_ENV_HOME = "ANTIEK_HOME"
+
+_PIPELINE_KIND = "model_provider"
+_ID_PREFIX = "user-"
+
+ProviderKind = Literal["openai_compat", "anthropic"]
+_PROVIDER_KINDS: tuple[str, ...] = ("openai_compat", "anthropic")
+
+# Shortest real provider keys are far longer; this catches truncated pastes
+# without rejecting any legitimate key format.
+_MIN_KEY_LEN = 8
+# Longest real provider keys are well under this (OpenAI project keys ~164
+# chars, Anthropic ~108, GCP service tokens in the low hundreds); the cap
+# bounds the SecretBox ciphertext artifact against multi-megabyte paste
+# accidents (a 2MiB "key" would otherwise land as a 4MiB hex ciphertext).
+_MAX_KEY_LEN = 512
+_MAX_BASE_URL_LEN = 2048
+_MAX_DISPLAY_NAME_LEN = 64
+_MAX_MODEL_ID_LEN = 200
+
+
+# ---------------------------------------------------------------------------
+# Durable non-secret registry
+# ---------------------------------------------------------------------------
+
+
+class UserModelRecord(BaseModel):
+    """One durable registry entry. Non-secret by construction: the key
+    lives ONLY as SecretBox ciphertext in the byok artifact, referenced
+    here by its opaque ``cred_ref``."""
+
+    id: str
+    provider_kind: ProviderKind
+    model_id: str
+    display_name: str
+    base_url: str | None = None
+    cred_ref: str
+    enabled: bool = True
+
+
+def _registry_path() -> Path:
+    env = os.environ.get(_ENV_REGISTRY_PATH)
+    if env:
+        return Path(os.path.expanduser(env))
+    home = os.environ.get(_ENV_HOME)
+    base = Path(home) if home else Path.home() / ".antiek"
+    return base / "settings" / "user_models.json"
+
+
+def _load_registry() -> dict[str, UserModelRecord]:
+    """Lenient read, mirroring ``store._read_artifact``: a missing or
+    corrupt file yields an empty registry rather than a crashed boot."""
+    path = _registry_path()
+    if not path.is_file():
+        return {}
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8"))
+    except (ValueError, OSError):
+        return {}
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, UserModelRecord] = {}
+    for rid, entry in raw.items():
+        try:
+            record = UserModelRecord.model_validate(entry)
+        except ValidationError:
+            continue
+        record_id = str(rid)
+        # CREATE is the only authority that mints registry identities.  Apply
+        # its namespace and key/id invariants again on every read so a restored
+        # or externally corrupted sidecar cannot smuggle a default provider
+        # name into the live dispatch registry at boot.
+        if record_id != record.id or not record.id.startswith(_ID_PREFIX):
+            continue
+        out[record_id] = record
+    return out
+
+
+def _write_registry(registry: dict[str, UserModelRecord]) -> None:
+    path = _registry_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = {rid: rec.model_dump() for rid, rec in registry.items()}
+    path.write_text(
+        json.dumps(data, indent=2, sort_keys=True), encoding="utf-8"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Dispatch registration — the same seam register_default_providers uses
+# ---------------------------------------------------------------------------
+
+
+class _ByokResolvedKeyMixin:
+    """Resolve the API key at CALL time from the byok store.
+
+    Overrides the adapters' ``_resolve_api_key`` seam (the same method the
+    env-var path uses) so plaintext never sits in provider instance state,
+    and so a record deleted/disabled in Settings refuses key resolution
+    IMMEDIATELY — the dispatch registry has no public unregister, and this
+    check is what makes a lingering entry inert. Every failure message
+    here is value-free by construction.
+    """
+
+    name: str
+    _user_model_id: str
+    _cred_ref: str
+
+    def _resolve_api_key(self) -> str:
+        record = _load_registry().get(self._user_model_id)
+        if (
+            record is None
+            or not record.enabled
+            or record.cred_ref != self._cred_ref
+            or not _credential_matches_record(record, _credential_metadata())
+        ):
+            raise ProviderError(
+                f"{self.name}: user-added provider was removed, disabled, or "
+                "its credential binding changed; refusing credential resolution.",
+                provider=self.name, model="<unknown>", latency_ms=0,
+            )
+        try:
+            secret = load_credential(self._cred_ref)
+        except KeyError as exc:
+            raise ProviderError(
+                f"{self.name}: stored credential is missing from the BYOK "
+                "artifact.",
+                provider=self.name, model="<unknown>", latency_ms=0,
+            ) from exc
+        return secret.reveal()
+
+
+def _credential_metadata() -> dict[str, CredentialMetadata]:
+    """Index only non-secret BYOK metadata; this never decrypts a key."""
+    return {item.cred_id: item for item in list_credentials()}
+
+
+def _credential_matches_record(
+    record: UserModelRecord,
+    metadata: dict[str, CredentialMetadata],
+) -> bool:
+    """Bind a registry row to the credential CREATE minted for that row.
+
+    A restored or hand-edited sidecar must not be able to point an arbitrary
+    model endpoint at an unrelated X or other BYOK credential.
+    """
+    item = metadata.get(record.cred_ref)
+    return bool(
+        item is not None
+        and item.pipeline_kind == _PIPELINE_KIND
+        and item.account_handle == record.id
+    )
+
+
+class _UserOpenAICompatProvider(_ByokResolvedKeyMixin, OpenAICompatProvider):
+    """User-added OpenAI-shaped endpoint. The operator supplies the FULL
+    base URL including any version prefix (e.g. ``https://api.openai.com/v1``)
+    and the adapter appends ``/chat/completions`` — the dominant house
+    pattern (openrouter/hermes/xiaomi/zai) that avoids the double-``/v1``
+    404 class documented in bootstrap.py."""
+
+    def __init__(self, record: UserModelRecord) -> None:
+        super().__init__(
+            name=record.id,
+            base_url=record.base_url or "",
+            chat_completions_path="/chat/completions",
+            # This endpoint is operator-supplied and therefore untrusted. It
+            # can reflect Authorization in a response; upstream body text must
+            # never enter ProviderError, which callers may expose or persist.
+            expose_error_body=False,
+        )
+        self._user_model_id = record.id
+        self._cred_ref = record.cred_ref
+
+
+class _UserAnthropicProvider(_ByokResolvedKeyMixin, AnthropicProvider):
+    def __init__(self, record: UserModelRecord) -> None:
+        if record.base_url:
+            super().__init__(base_url=record.base_url, expose_error_body=False)
+        else:
+            super().__init__(expose_error_body=False)
+        # Registry entries are name-keyed; shadow the class-level
+        # ``name = "anthropic"`` so a user entry never collides with the
+        # default adapter.
+        self.name = record.id
+        self._user_model_id = record.id
+        self._cred_ref = record.cred_ref
+
+
+def _make_provider(record: UserModelRecord) -> Provider:
+    if record.provider_kind == "anthropic":
+        return _UserAnthropicProvider(record)
+    return _UserOpenAICompatProvider(record)
+
+
+def _seam_names(app: FastAPI) -> set[str]:
+    """The live registered-provider name set, coerced to a real set on
+    ``app.state`` so unions/discards are visible to ``GET /settings/models``
+    and ``/health`` (which read the same attribute)."""
+    raw = getattr(app.state, "registered_providers", None)
+    if isinstance(raw, set):
+        return raw
+    coerced: set[str] = (
+        {str(p) for p in raw} if isinstance(raw, (list, tuple, frozenset)) else set()
+    )
+    app.state.registered_providers = coerced
+    return coerced
+
+
+def reload_user_providers(app: FastAPI) -> set[str]:
+    """Register every enabled user model whose credential is present.
+
+    Mirrors ``register_default_providers``' degraded posture: a record
+    without a stored credential (or disabled) is skipped, not an error.
+    Returns the set of registered names, same contract as the bootstrap.
+
+    Also RECONCILES the seam set: a ``user-``-prefixed name in
+    ``app.state.registered_providers`` without an enabled registry record
+    (a corrupt/lost registry file is the realistic path here) is stale —
+    its key resolution would refuse anyway — and is discarded so
+    ``GET /settings/models`` cannot report ``ready: true`` for a provider
+    that cannot resolve credentials. Default provider names are never
+    touched (prefix-guarded).
+    """
+    registry = _load_registry()
+    metadata = _credential_metadata()
+    registered: set[str] = set()
+    for record_id, record in registry.items():
+        # Defense in depth at the authority boundary: even if a future registry
+        # reader becomes more permissive, boot reload may only register names
+        # that CREATE could have minted.
+        if record_id != record.id or not record.id.startswith(_ID_PREFIX):
+            continue
+        if not record.enabled or not _credential_matches_record(record, metadata):
+            continue
+        register_provider(_make_provider(record))
+        registered.add(record.id)
+    seam = _seam_names(app)
+    stale = {
+        name
+        for name in seam
+        if name.startswith(_ID_PREFIX)
+        and not (name in registry and registry[name].enabled)
+    }
+    seam.difference_update(stale)
+    seam.update(registered)
+    return registered
+
+
+# ---------------------------------------------------------------------------
+# API models (responses never carry key material — there is no key field)
+# ---------------------------------------------------------------------------
+
+
+class UserModelRow(BaseModel):
+    id: str
+    provider_kind: ProviderKind
+    model_id: str
+    display_name: str
+    base_url: str | None
+    enabled: bool
+    key_present: bool
+    registered: bool
+
+
+class UserModelsResponse(BaseModel):
+    models: list[UserModelRow]
+    count: int
+    # Surfacing, not hiding: user-* names still in the live registered set
+    # whose registry record is gone (corrupt/lost file while the process is
+    # up). They cannot resolve keys and clear at the next boot reconcile.
+    stale_registered: list[str] = Field(default_factory=list)
+    source: str = "settings user-model registry + byok credential store"
+
+
+class UserModelDeleteResponse(BaseModel):
+    removed: str
+    notes: list[str]
+
+
+@dataclass(frozen=True)
+class _ValidatedCreate:
+    provider_kind: ProviderKind
+    model_id: str
+    display_name: str
+    base_url: str | None
+    api_key: str
+
+
+def _reject(detail: str) -> HTTPException:
+    # All validation failures route through here: 422 with a message that
+    # names the field but NEVER interpolates its value.
+    return HTTPException(status_code=422, detail=detail)
+
+
+def _parse_create(payload: object) -> _ValidatedCreate:
+    if not isinstance(payload, dict):
+        raise _reject("body must be a JSON object")
+
+    provider_kind = payload.get("provider_kind")
+    if provider_kind not in _PROVIDER_KINDS:
+        raise _reject(
+            "provider_kind must be one of: " + ", ".join(_PROVIDER_KINDS)
+        )
+
+    model_id = payload.get("model_id")
+    if (
+        not isinstance(model_id, str)
+        or not model_id
+        or len(model_id) > _MAX_MODEL_ID_LEN
+        or any(c.isspace() for c in model_id)
+    ):
+        raise _reject("model_id must be a non-empty string without whitespace")
+
+    display_name = payload.get("display_name")
+    if (
+        not isinstance(display_name, str)
+        or not display_name.strip()
+        or len(display_name) > _MAX_DISPLAY_NAME_LEN
+    ):
+        raise _reject("display_name must be a non-empty string (max 64 chars)")
+
+    api_key = payload.get("api_key")
+    if (
+        not isinstance(api_key, str)
+        or len(api_key) < _MIN_KEY_LEN
+        or len(api_key) > _MAX_KEY_LEN
+        or any(c.isspace() for c in api_key)
+    ):
+        raise _reject(
+            "api_key must be a string of 8-512 characters with no "
+            "whitespace (value withheld from this error by design)"
+        )
+
+    base_url = payload.get("base_url")
+    if base_url is not None:
+        if (
+            not isinstance(base_url, str)
+            or len(base_url) > _MAX_BASE_URL_LEN
+            or any(c.isspace() for c in base_url)
+        ):
+            raise _reject(
+                "base_url must be an http(s) URL of at most 2048 characters "
+                "without whitespace"
+            )
+        # urlsplit raises ValueError on a malformed authority (unclosed IPv6
+        # bracket), and .port raises ValueError on a non-numeric port —
+        # accessing both inside one try/except turns every malformed URL into
+        # a clean value-free 422, never an uncaught 500.
+        try:
+            parts = urlsplit(base_url)
+            host = parts.hostname
+            _ = parts.port  # access validates a present port is numeric
+        except ValueError as exc:
+            raise _reject("base_url is not a well-formed URL") from exc
+        # Require a real host: ``https://:443/v1`` has a truthy netloc but an
+        # empty hostname, so netloc alone is not enough.
+        if parts.scheme not in ("http", "https") or not host:
+            raise _reject("base_url must be an http(s) URL with a host")
+        # Structural credential exclusion: keys travel ONLY in api_key. A
+        # userinfo / query / fragment-bearing URL could smuggle a credential
+        # into the PLAINTEXT registry and into every response that echoes
+        # base_url — rejected outright, value-free (the URL itself may carry
+        # the secret, so it is never interpolated into the error).
+        if "@" in parts.netloc or parts.query or parts.fragment:
+            raise _reject(
+                "base_url must be scheme + host + optional path only — no "
+                "userinfo, query, or fragment (credentials go in api_key)"
+            )
+    if provider_kind == "openai_compat" and base_url is None:
+        raise _reject(
+            "base_url is required for openai_compat (the provider's full "
+            "base URL including any version prefix, e.g. "
+            "https://api.openai.com/v1)"
+        )
+
+    return _ValidatedCreate(
+        provider_kind=cast(ProviderKind, provider_kind),
+        model_id=model_id,
+        display_name=display_name.strip(),
+        base_url=base_url,
+        api_key=api_key,
+    )
+
+
+def _slug_id(display_name: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", display_name.lower()).strip("-")
+    if not slug:
+        raise _reject("display_name must contain at least one letter or digit")
+    return _ID_PREFIX + slug
+
+
+def _row(
+    record: UserModelRecord, *, present: set[str], seam: set[str]
+) -> UserModelRow:
+    return UserModelRow(
+        id=record.id,
+        provider_kind=record.provider_kind,
+        model_id=record.model_id,
+        display_name=record.display_name,
+        base_url=record.base_url,
+        enabled=record.enabled,
+        key_present=record.cred_ref in present,
+        registered=record.id in seam,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Routes
+# ---------------------------------------------------------------------------
+
+user_models_router = APIRouter(prefix="/settings/models/user", tags=["settings"])
+
+
+@user_models_router.get("", response_model=UserModelsResponse)
+def get_user_models(request: Request) -> UserModelsResponse:
+    registry = _load_registry()
+    metadata = _credential_metadata()
+    present = {
+        record.cred_ref
+        for record in registry.values()
+        if _credential_matches_record(record, metadata)
+    }
+    seam = _seam_names(request.app)
+    rows = [
+        _row(rec, present=present, seam=seam)
+        for rec in sorted(registry.values(), key=lambda r: r.id)
+    ]
+    stale = sorted(
+        name
+        for name in seam
+        if name.startswith(_ID_PREFIX) and name not in registry
+    )
+    return UserModelsResponse(models=rows, count=len(rows), stale_registered=stale)
+
+
+@user_models_router.post("", response_model=UserModelRow, status_code=201)
+async def post_user_model(request: Request) -> UserModelRow:
+    # Manual body parse — see module docstring: FastAPI's automatic 422
+    # echoes request input (the whole body on a missing-field error),
+    # which would leak the api_key. Every rejection below is value-free.
+    try:
+        payload = await request.json()
+    except ValueError as exc:
+        raise _reject("body must be valid JSON") from exc
+    spec = _parse_create(payload)
+
+    record_id = _slug_id(spec.display_name)
+    registry = _load_registry()
+    if record_id in registry:
+        raise HTTPException(
+            status_code=409,
+            detail=f"user model {record_id!r} already exists; "
+            "delete it first or pick another display name",
+        )
+
+    # Encrypt-at-rest FIRST (byok SecretBox), then persist the non-secret
+    # record referencing the ciphertext. A crash between the two orphans
+    # only unreachable ciphertext, never a record with a dangling key.
+    cred_ref = store_credential(
+        record_id, spec.api_key, pipeline_kind=_PIPELINE_KIND
+    )
+    record = UserModelRecord(
+        id=record_id,
+        provider_kind=spec.provider_kind,
+        model_id=spec.model_id,
+        display_name=spec.display_name,
+        base_url=spec.base_url,
+        cred_ref=cred_ref,
+        enabled=True,
+    )
+    registry[record_id] = record
+    _write_registry(registry)
+
+    # Real registration, immediately — same seam as the default bootstrap.
+    register_provider(_make_provider(record))
+    seam = _seam_names(request.app)
+    seam.add(record_id)
+
+    metadata = _credential_metadata()
+    present = (
+        {record.cred_ref} if _credential_matches_record(record, metadata) else set()
+    )
+    return _row(record, present=present, seam=seam)
+
+
+@user_models_router.delete("/{user_model_id}", response_model=UserModelDeleteResponse)
+def delete_user_model(user_model_id: str, request: Request) -> UserModelDeleteResponse:
+    registry = _load_registry()
+    if user_model_id not in registry:
+        raise HTTPException(status_code=404, detail="unknown user model id")
+    del registry[user_model_id]
+    _write_registry(registry)
+    _seam_names(request.app).discard(user_model_id)
+    return UserModelDeleteResponse(
+        removed=user_model_id,
+        notes=[
+            "credential resolution for this id now refuses (registry-checked "
+            "at call time); its SecretBox ciphertext stays in the byok "
+            "artifact — the store exposes no delete — and is unreadable "
+            "without the master key file",
+            "re-adding this model stores a fresh credential (the byok store "
+            "is append-only), so each delete→re-add cycle orphans one more "
+            "ciphertext blob — bounded by operator behavior, never readable "
+            "without the master key",
+        ],
+    )
+
+
+def register_settings_models_admin_routes(app: FastAPI) -> None:
+    """Mount the add-model admin routes + boot-time reload of user
+    providers. Called from ``register_settings_budget_routes`` — the
+    settings-local mount seam; app.py stays untouched. The reload runs as
+    a startup handler because ``create_app`` assigns
+    ``app.state.registered_providers`` after route registration."""
+    app.include_router(user_models_router)
+
+    def _reload_at_startup() -> None:
+        reload_user_providers(app)
+
+    # Starlette 1.x removed ``add_event_handler``/``on_event``; the router's
+    # ``on_startup`` list still drains through the default lifespan, and
+    # create_app passes no custom lifespan, so this is the one seam that
+    # runs after ``app.state.registered_providers`` is assigned.
+    app.router.on_startup.append(_reload_at_startup)
+
+
+__all__ = [
+    "UserModelDeleteResponse",
+    "UserModelRecord",
+    "UserModelRow",
+    "UserModelsResponse",
+    "register_settings_models_admin_routes",
+    "reload_user_providers",
+    "user_models_router",
+]
