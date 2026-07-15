@@ -68,6 +68,34 @@ jobs:
             exit 1
           fi
 
+      - name: Gate research route instrument against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: loop-1-researchrouteinstrument--configured-known,loop-1-researchrouteinstrument--configured-unknown,loop-1-researchrouteinstrument--unconfigured-known,loop-1-researchrouteinstrument--unconfigured-unknown,loop-1-researchrouteinstrument--unavailable-route,loop-1-researchrouteinstrument--narrow,loop-1-researchrouteinstrument--dark,loop-1-researchrouteinstrument--keyboard-proof
+        run: |
+          for story in configured-known configured-unknown unconfigured-known unconfigured-unknown unavailable-route dark keyboard-proof; do
+            for width in 768 1024 1280; do
+              plate=".lostpixel/baseline/loop-1-research-route-instrument--${story}__[w${width}px].png"
+              if [ ! -s "$plate" ]; then
+                echo "::error file=${plate}::Missing canonical route-instrument baseline"
+                exit 1
+              fi
+            done
+          done
+          narrow=".lostpixel/baseline/loop-1-research-route-instrument--narrow__[w375px].png"
+          if [ ! -s "$narrow" ]; then
+            echo "::error file=${narrow}::Missing canonical narrow route-instrument baseline"
+            exit 1
+          fi
+          npx lost-pixel
+          if [ "$(find .lostpixel/current -maxdepth 1 -type f -name 'loop-1-research-route-instrument*' | wc -l | tr -d ' ')" != "22" ]; then
+            echo "::error::Expected 22 route-instrument captures"
+            exit 1
+          fi
+          if find .lostpixel/diff -type f -print -quit | grep -q .; then
+            echo "::error::Research route instrument differs from its canonical baselines"
+            exit 1
+          fi
+
       - name: Run Lost-Pixel against committed baselines (informational)
         # LostPixel 3.22 exits zero for differences in this repository's
         # generateOnly:false mode, so this legacy portfolio sweep is evidence,

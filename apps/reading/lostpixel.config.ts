@@ -1,6 +1,7 @@
 import type { CustomProjectConfig } from "lost-pixel";
 
 const scopedStoryId = process.env.LOSTPIXEL_STORY_ID;
+const scopedStoryIds = scopedStoryId?.split(",").filter(Boolean) ?? [];
 
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
@@ -20,6 +21,10 @@ const scopedStoryId = process.env.LOSTPIXEL_STORY_ID;
  * the spring should be replaced with a deterministic transition.
  */
 export const config: CustomProjectConfig = {
+  configureBrowser: ({ id }) =>
+    id === "loop-1-researchrouteinstrument--dark"
+      ? { colorScheme: "dark" }
+      : {},
   storybookShots: {
     storybookUrl: "./storybook-static",
     /**
@@ -47,16 +52,16 @@ export const config: CustomProjectConfig = {
   generateOnly: false,
   // Normal legacy sweep remains advisory; an explicitly scoped story is a
   // blocking evidence gate and must surface its current/diff artifacts.
-  failOnDifference: Boolean(scopedStoryId),
+  failOnDifference: scopedStoryIds.length > 0,
   // The scoped authored plate permits only microscopic Chromium raster jitter
   // (roughly 6–10 pixels across the configured viewports). The legacy sweep
   // retains its established 0.4% advisory ceiling.
-  threshold: scopedStoryId ? 0.00001 : 0.004,
+  threshold: scopedStoryIds.length > 0 ? 0.00001 : 0.004,
   // Skip known-flaky stories at every breakpoint. The framer-motion
   // spring on workspace-demo produces sub-1% inter-run diffs that
   // aren't real regressions.
   filterShot: ({ id }: { id?: string }) => {
-    if (scopedStoryId) return id === scopedStoryId;
+    if (scopedStoryIds.length > 0) return scopedStoryIds.includes(id ?? "");
     if (!id) return true;
     return !id.startsWith("workspace-demo--scene");
   },
