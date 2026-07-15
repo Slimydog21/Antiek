@@ -7,6 +7,7 @@ import {
   type DerivedAssetReadingResponse,
   type DerivedCompanionCitation,
   type DerivedCompanionEvidenceResponse,
+  type DerivedCompanionExecutionProjection,
 } from "../../api/research";
 import { LemonButton, LemonTag } from "../../components/lemon";
 
@@ -17,6 +18,15 @@ interface Props {
 }
 
 type PersistedTurn = Awaited<ReturnType<typeof getDerivedCompanionConversation>>["turns"][number];
+
+function executionLabel(execution: DerivedCompanionExecutionProjection | null): string {
+  if (!execution) return "Checking route evidence";
+  if (execution.reason === "qualification_registry_invalid") return "Route evidence unavailable";
+  if (execution.reason === "executable_route_not_registered") {
+    return `${execution.routes.length} routes checked · execution not registered`;
+  }
+  return `${execution.routes.length} routes checked · none qualified`;
+}
 
 function clientTurnId(): string {
   return `reader-${crypto.randomUUID()}`;
@@ -30,6 +40,7 @@ export default function DerivedRevisionCompanion({
   const [question, setQuestion] = useState("");
   const [result, setResult] = useState<DerivedCompanionEvidenceResponse | null>(null);
   const [turns, setTurns] = useState<PersistedTurn[]>([]);
+  const [execution, setExecution] = useState<DerivedCompanionExecutionProjection | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,11 +51,13 @@ export default function DerivedRevisionCompanion({
     setResult(null);
     setError(null);
     setTurns([]);
+    setExecution(null);
     void getDerivedCompanionConversation(model).then((conversation) => {
       if (generation !== requestGeneration.current) return;
       if (conversation.scope.revision_id !== model.revision_id
           || conversation.scope.content_sha256 !== model.content_sha256) return;
       setTurns(conversation.turns);
+      setExecution(conversation.execution);
     }).catch(() => {
       if (generation === requestGeneration.current) {
         setError("Saved companion evidence could not be loaded.");
@@ -72,6 +85,7 @@ export default function DerivedRevisionCompanion({
         throw new Error("companion identity conflict");
       }
       setResult(next);
+      setExecution(next.execution);
       setTurns((current) => [...current.filter(
         (turn) => turn.client_turn_id !== next.client_turn_id,
       ), {
@@ -118,7 +132,9 @@ export default function DerivedRevisionCompanion({
         setResult(null);
       }} rows={4} maxLength={8000} placeholder="What does this revision say about..." className="w-full resize-y border border-rule bg-white p-2 font-serif text-sm text-ink outline-none focus:border-ink dark:border-charcoal-1 dark:bg-charcoal-3 dark:text-bright" />
       <div className="mt-2 flex items-center justify-between gap-2">
-        <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">Cost unavailable</span>
+        <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+          {executionLabel(execution)}
+        </span>
         <LemonButton type="submit" size="sm" disabled={working || question.trim().length === 0}>
           {working ? <LoaderCircle className="animate-spin" size={14} /> : <Search size={14} />} Find evidence
         </LemonButton>
@@ -126,7 +142,7 @@ export default function DerivedRevisionCompanion({
     </form>
     {error ? <p role="alert" className="border-b border-rule px-4 py-3 text-xs text-danger dark:border-charcoal-1">{error}</p> : null}
     <div className="min-h-0 flex-1 p-4">
-      {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until pricing and spend recovery are qualified.</p></div> : null}
+      {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until a route has verified idempotency, pricing, and spend recovery.</p></div> : null}
       {result?.state === "insufficient_evidence" ? <p className="font-serif text-sm leading-relaxed text-ink-mute dark:text-moonlight">No matching evidence was found in this revision. No model was called.</p> : null}
       {result?.state === "evidence_ready" ? <ol className="space-y-3" aria-label="Matching revision evidence">{result.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-3 dark:border-charcoal-1">
         <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button></div>

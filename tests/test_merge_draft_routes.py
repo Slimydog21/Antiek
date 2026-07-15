@@ -245,6 +245,8 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
 ) -> None:
     client, _repository, db_path, _object_path, projection_id = fixture
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    spend_db = Path(db_path).with_name("companion-spend.sqlite3")
+    monkeypatch.setenv("ANTIEK_RESEARCH_SPEND_DB", str(spend_db))
     draft = client.post("/research/derived-assets/merge/drafts", json=payload(projection_id)).json()
     review = client.post(
         f"/research/derived-assets/merge/drafts/{draft['draft_id']}/reviews"
@@ -427,11 +429,23 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert prepared.headers["cache-control"] == "private, no-store"
     assert prepared.json()["state"] == "evidence_ready"
     assert prepared.json()["replayed"] is False
-    assert prepared.json()["execution"] == {
-        "available": False,
-        "reason": "paid_route_not_qualified",
-        "pricing_status": "unknown",
+    execution = prepared.json()["execution"]
+    assert execution["schema_version"] == "antiek.derived-companion-execution.v1"
+    assert execution["scope"] == {
+        "derived_asset_id": asset_id,
+        "revision_id": restored["revision_id"],
+        "content_sha256": restored["content_sha256"],
+        "generation": 3,
     }
+    assert execution["available"] is False
+    assert execution["reservable"] is False
+    assert execution["dispatch_authorized"] is False
+    assert execution["reason"] == "no_provider_route_qualified"
+    assert execution["pricing_status"] == "unavailable"
+    assert execution["recommended_ceiling_cents"] is None
+    assert [route["provider"] for route in execution["routes"]] == [
+        "exa", "openai", "perplexity", "tavily"
+    ]
     replayed = client.post(companion_path, json=companion_command)
     assert replayed.status_code == 200 and replayed.json()["replayed"] is True
     conflict = client.post(companion_path, json={**companion_command, "question": "up"})
@@ -467,6 +481,7 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     )
     assert conversation.status_code == 200
     assert conversation.headers["cache-control"] == "private, no-store"
+    assert conversation.json()["execution"] == execution
     assert [turn["question"] for turn in conversation.json()["turns"]] == [
         "Ready", "absent"
     ]
@@ -474,6 +489,7 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/companion"
     )
     assert [turn["question"] for turn in exact_conversation.json()["turns"]] == ["Ready"]
+    assert spend_db.exists() is False
     with duckdb.connect(db_path, read_only=True) as con:
         turns = con.execute(
             "SELECT state,count(*) FROM derived_asset_companion_turns GROUP BY state ORDER BY state"

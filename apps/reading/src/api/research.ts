@@ -389,6 +389,30 @@ export interface DerivedCompanionCitation {
   text_sha256: string;
 }
 
+export interface DerivedCompanionExecutionProjection {
+  schema_version: "antiek.derived-companion-execution.v1";
+  scope: Pick<DerivedAssetReadingResponse,
+    "derived_asset_id" | "revision_id" | "content_sha256" | "generation">;
+  available: false;
+  reservable: false;
+  dispatch_authorized: false;
+  reason: "no_provider_route_qualified" | "qualification_registry_invalid"
+    | "executable_route_not_registered";
+  pricing_status: "unavailable";
+  recommended_ceiling_cents: null;
+  routes: Array<{
+    provider: string;
+    model: string;
+    operation: string;
+    checked_at: string;
+    verdict: "qualified" | "refused";
+    blocking_dimensions: Array<
+      "pinned_pricing" | "durable_idempotency" | "hidden_retries_disabled"
+      | "authoritative_reconciliation" | "stable_provider_evidence"
+    >;
+  }>;
+}
+
 export interface DerivedCompanionEvidenceResponse {
   client_turn_id: string;
   state: "evidence_ready" | "insufficient_evidence";
@@ -400,15 +424,12 @@ export interface DerivedCompanionEvidenceResponse {
     pack_sha256: string;
     citations: DerivedCompanionCitation[];
   };
-  execution: {
-    available: false;
-    reason: "paid_route_not_qualified";
-    pricing_status: "unknown";
-  };
+  execution: DerivedCompanionExecutionProjection;
 }
 
 export interface DerivedCompanionConversationResponse {
   scope: DerivedCompanionEvidenceResponse["scope"] & { exact_reader_path: string };
+  execution: DerivedCompanionExecutionProjection;
   turns: Array<Pick<DerivedCompanionEvidenceResponse,
     "client_turn_id" | "state" | "failure_code" | "evidence_pack"> & { question: string }>;
 }
