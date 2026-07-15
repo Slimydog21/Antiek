@@ -6,10 +6,14 @@ key, or video renderer is required to prove the asset/manifest contract.
 
 from __future__ import annotations
 
+import hashlib
+
 import pytest
 from pydantic import ValidationError
 
 from substrate.contracts.multimedia import (
+    EvidenceDerivation,
+    EvidenceSpan,
     GeneratedFile,
     MultimediaAssetContract,
     MultimediaManifest,
@@ -146,6 +150,49 @@ def test_factual_script_line_requires_citation_or_unsourced_marker():
         unsourced_reason="operator framing, not a factual source claim",
     )
     assert line.unsourced_reason is not None
+
+
+def test_text_bound_citation_rejects_script_text_drift():
+    text = "The reviewed source states this exact claim."
+    body = text.encode("utf-8")
+    citation = SourceCitation(
+        chunk_id="chunk-1",
+        document_id="doc-1",
+        quote_sha256="a" * 64,
+    )
+    derivation = EvidenceDerivation(
+        method="verbatim_span",
+        recipe_version="antiek.evidence-narration.v1",
+        spans=(
+            EvidenceSpan(
+                chunk_id="chunk-1",
+                document_id="doc-1",
+                authority_kind="operator_excerpt",
+                chunk_sha256="a" * 64,
+                start_utf8_byte=0,
+                end_utf8_byte=len(body),
+                span_sha256=hashlib.sha256(body).hexdigest(),
+                exact_text=text,
+            ),
+        ),
+        output_sha256=hashlib.sha256(body).hexdigest(),
+    )
+    ScriptLine(
+        line_id="line-1",
+        sequence=0,
+        text=text,
+        citations=(citation,),
+        evidence_derivation=derivation,
+    )
+
+    with pytest.raises(ValidationError, match="evidence derivation"):
+        ScriptLine(
+            line_id="line-1",
+            sequence=0,
+            text="A substituted claim.",
+            citations=(citation,),
+            evidence_derivation=derivation,
+        )
 
 
 def test_generated_files_require_duration_or_dimensions():

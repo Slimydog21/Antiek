@@ -11,9 +11,10 @@ import stat
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Protocol
 
-from runtime.db_lock import FlockWriteCoordinator
+from runtime.db_lock import FlockWriteCoordinator, connect_read
 
 from .read_model import MultimediaAssetRecord, MultimediaAssetStore
 from .visual_selection import ReviewedVisualSelection
@@ -94,6 +95,13 @@ class ReviewedVisualRegistry:
             raise ValueError("integrity_key must contain at least 32 bytes")
         self._db_path = db_path
         self._integrity_key = integrity_key
+
+    def assert_independent_snapshot_key(self, snapshot_key: bytes) -> None:
+        """Reject reuse of the key authenticating reviewed visual selections."""
+        if not isinstance(snapshot_key, bytes) or len(snapshot_key) < 32:
+            raise ValueError("production snapshot key is invalid")
+        if hmac.compare_digest(snapshot_key, self._integrity_key):
+            raise ValueError("production snapshot key must be independent")
 
     def register(
         self,
@@ -216,6 +224,27 @@ class ReviewedVisualRegistry:
         if row is None:
             raise ReviewedVisualRegistryError("reviewed visual set is unavailable")
         return self._decode(row)
+
+    def get_existing(
+        self, *, owner_identity_digest: str, asset_id: str, revision_id: str
+    ) -> ResolvedReviewedVisualSet:
+        """Read an existing reviewed set without schema creation or a write lock."""
+        if not Path(self._db_path).is_file():
+            raise ReviewedVisualRegistryError("reviewed visual set is unavailable")
+        try:
+            with connect_read(self._db_path) as connection:
+                row = connection.execute(
+                    "SELECT * FROM multimedia_reviewed_visual_sets "
+                    "WHERE owner_identity_digest=? AND asset_id=? AND revision_id=?",
+                    [owner_identity_digest, asset_id, revision_id],
+                ).fetchone()
+        except Exception as exc:
+            raise ReviewedVisualRegistryError(
+                "reviewed visual set is unavailable"
+            ) from exc
+        if row is None:
+            raise ReviewedVisualRegistryError("reviewed visual set is unavailable")
+        return self._decode(tuple(row))
 
     def _decode(self, row: tuple[object, ...]) -> ResolvedReviewedVisualSet:
         if len(row) != 10 or not all(isinstance(value, str) for value in row):

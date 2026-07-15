@@ -7,12 +7,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Literal, Protocol
 
+from .audible_run import prepare_audible_run_plan
 from .chapter_tts_production import PreparedChapterTTSRequest, prepare_chapter_tts_request
 from .execution_authorization import MultimediaExecutionAuthorizationV2
 from .execution_authorization_issuer import (
     AsyncExecutionAuthorizationIssueRequest,
     ExecutionAuthorizationIssueConflict,
 )
+from .graph_evidence import MultimediaGraphEvidenceUnavailable, load_canonical_multimedia_chunks
 from .narration_run import narration_child_revision
 from .read_model import MultimediaAssetRecord, MultimediaAssetStore
 
@@ -70,6 +72,7 @@ def authorize_multimedia_chapter_narration(
     terms_resolver: Callable[[MultimediaAssetRecord, str], TrustedNarrationTerms],
     issuer: AsyncAuthorizationIssuer,
     clock: Callable[[], datetime],
+    db_path: str | None = None,
 ) -> NarrationAuthorizationResult:
     try:
         record = store.get(asset_id, owner_id=owner_id)
@@ -87,19 +90,48 @@ def authorize_multimedia_chapter_narration(
     if isinstance(ceiling, bool) or not isinstance(ceiling, int) or ceiling <= 0:
         raise NarrationAuthorizationError("approved narration ceiling is invalid")
 
+    authorization_plan = record.plan
+    if record.mode == "audio" or str(record.asset.kind) == "audio_experience":
+        canonical_ids = tuple(
+            dict.fromkeys(
+                span.chunk_id
+                for line in record.plan.script_lines
+                if line.evidence_derivation is not None
+                for span in line.evidence_derivation.spans
+                if span.authority_kind == "canonical_graph"
+            )
+        )
+        try:
+            canonical_chunks = (
+                load_canonical_multimedia_chunks(db_path, canonical_ids, owner_id=owner_id)
+                if canonical_ids and db_path is not None
+                else None
+            )
+            if canonical_ids and canonical_chunks is None:
+                raise NarrationAuthorizationError("canonical narration evidence is unavailable")
+            authorization_plan = prepare_audible_run_plan(
+                record.plan, canonical_chunks=canonical_chunks
+            )
+        except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError, ValueError) as exc:
+            raise NarrationAuthorizationError(
+                "canonical narration evidence is unavailable"
+            ) from exc
+
     spoken_chapters = tuple(
         chapter.chapter_id
-        for chapter in record.plan.chapters
+        for chapter in authorization_plan.chapters
         if any(
             line.line_id.split("-line-", 1)[0] == chapter.chapter_id
-            for line in record.plan.script_lines
+            for line in authorization_plan.script_lines
         )
     )
     try:
         sequence = spoken_chapters.index(request.chapter_id)
         terms = terms_resolver(record, request.chapter_id)
     except (LookupError, ValueError) as exc:
-        raise NarrationAuthorizationError("narration chapter or trusted terms are unavailable") from exc
+        raise NarrationAuthorizationError(
+            "narration chapter or trusted terms are unavailable"
+        ) from exc
     if terms.endpoint_capability != "text-to-speech":
         raise NarrationAuthorizationError("trusted narration capability conflicts")
     if ceiling > terms.maximum_ceiling_microdollars:
@@ -110,7 +142,7 @@ def authorize_multimedia_chapter_narration(
     )
     try:
         prepared = prepare_chapter_tts_request(
-            record.plan,
+            authorization_plan,
             asset_id=asset_id,
             revision_id=child_revision,
             provider=terms.provider,

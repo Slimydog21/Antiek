@@ -16,13 +16,22 @@ const models = {
   models: [
     {
       provider_id: "zai",
+      registered: true,
       ready: true,
       tier_bindings: ["flash", "pro"],
       primary_model: "glm-5.2",
       notes: null,
     },
+    {
+      provider_id: "user-custom",
+      registered: true,
+      ready: false,
+      tier_bindings: [],
+      primary_model: null,
+      notes: "registered, but not bound to an active dispatch tier",
+    },
   ],
-  count: 1,
+  count: 2,
   providers_ready: true,
   source: "test",
 };
@@ -105,6 +114,7 @@ describe("Settings SPR-01", () => {
       expect(screen.getByText("zai")).toBeTruthy();
     });
     expect(screen.getByText(/ready/i)).toBeTruthy();
+    expect(screen.getAllByText("registered").length).toBeGreaterThan(0);
     expect(screen.getByText("$5.00")).toBeTruthy();
     expect(screen.getByText("$1.0000")).toBeTruthy();
   });

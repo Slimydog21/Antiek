@@ -2,6 +2,7 @@ import { API_BASE, apiFetch } from "../lib/api";
 
 export interface ModelRow {
   provider_id: string;
+  registered: boolean;
   ready: boolean;
   tier_bindings: string[];
   primary_model: string | null;

@@ -4,4 +4,3 @@ Cycle 591 operating spec: turn the research composer’s real Fast/Deep routing 
 
 - Master: `index.html`
 - Sprint: `sprints/SPR-01-route-contract-and-instrument.html`
-
