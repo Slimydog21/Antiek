@@ -37,6 +37,45 @@ export class AntiekBenchHttpError extends Error {
   }
 }
 
+const BENCH_TASKS = new Set<BenchTask>([
+  "deep_research",
+  "research_synthesis",
+  "reading",
+  "twin_note",
+  "writing",
+  "multimedia",
+  "general",
+]);
+const WEEK_ID = /^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$/;
+
+function validBoundedString(value: unknown, maxLength: number): value is string {
+  return typeof value === "string" && value.length >= 1 && value.length <= maxLength;
+}
+
+function validGeneratedAt(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /(?:Z|[+-]\d{2}:\d{2})$/.test(value) &&
+    Number.isFinite(Date.parse(value))
+  );
+}
+
+function utcIsoWeekId(value: string): string | null {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  const day = new Date(
+    Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()),
+  );
+  const isoDay = day.getUTCDay() || 7;
+  day.setUTCDate(day.getUTCDate() + 4 - isoDay);
+  const isoYear = day.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil(
+    ((day.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
+  );
+  return `${isoYear}-W${String(week).padStart(2, "0")}`;
+}
+
 function parseWeeklyBench(raw: unknown): WeeklyBenchViewResponse {
   if (!raw || typeof raw !== "object")
     throw new Error("invalid weekly benchmark response");
@@ -53,8 +92,15 @@ function parseWeeklyBench(raw: unknown): WeeklyBenchViewResponse {
     if (!rawRow || typeof rawRow !== "object")
       throw new Error(`measurement ${index} is invalid`);
     const row = rawRow as Record<string, unknown>;
-    for (const key of ["task", "tier", "provider", "model"] as const) {
-      if (typeof row[key] !== "string" || !row[key]) {
+    if (typeof row.task !== "string" || !BENCH_TASKS.has(row.task as BenchTask)) {
+      throw new Error(`measurement ${index}.task is invalid`);
+    }
+    for (const [key, ceiling] of [
+      ["tier", 64],
+      ["provider", 128],
+      ["model", 256],
+    ] as const) {
+      if (!validBoundedString(row[key], ceiling)) {
         throw new Error(`measurement ${index}.${key} is invalid`);
       }
     }
@@ -69,23 +115,40 @@ function parseWeeklyBench(raw: unknown): WeeklyBenchViewResponse {
     if (
       typeof row.samples !== "number" ||
       !Number.isSafeInteger(row.samples) ||
-      row.samples < 1
+      row.samples < 1 ||
+      row.samples > 1_000_000
     ) {
       throw new Error(`measurement ${index}.samples is invalid`);
     }
     return row as unknown as BenchMeasurement;
   });
-  if (value.status === "unavailable" && measurements.length !== 0) {
-    throw new Error("unavailable benchmark cannot contain measurements");
+  if (!value.notes.every((note) => typeof note === "string")) {
+    throw new Error("benchmark notes must be strings");
+  }
+  if (value.status === "unavailable") {
+    if (
+      measurements.length !== 0 ||
+      value.week_id !== null ||
+      value.generated_at !== null
+    ) {
+      throw new Error("unavailable benchmark cannot contain measured evidence");
+    }
+  } else if (
+    measurements.length === 0 ||
+    typeof value.week_id !== "string" ||
+    !WEEK_ID.test(value.week_id) ||
+    !validGeneratedAt(value.generated_at) ||
+    utcIsoWeekId(value.generated_at) !== value.week_id
+  ) {
+    throw new Error("measured benchmark metadata is invalid");
   }
   return {
     authority: "advisory",
     status: value.status,
-    week_id: typeof value.week_id === "string" ? value.week_id : null,
-    generated_at:
-      typeof value.generated_at === "string" ? value.generated_at : null,
+    week_id: value.week_id as string | null,
+    generated_at: value.generated_at as string | null,
     measurements,
-    notes: value.notes.map((note) => String(note)),
+    notes: value.notes as string[],
   };
 }
 
