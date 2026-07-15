@@ -29,6 +29,8 @@ def _setup(tmp_path: Path, owner: str = "owner-1") -> tuple[TestClient, str, str
             target_minutes=15,
             mode="video",
             route_policy="balanced",
+            sources=("Early narration history is grounded in reviewed evidence.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )

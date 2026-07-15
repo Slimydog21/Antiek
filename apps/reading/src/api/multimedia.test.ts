@@ -23,8 +23,10 @@ import {
   getMultimediaLocalCapability,
   getMultimediaLocalAudibleCapability,
   getMultimediaLocalAudiblePlayback,
+  getMultimediaPaidAudioPlayback,
   getMultimediaPlayback,
   getNarrationRunReconciliation,
+  getListeningProgress,
   materializeMultimediaVisualCandidates,
   listMultimediaAssets,
   listMultimediaJobs,
@@ -37,12 +39,15 @@ import {
   recoverMultimediaLocalAudible,
   produceMultimediaLocalAudible,
   pollMultimediaVisualGeneration,
+  previewMultimediaSteering,
   previewMultimediaVisualCandidate,
   manualGateIds,
+  putListeningProgress,
   runMultimediaHardening,
   registerMultimediaProduction,
   registerMultimediaReviewedVisuals,
   produceAuthorizedMultimedia,
+  produceAuthorizedAudio,
   executeChapterTtsReconciliation,
   steerMultimediaAsset,
   submitMultimediaVisualGeneration,
@@ -240,10 +245,14 @@ describe("multimedia API client", () => {
       asset_id: "mm-1", revision_id: "rev-1", receipt_sha256: "a".repeat(64),
       audio_sha256: "b".repeat(64), audio_size_bytes: 100, duration_seconds: 90,
       chapter_ids: ["chapter-1"], retention_marker_count: 2, learned_claim_count: 1,
+      chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 90 }],
       source_count: 1,
       learned_claims: [{
-        chapter_id: "chapter-1", claim_text: "Verified claim", source_count: 1,
-        follow_up_prompt: "Review the source.",
+        line_id: "chapter-1-line-0", chapter_id: "chapter-1", claim_text: "Verified claim", source_count: 1,
+        follow_up_prompt: "Review the source.", source_chunk_ids: ["chunk-1"], evidence_status: "verified_exact",
+        evidence_sources: [{ chunk_id: "chunk-1", document_id: "doc-1",
+          locator: "Flow", authority_kind: "canonical_graph", chunk_sha256: "c".repeat(64),
+          start_utf8_byte: 0, end_utf8_byte: 14, span_sha256: "d".repeat(64), exact_text: "Verified claim" }],
       }],
       audio_url: "/multimedia/assets/mm-1/local-audible/playback/rev-1/audio",
     };
@@ -253,6 +262,23 @@ describe("multimedia API client", () => {
     );
     mockFetch().mockResolvedValueOnce(jsonResponse(200, {
       ...playback, audio_url: "/tmp/forged.wav",
+    }));
+    await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
+      "playback_identity_conflict",
+    );
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...playback,
+      chapters: [{ ...playback.chapters[0], end_offset_seconds: 89.998 }],
+    }));
+    await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
+      "playback_identity_conflict",
+    );
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      ...playback,
+      learned_claims: [{
+        ...playback.learned_claims[0],
+        evidence_sources: [{ ...playback.learned_claims[0].evidence_sources[0], exact_text: "Forged" }],
+      }],
     }));
     await expect(getMultimediaLocalAudiblePlayback("mm-1", "rev-1")).rejects.toThrow(
       "playback_identity_conflict",
@@ -299,8 +325,32 @@ describe("multimedia API client", () => {
       expect.objectContaining({ method: "POST" }),
     );
 
+    const steeringPreview = {
+      status: "ready",
+      asset_id: "mm-1",
+      parent_revision_id: "rev-1",
+      proposed_revision_id: "rev-2",
+      route_policy: "cheapest",
+      intent: { steering_event_id: "steer-1", prompt: "go deeper", status: "ready", operations: [], clarifications: [], transcript: null },
+      operations: [], affected_segment_ids: [], segment_reuse: [], changes: [],
+      estimated_cost_delta_usd: 0, preview_token: "signed", expires_at_epoch_seconds: 2_000_000_000,
+    } as const;
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, steeringPreview));
+    await previewMultimediaSteering("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "go deeper",
+    });
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/steering-preview",
+      expect.objectContaining({ method: "POST" }),
+    );
+
     mockFetch().mockResolvedValueOnce(jsonResponse(200, record));
-    await steerMultimediaAsset("mm-1", { prompt: "go deeper" });
+    await steerMultimediaAsset("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "go deeper",
+      preview_token: "signed",
+    });
     expect(mockFetch()).toHaveBeenLastCalledWith(
       "/multimedia/assets/mm-1/steer",
       expect.objectContaining({ method: "POST" }),
@@ -579,10 +629,58 @@ describe("multimedia API client", () => {
     await expect(listMultimediaJobs("mm-missing")).rejects.toThrow("multimedia_asset_not_found");
   });
 
-  it("surfaces the typed steering-clarification error on 409", async () => {
-    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "ambiguous" }));
-    await expect(steerMultimediaAsset("mm-1", { prompt: "x" })).rejects.toThrow(
-      "multimedia_steering_needs_clarification",
+  it("produces and reopens owner-bound paid audio", async () => {
+    const authority = {
+      version: 2, authorization_id: "auth-1", request_id: "request-1", operator_id: "owner-1",
+      asset_id: "mm-1", revision_id: "child-1", provider: "provider", route_policy: "balanced",
+      model: "tts", endpoint_capability: "text-to-speech", catalog_version: "v1",
+      catalog_digest: "a".repeat(64), quote_id: "quote-1", quote_expires_at: "2026-07-12T01:10:00Z",
+      recovery_authority_id: "recovery-1", recovery_verification_key_digest: "b".repeat(64),
+      approved_ceiling_microdollars: 100_000, request_body_digest: "e".repeat(64),
+      issued_at: "2026-07-12T01:00:00Z", expires_at: "2026-07-12T01:15:00Z",
+      signature: "f".repeat(64),
+    };
+    const link = {
+      schema_version: "antiek.multimedia-audio-production-link.v1" as const,
+      owner_identity_digest: "d".repeat(64), asset_id: "mm-1", revision_id: "rev-1",
+      receipt_sha256: "c".repeat(64), audio_sha256: "a".repeat(64), audio_size_bytes: 10,
+      duration_seconds: 12.5,
+      chapter_ids: ["chapter-1"], retention_marker_count: 1, learned_claim_count: 1,
+      source_count: 1,
+    };
+    const paidRecord = { ...record, asset: { ...record.asset, revision_id: "rev-1" }, audio_production_link: link };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, paidRecord));
+    expect((await produceAuthorizedAudio("mm-1", "rev-1", [
+      { chapter_id: "chapter-1", authorization: authority },
+    ])).audio_production_link?.asset_id).toBe("mm-1");
+    expect(mockFetch()).toHaveBeenLastCalledWith(
+      "/multimedia/assets/mm-1/audio-production", expect.objectContaining({ method: "POST" }),
+    );
+
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      asset_id: "mm-1", revision_id: "rev-1", receipt_sha256: "c".repeat(64),
+      audio_sha256: "a".repeat(64), audio_size_bytes: 10, duration_seconds: 12.5,
+      chapter_ids: ["chapter-1"], retention_marker_count: 1, learned_claim_count: 1,
+      chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 12.5 }],
+      source_count: 1, learned_claims: [{ line_id: "chapter-1-line-0", chapter_id: "chapter-1", claim_text: "claim",
+        source_count: 1, follow_up_prompt: "Next?", source_chunk_ids: ["chunk-1"], evidence_status: "verified_exact",
+        evidence_sources: [{ chunk_id: "chunk-1", document_id: "doc-1",
+          locator: null, authority_kind: "operator_excerpt", chunk_sha256: "c".repeat(64), start_utf8_byte: 0,
+          end_utf8_byte: 5, span_sha256: "d".repeat(64), exact_text: "claim" }] }],
+      audio_url: "/multimedia/assets/mm-1/audio-playback/rev-1/audio",
+    }));
+    expect((await getMultimediaPaidAudioPlayback("mm-1", "rev-1")).audio_url)
+      .toBe("/multimedia/assets/mm-1/audio-playback/rev-1/audio");
+  });
+
+  it("surfaces stable steering preview conflict details", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "multimedia_steering_stale_parent" }));
+    await expect(steerMultimediaAsset("mm-1", {
+      expected_parent_revision_id: "rev-1",
+      prompt: "x",
+      preview_token: "signed",
+    })).rejects.toThrow(
+      "multimedia_steering_stale_parent",
     );
   });
 
@@ -620,5 +718,135 @@ describe("multimedia API client", () => {
       "/multimedia/narration-runs/run%201/reconciliation",
       expect.anything(),
     );
+  });
+
+  // ── Cycle 22: listening progress ──
+
+  it("getListeningProgress returns resume_available=false for no row", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: false,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 0,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "",
+      sequence: 0,
+      updated_at: 0,
+      applied: null,
+    }));
+    const result = await getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120);
+    expect(result.resume_available).toBe(false);
+    expect(result.position_milliseconds).toBe(0);
+  });
+
+  it("getListeningProgress returns resume data when available", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 30000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000.0,
+      applied: null,
+    }));
+    const result = await getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120);
+    expect(result.resume_available).toBe(true);
+    expect(result.position_milliseconds).toBe(30000);
+    expect(result.session_id).toBe("abcdefghijklmnop");
+  });
+
+  it("getListeningProgress throws typed error on 404", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(404, { detail: "not found" }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_unavailable",
+    );
+  });
+
+  it("getListeningProgress throws typed error on 409", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "conflict" }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_conflict",
+    );
+  });
+
+  it("getListeningProgress rejects response with mismatched asset_id", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "wrong-asset",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 30000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000.0,
+      applied: null,
+    }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_identity_conflict",
+    );
+  });
+
+  it("getListeningProgress rejects contradictory completion state", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 119000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 1,
+      updated_at: 1000.0,
+      applied: null,
+    }));
+    await expect(getListeningProgress("asset-1", "rev-1", "a".repeat(64), 120)).rejects.toThrow(
+      "multimedia_listening_progress_identity_conflict",
+    );
+  });
+
+  it("putListeningProgress sends checkpoint and returns stored projection", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      resume_available: true,
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      audio_sha256: "a".repeat(64),
+      position_milliseconds: 50000,
+      duration_milliseconds: 120000,
+      completed: false,
+      session_id: "abcdefghijklmnop",
+      sequence: 2,
+      updated_at: 2000.0,
+      applied: true,
+    }));
+    const result = await putListeningProgress("asset-1", {
+      revision_id: "rev-1",
+      position_milliseconds: 50000,
+      session_id: "abcdefghijklmnop",
+      sequence: 2,
+    }, "a".repeat(64), 120);
+    expect(result.resume_available).toBe(true);
+    expect(result.position_milliseconds).toBe(50000);
+    expect(result.sequence).toBe(2);
+  });
+
+  it("putListeningProgress throws typed error on 409", async () => {
+    mockFetch().mockResolvedValueOnce(jsonResponse(409, { detail: "conflict" }));
+    await expect(
+      putListeningProgress("asset-1", {
+        revision_id: "rev-1",
+        position_milliseconds: 50000,
+        session_id: "abcdefghijklmnop",
+        sequence: 1,
+      }, "a".repeat(64), 120),
+    ).rejects.toThrow("multimedia_listening_progress_conflict");
   });
 });

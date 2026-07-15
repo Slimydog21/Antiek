@@ -9,7 +9,7 @@
 // Write/Speak) build against. The provisional ReaderSurfaceContract is a
 // Python Protocol (behavior, not data) and is intentionally not emitted here.
 
-export const CONTRACT_SCHEMA_VERSION = 2;
+export const CONTRACT_SCHEMA_VERSION = 3;
 
 /**
  * One rendered layer of an assembled context pack: its kind, the source
