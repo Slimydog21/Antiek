@@ -76,9 +76,9 @@ describe("fetchTwinForAsset", () => {
       expect(result.source).toBe("live");
       expect(result.twin.insights[0]?.text).toBe("Live insight");
     }
-    const firstCall = fetchImpl.mock.calls.at(0);
-    expect(firstCall).toBeDefined();
-    expect(String(firstCall?.[0])).toContain("/twins/doc-42");
+    expect(fetchImpl).toHaveBeenCalled();
+    const calls = fetchImpl.mock.calls as unknown as Array<[RequestInfo | URL]>;
+    expect(String(calls[0][0])).toContain("/twins/doc-42");
   });
 
   it("returns not_found on 404 without throwing", async () => {
