@@ -142,6 +142,18 @@ describe("SuggestedResearch — plain-language threads (M1)", () => {
     expect(screen.getByText("could chase")).toBeTruthy();
     expect(screen.queryByText("working")).toBeNull();
   });
+
+  it("gives offered threads stable visual locators without changing their status", async () => {
+    suggestState.current.suggestions = [
+      sug({ key: "k1", question: "First open thread" }),
+      sug({ key: "k2", question: "Second open thread" }),
+    ];
+    renderLane();
+    await screen.findByText("First open thread");
+    expect(screen.getByText("thread 01")).toBeTruthy();
+    expect(screen.getByText("thread 02")).toBeTruthy();
+    expect(startMock).not.toHaveBeenCalled();
+  });
 });
 
 describe("SuggestedResearch — surfacing adds no spend / explicit click (M3)", () => {

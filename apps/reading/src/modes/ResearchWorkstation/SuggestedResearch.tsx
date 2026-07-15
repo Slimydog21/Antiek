@@ -7,6 +7,7 @@ import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
+import "./suggested-research-thread-cards.css";
 
 /**
  * SuggestedResearch — the §7 compounding flywheel, surfaced (SPR-09).
@@ -126,23 +127,23 @@ export default function SuggestedResearch({
 
   if (state.kind === "loading") {
     return (
-      <Frame variant={variant}>
+      <SuggestedResearchFrame variant={variant}>
         <p className="text-sm italic text-shadow-1 dark:text-moonlight">
           Looking for threads worth chasing…
         </p>
-      </Frame>
+      </SuggestedResearchFrame>
     );
   }
 
   if (state.kind === "error") {
     return (
-      <Frame variant={variant}>
+      <SuggestedResearchFrame variant={variant}>
         <AIActionFailure
           title="Couldn’t look for threads to chase"
           reason={state.reason}
           onRetry={load}
         />
-      </Frame>
+      </SuggestedResearchFrame>
     );
   }
 
@@ -153,23 +154,24 @@ export default function SuggestedResearch({
     // never ran) — say so plainly, never invent a thread. Reuses the shared
     // no-result sentence (no `reason` ⇒ the no-provider branch).
     return (
-      <Frame variant={variant}>
+      <SuggestedResearchFrame variant={variant}>
         <AIActionFailure
           title="No threads to chase yet"
           onRetry={load}
           retryLabel="Look again"
         />
-      </Frame>
+      </SuggestedResearchFrame>
     );
   }
 
   return (
-    <Frame variant={variant}>
+    <SuggestedResearchFrame variant={variant}>
       <div className={variant === "beside" ? "space-y-2" : "space-y-3"}>
-        {offered.map((s) => (
+        {offered.map((s, index) => (
           <SuggestionCard
             key={s.key}
             suggestion={s}
+            threadNumber={index + 1}
             canLaunch={canLaunch}
             onChaseGesture={onChase}
             onLaunched={(childId) => {
@@ -179,11 +181,11 @@ export default function SuggestedResearch({
           />
         ))}
       </div>
-    </Frame>
+    </SuggestedResearchFrame>
   );
 }
 
-function Frame({
+export function SuggestedResearchFrame({
   variant,
   children,
 }: {
@@ -195,8 +197,8 @@ function Frame({
       aria-label="Suggested next researches"
       className={
         variant === "beside"
-          ? "px-4 py-4"
-          : "rounded-md border border-rule px-4 py-4 dark:border-charcoal-1"
+          ? "suggested-threads suggested-threads--beside px-4 py-4"
+          : "suggested-threads suggested-threads--lane rounded-md border border-rule px-4 py-4 dark:border-charcoal-1"
       }
     >
       <header className="mb-3 flex items-baseline gap-2">
@@ -214,13 +216,15 @@ function Frame({
   );
 }
 
-function SuggestionCard({
+export function SuggestionCard({
   suggestion,
+  threadNumber,
   canLaunch,
   onChaseGesture,
   onLaunched,
 }: {
   suggestion: Suggestion;
+  threadNumber: number;
   canLaunch: boolean;
   onChaseGesture?: (chase: SuggestedChase) => void;
   onLaunched: (childId: string | null) => void;
@@ -268,9 +272,12 @@ function SuggestionCard({
       // solid in-flight row. The dashed border is the "this is a proposal, not
       // running" signal (rigor #3 + the distinction gate).
       data-testid="suggestion-card"
-      className="rounded-md border border-dashed border-rule bg-ice-1/40 px-3 py-2.5 dark:border-charcoal-1 dark:bg-charcoal-1/30"
+      className="suggested-thread-card rounded-md border border-dashed border-rule bg-ice-1/40 px-3 py-2.5 dark:border-charcoal-1 dark:bg-charcoal-1/30"
     >
-      <div className="mb-1.5 flex items-center gap-2">
+      <div className="suggested-thread-card__index" aria-hidden="true">
+        thread {String(threadNumber).padStart(2, "0")}
+      </div>
+      <div className="mb-1.5 flex flex-wrap items-center gap-2">
         <LemonTag colour="muted" className="text-[10px]">
           could chase
         </LemonTag>
@@ -280,13 +287,16 @@ function SuggestionCard({
           </span>
         )}
       </div>
-      <p className="font-serif text-sm leading-relaxed text-ink dark:text-bright">
+      <p className="suggested-thread-card__question font-serif text-sm leading-relaxed text-ink dark:text-bright">
         {suggestion.question}
       </p>
       {suggestion.suggested_retrieval && (
-        <p className="mt-1 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-          worth looking at: {suggestion.suggested_retrieval}
-        </p>
+        <div className="suggested-thread-card__lead mt-2">
+          <span className="suggested-thread-card__lead-label">search lead</span>
+          <p className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+            worth looking at: {suggestion.suggested_retrieval}
+          </p>
+        </div>
       )}
 
       {error && (
