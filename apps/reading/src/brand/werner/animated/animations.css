@@ -137,6 +137,17 @@
   transform-origin: 50% 65%;
 }
 
+/* The lost/empty source frames Werner as a tiny figure on a 1024px horizon:
+   its visible subject occupies 1.4% of the canvas versus 24–32% for the other
+   canonical poses. Crop that source framing at the canonical render seam. */
+.werner-pose-viewport--empty {
+  overflow: hidden;
+}
+.werner-pose--empty {
+  transform: scale(4.6);
+  transform-origin: 50% 53%;
+}
+
 /* ─── Penguin mascot idle wander (SPR-12 M3) ──────────────────────────
  * The floating project-home Penguin gently wanders while idle: a slow,
  * small positional drift layered on top of the Werner breathing sway.

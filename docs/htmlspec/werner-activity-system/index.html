@@ -245,6 +245,7 @@
           ><span class="tag green">SPR-09 implemented</span
           ><span class="tag green">SPR-10 implemented</span
           ><span class="tag green">SPR-11 implemented</span
+          ><span class="tag green">SPR-12 implemented</span
           ><span class="tag yellow">Owner: Antiek design goal</span
           ><span class="tag blue">HTML-native</span
           ><span class="tag">Updated 2026-07-14</span>
@@ -561,6 +562,17 @@
               ><span class="tag">Depends on SPR-10</span>
             </div></a
           >
+          <a class="card" href="sprint-12-empty-pose-framing.html"
+            ><span class="id">SPR-12</span><strong>Empty pose framing</strong
+            ><span
+              >Normalize the lost raster's measured 1.4% subject coverage at the
+              canonical render seam without redrawing Werner.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-11</span>
+            </div></a
+          >
         </div>
         <h3>Freshness-gated next candidates</h3>
         <table>
@@ -699,11 +711,11 @@
         class="block"
         id="harness-hint-run"
         data-harness-default-pattern="adversarial-verification"
-        data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07,SPR-08,SPR-09,SPR-10,SPR-11"
+        data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07,SPR-08,SPR-09,SPR-10,SPR-11,SPR-12"
       >
         <h2>Execution harness hint</h2>
         <p>
-          All eleven sprints are file-coupled and run inline. Verification must
+          All twelve sprints are file-coupled and run inline. Verification must
           be heterogeneous and try to prove behavioral drift: route determinism,
           transition cleanup, exactly-one-instrument mounting, custom-cursor
           visibility, edge-only product reactions, fixed-step input cardinality,
