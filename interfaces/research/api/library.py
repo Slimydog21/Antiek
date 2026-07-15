@@ -7,6 +7,7 @@ metadata-only; bodies only via ``/books/{id}/full-text``.
 
 from __future__ import annotations
 
+import contextlib
 from typing import Literal
 
 from fastapi import FastAPI, Query
@@ -38,12 +39,13 @@ def register_library_routes(app: FastAPI) -> None:
 
         db = _resolve_db_path()
         con = connect_read(db)
-        committed = False
+        transaction_started = False
         try:
             # DuckDB snapshots are transaction-scoped. Keep every offset batch
             # on one snapshot so concurrent inserts/takedowns cannot shift the
             # remaining pages and corrupt the catalog total.
             con.execute("BEGIN TRANSACTION")
+            transaction_started = True
             assets = []
             offset = 0
             while True:
@@ -58,11 +60,16 @@ def register_library_routes(app: FastAPI) -> None:
                     break
                 offset += len(batch)
             con.execute("COMMIT")
-            committed = True
+            transaction_started = False
         finally:
-            if not committed:
-                con.execute("ROLLBACK")
-            con.close()
+            try:
+                if transaction_started:
+                    # Cleanup must preserve the batch/commit failure that
+                    # caused this path; closing releases the read snapshot.
+                    with contextlib.suppress(Exception):
+                        con.execute("ROLLBACK")
+            finally:
+                con.close()
 
         summaries = [BookSummary.from_asset(a) for a in assets]
         return build_library_page(

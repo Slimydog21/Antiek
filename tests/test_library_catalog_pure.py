@@ -196,6 +196,8 @@ def test_register_library_rolls_back_failed_snapshot(
     class _Con:
         def execute(self, command: str) -> None:
             transaction_commands.append(command)
+            if command == "ROLLBACK":
+                raise RuntimeError("rollback failed")
 
         def close(self) -> None:
             nonlocal closed
@@ -215,4 +217,37 @@ def test_register_library_rolls_back_failed_snapshot(
         TestClient(app).get("/library")
 
     assert transaction_commands == ["BEGIN TRANSACTION", "ROLLBACK"]
+    assert closed
+
+
+def test_register_library_closes_when_begin_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """BEGIN failure preserves its error and does not attempt a bogus rollback."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import interfaces.research.api.library as lib
+
+    transaction_commands: list[str] = []
+    closed = False
+
+    class _Con:
+        def execute(self, command: str) -> None:
+            transaction_commands.append(command)
+            raise RuntimeError("begin failed")
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
+
+    app = FastAPI()
+    lib.register_library_routes(app)
+    with pytest.raises(RuntimeError, match="begin failed"):
+        TestClient(app).get("/library")
+
+    assert transaction_commands == ["BEGIN TRANSACTION"]
     assert closed
