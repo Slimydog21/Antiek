@@ -1248,10 +1248,17 @@ CREATE TABLE IF NOT EXISTS derived_asset_revisions (
     PRIMARY KEY (derived_asset_id, revision_id),
     UNIQUE (revision_id),
     UNIQUE (derived_asset_id, revision_id, content_sha256),
+    UNIQUE (
+        derived_asset_id, revision_id, content_sha256, manifest_sha256
+    ),
     FOREIGN KEY (derived_asset_id, parent_revision_id)
         REFERENCES derived_asset_revisions(derived_asset_id, revision_id),
-    FOREIGN KEY (derived_asset_id, restored_from_revision_id)
-        REFERENCES derived_asset_revisions(derived_asset_id, revision_id),
+    FOREIGN KEY (
+        derived_asset_id, restored_from_revision_id,
+        content_sha256, manifest_sha256
+    ) REFERENCES derived_asset_revisions(
+        derived_asset_id, revision_id, content_sha256, manifest_sha256
+    ),
     CHECK (
         (operation_kind = 'create' AND parent_revision_id IS NULL
             AND restored_from_revision_id IS NULL)

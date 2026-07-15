@@ -51,8 +51,13 @@ def _revision(
     operation: str = "create",
     parent: str | None = None,
     restored_from: str | None = None,
-    content_hash: str = BODY_HASH,
+    body: str = BODY,
+    manifest: str = MANIFEST,
+    content_hash: str | None = None,
+    manifest_hash: str | None = None,
 ) -> None:
+    resolved_content_hash = content_hash or hashlib.sha256(body.encode()).hexdigest()
+    resolved_manifest_hash = manifest_hash or hashlib.sha256(manifest.encode()).hexdigest()
     con.execute(
         "INSERT INTO derived_asset_revisions ("
         "derived_asset_id, revision_id, operation_kind, canonical_html, "
@@ -64,11 +69,11 @@ def _revision(
             asset_id,
             revision_id,
             operation,
-            BODY,
-            len(BODY.encode()),
-            content_hash,
-            MANIFEST,
-            MANIFEST_HASH,
+            body,
+            len(body.encode()),
+            resolved_content_hash,
+            manifest,
+            resolved_manifest_hash,
             "antiek-merge",
             "1",
             f"rvw-{revision_id}",
@@ -203,6 +208,15 @@ def test_parent_restore_member_and_pointer_cannot_cross_assets(db_path: str) -> 
                 parent="rev-b",
             )
         with pytest.raises(duckdb.ConstraintException):
+            _revision(
+                con,
+                asset_id="asset-a",
+                revision_id="restore-cross",
+                operation="restore",
+                parent="rev-a",
+                restored_from="rev-b",
+            )
+        with pytest.raises(duckdb.ConstraintException):
             con.execute(
                 "INSERT INTO derived_asset_revision_members VALUES "
                 "('asset-a', 'rev-b', 0, 'projection-x', 'source-x', "
@@ -216,6 +230,46 @@ def test_parent_restore_member_and_pointer_cannot_cross_assets(db_path: str) -> 
                 "VALUES ('asset-a', 'rev-b', ?, 1)",
                 [BODY_HASH],
             )
+
+
+def test_restore_reuses_selected_revision_content_and_manifest(db_path: str) -> None:
+    with connect_write(db_path, purpose="derived-asset-restore-state-test") as con:
+        _asset(con)
+        _revision(con, revision_id="rev-origin")
+        _revision(
+            con,
+            revision_id="rev-current",
+            operation="revise",
+            parent="rev-origin",
+            body="<article>current</article>",
+        )
+
+        with pytest.raises(duckdb.ConstraintException):
+            _revision(
+                con,
+                revision_id="restore-wrong-content",
+                operation="restore",
+                parent="rev-current",
+                restored_from="rev-origin",
+                body="<article>not the selected revision</article>",
+            )
+        with pytest.raises(duckdb.ConstraintException):
+            _revision(
+                con,
+                revision_id="restore-wrong-manifest",
+                operation="restore",
+                parent="rev-current",
+                restored_from="rev-origin",
+                manifest='[{"member_index":1}]',
+            )
+
+        _revision(
+            con,
+            revision_id="restore-valid",
+            operation="restore",
+            parent="rev-current",
+            restored_from="rev-origin",
+        )
 
 
 def test_members_are_ordered_per_revision_and_projection_unique(db_path: str) -> None:
