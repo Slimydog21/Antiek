@@ -5,11 +5,14 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
+from runtime.research_runner.derived_companion_execution import (
+    project_derived_companion_execution,
+)
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
 from substrate.research_artifact.derived_asset_library import (
@@ -288,6 +291,7 @@ def _companion_evidence_response(
     except ValueError:
         raise HTTPException(422, "derived companion request is invalid", headers=NO_STORE) \
             from None
+    result["execution"] = _companion_execution(result["scope"])
     return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
                     headers=NO_STORE)
 
@@ -301,8 +305,18 @@ def _companion_conversation_response(
         )
     except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
         raise _library_error(exc) from None
+    result["execution"] = _companion_execution(result["scope"])
     return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
                     headers=NO_STORE)
+
+
+def _companion_execution(scope: dict[str, Any]) -> dict[str, Any]:
+    return project_derived_companion_execution(
+        derived_asset_id=str(scope["derived_asset_id"]),
+        revision_id=str(scope["revision_id"]),
+        content_sha256=str(scope["content_sha256"]),
+        generation=int(scope["generation"]),
+    )
 
 
 @derived_asset_router.post("/assets/{asset_id}/search")

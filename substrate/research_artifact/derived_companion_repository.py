@@ -217,11 +217,6 @@ def _public(pack: dict[str, Any], client_turn_id: str, *, replayed: bool) -> dic
             "is_current": pack["is_current"],
         },
         "evidence_pack": pack,
-        "execution": {
-            "available": False,
-            "reason": "paid_route_not_qualified",
-            "pricing_status": "unknown",
-        },
     }
 
 
