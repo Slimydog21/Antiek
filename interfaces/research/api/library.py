@@ -16,9 +16,10 @@ from substrate.books.model import list_book_assets
 from .books import BookSummary, _resolve_db_path
 from .library_catalog import LibraryPage, build_library_page
 
-# list_book_assets defaults to limit=200 which would silently cap catalog
-# totals and hide older gated works. Catalog load must exceed that default.
-_CATALOG_LOAD_LIMIT = 50_000
+# Load the metadata-only catalog in bounded deterministic batches. The route
+# exhausts the iterator before computing ``total``; this is a memory trade-off
+# while title/author filtering remains pure, but never an arbitrary corpus cap.
+_CATALOG_BATCH_SIZE = 1_000
 
 __all__ = ["LibraryPage", "build_library_page", "register_library_routes"]
 
@@ -38,14 +39,19 @@ def register_library_routes(app: FastAPI) -> None:
         db = _resolve_db_path()
         con = connect_read(db)
         try:
-            if filter == "servable":
-                assets = list_book_assets(
-                    con, servable_only=True, limit=_CATALOG_LOAD_LIMIT
+            assets = []
+            offset = 0
+            while True:
+                batch = list_book_assets(
+                    con,
+                    servable_only=filter == "servable",
+                    limit=_CATALOG_BATCH_SIZE,
+                    offset=offset,
                 )
-            else:
-                assets = list_book_assets(
-                    con, servable_only=False, limit=_CATALOG_LOAD_LIMIT
-                )
+                assets.extend(batch)
+                if len(batch) < _CATALOG_BATCH_SIZE:
+                    break
+                offset += len(batch)
         finally:
             con.close()
 
