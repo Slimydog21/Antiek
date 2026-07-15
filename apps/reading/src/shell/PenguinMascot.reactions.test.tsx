@@ -47,6 +47,9 @@ describe("PenguinMascot product reactions", () => {
 
     act(() => emitWernerExperience("source_read_committed"));
     expect(mascot.getAttribute("data-werner-emote")).toBe("happy");
+
+    act(() => emitWernerExperience("outline_block_committed"));
+    expect(mascot.getAttribute("data-werner-emote")).toBe("curious");
   });
 
   it("removes the shared reaction listener on unmount", () => {

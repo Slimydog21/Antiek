@@ -5,6 +5,7 @@ import {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
+  notifyOutlineBlockCommitted,
   notifySourceReadCommitted,
 } from "./shellExperienceSignals";
 import {
@@ -46,6 +47,13 @@ describe("Werner shell experience edges", () => {
     const capture = captureExperiences();
     notifySourceReadCommitted();
     expect(capture.seen).toEqual(["source_read_committed"]);
+    capture.teardown();
+  });
+
+  it("maps a persisted outline block to one curious experience", () => {
+    const capture = captureExperiences();
+    notifyOutlineBlockCommitted();
+    expect(capture.seen).toEqual(["outline_block_committed"]);
     capture.teardown();
   });
 
