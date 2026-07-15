@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { cardLift } from "../../design/motion";
@@ -9,11 +9,13 @@ import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
-import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
+import { ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
+import expeditionChart from "../../brand/werner/research/expedition/research_expedition_chart_v1.webp";
+import "./research-expedition-desk.css";
 
 /**
  * StartResearch — the Research HOME (S5 redesign fix → Living-Roadmap SPR-05).
@@ -126,7 +128,55 @@ type AttachState =
   | { kind: "absorbing" }
   | { kind: "absorbed"; title: string }
   | { kind: "rejected"; why: string }
-  | { kind: "failed"; reason: string | null };
+  | { kind: "failed" };
+
+export type ResearchExpeditionPhase = "Ready" | "Charting" | "Under way" | "Needs attention";
+
+export function privateStartFailureTitle(error: string): string {
+  return /at least 3 characters/i.test(error)
+    ? "Your question needs at least 3 characters"
+    : "The research could not start";
+}
+
+function isQuestionValidationFailure(error: string): boolean {
+  return /at least 3 characters/i.test(error);
+}
+
+export function ResearchExpeditionDeskFrame({
+  phase,
+  visualFixture = false,
+  children,
+}: {
+  phase: ResearchExpeditionPhase;
+  visualFixture?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`research-expedition-desk ${visualFixture ? "research-expedition-desk--fixture" : ""}`}>
+      <img
+        src={expeditionChart}
+        alt=""
+        aria-hidden="true"
+        decoding="sync"
+        draggable={false}
+        data-testid="research-expedition-chart"
+      />
+      <div className="research-expedition-desk__veil" aria-hidden="true" />
+      <header className="research-expedition-desk__masthead">
+        <div>
+          <p className="research-expedition-desk__eyebrow">Antiek · research expedition desk</p>
+          <h1>Start with the question worth chasing</h1>
+          <p>Ask one focused question now, or chart an inspectable plan before anything launches.</p>
+        </div>
+        <div className="research-expedition-desk__phase">
+          <span aria-hidden="true" />
+          <strong>{phase}</strong>
+        </div>
+      </header>
+      <div className="research-expedition-desk__console">{children}</div>
+    </div>
+  );
+}
 
 export default function StartResearch({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
@@ -159,7 +209,6 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
     events,
     liveCost,
     failed,
-    failureReason,
     error,
     busy,
     submit,
@@ -217,12 +266,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       try {
         const r = await ingestSource({ url }); // no investigation_id on the home
         if (r.status === "error") {
-          setAttach({ kind: "failed", reason: r.error_message });
+          setAttach({ kind: "failed" });
           return;
         }
         onAbsorbed(r.title ?? url);
-      } catch (e) {
-        setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
+      } catch {
+        setAttach({ kind: "failed" });
       }
     },
     [onAbsorbed],
@@ -234,8 +283,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       try {
         const r = await ingestVoiceNote({ transcript: text, title });
         onAbsorbed(r.title ?? title);
-      } catch (e) {
-        setAttach({ kind: "failed", reason: e instanceof ApiError ? e.body || null : null });
+      } catch {
+        setAttach({ kind: "failed" });
       }
     },
     [onAbsorbed],
@@ -343,11 +392,12 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   //    /inv/:id route). ──
   if (startedId && !failed) {
     return (
-      <div className="h-full flex items-center justify-center px-6">
-        <div
-          className="max-w-md w-full text-center"
+      <ResearchExpeditionDeskFrame phase="Under way">
+        <section
+          className="research-expedition-desk__state"
           role="status"
           aria-live="polite"
+          aria-label="Research in progress"
         >
           {/* The beat sits above the working mark and retires on its own;
               the thinking penguin behind it carries the ongoing state.
@@ -386,8 +436,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               : `${events.length} event${events.length === 1 ? "" : "s"} so far`}
             {" · "}${liveCost.toFixed(4)}
           </p>
-        </div>
-      </div>
+        </section>
+      </ResearchExpeditionDeskFrame>
     );
   }
 
@@ -396,11 +446,11 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   //    away) until launch hands a session to the monitor. ──
   if (cascadeProblem) {
     return (
-      <div className="h-full flex items-center justify-center px-6">
-        <div className="w-full max-w-xl">
-          <h1 className="text-2xl font-serif text-ink dark:text-bright mb-1 text-center">
+      <ResearchExpeditionDeskFrame phase="Charting">
+        <section className="research-expedition-desk__proposal" aria-label="Cascade proposal">
+          <h2 className="text-2xl font-serif text-ink dark:text-bright mb-1 text-center">
             Breaking this into sub-questions
-          </h1>
+          </h2>
           <p className="text-sm text-shadow-1 dark:text-moonlight font-serif text-center mb-4">
             {cascadeProblem}
           </p>
@@ -409,8 +459,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             onLaunched={(sessionId) => navigate(`/deep-research/${sessionId}`)}
             onFallBackToAsk={onCascadeFallBack}
           />
-        </div>
-      </div>
+        </section>
+      </ResearchExpeditionDeskFrame>
     );
   }
 
@@ -423,13 +473,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
   // mounted standalone (embedded=false, e.g. a unit test or a route that wants
   // only the composer) it keeps the centred layout and shows no log.
   return (
-    <div
-      className={
-        embedded
-          ? "h-full overflow-y-auto px-6 py-8"
-          : "h-full flex items-center justify-center px-6"
-      }
-    >
+    <ResearchExpeditionDeskFrame phase={failed || error || attach.kind === "failed" ? "Needs attention" : "Ready"}>
       {/* AMS2-SPR-03 (M2 for /): the idle home is a LANDING surface (occlusion
           audit §3 item 1). The root scroll/centering container above stays
           background-free so the z-0 <Scene/> shows through the MARGINS around
@@ -445,13 +489,13 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
       <GlassSurface
         variant="glass"
         className={
-          (embedded ? "mx-auto w-full max-w-3xl" : "w-full max-w-xl") +
-          " rounded-hog-lg px-6 py-7"
+          (embedded ? "w-full max-w-3xl" : "w-full max-w-xl") +
+          " research-expedition-desk__launch-card rounded-hog-lg px-6 py-7"
         }
       >
-        <h1 className="text-2xl font-serif text-ink dark:text-bright mb-2 text-center">
+        <h2 className="text-2xl font-serif text-ink dark:text-bright mb-2 text-center">
           What do you want to research?
-        </h1>
+        </h2>
         <p className="text-sm text-shadow-1 dark:text-moonlight leading-relaxed font-serif text-center mb-6">
           Ask a question. The substrate runs a recursive note-taking chain
           across your corpus, distills insights and open questions, and
@@ -554,7 +598,6 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           {attach.kind === "failed" && (
             <AIActionFailure
               title="Couldn’t absorb that"
-              reason={attach.reason}
               onRetry={() => setAttach({ kind: "idle" })}
               retryLabel="Dismiss"
             />
@@ -568,14 +611,21 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
             // guard above; this component only renders + offers the retry.
             <AIActionFailure
               title="The research didn’t complete"
-              reason={failureReason}
               onRetry={onTryAgain}
             />
           )}
 
-          {error && (
-            <div className="text-xs font-mono text-emperor">{error}</div>
-          )}
+          {error &&
+            (isQuestionValidationFailure(error) ? (
+              <p
+                className="research-expedition-desk__validation"
+                role="alert"
+              >
+                {privateStartFailureTitle(error)}
+              </p>
+            ) : (
+              <AIActionFailure title={privateStartFailureTitle(error)} onRetry={onTryAgain} />
+            ))}
 
           {/* SPR-01 M3 — the curated fast/deep tier selector. A closed
               two-value segmented control (NOT a model dropdown). Selecting
@@ -694,6 +744,6 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           </div>
         )}
       </GlassSurface>
-    </div>
+    </ResearchExpeditionDeskFrame>
   );
 }

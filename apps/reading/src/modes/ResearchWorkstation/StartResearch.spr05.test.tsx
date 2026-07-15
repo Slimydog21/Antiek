@@ -305,6 +305,7 @@ describe("StartResearch — attach a file/link (SPR-05 M1)", () => {
     fireEvent.change(link, { target: { value: "https://blocked.example/z" } });
     fireEvent.keyDown(link, { key: "Enter" });
     expect(await screen.findByText(/Couldn’t absorb that/i)).toBeTruthy();
+    expect(screen.queryByText(/fetch blocked/i)).toBeNull();
   });
 });
 
