@@ -102,7 +102,9 @@ def test_id_only_draft_review_and_inert_preview(
         "manifest_sha256",
         "sanitizer_policy",
         "sanitizer_version",
+        "projection_ids",
     }
+    assert draft["projection_ids"] == [projection_id]
     reviewed = client.post(f"/research/derived-assets/merge/drafts/{draft['draft_id']}/reviews")
     assert reviewed.status_code == 201
     review = reviewed.json()
@@ -120,6 +122,15 @@ def test_id_only_draft_review_and_inert_preview(
     assert preview.headers["x-content-type-options"] == "nosniff"
     assert preview.headers["x-frame-options"] == "DENY"
     assert "ready.html" not in preview.text and str(Path(db_path).parent) not in preview.text
+    framed = client.get(
+        f"/research/derived-assets/merge/frame-previews/{review['review_id']}"
+    )
+    assert framed.content == preview.content
+    assert framed.headers["cache-control"] == "private, no-store"
+    assert framed.headers["referrer-policy"] == "no-referrer"
+    assert "frame-ancestors 'self'" in framed.headers["content-security-policy"]
+    assert "sandbox" in framed.headers["content-security-policy"]
+    assert "x-frame-options" not in framed.headers
     with duckdb.connect(db_path, read_only=True) as con:
         assert con.execute("SELECT count(*) FROM derived_assets").fetchone() == (0,)
         assert con.execute("SELECT count(*) FROM derived_asset_revisions").fetchone() == (0,)

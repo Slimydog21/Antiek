@@ -15,7 +15,7 @@ from pydantic import ValidationError
 
 from runtime.db_lock import connect_read, connect_write
 from substrate.contracts.html_projection import HtmlProjectionContract, derive_projection_id
-from substrate.reading.projection.store import ProjectionStore
+from substrate.reading.projection.store import ProjectionConflict, ProjectionStore
 from substrate.research_artifact.merge_draft import MergeDraftError, MergeDraftRepository
 
 from .compression import DurableTwinNoteCompression
@@ -78,6 +78,17 @@ def _canonical(value: Any) -> str:
 
 def _sha(value: str | bytes) -> str:
     return hashlib.sha256(value.encode() if isinstance(value, str) else value).hexdigest()
+
+
+def parse_public_note(value: str) -> tuple[str, int]:
+    """Return the display-safe note text and attribution count from a verified V21 note."""
+    prefix, separator, text = value.partition("] ")
+    if not separator or not prefix.startswith("[") or not text:
+        raise MergeBridgeIntegrity
+    pieces = prefix[1:].split(" | ")
+    if len(pieces) != 3 or not pieces[2]:
+        raise MergeBridgeIntegrity
+    return text, len(pieces[2].split(","))
 
 
 class TwinNoteMergeBridge:
@@ -340,10 +351,9 @@ class TwinNoteMergeBridge:
             if (request_json != expected_request or _canonical(expected_manifest) != manifest_json
                     or appendix != bytes(blob)):
                 raise MergeBridgeIntegrity
-            stored = con.execute("SELECT projection_json FROM html_projections WHERE projection_id=?", [projection_id]).fetchone()
             try:
-                projection = HtmlProjectionContract.model_validate_json(str(stored[0]) if stored else "")
-            except (ValidationError, IndexError) as exc:
+                projection = ProjectionStore(con).load(str(projection_id))
+            except (KeyError, ProjectionConflict, ValidationError) as exc:
                 raise MergeBridgeIntegrity from exc
             if (projection.status != "ready" or projection.source_sha256 != manifest_sha
                     or projection.hosted_html_locator != locator or projection.hosted_html_sha256 != html_sha
@@ -356,16 +366,15 @@ class TwinNoteMergeBridge:
             try:
                 MergeDraftRepository(
                     db_path=self.db_path, projection_root=self.publication_root
-                )._load_member(projection)
+                ).load_member(projection)
             except MergeDraftError as exc:
                 raise MergeBridgeIntegrity from exc
             return MergeBridgeResult(str(projection_id), str(source_projection_id), str(kind), str(source_id), len(members), str(html_sha))
 
     def _source_projection(self, con: Any, owner: str, projection_id: str) -> HtmlProjectionContract:
-        row = con.execute("SELECT projection_json FROM html_projections WHERE projection_id=?", [projection_id]).fetchone()
         try:
-            projection = HtmlProjectionContract.model_validate_json(str(row[0]) if row else "")
-        except ValidationError as exc:
+            projection = ProjectionStore(con).load(projection_id)
+        except (KeyError, ProjectionConflict, ValidationError) as exc:
             raise MergeBridgeUnavailable from exc
         owned = con.execute("SELECT 1 FROM documents WHERE document_id=? AND owner_user_id=?", [projection.source_document_id, owner]).fetchone()
         if projection.status != "ready" or owned != (1,):
@@ -373,7 +382,7 @@ class TwinNoteMergeBridge:
         try:
             MergeDraftRepository(
                 db_path=self.db_path, projection_root=self.publication_root
-            )._load_member(projection)
+            ).load_member(projection)
         except MergeDraftError as exc:
             raise MergeBridgeUnavailable from exc
         return projection
@@ -390,13 +399,7 @@ class TwinNoteMergeBridge:
 
     @staticmethod
     def _public_note(value: str) -> tuple[str, int]:
-        prefix, separator, text = value.partition("] ")
-        if not separator or not prefix.startswith("[") or not text:
-            raise MergeBridgeIntegrity
-        pieces = prefix[1:].split(" | ")
-        if len(pieces) != 3 or not pieces[2]:
-            raise MergeBridgeIntegrity
-        return text, len(pieces[2].split(","))
+        return parse_public_note(value)
 
     @staticmethod
     def _render(notes: Sequence[tuple[str, int]]) -> bytes:
@@ -415,4 +418,4 @@ class TwinNoteMergeBridge:
 
 
 __all__ = ["MergeBridgeConflict", "MergeBridgeIntegrity", "MergeBridgeResult",
-           "MergeBridgeUnavailable", "SelectedNote", "TwinNoteMergeBridge"]
+           "MergeBridgeUnavailable", "SelectedNote", "TwinNoteMergeBridge", "parse_public_note"]

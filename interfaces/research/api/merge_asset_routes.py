@@ -47,6 +47,7 @@ class DraftResponse(BaseModel):
     manifest_sha256: str
     sanitizer_policy: str
     sanitizer_version: str
+    projection_ids: tuple[str, ...]
 
 
 class ReviewResponse(BaseModel):
@@ -105,7 +106,7 @@ def create_merge_draft(
         draft = repository.create_draft(owner_user_id=owner_id, **body.model_dump())
     except MergeDraftError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return _draft_response(draft)
+    return _draft_response(draft, projection_ids=body.projection_ids)
 
 
 @merge_asset_router.post(
@@ -214,13 +215,42 @@ def preview_merge_draft(
     )
 
 
-def _draft_response(draft: Draft) -> DraftResponse:
+@merge_asset_router.get("/frame-previews/{opaque_id}", response_class=Response)
+def frame_preview_merge_draft(
+    opaque_id: str,
+    owner_id: str = Depends(authenticated_multimedia_operator),
+    repository: MergeDraftRepository = Depends(get_merge_draft_repository),
+) -> Response:
+    """Serve the same inert stored bytes in an empty-sandbox same-origin frame."""
+    try:
+        draft = repository.load_preview(owner_user_id=owner_id, opaque_id=opaque_id)
+    except MergeDraftNotFound as exc:
+        raise HTTPException(status_code=404, detail="merge preview not found") from exc
+    except MergeDraftError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return Response(
+        content=draft.canonical_html.encode("utf-8"),
+        media_type="text/html; charset=utf-8",
+        headers={
+            "Content-Security-Policy": (
+                "default-src 'none'; frame-ancestors 'self'; base-uri 'none'; "
+                "form-action 'none'; sandbox"
+            ),
+            "X-Content-Type-Options": "nosniff",
+            "Cache-Control": "private, no-store",
+            "Referrer-Policy": "no-referrer",
+        },
+    )
+
+
+def _draft_response(draft: Draft, *, projection_ids: tuple[str, ...]) -> DraftResponse:
     return DraftResponse(
         draft_id=draft.draft_id,
         canonical_sha256=draft.canonical_sha256,
         manifest_sha256=draft.manifest_sha256,
         sanitizer_policy=draft.sanitizer_policy,
         sanitizer_version=draft.sanitizer_version,
+        projection_ids=projection_ids,
     )
 
 

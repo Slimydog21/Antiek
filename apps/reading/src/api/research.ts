@@ -264,6 +264,71 @@ export interface TwinNoteRevisionCandidatesResponse {
   };
 }
 
+export interface TwinNoteMergeContextNote {
+  note_ordinal: number;
+  text: string;
+  source_count: number;
+}
+
+export interface TwinNoteMergeContextSource {
+  kind: "revision" | "composition";
+  id: string;
+  label: string;
+  html_url: string;
+  revisions: Array<{
+    member_ordinal: number | null;
+    revision_id: string;
+    notes: TwinNoteMergeContextNote[];
+  }>;
+}
+
+export interface TwinNoteMergeContextResponse {
+  source_projections: Array<{
+    projection_id: string;
+    source_asset_id: string;
+    source_document_id: string;
+    label: string;
+    preview_url: string;
+  }>;
+  twin_sources: TwinNoteMergeContextSource[];
+  limits: { source_projections: number; twin_sources: number; notes: number };
+}
+
+export interface TwinNoteMergeProjectionResponse {
+  projection_id: string;
+  source_projection_id: string;
+  twin_source: { kind: "revision" | "composition"; id: string };
+  member_count: number;
+  hosted_html_sha256: string;
+  merge_draft_input: { projection_ids: [string, string] };
+}
+
+export interface DerivedMergeDraftResponse {
+  draft_id: string;
+  canonical_sha256: string;
+  manifest_sha256: string;
+  sanitizer_policy: string;
+  sanitizer_version: string;
+  projection_ids: [string, string];
+}
+
+export interface DerivedMergeReviewResponse {
+  review_id: string;
+  draft_id: string;
+  canonical_sha256: string;
+  manifest_sha256: string;
+  acknowledgement_version: string;
+}
+
+export interface DerivedMergeApplyResponse {
+  operation_id: string;
+  derived_asset_id: string;
+  revision_id: string;
+  content_sha256: string;
+  generation: number;
+  replayed: boolean;
+}
+
 /** Owner-scoped verified current twin-note revisions. */
 export function listTwinNotes(): Promise<TwinNoteListResponse> {
   return get("/research/twin-notes");
@@ -272,6 +337,42 @@ export function listTwinNotes(): Promise<TwinNoteListResponse> {
 /** Owner-derived, advisory candidates for a Cycle 49 revision command. */
 export function discoverTwinNoteRevisionCandidates(): Promise<TwinNoteRevisionCandidatesResponse> {
   return get("/research/twin-notes/revision-candidates");
+}
+
+export function getTwinNoteMergeContext(): Promise<TwinNoteMergeContextResponse> {
+  return get("/research/twin-notes/merge-context");
+}
+
+export function createTwinNoteMergeProjection(request: {
+  source_projection_id: string;
+  source: { kind: "revision" | "composition"; id: string };
+  selected_notes: Array<{ revision_id: string; note_ordinal: number }>;
+  idempotency_key: string;
+}): Promise<TwinNoteMergeProjectionResponse> {
+  return post("/research/twin-notes/merge-projections", request);
+}
+
+export function createDerivedMergeDraft(request: {
+  projection_ids: [string, string];
+  intent: "create";
+  title: string;
+  asset_kind: "document" | "analysis" | "synthesis" | "composite";
+}): Promise<DerivedMergeDraftResponse> {
+  return post("/research/derived-assets/merge/drafts", request);
+}
+
+export function createDerivedMergeReview(draftId: string): Promise<DerivedMergeReviewResponse> {
+  return post(`/research/derived-assets/merge/drafts/${encodeURIComponent(draftId)}/reviews`, {});
+}
+
+export function applyDerivedMergeReview(
+  reviewId: string,
+  operationId: string,
+): Promise<DerivedMergeApplyResponse> {
+  return post(`/research/derived-assets/merge/reviews/${encodeURIComponent(reviewId)}/apply`, {
+    operation_id: operationId,
+    expected_generation: null,
+  });
 }
 
 /** Verified current-to-root history for one owner-scoped asset. */

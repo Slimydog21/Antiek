@@ -22,6 +22,7 @@ from services.html_projection.canonical_merge import (
     canonicalize_members,
 )
 from substrate.contracts.html_projection import HtmlProjectionContract
+from substrate.reading.projection.store import ProjectionConflict, ProjectionStore
 
 ACKNOWLEDGEMENT_VERSION: Final = "DERIVED_ASSET_MERGE_ACK_V1"
 MAX_STORED_HTML_BYTES: Final = 2 * 1024 * 1024
@@ -87,7 +88,7 @@ class MergeDraftRepository:
                 expected_parent_sha256=str(expected_parent_sha256),
             )
         projections = self._load_projections(projection_ids, owner_user_id=owner_user_id)
-        members = tuple(self._load_member(item) for item in projections)
+        members = tuple(self.load_member(item) for item in projections)
         try:
             canonical = canonicalize_members(members)
         except CanonicalMergeError as exc:
@@ -214,15 +215,9 @@ class MergeDraftRepository:
             projection_id = entry.get("projection_id")
             if not isinstance(projection_id, str):
                 raise MergeDraftError("draft manifest drifted before review")
-            stored = con.execute(
-                "SELECT projection_json FROM html_projections WHERE projection_id=?",
-                [projection_id],
-            ).fetchone()
-            if stored is None:
-                raise MergeDraftError("projection drifted before review")
             try:
-                item = HtmlProjectionContract.model_validate_json(str(stored[0]))
-            except ValidationError as exc:
+                item = ProjectionStore(con).load(projection_id)
+            except (KeyError, ProjectionConflict, ValidationError) as exc:
                 raise MergeDraftError("projection drifted before review") from exc
             expected = {
                 "converter_id": item.converter_id,
@@ -241,7 +236,7 @@ class MergeDraftRepository:
             if not self._projection_owned(con, item=item, owner_user_id=owner_user_id):
                 raise MergeDraftError("projection drifted before review")
             projections.append(item)
-        canonical = canonicalize_members(tuple(self._load_member(item) for item in projections))
+        canonical = canonicalize_members(tuple(self.load_member(item) for item in projections))
         if canonical.html != str(row[4]) or canonical.sha256 != str(row[0]):
             raise MergeDraftError("canonical bytes drifted before review")
         if hashlib.sha256(manifest_text.encode()).hexdigest() != str(row[1]):
@@ -286,16 +281,11 @@ class MergeDraftRepository:
             raise MergeDraftError("projection IDs must be unique")
         with connect_read(self._db_path) as con:
             result = []
+            store = ProjectionStore(con)
             for projection_id in projection_ids:
-                row = con.execute(
-                    "SELECT projection_json FROM html_projections WHERE projection_id=?",
-                    [projection_id],
-                ).fetchone()
-                if row is None:
-                    raise MergeDraftError("projection is not ready")
                 try:
-                    item = HtmlProjectionContract.model_validate_json(str(row[0]))
-                except ValidationError as exc:
+                    item = store.load(projection_id)
+                except (KeyError, ProjectionConflict, ValidationError) as exc:
                     raise MergeDraftError("projection is not ready") from exc
                 if item.status != "ready":
                     raise MergeDraftError("projection is not ready")
@@ -304,7 +294,8 @@ class MergeDraftRepository:
                 result.append(item)
         return tuple(result)
 
-    def _load_member(self, item: HtmlProjectionContract) -> CanonicalMember:
+    def load_member(self, item: HtmlProjectionContract) -> CanonicalMember:
+        """Reopen one ready projection object through the canonical nofollow verifier."""
         locator = item.hosted_html_locator
         expected = item.hosted_html_sha256
         if locator is None or expected is None:

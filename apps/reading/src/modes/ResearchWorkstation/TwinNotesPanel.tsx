@@ -18,6 +18,7 @@ import type {
   TwinNoteRevisionCandidateAsset,
 } from "../../api/research";
 import { API_BASE } from "../../lib/api";
+import TwinNoteMergeWorkspace from "./TwinNoteMergeWorkspace";
 
 export const absoluteApiUrl = (relative: string, apiBase = API_BASE): string => {
   const origin = window.location.origin;
@@ -75,12 +76,14 @@ export default function TwinNotesPanel() {
   const [importKind, setImportKind] = useState("research_memo");
   const [importKey, setImportKey] = useState(newCommandKey);
   const [importPending, setImportPending] = useState(false);
-  const frozen = loading
+  const [mergePending, setMergePending] = useState(false);
+  const legacyFrozen = loading
     || discoveryPending
     || historyPending !== null
     || pending
     || createPending
     || importPending;
+  const frozen = legacyFrozen || mergePending;
 
   const invalidatePreview = () => {
     previewGeneration.current += 1;
@@ -416,6 +419,7 @@ export default function TwinNotesPanel() {
         <label>Kind<select aria-label="Write draft kind" value={importKind} onChange={(event) => setImportKind(event.target.value)}><option value="research_memo">Research memo</option><option value="general_essay">General essay</option><option value="book_chapter">Book chapter</option></select></label>
         <button disabled={frozen || !importTitle.trim()} onClick={() => void doImport()}>{importPending ? "Creating…" : "Create draft"}</button>
       </fieldset>}
+      <TwinNoteMergeWorkspace disabled={legacyFrozen} onPendingChange={setMergePending} />
       {actionError && <div role="alert" className="mt-2 font-mono text-[10px] text-emperor">{actionError}</div>}
     </section>
   );
