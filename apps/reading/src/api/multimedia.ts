@@ -2,6 +2,7 @@ import { API_BASE, apiFetch } from "../lib/api";
 
 export type MultimediaMode = "video" | "audio" | "hybrid";
 export type MultimediaRoutePolicy = "cheapest" | "balanced" | "highest_quality";
+export type MultimediaDepth = "overview" | "intermediate" | "deep";
 export type MultimediaKind = "information_video" | "documentary_video" | "audio_experience";
 export type MultimediaJobKind = "render" | "steering" | "hardening" | "provider_execution";
 export type MultimediaJobStatus = "queued" | "running" | "succeeded" | "failed" | "canceled" | "partial";
@@ -11,19 +12,14 @@ export interface CreateMultimediaDraftRequest {
   target_minutes: number;
   mode: MultimediaMode;
   route_policy: MultimediaRoutePolicy;
+  source_scope?: string | null;
   sources?: string[];
   must_cover?: string[];
   avoid?: string[];
   audience?: string;
   style?: string | null;
-}
-
-export interface LiveProviderExecutionRequest {
-  max_budget_usd: number;
-  route_policy: MultimediaRoutePolicy;
-  operator_acknowledged_spend: boolean;
-  provider_families?: string[];
-  dry_run_revision_id?: string | null;
+  depth?: MultimediaDepth;
+  selected_arc_ids?: string[];
 }
 
 export interface MultimediaAssetSummary {
@@ -38,11 +34,79 @@ export interface MultimediaAssetSummary {
   hardening_status: string | null;
   latest_job_status: MultimediaJobStatus | null;
   latest_job_kind: MultimediaJobKind | null;
+  knowledge_finalized?: boolean;
+  twin_document_id?: string | null;
+  production_ready?: boolean;
+}
+
+export interface MultimediaKnowledgeLink {
+  schema_version: "antiek.multimedia-knowledge-link.v1";
+  asset_id: string;
+  revision_id: string;
+  source_document_id: string;
+  source_event_id: string;
+  graph_node_id: string;
+  twin_document_id: string;
+  source_html_sha256: string;
+  twin_html_sha256: string;
+  insight_node_ids: string[];
+  question_node_ids: string[];
+}
+
+export type MultimediaDistillationStateName =
+  | "not_started"
+  | "in_progress"
+  | "completed"
+  | "integrity_conflict";
+
+export interface MultimediaKnowledgeFinalizationStatus {
+  asset_id: string;
+  revision_id: string;
+  asset_status: string;
+  distillation: {
+    state: MultimediaDistillationStateName;
+    recovery_eligible: boolean;
+    recovery_stale_seconds: number;
+    claim_started_at: string | null;
+  };
+  knowledge_link: MultimediaKnowledgeLink | null;
+}
+
+export interface MultimediaKnowledgeFinalizationResponse {
+  asset: MultimediaAssetRecord;
+  knowledge_link: MultimediaKnowledgeLink;
+}
+
+export interface MultimediaTwinDocument {
+  asset_id: string;
+  revision_id: string;
+  source_document_id: string;
+  twin_document_id: string;
+  title: string;
+  html: string;
+  html_sha256: string;
 }
 
 export interface MultimediaAssetList {
   assets: MultimediaAssetSummary[];
   count: number;
+}
+
+export interface MultimediaEvidenceCandidate {
+  chunk_id: string;
+  document_id: string;
+  document_title: string;
+  section_path: string | null;
+  excerpt: string;
+  text_sha256: string;
+  similarity: number;
+}
+
+export interface MultimediaEvidenceSearchResult {
+  asset_id: string;
+  revision_id: string;
+  query: string;
+  candidates: MultimediaEvidenceCandidate[];
 }
 
 export interface GateResult {
@@ -68,16 +132,706 @@ export interface MultimediaAssetRecord {
     title: string;
     route_policy: MultimediaRoutePolicy;
     requested_duration_minutes: number;
+    parent_asset_id?: string | null;
     parent_revision_id?: string | null;
     steering_event_id?: string | null;
     manifest: unknown;
   };
   plan: unknown;
   mode: MultimediaMode;
+  derived_from_revision_id?: string | null;
   style: string | null;
   hardening_report: MultimediaHardeningReport | null;
   latest_steering_intent: unknown | null;
   jobs: MultimediaJobRecord[];
+  knowledge_link?: MultimediaKnowledgeLink | null;
+  knowledge_finalization_revision_id?: string | null;
+  production_link?: MultimediaProductionLink | null;
+  audio_production_link?: MultimediaAudioProductionLink | null;
+}
+
+export interface MultimediaSteeringRequest {
+  expected_parent_revision_id: string;
+  prompt: string;
+  raw_voice_transcript?: string | null;
+  corrected_voice_transcript?: string | null;
+}
+
+export interface MultimediaSteeringOperation {
+  operation_id: string;
+  kind: string;
+  target_kind: string;
+  target_id: string;
+  value: string | null;
+  reason: string;
+}
+
+export interface MultimediaSteeringIntent {
+  steering_event_id: string;
+  prompt: string;
+  status: "ready" | "needs_clarification";
+  operations: MultimediaSteeringOperation[];
+  clarifications: string[];
+  transcript: {
+    transcript_id: string;
+    raw_text: string;
+    corrected_text: string | null;
+    confidence: number | null;
+  } | null;
+}
+
+export interface MultimediaSteeringPreviewClarification {
+  status: "needs_clarification";
+  asset_id: string;
+  parent_revision_id: string;
+  intent: MultimediaSteeringIntent;
+}
+
+export interface MultimediaSteeringPreviewReady {
+  status: "ready";
+  asset_id: string;
+  parent_revision_id: string;
+  proposed_revision_id: string;
+  route_policy: MultimediaRoutePolicy;
+  intent: MultimediaSteeringIntent;
+  operations: MultimediaSteeringOperation[];
+  affected_segment_ids: string[];
+  segment_reuse: Array<{
+    segment_id: string;
+    reused: boolean;
+    reason: string;
+    file_ids: string[];
+    file_sha256s: string[];
+  }>;
+  changes: Array<{
+    operation_id: string;
+    target_id: string;
+    changed_segment_ids: string[];
+    estimated_cost_delta_usd: number;
+    explanation: string;
+  }>;
+  estimated_cost_delta_usd: number;
+  preview_token: string;
+  expires_at_epoch_seconds: number;
+}
+
+export type MultimediaSteeringPreview =
+  | MultimediaSteeringPreviewClarification
+  | MultimediaSteeringPreviewReady;
+
+export interface MultimediaProductionLink {
+  schema_version: "antiek.multimedia-production-link.v1";
+  owner_identity_digest: string;
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  video_sha256: string;
+  audio_sha256: string;
+  duration_seconds: number;
+  width_px: number;
+  height_px: number;
+  chapter_ids: string[];
+}
+
+export interface MultimediaAudioProductionLink {
+  schema_version: "antiek.multimedia-audio-production-link.v1";
+  owner_identity_digest: string;
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  audio_sha256: string;
+  audio_size_bytes: number;
+  duration_seconds: number;
+  chapter_ids: string[];
+  retention_marker_count: number;
+  learned_claim_count: number;
+  source_count: number;
+}
+
+export interface MultimediaSourceCitationWire {
+  chunk_id: string;
+  document_id: string;
+  locator: string | null;
+  quote_sha256: string | null;
+}
+
+export interface MultimediaEvidenceSpanWire {
+  chunk_id: string;
+  document_id: string;
+  authority_kind: "canonical_graph" | "operator_excerpt";
+  chunk_sha256: string;
+  start_utf8_byte: number;
+  end_utf8_byte: number;
+  span_sha256: string;
+  exact_text: string;
+}
+
+export interface MultimediaEvidenceDerivationWire {
+  method: "verbatim_span";
+  recipe_version: "antiek.evidence-narration.v1";
+  spans: MultimediaEvidenceSpanWire[];
+  output_sha256: string;
+}
+
+export interface MultimediaScriptLineWire {
+  line_id: string;
+  sequence: number;
+  text: string;
+  kind: "factual" | "transition" | "narration" | "opinion" | "instruction";
+  citations: MultimediaSourceCitationWire[];
+  evidence_derivation?: MultimediaEvidenceDerivationWire | null;
+  unsourced_reason: string | null;
+}
+
+export interface MultimediaPlanWire {
+  grounding_contract?: "citation_presence_v1" | "exact_extract_v2" | "audible_transform_v1";
+  request: {
+    topic: string;
+    target_minutes: number;
+    mode: MultimediaMode;
+    route_policy: MultimediaRoutePolicy;
+    depth?: MultimediaDepth;
+    source_scope?: string | null;
+    selected_arc_ids?: string[];
+  };
+  suggestions: Array<{
+    arc_id: string;
+    title: string;
+    teaches: string;
+    evidence: MultimediaSourceCitationWire[];
+    tradeoff: string;
+  }>;
+  chosen_arc_ids: string[];
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    minutes: number;
+    purpose: string;
+    arc_id: string;
+    source_chunk_ids: string[];
+    cuts: string[];
+  }>;
+  script_lines: MultimediaScriptLineWire[];
+  scenes: Array<{
+    scene_id: string;
+    chapter_id: string;
+    visual_intent: string;
+    information_purpose: string;
+    narration_line_ids: string[];
+    source_chunk_ids: string[];
+  }>;
+  omissions: string[];
+  unsourced_line_ids: string[];
+  duration_tolerance_minutes: number;
+}
+
+export interface MultimediaPlayback {
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  duration_seconds: number;
+  video_sha256: string;
+  audio_sha256: string;
+  video_size_bytes: number;
+  audio_size_bytes: number;
+  width_px: number;
+  height_px: number;
+  chapter_ids: string[];
+  video_url: string;
+  audio_url: string;
+}
+
+export interface MultimediaLocalCapability {
+  available: boolean;
+  reason: "ready" | "unavailable";
+  route_policy: "cheapest";
+  cost_usd: 0;
+}
+
+export type MultimediaLocalStatus =
+  | "preparing"
+  | "preparation_unknown"
+  | "review_required"
+  | "ready_to_produce"
+  | "production_unknown"
+  | "registered";
+
+export interface MultimediaLocalPreparedSet {
+  set_id: string;
+  asset_id: string;
+  revision_id: string;
+  status: MultimediaLocalStatus;
+  recoverable: boolean;
+  cost_usd: 0;
+  playback_ready: boolean;
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    narration_ready: boolean;
+    card_id: string | null;
+    card_ready: boolean;
+    attested: boolean;
+    source_count: number;
+  }>;
+}
+
+export type MultimediaLocalAudibleStatus =
+  | "preparing"
+  | "preparation_unknown"
+  | "ready_to_produce"
+  | "production_unknown"
+  | "registered";
+
+export interface MultimediaLocalAudiblePreparedSet {
+  set_id: string;
+  asset_id: string;
+  revision_id: string;
+  status: MultimediaLocalAudibleStatus;
+  recoverable: boolean;
+  cost_usd: 0;
+  playback_ready: boolean;
+  total_duration_seconds: number;
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    span_count: number;
+    ready_span_count: number;
+    duration_seconds: number;
+    source_count: number;
+    remember_ready: boolean;
+    recap_ready: boolean;
+    learned_claim_count: number;
+  }>;
+}
+
+export interface MultimediaLocalAudiblePlayback {
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  audio_sha256: string;
+  audio_size_bytes: number;
+  duration_seconds: number;
+  chapter_ids: string[];
+  chapters: Array<{
+    chapter_id: string;
+    title: string;
+    sequence: number;
+    start_offset_seconds: number;
+    end_offset_seconds: number;
+  }>;
+  retention_marker_count: number;
+  learned_claim_count: number;
+  source_count: number;
+  learned_claims: Array<{
+    line_id: string;
+    chapter_id: string;
+    claim_text: string;
+    source_count: number;
+    follow_up_prompt: string;
+    source_chunk_ids: string[];
+    evidence_status: "verified_exact" | "unavailable_legacy";
+    evidence_sources: Array<{
+      chunk_id: string;
+      document_id: string;
+      locator: string | null;
+      authority_kind: "canonical_graph" | "operator_excerpt";
+      chunk_sha256: string;
+      start_utf8_byte: number;
+      end_utf8_byte: number;
+      span_sha256: string;
+      exact_text: string;
+    }>;
+  }>;
+  audio_url: string;
+}
+
+export type MultimediaPaidAudioPlayback = MultimediaLocalAudiblePlayback;
+
+export interface MultimediaResearchIntent {
+  intent_id: string;
+  state: "prepared";
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  audio_sha256: string;
+  chapter_id: string;
+  line_id: string;
+  question: string;
+  claim_text: string;
+  follow_up_prompt: string;
+  evidence_sources: MultimediaLocalAudiblePlayback["learned_claims"][number]["evidence_sources"];
+  evidence_digest: string;
+  request_digest: string;
+  created_at: string;
+  plan_handoff_status: "blocked_unowned_plan_store";
+  provider_launch_authorized: false;
+  spend_authority_digest: null;
+  plan_seed: { question: string; intent_id: string; intent_digest: string; evidence_digest: string };
+}
+
+export async function prepareResearchIntent(
+  assetId: string,
+  revisionId: string,
+  receiptSha256: string,
+  audioSha256: string,
+  claim: MultimediaLocalAudiblePlayback["learned_claims"][number],
+  question: string,
+  idempotencyKey: string,
+): Promise<MultimediaResearchIntent> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/research-intents`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        line_id: claim.line_id,
+        question,
+        idempotency_key: idempotencyKey,
+      }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_research_intent_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_research_intent_conflict");
+  if (!resp.ok) throw new Error(`POST research-intents: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaResearchIntent;
+  const evidencePayload = {
+    asset_id: assetId,
+    revision_id: revisionId,
+    receipt_sha256: receiptSha256,
+    audio_sha256: audioSha256,
+    chapter_id: claim.chapter_id,
+    line_id: claim.line_id,
+    claim_text: claim.claim_text,
+    follow_up_prompt: claim.follow_up_prompt,
+    evidence_sources: claim.evidence_sources,
+  };
+  const expectedEvidenceDigest = await sha256Canonical(evidencePayload);
+  const expectedRequestDigest = await sha256Canonical({ ...evidencePayload, question });
+  if (
+    result.state !== "prepared" || result.asset_id !== assetId ||
+    result.revision_id !== revisionId || result.receipt_sha256 !== receiptSha256 ||
+    result.audio_sha256 !== audioSha256 || result.chapter_id !== claim.chapter_id ||
+    result.line_id !== claim.line_id || result.question !== question ||
+    result.claim_text !== claim.claim_text || result.follow_up_prompt !== claim.follow_up_prompt ||
+    !sameResearchEvidence(result.evidence_sources, claim.evidence_sources) ||
+    result.plan_handoff_status !== "blocked_unowned_plan_store" ||
+    result.provider_launch_authorized !== false || result.spend_authority_digest !== null ||
+    !/^mmri_[0-9a-f]{48}$/.test(result.intent_id) ||
+    result.evidence_digest !== expectedEvidenceDigest ||
+    result.request_digest !== expectedRequestDigest ||
+    typeof result.created_at !== "string" || !Number.isFinite(Date.parse(result.created_at)) ||
+    result.plan_seed?.intent_id !== result.intent_id ||
+    result.plan_seed?.question !== question || result.plan_seed?.evidence_digest !== result.evidence_digest
+  ) throw new Error("multimedia_research_intent_identity_conflict");
+  const expectedIntentDigest = await sha256Canonical({
+    intent_id: result.intent_id,
+    state: result.state,
+    asset_id: result.asset_id,
+    revision_id: result.revision_id,
+    receipt_sha256: result.receipt_sha256,
+    audio_sha256: result.audio_sha256,
+    chapter_id: result.chapter_id,
+    line_id: result.line_id,
+    question: result.question,
+    claim_text: result.claim_text,
+    follow_up_prompt: result.follow_up_prompt,
+    evidence_sources: result.evidence_sources,
+    evidence_digest: result.evidence_digest,
+    request_digest: result.request_digest,
+    created_at: result.created_at,
+  });
+  if (result.plan_seed.intent_digest !== expectedIntentDigest) {
+    throw new Error("multimedia_research_intent_identity_conflict");
+  }
+  return result;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => (
+    `${JSON.stringify(key)}:${canonicalJson(record[key])}`
+  )).join(",")}}`;
+}
+
+async function sha256Canonical(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson(value)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function sameResearchEvidence(
+  actual: MultimediaResearchIntent["evidence_sources"],
+  expected: MultimediaLocalAudiblePlayback["learned_claims"][number]["evidence_sources"],
+): boolean {
+  return Array.isArray(actual) && actual.length === expected.length && actual.every((source, index) => {
+    const row = expected[index];
+    return source.chunk_id === row.chunk_id && source.document_id === row.document_id &&
+      source.locator === row.locator && source.authority_kind === row.authority_kind &&
+      source.chunk_sha256 === row.chunk_sha256 && source.start_utf8_byte === row.start_utf8_byte &&
+      source.end_utf8_byte === row.end_utf8_byte && source.span_sha256 === row.span_sha256 &&
+      source.exact_text === row.exact_text;
+  });
+}
+
+// ── Cycle 22: listening progress ─────────────────────────────────
+
+export interface MultimediaListeningProgressResponse {
+  resume_available: boolean;
+  asset_id: string;
+  revision_id: string;
+  audio_sha256: string;
+  position_milliseconds: number;
+  duration_milliseconds: number;
+  completed: boolean;
+  session_id: string;
+  sequence: number;
+  updated_at: number;
+  applied: boolean | null;
+}
+
+export interface MultimediaListeningProgressCheckpoint {
+  revision_id: string;
+  position_milliseconds: number;
+  session_id: string;
+  sequence: number;
+}
+
+function isValidListeningProgressResponse(
+  result: MultimediaListeningProgressResponse,
+  assetId: string,
+  revisionId: string,
+  audioSha256: string,
+  durationMilliseconds: number,
+  expectedApplied: "read" | "write",
+): boolean {
+  if (
+    typeof result.resume_available !== "boolean" ||
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.audio_sha256 !== audioSha256 ||
+    !Number.isSafeInteger(result.position_milliseconds) || result.position_milliseconds < 0 ||
+    !Number.isSafeInteger(result.duration_milliseconds) || result.duration_milliseconds <= 0 ||
+    result.position_milliseconds > result.duration_milliseconds ||
+    typeof result.completed !== "boolean" ||
+    typeof result.session_id !== "string" ||
+    !Number.isSafeInteger(result.sequence) || result.sequence < 0 ||
+    result.duration_milliseconds !== durationMilliseconds ||
+    !Number.isFinite(result.updated_at) || result.updated_at < 0 ||
+    !(result.applied === null || typeof result.applied === "boolean")
+  ) return false;
+  if (
+    (expectedApplied === "read" && result.applied !== null) ||
+    (expectedApplied === "write" && typeof result.applied !== "boolean")
+  ) return false;
+  if (result.resume_available) {
+    if (!/^[A-Za-z0-9_-]{16,128}$/.test(result.session_id) || result.updated_at <= 0) return false;
+    if (result.completed !== (result.duration_milliseconds - result.position_milliseconds <= 5000)) return false;
+  } else if (
+    result.position_milliseconds !== 0 || result.completed || result.session_id !== "" ||
+    result.sequence !== 0 || result.updated_at !== 0 || result.applied !== null
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export async function getListeningProgress(
+  assetId: string,
+  revisionId: string,
+  audioSha256: string,
+  durationSeconds: number,
+): Promise<MultimediaListeningProgressResponse> {
+  const durationMilliseconds = Math.round(durationSeconds * 1000);
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/listening-progress?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_listening_progress_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_listening_progress_conflict");
+  if (resp.status === 503) throw new Error("multimedia_listening_progress_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET listening-progress: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaListeningProgressResponse;
+  if (!isValidListeningProgressResponse(
+    result, assetId, revisionId, audioSha256, durationMilliseconds, "read",
+  )) {
+    throw new Error("multimedia_listening_progress_identity_conflict");
+  }
+  return result;
+}
+
+export async function putListeningProgress(
+  assetId: string,
+  checkpoint: MultimediaListeningProgressCheckpoint,
+  audioSha256: string,
+  durationSeconds: number,
+  keepalive = false,
+): Promise<MultimediaListeningProgressResponse> {
+  const durationMilliseconds = Math.round(durationSeconds * 1000);
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/listening-progress`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(checkpoint),
+      keepalive,
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_listening_progress_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_listening_progress_conflict");
+  if (resp.status === 503) throw new Error("multimedia_listening_progress_runtime_unavailable");
+  if (!resp.ok) throw new Error(`PUT listening-progress: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaListeningProgressResponse;
+  if (!isValidListeningProgressResponse(
+    result, assetId, checkpoint.revision_id, audioSha256, durationMilliseconds, "write",
+  )) {
+    throw new Error("multimedia_listening_progress_identity_conflict");
+  }
+  return result;
+}
+
+function hasValidAudioTimeline(result: MultimediaLocalAudiblePlayback): boolean {
+  if (!Array.isArray(result.chapters) || result.chapters.length !== result.chapter_ids.length) return false;
+  let expectedStart = 0;
+  const ids = new Set<string>();
+  const sequences = new Set<number>();
+  for (let index = 0; index < result.chapters.length; index += 1) {
+    const chapter = result.chapters[index];
+    if (
+      !chapter || typeof chapter.chapter_id !== "string" || !chapter.chapter_id ||
+      typeof chapter.title !== "string" || !chapter.title.trim() ||
+      !Number.isSafeInteger(chapter.sequence) || chapter.sequence !== index ||
+      ids.has(chapter.chapter_id) || sequences.has(chapter.sequence) ||
+      chapter.chapter_id !== result.chapter_ids[index] ||
+      !Number.isFinite(chapter.start_offset_seconds) || !Number.isFinite(chapter.end_offset_seconds) ||
+      chapter.start_offset_seconds < 0 || chapter.end_offset_seconds <= chapter.start_offset_seconds ||
+      Math.abs(chapter.start_offset_seconds - expectedStart) > 0.001
+    ) return false;
+    ids.add(chapter.chapter_id);
+    sequences.add(chapter.sequence);
+    expectedStart = chapter.end_offset_seconds;
+  }
+  return Math.abs(expectedStart - result.duration_seconds) <= 0.001;
+}
+
+function hasValidAudioClaims(result: MultimediaLocalAudiblePlayback): boolean {
+  if (!Array.isArray(result.learned_claims) || result.learned_claims.length !== result.learned_claim_count) return false;
+  const lineIds = new Set<string>();
+  return result.learned_claims.every((claim) => {
+    if (
+      !claim || typeof claim.line_id !== "string" || !claim.line_id || lineIds.has(claim.line_id) ||
+      !result.chapter_ids.includes(claim.chapter_id) || typeof claim.claim_text !== "string" || !claim.claim_text ||
+      !Number.isSafeInteger(claim.source_count) || claim.source_count < 1 ||
+      typeof claim.follow_up_prompt !== "string" || !claim.follow_up_prompt ||
+      !Array.isArray(claim.source_chunk_ids) || claim.source_chunk_ids.length !== claim.source_count ||
+      new Set(claim.source_chunk_ids).size !== claim.source_chunk_ids.length ||
+      claim.source_chunk_ids.some((chunkId) => typeof chunkId !== "string" || !chunkId) ||
+      (claim.evidence_status !== "verified_exact" && claim.evidence_status !== "unavailable_legacy") ||
+      !Array.isArray(claim.evidence_sources) ||
+      (claim.evidence_status === "verified_exact" && claim.evidence_sources.length !== claim.source_count) ||
+      (claim.evidence_status === "unavailable_legacy" && claim.evidence_sources.length !== 0)
+    ) return false;
+    lineIds.add(claim.line_id);
+    const chunks = new Set<string>();
+    return claim.evidence_sources.every((source, index) => {
+      if (!source || chunks.has(source.chunk_id) || source.chunk_id !== claim.source_chunk_ids[index]) return false;
+      chunks.add(source.chunk_id);
+      return (
+        typeof source.chunk_id === "string" && source.chunk_id.length > 0 && source.chunk_id.length <= 128 &&
+        typeof source.document_id === "string" && source.document_id.length > 0 && source.document_id.length <= 128 &&
+        (source.locator === null || (typeof source.locator === "string" && source.locator.length <= 1024)) &&
+        (source.authority_kind === "canonical_graph" || source.authority_kind === "operator_excerpt") &&
+        /^[0-9a-f]{64}$/.test(source.chunk_sha256) && /^[0-9a-f]{64}$/.test(source.span_sha256) &&
+        Number.isSafeInteger(source.start_utf8_byte) && Number.isSafeInteger(source.end_utf8_byte) &&
+        source.start_utf8_byte >= 0 && source.end_utf8_byte > source.start_utf8_byte &&
+        typeof source.exact_text === "string" && source.exact_text === claim.claim_text &&
+        new TextEncoder().encode(source.exact_text).length === source.end_utf8_byte - source.start_utf8_byte
+      );
+    });
+  });
+}
+
+export interface MultimediaNarrationAuthorization {
+  chapter_id: string;
+  child_revision_id: string;
+  request_body_digest: string;
+  authorization: {
+    version: number;
+    authorization_id: string;
+    request_id: string;
+    operator_id: string;
+    asset_id: string;
+    revision_id: string;
+    provider: string;
+    route_policy: string;
+    model: string;
+    endpoint_capability: string;
+    catalog_version: string;
+    catalog_digest: string;
+    quote_id: string;
+    quote_expires_at: string;
+    recovery_authority_id: string;
+    recovery_verification_key_digest: string;
+    approved_ceiling_microdollars: number;
+    request_body_digest: string;
+    issued_at: string;
+    expires_at: string;
+    signature: string;
+  };
+}
+
+export interface MultimediaReviewedVisualSet {
+  set_id: string;
+  asset_id: string;
+  revision_id: string;
+  chapter_ids: string[];
+  scene_ids: string[];
+  candidate_ids: string[];
+  selection_digest: string;
+  created_at: string;
+}
+
+export interface MultimediaVisualAuthorization {
+  chapter_id: string;
+  scene_id: string;
+  width: number;
+  height: number;
+  seed: number;
+  request_body_digest: string;
+  quote: {
+    quote_id: string;
+    model: string;
+    ceiling_microdollars: number;
+    expires_at: string;
+  };
+  authorization: MultimediaNarrationAuthorization["authorization"];
+}
+
+export interface MultimediaVisualGeneration {
+  execution_id: string;
+  authorization_id: string;
+  provider_job_id: string | null;
+  status: string;
+  candidate_count: number;
+}
+
+export interface MultimediaVisualCandidate {
+  candidate_id: string;
+  artifact_receipt_id: string;
+  media_type: string;
+  byte_count: number;
+}
+
+export interface MultimediaVisualCandidateSet {
+  execution_id: string;
+  candidates: MultimediaVisualCandidate[];
+}
+
+export interface MultimediaVisualAttestation {
+  artifact_receipt_id: string;
+  reviewer_id: string;
+  attested_at: string;
 }
 
 export interface MultimediaJobRecord {
@@ -96,6 +850,69 @@ export interface MultimediaJobRecord {
 export interface MultimediaJobList {
   jobs: MultimediaJobRecord[];
   count: number;
+}
+
+export type TtsReconciliationAction = "quarantine_send" | "recover_unknown" | "release_seal";
+
+export interface ChapterTtsReconciliation {
+  execution_id: string;
+  asset_id: string;
+  revision_id: string;
+  attempt_status: string;
+  provider_status: string;
+  next_action: string;
+  action_eligible: boolean;
+  send_age_seconds: number | null;
+  seal_age_seconds: number | null;
+  seal_lease_id: string | null;
+  charged_cents: number;
+  full_ceiling_charged: boolean;
+  raw_audio_present: boolean;
+  raw_audio_hash_valid: boolean;
+  requires_signed_operator_authority: boolean;
+  requires_external_provider_evidence: boolean;
+  parent_resume_eligible: boolean;
+  safe_error_code: string | null;
+}
+
+export interface NarrationRunReconciliationChild {
+  chapter_id: string;
+  execution_id: string;
+  state: string;
+  next_action: string;
+  action_eligible: boolean;
+  reconciliation: ChapterTtsReconciliation | null;
+}
+
+export interface NarrationRunReconciliation {
+  run_id: string;
+  asset_id: string;
+  revision_id: string;
+  run_status: string;
+  blocked_chapter_count: number;
+  parent_resume_eligible: boolean;
+  children: NarrationRunReconciliationChild[];
+}
+
+export interface AssetReconciliationExecutionLink {
+  execution_id: string;
+  revision_id: string;
+  provider: string;
+  status: string;
+  reconciliation_available: boolean;
+}
+
+export interface AssetReconciliationRunLink {
+  run_id: string;
+  revision_id: string;
+  status: string;
+}
+
+export interface AssetReconciliationLinks {
+  asset_id: string;
+  revision_id: string;
+  executions: AssetReconciliationExecutionLink[];
+  narration_runs: AssetReconciliationRunLink[];
 }
 
 // The API serializes `gates` only; failed_gate_ids/manual_gate_ids are plain
@@ -133,6 +950,782 @@ export async function getMultimediaAsset(assetId: string): Promise<MultimediaAss
   return (await resp.json()) as MultimediaAssetRecord;
 }
 
+export async function searchMultimediaEvidence(
+  assetId: string,
+  revisionId: string,
+  limit = 12,
+): Promise<MultimediaEvidenceSearchResult> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/evidence-search`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ expected_revision_id: revisionId, limit }),
+  });
+  if (resp.status === 409) throw new Error("multimedia_evidence_conflict");
+  if (resp.status === 503) throw new Error("multimedia_evidence_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST multimedia evidence-search: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaEvidenceSearchResult;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    typeof result.query !== "string" ||
+    !result.query ||
+    !Array.isArray(result.candidates) ||
+    result.candidates.length > 20 ||
+    result.candidates.some((candidate) => !validEvidenceCandidate(candidate)) ||
+    new Set(result.candidates.map((candidate) => candidate.chunk_id)).size !== result.candidates.length
+  ) {
+    throw new Error("multimedia_evidence_identity_conflict");
+  }
+  return result;
+}
+
+export async function createGroundedMultimediaDraft(
+  assetId: string,
+  revisionId: string,
+  candidates: MultimediaEvidenceCandidate[],
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/grounded-drafts`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      expected_parent_revision_id: revisionId,
+      selections: candidates.map(({ chunk_id, text_sha256 }) => ({ chunk_id, text_sha256 })),
+    }),
+  });
+  if (resp.status === 409) throw new Error("multimedia_evidence_conflict");
+  if (resp.status === 503) throw new Error("multimedia_evidence_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST multimedia grounded-drafts: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaAssetRecord;
+  if (
+    result.asset.parent_asset_id !== assetId ||
+    result.derived_from_revision_id !== revisionId ||
+    result.asset.asset_id === assetId
+  ) {
+    throw new Error("multimedia_evidence_identity_conflict");
+  }
+  return result;
+}
+
+function validEvidenceCandidate(candidate: MultimediaEvidenceCandidate): boolean {
+  return Boolean(
+    candidate &&
+    typeof candidate.chunk_id === "string" && candidate.chunk_id &&
+    typeof candidate.document_id === "string" && candidate.document_id &&
+    typeof candidate.document_title === "string" && candidate.document_title &&
+    (candidate.section_path === null || typeof candidate.section_path === "string") &&
+    typeof candidate.excerpt === "string" && candidate.excerpt &&
+    typeof candidate.text_sha256 === "string" && /^[0-9a-f]{64}$/.test(candidate.text_sha256) &&
+    typeof candidate.similarity === "number" && Number.isFinite(candidate.similarity) &&
+    candidate.similarity >= -1 && candidate.similarity <= 1
+  );
+}
+
+export async function getMultimediaPlayback(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaPlayback> {
+  const asset = encodeURIComponent(assetId);
+  const revision = encodeURIComponent(revisionId);
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${asset}/playback?revision_id=${revision}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_playback_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_playback_stale_revision");
+  if (resp.status === 503) throw new Error("multimedia_playback_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/playback: HTTP ${resp.status}`);
+  const playback = (await resp.json()) as MultimediaPlayback;
+  const expectedPath = `/multimedia/assets/${asset}/playback/${revision}`;
+  if (
+    playback.asset_id !== assetId ||
+    playback.revision_id !== revisionId ||
+    playback.video_url !== `${expectedPath}/video` ||
+    playback.audio_url !== `${expectedPath}/audio`
+  ) {
+    throw new Error("multimedia_playback_identity_conflict");
+  }
+  return {
+    ...playback,
+    video_url: `${API_BASE}${playback.video_url}`,
+    audio_url: `${API_BASE}${playback.audio_url}`,
+  };
+}
+
+export async function registerMultimediaProduction(
+  assetId: string,
+  expectedRevisionId: string,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/production-registration`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expected_revision_id: expectedRevisionId }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_production_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_production_conflict");
+  if (resp.status === 503) throw new Error("multimedia_playback_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/production-registration: HTTP ${resp.status}`);
+  const record = (await resp.json()) as MultimediaAssetRecord;
+  if (
+    record.asset.asset_id !== assetId ||
+    record.asset.revision_id !== expectedRevisionId ||
+    record.production_link?.asset_id !== assetId ||
+    record.production_link.revision_id !== expectedRevisionId
+  ) {
+    throw new Error("multimedia_production_identity_conflict");
+  }
+  return record;
+}
+
+export async function getMultimediaLocalCapability(): Promise<MultimediaLocalCapability> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/local/capability`);
+  if (!resp.ok) throw new Error(`GET /multimedia/local/capability: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalCapability;
+  if (
+    typeof result.available !== "boolean" ||
+    result.reason !== (result.available ? "ready" : "unavailable") ||
+    result.route_policy !== "cheapest" ||
+    result.cost_usd !== 0
+  ) {
+    throw new Error("multimedia_local_capability_conflict");
+  }
+  return result;
+}
+
+export async function prepareMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(assetId, revisionId, "/prepare", undefined);
+}
+
+export async function inspectMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local/${encodeURIComponent(revisionId)}/${encodeURIComponent(setId)}`,
+  );
+  return localResponse(resp, assetId, revisionId, setId, "GET local prepared set");
+}
+
+export async function attestMultimediaLocalCard(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+  cardId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(
+    assetId,
+    revisionId,
+    `/cards/${encodeURIComponent(cardId)}/attest`,
+    setId,
+  );
+}
+
+export async function produceMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(assetId, revisionId, "/produce", setId);
+}
+
+export async function recoverMultimediaLocal(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalPreparedSet> {
+  return localCommand(assetId, revisionId, "/recover", setId);
+}
+
+export function multimediaLocalCardPreviewUrl(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+  cardId: string,
+): string {
+  return `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local/${encodeURIComponent(revisionId)}/${encodeURIComponent(setId)}/cards/${encodeURIComponent(cardId)}/content`;
+}
+
+async function localCommand(
+  assetId: string,
+  revisionId: string,
+  suffix: string,
+  setId: string | undefined,
+): Promise<MultimediaLocalPreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local${suffix}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        ...(setId === undefined ? {} : { set_id: setId }),
+      }),
+    },
+  );
+  return localResponse(resp, assetId, revisionId, setId, `POST local${suffix}`);
+}
+
+async function localResponse(
+  resp: Response,
+  assetId: string,
+  revisionId: string,
+  setId: string | undefined,
+  operation: string,
+): Promise<MultimediaLocalPreparedSet> {
+  if (resp.status === 404) throw new Error("multimedia_local_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_local_conflict");
+  if (resp.status === 503) throw new Error("multimedia_local_runtime_unavailable");
+  if (!resp.ok) throw new Error(`${operation}: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalPreparedSet;
+  const statuses: MultimediaLocalStatus[] = [
+    "preparing", "preparation_unknown", "review_required",
+    "ready_to_produce", "production_unknown", "registered",
+  ];
+  const chapterIds = result.chapters?.map((chapter) => chapter.chapter_id) ?? [];
+  const cardIds = result.chapters?.flatMap((chapter) => chapter.card_id ? [chapter.card_id] : []) ?? [];
+  const allAttested = result.chapters?.length > 0 && result.chapters.every((chapter) => chapter.attested);
+  const recoverable = ["preparing", "preparation_unknown", "production_unknown"].includes(result.status);
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    (setId !== undefined && result.set_id !== setId) ||
+    !/^mmlocalset_[0-9a-f]{64}$/.test(result.set_id) ||
+    !statuses.includes(result.status) ||
+    result.cost_usd !== 0 ||
+    result.recoverable !== recoverable ||
+    result.playback_ready !== (result.status === "registered") ||
+    !Array.isArray(result.chapters) ||
+    new Set(chapterIds).size !== chapterIds.length ||
+    new Set(cardIds).size !== cardIds.length ||
+    result.chapters.some(
+      (chapter) =>
+        !chapter.chapter_id || !chapter.title ||
+        typeof chapter.narration_ready !== "boolean" ||
+        typeof chapter.card_ready !== "boolean" ||
+        typeof chapter.attested !== "boolean" ||
+        !Number.isSafeInteger(chapter.source_count) || chapter.source_count < 0,
+    ) ||
+    (["ready_to_produce", "registered"].includes(result.status) && !allAttested)
+  ) {
+    throw new Error("multimedia_local_identity_conflict");
+  }
+  return result;
+}
+
+export async function getMultimediaLocalAudibleCapability(): Promise<MultimediaLocalCapability> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/local-audible/capability`);
+  if (!resp.ok) throw new Error(`GET /multimedia/local-audible/capability: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalCapability;
+  if (
+    typeof result.available !== "boolean" ||
+    result.reason !== (result.available ? "ready" : "unavailable") ||
+    result.route_policy !== "cheapest" ||
+    result.cost_usd !== 0
+  ) {
+    throw new Error("multimedia_local_audible_capability_conflict");
+  }
+  return result;
+}
+
+export async function prepareMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  return localAudibleCommand(assetId, revisionId, "/prepare");
+}
+
+export async function inspectMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local-audible/${encodeURIComponent(revisionId)}/${encodeURIComponent(setId)}`,
+  );
+  return localAudibleResponse(resp, assetId, revisionId, setId, "GET local audible set");
+}
+
+export async function produceMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  return localAudibleCommand(assetId, revisionId, "/produce", setId);
+}
+
+export async function recoverMultimediaLocalAudible(
+  assetId: string,
+  revisionId: string,
+  setId: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  return localAudibleCommand(assetId, revisionId, "/recover", setId);
+}
+
+export async function getMultimediaLocalAudiblePlayback(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaLocalAudiblePlayback> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local-audible/playback?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_local_audible_playback_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_local_audible_playback_conflict");
+  if (resp.status === 503) throw new Error("multimedia_local_audible_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET local audible playback: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalAudiblePlayback;
+  const expectedPath = `/multimedia/assets/${encodeURIComponent(assetId)}/local-audible/playback/${encodeURIComponent(revisionId)}/audio`;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.audio_url !== expectedPath ||
+    !Number.isFinite(result.duration_seconds) || result.duration_seconds <= 0 ||
+    !Number.isSafeInteger(result.audio_size_bytes) || result.audio_size_bytes <= 0 ||
+    !Array.isArray(result.chapter_ids) || result.chapter_ids.length < 1 ||
+    new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !hasValidAudioTimeline(result) ||
+    !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
+    !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
+    !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
+    !hasValidAudioClaims(result)
+  ) {
+    throw new Error("multimedia_local_audible_playback_identity_conflict");
+  }
+  return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
+}
+
+export async function getMultimediaPaidAudioPlayback(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaPaidAudioPlayback> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/audio-playback?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_paid_audio_playback_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_paid_audio_playback_conflict");
+  if (resp.status === 503) throw new Error("multimedia_paid_audio_playback_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET paid audio playback: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaPaidAudioPlayback;
+  const expectedPath = `/multimedia/assets/${encodeURIComponent(assetId)}/audio-playback/${encodeURIComponent(revisionId)}/audio`;
+  if (
+    result.asset_id !== assetId || result.revision_id !== revisionId ||
+    result.audio_url !== expectedPath || !Number.isFinite(result.duration_seconds) ||
+    result.duration_seconds <= 0 || !Number.isSafeInteger(result.audio_size_bytes) ||
+    result.audio_size_bytes <= 0 || !Array.isArray(result.chapter_ids) ||
+    result.chapter_ids.length < 1 || new Set(result.chapter_ids).size !== result.chapter_ids.length ||
+    !hasValidAudioTimeline(result) ||
+    !Number.isSafeInteger(result.retention_marker_count) || result.retention_marker_count < 1 ||
+    !Number.isSafeInteger(result.learned_claim_count) || result.learned_claim_count < 1 ||
+    !Number.isSafeInteger(result.source_count) || result.source_count < 1 ||
+    !hasValidAudioClaims(result)
+  ) throw new Error("multimedia_paid_audio_playback_identity_conflict");
+  return { ...result, audio_url: `${API_BASE}${result.audio_url}` };
+}
+
+async function localAudibleCommand(
+  assetId: string,
+  revisionId: string,
+  suffix: string,
+  setId?: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/local-audible${suffix}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        ...(setId === undefined ? {} : { set_id: setId }),
+      }),
+    },
+  );
+  return localAudibleResponse(resp, assetId, revisionId, setId, `POST local audible${suffix}`);
+}
+
+async function localAudibleResponse(
+  resp: Response,
+  assetId: string,
+  revisionId: string,
+  setId: string | undefined,
+  operation: string,
+): Promise<MultimediaLocalAudiblePreparedSet> {
+  if (resp.status === 404) throw new Error("multimedia_local_audible_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_local_audible_conflict");
+  if (resp.status === 503) throw new Error("multimedia_local_audible_runtime_unavailable");
+  if (!resp.ok) throw new Error(`${operation}: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaLocalAudiblePreparedSet;
+  const statuses: MultimediaLocalAudibleStatus[] = [
+    "preparing", "preparation_unknown", "ready_to_produce", "production_unknown", "registered",
+  ];
+  const recoverable = ["preparing", "preparation_unknown", "production_unknown"].includes(result.status);
+  const chapterIds = result.chapters?.map((chapter) => chapter.chapter_id) ?? [];
+  const allReady = result.chapters?.length > 0 && result.chapters.every(
+    (chapter) => chapter.ready_span_count === chapter.span_count && chapter.remember_ready && chapter.recap_ready,
+  );
+  if (
+    result.asset_id !== assetId || result.revision_id !== revisionId ||
+    (setId !== undefined && result.set_id !== setId) ||
+    !/^mmlocalaudibleset_[0-9a-f]{64}$/.test(result.set_id) ||
+    !statuses.includes(result.status) || result.cost_usd !== 0 ||
+    result.recoverable !== recoverable ||
+    result.playback_ready !== (result.status === "registered") ||
+    !Number.isFinite(result.total_duration_seconds) || result.total_duration_seconds < 0 ||
+    !Array.isArray(result.chapters) || result.chapters.length < 1 ||
+    new Set(chapterIds).size !== chapterIds.length ||
+    result.chapters.some((chapter) =>
+      !chapter.chapter_id || !chapter.title ||
+      !Number.isSafeInteger(chapter.span_count) || chapter.span_count < 1 ||
+      !Number.isSafeInteger(chapter.ready_span_count) || chapter.ready_span_count < 0 ||
+      chapter.ready_span_count > chapter.span_count ||
+      !Number.isFinite(chapter.duration_seconds) || chapter.duration_seconds < 0 ||
+      !Number.isSafeInteger(chapter.source_count) || chapter.source_count < 0 ||
+      typeof chapter.remember_ready !== "boolean" || typeof chapter.recap_ready !== "boolean" ||
+      !Number.isSafeInteger(chapter.learned_claim_count) || chapter.learned_claim_count < 0
+    ) ||
+    (["ready_to_produce", "registered"].includes(result.status) && !allReady)
+  ) {
+    throw new Error("multimedia_local_audible_identity_conflict");
+  }
+  return result;
+}
+
+export async function authorizeMultimediaNarration(
+  assetId: string,
+  request: {
+    request_id: string;
+    expected_revision_id: string;
+    chapter_id: string;
+    approved_ceiling_microdollars: number;
+    operator_acknowledged_spend: true;
+  },
+): Promise<MultimediaNarrationAuthorization> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/narration-authorizations`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_narration_authorization_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_narration_authorization_conflict");
+  if (resp.status === 503) throw new Error("multimedia_narration_authorization_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/narration-authorizations: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaNarrationAuthorization;
+  if (
+    result.chapter_id !== request.chapter_id ||
+    result.authorization.asset_id !== assetId ||
+    result.authorization.revision_id !== result.child_revision_id ||
+    result.authorization.request_body_digest !== result.request_body_digest ||
+    result.authorization.request_id !== request.request_id ||
+    result.authorization.approved_ceiling_microdollars !== request.approved_ceiling_microdollars ||
+    result.authorization.version !== 2 ||
+    result.authorization.endpoint_capability !== "text-to-speech"
+  ) {
+    throw new Error("multimedia_narration_authorization_identity_conflict");
+  }
+  return result;
+}
+
+export async function getMultimediaReviewedVisualSet(
+  assetId: string,
+  revisionId: string,
+): Promise<MultimediaReviewedVisualSet> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/reviewed-visuals?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_reviewed_visuals_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reviewed_visuals_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/reviewed-visuals: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaReviewedVisualSet;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.chapter_ids.length !== result.scene_ids.length ||
+    result.chapter_ids.length !== result.candidate_ids.length
+  ) {
+    throw new Error("multimedia_reviewed_visuals_identity_conflict");
+  }
+  return result;
+}
+
+export async function authorizeMultimediaVisual(
+  assetId: string,
+  request: {
+    request_id: string;
+    expected_revision_id: string;
+    chapter_id: string;
+    approved_ceiling_microdollars: number;
+    operator_acknowledged_spend: true;
+  },
+): Promise<MultimediaVisualAuthorization> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-authorizations`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request) },
+  );
+  if (resp.status === 404) throw new Error("multimedia_visual_authorization_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_visual_authorization_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_authorization_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-authorizations: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualAuthorization;
+  if (
+    result.chapter_id !== request.chapter_id ||
+    result.authorization.asset_id !== assetId ||
+    result.authorization.revision_id !== request.expected_revision_id ||
+    result.authorization.request_id !== request.request_id ||
+    result.authorization.authorization_id.length < 1 ||
+    result.authorization.version !== 2 ||
+    result.authorization.request_body_digest !== result.request_body_digest ||
+    result.quote.quote_id !== result.authorization.quote_id ||
+    result.quote.ceiling_microdollars !== request.approved_ceiling_microdollars ||
+    result.authorization.endpoint_capability !== "text-to-image"
+  ) {
+    throw new Error("multimedia_visual_authorization_identity_conflict");
+  }
+  return result;
+}
+
+export async function submitMultimediaVisualGeneration(
+  assetId: string,
+  requestId: string,
+  revisionId: string,
+  expectedAuthorizationId: string,
+): Promise<MultimediaVisualGeneration> {
+  return visualGenerationCommand(assetId, "", {
+    request_id: requestId,
+    expected_revision_id: revisionId,
+  }, expectedAuthorizationId);
+}
+
+export async function pollMultimediaVisualGeneration(
+  assetId: string,
+  executionId: string,
+  revisionId: string,
+  expectedAuthorizationId: string,
+): Promise<MultimediaVisualGeneration> {
+  return visualGenerationCommand(
+    assetId,
+    `/${encodeURIComponent(executionId)}/poll`,
+    { expected_revision_id: revisionId },
+    expectedAuthorizationId,
+    executionId,
+  );
+}
+
+async function visualGenerationCommand(
+  assetId: string,
+  suffix: string,
+  body: Record<string, string>,
+  expectedAuthorizationId: string,
+  expectedExecutionId?: string,
+): Promise<MultimediaVisualGeneration> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-generations${suffix}`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+  );
+  if (resp.status === 404) throw new Error("multimedia_visual_generation_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_visual_generation_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_generation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-generations: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualGeneration;
+  if (
+    result.authorization_id !== expectedAuthorizationId ||
+    !result.execution_id ||
+    (expectedExecutionId !== undefined && result.execution_id !== expectedExecutionId)
+  ) {
+    throw new Error("multimedia_visual_generation_identity_conflict");
+  }
+  return result;
+}
+
+export async function materializeMultimediaVisualCandidates(
+  assetId: string,
+  executionId: string,
+  authorityRequestId: string,
+  revisionId: string,
+): Promise<MultimediaVisualCandidateSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-generations/${encodeURIComponent(executionId)}/materialize`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ authority_request_id: authorityRequestId, expected_revision_id: revisionId }),
+    },
+  );
+  if (resp.status === 409) throw new Error("multimedia_visual_materialization_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_materialization_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-generations/{id}/materialize: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualCandidateSet;
+  const candidateIds = result.candidates.map((candidate) => candidate.candidate_id);
+  if (
+    result.execution_id !== executionId ||
+    !result.candidates.length ||
+    new Set(candidateIds).size !== candidateIds.length ||
+    result.candidates.some(
+      (candidate) =>
+        !candidate.candidate_id ||
+        !candidate.artifact_receipt_id ||
+        !["image/png", "image/jpeg"].includes(candidate.media_type) ||
+        !Number.isSafeInteger(candidate.byte_count) ||
+        candidate.byte_count < 1,
+    )
+  ) {
+    throw new Error("multimedia_visual_materialization_identity_conflict");
+  }
+  return result;
+}
+
+export async function previewMultimediaVisualCandidate(
+  assetId: string,
+  revisionId: string,
+  candidateId: string,
+): Promise<Blob> {
+  const params = new URLSearchParams({ revision_id: revisionId });
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-candidates/${encodeURIComponent(candidateId)}/content?${params}`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_visual_candidate_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_visual_review_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/visual-candidates/{id}/content: HTTP ${resp.status}`);
+  const type = resp.headers.get("Content-Type")?.split(";", 1)[0];
+  if (type !== "image/png" && type !== "image/jpeg") {
+    throw new Error("multimedia_visual_candidate_media_conflict");
+  }
+  return resp.blob();
+}
+
+export async function attestMultimediaVisualCandidate(
+  assetId: string,
+  revisionId: string,
+  candidateId: string,
+): Promise<MultimediaVisualAttestation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/visual-candidates/${encodeURIComponent(candidateId)}/attestation`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        operator_acknowledged_generated_provenance: true,
+      }),
+    },
+  );
+  if (resp.status === 409) throw new Error("multimedia_visual_attestation_conflict");
+  if (resp.status === 503) throw new Error("multimedia_visual_review_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/visual-candidates/{id}/attestation: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaVisualAttestation;
+  if (!result.artifact_receipt_id || !result.reviewer_id || !result.attested_at) {
+    throw new Error("multimedia_visual_attestation_identity_conflict");
+  }
+  return result;
+}
+
+export async function registerMultimediaReviewedVisuals(
+  assetId: string,
+  revisionId: string,
+  requestId: string,
+  bindings: Array<{ chapter_id: string; candidate_id: string }>,
+): Promise<MultimediaReviewedVisualSet> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/reviewed-visuals`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ request_id: requestId, expected_revision_id: revisionId, bindings }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_reviewed_visuals_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_reviewed_visuals_conflict");
+  if (resp.status === 503) throw new Error("multimedia_reviewed_visuals_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/reviewed-visuals: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaReviewedVisualSet;
+  if (
+    result.asset_id !== assetId ||
+    result.revision_id !== revisionId ||
+    result.chapter_ids.length !== bindings.length ||
+    result.scene_ids.length !== bindings.length ||
+    !result.selection_digest ||
+    result.candidate_ids.some((candidateId, index) => candidateId !== bindings[index]?.candidate_id) ||
+    result.chapter_ids.some((chapterId, index) => chapterId !== bindings[index]?.chapter_id)
+  ) {
+    throw new Error("multimedia_reviewed_visuals_identity_conflict");
+  }
+  return result;
+}
+
+export async function produceAuthorizedMultimedia(
+  assetId: string,
+  expectedRevisionId: string,
+  chapterAuthorities: Array<{
+    chapter_id: string;
+    authorization: MultimediaNarrationAuthorization["authorization"];
+  }>,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/production`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: expectedRevisionId,
+        chapter_authorities: chapterAuthorities,
+      }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_production_worker_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_production_worker_conflict");
+  if (resp.status === 503) throw new Error("multimedia_production_worker_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/production: HTTP ${resp.status}`);
+  const record = (await resp.json()) as MultimediaAssetRecord;
+  if (!record.production_link) {
+    throw new Error("multimedia_production_worker_missing_link");
+  }
+  if (
+    record.asset.asset_id !== assetId ||
+    record.asset.revision_id !== expectedRevisionId ||
+    record.production_link.asset_id !== assetId ||
+    record.production_link.revision_id !== expectedRevisionId
+  ) {
+    throw new Error("multimedia_production_worker_identity_conflict");
+  }
+  return record;
+}
+
+export async function produceAuthorizedAudio(
+  assetId: string,
+  expectedRevisionId: string,
+  chapterAuthorities: Array<{
+    chapter_id: string;
+    authorization: MultimediaNarrationAuthorization["authorization"];
+  }>,
+): Promise<MultimediaAssetRecord> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/audio-production`,
+    { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+      expected_revision_id: expectedRevisionId, chapter_authorities: chapterAuthorities,
+    }) },
+  );
+  if (resp.status === 404) throw new Error("multimedia_audio_production_worker_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_audio_production_worker_conflict");
+  if (resp.status === 503) throw new Error("multimedia_audio_production_worker_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/audio-production: HTTP ${resp.status}`);
+  const record = (await resp.json()) as MultimediaAssetRecord;
+  if (!record.audio_production_link || record.asset.asset_id !== assetId ||
+      record.asset.revision_id !== expectedRevisionId ||
+      record.audio_production_link.asset_id !== assetId ||
+      record.audio_production_link.revision_id !== expectedRevisionId) {
+    throw new Error("multimedia_audio_production_worker_identity_conflict");
+  }
+  return record;
+}
+
 export async function listMultimediaJobs(assetId: string): Promise<MultimediaJobList> {
   const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/jobs`);
   if (resp.status === 404) throw new Error("multimedia_asset_not_found");
@@ -148,18 +1741,43 @@ export async function approveMultimediaDryRun(assetId: string): Promise<Multimed
   return (await resp.json()) as MultimediaAssetRecord;
 }
 
+export async function previewMultimediaSteering(
+  assetId: string,
+  request: MultimediaSteeringRequest,
+): Promise<MultimediaSteeringPreview> {
+  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/steering-preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (resp.status === 409) throw new Error(await multimediaSteeringConflict(resp));
+  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/steering-preview: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaSteeringPreview;
+}
+
 export async function steerMultimediaAsset(
   assetId: string,
-  request: { prompt: string; raw_voice_transcript?: string | null; corrected_voice_transcript?: string | null },
+  request: MultimediaSteeringRequest & { preview_token: string },
 ): Promise<MultimediaAssetRecord> {
   const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/steer`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(request),
   });
-  if (resp.status === 409) throw new Error("multimedia_steering_needs_clarification");
+  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
+  if (resp.status === 409) throw new Error(await multimediaSteeringConflict(resp));
   if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/steer: HTTP ${resp.status}`);
   return (await resp.json()) as MultimediaAssetRecord;
+}
+
+async function multimediaSteeringConflict(resp: Response): Promise<string> {
+  try {
+    const body = (await resp.json()) as { detail?: unknown };
+    return typeof body.detail === "string" ? body.detail : "multimedia_steering_conflict";
+  } catch {
+    return "multimedia_steering_conflict";
+  }
 }
 
 export async function runMultimediaHardening(assetId: string): Promise<MultimediaAssetRecord> {
@@ -170,16 +1788,122 @@ export async function runMultimediaHardening(assetId: string): Promise<Multimedi
   return (await resp.json()) as MultimediaAssetRecord;
 }
 
-export async function prepareMultimediaLiveExecution(
+function knowledgeError(operation: string, status: number): Error {
+  if (status === 404) return new Error("multimedia_knowledge_unavailable");
+  if (status === 409) return new Error("multimedia_knowledge_conflict");
+  if (status === 503) return new Error("multimedia_knowledge_runtime_unavailable");
+  return new Error(`${operation}: HTTP ${status}`);
+}
+
+export async function getMultimediaKnowledgeFinalization(
   assetId: string,
-  request: LiveProviderExecutionRequest,
-): Promise<MultimediaAssetRecord> {
-  const resp = await apiFetch(`${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/prepare-live-execution`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(request),
-  });
-  if (resp.status === 404) throw new Error("multimedia_asset_not_found");
-  if (!resp.ok) throw new Error(`POST /multimedia/assets/{id}/prepare-live-execution: HTTP ${resp.status}`);
-  return (await resp.json()) as MultimediaAssetRecord;
+): Promise<MultimediaKnowledgeFinalizationStatus> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/knowledge-finalization`,
+  );
+  if (!resp.ok) throw knowledgeError("GET /multimedia/assets/{id}/knowledge-finalization", resp.status);
+  return (await resp.json()) as MultimediaKnowledgeFinalizationStatus;
+}
+
+export async function getMultimediaKnowledgeTwin(
+  assetId: string,
+): Promise<MultimediaTwinDocument> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/knowledge-twin`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_twin_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_twin_integrity_conflict");
+  if (resp.status === 503) throw new Error("multimedia_knowledge_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/knowledge-twin: HTTP ${resp.status}`);
+  return (await resp.json()) as MultimediaTwinDocument;
+}
+
+export async function finalizeMultimediaKnowledge(
+  assetId: string,
+  expectedRevisionId: string,
+): Promise<MultimediaKnowledgeFinalizationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/finalize-knowledge`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: expectedRevisionId,
+        operator_acknowledged_model_use: true,
+      }),
+    },
+  );
+  if (!resp.ok) throw knowledgeError("POST /multimedia/assets/{id}/finalize-knowledge", resp.status);
+  return (await resp.json()) as MultimediaKnowledgeFinalizationResponse;
+}
+
+export async function recoverMultimediaKnowledgeFinalization(
+  assetId: string,
+  expectedRevisionId: string,
+): Promise<MultimediaKnowledgeFinalizationResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/recover-knowledge-finalization`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: expectedRevisionId,
+        operator_acknowledged_model_use: true,
+        operator_acknowledged_duplicate_model_risk: true,
+      }),
+    },
+  );
+  if (!resp.ok) throw knowledgeError("POST /multimedia/assets/{id}/recover-knowledge-finalization", resp.status);
+  return (await resp.json()) as MultimediaKnowledgeFinalizationResponse;
+}
+
+export async function getChapterTtsReconciliation(
+  executionId: string,
+): Promise<ChapterTtsReconciliation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/executions/${encodeURIComponent(executionId)}/tts-reconciliation`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_execution_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/executions/{id}/tts-reconciliation: HTTP ${resp.status}`);
+  return (await resp.json()) as ChapterTtsReconciliation;
+}
+
+export async function getAssetReconciliationLinks(
+  assetId: string,
+): Promise<AssetReconciliationLinks> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/reconciliation-links`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_asset_reconciliation_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/assets/{id}/reconciliation-links: HTTP ${resp.status}`);
+  return (await resp.json()) as AssetReconciliationLinks;
+}
+
+export async function executeChapterTtsReconciliation(
+  executionId: string,
+  action: TtsReconciliationAction,
+): Promise<ChapterTtsReconciliation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/executions/${encodeURIComponent(executionId)}/tts-reconciliation/actions/${action}`,
+    { method: "POST" },
+  );
+  if (resp.status === 404) throw new Error("multimedia_execution_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_reconciliation_action_conflict");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`POST /multimedia/executions/{id}/tts-reconciliation/actions/{action}: HTTP ${resp.status}`);
+  return (await resp.json()) as ChapterTtsReconciliation;
+}
+
+export async function getNarrationRunReconciliation(
+  runId: string,
+): Promise<NarrationRunReconciliation> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/narration-runs/${encodeURIComponent(runId)}/reconciliation`,
+  );
+  if (resp.status === 404) throw new Error("multimedia_narration_run_unavailable");
+  if (resp.status === 503) throw new Error("multimedia_reconciliation_runtime_unavailable");
+  if (!resp.ok) throw new Error(`GET /multimedia/narration-runs/{id}/reconciliation: HTTP ${resp.status}`);
+  return (await resp.json()) as NarrationRunReconciliation;
 }

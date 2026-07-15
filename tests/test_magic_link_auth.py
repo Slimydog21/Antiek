@@ -139,7 +139,10 @@ def test_auth_request_non_allowlisted_silent(monkeypatch):
     client = _client(monkeypatch)
     r = client.post("/auth/request", json={"email": "intruder@example.com"})
     assert r.status_code == 200
-    assert r.json() == {"sent": True}
+    assert r.json()["sent"] is True
+    assert len(r.json()["attempt_id"]) >= 16
+    assert len(r.json()["claim_secret"]) >= 16
+    assert len(r.json()["device_code"]) == 4
 
 
 def test_auth_request_allowlisted_sends_email(monkeypatch):
@@ -154,6 +157,54 @@ def test_auth_request_allowlisted_sends_email(monkeypatch):
     assert len(sender.sent) == 1
     assert sender.sent[0].email.to == _OPERATOR
     assert "/auth/callback?token=" in sender.sent[0].email.text_body
+
+
+def test_phone_approval_unlocks_original_browser(monkeypatch):
+    """The email may be opened on a phone; the requesting browser claims its own session."""
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested = client.post("/auth/request", json={"email": _OPERATOR, "next": "/notebooks"}).json()
+
+    link = next(part.strip() for part in sender.sent[0].email.text_body.split() if "/auth/callback?" in part)
+    parsed_link = urlparse(link)
+    callback = client.get(f"{parsed_link.path}?{parsed_link.query}", follow_redirects=False)
+    assert callback.status_code == 302
+    assert "approve=" in callback.headers["location"]
+    assert f"code={requested['device_code']}" in callback.headers["location"]
+
+    approved = client.post("/auth/approve", json={"attempt_id": requested["attempt_id"]})
+    assert approved.status_code == 204
+
+    client.cookies.clear()  # the callback cookie belongs to the phone, not this browser
+    claimed = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"]},
+    )
+    assert claimed.status_code == 200
+    assert claimed.json() == {"authenticated": True, "setup_passkey": False, "next": "/notebooks"}
+    assert SESSION_COOKIE_NAME in claimed.cookies
+
+    replay = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"]},
+    )
+    assert replay.status_code == 410
+
+
+def test_handoff_cannot_be_approved_without_mailbox_session(monkeypatch):
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr("interfaces.research.api.auth.get_email_provider", lambda: sender)
+    client = _client(monkeypatch)
+    requested = client.post("/auth/request", json={"email": _OPERATOR}).json()
+
+    attempted = client.post("/auth/approve", json={"attempt_id": requested["attempt_id"]})
+    assert attempted.status_code == 401
+    pending = client.post(
+        "/auth/claim",
+        json={"attempt_id": requested["attempt_id"], "claim_secret": requested["claim_secret"]},
+    )
+    assert pending.status_code == 202
 
 
 def test_auth_request_rejects_malformed_email(monkeypatch):

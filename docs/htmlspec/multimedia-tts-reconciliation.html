@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Antiek TTS Reconciliation</title>
+<style>body{margin:0;background:#f6f8f7;color:#17211c;font:16px/1.55 system-ui,sans-serif}main{width:min(960px,calc(100% - 32px));margin:40px auto 80px}header{border-bottom:3px solid #17211c;padding-bottom:20px}h1{font-size:clamp(2rem,5vw,3.4rem);line-height:1.05;letter-spacing:0;margin:0 0 10px}h2{font-size:1.35rem;letter-spacing:0;margin-top:34px}table{width:100%;border-collapse:collapse;background:white}th,td{border:1px solid #cbd4ce;padding:10px;text-align:left;vertical-align:top}th{background:#e7ede9}code{background:#e7ede9;padding:1px 4px}.rule{border-left:4px solid #087052;background:white;padding:10px 16px}.warn{border-color:#9a5100}</style>
+</head><body><main><header><p>ANTIEK / MULTIMEDIA / EXECUTABLE SUB-SPEC</p><h1>TTS Crash Reconciliation</h1>
+<p>Resolve ambiguous paid sends and stale local seal claims without duplicate provider calls, silent refunds, or unauthenticated state changes.</p></header>
+<section><h2>Authority Layers</h2><table><tr><th>Authority</th><th>Proves</th><th>Cannot prove</th></tr>
+<tr><td>Signed operator recovery receipt</td><td>Exact operator, execution ID, action, issuance, and expiry.</td><td>Whether a provider accepted a request.</td></tr>
+<tr><td>External provider evidence</td><td>Exact execution, provider request ID, source account, recovered-byte digest, and observation time.</td><td>Permission to change a different execution.</td></tr>
+<tr><td>Existing spend authorization</td><td>Provider/model/request body and maximum approved spend.</td><td>Permission to refund an ambiguous call.</td></tr></table></section>
+<section><h2>State Transitions</h2><table><tr><th>Action</th><th>Precondition</th><th>Postcondition</th></tr>
+<tr><td><code>quarantine_send</code></td><td>Signed operator action; durable <code>sending</code> marker older than threshold.</td><td>Full hold charged; provider execution and TTS attempt become <code>outcome_unknown</code>; no retry.</td></tr>
+<tr><td><code>recover_unknown</code></td><td>Signed operator action plus externally signed provider job and audio digest.</td><td>Provider job and private raw receipt bind atomically; attempt becomes <code>received</code>; existing full charge remains.</td></tr>
+<tr><td><code>release_seal</code></td><td>Signed operator action; attempt is local-only <code>sealing</code> with durable received bytes.</td><td>Attempt returns to <code>received</code>; provider state and spend are untouched.</td></tr></table>
+<div class="rule warn"><strong>No guessed refunds.</strong> Unknown sends retain the full conservative charge even after successful recovery. Independent billing reconciliation is a separate authority and may later establish a lower actual amount.</div></section>
+<section><h2>Invariants</h2><ul>
+<li>Recovery receipts are canonical HMAC artifacts with a maximum one-hour lifetime.</li>
+<li>Wrong operator, action, execution, timestamp, evidence key, provider job, or byte digest fails before mutation.</li>
+<li>Recovered bytes are private, bounded, hash-bound, and idempotent only when byte-identical.</li>
+<li>Provider job transition and recovered TTS receipt commit in one transaction.</li>
+<li>Parent narration runs continue naturally from the recovered <code>received</code> child.</li>
+<li>No provider send callback is reachable from reconciliation.</li>
+</ul></section>
+<section><h2>Acceptance</h2><table><tr><th>ID</th><th>Proof</th></tr>
+<tr><td>TR-01</td><td>Process death after send marker leaves <code>sending</code>; early quarantine fails; stale signed quarantine succeeds and charges full hold.</td></tr>
+<tr><td>TR-02</td><td>Wrong or forged external evidence cannot bind recovered bytes.</td></tr>
+<tr><td>TR-03</td><td>Authenticated recovered bytes resume and seal with zero provider callbacks.</td></tr>
+<tr><td>TR-04</td><td>Process death during local sealing resets to <code>received</code> only under signed operator authority and seals with no second provider call.</td></tr>
+<tr><td>TR-05</td><td>Replay is idempotent; conflicting bytes, jobs, actions, and MAC/database tampering fail closed.</td></tr>
+<tr><td>TR-06</td><td>Focused and stacked multimedia tests, Ruff, strict mypy, HTML parse, diff-check, and hardenx pass.</td></tr></table></section>
+<section><h2>Next Nested Sprint</h2><p>Expose these recovery actions through an operator-only multimedia operations/read-model surface with status, evidence requirements, and audit history; keep provider transport absent.</p></section>
+</main></body></html>
+

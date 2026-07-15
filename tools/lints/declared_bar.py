@@ -106,7 +106,7 @@ __all__ = [
 #
 # KNOWN ASYMMETRY vs ruff: ruff (run with no path arg) lints the WHOLE
 # tree — including tools/, tests/, scripts/, benchmarks/, antiek_extensions/,
-# apps/ — but mypy here covers only these 10 wheel packages. So a brand-new
+# apps/ — but mypy here covers only these 11 wheel packages. So a brand-new
 # top-level dir, or new untyped code under those non-package dirs, escapes
 # the strict TYPE gate (ruff still catches it). When you ship a new
 # top-level PACKAGE, add it to the wheel-package list (the cross-check test
@@ -123,6 +123,7 @@ DECLARED_MYPY_TARGETS: tuple[str, ...] = (
     "interfaces",
     "compounding",
     "runtime",
+    "integrations",
 )
 
 

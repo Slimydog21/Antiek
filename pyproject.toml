@@ -35,6 +35,10 @@ dependencies = [
   # imports being made explicit.
   "requests>=2.31",
   "reportlab>=4.0",
+  # Cheapest local documentary source cards render deterministic PNGs through
+  # Pillow's structured bitmap API. ReportLab currently brings Pillow
+  # transitively, but local_source_card imports it directly, so it is explicit.
+  "pillow>=11.0",
   # SPR-08 BYOK credential store: runtime/byok/store.py uses
   # libsodium SecretBox (XSalsa20-Poly1305) to encrypt the operator's own X
   # API key at rest. Declared CORE (not optional) because runtime/byok/
@@ -85,6 +89,13 @@ rss = ["feedparser>=6.0"]
 browserbase = [
   "browserbase>=0.4",
   "playwright>=1.45",
+]
+# NotDiamond advisory model-router adapter (Wave 1). Optional and lazy:
+# runtime/notdiamond imports the SDK only inside select_model(), so dispatch
+# still runs when this extra is absent. TODO(SPR-ND): relax the exact pin after
+# a second SDK version is smoke-tested against Antiek's adapter contract.
+notdiamond = [
+  "notdiamond==1.7.0",
 ]
 # Remote-exec research fan-out — unified SPR-02, behind the §16
 # research-fan-out exemption (docs/decisions/s16-research-fanout-exemption.md).
@@ -159,6 +170,7 @@ packages = [
   "interfaces",
   "compounding",
   "runtime",
+  "integrations",
 ]
 
 [tool.ruff]

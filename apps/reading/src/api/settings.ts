@@ -2,6 +2,7 @@ import { API_BASE, apiFetch } from "../lib/api";
 
 export interface ModelRow {
   provider_id: string;
+  registered: boolean;
   ready: boolean;
   tier_bindings: string[];
   primary_model: string | null;
@@ -45,6 +46,40 @@ export interface PromptCostEstimateResponse {
   model: string | null;
 }
 
+export type ModelDecisionTask =
+  | "deep_research"
+  | "research_synthesis"
+  | "reading"
+  | "twin_note"
+  | "writing"
+  | "multimedia"
+  | "general";
+
+export interface ModelDecisionCandidate {
+  rank: number;
+  tier: string;
+  provider: string;
+  model: string;
+  ready: boolean;
+  eligible: boolean;
+  quality_score: number;
+  quality_basis: "measured" | "static_prior";
+  benchmark_samples: number | null;
+  estimated_usd_low: number | null;
+  estimated_usd_high: number | null;
+  would_exceed_budget: boolean | null;
+}
+
+export interface ModelDecisionResponse {
+  authority: "advisory";
+  task: ModelDecisionTask;
+  recommended_tier: string | null;
+  benchmark_status: "measured" | "unavailable";
+  benchmark_generated_at: string | null;
+  candidates: ModelDecisionCandidate[];
+  notes: string[];
+}
+
 async function readJson<T>(res: Response): Promise<T> {
   if (!res.ok) {
     const text = await res.text();
@@ -72,4 +107,17 @@ export async function estimatePromptCost(
     body: JSON.stringify(body),
   });
   return readJson<PromptCostEstimateResponse>(res);
+}
+
+export async function fetchModelDecision(body: {
+  task: ModelDecisionTask;
+  input_chars: number;
+  expected_output_tokens: number;
+}): Promise<ModelDecisionResponse> {
+  const res = await apiFetch(`${API_BASE}/settings/model-decision`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  return readJson<ModelDecisionResponse>(res);
 }
