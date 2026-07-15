@@ -1,0 +1,52 @@
+{
+  "mode": "authenticated-shell-edge-hotspots",
+  "tree": "goal-twin-autoload-session-alpha",
+  "tip": "b4da805ca+",
+  "pass1": {
+    "pass": 1,
+    "shellFrame": true,
+    "penguinCount": 1,
+    "lastClickBefore": "",
+    "lastClick": "peak-left",
+    "nonForceClickWorked": true,
+    "centerNotHotspot": true,
+    "topbarNotHotspot": true,
+    "center": {
+      "tag": "TEXTAREA",
+      "primary": "worksurface",
+      "isHotspot": false
+    },
+    "topbar": {
+      "tag": "DIV",
+      "primary": null,
+      "isHotspot": false
+    },
+    "researchBrand": true,
+    "errors": [],
+    "shot": "/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/grok-goal-68433da793df/implementer/shell-launch-tip-pass1.png"
+  },
+  "pass2": {
+    "pass": 2,
+    "shellFrame": true,
+    "penguinCount": 1,
+    "lastClickBefore": "",
+    "lastClick": "peak-left",
+    "nonForceClickWorked": true,
+    "centerNotHotspot": true,
+    "topbarNotHotspot": true,
+    "center": {
+      "tag": "TEXTAREA",
+      "primary": "worksurface",
+      "isHotspot": false
+    },
+    "topbar": {
+      "tag": "DIV",
+      "primary": null,
+      "isHotspot": false
+    },
+    "researchBrand": true,
+    "errors": [],
+    "shot": "/var/folders/c5/ybjvwk9n5dng1x4zb04gcgvw0000gn/T/grok-goal-68433da793df/implementer/shell-launch-tip-pass2.png"
+  },
+  "ok": true
+}
