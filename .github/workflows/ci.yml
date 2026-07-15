@@ -33,6 +33,11 @@ jobs:
     name: pytest shard ${{ matrix.shard_index }} of 4
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      # Each hosted runner starts with limited free disk. The full ML/PDF
+      # dependency set is large; retaining downloaded wheels alongside the
+      # installed environment can exhaust the runner during pytest.
+      PIP_NO_CACHE_DIR: "1"
     strategy:
       fail-fast: false
       matrix:
@@ -48,7 +53,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: '3.14'
-          cache: 'pip'
 
       - name: Install Antiek + dev deps
         run: |
@@ -62,6 +66,12 @@ jobs:
           sudo apt-get install --yes ffmpeg
           test -x /usr/bin/ffmpeg
           test -x /usr/bin/ffprobe
+
+      - name: Require pytest disk headroom
+        run: |
+          available_kib=$(df --output=avail -k / | tail -n 1)
+          echo "Available disk before pytest: ${available_kib} KiB"
+          test "$available_kib" -ge 2097152
 
       - name: Run pytest shard
         env:
