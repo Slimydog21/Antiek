@@ -16,6 +16,7 @@ vi.mock("../../api/research", async (load) => {
   return {
     ...actual,
     listTwinNotes: (...args: unknown[]) => listMock(...args),
+    discoverTwinNoteRevisionCandidates: () => Promise.resolve({ assets: [], truncated: false, limits: { assets: 20, windows_per_asset: 50, total_windows: 500, selection_members: 20 } }),
     getTwinNoteHistory: (...args: unknown[]) => historyMock(...args),
     composeTwinNotes: (...args: unknown[]) => composeMock(...args),
   };

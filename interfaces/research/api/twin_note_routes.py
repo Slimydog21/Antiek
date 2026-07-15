@@ -14,6 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field
 from substrate.twin_note_taker.serving import (
     TwinNoteInputError, TwinNoteIntegrityError, TwinNoteServingService, TwinNoteUnavailable,
 )
+from substrate.twin_note_taker.discovery import (
+    TwinNoteDiscoveryIntegrity,
+    TwinNoteDiscoveryService,
+    TwinNoteDiscoveryUnavailable,
+)
 from substrate.graph import default_db_path
 from runtime.db_lock import connect_read
 from substrate.twin_note_taker.workflow import (TwinNoteWorkflow, TwinNoteWorkflowConflict,
@@ -87,6 +92,10 @@ def _workflow() -> TwinNoteWorkflow:
         events_dir=os.environ.get("ANTIEK_RESEARCH_EVENTS_DIR"))
 
 
+def _discovery() -> TwinNoteDiscoveryService:
+    return TwinNoteDiscoveryService(db_path=default_db_path())
+
+
 def _map_error(exc: Exception) -> HTTPException:
     if isinstance(exc, TwinNoteUnavailable):
         return HTTPException(404, "twin-note resource is unavailable", headers=NO_STORE)
@@ -100,6 +109,24 @@ def _map_workflow_error(exc: Exception) -> HTTPException:
     if isinstance(exc, (TwinNoteWorkflowIntegrity, TwinNoteWorkflowConflict)):
         return HTTPException(409, "twin-note workflow conflict", headers=NO_STORE)
     return HTTPException(422, "twin-note request is invalid", headers=NO_STORE)
+
+
+@twin_note_router.get("/revision-candidates")
+async def get_revision_candidates(request: Request) -> Response:
+    # Discovery is deliberately parameter-free. Reject even otherwise ignored
+    # GET bodies and query keys without reflecting their names or values.
+    if request.query_params or await request.body():
+        raise HTTPException(422, "twin-note request is invalid", headers=NO_STORE)
+    try:
+        result = _discovery().candidates(_account(request))
+    except HTTPException:
+        raise
+    except TwinNoteDiscoveryUnavailable:
+        raise HTTPException(503, "twin-note discovery is unavailable", headers=NO_STORE) from None
+    except TwinNoteDiscoveryIntegrity:
+        raise HTTPException(409, "twin-note discovery integrity conflict", headers=NO_STORE) from None
+    return Response(content=json.dumps(result, separators=(",", ":")),
+                    media_type="application/json", headers=NO_STORE)
 
 @twin_note_router.post("/revision-previews")
 def post_revision_preview(body: PreviewIn, request: Request) -> Response:

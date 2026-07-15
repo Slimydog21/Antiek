@@ -17,6 +17,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Protocol
 
+from roles._json_decode import extract_json_object
 from roles.note_taker.parser import parse_notes_response
 from runtime.db_lock import connect_read, connect_write
 from substrate.graph import default_db_path
@@ -84,6 +85,18 @@ class WindowAdmission:
         return [json.loads(value) for value in self.attributed_json]
 
 
+@dataclass(frozen=True)
+class WindowEvidenceValidation:
+    """Pure validation result for one persisted V20 window row."""
+
+    exclusion_reason: str | None
+    sources: tuple[str, ...] = ()
+    notes: tuple[Any, ...] = ()
+
+
+MAX_WINDOW_EVIDENCE_FIELD_BYTES = 1 * 1024 * 1024
+
+
 def _canonical(value: Any) -> str:
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
@@ -96,6 +109,52 @@ def _safe_identity(value: str, label: str) -> str:
     if type(value) is not str or not value or value != value.strip() or len(value) > 512:
         raise TwinNoteCompressionError(f"{label} must be a canonical non-empty string")
     return value
+
+
+def validate_window_evidence(row: Sequence[Any]) -> WindowEvidenceValidation:
+    """Validate one canonical 11-column V20 window row without doing I/O."""
+    if len(row) != 11:
+        return WindowEvidenceValidation("evidence_output_invalid")
+    (_window_id, _consumer_version, investigation_id, _window_ordinal,
+     source_json, source_digest, request_json, request_sha, state, raw, raw_sha) = row
+    if state != "completed" or raw is None or raw_sha is None:
+        return WindowEvidenceValidation("evidence_incomplete")
+    if any(type(value) is not str for value in
+           (source_json, source_digest, request_json, request_sha, raw, raw_sha)):
+        return WindowEvidenceValidation("evidence_digest_mismatch")
+    try:
+        if any(len(value.encode("utf-8")) > MAX_WINDOW_EVIDENCE_FIELD_BYTES
+               for value in (source_json, request_json, raw)):
+            return WindowEvidenceValidation("evidence_output_invalid")
+    except (UnicodeError, AttributeError):
+        return WindowEvidenceValidation("evidence_output_invalid")
+    if (_sha(request_json) != request_sha or _sha(raw) != raw_sha
+            or _sha(source_json) != source_digest):
+        return WindowEvidenceValidation("evidence_digest_mismatch")
+    try:
+        sources, request = json.loads(source_json), json.loads(request_json)
+    except (TypeError, ValueError):
+        return WindowEvidenceValidation("evidence_noncanonical")
+    if (not isinstance(sources, list) or not sources
+            or any(type(value) is not str or not value for value in sources)
+            or _canonical(sources) != source_json or _canonical(request) != request_json):
+        return WindowEvidenceValidation("evidence_noncanonical")
+    if (not isinstance(request, dict)
+            or request.get("investigation_id") != investigation_id
+            or request.get("source_event_ids") != sources):
+        return WindowEvidenceValidation("evidence_binding_mismatch")
+    try:
+        notes = tuple(parse_notes_response(raw, canonical_event_ids=sources))
+        # The canonical parser drops malformed and unattributed entries.
+        # Require every declared raw note to survive, but keep all parser
+        # failures candidate-local and value-free.
+        raw_object = extract_json_object(raw)
+        raw_notes = raw_object.get("notes") if isinstance(raw_object, dict) else None
+    except Exception:
+        return WindowEvidenceValidation("evidence_output_invalid")
+    if not isinstance(raw_notes, list) or len(notes) != len(raw_notes):
+        return WindowEvidenceValidation("evidence_output_invalid")
+    return WindowEvidenceValidation(None, tuple(sources), notes)
 
 def build_window_admission(*, db_path: str, ownership_resolver: OwnershipResolver,
                            account_id: str, asset_id: str,
@@ -124,37 +183,67 @@ def build_window_admission(*, db_path: str, ownership_resolver: OwnershipResolve
     seen_notes: set[str] = set()
     all_sources: set[str] = set()
     for ordinal, row in enumerate(rows):
-        window_id, consumer_version, investigation_id, window_ordinal, source_json, source_digest, request_json, request_sha, state, raw, raw_sha = row
-        if state != "completed" or raw is None or raw_sha is None:
-            raise TwinNoteCompressionError("only completed windows with stored output are eligible")
-        if _sha(request_json) != request_sha or _sha(raw) != raw_sha or _sha(source_json) != source_digest:
-            raise TwinNoteCompressionError("window evidence digest mismatch")
-        try:
-            sources, request = json.loads(source_json), json.loads(request_json)
-        except (TypeError, ValueError) as exc:
-            raise TwinNoteCompressionError("window evidence is not canonical JSON") from exc
-        if (not isinstance(sources, list) or not sources or any(type(x) is not str for x in sources)
-                or _canonical(sources) != source_json or _canonical(request) != request_json
-                or not isinstance(request, dict) or request.get("investigation_id") != investigation_id
-                or request.get("source_event_ids") != sources):
-            raise TwinNoteCompressionError("window request is not bound to its investigation and sources")
+        (
+            window_id,
+            consumer_version,
+            investigation_id,
+            window_ordinal,
+            _source_json,
+            source_digest,
+            _request_json,
+            request_sha,
+            _state,
+            _raw,
+            raw_sha,
+        ) = row
+        validation = validate_window_evidence(row)
+        if validation.exclusion_reason is not None:
+            messages = {
+                "evidence_incomplete": "only completed windows with stored output are eligible",
+                "evidence_digest_mismatch": "window evidence digest mismatch",
+                "evidence_noncanonical": "window evidence is not canonical JSON",
+                "evidence_binding_mismatch": "window request is not bound to its investigation and sources",
+                "evidence_output_invalid": "window note output is invalid",
+            }
+            raise TwinNoteCompressionError(messages[validation.exclusion_reason])
+        sources = validation.sources
         all_sources.update(sources)
-        members.append({"member_ordinal":ordinal,"investigation_id":investigation_id,
-            "window_id":window_id,"consumer_version":consumer_version,"window_ordinal":window_ordinal,
-            "source_digest":source_digest,"request_sha256":request_sha,"raw_result_sha256":raw_sha})
-        for note in parse_notes_response(raw, canonical_event_ids=sources):
-            identity = _canonical({"text":note.text,"confidence":note.confidence,
-                                   "source_event_ids":list(note.source_event_ids)})
+        members.append({
+            "member_ordinal": ordinal,
+            "investigation_id": investigation_id,
+            "window_id": window_id,
+            "consumer_version": consumer_version,
+            "window_ordinal": window_ordinal,
+            "source_digest": source_digest,
+            "request_sha256": request_sha,
+            "raw_result_sha256": raw_sha,
+        })
+        for note in validation.notes:
+            identity = _canonical({
+                "text": note.text,
+                "confidence": note.confidence,
+                "source_event_ids": list(note.source_event_ids),
+            })
             if identity not in seen_notes:
                 seen_notes.add(identity)
-                attributed.append({"text":note.text,"confidence":note.confidence,
-                    "source_event_ids":list(note.source_event_ids),"investigation_id":investigation_id,
-                    "window_id":window_id})
+                attributed.append({
+                    "text": note.text,
+                    "confidence": note.confidence,
+                    "source_event_ids": list(note.source_event_ids),
+                    "investigation_id": investigation_id,
+                    "window_id": window_id,
+                })
     if len(attributed) > MAX_NOTES or len(all_sources) > MAX_SOURCE_EVENTS:
         raise TwinNoteCompressionError("note or source-event ceiling exceeded")
-    return WindowAdmission(account_id,asset_id,ids,rows,tuple(_canonical(x) for x in members),
-                           tuple(_canonical(x) for x in attributed),
-                           tuple(sorted(all_sources)))
+    return WindowAdmission(
+        account_id,
+        asset_id,
+        ids,
+        rows,
+        tuple(_canonical(value) for value in members),
+        tuple(_canonical(value) for value in attributed),
+        tuple(sorted(all_sources)),
+    )
 
 
 def _static_html(body: ResearchArtifactBody, *, revision_id: str, authority: str,
