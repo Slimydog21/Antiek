@@ -25,7 +25,7 @@ describe("parseTwinDocument", () => {
     expect(twin?.questions[0]?.open).toBe(true);
   });
 
-  it("rejects parent mismatch and non-twins (anti-recursion)", () => {
+  it("rejects parent mismatch, non-twins, and self-parent twins (anti-recursion)", () => {
     expect(
       parseTwinDocument(
         { id: "t", parentAssetId: "other", isTwin: true, insights: [], questions: [] },
@@ -35,6 +35,18 @@ describe("parseTwinDocument", () => {
     expect(
       parseTwinDocument(
         { id: "t", parentAssetId: "doc-9", isTwin: false, insights: [], questions: [] },
+        "doc-9",
+      ),
+    ).toBeNull();
+    expect(
+      parseTwinDocument(
+        {
+          id: "doc-9",
+          parentAssetId: "doc-9",
+          isTwin: true,
+          insights: [],
+          questions: [],
+        },
         "doc-9",
       ),
     ).toBeNull();

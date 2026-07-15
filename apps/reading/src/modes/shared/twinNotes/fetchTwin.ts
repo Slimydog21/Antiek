@@ -66,6 +66,8 @@ export function parseTwinDocument(
   const parentAssetId = asString(rec.parentAssetId) ?? asString(rec.parent_asset_id);
   if (!id || !parentAssetId) return null;
   if (parentAssetId !== expectedParentId) return null;
+  // Anti-recursion: a twin must never be its own parent (id ≠ parent).
+  if (id === parentAssetId) return null;
   if (rec.isTwin !== true && rec.is_twin !== true) return null;
 
   const statusRaw = asString(rec.status) ?? "ready";
