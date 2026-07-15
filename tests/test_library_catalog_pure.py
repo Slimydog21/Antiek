@@ -110,8 +110,8 @@ def test_builder_handles_more_than_default_asset_limit() -> None:
     all_page = build_library_page(rows, filt="all", page=1, page_size=50)
     assert all_page.total == 280
 
-def test_register_library_passes_high_limit(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Route must not use list_book_assets default limit=200."""
+def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Route totals the complete catalog rather than applying a hidden cap."""
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
 
@@ -130,9 +130,18 @@ def test_register_library_passes_high_limit(monkeypatch: pytest.MonkeyPatch) -> 
         ip_holder_id = None
         taken_down = False
 
-    def fake_list(con, *, servable_only=False, include_taken_down=False, limit=200):
-        calls.append({"servable_only": servable_only, "limit": limit})
-        return [_Asset()]
+    def fake_list(
+        con,
+        *,
+        servable_only=False,
+        include_taken_down=False,
+        limit=200,
+        offset=0,
+    ):
+        calls.append(
+            {"servable_only": servable_only, "limit": limit, "offset": offset}
+        )
+        return [_Asset()] * limit if offset == 0 else [_Asset()]
 
     class _Con:
         def close(self) -> None:
@@ -151,5 +160,16 @@ def test_register_library_passes_high_limit(monkeypatch: pytest.MonkeyPatch) -> 
     r = client.get("/library", params={"filter": "all"})
     assert r.status_code == 200, r.text
     assert calls, "list_book_assets not called"
-    assert calls[0]["limit"] > 200
-    assert calls[0]["limit"] == lib._CATALOG_LOAD_LIMIT
+    assert calls == [
+        {
+            "servable_only": False,
+            "limit": lib._CATALOG_BATCH_SIZE,
+            "offset": 0,
+        },
+        {
+            "servable_only": False,
+            "limit": lib._CATALOG_BATCH_SIZE,
+            "offset": lib._CATALOG_BATCH_SIZE,
+        },
+    ]
+    assert r.json()["total"] == lib._CATALOG_BATCH_SIZE + 1

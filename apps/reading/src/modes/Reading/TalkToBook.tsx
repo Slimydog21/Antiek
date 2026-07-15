@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
-import { askBook } from "../../api/books";
+import { askBook, judgeBookAnswer } from "../../api/books";
 import type { BookCitation } from "../../api/books";
 import ReadAloud from "../../components/voice/ReadAloud";
 import { useTalkThread } from "./useTalkThread";
@@ -66,7 +66,14 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
     setPending(true);
     try {
       const res = await askBook(documentId, q, { history });
-      thread.completeTurn(messageId, res.answer, res.citations, res.grounded);
+      thread.completeTurn(
+        messageId,
+        res.answer,
+        res.citations,
+        res.grounded,
+        res.answer_id,
+        res.capture_status,
+      );
     } catch (e: unknown) {
       thread.failTurn(messageId);
       setError(e instanceof Error ? e.message : String(e));
@@ -161,6 +168,8 @@ export default function TalkToBook({ documentId, title, onJumpToPage }: TalkToBo
             message={m}
             onJumpToPage={onJumpToPage}
             onBranch={() => thread.branchFrom(m.id)}
+            onJudged={(verdict) => thread.setJudgment(m.id, verdict)}
+            documentId={documentId}
           />
         ))}
         {pending && (
@@ -207,11 +216,32 @@ function TalkMessageView({
   message,
   onJumpToPage,
   onBranch,
+  onJudged,
+  documentId,
 }: {
   message: TalkMessage;
   onJumpToPage: (pageIndex: number) => void;
   onBranch: () => void;
+  onJudged: (verdict: "good" | "bad") => void;
+  documentId: string;
 }) {
+  const [judging, setJudging] = useState<"good" | "bad" | null>(null);
+  const [judgmentError, setJudgmentError] = useState(false);
+
+  const judge = async (verdict: "good" | "bad") => {
+    if (!message.answer_id || judging || message.judgment) return;
+    setJudging(verdict);
+    setJudgmentError(false);
+    try {
+      await judgeBookAnswer(documentId, message.answer_id, verdict);
+      onJudged(verdict);
+    } catch {
+      setJudgmentError(true);
+    } finally {
+      setJudging(null);
+    }
+  };
+
   return (
     <div className="flex flex-col gap-1.5">
       {/* The reader's question — visibly user-sourced. */}
@@ -229,6 +259,45 @@ function TalkMessageView({
           <p className="text-[13px] text-ink dark:text-bright whitespace-pre-wrap leading-relaxed">
             {message.answer}
           </p>
+
+          {message.answer_id && (
+            <div className="mt-2 flex items-center gap-2" aria-label="Rate this answer">
+              {message.judgment ? (
+                <span className="text-[11px] font-mono text-shadow-1 dark:text-moonlight" role="status">
+                  Marked {message.judgment}
+                </span>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => void judge("good")}
+                    disabled={judging !== null}
+                    className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-ink dark:hover:text-bright disabled:opacity-50"
+                    aria-label="Mark answer good"
+                  >
+                    {judging === "good" ? "Saving…" : "Good"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void judge("bad")}
+                    disabled={judging !== null}
+                    className="text-[11px] font-mono text-shadow-1 dark:text-moonlight hover:text-emperor disabled:opacity-50"
+                    aria-label="Mark answer bad"
+                  >
+                    {judging === "bad" ? "Saving…" : "Bad"}
+                  </button>
+                </>
+              )}
+              {judgmentError && (
+                <span className="text-[11px] text-emperor" role="alert">Couldn’t save judgment.</span>
+              )}
+            </div>
+          )}
+          {message.capture_unavailable && (
+            <p className="mt-2 text-[11px] text-sun-deep dark:text-sun" role="status">
+              Answer delivered, but rating is unavailable because its evidence record could not be saved.
+            </p>
+          )}
 
           {!message.grounded && (
             <p className="mt-1 text-[12px] text-sun-deep dark:text-sun italic">

@@ -160,6 +160,20 @@ def test_post_investigations_with_bearer_proceeds(temp_substrate, monkeypatch):
     assert resp.status_code == 202
 
 
+@pytest.mark.parametrize("declared_length", ["0", "not-a-number", str(512 * 1024 + 1)])
+def test_tts_gateway_body_ceiling_runs_before_open_path_dispatch(
+    temp_substrate, monkeypatch, declared_length
+):
+    client = _client_with_token(temp_substrate, "operator-secret", monkeypatch)
+    response = client.post(
+        "/multimedia/tts-gateway/synthesize",
+        content=b"{}",
+        headers={"Content-Length": declared_length},
+    )
+    assert response.status_code == 413
+    assert response.json() == {"detail": "TTS gateway request body is invalid"}
+
+
 def test_ops_endpoint_also_gated(temp_substrate, monkeypatch):
     """/ops/provider-ratio exposes dispatch metadata; gated."""
     client = _client_with_token(temp_substrate, "op_secret", monkeypatch)
