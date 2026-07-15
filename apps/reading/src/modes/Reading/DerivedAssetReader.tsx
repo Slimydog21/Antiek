@@ -9,7 +9,7 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
 import { useFloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
 import type { FloatMenuSelection } from "../shared/FloatMenu/useFloatMenuSelection";
-import ReadingCompanion from "./ReadingCompanion";
+import DerivedRevisionCompanion from "./DerivedRevisionCompanion";
 
 const ASSET_ID = /^ast_[0-9a-f]{32}$/;
 const REVISION_ID = /^rev_[0-9a-f]{32}$/;
@@ -102,7 +102,7 @@ export default function DerivedAssetReader() {
       </header>
       <article ref={articleRef} className="derived-html-reading prose prose-neutral mx-auto max-w-3xl px-6 py-10 font-serif text-ink dark:prose-invert dark:text-bright" data-derived-asset-id={model.derived_asset_id} data-revision-id={model.revision_id} data-content-sha256={model.content_sha256} dangerouslySetInnerHTML={{ __html: model.canonical_html }} />
     </main>
-    <ReadingCompanion documentId={model.derived_asset_id} title={model.title} readingThreadId={threadId} />
+    <DerivedRevisionCompanion model={model} articleRef={articleRef} />
     <FloatMenu selection={selection} investigationId={threadId} onDeepResearch={onDeepResearch} />
   </div>;
 }

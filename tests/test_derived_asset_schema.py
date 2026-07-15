@@ -111,6 +111,9 @@ def test_fresh_and_reopen_initialization(db_path: str) -> None:
 def test_existing_pre_v16_database_is_upgraded(db_path: str) -> None:
     with connect_write(db_path, purpose="derived-asset-pre-v16-fixture") as con:
         for table in (
+            "derived_asset_companion_turn_citations",
+            "derived_asset_companion_turns",
+            "derived_asset_companion_threads",
             "derived_asset_merge_outbox",
             "derived_asset_merge_operations",
             "derived_asset_current_revisions",

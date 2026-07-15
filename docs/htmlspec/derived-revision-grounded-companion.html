@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 59 - Exact-Revision Grounded Companion</title>
+  <style>
+    :root{--paper:#fffdf7;--ink:#151515;--lemon:#f9bd2b;--blue:#1d4aff;--red:#a32020;--muted:#5b5b5b}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+    main{max-width:1100px;margin:auto;padding:32px}header,section{border:2px solid var(--ink);padding:20px;margin:0 0 18px}
+    header{background:var(--lemon)}h1,h2,h3{margin:0 0 10px;letter-spacing:0}code{background:#fff;border:1px solid;padding:1px 4px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}.card{border:2px solid var(--blue);padding:14px}
+    .must{border-left:8px solid var(--blue)}.reject{border-left:8px solid var(--red)}.muted{color:var(--muted)}
+  </style>
+</head>
+<body><main>
+  <header><h1>Cycle 59: Exact-Revision Grounded Companion</h1><p>Let a reader question the immutable derived HTML revision on screen, inspect the exact evidence pack, persist defensible outcomes, and launch deeper research without overstating model, citation, or spend authority.</p></header>
+  <section id="spec-lineage" data-spec-depth="0" data-parent-spec="derived-html-revision-indexing-and-companion.html"><h2>Spec lineage</h2><p>Parent: <a href="derived-html-revision-indexing-and-companion.html">Cycle 58 revision indexing</a></p><ul class="child-specs"></ul></section>
+  <section class="must"><h2>Outcome</h2><p>The authenticated owner can submit a bounded question against either the verified current pointer or one exact historical revision. Antiek produces one deterministic evidence pack containing exact revision-scoped citations, persists the revision-bound turn and outcome, and exposes citation handoff into ChaseThread. With no matching evidence it records an abstention and makes zero provider calls. Paid answer execution remains fail-closed until a route has known pricing plus qualified crash-recovery and execution-time budget authority.</p></section>
+  <section><h2>Truthful capability boundary</h2><div class="grid">
+    <div class="card"><h3>Body authority</h3><p><code>derived_asset_revisions.canonical_html</code> remains the only reading body. Companion rows store bounded evidence snapshots and hashes, never another full HTML copy.</p></div>
+    <div class="card"><h3>Grounding authority</h3><p>The server reopens and verifies the revision index before packing evidence. Citation membership and immutability are mechanically guaranteed; semantic entailment is not claimed.</p></div>
+    <div class="card"><h3>Route authority</h3><p>Settings decisions and cost projections are advisory. Browser-supplied provider, rates, limits, verdicts, evidence, hashes, or HTML grant no execution authority.</p></div>
+    <div class="card"><h3>Spend authority</h3><p>Configured zero placeholders mean unknown price, not free. The general synchronous dispatcher is not crash-reconcilable paid-send authority. Unsupported execution returns a typed unavailable outcome before dispatch.</p></div>
+  </div></section>
+  <section><h2>Evidence pack v1</h2><ol>
+    <li>Resolve current server-side or verify the named historical revision through <code>DerivedAssetLibrary.reading</code>.</li>
+    <li>For current submissions, compare the resolved identity to the optional screen revision/hash and refuse stale screens without silently moving the question.</li>
+    <li>Call the verified lexical retrieval boundary with fixed policy and <code>top_k</code>. The browser never supplies chunks.</li>
+    <li>Canonicalize version, asset, revision, content hash, generation, index identity, query hash, retrieval parameters, and ordered citation records containing ID, ordinal, member, anchor, path, bounded text, and text hash.</li>
+    <li>Hash canonical JSON as <code>pack_sha256</code>. Any ordering, question, policy, revision, or text mutation changes the digest.</li>
+  </ol></section>
+  <section><h2>Persistence</h2><ul>
+    <li><code>derived_asset_companion_threads</code>: unique per owner, asset, and exact revision/content identity; historical threads never flow into current.</li>
+    <li><code>derived_asset_companion_turns</code>: unique owner/client key, canonical request hash, contiguous thread ordinal, bounded question, evidence-pack digest/snapshot, state, answer envelope, failure code, requested advisory snapshot, actual dispatch receipt when one eventually qualifies, and timestamps.</li>
+    <li><code>derived_asset_companion_turn_citations</code>: ordered exact chunk identity, text hash, and answer-use flag with revision-safe foreign keys.</li>
+    <li>Same idempotency key and digest replays. Same key with changed question, revision, policy, or model choice conflicts. A claimed paid turn abandoned after send becomes <code>outcome_unknown</code> and is never automatically redispatched.</li>
+    <li>Cycle 59 may persist <code>insufficient_evidence</code> and <code>execution_unavailable</code> outcomes without a provider. It must not manufacture an answer merely to fill the conversation.</li>
+  </ul></section>
+  <section><h2>HTTP contracts</h2><ul>
+    <li><code>GET /research/derived-assets/assets/{asset}/companion</code> and the exact-revision variant return only that revision thread, immutable scope identity, and summaries of prior revision threads.</li>
+    <li><code>POST .../companion/evidence</code> accepts question, fixed bounded top-k, optional expected screen identity, and an opaque idempotency key. It returns the persisted evidence/abstention outcome and an advisory model/cost disclosure.</li>
+    <li>A future <code>POST .../companion/turns</code> executes only after shared execution-time model registration, known pricing, budget authorization, and crash-safe send/reconciliation qualify the route. Until then it returns <code>503 companion_execution_unavailable</code> with zero dispatches.</li>
+    <li>Errors distinguish invalid question, unavailable asset, revision/index integrity conflict, stale current screen, idempotency conflict, budget refusal, dispatch unavailable, and unknown outcome. Every response is <code>private, no-store</code>.</li>
+  </ul></section>
+  <section><h2>Reader interaction</h2><p>The derived reader receives a revision-aware companion, while ordinary document reading keeps its existing investigation projection. The rail shows current or historical scope, persisted turns, a question field, exact evidence citations, explicit abstention, and honest model/cost status such as “Cost unavailable.” Citation actions scroll only to the exact section anchor; a missing anchor reveals the verified quote instead of fuzzy navigation. Route generation guards prevent a late response from revision A rendering over revision B.</p></section>
+  <section><h2>Research handoff</h2><p>“Follow this” opens ChaseThread but never auto-launches it. The handoff carries asset, revision, content hash, generation, citation ID, and chunk-text hash as structured provenance. The research launch server reopens the citation and verifies every identity before accepting it; identity JSON is not appended to free-form prompt context.</p></section>
+  <section><h2>Execution qualification sub-spec</h2><p>Paid companion answers become executable only after all four gates are shared platform capabilities: registered model-choice resolution, non-placeholder route pricing, execution-time hard-budget reservation, and provider idempotency or reconciliation after process loss. The qualified service must persist requested choice separately from actual provider/model/fallback/usage/cost/event identity and validate a strict answer envelope where every paragraph cites only pack members. Malformed, uncited, or foreign-citation output becomes abstention without a repair call.</p></section>
+  <section><h2>Sprint sequence</h2><ol>
+    <li><strong>S1 evidence authority:</strong> extract deterministic evidence-pack construction from verified retrieval, include missing text hash/index metadata, and prove cross-process digest determinism.</li>
+    <li><strong>S2 durable outcomes:</strong> add revision-bound thread/turn/citation schema and repository with owner isolation, idempotent replay, stale-current refusal, and persisted no-evidence abstention.</li>
+    <li><strong>S3 API:</strong> add current and pinned conversation/evidence routes with typed private responses and zero-dispatch assertions.</li>
+    <li><strong>S4 reader:</strong> implement exact-revision companion UI, citation navigation, reload persistence, stale response suppression, and explicit cost-unavailable disclosure.</li>
+    <li><strong>S5 recursive research:</strong> replace derived identity-in-context with structured citation provenance and server verification before launch.</li>
+    <li><strong>S6 qualification:</strong> leave executable tests/spec seams for the future shared paid gateway; do not weaken hard-spend invariants to finish this cycle.</li>
+  </ol></section>
+  <section><h2>Acceptance harness</h2><ul>
+    <li>Pack digest is stable across processes and changes for question, revision, policy, order, or citation mutation; identical text in different revisions never shares citation identity.</li>
+    <li>Missing, extra, reordered, altered, foreign, or cross-owner index rows fail before persistence or dispatch.</li>
+    <li>No lexical match persists one abstention and invokes zero dispatches. Same client key replays exactly; changed command conflicts.</li>
+    <li>Current screen movement refuses with the new verified identity and zero calls. Pinned history remains pinned after pointer movement.</li>
+    <li>Canonical HTML never appears in companion tables. Old turns appear only on their exact revision route.</li>
+    <li>Unknown pricing renders as unavailable, never <code>$0.00</code>. Forged client rates, route, evidence, and projection verdict cannot authorize execution.</li>
+    <li>Question/evidence survives remount; citation anchor and missing-anchor behavior are exact; “Follow this” opens but does not launch research.</li>
+    <li>Backend tests, focused frontend tests, TypeScript, production build, Ruff, HTML validation, hostile review, and HardenX pass before publication.</li>
+  </ul></section>
+  <section class="reject"><h2>Rejected alternatives</h2><ul>
+    <li>Calling <code>dispatch()</code> directly and calling the turn hard-budgeted: synchronous fallback lacks provider reconciliation after a lost response.</li>
+    <li>Treating configured zero rates as free: repository comments define them as unknown placeholders.</li>
+    <li>Client-built evidence packs or citations: permits cross-revision and mutated evidence.</li>
+    <li>A generic chat/messages subsystem: weakens revision identity and expands scope without solving the reading workflow.</li>
+    <li>Silently moving current questions to a newer revision: makes the visible source differ from the answered source.</li>
+    <li>Automatic repair or second-model citation checking: spends more while still not proving semantic entailment.</li>
+    <li>Embedding provenance JSON in prompt prose: identity becomes unverifiable decoration rather than structured authority.</li>
+  </ul></section>
+  <section><h2>Out of scope</h2><p>General chat, semantic vector retrieval, automatic follow-up agents, answer streaming, multi-revision conversation synthesis, companion-only BYOK validation, guessed provider pricing, and any claim of exactly-once provider billing.</p></section>
+  <section><h2>Five-values rigor</h2><p><strong>Honesty:</strong> unknown cost and unsupported execution are visible. <strong>Fairness:</strong> only authenticated ownership and server-derived citations expose text. <strong>Rigor:</strong> every outcome binds an exact verified revision and deterministic pack. <strong>Diligence:</strong> stale screens, duplicate commands, projection drift, and crash states fail closed. <strong>Defensibility:</strong> the first vertical remains useful without weakening the platform’s hard-spend or canonical-body boundaries.</p></section>
+  <section id="harness-hint-run" data-pattern="adversarial-verification" data-scope="cycle59-derived-companion-answer" data-done-bar="spec+evidence-pack+durable-outcome+api+reader+provenance+tests+build+hostile-review+hardenx"><h2>Harness hint</h2><p>Implement pure evidence identity first, then persistence and current/pinned API behavior, then the reader and structured research handoff. Instrument dispatch and prove zero calls for every Cycle 59 path before claiming completion.</p></section>
+</main></body></html>

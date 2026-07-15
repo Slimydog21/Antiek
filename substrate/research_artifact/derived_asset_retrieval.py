@@ -128,8 +128,12 @@ def search_derived_asset(
         "derived_asset_id": asset_id,
         "revision_id": selected_revision,
         "content_sha256": content_sha256,
+        "generation": int(reading["generation"]),
         "is_current": bool(reading["is_current"]),
         "retrieval_mode": "deterministic_lexical_v1",
+        "index_sha256": str(receipt[2]),
+        "chunker_policy": stored_policy,
+        "chunker_version": stored_version,
         "query": query.strip(),
         "results": [
             {
@@ -139,6 +143,7 @@ def search_derived_asset(
                 "section_anchor": str(row[3]),
                 "section_path": str(row[4]),
                 "text": str(row[5]),
+                "text_sha256": str(row[6]),
                 "score": round(score, 8),
             }
             for score, _ordinal, row in scored[:top_k]
