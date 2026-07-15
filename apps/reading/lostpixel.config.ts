@@ -36,10 +36,19 @@ const includesNarrowBrainstormAtmosphereProof = scopedStoryIds.some((id) =>
  * the spring should be replaced with a deterministic transition.
  */
 export const config: CustomProjectConfig = {
-  configureBrowser: ({ id }) =>
-    id === "loop-1-researchrouteinstrument--dark"
-      ? { colorScheme: "dark" }
-      : {},
+  configureBrowser: ({ id }) => ({
+    ...(id === "loop-1-researchrouteinstrument--dark"
+      ? { colorScheme: "dark" as const }
+      : {}),
+    // A still image cannot prove continuous animation. Capture the authentic
+    // Playing state under reduced motion so the canvas redraws only on
+    // discrete input; normal-motion loop behavior is covered by engine and
+    // cartridge tests instead of timing-dependent pixels.
+    ...(id ===
+    "shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-playing"
+      ? { reducedMotion: "reduce" as const }
+      : {}),
+  }),
   storybookShots: {
     storybookUrl: "./storybook-static",
     /**
