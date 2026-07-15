@@ -249,6 +249,7 @@ class IndependentCustodyAttestation:
     audit_complete_through: str
     max_audit_lag_seconds: int
     predecessor_receipt_digest: str | None
+    acquisition_context_digest: str | None = None
     management_account_constrained: bool = False
     prospective_unrevocability: bool = False
     production_eligible: bool = False
@@ -266,6 +267,8 @@ class IndependentCustodyAttestation:
             _require_digest(name, getattr(self, name))
         if self.predecessor_receipt_digest is not None:
             _require_digest("predecessor_receipt_digest", self.predecessor_receipt_digest)
+        if self.acquisition_context_digest is not None:
+            _require_digest("acquisition_context_digest", self.acquisition_context_digest)
         if (
             type(self.signer_digests) is not tuple
             or not self.signer_digests
