@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from unittest.mock import patch
+import hashlib
+import json
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
+from unittest.mock import Mock, patch
 
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
@@ -11,7 +15,11 @@ from interfaces.research.api.multimedia_research_plan_routes import (
     multimedia_research_plan_router,
 )
 from substrate.multimedia.research_intent import ResearchIntentLedger
-from substrate.multimedia.research_plan import ResearchPlanLedger, ResearchPlanStorageError
+from substrate.multimedia.research_plan import (
+    InvestigationActivationQuote,
+    ResearchPlanLedger,
+    ResearchPlanStorageError,
+)
 from tests.test_multimedia_research_intent import _create
 
 
@@ -27,10 +35,34 @@ def _client(tmp_path) -> TestClient:
         return await call_next(request)
 
     app.include_router(multimedia_research_plan_router, prefix="/multimedia")
+    def quote(prepared, policy):
+        def canonical(value):
+            return json.dumps(
+                value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+            ).encode()
+
+        prepared_digest = hashlib.sha256(canonical(asdict(prepared))).hexdigest()
+        workload_digest = hashlib.sha256(canonical({
+            "investigation_id": prepared.investigation_id,
+            "prepared_integrity_digest": prepared_digest,
+            "total_node_count": prepared.total_node_count,
+            "leaf_question_count": prepared.leaf_question_count,
+        })).hexdigest()
+        now = datetime.now(UTC)
+        return InvestigationActivationQuote(
+            schema_version=1, route_policy=policy, resolved_tier="standard",
+            provider="server-provider", model="server-model", dispatch_config_digest="d" * 64,
+            pricing_source="server-pricebook", pricing_digest="e" * 64,
+            workload_digest=workload_digest, quoted_ceiling_cents=250, quote_id="quote-123",
+            issued_at=now.isoformat().replace("+00:00", "Z"),
+            expires_at=(now + timedelta(hours=2)).isoformat().replace("+00:00", "Z"),
+        )
+
     runtime = ResearchPlanRouteRuntime(
         plans=ResearchPlanLedger(tmp_path),
         intents=intents,
         owner_digest_resolver=lambda owner: ("a" if owner == "owner-1" else "b") * 64,
+        activation_quote_resolver=quote,
     )
     app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: runtime
     return TestClient(app)
@@ -204,3 +236,105 @@ def test_prepared_investigation_routes_are_strict_private_and_immutable(tmp_path
     assert padded_key.status_code == 422
     assert all(response.headers["cache-control"] == "private, no-store"
                for response in (created, replay, read, foreign, absent, malformed, padded_key))
+
+
+def test_activation_authorization_routes_are_private_strict_and_owner_scoped(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime = client.app.dependency_overrides[get_multimedia_research_plan_runtime]()
+    intent, _ = _create(runtime.intents, key="other-key-1234567")
+    plan = client.post(
+        f"/multimedia/research-intents/{intent.intent_id}/plan",
+        json={"idempotency_key": "handoff-123456789"},
+    ).json()
+    client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/approve",
+        json={"expected_plan_version": 1},
+    )
+    prepared = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation",
+        json={"idempotency_key": "prepare-123456789", "expected_plan_version": 1},
+    ).json()
+    path = f"/multimedia/investigations/{prepared['investigation_id']}"
+    body = {
+        "idempotency_key": "activate-12345678", "route_policy": "balanced",
+        "approved_ceiling_cents": 300, "ttl_seconds": 3600,
+    }
+    created = client.post(path + "/activation-authorizations", json=body)
+    unavailable_resolver = Mock(side_effect=RuntimeError("quote service unavailable"))
+    client.app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: (
+        ResearchPlanRouteRuntime(
+            plans=runtime.plans, intents=runtime.intents,
+            owner_digest_resolver=runtime.owner_digest_resolver,
+            activation_quote_resolver=unavailable_resolver,
+        )
+    )
+    replay = client.post(path + "/activation-authorizations", json=body)
+    read = client.get(path + "/activation-authorization")
+    foreign = client.get(path + "/activation-authorization", headers={"x-owner": "owner-2"})
+    malformed = client.post(
+        path + "/activation-authorizations", json={**body, "provider": "forged"}
+    )
+    assert created.status_code == 201 and replay.status_code == read.status_code == 200
+    unavailable_resolver.assert_not_called()
+    assert created.json() == replay.json() == read.json()
+    assert foreign.status_code == 404 and malformed.status_code == 422
+    assert "owner_identity_digest" not in created.json() and "idempotency_key" not in created.json()
+    assert created.json()["execution_started"] is False
+    assert created.json()["background_work_authorized"] is False
+    assert all(response.headers["cache-control"] == "private, no-store"
+               for response in (created, replay, read, foreign, malformed))
+
+
+def test_activation_absence_does_not_invoke_quote_resolver(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime = client.app.dependency_overrides[get_multimedia_research_plan_runtime]()
+    resolver = Mock()
+    client.app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: (
+        ResearchPlanRouteRuntime(
+            plans=runtime.plans, intents=runtime.intents,
+            owner_digest_resolver=runtime.owner_digest_resolver,
+            activation_quote_resolver=resolver,
+        )
+    )
+    response = client.post(
+        "/multimedia/investigations/mpi_" + "a" * 48 + "/activation-authorizations",
+        json={"idempotency_key": "activate-12345678", "route_policy": "balanced",
+              "approved_ceiling_cents": 300, "ttl_seconds": 3600},
+    )
+    assert response.status_code == 404
+    resolver.assert_not_called()
+    assert response.headers["cache-control"] == "private, no-store"
+
+
+def test_activation_non_quote_resolver_result_is_private_unavailable(tmp_path) -> None:
+    client = _client(tmp_path)
+    runtime = client.app.dependency_overrides[get_multimedia_research_plan_runtime]()
+    intent, _ = _create(runtime.intents, key="other-key-1234567")
+    plan = client.post(
+        f"/multimedia/research-intents/{intent.intent_id}/plan",
+        json={"idempotency_key": "handoff-123456789"},
+    ).json()
+    client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/approve",
+        json={"expected_plan_version": 1},
+    )
+    prepared = client.post(
+        f"/multimedia/research-plans/{plan['plan_id']}/investigation",
+        json={"idempotency_key": "prepare-123456789", "expected_plan_version": 1},
+    ).json()
+    client.app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: (
+        ResearchPlanRouteRuntime(
+            plans=runtime.plans, intents=runtime.intents,
+            owner_digest_resolver=runtime.owner_digest_resolver,
+            activation_quote_resolver=lambda *_: object(),
+        )
+    )
+    response = client.post(
+        f"/multimedia/investigations/{prepared['investigation_id']}"
+        "/activation-authorizations",
+        json={"idempotency_key": "activate-12345678", "route_policy": "balanced",
+              "approved_ceiling_cents": 300, "ttl_seconds": 3600},
+    )
+    assert response.status_code == 503
+    assert response.json() == {"detail": "activation quote authority is unavailable"}
+    assert response.headers["cache-control"] == "private, no-store"

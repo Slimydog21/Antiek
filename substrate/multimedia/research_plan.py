@@ -8,9 +8,10 @@ import os
 import secrets
 import sqlite3
 import stat
+from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,17 @@ _PREPARED_COLUMNS = (
     "source_plan_version", "source_plan_integrity_digest", "source_intent_id",
     "source_intent_digest", "source_evidence_digest", "idempotency_key",
     "request_digest", "prepared_json", "prepared_integrity_digest", "created_at",
+)
+_AUTHORIZATION_COLUMNS = (
+    "authorization_id", "owner_identity_digest", "investigation_id", "idempotency_key",
+    "request_digest", "prepared_integrity_digest", "source_plan_id", "source_plan_version",
+    "source_plan_integrity_digest", "source_intent_id", "source_intent_digest",
+    "source_evidence_digest", "total_node_count", "leaf_question_count", "route_policy",
+    "resolved_tier", "provider", "model", "dispatch_config_digest", "pricing_source",
+    "pricing_digest", "workload_digest", "quoted_ceiling_cents", "quote_id",
+    "quote_issued_at", "quote_expires_at", "quote_digest", "approved_ceiling_cents",
+    "ttl_seconds", "issued_at", "expires_at", "authorization_json",
+    "authorization_integrity_digest",
 )
 _V1_SCHEMA = """
 CREATE TABLE IF NOT EXISTS multimedia_research_plans (
@@ -87,12 +99,42 @@ CREATE TABLE IF NOT EXISTS multimedia_prepared_investigations (
   FOREIGN KEY(source_plan_id) REFERENCES multimedia_research_plans(plan_id)
 )
 """
+_V4_AUTHORIZATION_SCHEMA = """
+CREATE TABLE IF NOT EXISTS multimedia_investigation_activation_authorizations (
+  authorization_id TEXT PRIMARY KEY, owner_identity_digest TEXT NOT NULL,
+  investigation_id TEXT NOT NULL, idempotency_key TEXT NOT NULL,
+  request_digest TEXT NOT NULL CHECK(length(request_digest) = 64),
+  prepared_integrity_digest TEXT NOT NULL CHECK(length(prepared_integrity_digest) = 64),
+  source_plan_id TEXT NOT NULL, source_plan_version INTEGER NOT NULL CHECK(source_plan_version >= 1),
+  source_plan_integrity_digest TEXT NOT NULL CHECK(length(source_plan_integrity_digest) = 64),
+  source_intent_id TEXT NOT NULL,
+  source_intent_digest TEXT NOT NULL CHECK(length(source_intent_digest) = 64),
+  source_evidence_digest TEXT NOT NULL CHECK(length(source_evidence_digest) = 64),
+  total_node_count INTEGER NOT NULL CHECK(total_node_count >= 1),
+  leaf_question_count INTEGER NOT NULL CHECK(leaf_question_count >= 1),
+  route_policy TEXT NOT NULL, resolved_tier TEXT NOT NULL, provider TEXT NOT NULL, model TEXT NOT NULL,
+  dispatch_config_digest TEXT NOT NULL CHECK(length(dispatch_config_digest) = 64),
+  pricing_source TEXT NOT NULL, pricing_digest TEXT NOT NULL CHECK(length(pricing_digest) = 64),
+  workload_digest TEXT NOT NULL CHECK(length(workload_digest) = 64),
+  quoted_ceiling_cents INTEGER NOT NULL CHECK(quoted_ceiling_cents > 0 AND quoted_ceiling_cents <= 9223372036854775807), quote_id TEXT NOT NULL,
+  quote_issued_at TEXT NOT NULL, quote_expires_at TEXT NOT NULL,
+  quote_digest TEXT NOT NULL CHECK(length(quote_digest) = 64),
+  approved_ceiling_cents INTEGER NOT NULL CHECK(approved_ceiling_cents > 0 AND approved_ceiling_cents <= 9223372036854775807),
+  ttl_seconds INTEGER NOT NULL CHECK(ttl_seconds >= 60 AND ttl_seconds <= 86400),
+  issued_at TEXT NOT NULL, expires_at TEXT NOT NULL, authorization_json TEXT NOT NULL,
+  authorization_integrity_digest TEXT NOT NULL CHECK(length(authorization_integrity_digest) = 64),
+  UNIQUE(owner_identity_digest, investigation_id, idempotency_key),
+  UNIQUE(owner_identity_digest, investigation_id),
+  FOREIGN KEY(investigation_id) REFERENCES multimedia_prepared_investigations(investigation_id)
+)
+"""
 
 _MAX_RECORD_BYTES = 128 * 1024
 _MAX_NODES = 256
 _MAX_DEPTH = 8
 _MAX_CHILDREN = 64
 _MAX_OPERATIONS = 64
+_MAX_CENTS = 9_223_372_036_854_775_807
 
 
 class ResearchPlanError(RuntimeError):
@@ -136,6 +178,68 @@ class PreparedInvestigation:
     graph_authority_digest: None = None
     provider_authority_digest: None = None
     spend_authority_digest: None = None
+
+
+@dataclass(frozen=True)
+class InvestigationActivationQuote:
+    schema_version: int
+    route_policy: str
+    resolved_tier: str
+    provider: str
+    model: str
+    dispatch_config_digest: str
+    pricing_source: str
+    pricing_digest: str
+    workload_digest: str
+    quoted_ceiling_cents: int
+    quote_id: str
+    issued_at: str
+    expires_at: str
+
+
+@dataclass(frozen=True)
+class InvestigationActivationAuthorization:
+    authorization_id: str
+    investigation_id: str
+    prepared_integrity_digest: str
+    source_plan_id: str
+    source_plan_version: int
+    source_plan_integrity_digest: str
+    source_intent_id: str
+    source_intent_digest: str
+    source_evidence_digest: str
+    total_node_count: int
+    leaf_question_count: int
+    route_policy: str
+    resolved_tier: str
+    provider: str
+    model: str
+    dispatch_config_digest: str
+    pricing_source: str
+    pricing_digest: str
+    workload_digest: str
+    quoted_ceiling_cents: int
+    quote_id: str
+    quote_issued_at: str
+    quote_expires_at: str
+    quote_digest: str
+    approved_ceiling_cents: int
+    ttl_seconds: int
+    request_digest: str
+    issued_at: str
+    expires_at: str
+    state: str = "authorized"
+    execution_started: bool = False
+    event_authority_digest: None = None
+    graph_authority_digest: None = None
+    provider_authority_digest: None = None
+    spend_reservation_digest: None = None
+    consumed_at: None = None
+    background_work_authorized: bool = False
+
+    @property
+    def is_expired(self) -> bool:
+        return datetime.now(UTC) >= _parse_timestamp(self.expires_at)
 
 
 @dataclass(frozen=True)
@@ -467,6 +571,185 @@ class ResearchPlanLedger:
         finally:
             connection.close()
 
+    def authorize_investigation_activation(
+        self, *, owner_identity_digest: str, investigation_id: str, idempotency_key: str,
+        route_policy: str, approved_ceiling_cents: int, ttl_seconds: int,
+        quote_resolver: Callable[[PreparedInvestigation, str], InvestigationActivationQuote],
+    ) -> tuple[InvestigationActivationAuthorization, bool]:
+        _validate_owner(owner_identity_digest)
+        _validate_investigation_id(investigation_id)
+        _validate_key(idempotency_key)
+        if route_policy not in {"cheapest", "balanced", "highest_quality"}:
+            raise ResearchPlanValidationError("activation route policy is invalid")
+        if (type(approved_ceiling_cents) is not int
+                or not 0 < approved_ceiling_cents <= _MAX_CENTS):
+            raise ResearchPlanValidationError("approved ceiling cents must be a positive integer")
+        if type(ttl_seconds) is not int or not 60 <= ttl_seconds <= 86400:
+            raise ResearchPlanValidationError("activation authorization ttl is invalid")
+        request_digest = _digest({
+            "owner_identity_digest": owner_identity_digest,
+            "investigation_id": investigation_id, "idempotency_key": idempotency_key,
+            "route_policy": route_policy, "approved_ceiling_cents": approved_ceiling_cents,
+            "ttl_seconds": ttl_seconds,
+        })
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            replay_row = connection.execute(
+                "SELECT " + ",".join(_AUTHORIZATION_COLUMNS)
+                + " FROM multimedia_investigation_activation_authorizations "
+                "WHERE owner_identity_digest=? AND investigation_id=? AND idempotency_key=?",
+                (owner_identity_digest, investigation_id, idempotency_key),
+            ).fetchone()
+            if replay_row is not None:
+                replay = self._decode_authorization_row(replay_row, owner_identity_digest, connection)
+                if replay.request_digest != request_digest:
+                    raise ResearchPlanError("activation authorization idempotency conflict")
+                return replay, False
+            prepared_snapshot = connection.execute(
+                "SELECT " + ",".join(_PREPARED_COLUMNS)
+                + " FROM multimedia_prepared_investigations WHERE owner_identity_digest=? "
+                "AND investigation_id=?", (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if prepared_snapshot is None:
+                raise ResearchPlanUnavailableError("prepared investigation is unavailable")
+            prepared = self._decode_prepared_row(prepared_snapshot, owner_identity_digest)
+            existing = connection.execute(
+                "SELECT 1 FROM multimedia_investigation_activation_authorizations "
+                "WHERE owner_identity_digest=? AND investigation_id=?",
+                (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if existing is not None:
+                raise ResearchPlanError("investigation already has activation authorization")
+        except sqlite3.Error as exc:
+            raise ResearchPlanStorageError("research plan ledger is unavailable") from exc
+        finally:
+            connection.close()
+
+        quote = quote_resolver(prepared, route_policy)
+        if not isinstance(quote, InvestigationActivationQuote):
+            raise ResearchPlanError("activation quote is malformed")
+        _assert_quote_integrity(quote, route_policy, prepared)
+
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            connection.execute("BEGIN IMMEDIATE")
+            replay_row = connection.execute(
+                "SELECT " + ",".join(_AUTHORIZATION_COLUMNS)
+                + " FROM multimedia_investigation_activation_authorizations "
+                "WHERE owner_identity_digest=? AND investigation_id=? AND idempotency_key=?",
+                (owner_identity_digest, investigation_id, idempotency_key),
+            ).fetchone()
+            if replay_row is not None:
+                replay = self._decode_authorization_row(replay_row, owner_identity_digest, connection)
+                if replay.request_digest != request_digest:
+                    raise ResearchPlanError("activation authorization idempotency conflict")
+                connection.commit()
+                return replay, False
+            existing = connection.execute(
+                "SELECT 1 FROM multimedia_investigation_activation_authorizations "
+                "WHERE owner_identity_digest=? AND investigation_id=?",
+                (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if existing is not None:
+                raise ResearchPlanError("investigation already has activation authorization")
+            prepared_row = connection.execute(
+                "SELECT " + ",".join(_PREPARED_COLUMNS)
+                + " FROM multimedia_prepared_investigations WHERE owner_identity_digest=? "
+                "AND investigation_id=?", (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if prepared_row is None:
+                raise ResearchPlanUnavailableError("prepared investigation is unavailable")
+            locked_prepared = self._decode_prepared_row(prepared_row, owner_identity_digest)
+            if prepared_row != prepared_snapshot or locked_prepared != prepared:
+                raise ResearchPlanError("prepared investigation changed during activation")
+            now = datetime.now(UTC)
+            quote_issued = _parse_timestamp(quote.issued_at)
+            quote_expires = _parse_timestamp(quote.expires_at)
+            if quote_issued > now + timedelta(seconds=30) or now >= quote_expires:
+                raise ResearchPlanError("activation quote is stale")
+            expires = min(now + timedelta(seconds=ttl_seconds), quote_expires)
+            if approved_ceiling_cents < quote.quoted_ceiling_cents:
+                raise ResearchPlanError("approved ceiling does not cover activation quote")
+            issued_at = _format_timestamp(now)
+            authorization = InvestigationActivationAuthorization(
+                authorization_id="mia_" + secrets.token_hex(24), investigation_id=investigation_id,
+                prepared_integrity_digest=str(prepared_row[11]), source_plan_id=prepared.source_plan_id,
+                source_plan_version=prepared.source_plan_version,
+                source_plan_integrity_digest=prepared.source_plan_integrity_digest,
+                source_intent_id=prepared.source_intent_id,
+                source_intent_digest=prepared.source_intent_digest,
+                source_evidence_digest=prepared.source_evidence_digest,
+                total_node_count=prepared.total_node_count,
+                leaf_question_count=prepared.leaf_question_count, route_policy=quote.route_policy,
+                resolved_tier=quote.resolved_tier, provider=quote.provider, model=quote.model,
+                dispatch_config_digest=quote.dispatch_config_digest,
+                pricing_source=quote.pricing_source, pricing_digest=quote.pricing_digest,
+                workload_digest=quote.workload_digest,
+                quoted_ceiling_cents=quote.quoted_ceiling_cents, quote_id=quote.quote_id,
+                quote_issued_at=quote.issued_at, quote_expires_at=quote.expires_at,
+                quote_digest=_quote_digest(quote), approved_ceiling_cents=approved_ceiling_cents,
+                ttl_seconds=ttl_seconds, request_digest=request_digest, issued_at=issued_at,
+                expires_at=_format_timestamp(expires),
+            )
+            _assert_authorization_integrity(authorization)
+            raw = _canonical(asdict(authorization))
+            _check_size(raw, "activation authorization is too large")
+            values = (authorization.authorization_id, owner_identity_digest, investigation_id,
+                      idempotency_key, request_digest, authorization.prepared_integrity_digest,
+                      authorization.source_plan_id, authorization.source_plan_version,
+                      authorization.source_plan_integrity_digest, authorization.source_intent_id,
+                      authorization.source_intent_digest, authorization.source_evidence_digest,
+                      authorization.total_node_count, authorization.leaf_question_count,
+                      authorization.route_policy, authorization.resolved_tier, authorization.provider,
+                      authorization.model, authorization.dispatch_config_digest,
+                      authorization.pricing_source, authorization.pricing_digest,
+                      authorization.workload_digest, authorization.quoted_ceiling_cents,
+                      authorization.quote_id, authorization.quote_issued_at,
+                      authorization.quote_expires_at, authorization.quote_digest,
+                      approved_ceiling_cents, ttl_seconds, issued_at, authorization.expires_at, raw,
+                      _authorization_digest(authorization))
+            connection.execute(
+                "INSERT INTO multimedia_investigation_activation_authorizations VALUES ("
+                + ",".join("?" for _ in values) + ")", values,
+            )
+            connection.commit()
+            return authorization, True
+        except sqlite3.IntegrityError as exc:
+            connection.rollback()
+            raise ResearchPlanError("activation authorization conflicts") from exc
+        except sqlite3.Error as exc:
+            connection.rollback()
+            raise ResearchPlanStorageError("research plan ledger is unavailable") from exc
+        except Exception:
+            connection.rollback()
+            raise
+        finally:
+            connection.close()
+
+    def get_investigation_activation_authorization(
+        self, *, owner_identity_digest: str, investigation_id: str,
+    ) -> InvestigationActivationAuthorization:
+        _validate_owner(owner_identity_digest)
+        _validate_investigation_id(investigation_id)
+        connection = self._connect_existing()
+        try:
+            self._initialize(connection)
+            row = connection.execute(
+                "SELECT " + ",".join(_AUTHORIZATION_COLUMNS)
+                + " FROM multimedia_investigation_activation_authorizations "
+                "WHERE owner_identity_digest=? AND investigation_id=?",
+                (owner_identity_digest, investigation_id),
+            ).fetchone()
+            if row is None:
+                raise ResearchPlanUnavailableError("activation authorization is unavailable")
+            return self._decode_authorization_row(row, owner_identity_digest, connection)
+        except sqlite3.Error as exc:
+            raise ResearchPlanStorageError("research plan ledger is unavailable") from exc
+        finally:
+            connection.close()
+
     def _initialize(self, connection: sqlite3.Connection) -> None:
         version = connection.execute("PRAGMA user_version").fetchone()[0]
         exists = connection.execute(
@@ -480,7 +763,8 @@ class ResearchPlanLedger:
                 connection.execute(_V2_PLAN_SCHEMA)
                 connection.execute(_V2_RECEIPT_SCHEMA)
                 connection.execute(_V3_PREPARED_SCHEMA)
-                connection.execute("PRAGMA user_version=3")
+                connection.execute(_V4_AUTHORIZATION_SCHEMA)
+                connection.execute("PRAGMA user_version=4")
                 connection.commit()
             except Exception:
                 connection.rollback()
@@ -489,6 +773,8 @@ class ResearchPlanLedger:
             self._migrate_v1(connection)
         elif version == 2:
             self._migrate_v2(connection)
+        elif version == 3:
+            self._migrate_v3(connection)
         self._assert_schema(connection)
 
     def _migrate_v1(self, connection: sqlite3.Connection) -> None:
@@ -517,7 +803,8 @@ class ResearchPlanLedger:
             connection.execute(_V2_RECEIPT_SCHEMA)
             connection.execute("DROP TABLE multimedia_research_plans_v1")
             connection.execute(_V3_PREPARED_SCHEMA)
-            connection.execute("PRAGMA user_version=3")
+            connection.execute(_V4_AUTHORIZATION_SCHEMA)
+            connection.execute("PRAGMA user_version=4")
             connection.commit()
         except Exception:
             connection.rollback()
@@ -534,7 +821,19 @@ class ResearchPlanLedger:
                 raise ResearchPlanError("research plan ledger schema conflicts")
             self._assert_v2_schema(connection)
             connection.execute(_V3_PREPARED_SCHEMA)
-            connection.execute("PRAGMA user_version=3")
+            connection.execute(_V4_AUTHORIZATION_SCHEMA)
+            connection.execute("PRAGMA user_version=4")
+            connection.commit()
+        except Exception:
+            connection.rollback()
+            raise
+
+    def _migrate_v3(self, connection: sqlite3.Connection) -> None:
+        self._assert_v3_schema(connection)
+        connection.execute("BEGIN IMMEDIATE")
+        try:
+            connection.execute(_V4_AUTHORIZATION_SCHEMA)
+            connection.execute("PRAGMA user_version=4")
             connection.commit()
         except Exception:
             connection.rollback()
@@ -547,18 +846,40 @@ class ResearchPlanLedger:
             raise ResearchPlanError("research plan ledger schema conflicts")
 
     def _assert_schema(self, connection: sqlite3.Connection) -> None:
-        if connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 4:
             raise ResearchPlanError("research plan ledger schema conflicts")
         if (self._columns(connection, "multimedia_research_plans") != _PLAN_COLUMNS
                 or self._columns(connection, "multimedia_research_plan_mutations") != _RECEIPT_COLUMNS
-                or self._columns(connection, "multimedia_prepared_investigations") != _PREPARED_COLUMNS):
+                or self._columns(connection, "multimedia_prepared_investigations") != _PREPARED_COLUMNS
+                or self._columns(connection, "multimedia_investigation_activation_authorizations")
+                != _AUTHORIZATION_COLUMNS):
             raise ResearchPlanError("research plan ledger schema conflicts")
         plan_sql = self._schema_sql(connection, "multimedia_research_plans")
         receipt_sql = self._schema_sql(connection, "multimedia_research_plan_mutations")
         prepared_sql = self._schema_sql(connection, "multimedia_prepared_investigations")
+        authorization_sql = self._schema_sql(
+            connection, "multimedia_investigation_activation_authorizations"
+        )
         if (_normalized_schema(plan_sql) != _normalized_schema(_V2_PLAN_SCHEMA)
                 or _normalized_schema(receipt_sql) != _normalized_schema(_V2_RECEIPT_SCHEMA)
-                or _normalized_schema(prepared_sql) != _normalized_schema(_V3_PREPARED_SCHEMA)):
+                or _normalized_schema(prepared_sql) != _normalized_schema(_V3_PREPARED_SCHEMA)
+                or _normalized_schema(authorization_sql)
+                != _normalized_schema(_V4_AUTHORIZATION_SCHEMA)):
+            raise ResearchPlanError("research plan ledger schema conflicts")
+
+    def _assert_v3_schema(self, connection: sqlite3.Connection) -> None:
+        if connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+            raise ResearchPlanError("research plan ledger schema conflicts")
+        if (self._columns(connection, "multimedia_research_plans") != _PLAN_COLUMNS
+                or self._columns(connection, "multimedia_research_plan_mutations") != _RECEIPT_COLUMNS
+                or self._columns(connection, "multimedia_prepared_investigations") != _PREPARED_COLUMNS
+                or _normalized_schema(self._schema_sql(connection, "multimedia_research_plans"))
+                != _normalized_schema(_V2_PLAN_SCHEMA)
+                or _normalized_schema(self._schema_sql(connection, "multimedia_research_plan_mutations"))
+                != _normalized_schema(_V2_RECEIPT_SCHEMA)
+                or _normalized_schema(self._schema_sql(connection, "multimedia_prepared_investigations"))
+                != _normalized_schema(_V3_PREPARED_SCHEMA)
+                or self._schema_sql(connection, "multimedia_investigation_activation_authorizations")):
             raise ResearchPlanError("research plan ledger schema conflicts")
 
     def _assert_v2_schema(self, connection: sqlite3.Connection) -> None:
@@ -637,6 +958,62 @@ class ResearchPlanLedger:
         if not _valid_key(row[8]) or tuple(row) != expected:
             raise ResearchPlanError("stored prepared investigation integrity conflicts")
         return prepared
+
+    @staticmethod
+    def _decode_authorization_row(
+        row: tuple[object, ...], owner: str, connection: sqlite3.Connection,
+    ) -> InvestigationActivationAuthorization:
+        try:
+            value = json.loads(str(row[31]))
+            if (not isinstance(value, dict)
+                    or set(value) != set(InvestigationActivationAuthorization.__dataclass_fields__)):
+                raise ValueError
+            authorization = InvestigationActivationAuthorization(**value)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise ResearchPlanError("stored activation authorization is malformed") from exc
+        _assert_authorization_integrity(authorization)
+        expected = (authorization.authorization_id, owner, authorization.investigation_id, row[3],
+                    authorization.request_digest, authorization.prepared_integrity_digest,
+                    authorization.source_plan_id, authorization.source_plan_version,
+                    authorization.source_plan_integrity_digest, authorization.source_intent_id,
+                    authorization.source_intent_digest, authorization.source_evidence_digest,
+                    authorization.total_node_count, authorization.leaf_question_count,
+                    authorization.route_policy, authorization.resolved_tier, authorization.provider,
+                    authorization.model, authorization.dispatch_config_digest,
+                    authorization.pricing_source, authorization.pricing_digest,
+                    authorization.workload_digest, authorization.quoted_ceiling_cents,
+                    authorization.quote_id, authorization.quote_issued_at,
+                    authorization.quote_expires_at, authorization.quote_digest,
+                    authorization.approved_ceiling_cents, authorization.ttl_seconds,
+                    authorization.issued_at,
+                    authorization.expires_at, _canonical(asdict(authorization)),
+                    _authorization_digest(authorization))
+        prepared_row = connection.execute(
+            "SELECT " + ",".join(_PREPARED_COLUMNS)
+            + " FROM multimedia_prepared_investigations WHERE owner_identity_digest=? "
+            "AND investigation_id=?", (owner, authorization.investigation_id),
+        ).fetchone()
+        expected_request_digest = _digest({
+            "owner_identity_digest": owner, "investigation_id": authorization.investigation_id,
+            "idempotency_key": row[3], "route_policy": authorization.route_policy,
+            "approved_ceiling_cents": authorization.approved_ceiling_cents,
+            "ttl_seconds": authorization.ttl_seconds,
+        })
+        if (not _valid_key(row[3]) or authorization.request_digest != expected_request_digest
+                or tuple(row) != expected or prepared_row is None
+                or str(prepared_row[11]) != authorization.prepared_integrity_digest):
+            raise ResearchPlanError("stored activation authorization integrity conflicts")
+        prepared = ResearchPlanLedger._decode_prepared_row(prepared_row, owner)
+        if (prepared.source_plan_id != authorization.source_plan_id
+                or prepared.source_plan_version != authorization.source_plan_version
+                or prepared.source_plan_integrity_digest != authorization.source_plan_integrity_digest
+                or prepared.source_intent_id != authorization.source_intent_id
+                or prepared.source_intent_digest != authorization.source_intent_digest
+                or prepared.source_evidence_digest != authorization.source_evidence_digest
+                or prepared.total_node_count != authorization.total_node_count
+                or prepared.leaf_question_count != authorization.leaf_question_count):
+            raise ResearchPlanError("stored activation authorization integrity conflicts")
+        return authorization
 
     def _connect_existing(self) -> sqlite3.Connection:
         if not self.path.is_file() or self.path.is_symlink():
@@ -974,6 +1351,103 @@ def _assert_prepared_integrity(prepared: PreparedInvestigation) -> None:
         raise ResearchPlanError("stored prepared investigation integrity conflicts")
 
 
+def _quote_digest(quote: InvestigationActivationQuote) -> str:
+    return _digest(asdict(quote))
+
+
+def _authorization_digest(authorization: InvestigationActivationAuthorization) -> str:
+    return _digest(asdict(authorization))
+
+
+def _assert_quote_integrity(
+    quote: InvestigationActivationQuote, route_policy: str, prepared: PreparedInvestigation,
+) -> None:
+    try:
+        issued = _parse_timestamp(quote.issued_at)
+        expires = _parse_timestamp(quote.expires_at)
+    except (TypeError, ValueError) as exc:
+        raise ResearchPlanError("activation quote is malformed") from exc
+    workload_digest = _digest({
+        "investigation_id": prepared.investigation_id,
+        "prepared_integrity_digest": _prepared_digest(prepared),
+        "total_node_count": prepared.total_node_count,
+        "leaf_question_count": prepared.leaf_question_count,
+    })
+    text_fields = (quote.resolved_tier, quote.provider, quote.model, quote.pricing_source,
+                   quote.quote_id)
+    if (quote.schema_version != 1 or quote.route_policy != route_policy
+            or any(not isinstance(value, str) or not value or len(value) > 256 for value in text_fields)
+            or not _hex_digest(quote.dispatch_config_digest)
+            or not _hex_digest(quote.pricing_digest) or quote.workload_digest != workload_digest
+            or type(quote.quoted_ceiling_cents) is not int
+            or not 0 < quote.quoted_ceiling_cents <= _MAX_CENTS
+            or expires <= issued or expires - issued > timedelta(hours=24)):
+        raise ResearchPlanError("activation quote integrity conflicts")
+
+
+def _assert_authorization_integrity(
+    authorization: InvestigationActivationAuthorization,
+) -> None:
+    try:
+        issued = _parse_timestamp(authorization.issued_at)
+        expires = _parse_timestamp(authorization.expires_at)
+        quote_issued = _parse_timestamp(authorization.quote_issued_at)
+        quote_expires = _parse_timestamp(authorization.quote_expires_at)
+        quote = InvestigationActivationQuote(
+            schema_version=1, route_policy=authorization.route_policy,
+            resolved_tier=authorization.resolved_tier, provider=authorization.provider,
+            model=authorization.model, dispatch_config_digest=authorization.dispatch_config_digest,
+            pricing_source=authorization.pricing_source, pricing_digest=authorization.pricing_digest,
+            workload_digest=authorization.workload_digest,
+            quoted_ceiling_cents=authorization.quoted_ceiling_cents,
+            quote_id=authorization.quote_id, issued_at=authorization.quote_issued_at,
+            expires_at=authorization.quote_expires_at,
+        )
+    except (TypeError, ValueError) as exc:
+        raise ResearchPlanError("stored activation authorization is malformed") from exc
+    text_fields = (authorization.resolved_tier, authorization.provider, authorization.model,
+                   authorization.pricing_source, authorization.quote_id)
+    if (not _opaque_id(authorization.authorization_id, prefix="mia_", hex_length=48)
+            or not _opaque_id(authorization.investigation_id, prefix="mpi_", hex_length=48)
+            or not _hex_digest(authorization.prepared_integrity_digest)
+            or not _opaque_id(authorization.source_plan_id, prefix="mrp_", hex_length=48)
+            or type(authorization.source_plan_version) is not int
+            or authorization.source_plan_version < 1
+            or not _hex_digest(authorization.source_plan_integrity_digest)
+            or not _opaque_id(authorization.source_intent_id, prefix="mmri_", hex_length=48)
+            or not _hex_digest(authorization.source_intent_digest)
+            or not _hex_digest(authorization.source_evidence_digest)
+            or type(authorization.total_node_count) is not int
+            or type(authorization.leaf_question_count) is not int
+            or authorization.total_node_count < 1 or authorization.leaf_question_count < 1
+            or authorization.route_policy not in {"cheapest", "balanced", "highest_quality"}
+            or any(not isinstance(value, str) or not value or len(value) > 256 for value in text_fields)
+            or not _hex_digest(authorization.dispatch_config_digest)
+            or not _hex_digest(authorization.pricing_digest)
+            or not _hex_digest(authorization.workload_digest)
+            or type(authorization.quoted_ceiling_cents) is not int
+            or not 0 < authorization.quoted_ceiling_cents <= _MAX_CENTS
+            or authorization.quote_digest != _quote_digest(quote)
+            or type(authorization.approved_ceiling_cents) is not int
+            or authorization.approved_ceiling_cents > _MAX_CENTS
+            or authorization.approved_ceiling_cents < authorization.quoted_ceiling_cents
+            or type(authorization.ttl_seconds) is not int
+            or not 60 <= authorization.ttl_seconds <= 86400
+            or not _hex_digest(authorization.request_digest) or expires <= issued
+            or expires != min(
+                issued + timedelta(seconds=authorization.ttl_seconds), quote_expires
+            ) or quote_expires <= quote_issued
+            or quote_expires - quote_issued > timedelta(hours=24)
+            or authorization.state != "authorized" or authorization.execution_started is not False
+            or authorization.event_authority_digest is not None
+            or authorization.graph_authority_digest is not None
+            or authorization.provider_authority_digest is not None
+            or authorization.spend_reservation_digest is not None
+            or authorization.consumed_at is not None
+            or authorization.background_work_authorized is not False):
+        raise ResearchPlanError("stored activation authorization integrity conflicts")
+
+
 def _validate_owner(value: str) -> None:
     if not _hex_digest(value):
         raise ResearchPlanError("research plan owner identity is invalid")
@@ -1028,6 +1502,17 @@ def _timestamp(value: object) -> bool:
         return False
 
 
+def _parse_timestamp(value: object) -> datetime:
+    if not _timestamp(value):
+        raise ValueError("invalid UTC timestamp")
+    assert isinstance(value, str)
+    return datetime.fromisoformat(value[:-1] + "+00:00")
+
+
+def _format_timestamp(value: datetime) -> str:
+    return value.astimezone(UTC).isoformat().replace("+00:00", "Z")
+
+
 def _canonical(value: object) -> str:
     return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
 
@@ -1049,6 +1534,7 @@ def _now() -> str:
 
 
 __all__ = [
-    "PreparedInvestigation", "ResearchPlan", "ResearchPlanError", "ResearchPlanLedger", "ResearchPlanStorageError",
+    "InvestigationActivationAuthorization", "InvestigationActivationQuote", "PreparedInvestigation",
+    "ResearchPlan", "ResearchPlanError", "ResearchPlanLedger", "ResearchPlanStorageError",
     "ResearchPlanTooLargeError", "ResearchPlanUnavailableError", "ResearchPlanValidationError",
 ]
