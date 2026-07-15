@@ -50,6 +50,7 @@ from pathlib import Path
 import duckdb  # noqa: F401 — hard requirement: the backup pipeline is DuckDB; fail loudly if absent
 import jinja2
 import jinja2.meta
+import pytest
 
 from runtime.db_lock import connect_write
 from substrate.graph.schema import init_database_at_path
@@ -477,6 +478,37 @@ def test_freshness_tool_stale_and_missing_exit_nonzero(tmp_path: Path) -> None:
     future = _run_freshness_tool(["--marker", str(marker)])
     assert future.returncode == 1
     assert "in the future" in future.stdout
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda marker: marker.pop("counts"),
+        lambda marker: marker.__setitem__("counts", {"documents": 1}),
+        lambda marker: marker.__setitem__(
+            "counts", {"documents": -1, "chunks": 2, "nodes": 3}
+        ),
+        lambda marker: marker.pop("script_version"),
+        lambda marker: marker.__setitem__("script_version", "unknown"),
+        lambda marker: marker.pop("archive"),
+        lambda marker: marker.__setitem__("archive", "../not-a-backup.tar.gz"),
+        lambda marker: marker.__setitem__(
+            "completed_at", datetime.now(UTC).replace(tzinfo=None).isoformat()
+        ),
+    ],
+)
+def test_freshness_tool_rejects_incomplete_or_forged_marker(tmp_path: Path, mutation) -> None:
+    """A recent timestamp alone is not evidence that a verified backup landed."""
+    marker = tmp_path / "backup_freshness.json"
+    _write_marker(marker, _iso_utc(datetime.now(UTC) - timedelta(hours=1)))
+    payload = json.loads(marker.read_text())
+    mutation(payload)
+    marker.write_text(json.dumps(payload))
+
+    proc = _run_freshness_tool(["--marker", str(marker)])
+
+    assert proc.returncode == 1
+    assert proc.stdout.startswith("STALE:")
 
 
 def test_freshness_tool_json_mode_and_env_resolution(tmp_path: Path) -> None:

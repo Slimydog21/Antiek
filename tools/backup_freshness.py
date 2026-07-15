@@ -44,6 +44,7 @@ from pathlib import Path
 
 DEFAULT_MAX_AGE_HOURS = 26.0
 MARKER_BASENAME = "backup_freshness.json"
+_CORE_TABLES = frozenset({"documents", "chunks", "nodes"})
 
 _MARKER_ENV = "ANTIEK_BACKUP_MARKER"
 _STATE_DIR_ENV = "ANTIEK_STATE_DIR"
@@ -119,17 +120,19 @@ def _stale(
 
 
 def _parse_counts(raw: object) -> Mapping[str, int] | None:
-    """Best-effort read of the marker's row-count map; never fails the check.
-
-    Counts are evidence for the human reading the verdict, not an input to the
-    freshness decision — a malformed counts field degrades to ``None`` rather
-    than turning a fresh backup stale.
-    """
+    """Validate the verified backup's exact non-negative core-count manifest."""
     if not isinstance(raw, dict):
+        return None
+    if set(raw) != _CORE_TABLES:
         return None
     out: dict[str, int] = {}
     for key, value in raw.items():
-        if not isinstance(key, str) or isinstance(value, bool) or not isinstance(value, int):
+        if (
+            not isinstance(key, str)
+            or isinstance(value, bool)
+            or not isinstance(value, int)
+            or value < 0
+        ):
             return None
         out[key] = value
     return out
@@ -176,6 +179,37 @@ def evaluate(
     counts = _parse_counts(payload.get("counts"))
     script_version_raw = payload.get("script_version")
     script_version = script_version_raw if isinstance(script_version_raw, str) else None
+    archive = payload.get("archive")
+
+    if counts is None:
+        return _stale(
+            f"STALE: marker at {marker_path} has no valid core-table counts manifest",
+            marker_path,
+            max_age_hours,
+            script_version=script_version,
+        )
+    if script_version is None or not script_version.startswith("backup.sh/"):
+        return _stale(
+            f"STALE: marker at {marker_path} has no valid backup script version",
+            marker_path,
+            max_age_hours,
+            counts=counts,
+            script_version=script_version,
+        )
+    if (
+        not isinstance(archive, str)
+        or not archive.startswith("antiek-")
+        or not archive.endswith(".tar.gz")
+        or "/" in archive
+        or "\\" in archive
+    ):
+        return _stale(
+            f"STALE: marker at {marker_path} has no valid archive identity",
+            marker_path,
+            max_age_hours,
+            counts=counts,
+            script_version=script_version,
+        )
 
     if not isinstance(completed_at, str):
         return _stale(
@@ -197,9 +231,14 @@ def evaluate(
             script_version=script_version,
         )
     if completed.tzinfo is None:
-        # backup.sh.j2 stamps `date -u` with a trailing Z; a naive timestamp
-        # from a hand-written marker is interpreted as UTC rather than rejected.
-        completed = completed.replace(tzinfo=UTC)
+        return _stale(
+            f"STALE: marker completed_at {completed_at!r} has no timezone",
+            marker_path,
+            max_age_hours,
+            completed_at=completed_at,
+            counts=counts,
+            script_version=script_version,
+        )
 
     age_hours = (reference - completed).total_seconds() / 3600.0
     if age_hours < 0:
