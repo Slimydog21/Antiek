@@ -1,12 +1,13 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 
 import Thinking from "../../shared/Thinking";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import type { InvestigationState } from "../../hooks/useInvestigation";
 import { narrateEvent } from "./narrateEvent";
-import type { Narration } from "./narrateEvent";
+import type { Narration, NarrationTone } from "./narrateEvent";
 import TrajectoryView from "./TrajectoryView";
+import "./thinking-field-journal.css";
 
 /**
  * ThinkingStream — the glass-box live view (SPR-02 M2/M3/M4).
@@ -84,9 +85,27 @@ const TONE_STYLE: Record<Narration["tone"], { dot: string; text: string }> = {
   milestone: { dot: "bg-emperor", text: "text-ink dark:text-bright font-semibold" },
 };
 
+/** Map a tone to its CSS custom property accent colour for the responsive
+ *  left-border rule. These are existing token values, not new colours. */
+const TONE_ACCENT: Record<NarrationTone, string> = {
+  step: "var(--rule)",
+  finding: "var(--aurora)",
+  caution: "var(--sun-deep)",
+  milestone: "var(--shadow-1)",
+};
+
+/** Visible label text for each tone. */
+const TONE_LABEL: Record<NarrationTone, string> = {
+  step: "step",
+  finding: "finding",
+  caution: "caution",
+  milestone: "milestone",
+};
+
 export default function ThinkingStream({ investigation, steer, onRetry }: ThinkingStreamProps) {
   const [showRaw, setShowRaw] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const rawPanelId = `thinking-stream-raw-panel-${useId().replace(/:/g, "")}`;
 
   // Derive the narrated story from the (already-deduped) events. The local
   // event_id dedupe makes the derivation correct even if handed a raw list.
@@ -122,17 +141,44 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
   //    failure surface, never a perpetual "thinking…". `not_found` is the
   //    same shape (an id with no trajectory — also what a keyless start
   //    leaves behind). ──
-  if (investigation.status === "failed" || investigation.status === "not_found") {
-    const reason =
-      investigation.status === "failed"
-        ? failureReason(investigation)
-        : null;
+  if (investigation.status === "not_found") {
     return (
-      <div className="flex h-full min-h-0 flex-col">
+      <section className="flex h-full min-h-0 flex-col" aria-label="Research field journal">
         <StreamHeader
           investigation={investigation}
           sealed
           showRaw={showRaw}
+          rawPanelId={rawPanelId}
+          onToggleRaw={() => setShowRaw((v) => !v)}
+        />
+        <div className="flex-1 overflow-y-auto px-4 py-6">
+          <div role="alert" className="flex flex-col gap-2 font-mono text-xs text-emperor">
+            <p className="leading-relaxed">
+              Research not found — no research exists for this link. It may have been removed or the link may be incomplete.
+            </p>
+            <div>
+              <LemonButton variant="secondary" size="sm" onClick={onRetry ?? (() => window.location.reload())}>
+                Reload
+              </LemonButton>
+            </div>
+          </div>
+        </div>
+        <div id={rawPanelId} hidden={!showRaw}>
+          {showRaw ? <RawActivity investigation={investigation} /> : null}
+        </div>
+      </section>
+    );
+  }
+
+  if (investigation.status === "failed") {
+    const reason = failureReason(investigation);
+    return (
+      <section className="flex h-full min-h-0 flex-col" aria-label="Research field journal">
+        <StreamHeader
+          investigation={investigation}
+          sealed
+          showRaw={showRaw}
+          rawPanelId={rawPanelId}
           onToggleRaw={() => setShowRaw((v) => !v)}
         />
         <div className="flex-1 overflow-y-auto px-4 py-6">
@@ -141,50 +187,69 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
             reason={reason}
             onRetry={onRetry ?? (() => window.location.reload())}
           />
-          {showRaw && (
-            <div className="mt-4 border-t border-rule pt-3 dark:border-charcoal-1">
-              <RawActivity investigation={investigation} />
-            </div>
-          )}
+          <div
+            id={rawPanelId}
+            hidden={!showRaw}
+            className="mt-4 border-t border-rule pt-3 dark:border-charcoal-1"
+          >
+            {showRaw ? <RawActivity investigation={investigation} /> : null}
+          </div>
         </div>
-      </div>
+      </section>
     );
   }
 
   const sealed = investigation.status === "completed";
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <section className="flex h-full min-h-0 flex-col" aria-label="Research field journal">
       <StreamHeader
         investigation={investigation}
         sealed={sealed}
         showRaw={showRaw}
+        rawPanelId={rawPanelId}
         onToggleRaw={() => setShowRaw((v) => !v)}
         steer={!sealed ? steer : undefined}
       />
 
-      {showRaw ? (
-        <div className="flex-1 min-h-0">
-          <RawActivity investigation={investigation} />
-        </div>
-      ) : (
-        <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 py-4">
+      <div id={rawPanelId} hidden={!showRaw} className="flex-1 min-h-0">
+        {showRaw ? <RawActivity investigation={investigation} /> : null}
+      </div>
+      <div ref={scrollRef} hidden={showRaw} className="flex-1 overflow-y-auto px-4 py-4">
           {lines.length === 0 ? (
             <ConnectingBeat status={investigation.streamStatus} />
           ) : (
-            <ol className="space-y-2.5">
-              {lines.map((l) => (
-                <li key={l.eventId} className="flex items-start gap-2.5">
-                  <span
-                    className={`mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full ${TONE_STYLE[l.tone].dot}`}
-                    aria-hidden="true"
-                  />
-                  <span className={`font-serif text-[14px] leading-relaxed ${TONE_STYLE[l.tone].text}`}>
-                    {l.line}
-                  </span>
-                </li>
-              ))}
-            </ol>
+            <div className="thinking-field-journal__section">
+              <p className="thinking-field-journal__header">Narration</p>
+              <ol className="thinking-field-journal__list">
+                {lines.map((l, i) => (
+                  <li
+                    key={l.eventId}
+                    className="thinking-field-journal__item"
+                    style={{ "--tfj-tone-accent": TONE_ACCENT[l.tone] } as React.CSSProperties}
+                  >
+                    <span
+                      className="thinking-field-journal__index"
+                      aria-hidden="true"
+                    >
+                      {String(i + 1).padStart(2, "0")}
+                    </span>
+                    <span
+                      className={`thinking-field-journal__tone-dot ${TONE_STYLE[l.tone].dot}`}
+                      aria-hidden="true"
+                    />
+                    <span
+                      className={`thinking-field-journal__tone-label thinking-field-journal__tone-label--${l.tone}`}
+                    >
+                      {TONE_LABEL[l.tone]}
+                    </span>
+                    <span className={`thinking-field-journal__prose ${TONE_STYLE[l.tone].text}`}>
+                      {l.line}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </div>
           )}
 
           {/* While running, Werner thinks under the last line — the ongoing
@@ -199,14 +264,9 @@ export default function ThinkingStream({ investigation, steer, onRetry }: Thinki
             </div>
           )}
 
-          {sealed && (
-            <p className="mt-4 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-              the answer is below
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+          {sealed && <ClosingFolio />}
+      </div>
+    </section>
   );
 }
 
@@ -216,18 +276,22 @@ function StreamHeader({
   investigation,
   sealed,
   showRaw,
+  rawPanelId,
   onToggleRaw,
   steer,
 }: {
   investigation: InvestigationState;
   sealed: boolean;
   showRaw: boolean;
+  rawPanelId: string;
   onToggleRaw: () => void;
   steer?: ThinkingStreamSteer;
 }) {
   const statusWord = sealed
     ? investigation.status === "completed"
       ? "done"
+      : investigation.status === "not_found"
+        ? "not found"
       : "stopped"
     : investigation.status === "in_progress"
       ? "thinking"
@@ -236,12 +300,12 @@ function StreamHeader({
         : investigation.status;
 
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-rule bg-ice-1 px-4 py-2 dark:border-charcoal-1 dark:bg-charcoal-2">
+    <header className="thinking-field-journal__folio flex items-center justify-between gap-3 border-b border-rule bg-ice-1 px-4 py-2 dark:border-charcoal-1 dark:bg-charcoal-2">
       <div className="flex items-center gap-3 text-xs">
         <span
           className={`font-mono uppercase tracking-wider ${
             investigation.status === "in_progress"
-              ? "text-aurora"
+              ? "text-shadow-2 dark:text-starlight"
               : investigation.status === "completed"
                 ? "text-emerald-700"
                 : "text-shadow-1 dark:text-moonlight"
@@ -270,11 +334,23 @@ function StreamHeader({
         <button
           type="button"
           onClick={onToggleRaw}
+          aria-expanded={showRaw}
+          aria-controls={rawPanelId}
           className="font-mono text-xs text-shadow-1 transition-colors hover:text-ink dark:text-moonlight dark:hover:text-bright"
         >
           {showRaw ? "hide raw activity" : "show raw activity"}
         </button>
       </div>
+    </header>
+  );
+}
+
+/** Closing folio — the terminal beat after a sealed research stream. */
+function ClosingFolio() {
+  return (
+    <div className="thinking-field-journal__closing-folio" role="note" aria-label="Research complete">
+      <hr className="thinking-field-journal__folio-rule" />
+      <p className="thinking-field-journal__folio-text">the answer is below</p>
     </div>
   );
 }

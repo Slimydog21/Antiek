@@ -10,6 +10,16 @@
  *     perpetual "thinking…" (M4);
  *   - the live cost is the real accumulated dollar figure (M3).
  *
+ * Field-journal additions:
+ *   - semantic region (section[aria-label]) + ordered list;
+ *   - zero-padded rendered-order indices (aria-hidden);
+ *   - visible tone labels with shape + colour differentiation;
+ *   - raw toggle uses aria-expanded + aria-controls on a stable panel id;
+ *   - busy Stop disables the button;
+ *   - closing folio is a <hr> + mono text;
+ *   - max-72ch prose + CSS guard;
+ *   - long-text wrapping.
+ *
  * The render pulls in Werner (PNG poses) + LemonCard via TrajectoryView; vite
  * resolves the asset imports to URL strings under jsdom, so no asset mock is
  * needed.
@@ -167,7 +177,10 @@ describe("ThinkingStream — honest no-key / failed state (M4)", () => {
       />,
     );
     expect(screen.getByText(/research didn’t complete/i)).toBeTruthy();
-    expect(screen.getByText(/model provider isn’t configured/i)).toBeTruthy();
+    expect(screen.getByText((_, element) =>
+      element?.tagName === "P" &&
+      element.textContent?.includes("model provider isn’t configured") === true,
+    )).toBeTruthy();
     expect(screen.queryByText(/thinking…/i)).toBeNull();
     expect(screen.getByRole("button", { name: "Try again" })).toBeTruthy();
   });
@@ -185,7 +198,9 @@ describe("ThinkingStream — honest no-key / failed state (M4)", () => {
     );
     expect(screen.getByText(/the engine reported a problem/i)).toBeTruthy();
     expect(screen.getByText(/retrieval timed out/i)).toBeTruthy();
-    expect(screen.queryByText(/model provider isn’t configured/i)).toBeNull();
+    expect(screen.queryByText((_, element) =>
+      element?.textContent?.includes("model provider isn’t configured") === true,
+    )).toBeNull();
   });
 
   it("calls onRetry from the failure surface", () => {
@@ -243,5 +258,285 @@ describe("ThinkingStream — live cost + steer (M3)", () => {
     // "the answer is below" footer copy).
     const header = within(screen.getByText("done"));
     expect(header).toBeTruthy();
+  });
+});
+
+// ── Field-journal additions ──────────────────────────────────────────────
+
+describe("ThinkingStream — semantic region + list + indices (field journal)", () => {
+  it("wraps the narrated stream in a section with an accessible label and an ordered list", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [
+            ev("e1", "decompose.requested"),
+            ev("e2", "evidence.retrieve.requested", { sub_question: "X" }),
+          ],
+        })}
+      />,
+    );
+    const section = screen.getByRole("region", { name: /research field journal/i });
+    expect(section).toBeTruthy();
+    expect(section.tagName.toLowerCase()).toBe("section");
+    const list = screen.getByRole("list");
+    expect(list.tagName.toLowerCase()).toBe("ol");
+    // Two items in the list.
+    const items = within(list).getAllByRole("listitem");
+    expect(items).toHaveLength(2);
+  });
+
+  it("renders zero-padded rendered-order indices that are aria-hidden", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [
+            ev("e1", "decompose.requested"),
+            ev("e2", "evidence.retrieve.requested", { sub_question: "X" }),
+            ev("e3", "evidence.retrieve.delivered", { supporting_claims: [{}], evidentiary_gaps: [] }),
+          ],
+        })}
+      />,
+    );
+    const indices = screen.getAllByText(/^(0[1-9]|1[0-9])$/);
+    expect(indices).toHaveLength(3);
+    expect(indices[0].textContent).toBe("01");
+    expect(indices[1].textContent).toBe("02");
+    expect(indices[2].textContent).toBe("03");
+    for (const idx of indices) {
+      expect(idx.getAttribute("aria-hidden")).toBe("true");
+    }
+  });
+
+  it("produces no line when there are zero events", () => {
+    render(
+      <ThinkingStream
+        investigation={state({ events: [], streamStatus: "open" })}
+      />,
+    );
+    // No section/ol when lines are empty (connecting beat shown instead).
+    expect(screen.getByRole("region", { name: /research field journal/i })).toBeTruthy();
+    expect(screen.queryByRole("list")).toBeNull();
+  });
+});
+
+describe("ThinkingStream — tone labels (visible shape + colour)", () => {
+  it("shows visible tone labels for each narrated line", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [
+            ev("e1", "decompose.requested"),                                           // step
+            ev("e2", "decompose.delivered", { decomposition: [{}, {}] }),              // finding
+            ev("e3", "decomposer.paraphrase.flagged"),                                 // caution
+            ev("e4", "investigation.start_requested", { question: "Why?" }),           // milestone
+          ],
+        })}
+      />,
+    );
+    expect(screen.getAllByText("step")).toHaveLength(1);
+    expect(screen.getByText("finding")).toBeTruthy();
+    expect(screen.getByText("caution")).toBeTruthy();
+    expect(screen.getByText("milestone")).toBeTruthy();
+  });
+
+  it("every item has a tone-label span with the tone modifier class", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [
+            ev("e1", "decompose.requested"),
+            ev("e2", "evidence.retrieve.delivered", { supporting_claims: [{}], evidentiary_gaps: [] }),
+          ],
+        })}
+      />,
+    );
+    const items = screen.getAllByRole("listitem");
+    for (const item of items) {
+      const label = item.querySelector("[class*='tone-label--']");
+      expect(label).toBeTruthy();
+    }
+  });
+
+  it("finding and caution expose different non-colour geometry hooks", () => {
+    render(
+      <ThinkingStream investigation={state({ events: [
+        ev("finding", "decompose.delivered", { decomposition: [{}] }),
+        ev("caution", "decomposer.paraphrase.flagged"),
+      ] })} />,
+    );
+    const finding = screen.getByText("finding");
+    const caution = screen.getByText("caution");
+    expect(finding.classList.contains("thinking-field-journal__tone-label--finding")).toBe(true);
+    expect(caution.classList.contains("thinking-field-journal__tone-label--caution")).toBe(true);
+    expect(finding.className).not.toBe(caution.className);
+  });
+});
+
+describe("ThinkingStream — raw disclosure (aria-expanded + stable controls id)", () => {
+  it("toggle button has aria-expanded and aria-controls pointing to a stable panel id", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [ev("e1", "decompose.requested")],
+        })}
+      />,
+    );
+    const toggle = screen.getByText(/show raw activity/i);
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const panelId = toggle.getAttribute("aria-controls");
+    expect(panelId?.startsWith("thinking-stream-raw-panel-")).toBe(true);
+
+    fireEvent.click(toggle);
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+
+    // The raw panel element has the stable id.
+    const panel = document.getElementById(panelId ?? "");
+    expect(panel).toBeTruthy();
+  });
+
+  it("the raw panel id is stable across show/hide cycles", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [ev("e1", "decompose.requested")],
+        })}
+      />,
+    );
+    fireEvent.click(screen.getByText(/show raw activity/i));
+    const hideToggle = screen.getByText(/hide raw activity/i);
+    const controlledId = hideToggle.getAttribute("aria-controls") ?? "";
+    const firstPanelId = document.getElementById(controlledId)?.id;
+
+    fireEvent.click(hideToggle);
+    fireEvent.click(screen.getByText(/show raw activity/i));
+    const secondPanelId = document.getElementById(controlledId)?.id;
+
+    expect(firstPanelId).toBe(controlledId);
+    expect(secondPanelId).toBe(controlledId);
+  });
+
+  it("gives concurrent streams unique disclosure relationships", () => {
+    render(
+      <>
+        <ThinkingStream investigation={state({ id: "inv-a", events: [ev("a", "decompose.requested")] })} />
+        <ThinkingStream investigation={state({ id: "inv-b", events: [ev("b", "decompose.requested")] })} />
+      </>,
+    );
+    const toggles = screen.getAllByRole("button", { name: /show raw activity/i });
+    const ids = toggles.map((toggle) => toggle.getAttribute("aria-controls"));
+    expect(new Set(ids).size).toBe(2);
+    for (const id of ids) expect(document.getElementById(id ?? "")).toBeTruthy();
+  });
+});
+
+describe("ThinkingStream — honest not-found state", () => {
+  it("does not invent a provider failure or stopped verdict", () => {
+    render(<ThinkingStream investigation={state({ status: "not_found" })} onRetry={() => {}} />);
+    expect(screen.getByText("not found")).toBeTruthy();
+    expect(screen.getByText(/no research exists for this link/i)).toBeTruthy();
+    expect(screen.queryByText(/provider/i)).toBeNull();
+    expect(screen.queryByText("stopped")).toBeNull();
+    expect(screen.getByRole("button", { name: "Reload" })).toBeTruthy();
+  });
+});
+
+describe("ThinkingStream — busy Stop (disabled while steer command is in flight)", () => {
+  it("Stop button is disabled when steer.busy is true", () => {
+    render(
+      <ThinkingStream
+        investigation={state({ events: [ev("e1", "decompose.requested")] })}
+        steer={{ onStop: () => {}, busy: true }}
+      />,
+    );
+    const stop = screen.getByRole("button", { name: "Stop" });
+    expect((stop as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("Stop button is enabled when steer.busy is false or absent", () => {
+    render(
+      <ThinkingStream
+        investigation={state({ events: [ev("e1", "decompose.requested")] })}
+        steer={{ onStop: () => {} }}
+      />,
+    );
+    const stop = screen.getByRole("button", { name: "Stop" });
+    expect((stop as HTMLButtonElement).disabled).toBe(false);
+  });
+});
+
+describe("ThinkingStream — closing folio on sealed stream", () => {
+  it("renders a closing folio with hr and mono text when research completes", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          status: "completed",
+          events: [ev("e1", "investigation.completed")],
+        })}
+      />,
+    );
+    expect(screen.getByText(/the answer is below/i)).toBeTruthy();
+    // The folio is a note region with an <hr>.
+    const folio = screen.getByRole("note", { name: /research complete/i });
+    expect(folio).toBeTruthy();
+    expect(folio.querySelector("hr")).toBeTruthy();
+  });
+
+  it("does not show the closing folio on an in-progress stream", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [ev("e1", "decompose.requested")],
+        })}
+      />,
+    );
+    expect(screen.queryByText(/the answer is below/i)).toBeNull();
+  });
+});
+
+describe("ThinkingStream — long-text wrapping (max-72ch prose)", () => {
+  it("renders long prose lines without truncation", () => {
+    const longQuestion =
+      "What is the single strongest counter-thesis to the claim that " +
+      "renewable energy grid integration costs will exceed fossil fuel " +
+      "externalities within the next decade, given current battery technology " +
+      "trajectories and regulatory frameworks across major economies?";
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [ev("e1", "investigation.start_requested", { question: longQuestion })],
+        })}
+      />,
+    );
+    const prose = screen.getByText(new RegExp(longQuestion.slice(0, 40)));
+    expect(prose.textContent).toBe(`Starting on your question: ${longQuestion}`);
+    // The prose element carries the max-width constraint class.
+    expect(prose.classList.contains("thinking-field-journal__prose")).toBe(true);
+  });
+});
+
+describe("ThinkingStream — CSS guard (thinking-field-journal.css loaded)", () => {
+  it("the field-journal section class is present on the narrated region", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [ev("e1", "decompose.requested")],
+        })}
+      />,
+    );
+    const section = document.querySelector(".thinking-field-journal__section");
+    expect(section).toBeTruthy();
+    expect(section?.classList.contains("thinking-field-journal__section")).toBe(true);
+  });
+
+  it("items carry the field-journal item class", () => {
+    render(
+      <ThinkingStream
+        investigation={state({
+          events: [ev("e1", "decompose.requested")],
+        })}
+      />,
+    );
+    const items = screen.getAllByRole("listitem");
+    expect(items[0].classList.contains("thinking-field-journal__item")).toBe(true);
   });
 });
