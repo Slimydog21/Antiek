@@ -1155,3 +1155,500 @@ def test_nested_mounted_router_handler_credits_enforcement_alias_unmounted_does_
     )
     combined = unmounted.stdout + unmounted.stderr
     assert "execute_authorized_call" in combined, combined
+
+
+# =========================================================================== #
+# CHECK D — unimported substrate packages (the doctrine "wiring is the
+# constraint" backlog, made mechanical). A substrate/** package with a public
+# API that no reachable non-test file OUTSIDE the package imports is
+# built-but-unwired.  Imports in dead TYPE_CHECKING / __main__ branches and
+# uncalled helpers do NOT credit — the reachability system already proved they
+# never execute.
+# =========================================================================== #
+
+_PUBLIC_PKG_INIT = (
+    '__all__ = ["build_widget"]\n\n\ndef build_widget(x: int) -> int:\n    return x\n'
+)
+
+
+# --------------------------------------------------------------------------- #
+# (k) seed an unimported public-API package -> RED; add a NON-TEST product
+#     importer that is actually reachable -> GREEN.
+# --------------------------------------------------------------------------- #
+def test_unimported_substrate_package_reds_then_greens(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+
+    # The clean tree has no substrate package dir (only a bare module), so mint
+    # + clean run are green before the seed.
+    assert (
+        _run([sys.executable, str(gate), "--write-baseline"], cwd=root).returncode == 0
+    )
+    assert _run([sys.executable, str(gate)], cwd=root).returncode == 0
+
+    # SEED: a substrate package with a public API that NOTHING imports -> RED.
+    _write(root / "substrate" / "orphan_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, (
+        f"expected RED=1 on a NEW unimported substrate package, got "
+        f"{red.returncode}\n{red.stdout}\n{red.stderr}"
+    )
+    combined = red.stdout + red.stderr
+    assert "orphan_lib" in combined, combined
+    assert "substrate/orphan_lib/__init__.py:1" in combined, combined
+
+    # FIX: a REACHABLE product module imports it -> GREEN.  The importer is
+    # wired into the app factory so the reachability system counts it.
+    app_path = root / "interfaces" / "research" / "api" / "app.py"
+    _write(
+        app_path,
+        app_path.read_text(encoding="utf-8")
+        + "\nfrom substrate.orphan_lib import build_widget\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"expected GREEN=0 after a reachable product file imports the package, got "
+        f"{green.returncode}\n{green.stdout}\n{green.stderr}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (l) a package imported ONLY by a test file is STILL flagged — tests do not
+#     count as product wiring.
+# --------------------------------------------------------------------------- #
+def test_package_imported_only_by_test_still_flagged(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(root / "substrate" / "testonly_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    _write(
+        root / "tests" / "test_uses_lib.py",
+        "from substrate.testonly_lib import build_widget\n\n\n"
+        "def test_it() -> None:\n    assert build_widget(1) == 1\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, (
+        f"a package imported only by a test must stay flagged, got "
+        f"{res.returncode}\n{res.stdout}\n{res.stderr}"
+    )
+    assert "testonly_lib" in res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------- #
+# (m) scope discipline — the PUBLIC-API GATE. A package with an EMPTY __all__
+#     (no public surface) is SKIPPED even when unimported; a sibling with a real
+#     public API IS flagged.
+# --------------------------------------------------------------------------- #
+def test_no_public_api_package_skipped_public_one_flagged(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "private_only" / "__init__.py",
+        "__all__: list[str] = []\n\n\ndef _helper(x: int) -> int:\n    return x\n",
+    )
+    _write(root / "substrate" / "public_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, f"{res.stdout}\n{res.stderr}"
+    combined = res.stdout + res.stderr
+    assert "public_lib" in combined, f"public-API package must flag:\n{combined}"
+    assert "private_only" not in combined, (
+        f"empty-__all__ package (no public surface) must be SKIPPED:\n{combined}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (n) PARENT-BARREL DECISION — a child re-exported by the ROOT substrate barrel
+#     (substrate/__init__.py) is NOT thereby credited. A direct import BY a
+#     reachable sibling DOES credit.
+# --------------------------------------------------------------------------- #
+def test_root_barrel_reexport_does_not_credit_sibling_import_does(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(root / "substrate" / "child_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    # The ROOT barrel re-exports the child — must NOT credit it as wired.
+    _write(
+        root / "substrate" / "__init__.py",
+        "from substrate.child_lib import build_widget\n",
+    )
+
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, (
+        f"root-barrel re-export must NOT credit the child, got {red.returncode}\n"
+        f"{red.stdout}\n{red.stderr}"
+    )
+    assert "child_lib" in red.stdout + red.stderr
+
+    # A reachable SIBLING consumer DOES credit it -> cleared.
+    _write(root / "substrate" / "consumer_pkg" / "__init__.py", "")
+    app_path = root / "interfaces" / "research" / "api" / "app.py"
+    _write(
+        app_path,
+        "from fastapi import FastAPI\n"
+        "from substrate.child_lib import build_widget\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = build_widget(1)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, (
+        f"a reachable sibling import must credit the package, got "
+        f"{green.returncode}\n{green.stdout}\n{green.stderr}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (o) baseline behavior for Check D: a grandfathered finding -> exit 0; a NEW
+#     one -> exit 1; and shrink-only --write-baseline REFUSES a new Check-D key
+#     without --force-baseline.
+# --------------------------------------------------------------------------- #
+def test_check_d_baseline_grandfather_and_shrink_only(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _build_clean_tree(root)
+
+    # Clean mint (no findings yet).
+    assert (
+        _run([sys.executable, str(gate), "--write-baseline"], cwd=root).returncode == 0
+    )
+
+    # SEED one dormant package.
+    _write(root / "substrate" / "dormant_a" / "__init__.py", _PUBLIC_PKG_INIT)
+
+    # --write-baseline WITHOUT --force must REFUSE (shrink-only).
+    refuse = _run([sys.executable, str(gate), "--write-baseline"], cwd=root)
+    assert refuse.returncode == 1, (
+        f"shrink-only must refuse a NEW Check-D key, got {refuse.returncode}\n"
+        f"{refuse.stdout}\n{refuse.stderr}"
+    )
+    combined = refuse.stdout + refuse.stderr
+    assert "shrink-only" in combined, combined
+    assert "dormant_a" in combined, combined
+
+    # --force-baseline grandfathers it.
+    assert (
+        _run(
+            [sys.executable, str(gate), "--write-baseline", "--force-baseline"],
+            cwd=root,
+        ).returncode
+        == 0
+    )
+    # Now a plain run is GREEN — the finding is grandfathered.
+    assert _run([sys.executable, str(gate)], cwd=root).returncode == 0
+
+    # SEED a SECOND dormant package -> a NEW finding reds; the grandfathered one
+    # is NOT re-reported.
+    _write(root / "substrate" / "dormant_b" / "__init__.py", _PUBLIC_PKG_INIT)
+    new = _run([sys.executable, str(gate)], cwd=root)
+    assert new.returncode == 1, (
+        f"a NEW unimported package must red past the baseline, got "
+        f"{new.returncode}\n{new.stdout}\n{new.stderr}"
+    )
+    combined = new.stdout + new.stderr
+    assert "dormant_b" in combined, f"the new package must be reported:\n{combined}"
+    assert "dormant_a" not in combined, (
+        f"the grandfathered package must NOT be re-reported:\n{combined}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (p) TYPE_CHECKING import does NOT credit — the import is inside a dead branch
+#     that never executes at runtime, so the package is still unimported.
+# --------------------------------------------------------------------------- #
+def test_type_checking_import_does_not_credit(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(root / "substrate" / "tc_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    # A product file that imports the package ONLY inside TYPE_CHECKING.
+    _write(
+        root / "interfaces" / "research" / "api" / "tc_user.py",
+        "from __future__ import annotations\n"
+        "from typing import TYPE_CHECKING\n\n"
+        "if TYPE_CHECKING:\n"
+        "    from substrate.tc_lib import build_widget\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, (
+        f"TYPE_CHECKING import must NOT credit, got {res.returncode}\n"
+        f"{res.stdout}\n{res.stderr}"
+    )
+    assert "tc_lib" in res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------- #
+# (q) __main__ guard import does NOT credit — the import is inside a dead
+#     branch (__name__ == "__main__") that never runs when imported as a module.
+# --------------------------------------------------------------------------- #
+def test_main_guard_import_does_not_credit(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(root / "substrate" / "main_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    _write(
+        root / "interfaces" / "research" / "api" / "main_user.py",
+        "if __name__ == '__main__':\n"
+        "    from substrate.main_lib import build_widget\n"
+        "    build_widget(1)\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, (
+        f"__main__ guard import must NOT credit, got {res.returncode}\n"
+        f"{res.stdout}\n{res.stderr}"
+    )
+    assert "main_lib" in res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------- #
+# (r) import inside an UNCALLED helper does NOT credit — the helper body is not
+#     reachable, so its imports are invisible to the reachability system.
+# --------------------------------------------------------------------------- #
+def test_uncalled_helper_import_does_not_credit(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(root / "substrate" / "helper_lib" / "__init__.py", _PUBLIC_PKG_INIT)
+    _write(
+        root / "interfaces" / "research" / "api" / "helper_user.py",
+        "def _dormant_helper() -> int:\n"
+        "    from substrate.helper_lib import build_widget\n"
+        "    return build_widget(1)\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, (
+        f"import inside uncalled helper must NOT credit, got {res.returncode}\n"
+        f"{res.stdout}\n{res.stderr}"
+    )
+    assert "helper_lib" in res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------- #
+# (s) mutual dormancy — two packages that import each other but neither is
+#     reached by any reachable product code. Both must be flagged (collectively
+#     dormant packages do not launder each other's reachability).
+# --------------------------------------------------------------------------- #
+def test_mutual_dormancy_both_flagged(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    # Package A imports package B.
+    _write(
+        root / "substrate" / "pkg_a" / "__init__.py",
+        '__all__ = ["func_a"]\n\n'
+        "from substrate.pkg_b import func_b\n\n\n"
+        "def func_a(x: int) -> int:\n"
+        "    return func_b(x)\n",
+    )
+    # Package B imports package A.
+    _write(
+        root / "substrate" / "pkg_b" / "__init__.py",
+        '__all__ = ["func_b"]\n\n'
+        "from substrate.pkg_a import func_a\n\n\n"
+        "def func_b(x: int) -> int:\n"
+        "    return func_a(x)\n",
+    )
+    # No reachable product code imports either package.
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, (
+        f"mutually dormant packages must both flag, got {res.returncode}\n"
+        f"{res.stdout}\n{res.stderr}"
+    )
+    combined = res.stdout + res.stderr
+    assert "pkg_a" in combined, f"pkg_a must be flagged:\n{combined}"
+    assert "pkg_b" in combined, f"pkg_b must be flagged:\n{combined}"
+
+
+# =========================================================================== #
+# MODULE-LEVEL TRANSITIVE REACHABILITY (the product_bridge fix) — a module
+# with no functions/classes, only module-level imports, is reachable when
+# imported by a rooted module; its module-level imports then wire their targets.
+# =========================================================================== #
+
+# --------------------------------------------------------------------------- #
+# (t) reachable transitive module-level bridge credits. A bridge module with
+#     only a module-level ``from substrate.target import x`` is imported by the
+#     app factory; substrate.target must be credited (not flagged).
+# --------------------------------------------------------------------------- #
+def test_transitive_module_level_bridge_credits(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    # substrate/target package with a public API.
+    _write(root / "substrate" / "target" / "__init__.py", _PUBLIC_PKG_INIT)
+
+    # product_bridge: module-level import only, no defs.
+    _write(
+        root / "interfaces" / "research" / "api" / "product_bridge.py",
+        "from substrate.target import build_widget\n",
+    )
+
+    # App factory imports product_bridge and uses the symbol.
+    _write(
+        root / "interfaces" / "research" / "api" / "app.py",
+        "from fastapi import FastAPI\n"
+        "from .product_bridge import build_widget\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = build_widget(1)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 0, (
+        f"transitive module-level bridge must credit substrate.target, got "
+        f"{res.returncode}\n{res.stdout}\n{res.stderr}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (u) identical dormant bridge does NOT credit. Same bridge module, but no
+#     reachable code imports it — substrate.target must stay flagged.
+# --------------------------------------------------------------------------- #
+def test_dormant_bridge_does_not_credit(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    # substrate/target package with a public API.
+    _write(root / "substrate" / "target" / "__init__.py", _PUBLIC_PKG_INIT)
+
+    # Dormant bridge: same module-level import, but nothing imports this file.
+    _write(
+        root / "interfaces" / "research" / "api" / "dormant_bridge.py",
+        "from substrate.target import build_widget\n",
+    )
+
+    # No app imports dormant_bridge — it is dormant.
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, (
+        f"dormant bridge must NOT credit substrate.target, got "
+        f"{res.returncode}\n{res.stdout}\n{res.stderr}"
+    )
+    assert "target" in res.stdout + res.stderr
+
+
+# --------------------------------------------------------------------------- #
+# (v) bare import, nested package, public def no __all__. The bare
+#     ``import substrate.deep.nested`` form must credit the nested package
+#     even when it has no __all__ (public def qualifies for the public-API gate).
+# --------------------------------------------------------------------------- #
+def test_bare_import_nested_package_no_all(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    # Nested package with a public def but no __all__.
+    _write(
+        root / "substrate" / "deep" / "nested" / "__init__.py",
+        "def helper_func(x: int) -> int:\n    return x\n",
+    )
+
+    # App factory uses bare import form.
+    _write(
+        root / "interfaces" / "research" / "api" / "app.py",
+        "from fastapi import FastAPI\n"
+        "import substrate.deep.nested\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 0, (
+        f"bare import of nested package must credit it, got "
+        f"{res.returncode}\n{res.stdout}\n{res.stderr}"
+    )
+
+
+# --------------------------------------------------------------------------- #
+# (w) candidate self-submodule import does NOT self-credit. A substrate package
+#     whose __init__ imports its own submodule must not thereby count as
+#     "imported by reachable code" — the import is intra-package, not an
+#     external consumer.
+# --------------------------------------------------------------------------- #
+def test_candidate_self_submodule_import_no_self_credit(tmp_path: Path) -> None:
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    # substrate/candidate with a public API that imports its own submodule.
+    _write(
+        root / "substrate" / "candidate" / "__init__.py",
+        '__all__ = ["candidate_func"]\n\n'
+        "from substrate.candidate.sub import sub_func\n\n\n"
+        "def candidate_func(x: int) -> int:\n"
+        "    return sub_func(x)\n",
+    )
+    _write(
+        root / "substrate" / "candidate" / "sub.py",
+        "def sub_func(x: int) -> int:\n    return x\n",
+    )
+
+    # No external importer — candidate must be flagged.
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, (
+        f"self-submodule import must NOT self-credit, got "
+        f"{res.returncode}\n{res.stdout}\n{res.stderr}"
+    )
+    assert "candidate" in res.stdout + res.stderr
+
+
+def test_dormant_module_level_call_chain_does_not_become_root(
+    tmp_path: Path,
+) -> None:
+    """A dormant file cannot root itself by calling a local helper at import time."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+    _write(root / "substrate" / "target" / "__init__.py", _PUBLIC_PKG_INIT)
+    _write(
+        root / "tools" / "dormant_chain.py",
+        "def bootstrap() -> int:\n"
+        "    from substrate.target import build_widget\n"
+        "    return build_widget(1)\n\n"
+        "BOOTSTRAPPED = bootstrap()\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, res.stdout + res.stderr
+    assert "target" in res.stdout + res.stderr
+
+
+def test_reachable_top_level_substrate_module_credits_child_package(
+    tmp_path: Path,
+) -> None:
+    """A top-level substrate module is external to each child package."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+    _write(root / "substrate" / "target" / "__init__.py", _PUBLIC_PKG_INIT)
+    _write(
+        root / "substrate" / "consumer.py",
+        "from substrate.target import build_widget\n",
+    )
+    _write(
+        root / "interfaces" / "research" / "api" / "app.py",
+        "from fastapi import FastAPI\n"
+        "import substrate.consumer\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    return FastAPI()\n\n"
+        "app = create_app()\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 0, res.stdout + res.stderr

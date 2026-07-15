@@ -20,7 +20,7 @@ that drove the 348-PR runaway:
     so the paid Krea path still fires on api-key-presence alone.
 
 All three are Python/backend — outside the reading-surface gate's scan. This
-gate closes the class with three mechanical, AST-based checks.
+gate closes the class with four mechanical, AST-based checks.
 
 Design note (mirrors the TS gate's rigor #1 — one gate, one surface): this is a
 NEW sibling, not an edit to ``reachability_gate.py``. That gate owns the reading
@@ -29,7 +29,7 @@ baseline machinery in ``tools/lints/baseline.py`` VERBATIM (no re-invented
 serialization).
 
 ────────────────────────────────────────────────────────────────────────────
-THE THREE CHECKS
+THE FOUR CHECKS
 ────────────────────────────────────────────────────────────────────────────
 
 **Check A — unmounted API routers.** In ``interfaces/**/api/*.py``, excluding
@@ -88,6 +88,45 @@ the same bounded trusted re-export chain as Check A. This catches the subtler
 dead surface where a router looks mounted inside its own wrapper, but the real
 app factory never invokes that wrapper.
 
+**Check D — unimported substrate packages.** Where Check B asks "is this ONE
+exported enforcement symbol called", Check D asks the doctrine-audit's coarser
+question: "does ANY reachable product-loop code import this whole package at
+all". For every package DIRECTORY under ``substrate/`` (any depth) whose
+``__init__.py`` exposes a PUBLIC API — a non-empty literal ``__all__`` OR at
+least one public (non-underscore) top-level ``def`` / ``async def`` / ``class``
+defined in the ``__init__`` itself — the REACHABLE non-test product tree is
+searched for ANY node that imports it: ``from substrate.<pkg>[...] import ...``,
+``import substrate.<pkg>[...]``, ``from substrate import <pkg>``, or a
+resolving relative import. A package that ZERO such reachable importers touch
+is a "built-but-unwired" library. Finding kind ``package:unimported:<pkg>``
+— identity-distinct from Check B so baseline keys never collide — anchored at
+``substrate/<pkg>/__init__.py:1``.
+
+KEY IMPROVEMENT (over the naive scan): only imports inside REACHABLE code
+credit a package. Dead ``TYPE_CHECKING`` / ``__main__`` branches, and imports
+inside uncalled helpers, are invisible — the reachability system already proved
+they never execute. This also kills the mutual-dormancy false-negative: two
+packages that import each other but that no reachable code touches both read as
+unimported (correct — collectively dormant packages do not launder each other's
+reachability).
+
+FAIL-SAFE DESIGN CHOICE (Check D) = FLAG-and-baseline. Unlike Checks A/B/C
+(which red on a NEW stranding), Check D is a BACKLOG detector: it surfaces
+EVERY unimported public-API package, and the shrink-only dated baseline
+grandfathers today's intentionally-dormant set. The scan does NOT try to guess
+"intentional" — it flags all; the operator baselines the known-dormant ones.
+Two scoping rules keep the flag honest:
+
+  * PUBLIC-API GATE (scope discipline) — a package whose ``__init__`` declares
+    an EMPTY ``__all__``, or exposes no ``__all__`` and no public top-level
+    def/class at all, is SKIPPED: only a package that advertises a public
+    surface is a wiring target. ``substrate/__init__.py`` (the root) is never
+    itself a target.
+  * PARENT-BARREL DECISION — the root ``substrate/__init__`` is excluded from
+    the reachable-importer set, so a child re-exported by the root barrel is
+    not thereby counted as wired. A direct import BY a reachable sibling
+    package DOES count — that is a genuine cross-package consumer.
+
 The enforcement lexicon (tunable — ``_ENFORCEMENT_LEXICON`` below): the symbol
 name and its module path are split into ``[a-z0-9]+`` word tokens, and a
 candidate is in scope iff SOME token *starts with* a lexicon entry —
@@ -101,12 +140,12 @@ a pure-data helper exported for future use is not the target; a claimed
 caller is exactly the money-safety hole. Narrowing to the lexicon keeps the
 gate from flagging every dormant data export in ``substrate/``.
 
-All three checks are GRANDFATHERED through the dated, shrink-only baseline
+All four checks are GRANDFATHERED through the dated, shrink-only baseline
 ``tools/lints/baselines/reachability_py.json`` so the gate reds ONLY on code
 that becomes unreachable AFTER this lands — never on today's legitimately
 dormant set. Exit 0 = clean (every current finding grandfathered); exit 1 = a
 NEW unmounted router / uncalled registration wrapper / uncalled enforcement
-export, printed ``path:line:``.
+export / unimported substrate package, printed ``path:line:``.
 
 ────────────────────────────────────────────────────────────────────────────
 WHAT THIS GATE CANNOT CATCH (intellectual honesty — mirrors the TS gate's
@@ -189,14 +228,35 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
   - **Exported classes / constants** — Check B flags only ``def`` / ``async def``
     callables (the enforcement-seam shape). A class exported in ``__all__`` and
     never instantiated is not claimed here.
+  - **Dynamic / importlib package load (Check D)** — a package pulled in only
+    via ``importlib.import_module("substrate.x")``, a plugin / entry-point
+    registry, or a settings-driven module string has no literal ``import`` node
+    naming it, so it reads as unimported (an over-flag → grandfathered into the
+    baseline). Out of reach → review-owned.
+  - **CLI / entry-point-only package (Check D)** — a package wired ONLY as a
+    console-script ``[project.scripts]`` target in ``pyproject.toml`` (never
+    imported from any ``.py``) has no in-tree importer the AST scan sees, so it
+    over-flags. Grandfather it into the baseline. Review-owned.
+  - **Transitive parent-barrel re-export (Check D)** — a package reached ONLY
+    because the root ``substrate/__init__.py`` re-exports its symbols and product
+    code imports them ``from substrate`` is deliberately NOT credited: the root
+    barrel is excluded from the reachable-importer set. Tracing symbol-level
+    re-export chains through the barrel is out of scope.
+  - **Re-export-only package with no ``__all__`` (Check D)** — a package whose
+    ``__init__`` only does ``from .sub import X`` with neither an ``__all__`` nor
+    a public top-level def/class is treated as declaring NO public surface and is
+    SKIPPED (its intended public API is unknowable from the AST). Under-scoped by
+    design (the PUBLIC-API GATE) — not a false-negative claim.
 
 Everything in the FINDING shapes has a concrete literal signature the AST
 matches (a module-level ``APIRouter`` assignment / a factory returning one; an
 ``include_router`` arg whose import resolves — directly or through a bounded
 package-``__init__`` re-export chain — to the defining module; an ``__all__``
 string + a same-named ``def``; a ``Name`` load / attribute reference, or a used
-``as``-alias crediting its original — never a bare unused import). Nothing else
-is mechanically enforced.
+``as``-alias crediting its original — never a bare unused import; a
+``substrate/<pkg>/__init__.py`` with a non-empty ``__all__`` or a public
+top-level def/class, and the absence in the reachable tree of any import node
+naming it). Nothing else is mechanically enforced.
 
 ────────────────────────────────────────────────────────────────────────────
 FAIRNESS — why a HARD gate is defensible (fairness #2)
@@ -1489,6 +1549,299 @@ def _build_reachability(
     }
 
 
+def _rooted_reachability(trees: dict[Path, ast.Module]) -> dict[str, _Reachability]:
+    """Reachability fixed point rooted only at real application entry points.
+
+    Unlike ``_build_reachability`` (whose historic checks intentionally inspect
+    every module's module-level calls), this traversal never lets a dormant
+    module bootstrap itself. A module first becomes live through an import from
+    already-live code; only then do its module-level statements execute.
+    Calls, imports, class construction, trusted re-exports, and mounted router
+    handlers are expanded together until no state changes.
+    """
+    trees_by_rel = {
+        path.relative_to(_REPO).as_posix(): tree for path, tree in trees.items()
+    }
+    paths_by_rel = {path.relative_to(_REPO).as_posix(): path for path in trees}
+    reexports = {
+        rel: _reexport_map(paths_by_rel[rel], tree)
+        for rel, tree in trees_by_rel.items()
+    }
+    functions = {
+        rel: _initial_reachable_functions(rel, tree)
+        for rel, tree in trees_by_rel.items()
+    }
+    classes = {rel: set[str]() for rel in trees_by_rel}
+    live = {rel for rel, names in functions.items() if names}
+
+    changed = True
+    while changed:
+        changed = False
+        for rel in sorted(live):
+            tree = trees_by_rel[rel]
+            path = paths_by_rel[rel]
+            nodes = _reachable_nodes_for_functions(
+                tree, functions[rel], classes[rel]
+            )
+
+            # Importing a module executes its module scope. Imports inside an
+            # already-reachable function/class execute when that body does.
+            for node in nodes:
+                targets: set[str] = set()
+                if isinstance(node, ast.ImportFrom):
+                    target = _resolve_from_module(path, node.module, node.level)
+                    if target is not None:
+                        targets.add(target)
+                elif isinstance(node, ast.Import):
+                    for alias in node.names:
+                        target = _resolve_from_module(path, alias.name, 0)
+                        if target is not None:
+                            targets.add(target)
+                for target in targets:
+                    if target in trees_by_rel and target not in live:
+                        live.add(target)
+                        changed = True
+
+            called = _called_local_names(nodes)
+            local_functions = _reachable_function_nodes(tree)
+            local_classes = _reachable_class_nodes(tree)
+            for name in called:
+                if name in local_functions and name not in functions[rel]:
+                    functions[rel].add(name)
+                    changed = True
+                if name in local_classes and name not in classes[rel]:
+                    classes[rel].add(name)
+                    changed = True
+
+            imports = _import_map(path, nodes)
+            for local in called:
+                for origin_rel, origin_name in imports.get(local, ()):
+                    for target_rel, target_name in _reexport_targets(
+                        origin_rel, origin_name, reexports
+                    ):
+                        target_tree = trees_by_rel.get(target_rel)
+                        if target_tree is None:
+                            continue
+                        if target_rel not in live:
+                            live.add(target_rel)
+                            changed = True
+                        if (
+                            target_name in _reachable_function_nodes(target_tree)
+                            and target_name not in functions[target_rel]
+                        ):
+                            functions[target_rel].add(target_name)
+                            changed = True
+                        if (
+                            target_name in _reachable_class_nodes(target_tree)
+                            and target_name not in classes[target_rel]
+                        ):
+                            classes[target_rel].add(target_name)
+                            changed = True
+
+            # A router handler becomes live only when live code mounts the
+            # corresponding router product.
+            for local in _include_router_arg_names(nodes):
+                candidates = {(rel, local)} | imports.get(local, set())
+                for origin_rel, origin_name in candidates:
+                    for target_rel, target_name in _reexport_targets(
+                        origin_rel, origin_name, reexports
+                    ):
+                        target_tree = trees_by_rel.get(target_rel)
+                        target_path = paths_by_rel.get(target_rel)
+                        if target_tree is None or target_path is None:
+                            continue
+                        products = {
+                            name
+                            for name, _line in _router_products(target_path, target_tree)
+                        }
+                        if target_name not in products:
+                            continue
+                        if target_rel not in live:
+                            live.add(target_rel)
+                            changed = True
+                        handlers = _router_route_handlers(
+                            target_tree, {target_name}
+                        )
+                        before = len(functions[target_rel])
+                        functions[target_rel].update(handlers)
+                        if len(functions[target_rel]) != before:
+                            changed = True
+
+    return {
+        rel: _Reachability(
+            nodes=_reachable_nodes_for_functions(
+                trees_by_rel[rel], functions[rel], classes[rel]
+            ),
+            functions=frozenset(functions[rel]),
+            classes=frozenset(classes[rel]),
+        )
+        for rel in live
+    }
+
+
+# ── Check D — unimported substrate packages ─────────────────────────────────
+def _package_has_public_api(tree: ast.Module) -> bool:
+    """True iff this package ``__init__`` advertises a PUBLIC surface — the scope
+    gate for Check D. Two forms count:
+
+      * a NON-EMPTY literal ``__all__`` (the declared export list), OR
+      * at least one public (non-underscore) top-level ``def`` / ``async def`` /
+        ``class`` DEFINED in the ``__init__`` itself.
+
+    A package with an EMPTY ``__all__``, or with neither an ``__all__`` nor a
+    public top-level def/class (a pure-private helper, or a bare re-export barrel
+    that only ``from .sub import X`` with no ``__all__``), declares no public
+    surface and is SKIPPED."""
+    exported = _dunder_all(tree)
+    if exported:
+        return True
+    for node in tree.body:
+        if isinstance(
+            node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)
+        ) and not node.name.startswith("_"):
+            return True
+    return False
+
+
+def _module_dotted(importer: Path, module: str | None, level: int) -> str | None:
+    """The dotted module path a ``from <module> import …`` targets, IF it resolves
+    to an in-repo module under ``substrate/`` — else None. Reuses
+    ``_resolve_from_module`` to get the defining file, then converts the
+    repo-relative path back to a dotted module."""
+    rel = _resolve_from_module(importer, module, level)
+    if rel is None:
+        return None
+    if rel == "substrate/__init__.py":
+        return "substrate"
+    if not (rel == "substrate.py" or rel.startswith("substrate/")):
+        return None
+    if rel.endswith("/__init__.py"):
+        rel = rel[: -len("/__init__.py")]
+    elif rel.endswith(".py"):
+        rel = rel[: -len(".py")]
+    return rel.replace("/", ".")
+
+
+def _substrate_package_inits() -> list[Path]:
+    """Every ``substrate/**/__init__.py`` (any depth) EXCEPT the root
+    ``substrate/__init__.py``, excluding tests/vendored — the Check D candidate
+    packages before the public-API gate is applied."""
+    if not _SUBSTRATE.exists():
+        return []
+    out: list[Path] = []
+    for p in _SUBSTRATE.rglob("__init__.py"):
+        if _is_excluded(p) or _is_test_path(p):
+            continue
+        if p.relative_to(_REPO).as_posix() == "substrate/__init__.py":
+            continue
+        out.append(p)
+    return sorted(out)
+
+
+def _reachable_substrate_imports(
+    reachability: dict[str, _Reachability],
+    trees: dict[Path, ast.Module],
+) -> set[tuple[str, str]]:
+    """The set of ``substrate.*`` dotted module paths imported by PRODUCT-REACHABLE
+    code only. Four filters:
+
+    1. Dead TYPE_CHECKING/__main__ branches and uncalled helper bodies are
+       excluded by the reachability system.
+    2. The root ``substrate/__init__.py`` is EXCLUDED as an importer (the
+       parent-barrel decision).
+    3. Module eligibility uses a FIXED POINT of reachable modules — transitively
+       following module-level import edges from rooted modules (designated app
+       factories, @app route handlers, modules with reachable functions/classes).
+       A module with no functions/classes but imported by a reachable module IS
+       reachable, and its module-level imports execute and may reach more modules.
+       This closes the ``product_bridge`` hole: a bridge module with only
+       module-level ``from substrate.target import x`` that is imported by the
+       app factory wires ``substrate.target`` even though the bridge exposes no
+       callable.  Conversely a dormant bridge that no reachable code imports does
+       NOT credit ``substrate.target`` (mutual dormancy preserved).
+    4. Self-import exclusion: a substrate package importing its own submodule
+       does NOT self-credit.  The importer's package (derived from its file path)
+       is compared to the import target; if the target is the same package or a
+       descendant, the import is skipped."""
+    imports: set[tuple[str, str]] = set()
+    for path, _tree in trees.items():
+        rel = path.relative_to(_REPO).as_posix()
+        if rel == "substrate/__init__.py":
+            continue
+        reach = reachability.get(rel)
+        if reach is None:
+            continue
+        for node in reach.nodes:
+            if isinstance(node, ast.Import):
+                for alias in node.names:
+                    if alias.name == "substrate" or alias.name.startswith("substrate."):
+                        imports.add((rel, alias.name))
+            elif isinstance(node, ast.ImportFrom):
+                base = _module_dotted(path, node.module, node.level)
+                if base is None:
+                    continue
+                imports.add((rel, base))
+                for alias in node.names:
+                    if alias.name != "*":
+                        imports.add((rel, f"{base}.{alias.name}"))
+    return imports
+
+
+def find_unimported_substrate_packages(
+    trees: dict[Path, ast.Module],
+) -> list[Finding]:
+    """substrate/** packages that expose a public API yet are imported by ZERO
+    reachable non-test files OUTSIDE the package itself — the built-but-unwired
+    library. See ``_package_has_public_api`` for the public-API scope gate and
+    the module docstring for the fail-safe FLAG-and-baseline bias + the
+    parent-barrel decision.
+
+    KEY IMPROVEMENT over the naive scan: only imports inside REACHABLE code
+    credit a package.  Imports in dead ``TYPE_CHECKING`` / ``__main__``
+    branches, or inside uncalled helpers, are invisible — the reachability
+    system already proved they never execute.  This also kills the
+    mutual-dormancy false-negative: two packages that import each other but
+    that no reachable code touches both read as unimported (correct)."""
+    findings: list[Finding] = []
+    rooted = _rooted_reachability(trees)
+    reachable_imports = _reachable_substrate_imports(rooted, trees)
+    for init_path in _substrate_package_inits():
+        tree = trees.get(init_path)
+        if tree is None:
+            continue
+        if not _package_has_public_api(tree):
+            continue
+        pkg_dir_rel = init_path.parent.relative_to(_REPO).as_posix()
+        pkg_module = pkg_dir_rel.replace("/", ".")
+        pkg_id = pkg_dir_rel[len("substrate/") :].replace("/", ".")
+        pkg_prefix = pkg_dir_rel + "/"
+        wired = any(
+            (module == pkg_module or module.startswith(pkg_module + "."))
+            and importer != f"{pkg_dir_rel}/__init__.py"
+            and not importer.startswith(pkg_prefix)
+            for importer, module in reachable_imports
+        )
+        if wired:
+            continue
+        rel = init_path.relative_to(_REPO).as_posix()
+        findings.append(
+            (
+                init_path,
+                1,
+                f"package:unimported:{pkg_id}",
+                f"{rel}:1: reachability — substrate package '{pkg_id}' exposes a "
+                f"public API (__all__ or public top-level def/class) but is "
+                f"imported by ZERO reachable non-test files OUTSIDE the package. "
+                f"A built + tested library that no product-loop code imports is "
+                f"unreachable (the doctrine 'wiring is the constraint' hole). "
+                f"Import it from a product path or remove it. "
+                f"Dynamic/importlib/entry-point/parent-barrel wiring is "
+                f"review-owned (see reachability_gate_py.py docstring).",
+            )
+        )
+    return findings
+
+
 # ── Findings → baseline keys ────────────────────────────────────────────────
 #
 # Identity is (path, line, col=0, kind). The kind embeds the product/symbol name
@@ -1506,7 +1859,8 @@ def _finding_to_key(finding: Finding) -> ViolationKey:
 
 
 def find_all() -> list[Finding]:
-    """All router, registration-wrapper, and enforcement reachability findings."""
+    """All router, registration-wrapper, enforcement, and package reachability
+    findings (Checks A + B + C + D)."""
     product_files = _product_py_files()
     trees: dict[Path, ast.Module] = {}
     called_local: dict[str, set[str]] = {}
@@ -1537,7 +1891,8 @@ def find_all() -> list[Finding]:
         trees, called_local, import_map, reexport_map
     )
     exports = find_uncalled_enforcement_exports(trees, referenced)
-    return routers + wrappers + exports
+    packages = find_unimported_substrate_packages(trees)
+    return routers + wrappers + exports + packages
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1545,8 +1900,9 @@ def main(argv: list[str] | None = None) -> int:
         prog="reachability_gate_py",
         description=(
             "Flag stranded backend code: unmounted routers, uncalled route "
-            "registration wrappers, and uncalled enforcement exports. "
-            "Hard-blocking with a shrink-only baseline."
+            "registration wrappers, uncalled enforcement exports, and "
+            "unimported substrate packages. Hard-blocking with a shrink-only "
+            "baseline."
         ),
     )
     parser.add_argument(

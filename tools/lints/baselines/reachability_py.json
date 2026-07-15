@@ -1,8 +1,98 @@
 {
-  "generated_at": "2026-07-15T16:53:25.255955+00:00",
+  "generated_at": "2026-07-15T19:41:20.460113+00:00",
   "lint": "reachability_gate_py",
   "schema_version": 1,
   "violations": [
+    {
+      "col": 0,
+      "kind": "package:unimported:ad_targeting",
+      "line": 1,
+      "path": "substrate/ad_targeting/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:advertisers",
+      "line": 1,
+      "path": "substrate/advertisers/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:analytics",
+      "line": 1,
+      "path": "substrate/analytics/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:autoresearch",
+      "line": 1,
+      "path": "substrate/autoresearch/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:collective_graph",
+      "line": 1,
+      "path": "substrate/collective_graph/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:cross_graph_writer",
+      "line": 1,
+      "path": "substrate/cross_graph_writer/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:deletion_worker",
+      "line": 1,
+      "path": "substrate/deletion_worker/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:dp_shuffler",
+      "line": 1,
+      "path": "substrate/dp_shuffler/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:ducklake",
+      "line": 1,
+      "path": "substrate/ducklake/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:edit",
+      "line": 1,
+      "path": "substrate/edit/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:federation",
+      "line": 1,
+      "path": "substrate/federation/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:gap_detection",
+      "line": 1,
+      "path": "substrate/gap_detection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:graph_per_user",
+      "line": 1,
+      "path": "substrate/graph_per_user/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:invariants",
+      "line": 1,
+      "path": "substrate/invariants/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:multi_user.crdt_scaffold",
+      "line": 1,
+      "path": "substrate/multi_user/crdt_scaffold/__init__.py"
+    },
     {
       "col": 0,
       "kind": "export:uncalled:execute_authorized_call",
@@ -95,9 +185,69 @@
     },
     {
       "col": 0,
+      "kind": "package:unimported:public_graph",
+      "line": 1,
+      "path": "substrate/public_graph/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:public_notes_ingest",
+      "line": 1,
+      "path": "substrate/public_notes_ingest/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:quality_gate",
+      "line": 1,
+      "path": "substrate/quality_gate/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:reading.projection",
+      "line": 1,
+      "path": "substrate/reading/projection/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:research_bridge",
+      "line": 1,
+      "path": "substrate/research_bridge/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:research_bridge.eval",
+      "line": 1,
+      "path": "substrate/research_bridge/eval/__init__.py"
+    },
+    {
+      "col": 0,
       "kind": "export:uncalled:guard_servable_body",
       "line": 223,
       "path": "substrate/rights/arxiv_tiers.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:synthesis_rubric",
+      "line": 1,
+      "path": "substrate/synthesis_rubric/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:telemetry_preferences",
+      "line": 1,
+      "path": "substrate/telemetry_preferences/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:trust_center",
+      "line": 1,
+      "path": "substrate/trust_center/__init__.py"
+    },
+    {
+      "col": 0,
+      "kind": "package:unimported:twin_note_taker",
+      "line": 1,
+      "path": "substrate/twin_note_taker/__init__.py"
     }
   ]
 }
