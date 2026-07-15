@@ -17,6 +17,7 @@
  * explicit `sideEffects` allowlist at the same time.
  */
 import "./iceFishing";
+import "./researchLens";
 
 export {
   registerActivity,
@@ -25,6 +26,11 @@ export {
   getDefaultActivity,
 } from "./registry";
 export { iceFishingActivity } from "./iceFishing";
+export { researchLensActivity } from "./researchLens";
+export {
+  activityIdForPathname,
+  getActivityForPathname,
+} from "./selection";
 export type {
   ActivityId,
   ActivityUnlock,

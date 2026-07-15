@@ -1,24 +1,27 @@
 import { useEffect } from "react";
 
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
-import { getDefaultActivity } from "./activities";
 import { wernerIceFishingCursor } from "./iceFishingFlags";
+import { useStationActivity } from "./useStationActivity";
 
 /**
- * Shell-level ice-fishing cursor policy (SPR-13): bait overlay + cursor:none on
- * html when active. Reduced motion disables both.
+ * Shell-level station-instrument policy: mount the route-selected cursor layer
+ * and hide the native cursor on pointer devices. Reduced-motion keeps the native
+ * cursor and mounts no instrument. This sits outside the route switch so every
+ * mode gets exactly one global overlay.
  *
- * SPR-01: the bait + fishing-line pair is no longer hard-wired here — it is the
- * active (default) activity's cursor-instrument (ice-fishing's instrument mounts
- * the same WernerFishingLayer + WernerIceBait, in the same order, with the same
- * `disabled` prop). With one activity this is behavior-identical; the shell now
- * mounts "whatever the active activity's instrument is" instead of one fixed pair.
+ * Instruments read the pointer seam but cannot write mascot position. The CSS
+ * class name remains legacy-compatible with the original ice-fishing rollout.
  */
 export function WernerIceCursorShell() {
   const reduceMotion = usePrefersReducedMotion();
-  const active = wernerIceFishingCursor && !reduceMotion;
-
-  const Instrument = getDefaultActivity().instrument.render;
+  const activity = useStationActivity();
+  // The legacy flag gates ice fishing only. Research lens is a separate
+  // activity and must remain available when production disables fishing.
+  const enabledByActivity =
+    activity.id !== "ice-fishing" || wernerIceFishingCursor;
+  const active = enabledByActivity && !reduceMotion;
+  const Instrument = activity.instrument.render;
 
   useEffect(() => {
     const root = document.documentElement;

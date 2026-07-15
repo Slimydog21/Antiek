@@ -6,6 +6,7 @@ import {
   getDefaultActivity,
   iceFishingActivity,
   listActivities,
+  researchLensActivity,
   registerActivity,
   type CursorInstrumentProps,
 } from "./index";
@@ -32,8 +33,19 @@ describe("station activity registry", () => {
     expect(getDefaultActivity()).toBe(iceFishingActivity);
   });
 
+  it("registers research-lens without replacing the default", () => {
+    expect(getActivity("research-lens")).toBe(researchLensActivity);
+    expect(listActivities()).toEqual([
+      iceFishingActivity,
+      researchLensActivity,
+    ]);
+    expect(getDefaultActivity()).toBe(iceFishingActivity);
+  });
+
   it("registerActivity is idempotent for the same object", () => {
-    const before = listActivities().filter((a) => a.id === "ice-fishing").length;
+    const before = listActivities().filter(
+      (a) => a.id === "ice-fishing",
+    ).length;
     // Re-register the SAME id — the catalog must not grow a duplicate entry.
     registerActivity(iceFishingActivity, { default: true });
     const after = listActivities().filter((a) => a.id === "ice-fishing").length;
@@ -84,6 +96,27 @@ describe("station activity registry", () => {
       const types = children.map((child) => child.type);
       expect(types).toContain(WernerFishingLayer);
       expect(types).toContain(WernerIceBait);
+    });
+  });
+
+  describe("research-lens activity shape", () => {
+    it("declares the route policy and no idle mascot ambient", () => {
+      expect(researchLensActivity.unlock).toEqual({
+        kind: "route",
+        policyId: "knowledge-work",
+      });
+      expect(researchLensActivity.ambient).toEqual({
+        activeClass: null,
+        idleClass: null,
+      });
+    });
+
+    it("reads only the cursor seam", () => {
+      expect(researchLensActivity.instrument.reads).toEqual([
+        "live",
+        "pointerIdle",
+        "tabHidden",
+      ]);
     });
   });
 });

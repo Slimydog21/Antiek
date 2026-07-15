@@ -93,6 +93,9 @@ export {
   listActivities,
   getDefaultActivity,
   iceFishingActivity,
+  researchLensActivity,
+  activityIdForPathname,
+  getActivityForPathname,
   type ActivityId,
   type ActivityUnlock,
   type CursorInstrument,
@@ -100,3 +103,6 @@ export {
   type InstrumentSeamField,
   type StationActivity,
 } from "./activities";
+
+export { useStationActivity } from "./useStationActivity";
+export { ResearchLensCursor } from "./ResearchLensCursor";
