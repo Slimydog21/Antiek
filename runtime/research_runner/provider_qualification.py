@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
 
@@ -49,7 +51,10 @@ class ProviderQualification:
     operation: str
     checked_at: str
     verdict: QualificationVerdict
-    evidence: dict[str, QualificationEvidence]
+    evidence: Mapping[str, QualificationEvidence]
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "evidence", MappingProxyType(dict(self.evidence)))
 
     @property
     def route_key(self) -> tuple[str, str, str]:
@@ -57,8 +62,10 @@ class ProviderQualification:
 
     @property
     def fully_qualified(self) -> bool:
-        return self.verdict is QualificationVerdict.QUALIFIED and all(
-            item.status is EvidenceStatus.PASS for item in self.evidence.values()
+        return (
+            self.verdict is QualificationVerdict.QUALIFIED
+            and set(self.evidence) == _REQUIRED_DIMENSIONS
+            and all(item.status is EvidenceStatus.PASS for item in self.evidence.values())
         )
 
 

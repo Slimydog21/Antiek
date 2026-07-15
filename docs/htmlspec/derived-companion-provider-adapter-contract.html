@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Antiek Derived Companion Provider Adapter Contract</title></head>
+<body>
+<main>
+  <h1>Derived Companion Provider Adapter Contract</h1>
+  <p><strong>Status:</strong> Cycle 65 executable sub-spec. Internal contract only. No route is registered or qualified by this sprint.</p>
+
+  <section>
+    <h2>Objective</h2>
+    <p>Define and prove the narrow trusted boundary that can turn one authoritative provider success into the canonical grounded-answer candidate and provider-response digest required by the Cycle 64 execution journal. Preserve fail-closed dispatch: qualification evidence alone never creates an executable route, and registration alone never overrides failed qualification.</p>
+  </section>
+
+  <section>
+    <h2>Non-authority</h2>
+    <ul>
+      <li>No provider SDK, network call, credential lookup, model choice, pricing snapshot, reservation, or public command.</li>
+      <li>No change to <code>project_derived_companion_execution</code>: every current route remains unavailable, non-reservable, and dispatch-denied.</li>
+      <li>No provider response is trusted because it resembles JSON. Only an explicitly registered adapter may normalize its own response type.</li>
+      <li>The response digest is provenance evidence over canonical adapter-owned response material; it is not described as a provider signature.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Contract</h2>
+    <ol>
+      <li>An adapter identity is immutable <code>(provider, model, operation)</code> and operation must be <code>answer</code>.</li>
+      <li>Normalization accepts the adapter's private response type and returns only <code>canonical_candidate_json</code> plus a lowercase SHA-256 <code>provider_response_digest</code>.</li>
+      <li>The candidate must round-trip through <code>candidate_from_json</code>; unknown keys, malformed claims, non-canonical text, and oversized output fail before journal completion.</li>
+      <li>The digest input must be deterministic, secret-free, bounded, and explicitly documented by the adapter. Raw prompts, credentials, hidden reasoning, and mutable transport headers are excluded.</li>
+      <li>A registry lookup requires an exact route identity and rejects duplicates. An empty registry is the production default.</li>
+      <li>Execution eligibility is the conjunction of a fully qualified evidence record and an exact registered adapter. Neither side can promote the other.</li>
+      <li>Recovery reuses the journal execution identity and existing provider idempotency key. It never creates a second send authority.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Implementation Sprints</h2>
+    <h3>SPR-01: Pure adapter protocol and normalized success</h3>
+    <p>Add typed immutable route identity and normalized-success records plus a protocol whose only behavior is pure response normalization. Validate all public construction boundaries and export no concrete provider implementation.</p>
+    <h3>SPR-02: Closed registry and dual gate</h3>
+    <p>Add an injected in-memory registry with duplicate refusal and exact lookup. Add a pure eligibility function consuming checked qualification records and the registry. Keep the module disconnected from the provider gateway and HTTP routes.</p>
+    <h3>SPR-03: Adversarial proof</h3>
+    <p>Prove empty-default denial, registration-only denial, qualification-only denial, refused-verdict denial, route mismatch, duplicate registration, malformed normalization, deterministic digest behavior, and successful exact dual-gate selection. Reassert the existing public projection remains dispatch-denied.</p>
+  </section>
+
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>All new behavior is pure or injected; importing the module performs no I/O.</li>
+      <li>No production adapter instance or executable route is registered.</li>
+      <li>No secret-shaped field can enter normalized success or digest material.</li>
+      <li>Strict mypy, Ruff, focused tests, existing qualification/projection tests, diff check, and HardenX pass.</li>
+      <li>A heterogeneous reviewer attempts to refute dual-gate fail-closed behavior; unavailable engines are recorded, never promoted to acceptance.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
