@@ -9,6 +9,9 @@ import {
 } from "react";
 
 import LemonButton from "../../components/lemon/LemonButton";
+import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
+import iceFishingArt from "../../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
+import paperclipArt from "../../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
 import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
 import {
   RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
@@ -20,11 +23,32 @@ const LazyResearchWaitArcadeGame = lazy(
   () => import("./ResearchWaitArcadeGame"),
 );
 
+const ARCADE_CHOICES: ReadonlyArray<{
+  id: ArcadeGameKind;
+  title: string;
+  description: string;
+  art: string;
+}> = [
+  {
+    id: "zombies",
+    title: "Paperclip Zombies",
+    description: "Defend the archive while research keeps running.",
+    art: paperclipArt,
+  },
+  {
+    id: "ice-fishing",
+    title: "Ice Fishing",
+    description: "Drop the line, catch fish, avoid the boot.",
+    art: iceFishingArt,
+  },
+];
+
 export interface ResearchWaitArcadeProps {
   episodeId: string;
   activeResearchCount: number;
   offerAfterMs?: number;
   returnFocusRef: RefObject<HTMLElement | null>;
+  reducedMotion?: boolean;
 }
 
 export default function ResearchWaitArcade({
@@ -32,9 +56,13 @@ export default function ResearchWaitArcade({
   activeResearchCount,
   offerAfterMs = RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
   returnFocusRef,
+  reducedMotion,
 }: ResearchWaitArcadeProps) {
+  const systemReducedMotion = useReducedMotionPreference();
+  const effectiveReducedMotion = reducedMotion ?? systemReducedMotion;
   const [offerReady, setOfferReady] = useState(false);
   const [optedIn, setOptedIn] = useState(false);
+  const [selectedGame, setSelectedGame] = useState<ArcadeGameKind>("zombies");
   const hostRef = useRef<HTMLElement | null>(null);
   const playRef = useRef<HTMLButtonElement | null>(null);
   const focusedInsideRef = useRef(false);
@@ -43,6 +71,7 @@ export default function ResearchWaitArcade({
   useEffect(() => {
     setOfferReady(false);
     setOptedIn(false);
+    setSelectedGame("zombies");
     const timeout = window.setTimeout(
       () => setOfferReady(true),
       Math.max(0, offerAfterMs),
@@ -68,7 +97,7 @@ export default function ResearchWaitArcade({
     hasAuthoritativeSnapshot: true,
     researchCount: activeResearchCount,
     allTerminal: false,
-    reducedMotion: false,
+    reducedMotion: effectiveReducedMotion,
     offerReady,
     optedIn,
   });
@@ -103,6 +132,7 @@ export default function ResearchWaitArcade({
       className="research-wait-arcade"
       data-testid="research-wait-arcade"
       data-mode={mode}
+      data-selected-game={selectedGame}
       data-episode-id={episodeId}
       aria-label="Optional research wait game"
       onFocusCapture={() => {
@@ -132,23 +162,60 @@ export default function ResearchWaitArcade({
       </div>
 
       {mode === "offer" && (
-        <div className="research-wait-arcade__drawer">
-          <div className="min-w-0">
-            <p className="font-serif text-sm font-semibold text-ink dark:text-bright">
-              Paperclip Zombies
-            </p>
+        <div className="research-wait-arcade__drawer research-wait-arcade__offer">
+          <fieldset className="research-wait-arcade__chooser">
+            <legend className="font-serif text-sm font-semibold text-ink dark:text-bright">
+              Choose a cartridge
+            </legend>
             <p className="mt-1 text-xs text-shadow-1 dark:text-moonlight">
-              Optional. Defend the archive while research keeps running.
+              Optional. Your research continues above either game.
             </p>
+            <div className="research-wait-arcade__cartridges">
+              {ARCADE_CHOICES.map((choice) => (
+                <label
+                  key={choice.id}
+                  className="research-wait-arcade__cartridge"
+                  data-selected={selectedGame === choice.id ? "true" : "false"}
+                >
+                  <input
+                    type="radio"
+                    name={`research-wait-cartridge-${episodeId}`}
+                    value={choice.id}
+                    checked={selectedGame === choice.id}
+                    onChange={() => setSelectedGame(choice.id)}
+                  />
+                  <img
+                    src={choice.art}
+                    alt=""
+                    aria-hidden="true"
+                    decoding="async"
+                  />
+                  <span className="research-wait-arcade__cartridge-copy">
+                    <span className="font-serif text-sm font-semibold text-ink dark:text-bright">
+                      {choice.title}
+                    </span>
+                    <span className="text-xs text-shadow-1 dark:text-moonlight">
+                      {choice.description}
+                    </span>
+                  </span>
+                  <span
+                    className="research-wait-arcade__choice-mark"
+                    aria-hidden="true"
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <div className="research-wait-arcade__offer-action">
+            <LemonButton
+              ref={playRef}
+              size="sm"
+              variant="primary"
+              onClick={() => setOptedIn(true)}
+            >
+              Play while waiting
+            </LemonButton>
           </div>
-          <LemonButton
-            ref={playRef}
-            size="sm"
-            variant="primary"
-            onClick={() => setOptedIn(true)}
-          >
-            Play while waiting
-          </LemonButton>
         </div>
       )}
 
@@ -157,7 +224,10 @@ export default function ResearchWaitArcade({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
               <p className="font-serif text-sm font-semibold text-ink dark:text-bright">
-                Paperclip Zombies
+                {
+                  ARCADE_CHOICES.find((choice) => choice.id === selectedGame)
+                    ?.title
+                }
               </p>
               <p className="text-xs text-shadow-1 dark:text-moonlight">
                 Research stays live above the game.
@@ -169,11 +239,34 @@ export default function ResearchWaitArcade({
           </div>
           <div className="research-wait-arcade__canvas-shell">
             <Suspense fallback={null}>
-              <LazyResearchWaitArcadeGame />
+              <LazyResearchWaitArcadeGame
+                game={selectedGame}
+                reducedMotion={effectiveReducedMotion}
+              />
             </Suspense>
           </div>
         </div>
       )}
     </aside>
   );
+}
+
+function useReducedMotionPreference(): boolean {
+  const [reduced, setReduced] = useState(
+    () =>
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches,
+  );
+
+  useEffect(() => {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduced(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+
+  return reduced;
 }

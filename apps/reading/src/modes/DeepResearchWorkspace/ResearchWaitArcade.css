@@ -52,6 +52,93 @@
   align-items: stretch;
 }
 
+.research-wait-arcade__offer {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.research-wait-arcade__chooser {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+}
+
+.research-wait-arcade__cartridges {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: calc(var(--spacing) * 2);
+  margin-top: calc(var(--spacing) * 3);
+}
+
+.research-wait-arcade__cartridge {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--edge) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  cursor: pointer;
+  box-shadow: none;
+}
+
+.research-wait-arcade__cartridge[data-selected="true"] {
+  border-color: var(--sun-deep);
+  background: var(--card);
+  box-shadow: var(--shadow-z1);
+}
+
+.research-wait-arcade__cartridge input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.research-wait-arcade__cartridge img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 3 / 2;
+  object-fit: cover;
+  border-bottom: 1px solid var(--border);
+}
+
+.research-wait-arcade__cartridge-copy {
+  display: grid;
+  gap: var(--spacing);
+  min-width: 0;
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
+}
+
+.research-wait-arcade__choice-mark {
+  position: absolute;
+  top: calc(var(--spacing) * 2);
+  right: calc(var(--spacing) * 2);
+  width: calc(var(--spacing) * 2.5);
+  height: calc(var(--spacing) * 2.5);
+  border: 1px solid var(--sun-deep);
+  background: var(--card);
+  transform: rotate(45deg);
+}
+
+.research-wait-arcade__cartridge[data-selected="true"]
+  .research-wait-arcade__choice-mark {
+  background: var(--sun);
+}
+
+.research-wait-arcade__cartridge:has(input:focus-visible) {
+  outline: var(--edge) solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+.research-wait-arcade__offer-action {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .research-wait-arcade__canvas-shell {
   min-width: 0;
   overflow: hidden;
@@ -79,10 +166,26 @@
   .research-wait-arcade__drawer {
     grid-template-columns: minmax(0, 1fr);
   }
+
+  .research-wait-arcade__cartridges {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .research-wait-arcade__offer-action {
+    justify-content: stretch;
+  }
+
+  .research-wait-arcade__offer-action button {
+    width: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .research-wait-arcade__pulse {
+    transform: none;
+  }
+
+  .research-wait-arcade__choice-mark {
     transform: none;
   }
 }
