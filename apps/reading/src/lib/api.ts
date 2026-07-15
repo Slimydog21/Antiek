@@ -292,6 +292,7 @@ export interface InvestigationSummary {
    * server-side). The surface badges it "found by the loop"; the raw
    * policy_id is never sent. Optional for back-compat with older responses. */
   spawned_by_daemon?: boolean;
+  artifact_composable?: boolean;
 }
 
 /** GET /investigations — list past investigations for the sidebar. */
@@ -309,6 +310,34 @@ export async function listInvestigations(opts?: {
       resp.status,
       await resp.text(),
     );
+  }
+  return resp.json();
+}
+
+export interface ComposedArtifactResponse {
+  composition_id: string;
+  url: string;
+  ordered_set_digest: string;
+  members: Array<{ investigation_id: string; content_hash: string }>;
+  hash_conflicts: Array<[string, string]>;
+}
+
+/** Compose completed investigations in the caller-provided selection order. */
+export async function composeResearchArtifacts(
+  investigationIds: string[],
+): Promise<ComposedArtifactResponse> {
+  const resp = await apiFetch(`${API_BASE}/research/artifacts/compose`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ investigation_ids: investigationIds }),
+  });
+  if (!resp.ok) {
+    let message = `Composition failed (HTTP ${resp.status})`;
+    try {
+      const body = await resp.json() as { detail?: string };
+      if (body.detail) message = body.detail;
+    } catch { /* retain the useful status fallback */ }
+    throw new ApiError(message, resp.status, message);
   }
   return resp.json();
 }

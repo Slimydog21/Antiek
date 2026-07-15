@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cycle 40 - Multi-investigation HTML composition</title>
+  <style>
+    body { color: #201f1b; background: #f7f6f2; font: 16px/1.55 system-ui, sans-serif; margin: 0; }
+    main { max-width: 960px; margin: auto; padding: 32px 24px 72px; }
+    h1, h2 { line-height: 1.15; } code, pre { font-family: ui-monospace, monospace; }
+    pre { overflow: auto; padding: 16px; background: #fff; border-left: 4px solid #f4c430; }
+    table { width: 100%; border-collapse: collapse; background: #fff; }
+    th, td { padding: 10px; border: 1px solid #cbc8bd; text-align: left; vertical-align: top; }
+    .decision { padding: 16px; background: #fff; border: 1px solid #cbc8bd; }
+  </style>
+</head>
+<body><main>
+  <p>Antiek Infinite / Cycle 40 / executable master-and-sprint spec / 2026-07-15</p>
+  <h1>Turn completed investigations into one inspectable HTML research set</h1>
+
+  <section>
+    <h2>Decision and external boundary</h2>
+    <div class="decision">
+      <p>Cycle 40 does not add another simulated Bedrock authority layer. AWS exposes batch-job status,
+      record counters, tags, and output artifacts, while billed dollars are available through billing
+      reports at an attribution granularity that does not prove an exact synchronous final invoice for
+      one batch job. CloudTrail can independently identify an assumed-role session, but only from a
+      deployed account's audit trail. Exact billing and credential-provenance closure therefore require
+      operator-owned AWS deployment evidence.</p>
+      <p>The unblocked product frontier is already substrate-backed: <code>compose_artifacts</code> exports
+      deterministic self-contained ResearchArtifact HTML and detects duplicate content hashes, but it is
+      only reachable from a CLI. The live workstation sidebar cannot select completed investigations and
+      compose them for joint review.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>User contract</h2>
+    <ol>
+      <li>The operator enters selection mode from the Investigations sidebar.</li>
+      <li>Only completed investigations are selectable; in-progress, failed, stopped, and session-container
+      rows are visibly ineligible rather than silently accepted.</li>
+      <li>Two through twenty distinct investigations may be selected. Selection order is explicit and is
+      the order of the composed artifact.</li>
+      <li>Compose performs no model, retrieval, provider, graph mutation, or paid dispatch. It projects
+      existing investigation truth into HTML.</li>
+      <li>Success returns a server-served HTML URL plus exact member IDs, content hashes, and hash conflicts.
+      The client opens that URL in a new tab while retaining the current workstation.</li>
+      <li>Failures retain the selection and present one actionable message. A repeated request is safe and
+      deterministically addresses the same ordered member set.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Authority and security</h2>
+    <ul>
+      <li>The API derives operator identity from authenticated request state; no owner field is accepted.</li>
+      <li>The API validates ID count, exact string shape, uniqueness, completed lifecycle evidence, and
+      canonical event-file containment before writing output.</li>
+      <li>Never return or accept arbitrary filesystem paths. Serve the composed bytes from an opaque,
+      deterministic composition ID and use relative member links served by authenticated routes.</li>
+      <li>HTML escapes every label and ID. Embedded machine metadata is canonical JSON with hashes for
+      every member and an ordered-set digest.</li>
+      <li>Composition does not imply synthesis, claim reconciliation, graph merge, or agreement. Equal
+      hashes are reported as duplicate-content conflicts for operator review.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Implementation sprints</h2>
+    <table>
+      <tr><th>Sprint</th><th>Change</th><th>Proof</th></tr>
+      <tr><td>C40-S1</td><td>Harden the composition projector: canonical ordered identity, self-contained
+      metadata, safe member links, atomic write, input validation, and no <code>file://</code> exposure.</td>
+      <td>Unit tests cover order, duplicate IDs, traversal-shaped IDs, hash conflicts, escaping, deterministic
+      replay, atomic failure, and zero event/model/provider calls.</td></tr>
+      <tr><td>C40-S2</td><td>Add authenticated compose and HTML-read routes under <code>/research/artifacts</code>.
+      Validate that every selected trajectory is completed before projection.</td><td>API tests cover auth,
+      2..20 limits, unknown/nonterminal members, response metadata, content type, missing composition, and
+      no path disclosure.</td></tr>
+      <tr><td>C40-S3</td><td>Add sidebar selection mode, completed-only checkboxes, ordered selection tray,
+      compose command, pending/error/success behavior, and new-tab opening.</td><td>Component tests cover
+      eligibility, ordering, deselection, disabled states, retained failure state, exact request, and success.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Done bar</h2>
+    <ul>
+      <li>Focused backend and frontend suites pass; repository-adjacent artifact and workstation tests pass.</li>
+      <li>TypeScript, Ruff, compileall, production frontend build, and HTML parsing pass.</li>
+      <li>An independent engine attempts to break authorization, filesystem containment, lifecycle validation,
+      deterministic replay, and UI state.</li>
+      <li>HardenX reports zero real findings. The diff states the AWS deployment blockers without claiming
+      production Bedrock billing or credential authority.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Explicit non-goals</h2>
+    <p>No LLM synthesis across investigations, no automatic graph merge, no write-draft generation, no
+    public sharing, no collaboration ACL, no production Bedrock qualification, and no exact invoice claim.
+    Those require separate authority and product contracts after this deterministic review surface exists.</p>
+  </section>
+</main></body></html>
