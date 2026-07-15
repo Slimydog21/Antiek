@@ -1,4 +1,19 @@
-"""Authorized, bytes-only EPUB port into Antiek's personal-reading corpus."""
+"""Authorized, bytes-only EPUB port into Antiek's personal-reading corpus.
+
+Two-phase design:
+
+1. ``convert_authorized_epub`` — pure CPU, no DB, thread-safe.  Runs
+   *outside* the writer lock (via ``asyncio.to_thread`` in the route
+   handler) so bounded conversion never blocks the global DuckDB writer.
+
+2. ``commit_authorized_port`` — one DB transaction: verify authorization,
+   publish converted book, mint signed port receipt.  Runs *inside* the
+   writer lock via ``connect_write``.
+
+``port_authorized_epub`` is the backward-compatible convenience wrapper
+that chains both phases on a single ``LockedConnection`` (used by tests
+that already hold the writer lock).
+"""
 
 from __future__ import annotations
 
@@ -9,6 +24,7 @@ from dataclasses import dataclass
 
 from runtime.db_lock import LockedConnection
 from substrate.book_import import (
+    ConvertedBook,
     book_publication_transaction,
     convert_epub_to_antiek_html,
     publish_converted_book,
@@ -33,6 +49,18 @@ class AuthorizedBookPort:
     servability: str
     was_new: bool
     port_hash: str
+
+
+_PREPARED_EPUB_CAPABILITY = object()
+
+
+@dataclass(frozen=True)
+class _PreparedAuthorizedEpub:
+    """Opaque in-process result that binds conversion to its source digest."""
+
+    converted: ConvertedBook
+    epub_sha256: str
+    _capability: object
 
 
 _DDL = """
@@ -88,28 +116,71 @@ def _payload(
     }
 
 
-def port_authorized_epub(
+# ── Phase 1: pure conversion, no DB ─────────────────────────────────
+
+
+def convert_authorized_epub(
+    epub_bytes: bytes,
+) -> _PreparedAuthorizedEpub:
+    """Convert EPUB bytes into Antiek-HTML outside the writer lock.
+
+    Returns an opaque conversion result bound to the source digest. Pure CPU,
+    no database access,
+    safe to run via ``asyncio.to_thread`` on the event loop.  Raises the
+    typed :mod:`substrate.book_import.errors` vocabulary on hostile or
+    unreadable input — the caller translates those to HTTP 422/413/409.
+
+    The returned ``epub_sha256`` is the content hash of the *raw* EPUB
+    bytes (not the converted HTML), used as the stable port receipt key.
+    """
+    if not isinstance(epub_bytes, bytes) or not epub_bytes:
+        raise ValueError("epub_bytes must be non-empty bytes")
+    converted = convert_epub_to_antiek_html(epub_bytes)
+    epub_sha256 = hashlib.sha256(epub_bytes).hexdigest()
+    return _PreparedAuthorizedEpub(
+        converted=converted,
+        epub_sha256=epub_sha256,
+        _capability=_PREPARED_EPUB_CAPABILITY,
+    )
+
+
+# ── Phase 2: one DB transaction ─────────────────────────────────────
+
+
+def commit_authorized_port(
     con: LockedConnection,
     *,
     authorization_receipt_id: str,
     operator_id: str,
     signing_key: bytes,
-    epub_bytes: bytes,
+    prepared: _PreparedAuthorizedEpub,
 ) -> AuthorizedBookPort:
+    """Commit the authorized port inside the writer lock.
+
+    One atomic transaction: verify authorization, publish the converted
+    book, mint the signed port receipt.  Authorization verification
+    happens *inside* this transaction so it cannot be bypassed.
+    """
     if not isinstance(con, LockedConnection):
         raise TypeError("book port writes require LockedConnection")
-    if not isinstance(epub_bytes, bytes) or not epub_bytes:
-        raise ValueError("epub_bytes must be non-empty bytes")
-    verify_authorization(
-        con,
-        authorization_receipt_id=authorization_receipt_id,
-        expected_operator_id=operator_id,
-        signing_key=signing_key,
-    )
-    converted = convert_epub_to_antiek_html(epub_bytes)
-    epub_sha256 = hashlib.sha256(epub_bytes).hexdigest()
+    if (
+        not isinstance(prepared, _PreparedAuthorizedEpub)
+        or prepared._capability is not _PREPARED_EPUB_CAPABILITY
+    ):
+        raise TypeError("prepared must come from convert_authorized_epub")
+    converted = prepared.converted
+    epub_sha256 = prepared.epub_sha256
 
     with book_publication_transaction(con) as transaction:
+        # Verification and publication share one transaction. The global
+        # writer lock prevents concurrent writers; the transaction also
+        # guarantees rollback if publication or receipt insertion fails.
+        verify_authorization(
+            con,
+            authorization_receipt_id=authorization_receipt_id,
+            expected_operator_id=operator_id,
+            signing_key=signing_key,
+        )
         published = publish_converted_book(
             con,
             converted,
@@ -162,6 +233,37 @@ def port_authorized_epub(
         was_new=published.was_new,
         port_hash=port_hash,
     )
+
+
+# ── Convenience: one-call path for tests that already hold writer ────
+
+
+def port_authorized_epub(
+    con: LockedConnection,
+    *,
+    authorization_receipt_id: str,
+    operator_id: str,
+    signing_key: bytes,
+    epub_bytes: bytes,
+) -> AuthorizedBookPort:
+    """Convert + commit in one call.
+
+    Backward-compatible entry point for callers that already hold the
+    writer lock (e.g. unit tests).  The route handler uses the split
+    ``convert_authorized_epub`` → ``commit_authorized_port`` path
+    instead, so conversion runs outside the writer lock.
+    """
+    prepared = convert_authorized_epub(epub_bytes)
+    return commit_authorized_port(
+        con,
+        authorization_receipt_id=authorization_receipt_id,
+        operator_id=operator_id,
+        signing_key=signing_key,
+        prepared=prepared,
+    )
+
+
+# ── Verification (read-only) ─────────────────────────────────────────
 
 
 def verify_port_receipt(
@@ -243,3 +345,14 @@ def verify_port_receipt(
         False,
         port_hash,
     )
+
+
+__all__ = [
+    "AuthorizedBookPort",
+    "PortReceiptIntegrityError",
+    "commit_authorized_port",
+    "convert_authorized_epub",
+    "ensure_port_schema",
+    "port_authorized_epub",
+    "verify_port_receipt",
+]

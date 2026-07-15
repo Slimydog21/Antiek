@@ -1659,6 +1659,38 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # Book acquisition — authorized, bytes-only EPUB port into the
+    # personal-reading corpus.  Requires a dedicated signing key
+    # (ANTIEK_BOOK_ACQUISITION_SIGNING_KEY) that is NEVER the
+    # JWT/session key; fail-closed when absent or too short.  Mounted
+    # alongside the reader routes so both routers share the same
+    # /book-acquisition prefix and auth posture.
+    _BOOK_ACQUISITION_KEY_ENV = "ANTIEK_BOOK_ACQUISITION_SIGNING_KEY"
+    _book_acq_key_raw = os.environ.get(_BOOK_ACQUISITION_KEY_ENV, "").strip()
+    if _book_acq_key_raw:
+        _book_acq_key = _book_acq_key_raw.encode("utf-8")
+        if len(_book_acq_key) < 32:
+            raise RuntimeError(
+                f"{_BOOK_ACQUISITION_KEY_ENV} must be at least 32 bytes "
+                f"(got {len(_book_acq_key)}); fail-closed"
+            )
+        _book_acq_db = default_db_path()
+        from .book_acquisition_read_routes import (
+            create_book_acquisition_read_router,
+        )
+        from .book_acquisition_routes import create_book_acquisition_router
+
+        app.include_router(
+            create_book_acquisition_router(
+                db_path=_book_acq_db,
+                signing_key=_book_acq_key,
+            )
+        )
+        app.include_router(
+            create_book_acquisition_read_router(
+                db_path=_book_acq_db, signing_key=_book_acq_key,
+            )
+        )
     # Mountain Shell SPR-02 — Krea image-generation proxy. Holds the
     # KREA_API_TOKEN server-side (the browser never sees it) and brokers
     # scene-art generation under a daily budget + rate limit + kill-switch

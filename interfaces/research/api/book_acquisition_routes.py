@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import asdict
 from typing import Annotated, Any, Literal
 
@@ -21,8 +22,9 @@ from substrate.book_acquisition import (
 from substrate.book_acquisition.port import (
     AuthorizedBookPort,
     PortReceiptIntegrityError,
+    commit_authorized_port,
+    convert_authorized_epub,
     ensure_port_schema,
-    port_authorized_epub,
 )
 from substrate.book_import import BookImportError
 
@@ -188,6 +190,29 @@ def _port_response(result: AuthorizedBookPort) -> AuthorizedBookPortResponse:
     return AuthorizedBookPortResponse.model_validate(asdict(result))
 
 
+def _commit_port(
+    *,
+    db_path: str,
+    authorization_receipt_id: str,
+    operator_id: str,
+    signing_key: bytes,
+    prepared: Any,
+) -> AuthorizedBookPortResponse:
+    """Run all blocking lock and DuckDB work on a worker thread."""
+    with connect_write(db_path, purpose="book-acquisition/port") as con:
+        ensure_schema(con)
+        ensure_port_schema(con)
+        return _port_response(
+            commit_authorized_port(
+                con,
+                authorization_receipt_id=authorization_receipt_id,
+                operator_id=operator_id,
+                signing_key=signing_key,
+                prepared=prepared,
+            )
+        )
+
+
 def create_book_acquisition_router(
     *,
     db_path: str,
@@ -277,19 +302,26 @@ def create_book_acquisition_router(
             content_length=content_length,
             max_bytes=max_epub_bytes,
         )
+        # Phase 1: bounded conversion OFF the event loop, OUTSIDE the
+        # writer lock.  convert_authorized_epub is pure CPU with no DB
+        # access — asyncio.to_thread keeps the event loop unblocked
+        # while the global DuckDB writer lock is free for other writers.
         try:
-            with connect_write(db_path, purpose="book-acquisition/port") as con:
-                ensure_schema(con)
-                ensure_port_schema(con)
-                return _port_response(
-                    port_authorized_epub(
-                        con,
-                        authorization_receipt_id=authorization_receipt_id,
-                        operator_id=operator_id,
-                        signing_key=signing_key,
-                        epub_bytes=epub_bytes,
-                    )
-                )
+            prepared = await asyncio.to_thread(convert_authorized_epub, epub_bytes)
+        except Exception as exc:
+            raise _domain_error(exc) from exc
+        # Phase 2: one DB transaction — verify authorization, publish,
+        # mint signed port receipt.  Authorization verification happens
+        # INSIDE this writer transaction to prevent TOCTOU bypass.
+        try:
+            return await asyncio.to_thread(
+                _commit_port,
+                db_path=db_path,
+                authorization_receipt_id=authorization_receipt_id,
+                operator_id=operator_id,
+                signing_key=signing_key,
+                prepared=prepared,
+            )
         except Exception as exc:
             raise _domain_error(exc) from exc
 
