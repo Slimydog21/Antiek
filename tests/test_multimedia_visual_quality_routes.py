@@ -68,7 +68,12 @@ def test_authenticated_assessment_and_owner_scoped_advisory_projection(tmp_path)
     assert report.json()["cohorts"][0]["key"]["catalog_digest"] == CATALOG_DIGEST
     payload = report.json()
     assert payload["recommendation"] is None
+    assert payload["recommendation_status"] == "no_eligible_cohorts"
     assert payload["cohorts"][0]["charged_cents_total"] > 0
+    assert payload["cohorts"][0]["quality_lower_bound"] is not None
+    assert payload["cohorts"][0]["acceptance_efficiency_score"] == payload["cohorts"][0][
+        "efficiency_score"
+    ]
     assert "actual_cost" not in report.text
 
 
