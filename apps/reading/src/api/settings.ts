@@ -23,6 +23,13 @@ export interface BudgetResponse {
   spent_status: "known" | "unknown" | "no_cap";
   cap_env: string | null;
   notes: string[];
+  reserved_estimated_usd: number | null;
+  spend_basis: "unknown" | "reserved_estimate";
+  enforcement_cap_usd: number | null;
+  enforcement_cap_env: string | null;
+  caps_aligned: boolean | null;
+  over_budget: boolean | null;
+  over_budget_usd: number | null;
 }
 
 export interface PromptCostEstimateRequest {

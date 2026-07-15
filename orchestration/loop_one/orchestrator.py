@@ -292,12 +292,16 @@ def _render_chunks_block_for_sub_question(
 
     blocks: list[str] = []
     for r in results:
-        cid = r.get("chunk_id", "?")
-        tier = r.get("source_tier", "?")
+        # Header fields are source-controlled graph metadata. Collapse all
+        # Unicode line boundaries before placing them in structural framing.
+        cid = _single_line_structural_field(r.get("chunk_id", "?"))
+        tier = _single_line_structural_field(r.get("source_tier", "?"))
         # substrate.graph.search returns column names 'chunk_text' and
         # 'document_title' (not 'text' / 'title') — easy footgun.
-        title = r.get("document_title") or r.get("title") or "(untitled)"
-        section = r.get("section_path") or ""
+        title = _single_line_structural_field(
+            r.get("document_title") or r.get("title") or "(untitled)"
+        )
+        section = _single_line_structural_field(r.get("section_path") or "")
         text = (r.get("chunk_text") or r.get("text") or "").strip()
         sim = r.get("similarity", 0.0)
         header = (
@@ -306,8 +310,18 @@ def _render_chunks_block_for_sub_question(
             + (f" | Section: {section}" if section else "")
             + f" | Similarity: {sim:.3f}\n"
         )
-        blocks.append(header + "\n" + text + "\n")
+        # Prefix every source-controlled line so retrieved text can never
+        # impersonate the record separator or a subsequent chunk heading.
+        # The evidence bridge treats only unprefixed structural lines as
+        # citation authority.
+        quoted_text = "\n".join(f"> {line}" for line in text.splitlines())
+        blocks.append(header + "\n" + quoted_text + "\n")
     return "\n---\n".join(blocks)
+
+
+def _single_line_structural_field(value: object) -> str:
+    """Contain source metadata before inserting it into record framing."""
+    return " ".join(str(value).splitlines())
 
 
 # §9.0 guard: node_types whose ``canonical_label`` is a distilled free-text

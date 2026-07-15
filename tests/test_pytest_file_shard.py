@@ -89,6 +89,22 @@ def test_invalid_shard_configuration_fails_closed(
 
 
 def test_valid_shard_configuration() -> None:
-    assert parse_shard_config("3", "0") == (3, 0)
-    assert parse_shard_config("3", "1") == (3, 1)
-    assert parse_shard_config("3", "2") == (3, 2)
+    for index in range(4):
+        assert parse_shard_config("4", str(index)) == (4, index)
+
+
+def test_four_way_partition_remains_complete_disjoint_and_nonempty() -> None:
+    nodeids = tuple(
+        f"tests/test_{file_index}.py::test_{case_index}"
+        for file_index in range(20)
+        for case_index in range(file_index % 5 + 1)
+    )
+    shards = partition_nodeids(nodeids, 4)
+
+    assert all(shards)
+    assert set().union(*map(set, shards)) == set(nodeids)
+    assert all(
+        set(left).isdisjoint(right)
+        for index, left in enumerate(shards)
+        for right in shards[index + 1 :]
+    )

@@ -16,6 +16,24 @@
 > aggregate ceiling is 20; the 40-minute monolith is retired rather than raised
 > to 60.
 
+> **2026-07-15 capacity correction: three → four shards.** Exact run
+> `29393368451` passed shards 0 and 1 plus every frontend/type/visual gate, but
+> shard 2 was forcibly cancelled at GitHub's `30m0s` ceiling with no failed-test
+> annotation. The same shard had completed near 24 minutes on recent main runs,
+> so test-count balancing no longer provides enough shared-runner variance
+> headroom. The suite now uses four file-atomic LPT partitions. Coverage,
+> markers, assertions, per-file fixture locality, aggregate required-check name,
+> and both timeout ceilings are unchanged; only parallel capacity increases.
+>
+> The first four-shard proof run (`29395340060`) then exposed an independent
+> hosted-runner disk constraint: shard 1's runner terminated with
+> `System.IO.IOException: No space left on device` while writing the Actions
+> worker log. It was not a pytest failure. Pytest shard jobs therefore no
+> longer restore or retain pip's wheel cache, and fail early unless at least
+> 2 GiB remains after dependency and ffmpeg installation. The installed
+> dependency set and test surface are unchanged; only redundant installer
+> artifacts are removed from the job's disk budget.
+
 **Date:** 2026-05-30 (15→25), amended **2026-06-01** (25→40)
 **Context:** PR #31 (`ingest/integration` → `main`, the 10-sprint corpus-ingest
 architecture). CI's `pytest` job was reported **cancelled**, not failed.

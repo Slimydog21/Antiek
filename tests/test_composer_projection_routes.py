@@ -83,6 +83,30 @@ def test_unknown_spend_is_never_fabricated_as_zero(client: TestClient) -> None:
     assert body["would_exceed_budget"] is None
 
 
+def test_signed_budget_overrun_remains_valid_at_composer_boundary(
+    client: TestClient,
+) -> None:
+    client.app.dependency_overrides[read_composer_projection_budget] = lambda: BudgetResponse(
+        daily_cap_usd=2.0,
+        spent_usd=4.0,
+        remaining_usd=-2.0,
+        spent_status="known",
+        cap_env="ANTIEK_OPERATOR_BUDGET_USD",
+        reserved_estimated_usd=4.0,
+        spend_basis="reserved_estimate",
+        enforcement_cap_usd=5.0,
+        caps_aligned=False,
+        over_budget=True,
+        over_budget_usd=2.0,
+    )
+    response = client.post("/settings/composer-projection/resolve", json=_request())
+    assert response.status_code == 200
+    body = response.json()
+    assert body["budget"] == {"daily_cap_usd": 2.0, "spent_usd": 4.0}
+    assert body["remaining_usd"] == 0.0
+    assert body["would_exceed_budget"] is None
+
+
 def test_candidates_come_from_server_state_not_request_body(client: TestClient) -> None:
     response = client.post("/settings/composer-projection/resolve", json=_request())
     assert response.status_code == 200

@@ -364,6 +364,10 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "embeddings_meta",
     "multimedia_twin_runs",
     "multimedia_distillation_claims",
+    "derived_assets",
+    "derived_asset_revisions",
+    "derived_asset_revision_members",
+    "derived_asset_current_revisions",
 )
 
 
@@ -1173,6 +1177,145 @@ CREATE INDEX IF NOT EXISTS idx_embeddings_meta_fingerprint
 """
 
 
+# Safe derived-asset merge (SDAM SPR-00).
+#
+# "Merge" is defined as a new revision of an operator-owned derived asset.
+# Source rows (documents.raw_text), projection rows, and compose snapshots
+# have no write method in this subsystem. The evidence boundary is frozen
+# before any merge implementation lands.
+#
+# The container, immutable revisions, ordered evidence-member manifests, and
+# mutable current pointer are separate tables. Composite foreign keys make it
+# impossible to bind a parent, restore source, member, or pointer across assets.
+# Future repositories own append-only/CAS behavior; routes never own DDL.
+#
+# docs/decisions/safe-derived-asset-merge-boundary.md is the binding record.
+ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL = """
+-- ============================================================
+-- derived_assets — operator-owned derived asset (SDAM SPR-00)
+-- ============================================================
+-- Stable ownership and display identity only. Revision state is elsewhere.
+CREATE TABLE IF NOT EXISTS derived_assets (
+    derived_asset_id    TEXT PRIMARY KEY,
+    title               TEXT NOT NULL,
+    asset_kind          TEXT NOT NULL CHECK (asset_kind IN (
+        'document', 'analysis', 'synthesis', 'composite'
+    )),
+    owner_user_id       TEXT NOT NULL,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json       TEXT                 -- JSON; VARIANT deferred
+);
+CREATE INDEX IF NOT EXISTS idx_derived_assets_owner
+    ON derived_assets(owner_user_id);
+CREATE INDEX IF NOT EXISTS idx_derived_assets_kind
+    ON derived_assets(asset_kind);
+
+-- ============================================================
+-- derived_asset_revisions — immutable revision content (SDAM SPR-00)
+-- ============================================================
+-- Canonical revision authority. canonical_html is the exact reviewed byte source;
+-- its UTF-8 hash and the ordered member-manifest hash are persisted together.
+CREATE TABLE IF NOT EXISTS derived_asset_revisions (
+    derived_asset_id          TEXT NOT NULL
+        REFERENCES derived_assets(derived_asset_id),
+    revision_id               TEXT NOT NULL,
+    operation_kind            TEXT NOT NULL CHECK (operation_kind IN (
+        'create', 'revise', 'restore'
+    )),
+    canonical_html            TEXT NOT NULL,
+    canonical_byte_count      BIGINT NOT NULL
+        CHECK (canonical_byte_count = octet_length(encode(canonical_html))),
+    content_sha256            TEXT NOT NULL
+        CHECK (
+            regexp_full_match(content_sha256, '[0-9a-f]{64}')
+            AND content_sha256 = sha256(canonical_html)
+        ),
+    manifest_json             TEXT NOT NULL,
+    manifest_sha256           TEXT NOT NULL
+        CHECK (
+            regexp_full_match(manifest_sha256, '[0-9a-f]{64}')
+            AND manifest_sha256 = sha256(manifest_json)
+        ),
+    sanitizer_policy          TEXT NOT NULL,
+    sanitizer_version         TEXT NOT NULL,
+    review_id                 TEXT NOT NULL,
+    acknowledgement_version   TEXT NOT NULL,
+    parent_revision_id        TEXT,
+    restored_from_revision_id TEXT,
+    created_at                TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    metadata_json             TEXT,
+    PRIMARY KEY (derived_asset_id, revision_id),
+    UNIQUE (revision_id),
+    UNIQUE (derived_asset_id, revision_id, content_sha256),
+    UNIQUE (
+        derived_asset_id, revision_id, content_sha256, manifest_sha256
+    ),
+    FOREIGN KEY (derived_asset_id, parent_revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id),
+    FOREIGN KEY (
+        derived_asset_id, restored_from_revision_id,
+        content_sha256, manifest_sha256
+    ) REFERENCES derived_asset_revisions(
+        derived_asset_id, revision_id, content_sha256, manifest_sha256
+    ),
+    CHECK (
+        (operation_kind = 'create' AND parent_revision_id IS NULL
+            AND restored_from_revision_id IS NULL)
+        OR (operation_kind = 'revise' AND parent_revision_id IS NOT NULL
+            AND restored_from_revision_id IS NULL)
+        OR (operation_kind = 'restore' AND parent_revision_id IS NOT NULL
+            AND restored_from_revision_id IS NOT NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_derived_asset_revisions_asset
+    ON derived_asset_revisions(derived_asset_id);
+CREATE INDEX IF NOT EXISTS idx_derived_asset_revisions_parent
+    ON derived_asset_revisions(parent_revision_id);
+-- ============================================================
+-- derived_asset_revision_members — ordered immutable evidence manifest
+-- ============================================================
+CREATE TABLE IF NOT EXISTS derived_asset_revision_members (
+    derived_asset_id TEXT NOT NULL
+        REFERENCES derived_assets(derived_asset_id),
+    revision_id      TEXT NOT NULL,
+    member_index     INTEGER NOT NULL CHECK (member_index >= 0),
+    projection_id    TEXT NOT NULL,
+    source_asset_id  TEXT NOT NULL,
+    source_document_id TEXT NOT NULL,
+    source_sha256    TEXT NOT NULL
+        CHECK (regexp_full_match(source_sha256, '[0-9a-f]{64}')),
+    hosted_html_sha256 TEXT NOT NULL
+        CHECK (regexp_full_match(hosted_html_sha256, '[0-9a-f]{64}')),
+    investigation_id TEXT,
+    PRIMARY KEY (derived_asset_id, revision_id, member_index),
+    UNIQUE (derived_asset_id, revision_id, projection_id),
+    FOREIGN KEY (derived_asset_id, revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id)
+);
+
+-- ============================================================
+-- derived_asset_current_revisions — sole mutable CAS pointer
+-- ============================================================
+CREATE TABLE IF NOT EXISTS derived_asset_current_revisions (
+    derived_asset_id    TEXT PRIMARY KEY
+        REFERENCES derived_assets(derived_asset_id),
+    current_revision_id TEXT NOT NULL,
+    current_content_sha256 TEXT NOT NULL
+        CHECK (regexp_full_match(current_content_sha256, '[0-9a-f]{64}')),
+    generation          BIGINT NOT NULL CHECK (generation >= 1),
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (derived_asset_id, current_revision_id)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id),
+    FOREIGN KEY (
+        derived_asset_id, current_revision_id, current_content_sha256
+    ) REFERENCES derived_asset_revisions(
+        derived_asset_id, revision_id, content_sha256
+    )
+);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1249,6 +1392,9 @@ def init_database(con: LockedConnection) -> None:
     # GF-7 — chunk embedding provider/model/dimension pinning. Soft chunk_id
     # reference; pure idempotent CREATE IF NOT EXISTS.
     con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
+    # SDAM SPR-00 — stable owned assets, immutable canonical revisions,
+    # ordered evidence-member manifests, and a separate CAS-ready pointer.
+    con.execute(ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1289,7 +1435,9 @@ def _schema_is_present(db_path: str) -> bool:
             "information_schema.tables WHERE table_schema='main' "
             "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
-            "AND table_name='multimedia_distillation_claims'))"
+            "AND table_name='multimedia_distillation_claims') AND EXISTS ("
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name='derived_asset_current_revisions'))"
         ).fetchone()
     except Exception:
         return False

@@ -171,7 +171,7 @@ _BOOK_SELECT = """
 """
 
 
-def _row_to_asset(row: tuple) -> BookAsset:
+def _row_to_asset(row: tuple[Any, ...]) -> BookAsset:
     (document_id, title, author, content_class, ip_holder_id,
      page_count, pagination_scheme, cover_uri, toc_json,
      provenance, license_basis,
@@ -217,6 +217,7 @@ def list_book_assets(
     servable_only: bool = False,
     include_taken_down: bool = False,
     limit: int = 200,
+    offset: int = 0,
 ) -> list[BookAsset]:
     """List registered books, newest first.
 
@@ -240,7 +241,13 @@ def list_book_assets(
         clauses.append("b.taken_down = FALSE")  # servable ⇒ not taken down
     if clauses:
         sql += " WHERE " + " AND ".join(clauses)
-    sql += " ORDER BY b.created_at DESC LIMIT ?"
-    params.append(int(limit))
+    if limit < 1:
+        raise ValueError("limit must be >= 1")
+    if offset < 0:
+        raise ValueError("offset must be >= 0")
+    # The document-id tie-breaker makes adjacent offset pages deterministic
+    # when multiple assets share a creation timestamp.
+    sql += " ORDER BY b.created_at DESC, b.document_id DESC LIMIT ? OFFSET ?"
+    params.extend([int(limit), int(offset)])
     rows = con.execute(sql, params).fetchall()
     return [_row_to_asset(r) for r in rows]

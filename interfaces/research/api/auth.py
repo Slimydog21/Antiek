@@ -27,6 +27,7 @@ middleware's job is verify-on-every-request.
 from __future__ import annotations
 
 import hashlib
+import html
 import json
 import os
 import re
@@ -279,23 +280,72 @@ def _cookie_kwargs() -> dict[str, Any]:
     return kwargs
 
 
-def _format_magic_link_email(*, email: str, link: str) -> OutboundEmail:
+def _format_magic_link_email(*, email: str, link: str, device_code: str) -> OutboundEmail:
     text = (
-        "Sign in to Antiek\n"
+        "Review your Antiek sign-in\n"
         "\n"
-        f"Click the link below to sign in. The link expires in 15 minutes.\n"
+        f"Your matching code is {device_code}.\n"
+        "Open the secure link, confirm the same code on your other screen,\n"
+        "then approve the sign-in. The link expires in 15 minutes.\n"
         "\n"
         f"  {link}\n"
         "\n"
         "If you did not request this, ignore this email — no action will\n"
         "be taken.\n"
         "\n"
-        "— Antiek\n"
+        "Antiek\n"
     )
+    safe_link = html.escape(link, quote=True)
+    html_body = f"""\
+<!doctype html>
+<html lang="en">
+  <body style="margin:0;background:#f4f6f8;color:#172033;font-family:Arial,sans-serif;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f4f6f8;padding:32px 16px;">
+      <tr>
+        <td align="center">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border:1px solid #d7dce2;border-radius:12px;overflow:hidden;">
+            <tr>
+              <td style="padding:18px 24px;background:#172033;color:#ffffff;font-size:12px;font-weight:700;letter-spacing:1.4px;">
+                ANTIEK / ACCESS DESK
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:30px 24px 12px;">
+                <div style="font-size:13px;color:#667085;margin-bottom:8px;">MATCH THIS CODE</div>
+                <div style="font-family:'Courier New',monospace;font-size:42px;font-weight:700;letter-spacing:10px;color:#172033;">{device_code}</div>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:10px 24px 28px;font-size:16px;line-height:1.55;color:#344054;">
+                Open the sign-in review, confirm that your computer or iPad shows the same four digits, then approve it.
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:0 24px 30px;">
+                <a href="{safe_link}" style="display:block;background:#f5c451;color:#172033;text-align:center;text-decoration:none;font-size:16px;font-weight:700;padding:15px 20px;border-radius:8px;">Review sign-in</a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:20px 24px;border-top:1px solid #eaecf0;font-size:12px;line-height:1.5;color:#667085;">
+                This link expires in 15 minutes. If the button does not open, copy this address into your browser:<br>
+                <span style="word-break:break-all;color:#475467;">{safe_link}</span>
+              </td>
+            </tr>
+          </table>
+          <div style="max-width:520px;padding:16px 8px;font-size:12px;line-height:1.5;color:#667085;">
+            If you did not request this, ignore the message. Nothing will be unlocked.
+          </div>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>
+"""
     return OutboundEmail(
         to=email,
-        subject="Sign in to Antiek",
+        subject=f"Antiek sign-in · {device_code}",
         text_body=text,
+        html_body=html_body,
     )
 
 
@@ -364,7 +414,13 @@ def register_auth_routes(
             link = _build_magic_link(token, next_path, attempt_id)
             provider = get_email_provider()
             try:
-                provider.send(_format_magic_link_email(email=email, link=link))
+                provider.send(
+                    _format_magic_link_email(
+                        email=email,
+                        link=link,
+                        device_code=device_code,
+                    )
+                )
             except EmailDeliveryFailure as exc:
                 # Distinguish "we tried and the provider broke" from
                 # "you're not allowlisted" via a 503 — gives the

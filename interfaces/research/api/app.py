@@ -1684,6 +1684,8 @@ def create_app(
     # SAME servable-corpus read path; §9.0 keeps gated bodies out of payloads).
     from .library import register_library_routes
     register_library_routes(app)
+    from .twin_notes_routes import register_twin_notes_routes
+    register_twin_notes_routes(app)
     # HPRJ SPR-05 — synthesis-artifact export: GET /api/syntheses/{id}/artifact.html.
     # Rights filter lives in the adapter (reuses SERVABLE_CONTENT_CLASSES); the
     # route wires the in-path zero-script gate + 403-with-reason on refusal.
