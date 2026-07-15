@@ -32,11 +32,18 @@ describe("wernerMoments", () => {
     expect(momentForTransition(null, NIGHT)).toBeNull();
   });
 
-  it("fires daybreak only when night crosses into day", () => {
-    const moment = momentForTransition(NIGHT, DAY) as WernerMoment;
-    expect(moment.id).toBe("daybreak");
-    expect(moment.pose).toBe("celebrate");
-    expect(moment.settlesTo).toBe("idle");
+  it("fires daybreak only for exact night → dawn (not night → day)", () => {
+    // Night → dawn: the civil-time crossing into the dawn window.
+    const nightToDawn = momentForTransition(NIGHT, DAWN) as WernerMoment;
+    expect(nightToDawn.id).toBe("daybreak");
+    expect(nightToDawn.pose).toBe("celebrate");
+    expect(nightToDawn.settlesTo).toBe("idle");
+    // Night → day: the dawn window was skipped, so no daybreak.
+    expect(momentForTransition(NIGHT, DAY)).toBeNull();
+    // Dawn → day: not a night→dawn crossing, so null.
+    expect(momentForTransition(DAWN, DAY)).toBeNull();
+    // Initial dawn (null prev): null.
+    expect(momentForTransition(null, DAWN)).toBeNull();
   });
 
   it("fires dusk-settle on arrival into dusk and otherwise stays quiet", () => {
@@ -44,7 +51,9 @@ describe("wernerMoments", () => {
     expect(moment.id).toBe("dusk-settle");
     expect(moment.pose).toBe("thinking");
     expect(moment.settlesTo).toBe("thinking");
-    expect(momentForTransition(NIGHT, DAWN)).toBeNull();
+    // Night → day (dawn skipped): no daybreak.
+    expect(momentForTransition(NIGHT, DAY)).toBeNull();
+    // Weather-only change: no moment.
     expect(momentForTransition(DAY, CLEAR_DAY)).toBeNull();
   });
 

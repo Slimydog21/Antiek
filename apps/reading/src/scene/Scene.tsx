@@ -2,6 +2,7 @@ import type { SceneMood } from "./mood";
 import { useDerivedSceneMood } from "./useDerivedSceneMood";
 import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
+import { useDawnCue, type SceneMomentCue } from "./useDawnCue";
 import type { SceneFetcher } from "../krea/useKreaScene";
 import { useKreaStatus } from "../krea/useKreaStatus";
 import { Peaks } from "./layers/Peaks";
@@ -57,12 +58,21 @@ export interface SceneProps {
   /** Force reduced-motion for the canvas layers (tests). Defaults to the
    *  clock's own reduced-motion detection. */
   reducedMotion?: boolean;
+  /**
+   * One-way typed callback: Scene detects a committed `night → dawn` mood
+   * transition and transports the cue to the shell. The shell passes it to
+   * PenguinMascot, the sole foreground arbiter. Scene never emits a false
+   * cue on mount, StrictMode, identical rerender, explicit mood override,
+   * or unmount. (SPR-22)
+   */
+  onWernerMoment?: (cue: SceneMomentCue) => void;
 }
 
 export function Scene({
   mood: moodProp,
   fetchScene,
   reducedMotion,
+  onWernerMoment,
 }: SceneProps) {
   // A component split makes the explicit override genuinely dormant: React's
   // hook-order rules are preserved without creating an unused theme listener
@@ -76,11 +86,22 @@ export function Scene({
       />
     );
   }
-  return <DerivedScene fetchScene={fetchScene} reducedMotion={reducedMotion} />;
+  return (
+    <DerivedScene
+      fetchScene={fetchScene}
+      reducedMotion={reducedMotion}
+      onWernerMoment={onWernerMoment}
+    />
+  );
 }
 
-function DerivedScene({ fetchScene, reducedMotion }: Omit<SceneProps, "mood">) {
+function DerivedScene({
+  fetchScene,
+  reducedMotion,
+  onWernerMoment,
+}: Omit<SceneProps, "mood">) {
   const mood = useDerivedSceneMood();
+  useDawnCue(mood, onWernerMoment);
   return (
     <SceneContent
       mood={mood}
