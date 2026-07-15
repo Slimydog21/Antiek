@@ -183,6 +183,37 @@ CREATE TABLE IF NOT EXISTS derived_asset_companion_turn_citations (
         REFERENCES derived_asset_revision_chunks(derived_asset_id,revision_id,chunk_ordinal)
 );
 
+CREATE TABLE IF NOT EXISTS derived_asset_companion_answers (
+    answer_id TEXT PRIMARY KEY CHECK (regexp_full_match(answer_id,'dans_[0-9a-f]{64}')),
+    turn_id TEXT NOT NULL UNIQUE REFERENCES derived_asset_companion_turns(turn_id),
+    thread_id TEXT NOT NULL,
+    admission_key TEXT NOT NULL UNIQUE,
+    admission_request_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(admission_request_sha256,'[0-9a-f]{64}')
+    ),
+    evidence_pack_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(evidence_pack_sha256,'[0-9a-f]{64}')
+    ),
+    execution_receipt_id TEXT NOT NULL UNIQUE CHECK (
+        regexp_full_match(execution_receipt_id,'rex_[0-9a-f]{64}')
+    ),
+    execution_receipt_digest TEXT NOT NULL CHECK (
+        regexp_full_match(execution_receipt_digest,'[0-9a-f]{64}')
+    ),
+    provider TEXT NOT NULL,
+    model TEXT NOT NULL,
+    output_digest TEXT NOT NULL CHECK (regexp_full_match(output_digest,'[0-9a-f]{64}')),
+    artifact_json TEXT NOT NULL,
+    artifact_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(artifact_sha256,'[0-9a-f]{64}')
+        AND artifact_sha256=sha256(artifact_json)
+    ),
+    admitted_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (answer_id,turn_id,thread_id),
+    FOREIGN KEY (turn_id,thread_id)
+        REFERENCES derived_asset_companion_turns(turn_id,thread_id)
+);
+
 CREATE TABLE IF NOT EXISTS derived_asset_current_revisions (
     derived_asset_id TEXT PRIMARY KEY REFERENCES derived_assets(derived_asset_id),
     current_revision_id TEXT NOT NULL,
@@ -314,6 +345,7 @@ SENTINEL_TABLES = (
     "derived_asset_companion_threads",
     "derived_asset_companion_turns",
     "derived_asset_companion_turn_citations",
+    "derived_asset_companion_answers",
     "derived_asset_merge_reviews",
     "derived_asset_merge_operations",
     "derived_asset_merge_outbox",

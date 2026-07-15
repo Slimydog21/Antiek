@@ -15,9 +15,18 @@ from substrate.research_artifact.derived_companion import (
     build_derived_revision_evidence_pack,
     canonical_evidence_json,
 )
+from substrate.research_artifact.grounded_companion_answer import (
+    AnswerAdmissionExpectation,
+    CompanionExecutionReceiptVerifier,
+    GroundedAnswerCandidate,
+    build_grounded_answer,
+    candidate_digest,
+    public_grounded_answer,
+)
 
 MAX_QUESTION_BYTES: Final = 8 * 1024
 _CLIENT_ID = re.compile(r"[A-Za-z0-9._:-]{8,128}")
+_ADMISSION_KEY = re.compile(r"[A-Za-z0-9._:-]{16,128}")
 
 
 class CompanionCommandError(RuntimeError):
@@ -34,9 +43,21 @@ class CompanionStaleRevision(CompanionCommandError):
         self.scope = scope
 
 
+class CompanionAnswerUnavailable(CompanionCommandError):
+    pass
+
+
+class CompanionAnswerConflict(CompanionCommandError):
+    pass
+
+
 class DerivedCompanionRepository:
-    def __init__(self, *, db_path: str):
+    def __init__(
+        self, *, db_path: str,
+        receipt_verifier: CompanionExecutionReceiptVerifier | None = None,
+    ):
         self.db_path = db_path
+        self._receipt_verifier = receipt_verifier
 
     def prepare_evidence(
         self,
@@ -73,17 +94,19 @@ class DerivedCompanionRepository:
         request_sha = _sha(_json(request))
         with connect_read(self.db_path) as con:
             replay = con.execute(
-                "SELECT t.request_sha256,t.evidence_pack_json "
+                "SELECT t.request_sha256,t.evidence_pack_json,n.artifact_json,n.artifact_sha256 "
                 "FROM derived_asset_companion_turns t "
                 "JOIN derived_asset_companion_threads h USING (thread_id) "
                 "JOIN derived_assets a USING (derived_asset_id) "
+                "LEFT JOIN derived_asset_companion_answers n USING (turn_id) "
                 "WHERE a.owner_user_id=? AND t.client_turn_id=?",
                 [owner_user_id, client_turn_id],
             ).fetchone()
         if replay is not None:
             if replay[0] != request_sha:
                 raise CompanionIdempotencyConflict
-            return _public(json.loads(str(replay[1])), client_turn_id, replayed=True)
+            return _public(json.loads(str(replay[1])), client_turn_id, replayed=True,
+                           answer=_answer_from_row(replay[2], replay[3]))
         pack = build_derived_revision_evidence_pack(
             db_path=self.db_path,
             owner_user_id=owner_user_id,
@@ -124,10 +147,11 @@ class DerivedCompanionRepository:
                             ),
                         })
                 replay = con.execute(
-                    "SELECT t.request_sha256,t.evidence_pack_json "
+                    "SELECT t.request_sha256,t.evidence_pack_json,n.artifact_json,n.artifact_sha256 "
                     "FROM derived_asset_companion_turns t "
                     "JOIN derived_asset_companion_threads h USING (thread_id) "
                     "JOIN derived_assets a USING (derived_asset_id) "
+                    "LEFT JOIN derived_asset_companion_answers n USING (turn_id) "
                     "WHERE a.owner_user_id=? AND t.client_turn_id=?",
                     [owner_user_id, client_turn_id],
                 ).fetchone()
@@ -135,7 +159,8 @@ class DerivedCompanionRepository:
                     if replay[0] != request_sha:
                         raise CompanionIdempotencyConflict
                     con.execute("ROLLBACK")
-                    return _public(json.loads(str(replay[1])), client_turn_id, replayed=True)
+                    return _public(json.loads(str(replay[1])), client_turn_id, replayed=True,
+                                   answer=_answer_from_row(replay[2], replay[3]))
                 con.execute(
                     "INSERT INTO derived_asset_companion_threads "
                     "(thread_id,derived_asset_id,revision_id,"
@@ -183,9 +208,11 @@ class DerivedCompanionRepository:
         with connect_read(self.db_path) as con:
             rows = con.execute(
                 "SELECT t.client_turn_id,t.question,t.state,t.failure_code,"
-                "t.evidence_pack_json FROM derived_asset_companion_turns t "
+                "t.evidence_pack_json,n.artifact_json,n.artifact_sha256 "
+                "FROM derived_asset_companion_turns t "
                 "JOIN derived_asset_companion_threads h ON h.thread_id=t.thread_id "
                 "JOIN derived_assets a USING (derived_asset_id) "
+                "LEFT JOIN derived_asset_companion_answers n USING (turn_id) "
                 "WHERE a.owner_user_id=? AND h.derived_asset_id=? AND h.revision_id=? "
                 "AND h.revision_content_sha256=? ORDER BY t.turn_ordinal",
                 [owner_user_id, asset_id, reading["revision_id"], reading["content_sha256"]],
@@ -198,11 +225,106 @@ class DerivedCompanionRepository:
                 "state": str(row[2]),
                 "failure_code": None if row[3] is None else str(row[3]),
                 "evidence_pack": json.loads(str(row[4])),
+                "answer": _answer_from_row(row[5], row[6]),
             } for row in rows],
         }
 
+    def admit_answer(
+        self, *, owner_user_id: str, client_turn_id: str, admission_key: str,
+        candidate: GroundedAnswerCandidate,
+    ) -> dict[str, Any]:
+        if not _CLIENT_ID.fullmatch(client_turn_id) or not _ADMISSION_KEY.fullmatch(admission_key):
+            raise ValueError("invalid companion answer command")
+        with connect_read(self.db_path) as con:
+            row = con.execute(
+                "SELECT t.turn_id,t.thread_id,t.evidence_pack_json,t.evidence_pack_sha256,"
+                "n.admission_request_sha256,n.artifact_json,n.artifact_sha256 "
+                "FROM derived_asset_companion_turns t JOIN derived_asset_companion_threads h "
+                "USING (thread_id) JOIN derived_assets a USING (derived_asset_id) "
+                "LEFT JOIN derived_asset_companion_answers n USING (turn_id) "
+                "WHERE a.owner_user_id=? AND t.client_turn_id=?",
+                [owner_user_id, client_turn_id],
+            ).fetchone()
+        if row is None:
+            raise CompanionAnswerUnavailable("companion evidence turn is unavailable")
+        turn_id, thread_id = str(row[0]), str(row[1])
+        evidence_pack = json.loads(str(row[2]))
+        output_digest = candidate_digest(candidate)
+        request = {
+            "admission_key": admission_key, "turn_id": turn_id,
+            "evidence_pack_sha256": str(row[3]), "output_digest": output_digest,
+        }
+        request_sha = _sha(_json(request))
+        if row[4] is not None:
+            if str(row[4]) != request_sha:
+                raise CompanionAnswerConflict("companion answer command conflicts")
+            return {**public_grounded_answer(_artifact_from_row(row[5], row[6])),
+                    "replayed": True}
+        if self._receipt_verifier is None:
+            raise CompanionAnswerUnavailable("companion answer verifier is unavailable")
+        expectation = AnswerAdmissionExpectation(
+            turn_id=turn_id, evidence_pack_sha256=str(row[3]), output_digest=output_digest
+        )
+        receipt = self._receipt_verifier(expectation)
+        artifact = build_grounded_answer(
+            turn_id=turn_id, evidence_pack=evidence_pack, candidate=candidate, receipt=receipt
+        )
+        stored_artifact = {key: value for key, value in artifact.items()
+                           if key != "artifact_sha256"}
+        artifact_json = _json(stored_artifact)
+        with connect_write(self.db_path, purpose="admit-derived-companion-answer") as con:
+            con.execute("BEGIN TRANSACTION")
+            try:
+                existing = con.execute(
+                    "SELECT admission_request_sha256,artifact_json,artifact_sha256 "
+                    "FROM derived_asset_companion_answers WHERE turn_id=? OR admission_key=? "
+                    "OR execution_receipt_id=?",
+                    [turn_id, admission_key, receipt.receipt_id],
+                ).fetchone()
+                if existing is not None:
+                    if existing[0] != request_sha:
+                        raise CompanionAnswerConflict("companion answer command conflicts")
+                    con.execute("ROLLBACK")
+                    return {**public_grounded_answer(_artifact_from_row(existing[1], existing[2])),
+                            "replayed": True}
+                con.execute(
+                    "INSERT INTO derived_asset_companion_answers "
+                    "(answer_id,turn_id,thread_id,admission_key,admission_request_sha256,"
+                    "evidence_pack_sha256,execution_receipt_id,execution_receipt_digest,"
+                    "provider,model,output_digest,artifact_json,artifact_sha256) "
+                    "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                    [artifact["answer_id"], turn_id, thread_id, admission_key, request_sha,
+                     artifact["evidence_pack_sha256"], receipt.receipt_id,
+                     receipt.receipt_digest, receipt.provider, receipt.model, output_digest,
+                     artifact_json, artifact["artifact_sha256"]],
+                )
+                cited = artifact["cited_citation_ids"]
+                if cited:
+                    placeholders = ",".join("?" for _ in cited)
+                    con.execute(
+                        "UPDATE derived_asset_companion_turn_citations SET used_in_answer=TRUE "
+                        "WHERE turn_id=? AND chunk_ordinal IN (SELECT chunk_ordinal FROM "
+                        f"derived_asset_revision_chunks WHERE citation_id IN ({placeholders}))",
+                        [turn_id, *cited],
+                    )
+                    marked = int(con.execute(
+                        "SELECT count(*) FROM derived_asset_companion_turn_citations "
+                        "WHERE turn_id=? AND used_in_answer=TRUE", [turn_id]
+                    ).fetchone()[0])
+                    if marked != len(cited):
+                        raise CompanionAnswerConflict("answer citation admission mismatch")
+                con.execute("COMMIT")
+            except Exception:
+                with contextlib.suppress(Exception):
+                    con.execute("ROLLBACK")
+                raise
+        return {**public_grounded_answer(artifact), "replayed": False}
 
-def _public(pack: dict[str, Any], client_turn_id: str, *, replayed: bool) -> dict[str, Any]:
+
+def _public(
+    pack: dict[str, Any], client_turn_id: str, *, replayed: bool,
+    answer: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     evidence = bool(pack["citations"])
     return {
         "client_turn_id": client_turn_id,
@@ -217,7 +339,22 @@ def _public(pack: dict[str, Any], client_turn_id: str, *, replayed: bool) -> dic
             "is_current": pack["is_current"],
         },
         "evidence_pack": pack,
+        "answer": answer,
     }
+
+
+def _artifact_from_row(raw: object, digest: object) -> dict[str, Any]:
+    artifact = json.loads(str(raw))
+    if not isinstance(artifact, dict) or _sha(_json(artifact)) != str(digest):
+        raise CompanionAnswerConflict("stored companion answer integrity conflict")
+    artifact["artifact_sha256"] = str(digest)
+    return artifact
+
+
+def _answer_from_row(raw: object, digest: object) -> dict[str, Any] | None:
+    if raw is None or digest is None:
+        return None
+    return public_grounded_answer(_artifact_from_row(raw, digest))
 
 
 def _scope(reading: dict[str, Any]) -> dict[str, Any]:
@@ -235,5 +372,6 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-__all__ = ["CompanionIdempotencyConflict", "CompanionStaleRevision",
+__all__ = ["CompanionAnswerConflict", "CompanionAnswerUnavailable",
+           "CompanionIdempotencyConflict", "CompanionStaleRevision",
            "DerivedCompanionRepository"]
