@@ -1,0 +1,1 @@
+Research Compose Review specifies the completed-research light table, exact-hash preview, immutable and reversible HTML compose draft, HTTP serving boundary, and verification gates. Open `index.html`; the executable sprint is `sprint-01-compose-light-table.html`.

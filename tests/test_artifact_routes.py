@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
+from substrate.event_log import ActionType, log_event
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight
 
@@ -30,6 +31,15 @@ def api_env(monkeypatch):
 
 def _client():
     return TestClient(create_app(register_wrestling=False))
+
+
+def _complete(investigation_id: str, events: str) -> None:
+    log_event(
+        investigation_id,
+        ActionType.INVESTIGATION_COMPLETED,
+        payload={"thesis_summary": "done"},
+        events_dir=events,
+    )
 
 
 def test_post_export_artifact(api_env):
@@ -73,3 +83,66 @@ def test_get_artifact_blocks_after_insight(api_env):
     assert len(blocks) >= 1
     assert blocks[0]["investigation_id"] == "inv-blocks"
     assert blocks[0]["kind"] in ("insight", "question", "synthesis")
+
+
+def test_compose_preview_create_view_member_and_delete(api_env):
+    for iid, text in [("inv-one", "One"), ("inv-two", "Two")]:
+        promote_insight(text=text, investigation_id=iid, source_document_id="doc")
+        _complete(iid, api_env["events"])
+    client = _client()
+    selection = ["inv-one", "inv-two"]
+    preview = client.post("/research/artifact-composes/preview", json={"investigation_ids": selection})
+    assert preview.status_code == 200
+    reviewed = preview.json()
+    created = client.post("/research/artifact-composes", json={"investigation_ids": selection, "selection_fingerprint": reviewed["selection_fingerprint"]})
+    assert created.status_code == 200
+    draft = created.json()
+    assert draft["view_url"].endswith("/view")
+    view = client.get(draft["view_url"])
+    assert view.status_code == 200
+    assert view.headers["content-type"].startswith("text/html")
+    assert "file://" not in view.text
+    promote_insight(text="Later source change", investigation_id="inv-one", source_document_id="doc-later")
+    member = client.get(f"/research/artifact-composes/{draft['compose_id']}/member/0")
+    assert member.status_code == 200
+    assert 'id="antiek-artifact-v1"' in member.text
+    assert "Later source change" not in member.text
+    assert "Add note to artifact" not in member.text
+    assert "<script>" not in member.text
+    assert client.delete(f"/research/artifact-composes/{draft['compose_id']}").status_code == 204
+    assert client.delete(f"/research/artifact-composes/{draft['compose_id']}").status_code == 404
+    assert client.get(draft["view_url"]).status_code == 404
+
+
+def test_compose_stale_fingerprint_is_conflict(api_env):
+    for iid, text in [("inv-one", "One"), ("inv-two", "Two")]:
+        promote_insight(text=text, investigation_id=iid, source_document_id="doc")
+        _complete(iid, api_env["events"])
+    client = _client()
+    response = client.post("/research/artifact-composes", json={"investigation_ids": ["inv-one", "inv-two"], "selection_fingerprint": "0" * 64})
+    assert response.status_code == 409
+
+
+def test_compose_rejects_path_like_id_before_event_lookup(api_env):
+    response = _client().post(
+        "/research/artifact-composes/preview",
+        json={"investigation_ids": ["../outside", "inv-two"]},
+    )
+    assert response.status_code == 422
+
+
+def test_compose_uses_latest_terminal_state(api_env):
+    for iid in ("inv-one", "inv-two"):
+        promote_insight(text=iid, investigation_id=iid, source_document_id="doc")
+        _complete(iid, api_env["events"])
+    log_event(
+        "inv-one",
+        ActionType.INVESTIGATION_CHASE_HALTED,
+        payload={"reason": "budget"},
+        events_dir=api_env["events"],
+    )
+    response = _client().post(
+        "/research/artifact-composes/preview",
+        json={"investigation_ids": ["inv-one", "inv-two"]},
+    )
+    assert response.status_code == 409

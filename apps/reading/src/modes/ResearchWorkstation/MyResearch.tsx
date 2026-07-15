@@ -35,10 +35,16 @@
  * semaphore, and the surface says exactly that.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { getBudgetDefaults, type BudgetDefaults } from "../../api/research";
+import {
+  createResearchCompose,
+  getBudgetDefaults,
+  previewResearchCompose,
+  type BudgetDefaults,
+  type ResearchCompose,
+} from "../../api/research";
 import { useAuth } from "../../lib/auth";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import type { InvestigationSummary } from "../../lib/api";
@@ -190,6 +196,12 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   // null cap (no-key / endpoint unreachable) degrades the concurrency line to
   // "running" only, honestly, rather than inventing a cap.
   const [budget, setBudget] = useState<BudgetDefaults | null>(null);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [composePreview, setComposePreview] = useState<ResearchCompose | null>(null);
+  const [composeError, setComposeError] = useState<string | null>(null);
+  const [composing, setComposing] = useState(false);
+  const selectionRef = useRef(selected);
+  selectionRef.current = selected;
   useEffect(() => {
     let cancelled = false;
     void getBudgetDefaults()
@@ -206,6 +218,50 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
 
   const agg = useMemo(() => aggregate(investigations), [investigations]);
   const groups = useMemo(() => groupByParent(investigations), [investigations]);
+  const eligible = useMemo(
+    () => new Set(investigations.filter((item) => item.status === "completed").map((item) => item.investigation_id)),
+    [investigations],
+  );
+  useEffect(() => {
+    setSelected((current) => current.filter((id) => eligible.has(id)));
+  }, [eligible]);
+
+  const toggleSelected = (id: string) => {
+    if (composing) return;
+    setComposePreview(null);
+    setComposeError(null);
+    setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+
+  const previewCompose = async () => {
+    const requested = [...selected];
+    setComposing(true);
+    setComposeError(null);
+    try {
+      const response = await previewResearchCompose(requested);
+      if (sameSelection(selectionRef.current, requested)) setComposePreview(response);
+    } catch (err) {
+      setComposeError(err instanceof Error ? err.message : "Couldn’t review this draft.");
+    } finally {
+      setComposing(false);
+    }
+  };
+
+  const createCompose = async () => {
+    if (!composePreview) return;
+    const requested = [...selected];
+    setComposing(true);
+    setComposeError(null);
+    try {
+      const response = await createResearchCompose(requested, composePreview.selection_fingerprint);
+      if (sameSelection(selectionRef.current, requested)) setComposePreview(response);
+    } catch (err) {
+      setComposePreview(null);
+      setComposeError(err instanceof Error ? err.message : "The sources changed. Review them again.");
+    } finally {
+      setComposing(false);
+    }
+  };
 
   // Honest "N running, M queued": the host-local runner multiplexes browse
   // loops under a bounded semaphore (the contract's max_concurrency). More
@@ -312,11 +368,23 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
         )}
 
         {groups.length > 0 && (
-          <div className="space-y-4">
+          <fieldset className="space-y-4">
+            <legend className="sr-only">Researches to compose</legend>
             {groups.map((g) => (
-              <GroupCard key={g.rootId} group={g} />
+              <GroupCard key={g.rootId} group={g} selected={selected} busy={composing} onToggle={toggleSelected} />
             ))}
-          </div>
+          </fieldset>
+        )}
+        {selected.length > 0 && (
+          <ComposeTray
+            selectedCount={selected.length}
+            preview={composePreview}
+            busy={composing}
+            error={composeError}
+            onPreview={previewCompose}
+            onCreate={createCompose}
+            onClear={() => { setSelected([]); setComposePreview(null); setComposeError(null); }}
+          />
         )}
       </div>
     </div>
@@ -399,7 +467,7 @@ function LaunchBar({
   );
 }
 
-function GroupCard({ group }: { group: Group }) {
+function GroupCard({ group, selected, busy, onToggle }: { group: Group; selected: string[]; busy: boolean; onToggle: (id: string) => void }) {
   // A group with one member is a standalone research; >1 is a cascade/chase
   // family. The header names the family by its parent question when present.
   const isFamily = group.members.length > 1;
@@ -422,7 +490,7 @@ function GroupCard({ group }: { group: Group }) {
       )}
       <div className="divide-y divide-rule dark:divide-charcoal-1">
         {group.members.map((s) => (
-          <ResearchRow key={s.investigation_id} summary={s} indented={isFamily} />
+          <ResearchRow key={s.investigation_id} summary={s} indented={isFamily} selected={selected.includes(s.investigation_id)} busy={busy} onToggle={onToggle} />
         ))}
       </div>
     </section>
@@ -432,9 +500,15 @@ function GroupCard({ group }: { group: Group }) {
 function ResearchRow({
   summary,
   indented,
+  selected,
+  busy,
+  onToggle,
 }: {
   summary: InvestigationSummary;
   indented: boolean;
+  selected: boolean;
+  busy: boolean;
+  onToggle: (id: string) => void;
 }) {
   const ps = plainStatus(summary.status);
   return (
@@ -444,6 +518,15 @@ function ResearchRow({
       }`}
     >
       <div className="flex items-baseline justify-between gap-3">
+        <input
+          type="checkbox"
+          checked={selected}
+          disabled={summary.status !== "completed" || busy}
+          onChange={() => onToggle(summary.investigation_id)}
+          aria-label={`Select ${summary.question ?? "Untitled research"} to compose`}
+          title={summary.status === "completed" ? "Add to compose draft" : "Finish this research before composing"}
+          className="mt-0.5 size-4 shrink-0 accent-sun focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun"
+        />
         <Link to={`/inv/${encodeURIComponent(summary.investigation_id)}`} className="min-w-0 flex-1">
           <p className="truncate font-serif text-sm text-ink dark:text-bright">
             {summary.question ?? "Untitled research"}
@@ -478,6 +561,48 @@ function ResearchRow({
       </div>
     </article>
   );
+}
+
+function ComposeTray({ selectedCount, preview, busy, error, onPreview, onCreate, onClear }: {
+  selectedCount: number;
+  preview: ResearchCompose | null;
+  busy: boolean;
+  error: string | null;
+  onPreview: () => void;
+  onCreate: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <aside className="sticky bottom-4 z-20 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-[4px_4px_0_0_var(--color-ink)] dark:border-bright dark:bg-charcoal-2" aria-label="Compose research draft">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="font-serif text-base text-ink dark:text-bright">{selectedCount} researches on the light table</p>
+          <p className="text-xs text-shadow-1 dark:text-moonlight">Review exact sources before creating a reversible HTML index. No AI runs.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <LemonButton variant="secondary" size="sm" onClick={onClear} disabled={busy}>Clear</LemonButton>
+          {!preview?.view_url && <LemonButton variant="primary" size="sm" onClick={onPreview} disabled={selectedCount < 2 || busy}>{busy ? "Reviewing…" : "Review sources"}</LemonButton>}
+        </div>
+      </div>
+      <div aria-live="polite">
+        {error && <p className="mt-3 text-sm text-emperor">{error}</p>}
+        {preview && !preview.view_url && (
+          <div className="mt-4 border-t border-rule pt-3 dark:border-charcoal-1">
+            <ol className="space-y-2">
+              {preview.members.map((member) => <li key={member.investigation_id} className="font-mono text-[11px]"><span className="text-ink dark:text-bright">{member.investigation_id}</span><span className="ml-2 break-all text-shadow-1">{member.content_hash}</span></li>)}
+            </ol>
+            {preview.identical_content.length > 0 && <p className="mt-3 text-xs text-emperor">{preview.identical_content.length} pair{preview.identical_content.length === 1 ? " has" : "s have"} identical canonical content. The draft will flag them for review.</p>}
+            <div className="mt-3 flex justify-end"><LemonButton variant="primary" size="sm" onClick={onCreate} disabled={busy}>{busy ? "Creating…" : "Create HTML draft"}</LemonButton></div>
+          </div>
+        )}
+        {preview?.view_url && <p className="mt-3 text-sm"><a className="font-semibold text-ink underline dark:text-bright" href={preview.view_url} target="_blank" rel="noreferrer">Open HTML draft ↗</a>{preview.reused ? " · Existing identical draft reused" : " · Draft created"}</p>}
+      </div>
+    </aside>
+  );
+}
+
+function sameSelection(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((item, index) => item === right[index]);
 }
 
 function ListError({ error, onRetry }: { error: string; onRetry: () => void }) {

@@ -3,22 +3,30 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
+from substrate.event_log import ActionType, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    StaleComposePreview,
+    create_compose_draft,
+    delete_compose_draft,
     export_research_artifact,
     import_agent_notes,
     list_outline_blocks,
+    load_compose_draft,
+    preview_artifacts,
 )
+from substrate.research_artifact.paths import compose_member_path  # noqa: E402
 
 artifact_router = APIRouter(prefix="/research", tags=["research-artifact"])
 
@@ -59,6 +67,149 @@ class ImportNotesOut(BaseModel):
     notes_imported: int
     notes_skipped_duplicate: int
     event_ids: list[str]
+
+
+class ComposeIn(BaseModel):
+    investigation_ids: list[str]
+    selection_fingerprint: str | None = None
+
+
+class ComposeMemberOut(BaseModel):
+    investigation_id: str
+    content_hash: str
+
+
+class ComposeOut(BaseModel):
+    compose_id: str
+    selection_fingerprint: str
+    members: list[ComposeMemberOut]
+    identical_content: list[tuple[str, str]]
+    view_url: str | None = None
+    reused: bool = False
+
+
+def _compose_out(result, *, include_url: bool = False) -> ComposeOut:
+    assert result.compose_id and result.selection_fingerprint
+    return ComposeOut(
+        compose_id=result.compose_id,
+        selection_fingerprint=result.selection_fingerprint,
+        members=[ComposeMemberOut(investigation_id=m.investigation_id, content_hash=m.content_hash) for m in result.members],
+        identical_content=result.hash_conflicts,
+        view_url=f"/research/artifact-composes/{result.compose_id}/view" if include_url else None,
+        reused=result.reused,
+    )
+
+
+def _require_completed(investigation_ids: list[str]) -> None:
+    for investigation_id in investigation_ids:
+        if (
+            not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}", investigation_id)
+            or ".." in investigation_id
+        ):
+            raise HTTPException(status_code=422, detail="invalid investigation id")
+        rows = trajectory(investigation_id)
+        terminal: tuple[str, dict] | None = None
+        for row in rows:
+            action = row.get("action_type")
+            if action in {
+                ActionType.INVESTIGATION_COMPLETED.value,
+                ActionType.INVESTIGATION_FAILED.value,
+                ActionType.INVESTIGATION_CHASE_HALTED.value,
+            }:
+                terminal = (action, row.get("payload") or {})
+        completed = bool(
+            terminal
+            and terminal[0] == ActionType.INVESTIGATION_COMPLETED.value
+            and terminal[1].get("outcome") not in {"stopped", "cancelled"}
+        )
+        if not completed:
+            raise HTTPException(
+                status_code=409,
+                detail=f"{investigation_id} is not a completed research",
+            )
+
+
+@artifact_router.post("/artifact-composes/preview", response_model=ComposeOut)
+async def post_compose_preview(body: ComposeIn) -> ComposeOut:
+    _require_completed(body.investigation_ids)
+    try:
+        return _compose_out(preview_artifacts(body.investigation_ids, db_path=_db()))
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@artifact_router.post("/artifact-composes", response_model=ComposeOut)
+async def post_compose(body: ComposeIn) -> ComposeOut:
+    if not body.selection_fingerprint:
+        raise HTTPException(status_code=422, detail="selection_fingerprint is required")
+    _require_completed(body.investigation_ids)
+    try:
+        result = create_compose_draft(
+            body.investigation_ids,
+            expected_fingerprint=body.selection_fingerprint,
+            db_path=_db(),
+        )
+        # The canonical body and terminal state live in separate stores. Check
+        # again after snapshot publication; if the lifecycle changed during
+        # creation, remove the draft before returning any successful receipt.
+        try:
+            _require_completed(body.investigation_ids)
+        except HTTPException:
+            delete_compose_draft(result.compose_id or "")
+            raise
+    except StaleComposePreview as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _compose_out(result, include_url=True)
+
+
+@artifact_router.get("/artifact-composes/{compose_id}", response_model=ComposeOut)
+async def get_compose(compose_id: str) -> ComposeOut:
+    try:
+        return _compose_out(load_compose_draft(compose_id), include_url=True)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="compose draft not found") from exc
+
+
+@artifact_router.get("/artifact-composes/{compose_id}/view")
+async def get_compose_view(compose_id: str) -> Response:
+    try:
+        result = load_compose_draft(compose_id)
+        content = result.path.read_text(encoding="utf-8")
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="compose draft not found") from exc
+    return Response(content, media_type="text/html", headers={
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+@artifact_router.get("/artifact-composes/{compose_id}/member/{member_index}")
+async def get_compose_member(compose_id: str, member_index: int) -> Response:
+    try:
+        result = load_compose_draft(compose_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="compose draft not found") from exc
+    if member_index < 0 or member_index >= len(result.members):
+        raise HTTPException(status_code=404, detail="compose member not found")
+    try:
+        content = compose_member_path(compose_id, member_index).read_text(encoding="utf-8")
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="compose member not found") from exc
+    return Response(content, media_type="text/html", headers={
+        "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'",
+        "X-Content-Type-Options": "nosniff",
+    })
+
+
+@artifact_router.delete("/artifact-composes/{compose_id}", status_code=204)
+async def delete_compose(compose_id: str) -> Response:
+    try:
+        delete_compose_draft(compose_id)
+    except (FileNotFoundError, ValueError) as exc:
+        raise HTTPException(status_code=404, detail="compose draft not found") from exc
+    return Response(status_code=204)
 
 
 @artifact_router.post("/{investigation_id}/artifact/export", response_model=ExportOut)

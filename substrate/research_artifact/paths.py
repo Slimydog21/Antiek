@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -27,3 +28,30 @@ def compose_path_for(*investigation_ids: str) -> Path:
     if len(investigation_ids) > 8:
         joined += f"-and{len(investigation_ids) - 8}-more"
     return research_artifacts_dir() / f"compose-{joined}.html"
+
+
+_COMPOSE_ID = re.compile(r"^cmp-[0-9a-f]{24}$")
+
+
+def compose_dir() -> Path:
+    return research_artifacts_dir() / "composes"
+
+
+def compose_draft_path(compose_id: str) -> Path:
+    if not _COMPOSE_ID.fullmatch(compose_id):
+        raise ValueError("invalid compose id")
+    return compose_dir() / compose_id / "index.html"
+
+
+def compose_manifest_path(compose_id: str) -> Path:
+    if not _COMPOSE_ID.fullmatch(compose_id):
+        raise ValueError("invalid compose id")
+    return compose_dir() / compose_id / "manifest.json"
+
+
+def compose_member_path(compose_id: str, member_index: int) -> Path:
+    if not _COMPOSE_ID.fullmatch(compose_id):
+        raise ValueError("invalid compose id")
+    if member_index < 0 or member_index >= 32:
+        raise ValueError("invalid compose member index")
+    return compose_dir() / compose_id / "members" / f"{member_index}.html"
