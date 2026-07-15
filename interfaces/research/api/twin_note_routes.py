@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.exceptions import RequestValidationError
@@ -11,18 +13,33 @@ from fastapi.responses import JSONResponse, Response
 from fastapi.routing import APIRoute
 from pydantic import BaseModel, ConfigDict, Field
 
-from substrate.twin_note_taker.serving import (
-    TwinNoteInputError, TwinNoteIntegrityError, TwinNoteServingService, TwinNoteUnavailable,
-)
+from runtime.db_lock import connect_read
+from substrate.graph import default_db_path
 from substrate.twin_note_taker.discovery import (
     TwinNoteDiscoveryIntegrity,
     TwinNoteDiscoveryService,
     TwinNoteDiscoveryUnavailable,
 )
-from substrate.graph import default_db_path
-from runtime.db_lock import connect_read
-from substrate.twin_note_taker.workflow import (TwinNoteWorkflow, TwinNoteWorkflowConflict,
-    TwinNoteWorkflowInput, TwinNoteWorkflowIntegrity, TwinNoteWorkflowUnavailable)
+from substrate.twin_note_taker.merge_bridge import (
+    MergeBridgeConflict,
+    MergeBridgeIntegrity,
+    MergeBridgeUnavailable,
+    SelectedNote,
+    TwinNoteMergeBridge,
+)
+from substrate.twin_note_taker.serving import (
+    TwinNoteInputError,
+    TwinNoteIntegrityError,
+    TwinNoteServingService,
+    TwinNoteUnavailable,
+)
+from substrate.twin_note_taker.workflow import (
+    TwinNoteWorkflow,
+    TwinNoteWorkflowConflict,
+    TwinNoteWorkflowInput,
+    TwinNoteWorkflowIntegrity,
+    TwinNoteWorkflowUnavailable,
+)
 
 NO_STORE = {"Cache-Control": "private, no-store"}
 CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
@@ -63,6 +80,26 @@ class ApplyIn(PreviewIn):
     idempotency_key: str = Field(min_length=16, max_length=128)
 
 
+class MergeProjectionSourceIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    kind: Literal["revision", "composition"]
+    id: str = Field(pattern=r"^tn[rc]-[0-9a-f]{32}$")
+
+
+class MergeProjectionNoteIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    revision_id: str = Field(pattern=r"^tnr-[0-9a-f]{32}$")
+    note_ordinal: int = Field(ge=0)
+
+
+class MergeProjectionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+    source_projection_id: str = Field(pattern=r"^hproj-[0-9a-f]{64}$")
+    source: MergeProjectionSourceIn
+    selected_notes: list[MergeProjectionNoteIn] = Field(min_length=1, max_length=1000)
+    idempotency_key: str = Field(min_length=16, max_length=128)
+
+
 def _account(request: Request) -> str:
     account = getattr(request.state, "user_id", None)
     if type(account) is not str or not account:
@@ -94,6 +131,13 @@ def _workflow() -> TwinNoteWorkflow:
 
 def _discovery() -> TwinNoteDiscoveryService:
     return TwinNoteDiscoveryService(db_path=default_db_path())
+
+
+def _merge_bridge() -> TwinNoteMergeBridge:
+    root = os.environ.get("ANTIEK_HTML_OBJECT_ROOT", "").strip()
+    if not root:
+        raise RuntimeError("HTML object root is not configured")
+    return TwinNoteMergeBridge(db_path=default_db_path(), publication_root=Path(root))
 
 
 def _map_error(exc: Exception) -> HTTPException:
@@ -133,7 +177,8 @@ def post_revision_preview(body: PreviewIn, request: Request) -> Response:
     try:
         result = _workflow().preview(account_id=_account(request), asset_id=body.asset_id,
                                      window_ids=body.window_ids).response()
-    except HTTPException: raise
+    except HTTPException:
+        raise
     except (TwinNoteWorkflowUnavailable,TwinNoteWorkflowIntegrity,TwinNoteWorkflowConflict,TwinNoteWorkflowInput) as exc:
         raise _map_workflow_error(exc) from None
     return Response(content=json.dumps(result,separators=(",",":")),media_type="application/json",headers=NO_STORE)
@@ -142,10 +187,39 @@ def post_revision_preview(body: PreviewIn, request: Request) -> Response:
 def post_revision(body: ApplyIn, request: Request) -> Response:
     try:
         result = _workflow().apply(account_id=_account(request), **body.model_dump())
-    except HTTPException: raise
+    except HTTPException:
+        raise
     except (TwinNoteWorkflowUnavailable,TwinNoteWorkflowIntegrity,TwinNoteWorkflowConflict,TwinNoteWorkflowInput) as exc:
         raise _map_workflow_error(exc) from None
     return Response(content=json.dumps(result,separators=(",",":")),media_type="application/json",headers=NO_STORE)
+
+
+@twin_note_router.post("/merge-projections", status_code=201)
+def post_merge_projection(body: MergeProjectionIn, request: Request) -> Response:
+    try:
+        result = _merge_bridge().create(
+            owner_user_id=_account(request),
+            source_projection_id=body.source_projection_id,
+            source_kind=body.source.kind,
+            source_id=body.source.id,
+            selected_notes=[SelectedNote(item.revision_id, item.note_ordinal)
+                            for item in body.selected_notes],
+            idempotency_key=body.idempotency_key,
+        ).response()
+    except HTTPException:
+        raise
+    except MergeBridgeUnavailable:
+        raise HTTPException(404, "twin-note merge source is unavailable", headers=NO_STORE) from None
+    except (MergeBridgeConflict, MergeBridgeIntegrity):
+        raise HTTPException(409, "twin-note merge conflict", headers=NO_STORE) from None
+    except RuntimeError:
+        raise HTTPException(503, "twin-note merge service is unavailable", headers=NO_STORE) from None
+    return Response(
+        content=json.dumps(result, separators=(",", ":")),
+        media_type="application/json",
+        status_code=201,
+        headers=NO_STORE,
+    )
 
 
 @twin_note_router.get("")

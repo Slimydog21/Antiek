@@ -276,7 +276,8 @@ def _static_html(body: ResearchArtifactBody, *, revision_id: str, authority: str
 class DurableTwinNoteCompression:
     def __init__(self, ownership_resolver: OwnershipResolver, *, db_path: str | None = None,
                  publication_root: str | os.PathLike[str], events_dir: str | None = None,
-                 checkpoint: Callable[[str, str], None] | None = None) -> None:
+                 checkpoint: Callable[[str, str], None] | None = None,
+                 initialize_schema: bool = True) -> None:
         if not callable(ownership_resolver):
             raise TypeError("ownership_resolver must be callable")
         self.ownership_resolver = ownership_resolver
@@ -284,7 +285,8 @@ class DurableTwinNoteCompression:
         self.publication_root = Path(publication_root)
         self.events_dir = events_dir
         self.checkpoint = checkpoint
-        init_database_at_path(self.db_path)
+        if initialize_schema:
+            init_database_at_path(self.db_path)
 
     def _check(self, name: str, identity: str) -> None:
         if self.checkpoint:
@@ -440,7 +442,7 @@ class DurableTwinNoteCompression:
                 payload = bytes(blob)
                 if _sha(payload) != digest:
                     raise TwinNoteCompressionError("publication effect does not match authoritative DB bytes")
-                self._publish_one(effect_id, relative, digest, payload)
+                self.publish_one(effect_id, relative, digest, payload)
                 changed = con.execute("UPDATE twin_note_publication_effects SET state='published',attempt_count=attempt_count+1,published_at=CURRENT_TIMESTAMP WHERE effect_id=? AND state='pending' RETURNING effect_id", [effect_id]).fetchone()
                 if changed:
                     published.append(rid)
@@ -451,10 +453,14 @@ class DurableTwinNoteCompression:
                                            events_dir=self.events_dir, checkpoint=self.checkpoint)
         return published
 
-    def _publish_one(self, effect_id: str, relative: str, digest: str, payload: bytes) -> None:
+    def publish_one(self, effect_id: str, relative: str, digest: str, payload: bytes) -> None:
+        """Publish immutable bytes through descriptor-relative nofollow traversal."""
         root = self.publication_root
-        relative_parts = Path(relative).parts
-        if len(relative_parts) != 3 or any(part in ("", ".", "..") for part in relative_parts):
+        relative_path = Path(relative)
+        relative_parts = relative_path.parts
+        if (relative_path.is_absolute() or len(relative_parts) != 3
+                or any(part in ("", ".", "..") or "/" in part or "\\" in part
+                       for part in relative_parts)):
             raise TwinNoteCompressionError("publication path is not canonical")
 
         directory_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW

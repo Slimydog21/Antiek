@@ -1943,6 +1943,9 @@ def init_database(con: LockedConnection) -> None:
     from .derived_asset_schema import install as _install_derived_asset_schema
 
     _install_derived_asset_schema(con)
+    from .twin_note_merge_bridge_schema import install as _install_twin_note_merge_bridge_schema
+
+    _install_twin_note_merge_bridge_schema(con)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -2028,6 +2031,10 @@ def _schema_is_present(db_path: str) -> bool:
             from .derived_asset_schema import sentinel_is_present
 
             present = sentinel_is_present(con)
+        if present:
+            from .twin_note_merge_bridge_schema import sentinel_is_present as bridge_sentinel
+
+            present = bridge_sentinel(con)
     except Exception:
         return False
     finally:
