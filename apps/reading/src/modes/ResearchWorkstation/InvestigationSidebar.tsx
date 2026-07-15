@@ -1,10 +1,16 @@
-import { useState } from "react";
-import { NavLink, useParams } from "react-router-dom";
+import { useCallback, useRef, useState } from "react";
+import { NavLink, useNavigate, useParams } from "react-router-dom";
 
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
-import { API_BASE, composeResearchArtifacts, createCompositionDraft } from "../../lib/api";
+import {
+  API_BASE,
+  composeResearchArtifacts,
+  composeResearchArtifactsWithETag,
+  createCompositionDraft,
+  launchComposition,
+} from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 import TwinNotesPanel from "./TwinNotesPanel";
 
@@ -22,6 +28,7 @@ export default function InvestigationSidebar() {
   const tree = useInvestigationTree(investigations);
   const params = useParams<{ investigationId?: string }>();
   const activeId = params.investigationId ?? null;
+  const navigate = useNavigate();
   const [selecting, setSelecting] = useState(false);
   const [selected, setSelected] = useState<string[]>([]);
   const [composeError, setComposeError] = useState<string | null>(null);
@@ -32,11 +39,92 @@ export default function InvestigationSidebar() {
     title: string;
   } | null>(null);
 
+  const [composeMode, setComposeMode] = useState(false);
+  const [composeEtag, setComposeEtag] = useState<string | null>(null);
+  const [composeCompositionId, setComposeCompositionId] = useState<string | null>(null);
+  const [followUp, setFollowUp] = useState("");
+  const [launchPending, setLaunchPending] = useState(false);
+  const [launchError, setLaunchError] = useState<string | null>(null);
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const selectedAtLaunchRef = useRef<string[]>([]);
+  const launchKeyRef = useRef<string | null>(null);
+  const composeGeneration = useRef(0);
+  const composeInFlight = useRef(false);
+
   const toggle = (id: string) => {
+    if (composeMode || pending || launchPending) return;
     setComposeError(null);
+    setLaunchError(null);
     setDraftRequest(null);
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   };
+
+  const enterCompose = useCallback(async () => {
+    if (composeInFlight.current) return;
+    composeInFlight.current = true;
+    const generation = ++composeGeneration.current;
+    const exactSelection = [...selected];
+    setPending(true);
+    setComposeError(null);
+    setLaunchError(null);
+    try {
+      const result = await composeResearchArtifactsWithETag(selected);
+      if (generation !== composeGeneration.current
+          || JSON.stringify(selectedRef.current) !== JSON.stringify(exactSelection)) return;
+      setComposeEtag(result.etag);
+      setComposeCompositionId(result.composition.composition_id);
+      setComposeMode(true);
+    } catch (cause) {
+      if (generation !== composeGeneration.current) return;
+      setComposeError(cause instanceof Error ? cause.message : "Could not compose these investigations");
+    } finally {
+      if (generation === composeGeneration.current) {
+        composeInFlight.current = false;
+        setPending(false);
+      }
+    }
+  }, [selected]);
+
+  const exitCompose = useCallback(() => {
+    composeGeneration.current += 1;
+    composeInFlight.current = false;
+    setComposeMode(false);
+    setComposeEtag(null);
+    setComposeCompositionId(null);
+    setFollowUp("");
+    setLaunchError(null);
+    launchKeyRef.current = null;
+  }, []);
+
+  const confirmLaunch = useCallback(async () => {
+    const question = followUp.trim();
+    if (!composeEtag || !composeCompositionId || selected.length < 2 || question.length < 3) return;
+    selectedAtLaunchRef.current = [...selected];
+    setLaunchPending(true);
+    setLaunchError(null);
+    try {
+      if (!launchKeyRef.current) {
+        launchKeyRef.current = crypto.randomUUID();
+      }
+      const result = await launchComposition(
+        composeCompositionId,
+        { question },
+        composeEtag,
+        launchKeyRef.current,
+      );
+      if (
+        JSON.stringify(selectedRef.current) !==
+        JSON.stringify(selectedAtLaunchRef.current)
+      )
+        return;
+      navigate(`/inv/${result.investigation_id}`);
+    } catch (cause) {
+      setLaunchError(cause instanceof Error ? cause.message : "Could not launch research");
+    } finally {
+      setLaunchPending(false);
+    }
+  }, [composeEtag, composeCompositionId, selected, investigations, followUp, navigate]);
   const createDraft = async () => {
     const preview = window.open("", "_blank");
     if (preview) preview.opener = null;
@@ -101,8 +189,8 @@ export default function InvestigationSidebar() {
           Investigations
         </div>
         <button
-          onClick={() => { setSelecting((value) => !value); setComposeError(null); }}
-          disabled={pending}
+          onClick={() => { setSelecting((value) => !value); setComposeError(null); exitCompose(); }}
+          disabled={pending || launchPending}
           aria-pressed={selecting}
           className="text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors mr-2"
         >{selecting ? "Done" : "Select"}</button>
@@ -116,19 +204,68 @@ export default function InvestigationSidebar() {
       </div>
       {selecting && (
         <div className="mb-3 border border-ink-mute/30 rounded p-2" aria-label="Composition selection">
-          <div className="font-mono text-[10px] mb-1" aria-live="polite">{selected.length}/20 selected</div>
-          {selected.length > 0 && <ol className="list-decimal ml-4 mb-2">{selected.map((id) => <li key={id}>{id}</li>)}</ol>}
-          <div className="flex flex-wrap gap-1">
-            <button onClick={createDraft} disabled={pending || selected.length < 2 || selected.length > 20}
-              className="bg-sun text-ink px-2 py-1 rounded disabled:opacity-40">
-              {pending ? "Working…" : "Create review draft"}
-            </button>
-            <button onClick={compose} disabled={pending || selected.length < 2 || selected.length > 20}
-              className="border border-ink-mute/40 px-2 py-1 rounded disabled:opacity-40">
-              Open HTML
-            </button>
-          </div>
-          {composeError && <div role="alert" className="text-emperor font-mono text-[10px] mt-2">{composeError}</div>}
+          {composeMode ? (
+            <div>
+              <div className="font-mono text-[10px] mb-2">Collective research</div>
+              <div className="font-mono text-[10px] mb-1">Selected investigations (in order):</div>
+              <ol className="list-decimal ml-4 mb-2">
+                {selected.map((id) => {
+                  const q = investigations.find((item) => item.investigation_id === id)?.question;
+                  return <li key={id}>{q ?? id}</li>;
+                })}
+              </ol>
+              <label htmlFor="compose-follow-up" className="font-mono text-[10px] mb-1 block">Follow-up question</label>
+              <textarea
+                id="compose-follow-up"
+                value={followUp}
+                onChange={(e) => {
+                  setFollowUp(e.target.value);
+                  launchKeyRef.current = null;
+                }}
+                placeholder="What should this combined research investigate next?"
+                disabled={launchPending}
+                rows={3}
+                className="w-full border border-ink-mute/30 rounded p-1 text-[11px] font-serif resize-none bg-transparent mb-2"
+              />
+              <div className="flex flex-wrap gap-1">
+                <button
+                  onClick={confirmLaunch}
+                  disabled={launchPending || selected.length < 2 || selected.length > 8 || followUp.trim().length < 3}
+                  className="bg-sun text-ink px-2 py-1 rounded disabled:opacity-40"
+                >
+                  {launchPending ? "Launching…" : "Research together"}
+                </button>
+                <button
+                  onClick={exitCompose}
+                  disabled={launchPending}
+                  className="border border-ink-mute/40 px-2 py-1 rounded disabled:opacity-40"
+                >
+                  Back
+                </button>
+              </div>
+              {launchError && <div role="alert" className="text-emperor font-mono text-[10px] mt-2">{launchError}</div>}
+            </div>
+          ) : (
+            <>
+              <div className="font-mono text-[10px] mb-1" aria-live="polite">{selected.length}/20 selected</div>
+              {selected.length > 0 && <ol className="list-decimal ml-4 mb-2">{selected.map((id) => <li key={id}>{id}</li>)}</ol>}
+              <div className="flex flex-wrap gap-1">
+                <button onClick={createDraft} disabled={pending || selected.length < 2 || selected.length > 20}
+                  className="bg-sun text-ink px-2 py-1 rounded disabled:opacity-40">
+                  {pending ? "Working…" : "Create review draft"}
+                </button>
+                <button onClick={compose} disabled={pending || selected.length < 2 || selected.length > 20}
+                  className="border border-ink-mute/40 px-2 py-1 rounded disabled:opacity-40">
+                  Open HTML
+                </button>
+                <button onClick={enterCompose} disabled={pending || selected.length < 2 || selected.length > 8}
+                  className="border border-ink-mute/40 px-2 py-1 rounded disabled:opacity-40">
+                  {pending ? "Composing…" : "Research together"}
+                </button>
+              </div>
+              {composeError && <div role="alert" className="text-emperor font-mono text-[10px] mt-2">{composeError}</div>}
+            </>
+          )}
         </div>
       )}
       {loading && investigations.length === 0 && (
@@ -145,7 +282,7 @@ export default function InvestigationSidebar() {
       <ul className="space-y-1">
         {tree.map((node) => (
           <TreeRow key={node.investigationId} node={node} depth={0} activeId={activeId}
-            selecting={selecting} selected={selected} onToggle={toggle} pending={pending} />
+            selecting={selecting} selected={selected} onToggle={toggle} pending={composeMode || pending || launchPending} />
         ))}
       </ul>
       <TwinNotesPanel />

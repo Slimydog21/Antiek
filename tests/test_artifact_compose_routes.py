@@ -5,7 +5,11 @@ import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
-from interfaces.research.api.artifact_routes import _read_store_file, _verified_index
+from interfaces.research.api.artifact_routes import (
+    _read_store_file,
+    _trajectory_belongs_to_owner,
+    _verified_index,
+)
 from substrate.research_artifact.compose import composition_id_for, render_composition_index
 
 
@@ -102,6 +106,16 @@ def test_compose_route_rejects_stopped_completion(monkeypatch):
     assert response.status_code == 409
 
 
+def test_composition_owner_is_exact_and_legacy_is_operator_only():
+    owned = [{"action_type": "investigation.start_requested",
+              "payload": {"owner_user_id": "owner-a"}}]
+    legacy = [{"action_type": "investigation.start_requested", "payload": {}}]
+    assert _trajectory_belongs_to_owner(owned, "owner-a") is True
+    assert _trajectory_belongs_to_owner(owned, "owner-b") is False
+    assert _trajectory_belongs_to_owner(legacy, "__operator__") is True
+    assert _trajectory_belongs_to_owner(legacy, "owner-a") is False
+
+
 def test_store_reader_refuses_symlinked_files(monkeypatch, tmp_path):
     store = tmp_path / "artifacts"
     compositions = store / "compositions"
@@ -145,3 +159,20 @@ def test_index_verifier_rejects_regular_file_replacement():
     altered["extra"] = "unbound"
     with pytest.raises(ValueError):
         _verified_index(render_composition_index(altered).encode(), composition_id)
+
+
+def test_composition_launch_requires_auth_headers_and_closed_body(monkeypatch):
+    monkeypatch.setenv("ANTIEK_OPERATOR_TOKEN", "secret")
+    client = TestClient(create_app(register_wrestling=False, register_providers=False))
+    url = "/research/artifacts/compositions/cmp-" + "a" * 64 + "/launch"
+    valid = {"question": "What follows?", "research_tier": "fast"}
+    assert client.post(url, json=valid).status_code == 401
+    assert client.post(
+        url, headers={"Authorization": "Bearer secret"}, json=valid
+    ).status_code == 428
+    assert client.post(
+        url,
+        headers={"Authorization": "Bearer secret", "If-Match": '"etag"',
+                 "Idempotency-Key": "launch-key-1"},
+        json={**valid, "context": "browser supplied"},
+    ).status_code == 422

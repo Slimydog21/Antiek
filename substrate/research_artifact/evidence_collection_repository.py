@@ -189,7 +189,9 @@ class EvidenceCollectionRepository:
                     )
                 from substrate.constants import ANTIEK_PARAM_VERSION
                 from substrate.schemas import (
-                    DEFAULT_POLICY_ID, EVENT_SCHEMA_VERSION, Event,
+                    DEFAULT_POLICY_ID,
+                    EVENT_SCHEMA_VERSION,
+                    Event,
                     InvestigationStartRequestedPayload,
                 )
                 sources = tuple(DerivedCitationSource.model_validate(item)
@@ -202,7 +204,8 @@ class EvidenceCollectionRepository:
                     f"{owner_user_id}\0{idempotency_key}\0{request_sha}"
                 )[:24]
                 payload = InvestigationStartRequestedPayload(
-                    **options, context=context, spawn_context=context,
+                    **options, owner_user_id=owner_user_id,
+                    context=context, spawn_context=context,
                     derived_sources=sources,
                 )
                 event = Event(
