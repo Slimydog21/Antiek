@@ -13,6 +13,7 @@ import {
   parseBookSummary,
   parseLibraryPage,
 } from "./libraryCatalog";
+import { fetchLibraryPage } from "../components/library/useLibrary";
 
 const mockFetch = apiFetch as unknown as ReturnType<typeof vi.fn>;
 
@@ -27,7 +28,7 @@ const work = {
   document_id: "doc-1",
   title: "Scaling Laws",
   author: "Kaplan",
-  servability: "servable",
+  servability: "public_domain",
   servable_full_text: true,
   page_count: 12,
   cover_uri: null,
@@ -91,7 +92,7 @@ describe("parse honesty", () => {
         parseBookSummary({
           ...work,
           servable_full_text: false,
-          servability: "rights_gated",
+          servability: "gated_metadata_only",
         }),
       ),
     ).toMatch(/gated/i);
@@ -165,5 +166,38 @@ describe("fetchLibraryCatalog", () => {
       text: async () => "",
     } as unknown as Response);
     await expect(fetchLibraryCatalog()).rejects.toThrow(/raw_text/);
+  });
+});
+
+describe("production Library browse integration", () => {
+  it("routes the existing LibraryView hook through the fail-closed parser", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        works: [{ ...work, body: "must not reach LibraryView" }],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      }),
+      text: async () => "",
+    } as unknown as Response);
+
+    await expect(
+      fetchLibraryPage({ filter: "all", search: "", page: 1, pageSize: 20 }),
+    ).rejects.toThrow(/body-like key body/);
+  });
+
+  it("preserves the existing honest route-absent signal for a 404", async () => {
+    mockFetch.mockResolvedValue({
+      ok: false,
+      status: 404,
+      text: async () => "not found",
+      json: async () => ({}),
+    } as unknown as Response);
+
+    await expect(
+      fetchLibraryPage({ filter: "all", search: "", page: 1, pageSize: 20 }),
+    ).rejects.toThrow("library_route_absent");
   });
 });

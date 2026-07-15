@@ -1,7 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { API_BASE, apiFetch } from "../../lib/api";
 import type { BookSummary } from "../../api/books";
+import {
+  fetchLibraryCatalog,
+  LibraryCatalogHttpError,
+  type LibraryFilter,
+  type LibraryPage,
+} from "../../api/libraryCatalog";
 
 /**
  * useLibrary — the data hook for the M2 Library browse view (Read SPR-09).
@@ -20,18 +25,7 @@ import type { BookSummary } from "../../api/books";
  * blank shelf masquerading as an empty corpus (honesty over a false-empty).
  */
 
-/** The library filter — matches Unit A's `filter` query param exactly. */
-export type LibraryFilter = "servable" | "gated" | "all";
-
-/** Mirrors `LibraryPage` in interfaces/research/api/library.py. `works` reuses
- *  the `/books` `BookSummary` shape; `total` is the pre-pagination matched count
- *  so the surface can render a pager. */
-export interface LibraryPage {
-  works: BookSummary[];
-  total: number;
-  page: number;
-  page_size: number;
-}
+export type { LibraryFilter, LibraryPage } from "../../api/libraryCatalog";
 
 export interface UseLibraryArgs {
   filter: LibraryFilter;
@@ -57,17 +51,22 @@ export interface UseLibraryResult {
 
 /** Fetch one library page. Throws `library_route_absent` on a 404 so the hook
  *  can distinguish "not wired yet" from "empty corpus" and from a real error. */
-export async function fetchLibraryPage(args: UseLibraryArgs): Promise<LibraryPage> {
-  const params = new URLSearchParams({
-    filter: args.filter,
-    search: args.search,
-    page: String(args.page),
-    page_size: String(args.pageSize ?? 20),
-  });
-  const resp = await apiFetch(`${API_BASE}/library?${params.toString()}`);
-  if (resp.status === 404) throw new Error("library_route_absent");
-  if (!resp.ok) throw new Error(`GET /library: HTTP ${resp.status}`);
-  return (await resp.json()) as LibraryPage;
+export async function fetchLibraryPage(
+  args: UseLibraryArgs,
+): Promise<LibraryPage> {
+  try {
+    return await fetchLibraryCatalog({
+      filter: args.filter,
+      search: args.search,
+      page: args.page,
+      page_size: args.pageSize ?? 20,
+    });
+  } catch (error) {
+    if (error instanceof LibraryCatalogHttpError && error.status === 404) {
+      throw new Error("library_route_absent", { cause: error });
+    }
+    throw error;
+  }
 }
 
 export function useLibrary(args: UseLibraryArgs): UseLibraryResult {
