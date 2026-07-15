@@ -21,6 +21,16 @@ from substrate.multimedia.visual_selection import ReviewedVisualSelection
 NOW = datetime(2026, 7, 12, tzinfo=UTC)
 
 
+def test_registry_rejects_snapshot_key_domain_reuse(tmp_path: Path) -> None:
+    integrity_key = b"reviewed-visual-registry-integrity-key"
+    registry = ReviewedVisualRegistry(
+        db_path=str(tmp_path / "reviewed.duckdb"), integrity_key=integrity_key
+    )
+    registry.assert_independent_snapshot_key(b"independent-production-snapshot-key")
+    with pytest.raises(ValueError, match="independent"):
+        registry.assert_independent_snapshot_key(integrity_key)
+
+
 def _ready(tmp_path: Path, *, mode: str = "video", route: str = "balanced"):
     store = MultimediaAssetStore(str(tmp_path / "assets"))
     draft = store.create_draft(
@@ -30,6 +40,7 @@ def _ready(tmp_path: Path, *, mode: str = "video", route: str = "balanced"):
             mode=mode,
             route_policy=route,
             sources=("Grounded evidence for every chapter.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )
