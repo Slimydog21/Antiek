@@ -84,8 +84,8 @@ def test_setup_and_deploy_enable_both_backup_timers() -> None:
 
     backup_service = (TEMPLATES / "antiek-backup.service.j2").read_text()
     backup_script = (TEMPLATES / "backup.sh.j2").read_text()
-    assert "RuntimeDirectory=antiek-backup" in backup_service
-    assert "/run/antiek-backup/job.lock" in backup_script
+    assert "StateDirectory=antiek-backup" in backup_service
+    assert '${STAGING_ROOT%/}/job.lock' in backup_script
 
     deploy = (PLAYBOOKS / "deploy.yml").read_text()
     assert deploy.index("re-render backup script before enabling its persistent timer") < deploy.index(
