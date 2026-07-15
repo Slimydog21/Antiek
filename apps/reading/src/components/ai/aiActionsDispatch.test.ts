@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { dispatchAiAction, parseAssistantReply } from "./aiActions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import { EMPTY_SNAPSHOT } from "../../workspace/panel.types";
+import { toast } from "../lemon/LemonToast";
 
 /**
  * Full round-trip tests for the AI tool-call protocol.
@@ -26,6 +27,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.clearAllTimers();
+  vi.restoreAllMocks();
   vi.useRealTimers();
 });
 
@@ -192,7 +195,8 @@ describe("AI tool-call · full dispatch round-trip", () => {
     window.localStorage.removeItem("antiek.notebook." + nbId + ".etag");
   });
 
-  it("toast dispatches the lemon toast queue (dynamic import resolves)", async () => {
+  it("toast dispatches the lemon toast queue before returning", () => {
+    const warn = vi.spyOn(toast, "warn");
     const { actions } = parseAssistantReply(
       "x\n\n@@actions\n" +
         JSON.stringify([
@@ -202,9 +206,8 @@ describe("AI tool-call · full dispatch round-trip", () => {
     );
     const r = dispatchAiAction(actions[0]);
     expect(r.label).toContain("smoke");
-    // Fire-and-forget; we don't fail the test on toast UI absence —
-    // the deferred import returns a microtask we just confirm
-    // didn't throw.
+    expect(warn).toHaveBeenCalledOnce();
+    expect(warn).toHaveBeenCalledWith("smoke");
   });
 
   it("a multi-action reply dispatches every action in order", () => {
