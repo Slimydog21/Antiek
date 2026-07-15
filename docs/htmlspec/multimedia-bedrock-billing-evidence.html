@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cycle 31: Bedrock billing evidence qualification</title>
+<style>body{margin:28px auto;max-width:1040px;padding:0 18px;color:#171717;background:#fff;font:15px/1.5 system-ui}h1,h2,h3{letter-spacing:0}h2{border-bottom:2px solid #171717;padding-bottom:4px}code{background:#f1f1ed;padding:1px 4px}.bar{border:2px solid #171717;border-left:9px solid #d7492f;padding:12px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}.card{border:1px solid #777;padding:10px;border-radius:4px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #888;padding:7px;text-align:left;vertical-align:top}a{color:#1748c7}</style></head>
+<body><main>
+<h1>Cycle 31: Bedrock billing evidence qualification</h1>
+<p><strong>Status:</strong> executable refusal-and-evidence specification. <strong>Parent:</strong> <a href="multimedia-bedrock-batch-recovery.html">Cycle 30 Bedrock identity recovery</a>. <strong>Base:</strong> <code>5affe95cab341ff904e8ddc5c7f449118db5773c</code>.</p>
+<section id="spec-lineage" data-spec-depth="2" data-parent-spec="multimedia-bedrock-batch-recovery.html"><h2>Spec lineage</h2><p>Cycle 30 owns provider identity and lifecycle recovery. This child owns immutable classification of billing evidence and the mechanical proof that presently available AWS evidence cannot settle one job.</p><ul class="child-specs"><li>A future child may add settlement only after official provider evidence satisfies every exact-attribution criterion below.</li></ul></section>
+
+<section><h2>Verdict</h2><p class="bar">Do not qualify or production-enable Bedrock. The job output manifest authoritatively reports job token totals, but token totals multiplied by public rates are derived list price. CUR/Data Exports can report account billing line items, but AWS documents <code>lineItem/ResourceId</code> as optional and blank for usage not associated with an instantiated resource; Bedrock does not document a guaranteed job ARN or client token join on every charge, discount, credit, refund, or tax line. Cost-allocation tags are delayed and their propagation to every batch charge is unproven. No current evidence class is exact final per-job USD.</p></section>
+
+<section><h2>Five load-bearing values</h2><ol><li><strong>Classification before authority:</strong> evidence states what it proves and never gains settlement power by being persisted.</li><li><strong>Metering is not billing:</strong> provider token totals and rate multiplication remain separate from account charges.</li><li><strong>Aggregate truth is not job truth:</strong> a valid CUR row can be authoritative for an account period while remaining unattributable to one job.</li><li><strong>Finality is multidimensional:</strong> report period closure does not allocate later credits, refunds, discounts, or taxes to a job.</li><li><strong>Unknown retains authority:</strong> every non-exact class leaves the full hold and <code>billing_pending</code> unchanged.</li></ol></section>
+
+<section><h2>Evidence contract</h2><div class="grid">
+<article class="card"><h3>Job metering</h3><p>Bind job ARN, account digest, region, model, terminal provider observation, output-manifest object identity/version/digest, exact integer record and token counts, and retrieval timestamp. Never persist prompt or output bytes.</p></article>
+<article class="card"><h3>Derived list price</h3><p>Bind metering digest plus immutable provider/model/region/tier/rate snapshot and exact decimal calculation. Label it <code>derived_list_price</code>; it is projection evidence, not settlement.</p></article>
+<article class="card"><h3>CUR observation</h3><p>Bind report/export identity, billing period, account, region, product, operation, usage type, resource ID, line-item type, exact decimal usage/rate/cost fields, tags, ingestion time, raw digest, and report status. Store no credentials or raw report rows.</p></article>
+<article class="card"><h3>Qualification</h3><p>Derive a fixed classification and ordered reason codes from canonical evidence. Caller-supplied labels, totals, finality, or attribution claims have no authority.</p></article>
+</div></section>
+
+<section><h2>Schema v5</h2><p>Add an append-only <code>research_provider_billing_assessments</code> table in the shared spend ledger. Each deterministic assessment binds one Cycle 30 submission and hold, owner/run/provider/job identity, evidence kind, canonical redacted evidence, raw digest, classification, ordered reason codes, literal <code>settlement_authorized=0</code>, and timestamp. Immutable database triggers reject update/delete. Command receipts make exact replay byte-stable and changed evidence conflict.</p><p>Allowed classifications are <code>provider_metering_only</code>, <code>derived_list_price</code>, <code>cur_aggregate_observed</code>, <code>invoice_period_finalized_unattributable</code>, and <code>exact_job_final_cost_unavailable</code>. Schema v5 contains no exact/settled classification because no supported evidence contract earns it.</p></section>
+
+<section><h2>Qualification matrix</h2><table><thead><tr><th>Evidence</th><th>Classification</th><th>Required refusal reasons</th></tr></thead><tbody>
+<tr><td>Terminal job + exact output manifest counts</td><td><code>provider_metering_only</code></td><td><code>metering_not_usd</code></td></tr>
+<tr><td>Metering + immutable public rate calculation</td><td><code>derived_list_price</code></td><td><code>derived_not_invoiced</code>, <code>adjustments_unallocated</code></td></tr>
+<tr><td>Open-period CUR rows at product/operation/usage grain</td><td><code>cur_aggregate_observed</code></td><td><code>period_not_final</code>, <code>job_join_unproven</code></td></tr>
+<tr><td>Finalized period/invoice without guaranteed unique job join</td><td><code>invoice_period_finalized_unattributable</code></td><td><code>job_join_unproven</code>, <code>adjustments_unallocated</code></td></tr>
+<tr><td>Missing, contradictory, duplicate, malformed, tag-only, or caller-asserted evidence</td><td><code>exact_job_final_cost_unavailable</code></td><td>Stable reason matching the failed invariant</td></tr>
+</tbody></table></section>
+
+<section><h2>Future settlement bar</h2><p>A future adapter may add an exact class only when primary provider contracts prove all of: immutable account identity; exact job identity on every relevant usage line; complete line-item set; exact USD decimal amount; explicit treatment of discounts, credits, refunds, and taxes; report finality and correction semantics; unique non-overlapping attribution; authoritative lookup after response loss; and replay-safe settlement. Every dimension must be mechanically tested. A unique tag or matching token count is insufficient.</p></section>
+
+<section><h2>Acceptance</h2><ul>
+<li>Schema v4 migrates transactionally to v5; injected failure at every statement rolls back without changing v4 bytes.</li>
+<li>Only a <code>billing_pending</code> Bedrock submission with a bound ARN and unknown full hold accepts an assessment.</li>
+<li>Assessment ID and command replay are deterministic; changed evidence under either identity conflicts.</li>
+<li>Canonical/scalar/cross-table tampering, owner substitution, malformed decimals, floats, negative counts, wrong account/region/model/job, duplicate rows, and unsupported evidence kinds fail closed.</li>
+<li>Every accepted assessment leaves submission state, hold state/amount, run balance, launch operation, and qualification registry byte-equivalent.</li>
+<li>Provider metering, derived price, open CUR, finalized-unattributable CUR, tags without guaranteed propagation, credits/refunds/taxes, and ambiguous concurrent jobs have explicit regression tests.</li>
+<li>No AWS client factory, credentials, S3 read, CUR query, provider call, production route, qualification flip, settlement, release, event, graph write, task, or scheduler is added.</li>
+</ul></section>
+
+<section><h2>Primary-source basis</h2><ul>
+<li><a href="https://docs.aws.amazon.com/bedrock/latest/userguide/batch-inference-results.html">Bedrock batch results</a>: output manifest exposes record and token counts.</li>
+<li><a href="https://docs.aws.amazon.com/cur/latest/userguide/Lineitem-columns.html">CUR line-item columns</a>: ResourceId is optional; discounts, credits, refunds, and taxes are distinct line types.</li>
+<li><a href="https://docs.aws.amazon.com/awsaccountbilling/latest/aboutv2/activating-tags.html">Cost-allocation tag activation</a>: tags require activation and can take up to 24 hours at each stage.</li>
+<li><a href="https://aws.amazon.com/bedrock/pricing/">Bedrock pricing</a>: batch rates support list-price derivation, not invoice attribution.</li>
+</ul></section>
+
+<section><h2>Out of scope</h2><p>No production AWS integration, report downloader, S3 result ingestion, automatic polling, exact invoice claim, settlement/release, provider qualification, result artifact, event/graph projection, background scheduling, or UI.</p></section>
+<section id="harness-hint" data-pattern="adversarial-verification"><h2>Harness hint</h2><p>One builder owns schema and classifier. A separate critic tries to turn token totals, matching aggregate cost, unique tags, period closure, zero-cost rows, and caller labels into settlement authority. Require proof that every attack leaves the full hold unchanged.</p></section>
+</main></body></html>
