@@ -20,6 +20,16 @@ from .authorized_production_worker import (
     ChapterNarrationAuthority,
     produce_authorized_multimedia,
 )
+from .bedrock_live_guard_custody import (
+    BedrockLiveGuardCustodyError,
+    Cycle34AuthorityVerifier,
+    IndependentCustodyAttestation,
+    IndependentCustodyVerifier,
+    LiveGuardCustodyQualifier,
+    LiveGuardCustodyReceipt,
+    OrganizationGuardSnapshot,
+    VerifiedCustodyResult,
+)
 from .bedrock_s3_namespace import (
     NAMESPACE_CONTROL_ACTIONS,
     NAMESPACE_MUTATION_ACTIONS,
@@ -212,6 +222,14 @@ from .video import (
 )
 
 __all__ = [
+    "BedrockLiveGuardCustodyError",
+    "Cycle34AuthorityVerifier",
+    "IndependentCustodyAttestation",
+    "IndependentCustodyVerifier",
+    "LiveGuardCustodyQualifier",
+    "LiveGuardCustodyReceipt",
+    "OrganizationGuardSnapshot",
+    "VerifiedCustodyResult",
     "NAMESPACE_CONTROL_ACTIONS",
     "NAMESPACE_MUTATION_ACTIONS",
     "BedrockS3NamespaceError",
