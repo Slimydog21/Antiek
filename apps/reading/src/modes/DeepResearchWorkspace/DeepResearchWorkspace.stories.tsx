@@ -4,14 +4,17 @@ import type { PlanTree, ResearchStatus, SessionCost } from "../../api/research";
 import CostMeter from "./CostMeter";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import { ComposeBar, DeepResearchMissionControlFrame } from "./index";
 
 const meta = {
-  title: "DeepResearch / Workspace",
-  parameters: { layout: "padded" },
-  tags: ["autodocs"],
+  title: "Deep Research / Mission Control",
+  parameters: { layout: "fullscreen", lostpixel: { waitBeforeScreenshot: 1500 } },
+  tags: ["autodocs", "a11y-audit"],
 } satisfies Meta;
 export default meta;
 type Story = StoryObj<typeof meta>;
+
+const noop = () => undefined;
 
 const TREE: PlanTree = {
   root: {
@@ -64,6 +67,70 @@ export const Research_Panels: Story = {
 
 const COST: SessionCost = {
   per_research: {}, session_total_usd: 8.4, aggregate_spent_usd: 8.4, aggregate_cap_usd: 10,
+};
+
+export const Ready: Story = {
+  render: () => (
+    <div className="h-screen">
+      <DeepResearchMissionControlFrame phase="Ready" visualFixture>
+        <ComposeBar problem="" setProblem={noop} busy={false} onCreate={noop} />
+        <div className="deep-research-mission-control__status">
+          <div><strong>One problem becomes an inspectable plan.</strong><p>Nothing launches until the plan is approved.</p></div>
+        </div>
+      </DeepResearchMissionControlFrame>
+    </div>
+  ),
+};
+
+export const Creating: Story = {
+  render: () => (
+    <div className="h-screen">
+      <DeepResearchMissionControlFrame phase="Charting" visualFixture>
+        <ComposeBar problem="How will autonomous research change technology diligence?" setProblem={noop} busy onCreate={noop} />
+        <div role="status" className="deep-research-mission-control__status">
+          <span className="deep-research-mission-control__spinner" aria-hidden="true" />
+          <div><strong>Charting the first research paths…</strong><p>No research has launched yet.</p></div>
+        </div>
+      </DeepResearchMissionControlFrame>
+    </div>
+  ),
+};
+
+export const DraftPlan: Story = {
+  render: () => (
+    <div className="h-screen">
+      <DeepResearchMissionControlFrame phase="Plan room" visualFixture>
+        <ComposeBar problem={TREE.root.question} setProblem={noop} busy={false} onCreate={noop} />
+        <PlanEditor tree={TREE} launchable={false} busy={false} onEdit={noop} onApprove={noop} onLaunch={noop} />
+      </DeepResearchMissionControlFrame>
+    </div>
+  ),
+};
+
+export const ActiveMonitor: Story = {
+  render: () => (
+    <div className="h-screen">
+      <DeepResearchMissionControlFrame phase="Live session" active visualFixture>
+        <CostMeter cost={{ ...COST, session_total_usd: 1.2, aggregate_spent_usd: 1.2 }} />
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {RESEARCHES.map((research) => <ResearchPanel key={research.investigation_id} research={research} costUsd={0.042} onSteer={noop} />)}
+        </div>
+      </DeepResearchMissionControlFrame>
+    </div>
+  ),
+};
+
+export const Failure: Story = {
+  render: () => (
+    <div className="h-screen">
+      <DeepResearchMissionControlFrame phase="Ready" visualFixture>
+        <ComposeBar problem="Which evidence would change the investment thesis?" setProblem={noop} busy={false} onCreate={noop} />
+        <div role="alert" className="deep-research-mission-control__notice">
+          <div><strong>Mission control could not complete that operation.</strong><p>Nothing new was launched or approved. Review the current plan and try again.</p></div>
+        </div>
+      </DeepResearchMissionControlFrame>
+    </div>
+  ),
 };
 
 export const Cost_Meter: Story = {

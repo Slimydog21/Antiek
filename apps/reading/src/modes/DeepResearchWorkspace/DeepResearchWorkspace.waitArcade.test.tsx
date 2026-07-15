@@ -148,7 +148,8 @@ describe("Deep Research wait arcade gate", () => {
         busy={false}
       />,
     );
-    expect(screen.getByText(/reconnecting.*poll dropped/)).toBeTruthy();
+    expect(screen.getByText(/reconnecting.*status details stay private/)).toBeTruthy();
+    expect(screen.queryByText(/poll dropped/)).toBeNull();
     expect(screen.getByTestId("lazy-wait-arcade")).toBeTruthy();
 
     sessionView.current = {

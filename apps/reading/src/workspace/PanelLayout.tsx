@@ -98,7 +98,7 @@ export function PanelLayout({ mainSlot }: Props) {
             screen for the workspace chrome.
           </span>
         </div>
-        <div className="flex-1 min-h-0 overflow-auto">{mainSlot}</div>
+        <main className="flex-1 min-h-0 overflow-auto">{mainSlot}</main>
       </div>
     );
   }

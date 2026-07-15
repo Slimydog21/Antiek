@@ -1,0 +1,155 @@
+.deep-research-mission-control {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  overflow: auto;
+  color: var(--ink);
+}
+
+.deep-research-mission-control > img {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  pointer-events: none;
+  user-select: none;
+}
+
+.deep-research-mission-control__veil {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background:
+    linear-gradient(180deg, rgb(7 19 33 / 0.24), rgb(238 244 244 / 0.46) 33%, rgb(238 244 244 / 0.78)),
+    radial-gradient(circle at 50% 58%, rgb(255 255 255 / 0.05), rgb(250 252 251 / 0.58) 72%);
+  pointer-events: none;
+}
+
+.deep-research-mission-control__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 2rem;
+  padding: 1.5rem clamp(1.25rem, 4vw, 3.25rem) 0;
+  text-shadow: 0 1px 18px rgb(255 255 255 / 0.8);
+}
+
+.deep-research-mission-control__eyebrow {
+  font: 700 0.68rem/1.3 var(--mono);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.deep-research-mission-control__header h1 {
+  margin-top: 0.2rem;
+  font-family: var(--serif);
+  font-size: clamp(1.9rem, 3.7vw, 3rem);
+  line-height: 0.98;
+}
+
+.deep-research-mission-control__header p:last-child {
+  max-width: 38rem;
+  margin-top: 0.65rem;
+  font-family: var(--serif);
+  font-size: 0.94rem;
+  color: var(--shadow-1);
+}
+
+.deep-research-mission-control__phase {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid rgb(18 36 52 / 0.42);
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.76);
+  box-shadow: var(--shadow-z1);
+  font: 700 0.68rem/1 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.deep-research-mission-control__phase span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--sun-deep);
+  box-shadow: 0 0 0 3px rgb(255 196 72 / 0.22);
+}
+
+.deep-research-mission-control--active .deep-research-mission-control__phase span {
+  background: var(--aurora);
+}
+
+.deep-research-mission-control__console {
+  display: flex;
+  width: min(74rem, calc(100% - 2rem));
+  min-height: 18rem;
+  flex-direction: column;
+  gap: 1rem;
+  margin: clamp(2rem, 7vh, 5.5rem) auto 2.5rem;
+  padding: clamp(1rem, 2.4vw, 1.75rem);
+  border: 1px solid rgb(20 39 56 / 0.36);
+  border-radius: 1rem;
+  background: rgb(249 250 247 / 0.9);
+  box-shadow: 7px 8px 0 rgb(17 31 44 / 0.84);
+}
+
+.deep-research-mission-control__notice,
+.deep-research-mission-control__status {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--rule);
+  border-radius: 0.65rem;
+  background: rgb(255 255 255 / 0.76);
+  font-size: 0.82rem;
+}
+
+.deep-research-mission-control__notice { border-color: rgb(142 56 45 / 0.45); }
+.deep-research-mission-control__notice p,
+.deep-research-mission-control__status p { margin-top: 0.15rem; color: var(--shadow-1); }
+
+.deep-research-mission-control__spinner {
+  width: 1.8rem;
+  height: 1.8rem;
+  flex: none;
+  border: 2px solid rgb(17 34 51 / 0.18);
+  border-top-color: var(--sun-deep);
+  border-radius: 50%;
+}
+
+/* Lost-Pixel compares concurrent Chromium pages with zero color tolerance.
+   Fixtures retain all HTML geometry but use a deterministic wash instead of
+   concurrently scaling the full-bleed WebP; direct production proof owns it. */
+.deep-research-mission-control--fixture {
+  background:
+    radial-gradient(circle at 50% 69%, rgb(255 255 255 / 0.92) 0 11%, transparent 34%),
+    linear-gradient(180deg, rgb(144 164 181) 0 34%, rgb(229 234 233) 34% 100%);
+}
+
+.deep-research-mission-control--fixture > img { visibility: hidden; }
+
+@media (max-width: 767px) {
+  .deep-research-mission-control__header { gap: 1rem; padding-top: 1rem; }
+  .deep-research-mission-control__header p:last-child { display: none; }
+  .deep-research-mission-control__phase { padding: 0.55rem 0.65rem; }
+  .deep-research-mission-control__console {
+    width: calc(100% - 1.25rem);
+    margin-top: 1.75rem;
+    padding: 0.8rem;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .deep-research-mission-control__veil { background: linear-gradient(180deg, rgb(4 12 24 / 0.34), rgb(5 11 22 / 0.78)); }
+  .deep-research-mission-control__phase,
+  .deep-research-mission-control__console,
+  .deep-research-mission-control__notice,
+  .deep-research-mission-control__status { background: rgb(18 28 40 / 0.9); border-color: rgb(230 237 242 / 0.24); }
+}
