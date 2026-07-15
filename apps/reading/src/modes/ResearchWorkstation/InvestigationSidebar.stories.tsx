@@ -141,6 +141,17 @@ export const RoutedActiveChild: Story = {
   ),
 };
 
+export const KeyboardFocus: Story = {
+  args: {
+    ...FullLineage.args,
+    activeId: "inv-child-001",
+  },
+  play: async ({ canvasElement }) => {
+    const rows = canvasElement.querySelectorAll<HTMLElement>('[role="treeitem"]');
+    rows[4]?.focus();
+  },
+};
+
 export const Narrow: Story = {
   args: { ...FullLineage.args },
   parameters: {
