@@ -39,6 +39,7 @@ import {
   recoverMultimediaLocalAudible,
   produceMultimediaLocalAudible,
   pollMultimediaVisualGeneration,
+  prepareResearchIntent,
   previewMultimediaSteering,
   previewMultimediaVisualCandidate,
   manualGateIds,
@@ -718,6 +719,68 @@ describe("multimedia API client", () => {
       "/multimedia/narration-runs/run%201/reconciliation",
       expect.anything(),
     );
+  });
+
+  it("prepares research only from the exact receipt-bound claim snapshot", async () => {
+    const evidence = [{
+      chunk_id: "chunk-1", document_id: "doc-1", locator: "Lift",
+      authority_kind: "canonical_graph" as const, chunk_sha256: "a".repeat(64),
+      start_utf8_byte: 0, end_utf8_byte: 12, span_sha256: "b".repeat(64),
+      exact_text: "Exact claim.",
+    }];
+    const claim = {
+      line_id: "chapter-1-line-0", chapter_id: "chapter-1", claim_text: "Exact claim.",
+      source_count: 1, follow_up_prompt: "Investigate this claim.",
+      source_chunk_ids: ["chunk-1"], evidence_status: "verified_exact" as const,
+      evidence_sources: evidence,
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(201, {
+      intent_id: `mmri_${"c".repeat(48)}`, state: "prepared", asset_id: "asset-1",
+      revision_id: "rev-1", receipt_sha256: "d".repeat(64), audio_sha256: "e".repeat(64),
+      chapter_id: "chapter-1", line_id: "chapter-1-line-0", question: "Why exactly?",
+      claim_text: "Exact claim.", follow_up_prompt: "Investigate this claim.",
+      evidence_sources: evidence,
+      evidence_digest: "4ee7ffb952a98b351bd19a70bf62dcf5897a9228acb3dffd85d3dc319c869f51",
+      request_digest: "2f0f901d927328b790147bea83930b7f213fe577bbf12b1e7b7d1b440f47c00f",
+      created_at: "2026-07-15T00:00:00Z", plan_handoff_status: "blocked_unowned_plan_store",
+      provider_launch_authorized: false, spend_authority_digest: null,
+      plan_seed: { question: "Why exactly?", intent_id: `mmri_${"c".repeat(48)}`,
+        intent_digest: "f51facc43a53e88335261d424616f1a7ed13daa59b1833f448d2a56f9b2e92d4",
+        evidence_digest: "4ee7ffb952a98b351bd19a70bf62dcf5897a9228acb3dffd85d3dc319c869f51" },
+    }));
+    await expect(prepareResearchIntent(
+      "asset-1", "rev-1", "d".repeat(64), "e".repeat(64), claim,
+      "Why exactly?", "request_12345678",
+    )).resolves.toMatchObject({ state: "prepared", provider_launch_authorized: false });
+    expect(JSON.parse(String(mockFetch().mock.calls.at(-1)?.[1]?.body))).toEqual({
+      expected_revision_id: "rev-1", line_id: "chapter-1-line-0",
+      question: "Why exactly?", idempotency_key: "request_12345678",
+    });
+  });
+
+  it("rejects a substituted research evidence response", async () => {
+    const claim = {
+      line_id: "line-1", chapter_id: "chapter-1", claim_text: "Exact claim.", source_count: 1,
+      follow_up_prompt: "Investigate.", source_chunk_ids: ["chunk-1"],
+      evidence_status: "verified_exact" as const,
+      evidence_sources: [{ chunk_id: "chunk-1", document_id: "doc-1", locator: null,
+        authority_kind: "canonical_graph" as const, chunk_sha256: "a".repeat(64),
+        start_utf8_byte: 0, end_utf8_byte: 12, span_sha256: "b".repeat(64), exact_text: "Exact claim." }],
+    };
+    mockFetch().mockResolvedValueOnce(jsonResponse(200, {
+      intent_id: `mmri_${"c".repeat(48)}`, state: "prepared", asset_id: "asset-1",
+      revision_id: "rev-1", receipt_sha256: "d".repeat(64), audio_sha256: "e".repeat(64),
+      chapter_id: "chapter-1", line_id: "line-1", question: "Why?", claim_text: "Substituted.",
+      follow_up_prompt: "Investigate.", evidence_sources: claim.evidence_sources,
+      evidence_digest: "f".repeat(64), request_digest: "1".repeat(64),
+      created_at: "2026-07-15T00:00:00Z", plan_handoff_status: "blocked_unowned_plan_store",
+      provider_launch_authorized: false, spend_authority_digest: null,
+      plan_seed: { question: "Why?", intent_id: `mmri_${"c".repeat(48)}`,
+        intent_digest: "2".repeat(64), evidence_digest: "f".repeat(64) },
+    }));
+    await expect(prepareResearchIntent(
+      "asset-1", "rev-1", "d".repeat(64), "e".repeat(64), claim, "Why?", "request_12345678",
+    )).rejects.toThrow("multimedia_research_intent_identity_conflict");
   });
 
   // ── Cycle 22: listening progress ──

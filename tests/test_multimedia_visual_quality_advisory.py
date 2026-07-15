@@ -17,9 +17,11 @@ from substrate.multimedia.visual_quality_advisory import (
     VisualQualityAdvisoryIntegrityError,
     VisualQualityAdvisoryRegistry,
     VisualQualityAssessmentRequest,
+    VisualRoutingCohort,
     VisualRoutingCohortKey,
     _CohortAccumulator,
     _finalize_cohort,
+    _recommend,
     _wilson_lower_bound,
 )
 from tests.test_multimedia_visual_authorization import KEY
@@ -438,6 +440,9 @@ def test_wilson_golden_cases_and_recommendation_threshold_boundaries() -> None:
     assert cohort.charged_cents_total == 1000
     assert cohort.charged_cents_per_assessed_candidate == 50.0
     assert cohort.efficiency_score == pytest.approx(1.67774968)
+    assert cohort.quality_lower_bound == pytest.approx(0.83887484)
+    assert cohort.acceptance_efficiency_score == cohort.efficiency_score
+    assert cohort.quality_efficiency_score == 2.0
     acc.candidate_ids.add("unassessed-1")
     acc.candidate_ids.add("unassessed-2")
     acc.candidate_ids.add("unassessed-3")
@@ -448,3 +453,72 @@ def test_wilson_golden_cases_and_recommendation_threshold_boundaries() -> None:
     assert _finalize_cohort(key, acc).ineligibility_reasons == (
         "minimum_assessment_coverage",
     )
+
+
+def test_recommendation_requires_quality_and_acceptance_rank_agreement() -> None:
+    first_key = VisualRoutingCohortKey(
+        "image", "krea", "model-a", "balanced", "catalog-v1", "a" * 64, RUBRIC_VERSION
+    )
+    second_key = VisualRoutingCohortKey(
+        "image", "krea", "model-b", "balanced", "catalog-v1", "b" * 64, RUBRIC_VERSION
+    )
+    first = _finalize_cohort(
+        first_key,
+        _CohortAccumulator(
+            {f"a-execution-{i}" for i in range(10)},
+            {"asset-a", "asset-b", "asset-c"},
+            {f"a-candidate-{i}" for i in range(20)},
+            {f"a-assessment-{i}" for i in range(20)},
+            20,
+            40,
+            {f"a-execution-{i}": 100 for i in range(10)},
+            0,
+        ),
+    )
+    second = _finalize_cohort(
+        second_key,
+        _CohortAccumulator(
+            {f"b-execution-{i}" for i in range(10)},
+            {"asset-a", "asset-b", "asset-c"},
+            {f"b-candidate-{i}" for i in range(20)},
+            {f"b-assessment-{i}" for i in range(20)},
+            16,
+            80,
+            {f"b-execution-{i}": 100 for i in range(10)},
+            0,
+        ),
+    )
+    assert _recommend((first, second)) == ("quality_acceptance_disagreement", None)
+    status, recommendation = _recommend((first,))
+    assert status == "recommended"
+    assert recommendation is not None and recommendation.cohort == first_key
+
+
+def test_recommendation_rejects_score_ties_without_metadata_tiebreak() -> None:
+    key_a = VisualRoutingCohortKey(
+        "image", "krea", "model-a", "balanced", "catalog-v1", "a" * 64, RUBRIC_VERSION
+    )
+    key_b = VisualRoutingCohortKey(
+        "image", "krea", "model-b", "balanced", "catalog-v1", "b" * 64, RUBRIC_VERSION
+    )
+
+    def cohort(key: VisualRoutingCohortKey, charge: int) -> VisualRoutingCohort:
+        return _finalize_cohort(
+            key,
+            _CohortAccumulator(
+                {f"{key.model}-execution-{i}" for i in range(10)},
+                {"asset-a", "asset-b", "asset-c"},
+                {f"{key.model}-candidate-{i}" for i in range(20)},
+                {f"{key.model}-assessment-{i}" for i in range(20)},
+                20,
+                80,
+                {f"{key.model}-execution-{i}": charge for i in range(10)},
+                0,
+            ),
+        )
+
+    assert _recommend((cohort(key_a, 100), cohort(key_b, 100))) == (
+        "ambiguous_ranking",
+        None,
+    )
+    assert _recommend(()) == ("no_eligible_cohorts", None)

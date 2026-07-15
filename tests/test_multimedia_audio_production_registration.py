@@ -9,6 +9,7 @@ from substrate.multimedia.audio_production_registration import (
     MultimediaAudioRegistrationRequest,
     register_multimedia_audio_production,
 )
+from substrate.multimedia.hardening import evaluate_multimedia_asset
 from substrate.multimedia.read_model import (
     ApplySteeringPreviewRequest,
     CreateMultimediaDraftRequest,
@@ -65,7 +66,11 @@ def test_audio_registration_attaches_exact_metadata_replays_and_steering_clears(
     tmp_path: Path,
 ) -> None:
     store, asset_id = _store(tmp_path)
-    store.approve_dry_run(asset_id, owner_id="owner-1")
+    ready = store.approve_dry_run(asset_id, owner_id="owner-1")
+    stale_report = evaluate_multimedia_asset(ready.asset)
+    store.save(
+        ready.model_copy(update={"hardening_report": stale_report}), owner_id="owner-1"
+    )
     request = MultimediaAudioRegistrationRequest(expected_revision_id="rev-1")
     first = register_multimedia_audio_production(
         asset_id,
@@ -78,6 +83,11 @@ def test_audio_registration_attaches_exact_metadata_replays_and_steering_clears(
     assert first.audio_production_link is not None
     assert first.audio_production_link.audio_sha256 == "b" * 64
     assert first.summary().production_ready is True
+    assert first.hardening_report is None
+    current_report = evaluate_multimedia_asset(first.asset)
+    store.save(
+        first.model_copy(update={"hardening_report": current_report}), owner_id="owner-1"
+    )
     replay = register_multimedia_audio_production(
         asset_id,
         request,
@@ -86,6 +96,7 @@ def test_audio_registration_attaches_exact_metadata_replays_and_steering_clears(
         playback=_Playback(),  # type: ignore[arg-type]
     )
     assert replay.audio_production_link == first.audio_production_link
+    assert replay.hardening_report == current_report
     steering = SteeringPreviewRequest(
         expected_parent_revision_id=first.asset.revision_id,
         prompt="go deeper on engines in chapter 2",
