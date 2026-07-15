@@ -76,7 +76,9 @@ export function Home() {
         <div className="mx-auto max-w-3xl px-6 py-14">
           {/* Brand statement — what Antiek is, in its own voice. */}
           <header className="mb-10 flex flex-col items-center text-center">
-            <Werner mood="idle" size={72} label="Antiek" />
+            <span data-testid="home-werner-hero">
+              <Werner mood="idle" size={72} label="Antiek" />
+            </span>
             <h1 className="mt-4 font-serif text-3xl font-semibold text-ink dark:text-bright">
               One workspace for everything you read, research, and write.
             </h1>

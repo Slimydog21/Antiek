@@ -119,6 +119,8 @@ describe("Home (SPR-12 M1)", () => {
     expect(
       screen.getByText(/One workspace for everything you read/i),
     ).toBeTruthy();
+    // Hero Werner — home of the penguin (UI-consumed, not inventory-only).
+    expect(screen.getByTestId("home-werner-hero")).toBeTruthy();
     // Four equal door cards.
     const cards = screen.getByTestId("home-workflow-cards");
     expect(cards.querySelectorAll("button").length).toBe(WORKFLOW_ORDER.length);
