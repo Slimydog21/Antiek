@@ -9,7 +9,7 @@ composition seam that makes that per-prompt experience possible.
 **What already exists on main (do not rebuild — model-decision-composer spec §1):**
 
 * ``substrate/dispatch/advisory_decision.py`` (#2029): ``rank_model_candidates(task, candidates)``
-  → ``DecisionResult`` with ranked candidates, quality basis (measured vs static_prior),
+  → ``DecisionResult`` with ranked candidates and measured-or-absent quality evidence,
   eligibility, and the advisory ``would_exceed_budget`` hint.
 * ``runtime/research_runner/protocol.py``: ``CostProjection`` — the authoritative server-side
   projection (``maximum_cost_usd``, ``disposition``, ``ineligibility``).
@@ -32,8 +32,8 @@ and the composer UI (Slices C/D) consume this; neither re-derives.
    math.** The chosen candidate's over-budget verdict comes from
    ``CostProjection.maximum_cost_usd`` vs ``remaining_usd`` — server-side data, never a stale
    client rate table. ``None`` when either is unmeasurable (never fabricated ``False``).
-4. **Quality basis is carried.** A recommendation grounded in ``measured`` (bench samples) is
-   distinct from ``static_prior`` — the composer never mistakes a prior for a measurement.
+4. **Quality basis is carried.** A recommendation grounded in ``measured`` benchmark evidence is
+   distinct from ``absent`` evidence — the composer never fabricates a prior as a measurement.
 5. **Curated default is the honest fallback.** Absent an explicit choice, ``chosen_*`` are
    ``None`` and a note records "curated default — no explicit user choice projected"; the
    composer uses the existing curated tier. Choosing a model projects ONLY that candidate.
@@ -60,7 +60,7 @@ from substrate.dispatch.advisory_decision import (
 )
 
 PricingStatus = Literal["known", "unknown"]
-QualityBasis = Literal["measured", "static_prior"]
+QualityBasis = Literal["measured", "absent"]
 
 _DECISION_TASKS = frozenset(
     {
@@ -117,7 +117,7 @@ class ComposerCandidateView:
     tier: str
     provider: str
     model: str
-    quality_score: float
+    quality_score: float | None
     quality_basis: QualityBasis
     eligible: bool
     pricing_status: PricingStatus
@@ -130,12 +130,15 @@ class ComposerCandidateView:
         _bounded_text(self.tier, "tier", _MAX_TIER_CHARS)
         _bounded_text(self.provider, "provider", _MAX_IDENTITY_CHARS)
         _bounded_text(self.model, "model", _MAX_IDENTITY_CHARS)
-        if type(self.quality_score) is not float or not math.isfinite(self.quality_score):
-            raise ValueError("quality_score must be a finite float")
-        if not 0.0 <= self.quality_score <= 1.0:
-            raise ValueError("quality_score must be between zero and one")
-        if self.quality_basis not in {"measured", "static_prior"}:
+        if self.quality_score is not None:
+            if type(self.quality_score) is not float or not math.isfinite(self.quality_score):
+                raise ValueError("quality_score must be a finite float or None")
+            if not 0.0 <= self.quality_score <= 1.0:
+                raise ValueError("quality_score must be between zero and one")
+        if self.quality_basis not in {"measured", "absent"}:
             raise ValueError("quality_basis is invalid")
+        if (self.quality_score is None) != (self.quality_basis == "absent"):
+            raise ValueError("quality score and basis must agree")
         if type(self.eligible) is not bool:
             raise TypeError("eligible must be a bool")
         if self.pricing_status not in {"known", "unknown"}:

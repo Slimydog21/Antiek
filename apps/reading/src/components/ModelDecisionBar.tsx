@@ -10,8 +10,8 @@
  *   * Unknown pricing renders "unknown", never "$0.00".
  *   * would_exceed_budget null (unmeasurable) is distinct from false (within) and
  *     true (over) — never collapses the three states.
- *   * quality_basis measured vs static_prior is a visible badge — a prior is never
- *     mistaken for a measurement.
+ *   * quality_basis measured vs absent is visible — missing evidence is never
+ *     presented as a prior or measurement.
  *   * Budget bar only renders when cap+spent are both present; null on either → an
  *     honest "budget unknown" label, never a fabricated 0%.
  *   * Pure + advisory: the bar never dispatches; onSelect reports the choice up.
@@ -154,7 +154,7 @@ export default function ModelDecisionBar({
     value: String(index),
     candidate: c,
     label: `${c.tier} · ${c.provider}/${c.model} · ${pricingLabel(c)} · ${
-      c.quality_basis === "measured" ? "measured" : "prior"
+      c.quality_basis === "measured" ? "measured" : "no quality measurement"
     }${c.eligible ? "" : " · ineligible"}`,
   }));
   const selectedChoice =

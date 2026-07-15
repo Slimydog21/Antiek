@@ -33,8 +33,8 @@ function baseProjection(
         tier: "flash",
         provider: "openai",
         model: "gpt-flash",
-        quality_score: 0.5,
-        quality_basis: "static_prior",
+        quality_score: null,
+        quality_basis: "absent",
         eligible: true,
         pricing_status: "unknown",
         estimated_usd_low: null,
@@ -192,8 +192,8 @@ describe("ModelDecisionBar", () => {
     );
   });
 
-  // I4 — quality basis carried (measured vs static_prior)
-  it("distinguishes measured vs static_prior in the selector labels", () => {
+  // I4 — quality basis carried (measured vs absent)
+  it("distinguishes measured from absent evidence in selector labels", () => {
     render(<ModelDecisionBar projection={baseProjection()} />);
     const select = screen.getByTestId(
       "model-decision-select",
@@ -205,7 +205,7 @@ describe("ModelDecisionBar", () => {
       o.label.includes("gpt-flash"),
     );
     expect(proOption?.label).toContain("measured");
-    expect(flashOption?.label).toContain("prior");
+    expect(flashOption?.label).toContain("no quality measurement");
   });
 
   // budget bar honesty — null cap or spent → "budget unknown", never fabricated 0%
