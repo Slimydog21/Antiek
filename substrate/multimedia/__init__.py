@@ -44,6 +44,14 @@ from .bedrock_live_guard_custody import (
     OrganizationGuardSnapshot,
     VerifiedCustodyResult,
 )
+from .bedrock_live_guard_journal import (
+    LiveGuardAttemptStatus,
+    LiveGuardJournalConflict,
+    LiveGuardJournalError,
+    LiveGuardJournalIntegrityReport,
+    LiveGuardJournalUnavailable,
+    SqliteLiveGuardAcquisitionJournal,
+)
 from .bedrock_s3_namespace import (
     NAMESPACE_CONTROL_ACTIONS,
     NAMESPACE_MUTATION_ACTIONS,
@@ -248,6 +256,12 @@ __all__ = [
     "RevocationEvidenceVerifier",
     "RevocationObservation",
     "VerifiedRevocationResult",
+    "LiveGuardAttemptStatus",
+    "LiveGuardJournalConflict",
+    "LiveGuardJournalError",
+    "LiveGuardJournalIntegrityReport",
+    "LiveGuardJournalUnavailable",
+    "SqliteLiveGuardAcquisitionJournal",
     "BedrockLiveGuardCustodyError",
     "Cycle34AuthorityVerifier",
     "IndependentCustodyAttestation",
