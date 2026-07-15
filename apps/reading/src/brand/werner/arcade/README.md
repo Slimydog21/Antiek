@@ -13,6 +13,7 @@ does not create a second character or spend a mascot appearance mid-content.
 - Clam Catcher call: `exec-8e01e75a-9136-4cef-9d31-139f507630ce`.
 - Clam Catcher visual-kit call: `exec-2c98cfa4-2d12-45bc-a806-cb761c85378c`.
 - Paperclip Zombies visual-kit call: `exec-a6a0f5e5-1185-4670-8e20-5db4662b0068`.
+- Ice Fishing visual-kit call: `exec-e8343838-86f6-48e4-a267-3f2865b790c4`.
 - The two earlier Werner-bearing candidates from this session were rejected and
   are not present in the repository because they violated the one-live-mascot
   restraint.
@@ -32,6 +33,7 @@ reducing the shipped trio from multi-megabyte PNGs to under 700 KiB combined.
 | `clam-catcher-station-key-art-v1.webp` | `0551006bcf4775c8317c2bf7a967028c3c4da7a69c4dd78ff130d119d80f29b8` |  1200×800 |
 | `clam-catcher-visual-kit-v1.webp`      | `6ee8dd9c9614b8ad89ca5446c226852aae3bd0ef6410b9818af1d7413386963e` | 1254×1254 |
 | `paperclip-zombies-visual-kit-v1.webp` | `43670cf9a4738f7eae319446ec1ff2f572ddec10972622eeef8e95e1e68987c3` | 1254×1254 |
+| `ice-fishing-visual-kit-v1.webp`        | `76d154d5dcc00cf08cab6c5df8b33141f9662c6a04585df7c78dbaae2dd0e0f8` | 1254×1254 |
 
 The visual kit uses one built-in ChatGPT Image PNG on a removable green field.
 The installed imagegen helper sampled border key `#03f805`, applied a soft
@@ -48,6 +50,12 @@ produced 1,260,140 fully transparent pixels and 8,008 partially transparent
 pixels in the 131,870-byte WebP. All four corners and every two-pixel quadrant
 edge are alpha 0. Runtime crops retain transparent padding, aspect-fit inside
 the unchanged authoritative rectangles, and never enlarge hitboxes.
+
+The Ice Fishing kit sampled its generated border as `#04f809`; soft matte and
+despill produced 1,310,737 fully transparent pixels and 8,633 partially
+transparent pixels in the 91,294-byte WebP. Every selected crop has a fully
+transparent padded edge. Runtime rendering aspect-fits each silhouette wholly
+inside the unchanged 18×10, 28×14, or 10×10 authoritative collision rectangle.
 
 ## Final prompts
 
@@ -135,3 +143,21 @@ the unchanged authoritative rectangles, and never enlarge hitboxes.
 > UI, cursor, character, penguin, Werner, person, hands, fake research evidence,
 > weapon, gore, body horror, skulls, blood, copied franchise imagery,
 > photorealism, or stock-game styling.
+
+### Ice Fishing visual kit
+
+> Use case: stylized-concept. Asset type: production 2x2 game sprite atlas for
+> Antiek's Ice Fishing research-wait canvas mini-game. Create exactly four
+> isolated objects on a perfectly flat solid #00ff00 chroma-key field:
+> top-left one small streamlined glacier-blue fish for the 18x10 one-point
+> catch; top-right one broader brass-and-coral medium fish for the 28x14
+> three-point catch; bottom-left one funny old researcher's rubber boot hazard
+> lying horizontally for an 18x10 collision box; bottom-right one compact brass
+> fishing hook with a tiny aurora bobber for a 10x10 collision box. No
+> character. Each object fully contained, centered, and isolated in its equal
+> quadrant with generous padding and no overlap. Refined flat editorial game
+> illustration with restrained screen-print texture, crisp geometric
+> silhouettes, and the Antiek palette. Never use #00ff00 inside an object.
+> Exactly four objects and nothing else. No background variation, text, logo,
+> UI, cursor, character, person, fake evidence, weapon, gore, copied franchise
+> imagery, photorealism, or stock-game styling.

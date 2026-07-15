@@ -13,6 +13,23 @@ const input = (press = false): InputState => ({
 });
 
 describe("Ice Fishing cartridge lifecycle", () => {
+  it("loads and disposes authored visuals with the cartridge lifecycle", () => {
+    const visualKit = { image: null, ready: false, load: vi.fn(), dispose: vi.fn() };
+    const ctx: GameContext = {
+      width: 64,
+      height: 64,
+      rng: () => 0.5,
+      saveBestScore: vi.fn(),
+      readBestScore: () => 0,
+    };
+    const cart = createIceFishingCartridge({ visualKit });
+    expect(visualKit.load).not.toHaveBeenCalled();
+    cart.init(ctx);
+    expect(visualKit.load).toHaveBeenCalledTimes(1);
+    cart.teardown();
+    expect(visualKit.dispose).toHaveBeenCalledTimes(1);
+  });
+
   it("saves best score once when the first hazard ends the round", () => {
     const saveBestScore = vi.fn();
     const values = [0, 0, 0.5, 0];
