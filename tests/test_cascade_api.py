@@ -25,6 +25,7 @@ class _StubEmbedding:
 
     def encode(self, text: str) -> list[float]:
         import hashlib
+
         d = hashlib.sha256(text.encode()).digest()
         return [b / 255.0 for b in d[: self.dimension]]
 
@@ -38,23 +39,40 @@ def client(monkeypatch):
     tmpdir = tempfile.mkdtemp(prefix="cascade-api-test-")
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", os.path.join(tmpdir, "t.duckdb"))
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", os.path.join(tmpdir, "events"))
+    monkeypatch.setenv("ANTIEK_ALLOW_LOCAL_HARD_CEILING", "1")
     monkeypatch.delenv("ANTIEK_OPERATOR_TOKEN", raising=False)
     monkeypatch.delenv("ANTIEK_OPERATOR_EMAIL", raising=False)
     # Hermetic embedding (no sentence-transformers) for plan persistence + funnel.
     monkeypatch.setattr(cr, "_embedding_provider", lambda: _StubEmbedding())
     cr._SESSIONS.clear()
     cr._SESSION_TASKS.clear()
+    cr._HARD_CEILING_RUNS.clear()
+    cr._HARD_CEILING_LAUNCHING.clear()
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     return TestClient(app)
 
 
 def _make_approved_plan(client, sub_questions=("sub one", "sub two")):
-    r = client.post("/research/plans", json={"problem": "the big problem",
-                                             "sub_questions": list(sub_questions)})
+    r = client.post(
+        "/research/plans", json={"problem": "the big problem", "sub_questions": list(sub_questions)}
+    )
     assert r.status_code == 200, r.text
     root = r.json()["root_node_id"]
     client.post(f"/research/plans/{root}/approve", json={"approver": "operator"})
     return root
+
+
+def _approve_hard_spend(client, root, amount="1.00", per_research_budget_usd=0.50):
+    response = client.post(
+        f"/research/plans/{root}/spend-approval",
+        json={
+            "spend_mode": "hard_ceiling",
+            "amount_usd": amount,
+            "per_research_budget_usd": per_research_budget_usd,
+        },
+    )
+    assert response.status_code == 200, response.text
+    return response.json()["authority_digest"]
 
 
 def _poll_until_terminal(client, session_id, timeout_s=5.0):
@@ -79,6 +97,7 @@ def test_budget_defaults_reads_the_contract(client):
     # The entry UI recommends an aggregate stop limit from this value, so it
     # must be the BudgetCap contract default, not a hardcoded API number.
     from runtime.research_runner import BudgetCap
+
     r = client.get("/research/budget-defaults")
     assert r.status_code == 200, r.text
     body = r.json()
@@ -88,6 +107,7 @@ def test_budget_defaults_reads_the_contract(client):
     # SPR-05: the monitor reads the real host-local semaphore cap off the
     # contract for its honest "N running, M queued" — not a hardcoded UI number.
     from runtime.research_runner.host_local import DEFAULT_MAX_CONCURRENCY
+
     assert body["host_local_max_concurrency"] == DEFAULT_MAX_CONCURRENCY
 
 
@@ -100,19 +120,25 @@ def test_create_plan_returns_editable_tree(client):
 
 
 def test_get_plan_not_launchable_before_approval(client):
-    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()["root_node_id"]
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()[
+        "root_node_id"
+    ]
     r = client.get(f"/research/plans/{root}")
     assert r.status_code == 200 and r.json()["launchable"] is False
 
 
 def test_approve_makes_launchable_and_edit_reopens_gate(client):
-    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a", "b"]}).json()["root_node_id"]
+    root = client.post(
+        "/research/plans", json={"problem": "P", "sub_questions": ["a", "b"]}
+    ).json()["root_node_id"]
     assert client.post(f"/research/plans/{root}/approve", json={}).json()["launchable"] is True
     # Editing re-opens the gate.
     tree = client.get(f"/research/plans/{root}").json()["tree"]
     child_local = tree["root"]["children"][0]["local_id"]
-    r = client.post(f"/research/plans/{root}/edit",
-                    json={"op": "reword", "target_local_id": child_local, "question": "reworded"})
+    r = client.post(
+        f"/research/plans/{root}/edit",
+        json={"op": "reword", "target_local_id": child_local, "question": "reworded"},
+    )
     assert r.status_code == 200 and r.json()["launchable"] is False
 
 
@@ -122,7 +148,9 @@ def test_approve_makes_launchable_and_edit_reopens_gate(client):
 
 
 def test_launch_refuses_unapproved_plan(client):
-    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()["root_node_id"]
+    root = client.post("/research/plans", json={"problem": "P", "sub_questions": ["a"]}).json()[
+        "root_node_id"
+    ]
     r = client.post(f"/research/plans/{root}/launch", json={})
     assert r.status_code == 409
     assert "not approved" in r.json()["detail"]
@@ -137,6 +165,476 @@ def test_launch_request_rejects_invalid_aggregate_stop_limit(value):
 def test_launch_request_rejects_non_finite_per_research_limit():
     with pytest.raises(ValueError):
         cr.LaunchRequest(per_research_budget_usd=float("inf"))
+
+
+def test_hard_ceiling_auto_decomposition_fails_before_paid_dispatch(client):
+    r = client.post(
+        "/research/plans",
+        json={"problem": "P", "spend_mode": "hard_ceiling"},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"]["code"] == "hard_ceiling_provider_ineligible"
+
+
+def test_hard_launch_rejects_plan_automatically_decomposed_in_stop_limit_mode(client, monkeypatch):
+    class Fixed:
+        def decompose(self, question, *, context=""):
+            return [cr.SubQuestion("a")]
+
+    monkeypatch.setattr(
+        cr,
+        "_decompose",
+        lambda problem, max_depth: cr.build_plan(problem, decomposer=Fixed(), max_depth=max_depth),
+    )
+    created = client.post("/research/plans", json={"problem": "P"})
+    assert created.status_code == 200, created.text
+    root = created.json()["root_node_id"]
+    client.post(f"/research/plans/{root}/approve", json={})
+
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"},
+    )
+
+    assert launched.status_code == 409
+    assert launched.json()["detail"]["code"] == "hard_ceiling_plan_ineligible"
+
+
+def test_hard_launch_rejects_ceiling_above_ledger_maximum(client):
+    root = _make_approved_plan(client, ("a",))
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "46116860184273879.04",
+        },
+    )
+    assert launched.status_code == 422
+
+
+def test_hard_launch_rejects_decimal_exponent_overflow(client):
+    root = _make_approved_plan(client, ("a",))
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1e999999"},
+    )
+    assert launched.status_code == 422
+
+
+def test_launch_rejects_caller_authored_owner_identity(client):
+    root = _make_approved_plan(client, ("a",))
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "1.00",
+            "owner_id": "spoofed-owner",
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_hard_launch_requires_explicit_local_authority(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    monkeypatch.delenv("ANTIEK_ALLOW_LOCAL_HARD_CEILING")
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"},
+    )
+    assert r.status_code == 403
+
+
+def test_spend_preview_exposes_safe_server_eligibility_without_issuing_authority(client):
+    root = _make_approved_plan(client, ("a",))
+    response = client.post(
+        f"/research/plans/{root}/spend-preview",
+        json={"spend_mode": "hard_ceiling", "amount_usd": "1.00"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body == {
+        "spend_mode": "hard_ceiling",
+        "currency": "USD",
+        "amount_cents": 100,
+        "eligible": True,
+        "reasons": [],
+        "authority_digest": None,
+        "recovery_session_id": None,
+        "approval_revision": 1,
+        "assumptions": body["assumptions"],
+    }
+    encoded = json.dumps(body).lower()
+    assert "api_key" not in encoded
+    assert "usd_per_unit" not in encoded
+    assert "rate_snapshot" not in encoded
+    assert "run_id" not in encoded
+
+
+def test_hard_launch_requires_durable_exact_spend_approval(client):
+    root = _make_approved_plan(client, ("a",))
+    missing = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "1.00",
+            "authority_digest": "0" * 64,
+        },
+    )
+    assert missing.status_code == 409
+    assert missing.json()["detail"]["code"] == "hard_ceiling_stale_approval"
+
+    authority = _approve_hard_spend(client, root, "1.00")
+    stale = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "2.00",
+            "authority_digest": authority,
+        },
+    )
+    assert stale.status_code == 409
+    assert stale.json()["detail"]["code"] == "hard_ceiling_stale_approval"
+
+
+def test_hard_spend_approval_is_idempotent_and_returns_recovery_identity(client):
+    root = _make_approved_plan(client, ("a",))
+    first = client.post(
+        f"/research/plans/{root}/spend-approval",
+        json={"spend_mode": "hard_ceiling", "amount_usd": "1.00"},
+    )
+    second = client.post(
+        f"/research/plans/{root}/spend-approval",
+        json={"spend_mode": "hard_ceiling", "amount_usd": "1.00"},
+    )
+
+    assert first.status_code == second.status_code == 200
+    assert second.json()["authority_digest"] == first.json()["authority_digest"]
+    assert second.json()["recovery_session_id"] == first.json()["recovery_session_id"]
+    ledger = cr.ResearchSpendLedger(cr._spend_db())
+    balance = ledger.balance_for_session("__operator__", first.json()["recovery_session_id"])
+    assert balance is not None
+    event_kinds = [event.event_kind for event in ledger.events(balance.binding.run_id)]
+    assert event_kinds.count("zero_prepared") == 1
+    assert event_kinds.count("zero_completed") == 1
+
+
+def test_hard_ceiling_launch_binds_plan_and_receipts_zero_cost_work(client, monkeypatch):
+    root = _make_approved_plan(client, ("a", "b"))
+    authority = _approve_hard_spend(client, root, "2.00", 1.0)
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "2.00",
+            "authority_digest": authority,
+            "per_research_budget_usd": 1.0,
+        },
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["spend_mode"] == "hard_ceiling"
+    assert body["hard_ceiling"]["ceiling_cents"] == 200
+    assert body["hard_ceiling"]["blocked_stages"] == [
+        "synthesizer",
+        "knowledge_extractor",
+    ]
+    assert body["hard_ceiling"]["authority_digest"] == authority
+    sid = body["session_id"]
+    final = _poll_until_terminal(client, sid)
+    evidence = final["hard_ceiling"]
+    assert evidence["ceiling_cents"] == 200
+    assert evidence["authorized_spent_cents"] == 0
+    assert evidence["observed_provider_spend_cents"] == 0
+    assert evidence["held_cents"] == 0
+    assert evidence["available_cents"] == 200
+    assert evidence["unknown_outcome_count"] == 0
+    assert evidence["run_state"] == "closed_reconciled"
+    assert "run_id" not in evidence
+    assert "plan_digest" not in evidence
+    reconciled = client.post(f"/research/sessions/{sid}/spend/reconcile", json={})
+    assert reconciled.status_code == 200
+    assert reconciled.json()["provider_checks_started"] == 0
+
+    gateway, binding = cr._HARD_CEILING_RUNS[cr._SESSIONS[sid]]
+    balance = gateway.ledger.balance(binding.run_id)
+    assert balance.status.value == "closed_reconciled"
+    assert balance.authorized_spent_cents == 0
+    events = gateway.ledger.events(binding.run_id)
+    assert [event.event_kind for event in events].count("zero_prepared") == 5
+    assert [event.event_kind for event in events].count("zero_completed") == 5
+
+
+def test_hard_session_owner_gate_covers_status_cost_steer_stream_and_reconcile(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    authority = _approve_hard_spend(client, root)
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "1.00",
+            "authority_digest": authority,
+        },
+    )
+    assert launched.status_code == 200, launched.text
+    sid = launched.json()["session_id"]
+    iid = launched.json()["researches"][0]["investigation_id"]
+
+    monkeypatch.setattr(
+        cr.ResearchSpendLedger,
+        "owner_for_session",
+        lambda self, session_id: "a-different-owner",
+    )
+
+    requests = (
+        client.get(f"/research/sessions/{sid}"),
+        client.get(f"/research/sessions/{sid}/cost"),
+        client.post(
+            f"/research/sessions/{sid}/researches/{iid}/steer",
+            json={"kind": "stop"},
+        ),
+        client.get(f"/research/sessions/{sid}/stream"),
+        client.post(f"/research/sessions/{sid}/spend/reconcile", json={}),
+    )
+    assert [response.status_code for response in requests] == [404] * len(requests)
+
+
+def test_hard_ceiling_authority_changes_with_plan_revision_and_ceiling(client, monkeypatch):
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
+    root = _make_approved_plan(client, ("a",))
+    first = cr._hard_ceiling_binding(
+        root_id=root,
+        session_id=f"session-{root}",
+        owner_id="owner-1",
+        tree=cr.load_tree(root, db_path=cr._db()),
+        request=cr.LaunchRequest(spend_mode="hard_ceiling", hard_ceiling_usd="1.00"),
+    )
+    tree = client.get(f"/research/plans/{root}").json()["tree"]
+    local_id = tree["root"]["children"][0]["local_id"]
+    assert (
+        client.post(
+            f"/research/plans/{root}/edit",
+            json={"op": "reword", "target_local_id": local_id, "question": "changed"},
+        ).json()["launchable"]
+        is False
+    )
+    client.post(f"/research/plans/{root}/approve", json={})
+    changed_tree = cr.load_tree(root, db_path=cr._db())
+    assert changed_tree is not None
+    revised = cr._hard_ceiling_binding(
+        root_id=root,
+        session_id=f"session-{root}",
+        owner_id="owner-1",
+        tree=changed_tree,
+        request=cr.LaunchRequest(spend_mode="hard_ceiling", hard_ceiling_usd="1.00"),
+    )
+    higher_ceiling = cr._hard_ceiling_binding(
+        root_id=root,
+        session_id=f"session-{root}",
+        owner_id="owner-1",
+        tree=changed_tree,
+        request=cr.LaunchRequest(spend_mode="hard_ceiling", hard_ceiling_usd="2.00"),
+    )
+    assert revised.approval_revision == first.approval_revision + 1
+    assert len({first.run_id, revised.run_id, higher_ceiling.run_id}) == 3
+    assert len({first.plan_digest, revised.plan_digest, higher_ceiling.plan_digest}) == 3
+
+
+def test_hard_ceiling_refuses_exa_before_loop_construction(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    monkeypatch.setenv("ANTIEK_DRW_GATHER", "exa")
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
+    monkeypatch.setattr(
+        cr,
+        "_research_loop_factory",
+        lambda: (_ for _ in ()).throw(AssertionError("loop must not be constructed")),
+    )
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={"spend_mode": "hard_ceiling", "hard_ceiling_usd": "1.00"},
+    )
+    assert r.status_code == 409
+    assert "Exa" in r.json()["detail"]["message"]
+
+
+def test_hard_ceiling_skips_configured_paid_tail_without_affecting_launch(client, monkeypatch):
+    calls = 0
+
+    async def paid_tail(*args):
+        nonlocal calls
+        calls += 1
+
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", paid_tail)
+    root = _make_approved_plan(client, ("a",))
+    authority = _approve_hard_spend(client, root)
+    r = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "1.00",
+            "authority_digest": authority,
+        },
+    )
+    assert r.status_code == 200, r.text
+    _poll_until_terminal(client, r.json()["session_id"])
+    assert calls == 0
+
+
+def test_identical_hard_launch_retry_returns_existing_session_without_rerun(client, monkeypatch):
+    monkeypatch.setattr(cr, "_SYNTHESIS_TAIL_RUNNER", None)
+    root = _make_approved_plan(client, ("a",))
+    authority = _approve_hard_spend(client, root, per_research_budget_usd=1.0)
+    payload = {
+        "spend_mode": "hard_ceiling",
+        "hard_ceiling_usd": "1.00",
+        "authority_digest": authority,
+        "per_research_budget_usd": 1.0,
+    }
+    first = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert first.status_code == 200, first.text
+    sid = first.json()["session_id"]
+    _poll_until_terminal(client, sid)
+    session_before = cr._SESSIONS[sid]
+    gateway, binding = cr._HARD_CEILING_RUNS[session_before]
+    events_before = gateway.ledger.events(binding.run_id)
+
+    replay = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["replayed"] is True
+    assert replay.json()["session_id"] == sid
+    assert cr._SESSIONS[sid] is session_before
+    assert gateway.ledger.events(binding.run_id) == events_before
+
+
+def test_hard_launch_replay_after_restart_uses_durable_run_without_rerun(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    authority = _approve_hard_spend(client, root)
+    payload = {
+        "spend_mode": "hard_ceiling",
+        "hard_ceiling_usd": "1.00",
+        "authority_digest": authority,
+    }
+    first = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert first.status_code == 200, first.text
+    sid = first.json()["session_id"]
+    _poll_until_terminal(client, sid)
+    gateway, binding = cr._HARD_CEILING_RUNS[cr._SESSIONS[sid]]
+    events_before = gateway.ledger.events(binding.run_id)
+
+    cr._SESSIONS.clear()
+    cr._HARD_CEILING_RUNS.clear()
+    monkeypatch.setattr(
+        cr,
+        "_research_loop_factory",
+        lambda: (_ for _ in ()).throw(AssertionError("replay must not build a loop")),
+    )
+    replay = client.post(f"/research/plans/{root}/launch", json=payload)
+
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["replayed"] is True
+    assert replay.json()["session_id"] == sid
+    assert sid not in cr._SESSIONS
+    assert gateway.ledger.events(binding.run_id) == events_before
+
+
+def test_recovered_hard_session_status_keeps_owner_scoped_spend_evidence(client):
+    root = _make_approved_plan(client, ("a",))
+    authority = _approve_hard_spend(client, root)
+    launched = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "1.00",
+            "authority_digest": authority,
+        },
+    )
+    assert launched.status_code == 200, launched.text
+    sid = launched.json()["session_id"]
+    _poll_until_terminal(client, sid)
+    session = cr._SESSIONS.pop(sid)
+    cr._HARD_CEILING_RUNS.pop(session)
+
+    recovered = client.get(f"/research/sessions/{sid}")
+
+    assert recovered.status_code == 200, recovered.text
+    assert recovered.json()["live"] is False
+    assert recovered.json()["all_terminal"] is True
+    assert recovered.json()["hard_ceiling"]["authority_digest"] == authority
+    assert recovered.json()["hard_ceiling"]["run_state"] == "closed_reconciled"
+
+
+def test_hard_launch_resumes_durably_accepted_nonterminal_session(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    authority = _approve_hard_spend(client, root)
+    request = cr.LaunchRequest(
+        spend_mode="hard_ceiling",
+        hard_ceiling_usd="1.00",
+        authority_digest=authority,
+    )
+    tree = cr.load_tree(root, db_path=cr._db())
+    assert tree is not None
+    owner_id = "__operator__"
+    plan_digest = cr._hard_ceiling_plan_digest(root_id=root, tree=tree, request=request)
+    suffix = cr.canonical_digest({"owner_id": owner_id, "plan_digest": plan_digest})[:16]
+    sid = f"session-{root}-hard-{suffix}"
+    binding = cr._hard_ceiling_binding(
+        root_id=root,
+        session_id=sid,
+        owner_id=owner_id,
+        tree=tree,
+        request=request,
+    )
+    gateway = cr.ResearchProviderGateway(cr.ResearchSpendLedger(cr._spend_db()))
+    leaves = [
+        cr.Leaf(
+            investigation_id=f"{sid}-leaf-0",
+            sub_question=tree.leaves[0].question,
+            question_node_id=tree.leaves[0].graph_node_id,
+            budget=cr.BudgetCap(cost_usd=0.50),
+        )
+    ]
+    receipt = cr._hard_ceiling_launch_receipt(gateway, binding, root_id=root, leaves=leaves)
+    gateway.complete_zero_cost(receipt, outcome={"session_id": sid, "leaf_count": 1})
+
+    class _InterruptedRecovery:
+        researches = [object()]
+        all_terminal = False
+
+    monkeypatch.setattr(cr, "reconstruct_session", lambda session_id: _InterruptedRecovery())
+    resumed = client.post(
+        f"/research/plans/{root}/launch",
+        json={
+            "spend_mode": "hard_ceiling",
+            "hard_ceiling_usd": "1.00",
+            "authority_digest": authority,
+        },
+    )
+
+    assert resumed.status_code == 200, resumed.text
+    assert resumed.json()["session_id"] == sid
+    assert resumed.json()["replayed"] is False
+    assert resumed.json()["resumed"] is True
+    assert sid in cr._SESSIONS
+
+
+def test_interrupted_hard_launch_is_not_reported_as_a_durable_replay(client, monkeypatch):
+    root = _make_approved_plan(client, ("a",))
+    authority = _approve_hard_spend(client, root)
+    payload = {
+        "spend_mode": "hard_ceiling",
+        "hard_ceiling_usd": "1.00",
+        "authority_digest": authority,
+    }
+    monkeypatch.setattr(
+        cr,
+        "_embedding_provider",
+        lambda: (_ for _ in ()).throw(RuntimeError("setup failed")),
+    )
+    with pytest.raises(RuntimeError, match="setup failed"):
+        client.post(f"/research/plans/{root}/launch", json=payload)
+
+    replay = client.post(f"/research/plans/{root}/launch", json=payload)
+    assert replay.status_code == 409
+    assert replay.json()["detail"]["code"] == "hard_ceiling_launch_interrupted"
 
 
 # --------------------------------------------------------------------------
@@ -233,6 +731,7 @@ def test_budget_halted_cascade_is_not_working_in_investigations(client):
     assert any(x["status"] == "stopped" for x in cascade_rows), cascade_rows
     # The halted state agrees with the reconstruct path (the honest one).
     from orchestration.cascade_session import reconstruct_session
+
     rec = reconstruct_session(sid)
     halted = {r.investigation_id for r in rec.researches if r.state == "budget_halted"}
     listed_stopped = {x["investigation_id"] for x in cascade_rows if x["status"] == "stopped"}
@@ -257,10 +756,15 @@ def test_stopped_research_surfaces_as_stopped_not_done(client):
     # itself is covered by test_steer_endpoint_wiring + the runner unit; here we
     # pin that the LIST endpoint reads the outcome, the M1-vocabulary gap.)
     iid = "inv-stopped-001"
-    log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
-              payload={"question": "A question the operator stopped"}, role="user_agent")
-    log_event(iid, ActionType.INVESTIGATION_COMPLETED,
-              payload={"outcome": "stopped"}, role="user_agent")
+    log_event(
+        iid,
+        ActionType.INVESTIGATION_START_REQUESTED,
+        payload={"question": "A question the operator stopped"},
+        role="user_agent",
+    )
+    log_event(
+        iid, ActionType.INVESTIGATION_COMPLETED, payload={"outcome": "stopped"}, role="user_agent"
+    )
 
     rows = client.get("/investigations", params={"limit": 200}).json()["investigations"]
     row = next(x for x in rows if x["investigation_id"] == iid)
@@ -333,7 +837,7 @@ def test_session_stream_emits_events(client):
                 continue
             text = line if isinstance(line, str) else line.decode()
             if text.startswith("data: "):
-                kinds.append(json.loads(text[len("data: "):]).get("kind"))
+                kinds.append(json.loads(text[len("data: ") :]).get("kind"))
             if kinds and kinds[-1] == "session_done":
                 break
     assert "session_done" in kinds

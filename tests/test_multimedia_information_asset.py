@@ -42,6 +42,7 @@ def _records(tmp_path):
             mode="audio",
             route_policy="balanced",
             sources=("High-bypass engines changed long-haul economics.",),
+            selected_arc_ids=("mechanism",),
         ),
         owner_id=" owner-a@example.test ",
     )
@@ -65,11 +66,11 @@ def test_ready_multimedia_projects_deterministic_inert_provenance_html(tmp_path)
     assert "data-cited-chunk-ids=\"mm-src-0\"" in first.html
     assert "data-citation-ids=" in first.html
     assert "data-citation-id=" in first.html
-    assert "data-document-id=\"mm-doc-0\"" in first.html
+    assert "data-document-id=\"operator-source-excerpt-0\"" in first.html
     assert "data-quote-sha256=" in first.html
     assert "synthetic narration or visuals" in first.html
     assert first.source_references[0].chunk_id == "mm-src-0"
-    assert first.source_references[0].document_id == "mm-doc-0"
+    assert first.source_references[0].document_id == "operator-source-excerpt-0"
     assert all(reference.line_id for reference in first.source_references)
     assert len({reference.citation_id for reference in first.source_references}) == len(
         first.source_references
