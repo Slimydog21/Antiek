@@ -36,6 +36,7 @@ import {
 import { track } from "../../lib/analytics";
 import type { DistilledNode } from "../../lib/api";
 import CostMeter from "./CostMeter";
+import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
@@ -300,6 +301,9 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
       </div>
       {session.error && (
         <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
+      )}
+      {session.hardCeiling && (
+        <HardCeilingEvidence sessionId={sessionId} snapshot={session.hardCeiling} />
       )}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
         {session.researches.map((r) => (

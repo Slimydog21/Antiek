@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Iterator
+from dataclasses import asdict
 from typing import BinaryIO, Literal, TypeVar
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Response, status
@@ -14,6 +15,7 @@ from substrate.multimedia.local_audible_workstation import (
     LocalAudiblePreparedSet,
     LocalAudibleWorkstationError,
 )
+from substrate.multimedia.planner import MultimediaPlan
 from substrate.multimedia.read_model import MultimediaAudioProductionLink
 from substrate.multimedia.verified_playback import (
     UnsatisfiableMediaRange,
@@ -55,6 +57,34 @@ class LocalAudibleLearnedClaimResponse(BaseModel):
     claim_text: str
     source_count: int
     follow_up_prompt: str
+    line_id: str
+    source_chunk_ids: tuple[str, ...] = Field(min_length=1)
+    evidence_status: Literal["verified_exact", "unavailable_legacy"]
+    evidence_sources: tuple[AudioEvidenceSourceResponse, ...]
+
+
+class AudioEvidenceSourceResponse(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chunk_id: str = Field(min_length=1, max_length=128)
+    document_id: str = Field(min_length=1, max_length=128)
+    locator: str | None = Field(default=None, max_length=1024)
+    authority_kind: Literal["canonical_graph", "operator_excerpt"]
+    chunk_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    start_utf8_byte: int = Field(ge=0)
+    end_utf8_byte: int = Field(gt=0)
+    span_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    exact_text: str = Field(min_length=1, max_length=700)
+
+
+class AudioChapterPlaybackResponse(BaseModel):
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    chapter_id: str
+    title: str
+    sequence: int
+    start_offset_seconds: float = Field(ge=0, allow_inf_nan=False)
+    end_offset_seconds: float = Field(gt=0, allow_inf_nan=False)
 
 
 class LocalAudiblePlaybackResponse(BaseModel):
@@ -71,6 +101,7 @@ class LocalAudiblePlaybackResponse(BaseModel):
     learned_claim_count: int
     source_count: int
     learned_claims: tuple[LocalAudibleLearnedClaimResponse, ...]
+    chapters: tuple[AudioChapterPlaybackResponse, ...]
     audio_url: str
 
 
@@ -131,9 +162,7 @@ def inspect_local_audible(
     runtime: MultimediaLocalAudibleRuntime = Depends(get_multimedia_local_audible_runtime),
 ) -> LocalAudiblePreparedSet:
     return _command(
-        lambda: runtime.workstation.inspect(
-            asset_id, revision_id, set_id, owner_id=operator_id
-        )
+        lambda: runtime.workstation.inspect(asset_id, revision_id, set_id, owner_id=operator_id)
     )
 
 
@@ -179,10 +208,13 @@ def get_local_audible_playback(
     operator_id: str = Depends(authenticated_multimedia_operator),
     runtime: MultimediaLocalAudibleRuntime = Depends(get_multimedia_local_audible_runtime),
 ) -> LocalAudiblePlaybackResponse:
-    owner_digest, link = _registered(runtime, asset_id, revision_id, operator_id)
+    owner_digest, link, plan = _registered(runtime, asset_id, revision_id, operator_id)
     try:
         metadata = runtime.playback.metadata(
-            asset_id=asset_id, revision_id=revision_id, owner_digest=owner_digest
+            asset_id=asset_id,
+            revision_id=revision_id,
+            owner_digest=owner_digest,
+            plan=plan,
         )
     except VerifiedPlaybackError as exc:
         raise HTTPException(
@@ -191,14 +223,17 @@ def get_local_audible_playback(
     if (
         metadata.receipt_sha256 != link.receipt_sha256
         or metadata.audio_sha256 != link.audio_sha256
+        or metadata.audio_size_bytes != link.audio_size_bytes
         or metadata.duration_seconds != link.duration_seconds
         or metadata.chapter_ids != link.chapter_ids
         or metadata.retention_marker_count != link.retention_marker_count
         or metadata.learned_claim_count != link.learned_claim_count
+        or metadata.source_count != link.source_count
     ):
         raise HTTPException(status_code=409, detail="local audible registration conflicts")
     values = dict(metadata.__dict__)
-    values["learned_claims"] = tuple(claim.__dict__ for claim in metadata.learned_claims)
+    values["learned_claims"] = tuple(asdict(claim) for claim in metadata.learned_claims)
+    values["chapters"] = tuple(chapter.__dict__ for chapter in metadata.chapters)
     return LocalAudiblePlaybackResponse(
         **values,
         audio_url=f"/multimedia/assets/{asset_id}/local-audible/playback/{revision_id}/audio",
@@ -215,7 +250,7 @@ def stream_local_audible_playback(
     operator_id: str = Depends(authenticated_multimedia_operator),
     runtime: MultimediaLocalAudibleRuntime = Depends(get_multimedia_local_audible_runtime),
 ) -> Response:
-    owner_digest, link = _registered(runtime, asset_id, revision_id, operator_id)
+    owner_digest, link, _plan = _registered(runtime, asset_id, revision_id, operator_id)
     try:
         media = runtime.playback.read(
             asset_id=asset_id,
@@ -269,7 +304,7 @@ def _registered(
     asset_id: str,
     revision_id: str,
     operator_id: str,
-) -> tuple[str, MultimediaAudioProductionLink]:
+) -> tuple[str, MultimediaAudioProductionLink, MultimediaPlan]:
     try:
         record = runtime.store.get(asset_id, owner_id=operator_id)
     except (KeyError, ValueError) as exc:
@@ -283,7 +318,7 @@ def _registered(
         raise HTTPException(
             status_code=404, detail="verified local audible playback is unavailable"
         )
-    return str(record.asset.owner_user_id), link
+    return str(record.asset.owner_user_id), link, record.plan
 
 
 def _command(operation: Callable[[], T]) -> T:  # noqa: UP047 - Python 3.11 support
@@ -316,6 +351,7 @@ def _stream_and_close(stream: BinaryIO) -> Iterator[bytes]:
 
 __all__ = [
     "LocalAudibleCapabilityResponse",
+    "AudioEvidenceSourceResponse",
     "LocalAudibleCommandBody",
     "LocalAudiblePlaybackResponse",
     "LocalAudiblePrepareBody",

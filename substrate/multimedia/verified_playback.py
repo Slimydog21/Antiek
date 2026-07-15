@@ -68,7 +68,7 @@ class VerifiedPlaybackRuntime:
             raise ValueError("playback receipt root is invalid") from exc
 
     def metadata(self, *, asset_id: str, revision_id: str) -> PlaybackMediaMetadata:
-        receipt = self._receipt(asset_id, revision_id)
+        receipt = self.receipt(asset_id=asset_id, revision_id=revision_id)
         receipt_sha256 = hashlib.sha256(receipt.to_json().encode("utf-8")).hexdigest()
         render = receipt.render.manifest
         narration = receipt.narration.manifest
@@ -94,7 +94,7 @@ class VerifiedPlaybackRuntime:
         kind: Literal["video", "audio"],
         range_header: str | None,
     ) -> MediaByteRange:
-        receipt = self._receipt(asset_id, revision_id)
+        receipt = self.receipt(asset_id=asset_id, revision_id=revision_id)
         receipt_sha256 = hashlib.sha256(receipt.to_json().encode("utf-8")).hexdigest()
         if kind == "video":
             path = receipt.render.manifest.output_path
@@ -130,7 +130,8 @@ class VerifiedPlaybackRuntime:
             media_type=media_type,
         )
 
-    def _receipt(self, asset_id: str, revision_id: str) -> EducationalVideoReceipt:
+    def receipt(self, *, asset_id: str, revision_id: str) -> EducationalVideoReceipt:
+        """Reopen one exact receipt and all nested byte authorities."""
         try:
             path = receipt_file_path(self.receipt_root, asset_id, revision_id)
             receipt = EducationalVideoReceipt.reopen_from_file(
@@ -145,6 +146,10 @@ class VerifiedPlaybackRuntime:
         if receipt.asset_id != asset_id or receipt.revision_id != revision_id:
             raise VerifiedPlaybackError("verified playback identity conflicts")
         return receipt
+
+    # Compatibility for callers predating the public backend receipt reader.
+    def _receipt(self, asset_id: str, revision_id: str) -> EducationalVideoReceipt:
+        return self.receipt(asset_id=asset_id, revision_id=revision_id)
 
 
 def _verified_size(path: str, digest: str) -> int:
