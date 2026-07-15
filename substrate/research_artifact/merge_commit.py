@@ -121,8 +121,12 @@ def _apply_review(
     if row is None:
         raise MergeCommitNotFound("review unavailable")
     intent = str(row[0])
-    asset_id = _id("ast", command["operation_id"]) if intent == "create" else str(row[1])
-    revision_id = _id("rev", command["operation_id"])
+    asset_id = (
+        _id("ast", command["owner_user_id"], command["operation_id"])
+        if intent == "create"
+        else str(row[1])
+    )
+    revision_id = _id("rev", command["owner_user_id"], command["operation_id"])
     manifest = _manifest(str(row[8]), str(row[9]))
     if (
         _sha(str(row[6])) != str(row[7])
@@ -224,7 +228,8 @@ def _restore(con: Any, command: dict[str, Any], digest: str, hook: FaultHook) ->
     manifest = _manifest(str(selected[2]), str(selected[3]))
     if _sha(str(selected[0])) != str(selected[1]):
         raise MergeCommitError("stored revision is invalid")
-    revision_id, generation = _id("rev", command["operation_id"]), int(pointer[2]) + 1
+    revision_id = _id("rev", command["owner_user_id"], command["operation_id"])
+    generation = int(pointer[2]) + 1
     hook("asset")
     values = (
         selected[0],
@@ -339,7 +344,11 @@ def _finish(
     }
     receipt = _json({"command": command, "result": result})
     con.execute(
-        "INSERT INTO derived_asset_merge_operations VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,CURRENT_TIMESTAMP)",
+        "INSERT INTO derived_asset_merge_operations "
+        "(operation_id,owner_user_id,operation_kind,review_id,derived_asset_id,"
+        "selected_revision_id,expected_revision_id,expected_content_sha256,expected_generation,"
+        "command_sha256,result_revision_id,result_content_sha256,result_generation,receipt_json,"
+        "receipt_sha256) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         [
             command["operation_id"],
             command["owner_user_id"],
@@ -361,10 +370,12 @@ def _finish(
     hook("receipt")
     payload = _json(result)
     con.execute(
-        "INSERT INTO derived_asset_merge_outbox (outbox_id,operation_id,event_kind,payload_json,payload_sha256) "
-        "VALUES (?,?,?,?,?)",
+        "INSERT INTO derived_asset_merge_outbox "
+        "(outbox_id,owner_user_id,operation_id,event_kind,payload_json,payload_sha256) "
+        "VALUES (?,?,?,?,?,?)",
         [
-            _id("out", command["operation_id"]),
+            _id("out", command["owner_user_id"], command["operation_id"]),
+            command["owner_user_id"],
             command["operation_id"],
             _EVENT,
             payload,
@@ -379,8 +390,9 @@ def _replay(con: Any, command: dict[str, Any]) -> MergeCommitResult | None:
     operation_id = command["operation_id"]
     row = con.execute(
         "SELECT derived_asset_id,result_revision_id,result_content_sha256,result_generation,command_sha256,"
-        "receipt_json,receipt_sha256 FROM derived_asset_merge_operations WHERE operation_id=?",
-        [operation_id],
+        "receipt_json,receipt_sha256 FROM derived_asset_merge_operations "
+        "WHERE owner_user_id=? AND operation_id=?",
+        [command["owner_user_id"], operation_id],
     ).fetchone()
     if row is None:
         return None
@@ -404,8 +416,9 @@ def _replay(con: Any, command: dict[str, Any]) -> MergeCommitResult | None:
         [row[0], row[1]],
     ).fetchone()
     outbox = con.execute(
-        "SELECT payload_json,payload_sha256 FROM derived_asset_merge_outbox WHERE operation_id=?",
-        [operation_id],
+        "SELECT payload_json,payload_sha256 FROM derived_asset_merge_outbox "
+        "WHERE owner_user_id=? AND operation_id=?",
+        [command["owner_user_id"], operation_id],
     ).fetchall()
     expected_result = {
         "content_sha256": str(row[2]),
@@ -492,8 +505,9 @@ def _validate_command(command: dict[str, Any]) -> None:
         raise MergeCommitError("invalid merge command")
 
 
-def _id(prefix: str, operation_id: str) -> str:
-    return prefix + "_" + hashlib.sha256((prefix + ":" + operation_id).encode()).hexdigest()[:32]
+def _id(prefix: str, owner_user_id: str, operation_id: str) -> str:
+    basis = f"{prefix}:{owner_user_id}:{operation_id}"
+    return prefix + "_" + hashlib.sha256(basis.encode()).hexdigest()[:32]
 
 
 def _json(value: Any) -> str:
