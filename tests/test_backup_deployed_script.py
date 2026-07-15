@@ -70,6 +70,7 @@ TEMPLATE_VARS = frozenset(
         "antiek_state_dir",
         "backup_bucket_name",
         "antiek_user",
+        "antiek_group",
         "antiek_install_dir",
     }
 )
@@ -106,6 +107,7 @@ def _render_template(state_dir: Path, install_dir: Path) -> str:
         antiek_state_dir=str(state_dir),
         backup_bucket_name="test-bucket",
         antiek_user=getpass.getuser(),
+        antiek_group=getpass.getuser(),
         antiek_install_dir=str(install_dir),
     )
 
@@ -198,6 +200,24 @@ def _build_stub_bin(stub_bin: Path) -> None:
 def _write_stub(path: Path, content: str) -> None:
     path.write_text(content)
     path.chmod(0o755)
+
+
+def test_staging_parent_allows_dropped_user_to_traverse() -> None:
+    """Regression: a root-owned 0700 parent defeats chowning its child.
+
+    The deployed script must establish root:<antiek-group> 0710 before it
+    creates the private child that DuckDB writes as the unprivileged user.
+    """
+    source = TEMPLATE_PATH.read_text()
+    chown_parent = 'chown root:{{ antiek_group }} "${STAGING_ROOT}"'
+    chmod_parent = 'chmod 0710 "${STAGING_ROOT}"'
+    create_child = 'readonly STAGING="$(mktemp -d "${STAGING_ROOT%/}/antiek-backup.XXXXXXXX")"'
+
+    assert chown_parent in source
+    assert chmod_parent in source
+    assert source.index(chown_parent) < source.index(create_child)
+    assert source.index(chmod_parent) < source.index(create_child)
+    assert 'chmod 0700 "${STAGING_ROOT}"' not in source
 
 
 def _make_harness(
