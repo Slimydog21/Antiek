@@ -171,7 +171,8 @@ export function Home() {
                 Play in Werner&rsquo;s igloo
               </h2>
               <p className="mt-1 text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
-                Ice Fishing and Paperclip Zombies live in the arcade —
+                Ice Fishing, Clam Catcher, and Paperclip Zombies live in the
+                arcade —
                 Club Penguin–inspired mini-games for when you want a break, or
                 while deep research is running. Always opt-in; never blocks work.
               </p>
