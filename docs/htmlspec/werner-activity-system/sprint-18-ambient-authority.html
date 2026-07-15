@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>WERNER-ACT SPR-18 — Ambient authority</title>
+    <style>
+      body { max-width: 74rem; margin: auto; padding: 2rem; font: 16px/1.55 system-ui, sans-serif; }
+      h1, h2 { line-height: 1.15; }
+      table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid currentColor; padding: 0.65rem; text-align: left; vertical-align: top; }
+      code { font-family: ui-monospace, monospace; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p>WERNER-ACT · executable sprint 18 · 2026-07-14</p>
+      <h1>One Werner, one ambient owner</h1>
+      <p>Remove the pointer-idle sleeping contradiction and make activity ambient precedence pure, total, and testable.</p>
+    </header>
+    <section>
+      <h2>Fresh evidence</h2>
+      <table>
+        <thead><tr><th>Observed production fact</th><th>Required consequence</th></tr></thead>
+        <tbody>
+          <tr><td>Pointer idle independently adds <code>werner-fishing</code> and emits <code>idle → sleeping</code>.</td><td>Delete the false product event; the ratified activity ambient remains the sole idle owner.</td></tr>
+          <tr><td>Standalone product emotes do not set <code>roamPaused</code>.</td><td>The ambient selector must receive explicit product-emote occupancy.</td></tr>
+          <tr><td>Travel, return, drag, visibility, motion preference, activity availability, and pointer level already exist as live gates.</td><td>Combine those facts in one pure selector rather than another timer or state store.</td></tr>
+          <tr><td>The waking asset has no persistent asleep predecessor.</td><td>Keep it unreferenced until a later lifecycle spec earns authority.</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section>
+      <h2>Acceptance gates</h2>
+      <ol>
+        <li><code>stationAmbientClass</code> returns the exact activity-owned active or idle class for the current pointer level only during visible, enabled, motion-allowed rest.</li>
+        <li>Drag, outward travel, return-home, product emote, hidden tab, reduced motion, disabled activity, or a missing class for the current pointer level returns <code>null</code>.</li>
+        <li>Pointer idle never emits a generic product experience and never mounts the sleeping overlay.</li>
+        <li>The existing own-hole fishing gag still starts after the unchanged 2,000 ms pointer threshold and stops on movement.</li>
+        <li>A product emote removes ambient within one frame and idle ambient resumes after the one-shot completes.</li>
+        <li>Highlight, research start/complete/error, and failure mappings remain exact and exhaustive.</li>
+        <li>Teardown removes whichever activity class was last applied; reduced motion remains fully still.</li>
+        <li>Focused/coupled tests, TypeScript, design lints, production and Storybook builds, security, and heterogeneous review pass.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Withheld authority</h2>
+      <p>No waking asset import, persistent sleep/wake lifecycle, fifth mood, scene/time authority, activity registry redesign, fishing art/timing, pointer threshold, route, cursor/game behavior, backend, network, spend, merge, or deployment.</p>
+    </section>
+  </body>
+</html>

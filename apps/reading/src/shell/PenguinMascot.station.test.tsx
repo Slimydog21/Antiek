@@ -39,6 +39,7 @@ vi.mock("../werner/iceFishingFlags", () => ({
 
 import { PenguinMascot } from "./PenguinMascot";
 import { useWorkspace } from "../workspace/WorkspaceStore";
+import { emitWernerExperience } from "../werner";
 
 const s = () => useWorkspace.getState();
 
@@ -164,6 +165,10 @@ describe("PenguinMascot — the fixed station (flag on)", () => {
       container.querySelector(".werner-fishing"),
       "pointer idle → the own-hole fishing gag owns Werner",
     ).toBeTruthy();
+    expect(
+      screen.getByTestId("penguin-mascot").getAttribute("data-werner-emote"),
+      "pointer idle has one owner and does not also mount sleeping",
+    ).toBe("none");
 
     // Move again → the gag stands down within a frame. (That the cursor-line
     // then TAKES OVER is a WernerFishingLayer concern, covered directly in
@@ -182,6 +187,37 @@ describe("PenguinMascot — the fixed station (flag on)", () => {
       container.querySelector(".werner-fishing"),
       "pointer active → the own-hole gag stands down",
     ).toBeNull();
+  });
+
+  it("yields ambient ownership to a product emote, then resumes idle fishing", () => {
+    const { container } = mount();
+    act(() => {
+      window.dispatchEvent(
+        new PointerEvent("pointermove", {
+          clientX: 400,
+          clientY: 300,
+          bubbles: true,
+        }),
+      );
+    });
+    advanceFrames(2600);
+    expect(container.querySelector(".werner-fishing")).toBeTruthy();
+
+    act(() => emitWernerExperience("highlight"));
+    advanceFrames(32);
+    expect(container.querySelector(".werner-fishing")).toBeNull();
+    expect(
+      screen.getByTestId("penguin-mascot").getAttribute("data-werner-emote"),
+    ).toBe("curious");
+
+    advanceFrames(1200 + 32);
+    expect(
+      screen.getByTestId("penguin-mascot").getAttribute("data-werner-emote"),
+    ).toBe("none");
+    // React commits the cleared emote at the end of the timer act; the next
+    // ambient frame observes that committed foreground state.
+    advanceFrames(32);
+    expect(container.querySelector(".werner-fishing")).toBeTruthy();
   });
 
   it("does not wander off on its own even with the flag on (fixed station)", () => {

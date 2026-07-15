@@ -13,16 +13,6 @@ export type ResearchReactionPhase =
   | "complete"
   | "error";
 
-export function notifyPointerIdleEdge(
-  wasPointerIdle: boolean,
-  isPointerIdle: boolean,
-  eligible = true,
-): boolean {
-  if (wasPointerIdle || !isPointerIdle || !eligible) return false;
-  emitWernerExperience("idle");
-  return true;
-}
-
 export function notifyShellFailure(): void {
   emitWernerExperience("fail");
 }

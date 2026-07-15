@@ -10,7 +10,7 @@ import {
   installChoreography,
   installReactionBus,
   installTargetChoreography,
-  notifyPointerIdleEdge,
+  stationAmbientClass,
   useMouseFollow,
   useStationActivity,
   wernerIceFishingCursor,
@@ -167,6 +167,10 @@ export function PenguinMascot() {
   reduceMotionRef.current = reduceMotion;
   // The active emote mark, rendered over the Werner mark.
   const [emote, setEmote] = useState<EmoteKind | null>(null);
+  // The rAF ambient selector reads foreground-emote occupancy without
+  // restarting its loop on every one-shot reaction.
+  const emoteRef = useRef<EmoteKind | null>(null);
+  emoteRef.current = emote;
   // Directed-walk flag: TRUE while the stage is walking Werner OUT to a button.
   // The stage clears it (setRoamPaused(false)) the instant the button is reached
   // — the return-home leg runs with this already false, so it is NOT enough on
@@ -300,11 +304,10 @@ export function PenguinMascot() {
   // WERNER-ICE flag is off (no ice-fishing experience at all — no bait, no line,
   // so nothing to fish).
   useEffect(() => {
-    const idleClass = activeActivity.ambient.idleClass;
+    const { activeClass, idleClass } = activeActivity.ambient;
     if (
       reduceMotion ||
-      !wernerIceFishingCursor ||
-      !idleClass ||
+      (!activeClass && !idleClass) ||
       typeof window === "undefined"
     )
       return;
@@ -313,21 +316,30 @@ export function PenguinMascot() {
     // idleClass is the `werner-fishing` gag), not a hard-coded literal — so an
     // activity owns its own ambient, and adding one is a registration, not a
     // mascot edit.
-    let fishing = false;
-    const setFishingLoop = (on: boolean) => {
-      if (on === fishing) return;
-      fishing = on;
-      bobRef.current?.classList.toggle(idleClass, on);
+    let appliedClass: string | null = null;
+    const applyAmbientClass = (nextClass: string | null) => {
+      if (nextClass === appliedClass) return;
+      if (appliedClass) bobRef.current?.classList.remove(appliedClass);
+      if (nextClass) bobRef.current?.classList.add(nextClass);
+      appliedClass = nextClass;
     };
 
     const tick = () => {
       const reading = follow.read();
-      setFishingLoop(
-        !dragStart.current &&
-          !roamPaused.current &&
-          !returningHome.current &&
-          reading.pointerIdle &&
-          !reading.tabHidden,
+      applyAmbientClass(
+        stationAmbientClass({
+          activeClass,
+          idleClass,
+          pointerIdle: reading.pointerIdle,
+          tabHidden: reading.tabHidden,
+          dragging: Boolean(dragStart.current),
+          directedTravel: roamPaused.current,
+          returningHome: returningHome.current,
+          productEmote: emoteRef.current !== null,
+          reducedMotion: reduceMotion,
+          activityEnabled:
+            activeActivity.id !== "ice-fishing" || wernerIceFishingCursor,
+        }),
       );
       gagRaf.current = window.requestAnimationFrame(tick);
     };
@@ -341,52 +353,9 @@ export function PenguinMascot() {
       // Drop the gag class on teardown so a no-rAF state (unmount, or a flip
       // into reduced motion where this effect early-returns) never strands
       // Werner mid-cast with the loop class on.
-      bobRef.current?.classList.remove(idleClass);
+      if (appliedClass) bobRef.current?.classList.remove(appliedClass);
     };
   }, [reduceMotion, follow, activeActivity]);
-
-  // Product-experience idle is independent of the selected station activity:
-  // the lens, nib, and resonance modes can all let Werner fall asleep. This
-  // loop reads the existing pointer seam and emits only the active→idle edge;
-  // it owns no position or cursor writes and does not run under reduced motion.
-  useEffect(() => {
-    if (reduceMotion || typeof window === "undefined") return;
-    const canReactToIdle = (reading: ReturnType<typeof follow.read>) =>
-      !dragStart.current &&
-      !roamPaused.current &&
-      !returningHome.current &&
-      !reading.tabHidden;
-    // Pointer history is the edge authority. Drag/excursion/visibility are
-    // eligibility gates only: reopening one while an already-idle pointer is
-    // unchanged must never impersonate a fresh active→idle transition.
-    let wasPointerIdle = follow.read().pointerIdle;
-    let raf = 0;
-    const tick = () => {
-      const reading = follow.read();
-      notifyPointerIdleEdge(
-        wasPointerIdle,
-        reading.pointerIdle,
-        canReactToIdle(reading),
-      );
-      wasPointerIdle = reading.pointerIdle;
-      raf = window.requestAnimationFrame(tick);
-    };
-    // Browsers pause rAF in hidden tabs. Re-baseline on each visibility edge
-    // so time elapsed while asleep cannot surface as an active→idle edge on
-    // the first frame after the tab returns.
-    const onVisibilityChange = () => {
-      wasPointerIdle = follow.read().pointerIdle;
-    };
-    document.addEventListener("visibilitychange", onVisibilityChange);
-    // Baseline from reality. No movement history reads idle, but that is a
-    // level, not an active→idle edge, and must not animate on mount or after a
-    // reduced-motion preference flip clears pointer history.
-    raf = window.requestAnimationFrame(tick);
-    return () => {
-      document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.cancelAnimationFrame(raf);
-    };
-  }, [reduceMotion, follow]);
 
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
   // Created ONCE (empty deps). Its StageHost reuses this component's stroll /

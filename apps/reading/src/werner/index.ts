@@ -95,12 +95,16 @@ export {
 
 export {
   consumeLocallyStartedResearchSession,
-  notifyPointerIdleEdge,
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
   type ResearchReactionPhase,
 } from "./shellExperienceSignals";
+
+export {
+  stationAmbientClass,
+  type StationAmbientInput,
+} from "./stationAmbient";
 
 export { default as WernerRig, type WernerRigProps } from "./WernerRig";
 

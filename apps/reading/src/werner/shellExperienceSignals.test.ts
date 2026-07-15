@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   consumeLocallyStartedResearchSession,
-  notifyPointerIdleEdge,
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
@@ -33,26 +32,6 @@ describe("Werner shell experience edges", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
-  });
-
-  it("emits idle only on the false to true edge", () => {
-    const capture = captureExperiences();
-    expect(notifyPointerIdleEdge(false, false)).toBe(false);
-    expect(notifyPointerIdleEdge(false, true)).toBe(true);
-    expect(notifyPointerIdleEdge(true, true)).toBe(false);
-    expect(notifyPointerIdleEdge(true, false)).toBe(false);
-    expect(capture.seen).toEqual(["idle"]);
-    capture.teardown();
-  });
-
-  it("does not turn an eligibility gate reopening into a pointer-idle edge", () => {
-    const capture = captureExperiences();
-    expect(notifyPointerIdleEdge(false, true, false)).toBe(false);
-    // The real pointer edge happened while hidden/dragging. Reopening that gate
-    // leaves pointer state idle→idle and therefore stays silent.
-    expect(notifyPointerIdleEdge(true, true, true)).toBe(false);
-    expect(capture.seen).toEqual([]);
-    capture.teardown();
   });
 
   it("maps a shell failure to one fail experience", () => {
