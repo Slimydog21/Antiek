@@ -27,7 +27,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import yaml  # type: ignore[import]
+import yaml
 
 # Package-relative imports with a fall-back for direct-script execution.
 try:
@@ -319,7 +319,7 @@ def normalize_finish_reason(provider_native: str | None) -> str | None:
     return _FINISH_REASON_MAP.get(provider_native, "error")
 
 
-def _consume_nd_decision() -> tuple[
+def _consume_nd_decision(*, scope: object | None = None) -> tuple[
     str | None,
     str | None,
     str | None,
@@ -338,7 +338,7 @@ def _consume_nd_decision() -> tuple[
     except ImportError:  # pragma: no cover
         module = importlib.import_module("dispatch.nd_attribution")
     consume_nd_decision = module.consume_nd_decision
-    nd = dict(consume_nd_decision())
+    nd = dict(consume_nd_decision(scope=scope))
     latency = nd.get("nd_decision_latency_ms")
     latency_ms: int | None = None if latency is None else int(latency)
     return (
@@ -377,6 +377,7 @@ def _emit_dispatch_call(
     prompt_hash: str,
     finish_reason: str | None,
     context_pack_event_id: str | None,
+    nd_scope: object | None = None,
 ) -> str | None:
     """Emit one DispatchCall event. Returns the event_id."""
     (
@@ -387,7 +388,7 @@ def _emit_dispatch_call(
         nd_decision_latency_ms,
         nd_bypassed,
         nd_bypass_reason,
-    ) = _consume_nd_decision()
+    ) = _consume_nd_decision(scope=nd_scope)
     return emit_typed(
         investigation_id,
         DispatchCallPayload(
@@ -418,7 +419,7 @@ def _emit_dispatch_call(
     )
 
 
-def dispatch(
+def _dispatch_authoritative(
     prompt: str,
     role: str,
     *,
@@ -431,6 +432,7 @@ def dispatch(
     config_path: str | Path | None = None,
     provider_override: str | None = None,
     model_override: str | None = None,
+    nd_scope: object | None = None,
 ) -> DispatchResult:
     """Route an LLM call.
 
@@ -495,21 +497,9 @@ def dispatch(
         )
 
     prompt_hash = _sha256_prefix(prompt)
-    tier = config.tiers[tier_name]
-    # SPR-01 M3 route-override: swap ONLY the primary's (provider, model),
-    # keeping the same pricing/limits and the SAME fallback chain. Requires
-    # both halves; a partial override is ignored (refuse to guess).
-    if provider_override and model_override:
-        tier = TierConfig(
-            name=tier.name,
-            provider=provider_override,
-            model=model_override,
-            max_tokens=tier.max_tokens,
-            temperature=tier.temperature,
-            context_budget_tokens=tier.context_budget_tokens,
-            pricing=tier.pricing,
-            fallback=tier.fallback,
-        )
+    tier = _override_primary(
+        config.tiers[tier_name], provider_override, model_override
+    )
     chain_index = 0
     last_error: ProviderError | None = None
 
@@ -559,6 +549,7 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                nd_scope=nd_scope,
             )
             current = current.fallback
             chain_index += 1
@@ -589,6 +580,7 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                nd_scope=nd_scope,
             )
             current = current.fallback
             chain_index += 1
@@ -623,6 +615,7 @@ def dispatch(
                 prompt_hash=prompt_hash,
                 finish_reason="error",
                 context_pack_event_id=context_pack_event_id,
+                nd_scope=nd_scope,
             )
             # Count this genuine provider-call failure toward the breaker. Config
             # conditions (unregistered/no-key) never reach here — they fall
@@ -653,6 +646,7 @@ def dispatch(
             prompt_hash=prompt_hash,
             finish_reason=finish,
             context_pack_event_id=context_pack_event_id,
+            nd_scope=nd_scope,
         )
         return DispatchResult(
             text=raw.text,
@@ -675,3 +669,106 @@ def dispatch(
             provider="<none>", model="<none>", latency_ms=0,
         )
     raise last_error
+
+
+def _tier_candidates(tier: TierConfig) -> tuple[str, ...]:
+    candidates: list[str] = []
+    current: TierConfig | None = tier
+    while current is not None:
+        if current.provider is not None and current.model is not None:
+            candidate = f"{current.provider}/{current.model}"
+            if candidate not in candidates:
+                candidates.append(candidate)
+        current = current.fallback
+    return tuple(candidates)
+
+
+def _override_primary(
+    tier: TierConfig, provider_override: str | None, model_override: str | None
+) -> TierConfig:
+    if not provider_override or not model_override:
+        return tier
+    return TierConfig(
+        name=tier.name,
+        provider=provider_override,
+        model=model_override,
+        max_tokens=tier.max_tokens,
+        temperature=tier.temperature,
+        context_budget_tokens=tier.context_budget_tokens,
+        pricing=tier.pricing,
+        fallback=tier.fallback,
+    )
+
+
+def dispatch(
+    prompt: str,
+    role: str,
+    *,
+    investigation_id: str,
+    max_tokens: int | None = None,
+    verification_required: bool = False,
+    context_pack_event_id: str | None = None,
+    parent_event_id: str | None = None,
+    config: DispatchConfig | None = None,
+    config_path: str | Path | None = None,
+    provider_override: str | None = None,
+    model_override: str | None = None,
+) -> DispatchResult:
+    """Evaluate optional ND shadow evidence, then run authoritative dispatch unchanged."""
+    if config is None:
+        if config_path is None:
+            config_path = Path(__file__).parent / "config.yaml"
+        config = DispatchConfig.from_yaml(config_path)
+
+    attribution_tokens: tuple[Any, Any, Any] | None = None
+    nd_scope = object()
+    tier_name = config.role_tiers.get(role)
+    tier = config.tiers.get(tier_name) if tier_name is not None else None
+    if tier is not None:
+        try:
+            attribution_module = importlib.import_module(".nd_attribution", package=__package__)
+            shadow_module = importlib.import_module(".notdiamond_shadow", package=__package__)
+        except (ImportError, TypeError):  # pragma: no cover
+            attribution_module = importlib.import_module("dispatch.nd_attribution")
+            try:
+                shadow_module = importlib.import_module("dispatch.notdiamond_shadow")
+            except ImportError:
+                shadow_module = None
+
+        attribution = None if shadow_module is None else shadow_module.evaluate_notdiamond_shadow(
+            prompt=prompt,
+            role=role,
+            candidates=_tier_candidates(
+                _override_primary(tier, provider_override, model_override)
+            ),
+        )
+        if attribution is not None:
+            attribution_tokens = attribution_module.push_nd_decision(
+                {
+                    "nd_session_id": attribution.session_id,
+                    "nd_recommended_provider": attribution.recommended_provider,
+                    "nd_recommended_model": attribution.recommended_model,
+                    "nd_tradeoff": attribution.tradeoff,
+                    "nd_decision_latency_ms": attribution.decision_latency_ms,
+                    "nd_bypassed": True,
+                    "nd_bypass_reason": attribution.bypass_reason,
+                },
+                scope=nd_scope,
+            )
+    try:
+        return _dispatch_authoritative(
+            prompt,
+            role,
+            investigation_id=investigation_id,
+            max_tokens=max_tokens,
+            verification_required=verification_required,
+            context_pack_event_id=context_pack_event_id,
+            parent_event_id=parent_event_id,
+            config=config,
+            provider_override=provider_override,
+            model_override=model_override,
+            nd_scope=nd_scope,
+        )
+    finally:
+        if attribution_tokens is not None:
+            attribution_module.reset_nd_decision(attribution_tokens)
