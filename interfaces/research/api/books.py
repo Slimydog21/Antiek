@@ -24,10 +24,12 @@ with the single writer.
 
 from __future__ import annotations
 
+import asyncio
 import logging
+import threading
 from typing import Literal, cast
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from substrate.books.model import BookAsset, get_book_asset, list_book_assets
@@ -37,6 +39,7 @@ from .operator_allowlist import operator_allowlist_from_env
 from .serve_guard import serve_full_text_guarded
 
 logger = logging.getLogger("antiek.interfaces.books")
+_BOOK_JUDGMENT_LOCK = threading.Lock()
 
 # §9.0 owner-read policy tags. The owner's OWN-corpus read path (talk-to-book +
 # corpus search) passes the PRIVILEGED ``operator_only`` tag so the retrieval
@@ -120,6 +123,18 @@ def _owner_read_policy_tag(request: Request) -> str:
         return _OWNER_READ_POLICY_TAG
     return _PUBLIC_READ_POLICY_TAG
 
+
+def _reader_owner_id(request: Request) -> str:
+    """Resolve ownership from middleware state, never from request data."""
+    state = getattr(request, "state", None)
+    user_id = getattr(state, "user_id", None)
+    auth_method = getattr(state, "auth_method", None)
+    if isinstance(user_id, str) and user_id.strip():
+        return user_id.strip()
+    if auth_method == "unauthenticated_local":
+        return "__operator__"
+    raise HTTPException(status_code=401, detail="authenticated_owner_required")
+
 # arXiv canonical-link prefix; the serve guard stamps result.canonical_url as
 # ``https://arxiv.org/abs/<arxiv_id>`` for an arXiv doc (None otherwise), so the
 # arxiv_id is recoverable from it for the M4 serve-audit without re-reading the DB.
@@ -132,6 +147,88 @@ def _resolve_db_path() -> str:
     path = default_db_path()
     ensure_initialized(path)
     return path
+
+
+def _book_answer_trajectory(document_id: str) -> list[dict[str, object]]:
+    from substrate.event_log import trajectory
+
+    return trajectory(f"read-{document_id}")
+
+
+def _payload_dict(row: dict[str, object]) -> dict[str, object]:
+    payload = row.get("payload")
+    return payload if isinstance(payload, dict) else {}
+
+
+def _captured_answer(
+    document_id: str, answer_id: str, owner_id: str
+) -> dict[str, object] | None:
+    for row in _book_answer_trajectory(document_id):
+        if row.get("event_id") != answer_id or row.get("action_type") != "read.book_answered":
+            continue
+        payload = _payload_dict(row)
+        if payload.get("owner_id") == owner_id and row.get("document_id") == document_id:
+            return row
+    return None
+
+
+def _persist_book_answer_judgment(
+    *,
+    document_id: str,
+    answer_id: str,
+    owner_id: str,
+    verdict: Literal["good", "bad"],
+    note: str | None,
+) -> BookAnswerJudgmentResponse:
+    from substrate.event_log import emit_typed
+    from substrate.schemas import ReadBookAnswerJudgedPayload
+
+    # Production is deliberately one process under the DuckDB single-writer
+    # invariant. This lock makes replay-check + append one operation inside
+    # that process, including simultaneous requests from separate browser tabs.
+    with _BOOK_JUDGMENT_LOCK:
+        if _captured_answer(document_id, answer_id, owner_id) is None:
+            raise HTTPException(status_code=404, detail="book_answer_not_found")
+        for row in _book_answer_trajectory(document_id):
+            if row.get("action_type") != "read.book_answer_judged":
+                continue
+            payload = _payload_dict(row)
+            if payload.get("answer_id") != answer_id or payload.get("owner_id") != owner_id:
+                continue
+            if payload.get("verdict") != verdict or payload.get("note") != note:
+                raise HTTPException(status_code=409, detail="book_answer_already_judged")
+            return BookAnswerJudgmentResponse(
+                answer_id=answer_id,
+                judgment_id=str(row["event_id"]),
+                verdict=verdict,
+                note=note,
+            )
+
+        judgment_id = emit_typed(
+            f"read-{document_id}",
+            ReadBookAnswerJudgedPayload(
+                answer_id=answer_id,
+                owner_id=owner_id,
+                verdict=verdict,
+                note=note,
+            ),
+            parent_event_id=answer_id,
+            role="read/talk_to_book_judgment",
+            policy_id="read/books/answer-judgment-v1",
+            document_id=document_id,
+        )
+        persisted = any(
+            row.get("event_id") == judgment_id
+            for row in _book_answer_trajectory(document_id)
+        )
+        if judgment_id is None or not persisted:
+            raise HTTPException(status_code=503, detail="answer_judgment_capture_unavailable")
+        return BookAnswerJudgmentResponse(
+            answer_id=answer_id,
+            judgment_id=judgment_id,
+            verdict=verdict,
+            note=note,
+        )
 
 
 def _record_arxiv_serve_audit(db_path: str, document_id: str, result: ServeResult) -> None:
@@ -237,6 +334,28 @@ class BookListResponse(BaseModel):
     count: int
 
 
+BookImportContentClass = Literal[
+    "public_domain",
+    "opt_in_licensed",
+    "source_declared_open",
+    "user_owned",
+    "user_public_contribution",
+    "restricted_pending_opt_in",
+    "personal_reading",
+]
+
+
+class BookImportResponse(BaseModel):
+    document_id: str
+    was_new: bool
+    chunk_count: int
+    content_class: str | None
+    servability: str
+    title: str | None
+    source_format: Literal["epub"] = "epub"
+    content_format: Literal["html"] = "html"
+
+
 class CuratedBookResponse(BaseModel):
     document_id: str
     title: str | None
@@ -306,6 +425,25 @@ class FullTextResponse(BaseModel):
     ad_eligible: bool = False
     canonical_url: str | None = None
     license: str | None = None
+    content_format: Literal["text", "html"] = "text"
+
+
+def _full_text_response(result: ServeResult) -> FullTextResponse:
+    return FullTextResponse(
+        document_id=result.document_id,
+        servable=result.servable,
+        servability=result.servability.value if result.servability else None,
+        full_text=result.full_text,
+        snippet=result.snippet,
+        title=result.title,
+        author=result.author,
+        reason=result.reason,
+        tier=result.tier,
+        ad_eligible=result.ad_eligible,
+        canonical_url=result.canonical_url,
+        license=result.license,
+        content_format=result.content_format,
+    )
 
 
 # ── SPR-08 M2 — talk-to-book (multi-turn, page-cited) ───────────────
@@ -341,12 +479,50 @@ class CitationResponse(BaseModel):
 
 
 class AskBookResponse(BaseModel):
+    answer_id: str | None
+    capture_status: Literal["captured", "unavailable"]
     answer: str
     citations: list[CitationResponse]
     # False when the book had no extractable text to ground on (scanned-image
     # PDF / fully-withheld) — the honest no-context state, never a hallucination.
     grounded: bool
     context_chunk_count: int
+
+
+class BookAnswerJudgmentRequest(BaseModel):
+    verdict: Literal["good", "bad"]
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class BookAnswerJudgmentResponse(BaseModel):
+    answer_id: str
+    judgment_id: str
+    verdict: Literal["good", "bad"]
+    note: str | None = None
+
+
+class JudgedBookAnswerResponse(BaseModel):
+    answer_id: str
+    judgment_id: str
+    document_id: str
+    question: str
+    answer: str
+    citations: list[CitationResponse]
+    grounded: bool
+    provider: str | None = None
+    model: str | None = None
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    cost_usd: float | None = None
+    verdict: Literal["good", "bad"]
+    note: str | None = None
+    answered_at: str
+    judged_at: str
+
+
+class JudgedBookAnswersResponse(BaseModel):
+    answers: list[JudgedBookAnswerResponse]
+    count: int
 
 
 # ── SPR-08 M1 — corpus search (NET-NEW) ─────────────────────────────
@@ -490,9 +666,6 @@ def register_book_routes(app: FastAPI) -> None:
             if status == "servable":
                 assets = list_book_assets(con, servable_only=True)
             else:
-                # "gated" and "all" both list non-taken-down books; the
-                # servability flag on each lets the caller filter. We never
-                # widen to taken-down books on a public listing.
                 assets = list_book_assets(con, servable_only=False)
                 if status == "gated":
                     assets = [a for a in assets if not a.servable_full_text]
@@ -528,6 +701,98 @@ def register_book_routes(app: FastAPI) -> None:
                 )
                 for c in curated
             ],
+        )
+
+    @app.post(
+        "/books/import/epub",
+        response_model=BookImportResponse,
+        status_code=201,
+        tags=["books"],
+    )
+    async def import_epub(
+        request: Request,
+        content_class: BookImportContentClass = Query(default="personal_reading"),
+        rights_holder_name: str | None = Query(default=None, min_length=1, max_length=256),
+        license_basis: str | None = Query(default=None, min_length=1, max_length=1024),
+    ) -> BookImportResponse:
+        """Import one operator-held EPUB through the bounded conversion engine.
+
+        The request body is the EPUB bytes, not a path or URL. The default is
+        owner-only ``personal_reading``; making a title publicly servable is an
+        explicit rights declaration. Conversion and the DuckDB transaction run
+        off the event loop, under the repository's single-writer coordinator.
+        """
+        from runtime.db_lock import connect_write
+        from substrate.book_import import (
+            DEFAULT_LIMITS,
+            BookImportError,
+            PublishedBookImport,
+            RepublishRightsChangeError,
+            StoredBodyMismatchError,
+            ZipBombSuspectedError,
+            convert_epub_to_antiek_html,
+            publish_converted_book,
+        )
+
+        if content_class in {"personal_reading", "user_owned"} and rights_holder_name:
+            raise HTTPException(
+                status_code=422, detail="owner_only_import_cannot_create_rights_holder"
+            )
+        media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        if media_type not in {"application/epub+zip", "application/octet-stream"}:
+            raise HTTPException(status_code=415, detail="epub_content_type_required")
+        declared = request.headers.get("content-length")
+        if declared is not None:
+            try:
+                declared_size = int(declared)
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail="invalid_content_length") from exc
+            if declared_size <= 0:
+                raise HTTPException(status_code=400, detail="empty_epub")
+            if declared_size > DEFAULT_LIMITS.max_container_bytes:
+                raise HTTPException(status_code=413, detail="epub_too_large")
+
+        chunks: list[bytes] = []
+        received = 0
+        async for chunk in request.stream():
+            received += len(chunk)
+            if received > DEFAULT_LIMITS.max_container_bytes:
+                raise HTTPException(status_code=413, detail="epub_too_large")
+            chunks.append(chunk)
+        if received == 0:
+            raise HTTPException(status_code=400, detail="empty_epub")
+        payload = b"".join(chunks)
+
+        def convert_and_publish() -> PublishedBookImport:
+            converted = convert_epub_to_antiek_html(payload)
+            con = connect_write(_resolve_db_path(), purpose="books/import/epub")
+            try:
+                return publish_converted_book(
+                    con,
+                    converted,
+                    content_class=content_class,
+                    rights_holder_name=rights_holder_name,
+                    license_basis=license_basis,
+                )
+            finally:
+                con.close()
+
+        try:
+            published = await asyncio.to_thread(convert_and_publish)
+        except ZipBombSuspectedError as exc:
+            raise HTTPException(status_code=413, detail=exc.reason) from None
+        except (RepublishRightsChangeError, StoredBodyMismatchError) as exc:
+            raise HTTPException(status_code=409, detail=exc.reason) from None
+        except BookImportError as exc:
+            raise HTTPException(status_code=422, detail=exc.reason) from None
+
+        return BookImportResponse(
+            document_id=published.document_id,
+            was_new=published.was_new,
+            chunk_count=published.chunk_count,
+            content_class=published.content_class,
+            servability=published.servability,
+            title=published.title,
         )
 
     @app.get("/books/{document_id}", response_model=BookDetail, tags=["books"])
@@ -569,20 +834,37 @@ def register_book_routes(app: FastAPI) -> None:
         # Defensively isolated: a failure in the audit layer must never break the
         # serve (wrap + log), and the audit write takes its own write lock.
         _record_arxiv_serve_audit(db, document_id, result)
-        return FullTextResponse(
-            document_id=result.document_id,
-            servable=result.servable,
-            servability=result.servability.value if result.servability else None,
-            full_text=result.full_text,
-            snippet=result.snippet,
-            title=result.title,
-            author=result.author,
-            reason=result.reason,
-            tier=result.tier,
-            ad_eligible=result.ad_eligible,
-            canonical_url=result.canonical_url,
-            license=result.license,
-        )
+        return _full_text_response(result)
+
+    @app.get(
+        "/books/{document_id}/owner-full-text",
+        response_model=FullTextResponse,
+        tags=["books"],
+    )
+    async def get_owner_book_full_text(
+        document_id: str, request: Request
+    ) -> FullTextResponse:
+        """Serve personal-reading bytes only on the proven owner path.
+
+        The public ``/full-text`` contract remains byte-for-byte narrow. This
+        explicit endpoint resolves the same hardened owner signal used by
+        context/research retrieval and never marks private bytes servable or
+        ad-eligible.
+        """
+        from runtime.db_lock import connect_read
+
+        if _owner_read_policy_tag(request) != _OWNER_READ_POLICY_TAG:
+            raise HTTPException(status_code=403, detail="owner_read_required")
+        db = _resolve_db_path()
+        con = connect_read(db)
+        try:
+            result = serve_full_text_guarded(con, document_id, owner=True)
+        finally:
+            con.close()
+        if not result.found:
+            raise HTTPException(status_code=404, detail="book_not_found")
+        _record_arxiv_serve_audit(db, document_id, result)
+        return _full_text_response(result)
 
     @app.post(
         "/books/{document_id}/ad-impressions",
@@ -771,9 +1053,7 @@ def register_book_routes(app: FastAPI) -> None:
         finally:
             con.close()
 
-        return AskBookResponse(
-            answer=result.answer,
-            citations=[
+        citations = [
                 CitationResponse(
                     chunk_id=c.chunk_id,
                     document_id=c.document_id,
@@ -782,10 +1062,137 @@ def register_book_routes(app: FastAPI) -> None:
                     snippet=c.snippet,
                 )
                 for c in result.citations
-            ],
+            ]
+        from substrate.event_log import emit_typed
+        from substrate.schemas import BookAnswerCitation, ReadBookAnsweredPayload
+
+        owner_id = _reader_owner_id(request)
+        dispatch_result = result.dispatch_result
+        usage = dispatch_result.usage if dispatch_result is not None else None
+        answer_id: str | None = None
+        try:
+            emitted_id = emit_typed(
+                f"read-{document_id}",
+                ReadBookAnsweredPayload(
+                    owner_id=owner_id,
+                    question=req.question,
+                    answer=result.answer,
+                    citations=[BookAnswerCitation(**citation.model_dump()) for citation in citations],
+                    grounded=result.grounded,
+                    context_chunk_count=result.context_chunk_count,
+                    research_tier=req.research_tier,
+                    provider=dispatch_result.provider if dispatch_result else None,
+                    model=dispatch_result.model if dispatch_result else None,
+                    input_tokens=usage.input_tokens if usage else None,
+                    output_tokens=usage.output_tokens if usage else None,
+                    cached_input_tokens=usage.cached_input_tokens if usage else None,
+                    cache_creation_input_tokens=(usage.cache_creation_input_tokens if usage else None),
+                    cost_usd=dispatch_result.cost_usd if dispatch_result else None,
+                    latency_ms=dispatch_result.latency_ms if dispatch_result else None,
+                    dispatch_event_id=dispatch_result.event_id if dispatch_result else None,
+                ),
+                role="read/talk_to_book",
+                policy_id="read/books/answer-capture-v1",
+                document_id=document_id,
+            )
+            if emitted_id is not None and _captured_answer(document_id, emitted_id, owner_id):
+                answer_id = emitted_id
+        except Exception:
+            logger.exception("talk-to-book answer capture failed after dispatch")
+
+        return AskBookResponse(
+            answer_id=answer_id,
+            capture_status="captured" if answer_id is not None else "unavailable",
+            answer=result.answer,
+            citations=citations,
             grounded=result.grounded,
             context_chunk_count=result.context_chunk_count,
         )
+
+    @app.post(
+        "/books/{document_id}/answers/{answer_id}/judgment",
+        response_model=BookAnswerJudgmentResponse,
+        tags=["books"],
+    )
+    async def judge_book_answer(
+        document_id: str,
+        answer_id: str,
+        body: BookAnswerJudgmentRequest,
+        request: Request,
+    ) -> BookAnswerJudgmentResponse:
+        owner_id = _reader_owner_id(request)
+        normalized_note = body.note.strip() if body.note and body.note.strip() else None
+        return _persist_book_answer_judgment(
+            document_id=document_id,
+            answer_id=answer_id,
+            owner_id=owner_id,
+            verdict=body.verdict,
+            note=normalized_note,
+        )
+
+    @app.get(
+        "/books/{document_id}/answer-evaluations",
+        response_model=JudgedBookAnswersResponse,
+        tags=["books"],
+    )
+    async def list_book_answer_evaluations(
+        document_id: str,
+        request: Request,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> JudgedBookAnswersResponse:
+        if limit < 1 or limit > 500 or offset < 0:
+            raise HTTPException(status_code=422, detail="invalid_pagination")
+        owner_id = _reader_owner_id(request)
+        rows = _book_answer_trajectory(document_id)
+        answers = {
+            str(row["event_id"]): row
+            for row in rows
+            if row.get("action_type") == "read.book_answered"
+            and _payload_dict(row).get("owner_id") == owner_id
+            and row.get("document_id") == document_id
+        }
+        judged: list[JudgedBookAnswerResponse] = []
+        for judgment in rows:
+            if judgment.get("action_type") != "read.book_answer_judged":
+                continue
+            judgment_payload = _payload_dict(judgment)
+            if judgment_payload.get("owner_id") != owner_id:
+                continue
+            answer_id_value = str(judgment_payload.get("answer_id", ""))
+            answer_row = answers.get(answer_id_value)
+            if answer_row is None:
+                continue
+            answer_payload = _payload_dict(answer_row)
+            citations = cast(list[object], answer_payload.get("citations", []))
+            provider_value = answer_payload.get("provider")
+            model_value = answer_payload.get("model")
+            input_tokens_value = answer_payload.get("input_tokens")
+            output_tokens_value = answer_payload.get("output_tokens")
+            cost_value = answer_payload.get("cost_usd")
+            verdict_value = cast(Literal["good", "bad"], str(judgment_payload["verdict"]))
+            note_value = judgment_payload.get("note")
+            judged.append(JudgedBookAnswerResponse(
+                answer_id=answer_id_value,
+                judgment_id=str(judgment["event_id"]),
+                document_id=document_id,
+                question=str(answer_payload["question"]),
+                answer=str(answer_payload["answer"]),
+                citations=[CitationResponse.model_validate(c) for c in citations],
+                grounded=bool(answer_payload["grounded"]),
+                provider=provider_value if isinstance(provider_value, str) else None,
+                model=model_value if isinstance(model_value, str) else None,
+                input_tokens=input_tokens_value if isinstance(input_tokens_value, int) else None,
+                output_tokens=output_tokens_value if isinstance(output_tokens_value, int) else None,
+                cost_usd=float(cost_value) if isinstance(cost_value, (int, float)) else None,
+                verdict=verdict_value,
+                note=note_value if isinstance(note_value, str) else None,
+                answered_at=str(answer_row["emitted_at"]),
+                judged_at=str(judgment["emitted_at"]),
+            ))
+        judged.sort(key=lambda item: item.judged_at, reverse=True)
+        page = judged[offset:offset + limit]
+        return JudgedBookAnswersResponse(answers=page, count=len(judged))
 
     # ── SPR-08 M1 — corpus search over the owned graph (NET-NEW) ──
     @app.get(

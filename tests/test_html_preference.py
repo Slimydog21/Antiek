@@ -48,6 +48,16 @@ def test_to_dict_shape() -> None:
     assert any("doc-1" in n for n in payload["notes"])
 
 
+def test_decision_notes_are_immutable_and_dict_is_detached() -> None:
+    decision = prefer_html_view(html_ready=True, asset_id="doc-1")
+    assert isinstance(decision.notes, tuple)
+
+    payload = decision.to_dict()
+    payload["notes"].append("caller mutation")
+
+    assert "caller mutation" not in decision.notes
+
+
 def test_rejects_truthy_string_as_ready() -> None:
     import pytest
 

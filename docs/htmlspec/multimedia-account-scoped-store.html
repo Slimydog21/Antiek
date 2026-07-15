@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Antiek Multimedia Account-Scoped Asset Store</title>
+  <style>body{max-width:980px;margin:auto;padding:32px;font:15px/1.55 system-ui;color:#18181b;background:#fafafa}section{border-top:1px solid #d4d4d8;padding:18px 0}h1,h2{line-height:1.2}code{background:#e4e4e7;padding:2px 5px}table{width:100%;border-collapse:collapse}th,td{border:1px solid #d4d4d8;padding:8px;text-align:left;vertical-align:top}.required{font-weight:700}</style>
+</head>
+<body>
+  <h1>Multimedia Account-Scoped Asset Store</h1>
+  <p><strong>TR executable sub-spec.</strong> Stacked on PR #929. The selected multimedia asset becomes owner-authoritative across planning, jobs, recovery, and paid execution authorization.</p>
+
+  <section>
+    <h2>Five Values</h2>
+    <ol>
+      <li><strong>One ownership fact:</strong> every route uses the authenticated operator identity and every file is bound to the same owner digest.</li>
+      <li><strong>No silent claims:</strong> legacy global files are invisible until an operator explicitly assigns one migration owner.</li>
+      <li><strong>Crash honesty:</strong> atomic publication, directory fsync, and replayable migration make a restart observable and repairable without duplicate or lost assets.</li>
+      <li><strong>Private by construction:</strong> raw account identity never appears in paths or envelopes; account directories are 0700 and records are 0600.</li>
+      <li><strong>Authority follows data:</strong> reconciliation and execution authorization resolve the current revision through the same owner-scoped store, not a parallel global lookup.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Storage Contract</h2>
+    <p><code>root/accounts/&lt;sha256(normalized operator id)&gt;/&lt;asset id&gt;.json</code></p>
+    <table>
+      <tr><th>Layer</th><th>Invariant</th></tr>
+      <tr><td>Owner identity</td><td>Non-empty bounded UTF-8 with no controls; normalized exactly as API authentication; persisted only as lowercase SHA-256.</td></tr>
+      <tr><td>Envelope</td><td>Version <code>antiek.multimedia-account-asset.v1</code>, exact owner digest, and validated <code>MultimediaAssetRecord</code>. Envelope owner, directory owner, filename, and record asset ID must agree.</td></tr>
+      <tr><td>Paths</td><td>Bounded asset-ID grammar, no caller path fragments, symlinks and hard-link aliases denied, regular private files only.</td></tr>
+      <tr><td>Concurrency</td><td>One root lock combines process-level <code>flock</code> and thread lock. Every read-modify-write mutation holds exclusive authority through atomic replace.</td></tr>
+      <tr><td>Durability</td><td>Unique 0600 temporary file, flush and file fsync, atomic replace, account-directory fsync. Listing and record bytes are bounded.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>HTTP Ownership</h2>
+    <p>All asset create, list, get, approve, steer, harden, jobs, and live-preparation routes require <code>authenticated_multimedia_operator</code>. Wrong-owner and missing records share opaque HTTP 404. Lists expose only the current owner partition.</p>
+    <p>The reconciliation runtime resolver takes both <code>asset_id</code> and authenticated <code>operator_id</code>. The execution-authorization router authenticates first and reads the asset under that owner before it can issue spend authority. A valid asset ID from another account is therefore not usable as a capability.</p>
+  </section>
+
+  <section>
+    <h2>Legacy Migration</h2>
+    <ol>
+      <li>Root-level v0 JSON remains inaccessible to all account reads.</li>
+      <li>Migration runs only when <code>ANTIEK_MULTIMEDIA_LEGACY_OWNER_ID</code> is explicitly configured or the store method is invoked by an operator-controlled migration.</li>
+      <li>Every legacy record is bounded, regular, unaliased, parseable, and filename-bound before publication.</li>
+      <li>If the destination is absent, publish the owner envelope durably, then unlink the legacy file and fsync root.</li>
+      <li>If a crash leaves both copies, replay verifies semantic equality, removes the legacy copy, and completes. A conflicting destination blocks migration.</li>
+      <li>No first-login, first-read, route parameter, or browser claim may select the migration owner.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Threat Matrix</h2>
+    <table>
+      <tr><th>Attack/failure</th><th>Required result</th></tr>
+      <tr><td>Owner B lists, reads, mutates, authorizes, or reconciles owner A asset</td><td class="required">Empty owner list or opaque 404; no mutation or receipt.</td></tr>
+      <tr><td>Envelope copied to another owner directory or renamed asset ID</td><td class="required">Identity conflict; no record returned.</td></tr>
+      <tr><td>Symlink, hard link, public mode, oversized record, traversal/control identity</td><td class="required">Fail before parsing or mutation.</td></tr>
+      <tr><td>Concurrent approve/steer/job writes</td><td class="required">Serialized updates with no lost history or duplicate sequence.</td></tr>
+      <tr><td>Crash after account publication and before legacy unlink</td><td class="required">Replay verifies equality and completes exactly once.</td></tr>
+      <tr><td>Legacy and destination differ</td><td class="required">Migration blocks; neither file is overwritten or discarded.</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>Acceptance and Rollout</h2>
+    <ol>
+      <li>Focused store/routes/execution/reconciliation tests prove every threat row, restart, and concurrent append.</li>
+      <li>Complete multimedia backend suite and frontend compatibility tests/build pass.</li>
+      <li>Ruff, strict scoped mypy, HTML parse, diff check, hardenx zero real findings, and different-lineage critic pass.</li>
+      <li>Production migration is <strong>NOT RUN</strong> until the operator identifies the exact legacy owner, backs up the root, records pre/post counts and hashes, and runs a two-account canary.</li>
+      <li>Rollback restores the backed-up root and disables the migration owner variable; no reverse migration is automatic.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Non-Goals and Next Seam</h2>
+    <p>No provider call, spend, refund, routing change, graph mutation, general authentication redesign, research-artifact migration, merge, or deploy. The next seam is to account-scope provider gateway configuration and execute a non-paid live recovery canary with audit evidence.</p>
+  </section>
+</body>
+</html>

@@ -13,7 +13,7 @@ Returns a structured decision with honest notes (never invents readiness).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Literal
 
 ViewMode = Literal["html", "pdf", "metadata_only", "unavailable"]
@@ -25,7 +25,7 @@ class ViewPreference:
     preferred: bool
     """True when the chosen mode matches HTML-native doctrine preference."""
     reason: str
-    notes: list[str] = field(default_factory=list)
+    notes: tuple[str, ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -72,7 +72,7 @@ def prefer_html_view(
             mode="html",
             preferred=True,
             reason="html_ready",
-            notes=notes,
+            notes=tuple(notes),
         )
 
     notes.append("no ready HTML projection")
@@ -85,7 +85,7 @@ def prefer_html_view(
                 mode="metadata_only",
                 preferred=False,
                 reason="pdf_blocked_by_html_policy",
-                notes=notes,
+                notes=tuple(notes),
             )
         notes.append(
             "PDF fallback permitted (require_html=false) — not HTML-native preferred"
@@ -94,7 +94,7 @@ def prefer_html_view(
             mode="pdf",
             preferred=False,
             reason="pdf_fallback",
-            notes=notes,
+            notes=tuple(notes),
         )
 
     notes.append("no HTML and no PDF — nothing human-viewable")
@@ -102,7 +102,7 @@ def prefer_html_view(
         mode="unavailable",
         preferred=False,
         reason="no_viewable_representation",
-        notes=notes,
+        notes=tuple(notes),
     )
 
 

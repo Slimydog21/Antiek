@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import hashlib
 from dataclasses import dataclass, field
+from typing import Literal
 
 from ..contracts.multimedia import (
     ClaimToChunk,
@@ -63,6 +64,22 @@ def _dedupe(items: tuple[str, ...]) -> tuple[str, ...]:
 
 
 @dataclass(frozen=True)
+class AudioParagraphSpan:
+    """One synthesized paragraph's exact window in the assembled experience."""
+
+    paragraph_id: str
+    line_id: str
+    chapter_id: str
+    spoken_text: str
+    line_kind: str
+    start_offset_seconds: float
+    end_offset_seconds: float
+    source_chunk_ids: tuple[str, ...]
+    marker_kind: Literal["content", "signpost", "remember", "recap"] = "content"
+    grounding_status: Literal["sourced", "unsourced", "not_required"] = "not_required"
+
+
+@dataclass(frozen=True)
 class ChapterAudio:
     """One replayable chapter: its audio file, timeline window, and provenance."""
 
@@ -76,9 +93,13 @@ class ChapterAudio:
     source_chunk_ids: tuple[str, ...]
     paragraph_ids: tuple[str, ...]
     recap_prompt: str
+    paragraph_spans: tuple[AudioParagraphSpan, ...] = field(default_factory=tuple)
+    assembled_end_offset_seconds: float | None = None
 
     @property
     def end_offset_seconds(self) -> float:
+        if self.assembled_end_offset_seconds is not None:
+            return self.assembled_end_offset_seconds
         return round(self.start_offset_seconds + self.duration_seconds, 3)
 
 
@@ -119,9 +140,7 @@ def assemble_audio_experience(
     # + manifest.script_lines that no chapter's audio ever covers (transcript/audio
     # divergence). Filter at the source so transcript == audio == segment lines.
     spoken_lines = tuple(
-        line
-        for line in plan.script_lines
-        if _chapter_of(line.line_id) in chapter_ids
+        line for line in plan.script_lines if _chapter_of(line.line_id) in chapter_ids
     )
     paragraphs = normalize_script(spoken_lines, pronunciation_notes=pronunciation_notes)
     by_chapter: dict[str, list[NarrationParagraph]] = {}
@@ -157,19 +176,42 @@ def assemble_audio_experience(
         )
 
         audio_chunks: list[bytes] = []
-        chapter_duration = 0.0
+        chapter_duration_raw = 0.0
         chapter_cost = 0.0
         total_chars = 0
+        paragraph_spans: list[AudioParagraphSpan] = []
+        paragraph_offset = offset
         for para in paras:
-            result = tts.synthesize(
-                TTSRequest(text=para.text, voice=voice, speed=speed)
-            )
+            result = tts.synthesize(TTSRequest(text=para.text, voice=voice, speed=speed))
             audio_chunks.append(result.audio_bytes)
-            chapter_duration += result.duration_seconds
+            chapter_duration_raw += result.duration_seconds
             chapter_cost += result.cost_usd
             total_chars += len(para.text)
+            paragraph_start = round(paragraph_offset, 3)
+            paragraph_offset += result.duration_seconds
+            paragraph_end = round(paragraph_offset, 3)
+            paragraph_spans.append(
+                AudioParagraphSpan(
+                    paragraph_id=para.para_id,
+                    line_id=para.line_id,
+                    chapter_id=chapter.chapter_id,
+                    spoken_text=para.text,
+                    line_kind=para.kind,
+                    start_offset_seconds=paragraph_start,
+                    end_offset_seconds=paragraph_end,
+                    source_chunk_ids=para.source_chunk_ids,
+                    marker_kind=_marker_kind(para.line_id),
+                    grounding_status=(
+                        "sourced"
+                        if para.source_chunk_ids
+                        else "unsourced"
+                        if para.unsourced
+                        else "not_required"
+                    ),
+                )
+            )
         chapter_bytes = b"".join(audio_chunks)
-        chapter_duration = round(chapter_duration, 3)
+        chapter_duration = round(chapter_duration_raw, 3)
         chapter_cost = round(chapter_cost, 6)
 
         audio_file_id = f"audio-{asset_id}-{chapter.chapter_id}"
@@ -177,9 +219,7 @@ def assemble_audio_experience(
             GeneratedFile(
                 file_id=audio_file_id,
                 kind="audio",
-                storage_uri=(
-                    f"antiek-mm://{asset_id}/{revision_id}/{audio_file_id}.bin"
-                ),
+                storage_uri=(f"antiek-mm://{asset_id}/{revision_id}/{audio_file_id}.bin"),
                 sha256=hashlib.sha256(chapter_bytes).hexdigest(),
                 mime=getattr(tts, "mime", "audio/fake-pcm"),
                 provider=tts.name,
@@ -216,8 +256,7 @@ def assemble_audio_experience(
 
         line_ids = tuple(p.line_id for p in paras)
         source_chunks = _dedupe(
-            tuple(c for p in paras for c in p.source_chunk_ids)
-            + tuple(chapter.source_chunk_ids)
+            tuple(c for p in paras for c in p.source_chunk_ids) + tuple(chapter.source_chunk_ids)
         )
         segments.append(
             MediaSegment(
@@ -246,9 +285,11 @@ def assemble_audio_experience(
                     f"In one breath, recap the takeaway of “{chapter.title}”, "
                     "then pose one question that invites going deeper."
                 ),
+                paragraph_spans=tuple(paragraph_spans),
+                assembled_end_offset_seconds=round(offset + chapter_duration_raw, 3),
             )
         )
-        offset += chapter_duration
+        offset += chapter_duration_raw
         assembled_sequence += 1
 
     if not chapter_audios:
@@ -260,9 +301,7 @@ def assemble_audio_experience(
     # Full-asset transcript: the text track for the whole experience. It carries
     # the total duration because it documents audio of exactly that length (the
     # contract requires every generated file to have a media shape).
-    transcript_text = "\n\n".join(
-        f"[{p.line_id}] {p.text}" for p in paragraphs
-    )
+    transcript_text = "\n\n".join(f"[{p.line_id}] {p.text}" for p in paragraphs)
     transcript_prompt_id = f"prompt-{asset_id}-transcript"
     prompts.append(
         PromptRecord(
@@ -277,9 +316,7 @@ def assemble_audio_experience(
         GeneratedFile(
             file_id=transcript_file_id,
             kind="transcript",
-            storage_uri=(
-                f"antiek-mm://{asset_id}/{revision_id}/{transcript_file_id}.txt"
-            ),
+            storage_uri=(f"antiek-mm://{asset_id}/{revision_id}/{transcript_file_id}.txt"),
             sha256=_sha(transcript_text),
             mime="text/plain",
             provider=tts.name,
@@ -320,3 +357,12 @@ def assemble_audio_experience(
         transcript_file_id=transcript_file_id,
         unsourced_paragraph_ids=unsourced,
     )
+
+
+def _marker_kind(
+    line_id: str,
+) -> Literal["content", "signpost", "remember", "recap"]:
+    for marker in ("signpost", "remember", "recap"):
+        if line_id.endswith(f"-run-{marker}"):
+            return marker
+    return "content"
