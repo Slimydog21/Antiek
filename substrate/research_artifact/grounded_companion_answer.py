@@ -58,7 +58,43 @@ class CompanionExecutionReceiptVerifier(Protocol):
 
 
 def candidate_digest(candidate: GroundedAnswerCandidate) -> str:
-    return _sha(_json(_candidate_payload(candidate)))
+    return _sha(canonical_candidate_json(candidate))
+
+
+def canonical_candidate_json(candidate: GroundedAnswerCandidate) -> str:
+    return _json(_candidate_payload(candidate))
+
+
+def candidate_from_json(value: str) -> GroundedAnswerCandidate:
+    if not isinstance(value, str) or len(value.encode("utf-8")) > MAX_ANSWER_BYTES:
+        raise GroundedAnswerError("answer candidate JSON is invalid")
+    try:
+        payload = json.loads(value)
+    except (TypeError, ValueError, json.JSONDecodeError) as exc:
+        raise GroundedAnswerError("answer candidate JSON is invalid") from exc
+    if not isinstance(payload, dict) or set(payload) != {"schema_version", "claims"}:
+        raise GroundedAnswerError("answer candidate schema is invalid")
+    claims = payload.get("claims")
+    if payload.get("schema_version") != SCHEMA_VERSION or not isinstance(claims, list):
+        raise GroundedAnswerError("answer candidate schema is invalid")
+    decoded: list[AnswerClaimInput] = []
+    for claim in claims:
+        if not isinstance(claim, dict) or set(claim) != {"text", "citation_ids"}:
+            raise GroundedAnswerError("answer candidate claim schema is invalid")
+        text = claim.get("text")
+        citation_ids = claim.get("citation_ids")
+        if not isinstance(text, str) or not isinstance(citation_ids, list):
+            raise GroundedAnswerError("answer candidate claim schema is invalid")
+        decoded.append(
+            AnswerClaimInput(
+                text=text,
+                citation_ids=tuple(citation_ids),
+            )
+        )
+    candidate = GroundedAnswerCandidate(claims=tuple(decoded))
+    if canonical_candidate_json(candidate) != value:
+        raise GroundedAnswerError("answer candidate JSON is not canonical")
+    return candidate
 
 
 def build_grounded_answer(
@@ -71,8 +107,7 @@ def build_grounded_answer(
     payload = _candidate_payload(candidate)
     output_digest = _sha(_json(payload))
     pack_sha = str(evidence_pack.get("pack_sha256", ""))
-    _validate_receipt(receipt, turn_id=turn_id, pack_sha=pack_sha,
-                      output_digest=output_digest)
+    _validate_receipt(receipt, turn_id=turn_id, pack_sha=pack_sha, output_digest=output_digest)
     citations = evidence_pack.get("citations")
     if not isinstance(citations, list):
         raise GroundedAnswerError("evidence pack citations are invalid")
@@ -96,14 +131,27 @@ def build_grounded_answer(
         unknown = [item for item in claim_citations if item not in citation_map]
         if unknown:
             raise GroundedAnswerError("claim cites evidence outside the admitted pack")
-        claim_id = "dclaim_" + _sha(_json({
-            "answer_id": answer_id, "ordinal": ordinal, "text": raw["text"],
-            "citation_ids": claim_citations,
-        }))
+        claim_id = "dclaim_" + _sha(
+            _json(
+                {
+                    "answer_id": answer_id,
+                    "ordinal": ordinal,
+                    "text": raw["text"],
+                    "citation_ids": claim_citations,
+                }
+            )
+        )
         supported = bool(claim_citations)
-        claims.append({"claim_id": claim_id, "ordinal": ordinal, "text": raw["text"],
-                       "citation_ids": claim_citations, "supported": supported})
-        links = []
+        claims.append(
+            {
+                "claim_id": claim_id,
+                "ordinal": ordinal,
+                "text": raw["text"],
+                "citation_ids": claim_citations,
+                "supported": supported,
+            }
+        )
+        links: list[str] = []
         for citation_id in claim_citations:
             if citation_id not in cited_ids:
                 cited_ids.append(citation_id)
@@ -111,17 +159,18 @@ def build_grounded_answer(
             anchor = html.escape(str(citation.get("section_anchor", "")), quote=True)
             links.append(
                 f'<a href="#{anchor}" data-citation-id="{html.escape(citation_id)}">'
-                f'[{len(links) + 1}]</a>'
+                f"[{len(links) + 1}]</a>"
             )
         grounding = "supported" if supported else "unsupported"
         suffix = " " + " ".join(links) if links else ""
         html_claims.append(
             f'<p data-claim-id="{claim_id}" data-grounding="{grounding}">'
-            f'{html.escape(raw["text"])}{suffix}</p>'
+            f"{html.escape(raw['text'])}{suffix}</p>"
         )
     rendered = (
         f'<article data-answer-id="{answer_id}" data-schema-version="{SCHEMA_VERSION}">'
-        + "".join(html_claims) + "</article>"
+        + "".join(html_claims)
+        + "</article>"
     )
     if len(rendered.encode("utf-8")) > MAX_ANSWER_BYTES:
         raise GroundedAnswerError("rendered answer exceeds the byte limit")
@@ -148,11 +197,22 @@ def build_grounded_answer(
 
 
 def public_grounded_answer(artifact: dict[str, Any]) -> dict[str, Any]:
-    return {key: artifact[key] for key in (
-        "schema_version", "answer_id", "evidence_pack_sha256", "provider", "model",
-        "claims", "cited_citation_ids", "unsupported_claim_count", "answer_html",
-        "answer_html_sha256", "artifact_sha256",
-    )}
+    return {
+        key: artifact[key]
+        for key in (
+            "schema_version",
+            "answer_id",
+            "evidence_pack_sha256",
+            "provider",
+            "model",
+            "claims",
+            "cited_citation_ids",
+            "unsupported_claim_count",
+            "answer_html",
+            "answer_html_sha256",
+            "artifact_sha256",
+        )
+    }
 
 
 def _candidate_payload(candidate: GroundedAnswerCandidate) -> dict[str, Any]:
@@ -176,16 +236,24 @@ def _candidate_payload(candidate: GroundedAnswerCandidate) -> dict[str, Any]:
 
 
 def _validate_receipt(
-    receipt: VerifiedCompanionExecutionReceipt, *, turn_id: str, pack_sha: str,
+    receipt: VerifiedCompanionExecutionReceipt,
+    *,
+    turn_id: str,
+    pack_sha: str,
     output_digest: str,
 ) -> None:
-    if (not isinstance(receipt, VerifiedCompanionExecutionReceipt)
-            or not _RECEIPT_ID.fullmatch(receipt.receipt_id)
-            or not _SHA.fullmatch(receipt.receipt_digest)
-            or receipt.status != "settled"
-            or not receipt.provider.strip() or not receipt.model.strip()
-            or receipt.turn_id != turn_id or receipt.evidence_pack_sha256 != pack_sha
-            or receipt.output_digest != output_digest or not _SHA.fullmatch(pack_sha)):
+    if (
+        not isinstance(receipt, VerifiedCompanionExecutionReceipt)
+        or not _RECEIPT_ID.fullmatch(receipt.receipt_id)
+        or not _SHA.fullmatch(receipt.receipt_digest)
+        or receipt.status != "settled"
+        or not receipt.provider.strip()
+        or not receipt.model.strip()
+        or receipt.turn_id != turn_id
+        or receipt.evidence_pack_sha256 != pack_sha
+        or receipt.output_digest != output_digest
+        or not _SHA.fullmatch(pack_sha)
+    ):
         raise GroundedAnswerError("execution receipt does not bind the answer")
 
 
@@ -197,7 +265,16 @@ def _sha(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
 
 
-__all__ = ["AnswerAdmissionExpectation", "AnswerClaimInput",
-           "CompanionExecutionReceiptVerifier", "GroundedAnswerCandidate",
-           "GroundedAnswerError", "VerifiedCompanionExecutionReceipt",
-           "build_grounded_answer", "candidate_digest", "public_grounded_answer"]
+__all__ = [
+    "AnswerAdmissionExpectation",
+    "AnswerClaimInput",
+    "CompanionExecutionReceiptVerifier",
+    "GroundedAnswerCandidate",
+    "GroundedAnswerError",
+    "VerifiedCompanionExecutionReceipt",
+    "build_grounded_answer",
+    "candidate_digest",
+    "candidate_from_json",
+    "canonical_candidate_json",
+    "public_grounded_answer",
+]
