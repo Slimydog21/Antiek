@@ -7,6 +7,10 @@ from pathlib import Path
 import pytest
 
 from runtime.research_runner.cost_projection import CostCatalogEntry, UnitRate
+from runtime.research_runner.derived_companion_adapter import CompanionAdapterRegistry
+from runtime.research_runner.derived_companion_execution import (
+    project_derived_companion_execution,
+)
 from runtime.research_runner.protocol import BillingUnit
 from runtime.research_runner.provider_qualification import (
     EvidenceStatus,
@@ -84,6 +88,54 @@ def test_checked_in_provider_registry_is_closed_and_refuses_all_candidates() -> 
         }
         for item in qualifications
     )
+
+
+def test_openai_companion_candidate_remains_refused_on_exact_current_blockers() -> None:
+    openai = next(
+        item for item in load_provider_qualifications() if item.provider == "openai"
+    )
+    assert openai.checked_at == "2026-07-15"
+    assert openai.verdict is QualificationVerdict.REFUSED
+    assert openai.fully_qualified is False
+    assert {
+        dimension
+        for dimension, evidence in openai.evidence.items()
+        if evidence.status is not EvidenceStatus.PASS
+    } == {"pinned_pricing", "durable_idempotency", "authoritative_reconciliation"}
+    assert "provider-enforced idempotency" in openai.evidence[
+        "durable_idempotency"
+    ].finding
+    assert openai.evidence["authoritative_reconciliation"].status is EvidenceStatus.UNPROVEN
+    assert "billing reconciliation" in openai.evidence[
+        "authoritative_reconciliation"
+    ].finding
+
+    assert len(CompanionAdapterRegistry()) == 0
+    projection = project_derived_companion_execution(
+        derived_asset_id="ast_" + "1" * 32,
+        revision_id="rev_" + "2" * 32,
+        content_sha256="3" * 64,
+        generation=1,
+    )
+    assert projection["reason"] == "no_provider_route_qualified"
+    assert projection["available"] is False
+    assert projection["reservable"] is False
+    assert projection["dispatch_authorized"] is False
+
+
+def test_no_production_companion_adapter_registration_or_selection_exists() -> None:
+    roots = (ROOT / "runtime", ROOT / "interfaces", ROOT / "substrate")
+    registration = "CompanionAdapterRegistry("
+    selection = "select_qualified_companion_adapter("
+    offenders: list[str] = []
+    for root in roots:
+        for path in root.rglob("*.py"):
+            if path.name == "derived_companion_adapter.py":
+                continue
+            text = path.read_text(encoding="utf-8")
+            if registration in text or selection in text:
+                offenders.append(str(path.relative_to(ROOT)))
+    assert offenders == []
 
 
 def test_paid_catalog_capability_claim_requires_exact_fully_passing_route() -> None:

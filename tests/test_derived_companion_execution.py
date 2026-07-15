@@ -38,7 +38,7 @@ def test_projects_checked_blockers_without_spend_authority(tmp_path: Path) -> No
     )
     openai = next(route for route in routes if route["provider"] == "openai")
     assert openai["blocking_dimensions"] == [
-        "durable_idempotency", "authoritative_reconciliation"
+        "pinned_pricing", "durable_idempotency", "authoritative_reconciliation"
     ]
     assert "finding" not in json.dumps(result) and "source_url" not in json.dumps(result)
 

@@ -107,18 +107,18 @@
       "provider": "openai",
       "model": "responses-deep-research",
       "operation": "create-response",
-      "checked_at": "2026-07-13",
+      "checked_at": "2026-07-15",
       "verdict": "refused",
       "evidence": {
         "pinned_pricing": {
-          "status": "pass",
+          "status": "unproven",
           "source_url": "https://developers.openai.com/api/docs/pricing",
-          "finding": "Official pricing publishes model token and built-in tool rates."
+          "finding": "Official pricing publishes model and tool rates, but this route-family row does not pin one concrete model and bounded tool workload."
         },
         "durable_idempotency": {
           "status": "unproven",
-          "source_url": "https://platform.openai.com/docs/api-reference/introduction",
-          "finding": "X-Client-Request-Id is documented for tracing and support lookup, not provider-enforced deduplication."
+          "source_url": "https://developers.openai.com/api/reference/overview",
+          "finding": "The current API overview documents request tracing but no provider-enforced idempotency key for Responses creation."
         },
         "hidden_retries_disabled": {
           "status": "pass",
@@ -126,9 +126,9 @@
           "finding": "The official SDK documents max_retries=0, so an adapter can disable its default retries."
         },
         "authoritative_reconciliation": {
-          "status": "fail",
-          "source_url": "https://developers.openai.com/api/docs/guides/background",
-          "finding": "Background retrieval requires the generated response ID; callbacks and metadata do not provide authoritative lookup or not-found by Antiek key."
+          "status": "unproven",
+          "source_url": "https://developers.openai.com/api/docs/guides/webhooks",
+          "finding": "Signed retried webhooks can disclose terminal response IDs, but authoritative correlation, absence proof, complete terminal coverage, and billing reconciliation by Antiek key remain unproven."
         },
         "stable_provider_evidence": {
           "status": "pass",

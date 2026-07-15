@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>OpenAI Companion Route Qualification Decision</title></head>
+<body>
+<main>
+  <h1>OpenAI Companion Route Qualification Decision</h1>
+  <p><strong>Decision date:</strong> 2026-07-15. <strong>Verdict:</strong> refused.</p>
+  <p>This decision evaluates the strongest current candidate for derived companion answers: OpenAI Responses deep research. It grants no adapter, registration, spend, network, or dispatch authority.</p>
+
+  <section>
+    <h2>Five-dimension audit</h2>
+    <table>
+      <thead><tr><th>Dimension</th><th>Status</th><th>Current evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Pinned pricing</td><td>Unproven</td><td><a href="https://developers.openai.com/api/docs/pricing">Official pricing</a> publishes model and tool rates, but <code>responses-deep-research</code> is a route family rather than one concrete model with a bounded tool workload.</td></tr>
+        <tr><td>Durable idempotency</td><td>Unproven</td><td>The <a href="https://developers.openai.com/api/reference/overview">API overview</a> documents request tracing but does not document a provider-enforced idempotency key for Responses creation.</td></tr>
+        <tr><td>Hidden retries disabled</td><td>Pass</td><td>The <a href="https://github.com/openai/openai-python#retries">official Python SDK</a> documents <code>max_retries=0</code>.</td></tr>
+        <tr><td>Authoritative reconciliation</td><td>Unproven</td><td><a href="https://developers.openai.com/api/docs/guides/webhooks">Signed webhooks</a> can deliver terminal response events and a response ID after the create caller disconnects. The documented mechanism does not yet prove exact Antiek-key correlation, complete terminal-event coverage, authoritative absence, or final billable reconciliation.</td></tr>
+        <tr><td>Stable provider evidence</td><td>Pass</td><td>Stored background responses expose provider status and usage when the response ID is already known.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Polling and webhooks</h2>
+    <p>Polling proves what happened after Antiek durably receives a provider response ID. Signed webhooks are the strongest documented recovery path when the create caller loses that ID, and OpenAI documents retried delivery for a bounded period. This improves recovery but does not establish provider-enforced create deduplication, an authoritative not-found answer keyed by Antiek identity, complete correlation when the response ID was never observed, or a final billing record. Retrying the create remains capable of duplicate paid work until those semantics are documented and proved.</p>
+  </section>
+
+  <section>
+    <h2>Promotion requirements</h2>
+    <ol>
+      <li>Primary documentation for provider-enforced deduplication of Responses creation using a caller-supplied stable key, including retention and conflict semantics.</li>
+      <li>A provider-authoritative query that resolves completed, failed, absent, and still-running work from that same key and returns stable billable usage.</li>
+      <li>One concrete model and bounded tool workload with a pinned pricing snapshot compatible with Antiek's reservation model.</li>
+      <li>A concrete adapter implementing Cycle 65's pure normalization contract, registered only after the evidence registry is fully qualified.</li>
+      <li>Crash-window integration tests proving no duplicate send and exact settlement/release/unknown transitions.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>The machine-readable OpenAI route remains <code>refused</code>.</li>
+      <li>Its exact blockers remain pinned pricing, durable idempotency, and authoritative reconciliation.</li>
+      <li>The empty production adapter registry and public execution projection remain dispatch-denied.</li>
+      <li>A future date change alone cannot promote the route; all five evidence dimensions and explicit adapter registration must pass.</li>
+    </ul>
+  </section>
+</main>
+</body>
+</html>
