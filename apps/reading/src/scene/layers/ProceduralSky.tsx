@@ -4,6 +4,7 @@ import type { SceneMood } from "../mood";
 import { moodKey } from "../mood";
 import { makeRidge, PEAK_BANDS, ridgePathD } from "../peaks";
 import { fieldSeed } from "../field";
+import { skyGradientClasses, ridgeFillClass } from "../landscapePalette";
 
 /**
  * ProceduralSky (SPR-04, milestone 5 — the deterministic offline fallback).
@@ -20,43 +21,9 @@ import { fieldSeed } from "../field";
  *
  * COLOUR DISCIPLINE: every colour is a design token via Tailwind classes
  * (bg-*, fill-*, text-*) or a CSS `var(--token)` — NO raw hex (token-lint).
- * The day sky is a cool ice ramp; the night sky a deep space ramp; both
- * mode-track through the tokens.
+ * The sky gradient and ridge fills come from landscapePalette.ts, which maps
+ * DayPart to Tailwind colour keys backed by tokens.css custom properties.
  */
-
-/** Per-daypart sky gradient. Dawn/dusk intentionally share their OS band's
- * token ramp today; their distinct seeded ridges and Krea keys still make the
- * semantic transition real without inventing an unreviewed colour system. */
-function skyClass(mood: SceneMood): string {
-  switch (mood.dayPart) {
-    case "night":
-    case "dusk":
-      // Deep night: dark surface at the top easing to a slightly lighter
-      // horizon. All token surfaces.
-      return "bg-gradient-to-b from-space-2 via-space-1 to-charcoal-2";
-    case "dawn":
-    case "day":
-    default:
-      // Bright day: a high cool ice sky settling to a paler horizon.
-      return "bg-gradient-to-b from-glacial-1 via-ice-3 to-ice-1";
-  }
-}
-
-/** Per-band peak fill, in token classes, far (lightest/most-recessive) → near
- *  (darkest). Day uses the ice ramp; night the space ramp. */
-function peakFill(mood: SceneMood, band: number): string {
-  const night = mood.dayPart === "night" || mood.dayPart === "dusk";
-  if (night) {
-    return (
-      ["fill-charcoal-2", "fill-charcoal-1", "fill-space-1"][band] ??
-      "fill-space-1"
-    );
-  }
-  return (
-    ["fill-glacial-1", "fill-glacial-2", "fill-shadow-1"][band] ??
-    "fill-shadow-1"
-  );
-}
 
 export interface ProceduralSkyProps {
   mood: SceneMood;
@@ -83,7 +50,7 @@ export function ProceduralSky({ mood, shifts }: ProceduralSkyProps) {
 
   return (
     <div
-      className={"absolute inset-0 " + skyClass(mood)}
+      className={"absolute inset-0 " + skyGradientClasses(mood.dayPart)}
       data-testid="procedural-sky"
       data-mood={moodKey(mood)}
       aria-hidden="true"
@@ -102,7 +69,7 @@ export function ProceduralSky({ mood, shifts }: ProceduralSkyProps) {
             <path
               key={i}
               d={ridgePathD(points, anchorShift + yShift)}
-              className={peakFill(mood, i)}
+              className={ridgeFillClass(mood.dayPart, i)}
             />
           );
         })}

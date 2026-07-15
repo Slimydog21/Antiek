@@ -86,12 +86,36 @@ export default {
         starlight: "#C4CCD7",
         bright: "#EEF1F6",
 
+        // Scene transition palette (ATP-01) — dawn/dusk atmospheric tokens.
+        // These mirror tokens.css --scene-* vars; ProceduralSky consumes them.
+        "scene-dawn-top": "var(--scene-dawn-top)",
+        "scene-dawn-mid": "var(--scene-dawn-mid)",
+        "scene-dawn-horizon": "var(--scene-dawn-horizon)",
+        "scene-dawn-ridge-far": "var(--scene-dawn-ridge-far)",
+        "scene-dawn-ridge-mid": "var(--scene-dawn-ridge-mid)",
+        "scene-dawn-ridge-near": "var(--scene-dawn-ridge-near)",
+        "scene-dusk-top": "var(--scene-dusk-top)",
+        "scene-dusk-mid": "var(--scene-dusk-mid)",
+        "scene-dusk-horizon": "var(--scene-dusk-horizon)",
+        "scene-dusk-ridge-far": "var(--scene-dusk-ridge-far)",
+        "scene-dusk-ridge-mid": "var(--scene-dusk-ridge-mid)",
+        "scene-dusk-ridge-near": "var(--scene-dusk-ridge-near)",
+
         // Reserved-use accents (sparingly — never substitute for sun)
         aurora: "#16C2C2",
         // S11 a11y: previous #E33C2D × white text gave 4.24:1 (below
         // WCAG AA 4.5:1 for small text). Darkened to #CE3623 → 4.51:1.
         // Visual delta is ~5% red saturation — brand-acceptable.
         emperor: "#CE3623",
+      },
+      backgroundImage: {
+        // Authored transition skies. The horizon arrives before the 70% mark
+        // so it remains visible above the unchanged ridge silhouettes instead
+        // of being buried at the bottom edge of the plate.
+        "scene-dawn-sky":
+          "linear-gradient(to bottom, var(--scene-dawn-top) 0%, var(--scene-dawn-mid) 36%, var(--scene-dawn-horizon) 70%)",
+        "scene-dusk-sky":
+          "linear-gradient(to bottom, var(--scene-dusk-top) 0%, var(--scene-dusk-mid) 36%, var(--scene-dusk-horizon) 70%)",
       },
       boxShadow: {
         // Day: ink-cast chunky offset
