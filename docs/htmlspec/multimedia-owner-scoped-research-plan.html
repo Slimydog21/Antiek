@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Cycle 24 - Owner-scoped multimedia research plans</title>
+  <style>
+    body { margin: 0 auto; max-width: 960px; padding: 32px 24px 72px; color: #18181b; background: #fafafa; font: 16px/1.55 system-ui, sans-serif; }
+    h1, h2 { letter-spacing: 0; line-height: 1.2; } h1 { font-size: 32px; } h2 { margin-top: 36px; font-size: 21px; }
+    code { background: #e4e4e7; padding: 2px 4px; } table { width: 100%; border-collapse: collapse; }
+    th, td { padding: 10px; border: 1px solid #d4d4d8; text-align: left; vertical-align: top; }
+    .gate { border-left: 4px solid #b91c1c; padding-left: 14px; } li { margin: 7px 0; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Owner-scoped multimedia research plans</h1>
+  <p><strong>Cycle:</strong> 24. <strong>Status:</strong> execution contract. <strong>Base:</strong> Cycle 23 evidence-bound multimedia research intents.</p>
+
+  <h2>Outcome</h2>
+  <p>A prepared, receipt-verified multimedia research intent can be handed to an owner-private draft plan authority. The plan is independently addressable by a random opaque ID, exactly idempotent per owner and intent, and approvable only by the authenticated owner against an exact version. This cycle creates authority for planning only. It does not launch research.</p>
+
+  <h2>Five values</h2>
+  <table>
+    <tr><th>Value</th><th>Required consequence</th></tr>
+    <tr><td>Truth</td><td>The response says draft or approved; it never implies that research, spend, or provider work started.</td></tr>
+    <tr><td>Ownership</td><td>Every lookup and mutation binds the authenticated owner digest. Foreign and absent IDs are equally unavailable.</td></tr>
+    <tr><td>Determinism</td><td>The same owner, intent, and idempotency key returns the same plan; changed authority under that key conflicts.</td></tr>
+    <tr><td>Reversibility</td><td>Approval is version-pinned. A later edit must increment the version and restore draft state.</td></tr>
+    <tr><td>Least authority</td><td>No graph node, event, investigation, provider call, spend authority, or background task is created by handoff, read, or approval.</td></tr>
+  </table>
+
+  <h2>Authority model</h2>
+  <ul>
+    <li>A private SQLite ledger stores <code>plan_id</code>, owner digest, source intent ID and digest, request digest, plan version, canonical plan JSON, and timestamps.</li>
+    <li><code>plan_id</code> is a random <code>mrp_</code>-prefixed 192-bit identifier. It is not a graph node ID and reveals no owner, question, asset, or intent.</li>
+    <li>The initial tree contains the intent question as its root and records immutable intent/evidence provenance. It is generated locally without decomposition.</li>
+    <li>The graph remains a future projection target, never the access-control or approval authority. Content-deduplicated graph IDs cannot safely identify owner-private plans.</li>
+    <li>The stored approval principal is the authenticated owner digest. No request body accepts an approver string.</li>
+  </ul>
+
+  <h2>HTTP contract</h2>
+  <table>
+    <tr><th>Operation</th><th>Contract</th></tr>
+    <tr><td><code>POST /multimedia/research-intents/{intent_id}/plan</code></td><td>Authenticated. Body contains a strong idempotency key. Resolves the exact owner-visible intent and creates or replays its draft plan. Returns 201/200.</td></tr>
+    <tr><td><code>GET /multimedia/research-plans/{plan_id}</code></td><td>Authenticated owner read. Missing and foreign plans both return the same private 404.</td></tr>
+    <tr><td><code>POST /multimedia/research-plans/{plan_id}/approve</code></td><td>Authenticated. Body contains <code>expected_plan_version</code>. Exact CAS approves; stale or conflicting approval returns 409. Replay at the same approved version is stable.</td></tr>
+  </table>
+  <p>Every response, including validation and errors, carries <code>Cache-Control: private, no-store</code>. Response fields include plan identity, source intent and evidence binding, state, version, canonical tree, timestamps, and literal false/null launch and spend authority fields.</p>
+
+  <h2 class="gate">Non-negotiable refusals</h2>
+  <ul>
+    <li>No automatic decomposition and no compatibility fallback to <code>/research/plans/{graph_root_id}</code>.</li>
+    <li>No graph persistence, event emission, investigation/session creation, provider dispatch, budget reservation, spend approval, or launchability claim.</li>
+    <li>No caller-authored owner digest, approver identity, source digest, tree, or approval timestamp.</li>
+    <li>No existence leak through status, detail text, timing-dependent alternate lookup, or cacheable response.</li>
+  </ul>
+
+  <h2>Compatibility boundary</h2>
+  <p>Existing internal cascade planner persistence and launch callers remain unchanged in Cycle 24. Their graph-root contract is explicitly legacy and is not reused by multimedia handoff. A later migration must place all public cascade plan lifecycle routes behind this owner authority before owner plans can launch.</p>
+
+  <h2>Acceptance tests</h2>
+  <ol>
+    <li>Two owners with the same question receive distinct opaque plan IDs and cannot read or approve each other's plans.</li>
+    <li>Same-owner replay is byte-stable; idempotency drift and intent/digest mismatch fail closed.</li>
+    <li>Stored source intent digest and evidence digest exactly match the owner-visible Cycle 23 intent.</li>
+    <li>Approval records only the server-derived owner digest, requires exact version, is replay-stable, and rejects stale versions.</li>
+    <li>Malformed, missing, foreign, tampered, unsafe-path, schema-drift, and oversized records fail closed with private responses.</li>
+    <li>Spies prove handoff/read/approval call no decomposer, graph writer, event emitter, investigation launcher, provider gateway, spend ledger, or background scheduler.</li>
+    <li>Focused Python tests, full multimedia backend tests, multimedia frontend tests, Ruff, TypeScript, build, and HTML validation pass.</li>
+  </ol>
+
+  <h2>Deferred sprints</h2>
+  <ol>
+    <li>Owner-authoritative tree edits with version CAS and approval reopening.</li>
+    <li>Explicit graph projection with owner-safe identity and reconciliation.</li>
+    <li>Migration of public cascade plan routes from graph IDs to owner plan IDs.</li>
+    <li>Spend preview and launch authorization bound to an approved owner plan version.</li>
+    <li>Investigation launch as a separately authorized, auditable transition.</li>
+  </ol>
+</main>
+</body>
+</html>
