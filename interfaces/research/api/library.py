@@ -8,6 +8,7 @@ metadata-only; bodies only via ``/books/{id}/full-text``.
 from __future__ import annotations
 
 import contextlib
+import sys
 from typing import Literal
 
 from fastapi import FastAPI, Query
@@ -62,6 +63,7 @@ def register_library_routes(app: FastAPI) -> None:
             con.execute("COMMIT")
             transaction_started = False
         finally:
+            primary_failure = sys.exc_info()[0] is not None
             try:
                 if transaction_started:
                     # Cleanup must preserve the batch/commit failure that
@@ -69,7 +71,11 @@ def register_library_routes(app: FastAPI) -> None:
                     with contextlib.suppress(Exception):
                         con.execute("ROLLBACK")
             finally:
-                con.close()
+                if primary_failure:
+                    with contextlib.suppress(Exception):
+                        con.close()
+                else:
+                    con.close()
 
         summaries = [BookSummary.from_asset(a) for a in assets]
         return build_library_page(

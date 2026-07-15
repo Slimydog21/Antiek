@@ -202,6 +202,7 @@ def test_register_library_rolls_back_failed_snapshot(
         def close(self) -> None:
             nonlocal closed
             closed = True
+            raise RuntimeError("close failed")
 
     def fail_list(*args, **kwargs):
         assert transaction_commands == ["BEGIN TRANSACTION"]
@@ -250,4 +251,39 @@ def test_register_library_closes_when_begin_fails(
         TestClient(app).get("/library")
 
     assert transaction_commands == ["BEGIN TRANSACTION"]
+    assert closed
+
+
+def test_register_library_rolls_back_commit_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """COMMIT failure stays primary while rollback and close still run."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import interfaces.research.api.library as lib
+
+    transaction_commands: list[str] = []
+    closed = False
+
+    class _Con:
+        def execute(self, command: str) -> None:
+            transaction_commands.append(command)
+            if command == "COMMIT":
+                raise RuntimeError("commit failed")
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    monkeypatch.setattr(lib, "list_book_assets", lambda *args, **kwargs: [])
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
+
+    app = FastAPI()
+    lib.register_library_routes(app)
+    with pytest.raises(RuntimeError, match="commit failed"):
+        TestClient(app).get("/library")
+
+    assert transaction_commands == ["BEGIN TRANSACTION", "COMMIT", "ROLLBACK"]
     assert closed
