@@ -171,7 +171,7 @@ _BOOK_SELECT = """
 """
 
 
-def _row_to_asset(row: tuple) -> BookAsset:
+def _row_to_asset(row: tuple[Any, ...]) -> BookAsset:
     (document_id, title, author, content_class, ip_holder_id,
      page_count, pagination_scheme, cover_uri, toc_json,
      provenance, license_basis,
