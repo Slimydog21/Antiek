@@ -4,6 +4,7 @@ import { createSeededRng } from "../../engine/rng";
 import type { GameContext, InputState } from "../../engine/types";
 import { createClamCatcherCartridge } from "./clamCatcherCartridge";
 import { CLAM_CATCHER_TUNING } from "./logic";
+import type { ClamCatcherVisualKit } from "./visuals";
 
 const emptyInput: InputState = {
   pointer: null,
@@ -16,7 +17,13 @@ const emptyInput: InputState = {
 
 describe("Clam Catcher cartridge", () => {
   it("exposes stable metadata, starts, renders, and tears down", () => {
-    const cart = createClamCatcherCartridge();
+    const visualKit: ClamCatcherVisualKit = {
+      image: null,
+      ready: false,
+      load: vi.fn(),
+      dispose: vi.fn(),
+    };
+    const cart = createClamCatcherCartridge({ visualKit });
     const saveBestScore = vi.fn();
     const ctx: GameContext = {
       width: 320,
@@ -34,6 +41,7 @@ describe("Clam Catcher cartridge", () => {
     expect(cart.id).toBe("clam-catcher");
     expect(cart.meta.style).toBe("club-penguin");
     expect(cart.isGameOver?.()).toBe(false);
+    expect(visualKit.load).toHaveBeenCalledTimes(1);
 
     const c2d = {
       clearRect: vi.fn(),
@@ -52,10 +60,22 @@ describe("Clam Catcher cartridge", () => {
     expect(saveBestScore).not.toHaveBeenCalled();
     cart.teardown();
     expect(cart.getScore?.()).toBe(0);
+    expect(visualKit.dispose).toHaveBeenCalledTimes(1);
+    cart.init(ctx);
+    expect(visualKit.load).toHaveBeenCalledTimes(2);
+    cart.teardown();
+    expect(visualKit.dispose).toHaveBeenCalledTimes(2);
   });
 
   it("reports a terminal score once and starts a fresh shift", () => {
-    const cart = createClamCatcherCartridge();
+    const cart = createClamCatcherCartridge({
+      visualKit: {
+        image: null,
+        ready: false,
+        load: vi.fn(),
+        dispose: vi.fn(),
+      },
+    });
     const saveBestScore = vi.fn();
     let rngCall = 0;
     const ctx: GameContext = {
@@ -95,7 +115,14 @@ describe("Clam Catcher cartridge", () => {
   });
 
   it("lets held arrow input override a remembered pointer position", () => {
-    const cart = createClamCatcherCartridge();
+    const cart = createClamCatcherCartridge({
+      visualKit: {
+        image: null,
+        ready: false,
+        load: vi.fn(),
+        dispose: vi.fn(),
+      },
+    });
     const ctx: GameContext = {
       width: 320,
       height: 200,
@@ -127,12 +154,15 @@ describe("Clam Catcher cartridge", () => {
       lineTo: vi.fn(),
       closePath: vi.fn(),
       fill: vi.fn(),
+      drawImage: vi.fn(),
       fillText: vi.fn(),
       fillStyle: "",
       font: "",
     } as unknown as CanvasRenderingContext2D;
     cart.render(c2d, ctx);
-    const bucketCall = fillRect.mock.calls.at(-1);
+    const bucketCall = fillRect.mock.calls.find(
+      (call) => call[2] === CLAM_CATCHER_TUNING.bucketWidth,
+    );
     expect(bucketCall?.[0]).toBe(
       ctx.width / 2 +
         0.05 * CLAM_CATCHER_TUNING.bucketSpeed -

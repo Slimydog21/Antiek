@@ -11,6 +11,7 @@ does not create a second character or spend a mascot appearance mid-content.
 - Ice Fishing call: `exec-f22b0225-4ca7-4c44-80ce-217111eebe86`.
 - Paperclip archive call: `exec-8f80b4cb-e607-4097-bd9f-1d5ae6e6e8ec`.
 - Clam Catcher call: `exec-8e01e75a-9136-4cef-9d31-139f507630ce`.
+- Clam Catcher visual-kit call: `exec-2c98cfa4-2d12-45bc-a806-cb761c85378c`.
 - The two earlier Werner-bearing candidates from this session were rejected and
   are not present in the repository because they violated the one-live-mascot
   restraint.
@@ -23,11 +24,21 @@ The generated 1536×1024 PNGs were resized to 1200×800 with macOS `sips`, then
 encoded using `cwebp -q 90 -m 6`. This keeps the complete 3:2 compositions while
 reducing the shipped trio from multi-megabyte PNGs to under 700 KiB combined.
 
-| Asset                                  | SHA-256                                                            |     Size |
-| -------------------------------------- | ------------------------------------------------------------------ | -------: |
-| `ice-fishing-station-key-art-v1.webp`  | `cc7d090d707d6716102a1056f84d5d754d10fb091a1fa0ee6615a112ce01b1d3` | 1200×800 |
-| `paperclip-archive-key-art-v1.webp`    | `d11dab01968e32846dd3a7e3b08bb25975838af461041e24078a1f0e59474b3c` | 1200×800 |
-| `clam-catcher-station-key-art-v1.webp` | `0551006bcf4775c8317c2bf7a967028c3c4da7a69c4dd78ff130d119d80f29b8` | 1200×800 |
+| Asset                                  | SHA-256                                                            |      Size |
+| -------------------------------------- | ------------------------------------------------------------------ | --------: |
+| `ice-fishing-station-key-art-v1.webp`  | `cc7d090d707d6716102a1056f84d5d754d10fb091a1fa0ee6615a112ce01b1d3` |  1200×800 |
+| `paperclip-archive-key-art-v1.webp`    | `d11dab01968e32846dd3a7e3b08bb25975838af461041e24078a1f0e59474b3c` |  1200×800 |
+| `clam-catcher-station-key-art-v1.webp` | `0551006bcf4775c8317c2bf7a967028c3c4da7a69c4dd78ff130d119d80f29b8` |  1200×800 |
+| `clam-catcher-visual-kit-v1.webp`      | `6ee8dd9c9614b8ad89ca5446c226852aae3bd0ef6410b9818af1d7413386963e` | 1254×1254 |
+
+The visual kit uses one built-in ChatGPT Image PNG on a removable green field.
+The installed imagegen helper sampled border key `#03f805`, applied a soft
+matte and despill, and encoded the result directly as alpha WebP. Validation:
+all four corners have alpha 0; 1,176,888 pixels are fully transparent; 10,247
+are partially transparent; nonzero coverage is 25.16%. Runtime crops use the
+padded validated bounds inside each 627×627 atlas quadrant. The two-pixel
+transparent margin prevents alpha-edge clipping without admitting generated
+padding or a neighboring sprite into a draw call.
 
 ## Final prompts
 
@@ -68,3 +79,24 @@ reducing the shipped trio from multi-megabyte PNGs to under 700 KiB combined.
 > the right and lower center with calm negative space at upper left. No text,
 > letters, numbers, logo, watermark, UI chrome, cursor, gradient, photorealism,
 > gore, weapons, franchise imagery, or stock-game styling.
+
+### Clam Catcher visual kit
+
+> Use case: stylized-concept. Asset type: production 2x2 game sprite atlas for
+> Antiek's Clam Catcher canvas mini-game. Create exactly four isolated, readable
+> underwater archive-game objects arranged as a strict 2x2 atlas: top-left one
+> small closed common clam, top-right one small open pearl clam with a single
+> pearl, bottom-left one softly glowing jellyfish hazard, bottom-right one
+> brass-rimmed archive catch bucket viewed slightly from above. Each object must
+> be fully contained and centered within its own equal quadrant with generous
+> padding; no overlap between quadrants. Use a perfectly flat solid #00ff00
+> chroma-key background across the entire image, with no grid lines or dividers.
+> Refined flat editorial game illustration with restrained screen-print texture,
+> crisp geometric silhouettes, consistent three-quarter perspective, and calm
+> polar underwater light. Palette: ink navy, glacier blue, paper white, brass
+> yellow, muted coral, and a very small aurora accent; never use #00ff00 inside
+> an object. Exactly four objects and nothing else. No shadows, gradients,
+> texture, reflections, floor plane, or lighting variation in the background.
+> No text, letters, numbers, logo, watermark, UI, cursor, character, penguin,
+> Werner, person, hands, fake research evidence, weapon, gore, photorealism,
+> franchise imagery, or stock-game styling.
