@@ -57,19 +57,27 @@ describe("SceneHotspots — interactive Flipbook-feel regions", () => {
 
   it("click path records last-click and uses hotspot geometry", () => {
     const onActivate = vi.fn();
+    render(<SceneHotspots viewport={vp} mode="inline" onActivate={onActivate} />);
+    fireEvent.click(screen.getByTestId("scene-hotspot-peak-right"));
+    expect(onActivate).toHaveBeenCalledWith("peak-right", "click");
+    expect(
+      screen.getByTestId("scene-hotspots").getAttribute("data-last-click"),
+    ).toBe("peak-right");
+  });
+
+  it("ambient peak-left click emits Werner highlight (product routes own theirs)", () => {
     const seen: string[] = [];
     const onExp = (e: Event) => {
       const d = (e as CustomEvent).detail;
       if (d?.experience) seen.push(d.experience);
     };
     window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
-    render(<SceneHotspots viewport={vp} mode="inline" onActivate={onActivate} />);
-    fireEvent.click(screen.getByTestId("scene-hotspot-peak-right"));
+    render(<SceneHotspots viewport={vp} mode="inline" />);
+    fireEvent.click(screen.getByTestId("scene-hotspot-peak-left"));
     window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
-    expect(onActivate).toHaveBeenCalledWith("peak-right", "click");
+    expect(seen).toContain("highlight");
     expect(
       screen.getByTestId("scene-hotspots").getAttribute("data-last-click"),
-    ).toBe("peak-right");
-    expect(seen).toContain("highlight");
+    ).toBe("peak-left");
   });
 });

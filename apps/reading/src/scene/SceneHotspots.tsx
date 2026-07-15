@@ -84,9 +84,11 @@ export function SceneHotspots({
       }
       if (kind === "click") {
         setLastClick(h.id);
-        // Product experience: interacting with the home of the penguin is a
-        // curious glance (highlight-adjacent ambient), not a hard fail.
-        emitWernerExperience("highlight");
+        // Click highlight is owned by AppShell productAction (or ambient-only
+        // peak-left below). Avoid double-dispatch on product routes.
+        if (h.id === "peak-left") {
+          emitWernerExperience("highlight");
+        }
       }
     },
     [onActivate],
