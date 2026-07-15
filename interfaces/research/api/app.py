@@ -1538,8 +1538,14 @@ def create_app(
         # are still safe; they fall through to the static operator
         # identity when state is absent.)
         def _attach_operator(
-            req: Request, *, method: str, email: str | None = None
+            req: Request, *, method: str, email: str | None = None,
         ) -> None:
+            """Attach the one configured legacy credential's canonical identity.
+
+            CF email, CF service-token, and bearer authentication authorize the
+            same historical operator account.  No caller header can assert an
+            account id; only a verified Antiek session carries a user id.
+            """
             from substrate.multi_user.auth import operator_claims as _oc
             claims = _oc()
             req.state.user_id = claims.user_id
@@ -1564,11 +1570,11 @@ def create_app(
                 if cookie_claims is not None:
                     cookie_email = cookie_claims.email.strip().lower()
                     if not operator_emails or cookie_email in operator_emails:
-                        _attach_operator(
-                            request,
-                            method="antiek_session_cookie",
-                            email=cookie_claims.email,
-                        )
+                        from substrate.multi_user.auth import operator_claims as _oc
+                        request.state.user_id = cookie_claims.user_id
+                        request.state.scopes = frozenset(_oc().scopes)
+                        request.state.auth_method = "antiek_session_cookie"
+                        request.state.user_email = cookie_claims.email
                         return await call_next(request)
 
         # Path 2: Cloudflare Access — browser SSO (email header)
@@ -1616,6 +1622,7 @@ def create_app(
         from fastapi.responses import JSONResponse
         return JSONResponse(
             status_code=401,
+            headers={"Cache-Control": "private, no-store"},
             content={
                 "error": {
                     "message": (
@@ -6573,6 +6580,24 @@ def create_app(
     # blocks, and agent-note import — same one-line inclusion discipline.
     from interfaces.research.api.artifact_routes import artifact_router
     app.include_router(artifact_router)
+
+    from interfaces.research.api.twin_note_routes import twin_note_router
+    app.include_router(twin_note_router)
+
+    @app.middleware("http")
+    async def _twin_note_no_store_middleware(
+        request: Request,
+        call_next: Callable[[Request], Awaitable[Response]],
+    ) -> Response:
+        response = await call_next(request)
+        if request.url.path == "/research/twin-notes" or request.url.path.startswith("/research/twin-notes/"):
+            response.headers["Cache-Control"] = "private, no-store"
+            if response.status_code == 422:
+                from fastapi.responses import JSONResponse
+                response = JSONResponse(status_code=422,
+                    content={"detail": "twin-note request is invalid"},
+                    headers={"Cache-Control": "private, no-store"})
+        return response
 
     # Supersession review surface (GF-5/GF-6 activation). Turns detected
     # contradictions into a review queue — the other half of the detection
