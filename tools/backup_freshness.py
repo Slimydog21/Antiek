@@ -19,12 +19,10 @@ Marker resolution order: ``--marker`` flag, ``$ANTIEK_BACKUP_MARKER``,
 ``$ANTIEK_STATE_DIR/backup_freshness.json``, ``~/.antiek/backup_freshness.json``
 (the deployed state dir is the ``antiek`` user's ``~/.antiek``).
 
-Operator wiring (operator-gated — this module creates NO services/timers):
-the intended prod hookup is a systemd timer on the backup host running e.g.
-``/opt/antiek/.venv/bin/python3 /opt/antiek/tools/backup_freshness.py`` once
-or twice a day, with ``OnFailure=`` (or the cron MAILTO / journal alerting
-already in place for the backup itself) carrying the alert. Until that timer
-is provisioned, ad-hoc runs over SSH are the check.
+Production wiring: ``antiek-backup-freshness.timer`` runs the probe twice
+daily. A stale/missing/invalid marker remains a failed systemd unit and is
+posted to ``ANTIEK_ALERT_WEBHOOK`` when configured; otherwise the journal is
+the loud local evidence channel. Ad-hoc SSH invocation remains supported.
 
 ``--json`` emits the full verdict as one JSON object for future wiring
 (dashboards, health endpoints) without reparsing the one-line prose.
@@ -120,10 +118,10 @@ def _stale(
 
 
 def _parse_counts(raw: object) -> Mapping[str, int] | None:
-    """Validate the verified backup's exact non-negative core-count manifest."""
+    """Validate a complete non-negative manifest containing every core table."""
     if not isinstance(raw, dict):
         return None
-    if set(raw) != _CORE_TABLES:
+    if not _CORE_TABLES.issubset(raw):
         return None
     out: dict[str, int] = {}
     for key, value in raw.items():

@@ -48,8 +48,8 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import duckdb  # noqa: F401 — hard requirement: the backup pipeline is DuckDB; fail loudly if absent
-import jinja2
-import jinja2.meta
+import jinja2  # type: ignore[import-untyped]
+import jinja2.meta  # type: ignore[import-untyped]
 import pytest
 
 from runtime.db_lock import connect_write
@@ -69,7 +69,6 @@ TEMPLATE_VARS = frozenset(
         "backup_cron_minute",
         "antiek_state_dir",
         "backup_bucket_name",
-        "backup_retention_days",
         "antiek_user",
         "antiek_install_dir",
     }
@@ -106,7 +105,6 @@ def _render_template(state_dir: Path, install_dir: Path) -> str:
         backup_cron_minute="0",
         antiek_state_dir=str(state_dir),
         backup_bucket_name="test-bucket",
-        backup_retention_days="14",
         antiek_user=getpass.getuser(),
         antiek_install_dir=str(install_dir),
     )
@@ -183,10 +181,17 @@ def _build_stub_bin(stub_bin: Path) -> None:
         '#!/usr/bin/env bash\nset -euo pipefail\nif [[ "${1:-}" == "-u" ]]; then shift 2; fi\nexec "$@"\n',
     )
     _write_stub(stub_bin / "chown", "#!/usr/bin/env bash\nexit 0\n")
+    # macOS has fcntl.flock but no util-linux `flock(1)`. The whole-job lock's
+    # shell wiring is asserted separately; source-DB contention below uses the
+    # real kernel flock through Python on every platform.
+    _write_stub(stub_bin / "flock", "#!/usr/bin/env bash\nexit 0\n")
     _write_stub(
         stub_bin / "rclone",
         '#!/usr/bin/env bash\nset -euo pipefail\necho "$@" >> "${RCLONE_STUB_LOG}"\n'
-        'if [[ "$1" == "copyto" ]]; then cp "$2" "${RCLONE_STUB_KEEP}"; fi\nexit 0\n',
+        'if [[ "$1" == "copyto" ]]; then cp "$2" "${RCLONE_STUB_KEEP}"; fi\n'
+        'if [[ "$1" == "hashsum" && "${RCLONE_STUB_BAD_HASH:-0}" == "1" ]]; then printf \'%064d  remote\\n\' 0; fi\n'
+        'if [[ "$1" == "hashsum" && "${RCLONE_STUB_BAD_HASH:-0}" != "1" ]]; then shasum -a 256 "${RCLONE_STUB_KEEP}" | awk \'{print $1 "  remote"}\'; fi\n'
+        'exit 0\n',
     )
 
 
@@ -226,6 +231,7 @@ def _make_harness(
             "RCLONE_STUB_LOG": str(rclone_log),
             "RCLONE_STUB_KEEP": str(rclone_keep),
             "ANTIEK_BACKUP_STAGING_ROOT": str(staging_root),
+            "ANTIEK_BACKUP_JOB_LOCK": str(tmp_path / "backup-job.lock"),
             "ANTIEK_BACKUP_LOCK_TIMEOUT_S": lock_timeout_s,
         }
     )
@@ -286,29 +292,33 @@ def test_happy_path_uploads_and_writes_marker(tmp_path: Path) -> None:
     proc = _run_script(harness)
     assert proc.returncode == 0, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
 
-    # rclone WAS invoked: one copyto (the upload) + one delete (retention).
+    # rclone WAS invoked: copyto followed by remote read-back verification.
     invocations = harness.rclone_log.read_text().splitlines()
     assert len(invocations) == 2, invocations
     assert invocations[0].startswith("copyto ")
     assert "test-bucket/nightly/antiek-" in invocations[0]
-    assert invocations[1].startswith("delete ")
+    assert invocations[1].startswith("hashsum SHA-256 ")
+    assert "--download" in invocations[1]
 
     # The preserved upload payload is a real archive with the expected members
     # (verify scratch DB must NOT ship; counts manifest + export + events must).
     with tarfile.open(harness.rclone_keep) as tar:
         names = tar.getnames()
     assert any(n.endswith("/duckdb/schema.sql") for n in names), names
-    assert any(n.endswith("/source_counts.json") for n in names), names
+    assert any(n.endswith("/source_manifest.json") for n in names), names
     assert any("/research_events/" in n for n in names), names
     assert not any("verify-scratch" in n for n in names), names
 
     # Freshness marker written with the real row counts.
     marker = json.loads(harness.marker.read_text())
-    assert marker["counts"] == _SEED_COUNTS
+    assert {table: marker["counts"][table] for table in _SEED_COUNTS} == _SEED_COUNTS
+    assert len(marker["counts"]) > len(_SEED_COUNTS)
     completed = datetime.fromisoformat(marker["completed_at"])
     assert abs((datetime.now(UTC) - completed).total_seconds()) < 600
     assert marker["script_version"].startswith("backup.sh/")
     assert marker["archive"].endswith(".tar.gz")
+    assert marker["remote"].startswith("r2:test-bucket/nightly/")
+    assert len(marker["sha256"]) == 64
 
     # The check tool reads the marker the script actually wrote (path + shape
     # consistency between backup.sh.j2 and tools/backup_freshness.py).
@@ -336,6 +346,18 @@ def test_sabotaged_export_blocks_upload(tmp_path: Path) -> None:
     assert not harness.marker.exists()
 
 
+def test_remote_readback_mismatch_blocks_freshness_marker(tmp_path: Path) -> None:
+    """An acknowledged upload is not certified until its downloaded hash matches."""
+    harness = _make_harness(tmp_path)
+    harness.env["RCLONE_STUB_BAD_HASH"] = "1"
+    proc = _run_script(harness)
+
+    assert proc.returncode == 9, proc.stdout + proc.stderr
+    assert "remote read-back SHA-256 mismatch" in proc.stderr
+    assert harness.rclone_keep.exists(), "upload should precede remote verification"
+    assert not harness.marker.exists(), "mismatched remote bytes must never look fresh"
+
+
 # ---------------------------------------------------------------------------
 # c. Red-proof R2: held flock → bounded timeout, no upload; release → success
 # ---------------------------------------------------------------------------
@@ -361,7 +383,8 @@ def test_held_write_lock_times_out_then_succeeds_after_release(tmp_path: Path) -
     proc2 = _run_script(harness)
     assert proc2.returncode == 0, f"stdout:\n{proc2.stdout}\nstderr:\n{proc2.stderr}"
     assert harness.rclone_log.exists()
-    assert json.loads(harness.marker.read_text())["counts"] == _SEED_COUNTS
+    counts = json.loads(harness.marker.read_text())["counts"]
+    assert {table: counts[table] for table in _SEED_COUNTS} == _SEED_COUNTS
 
 
 # ---------------------------------------------------------------------------
@@ -394,7 +417,11 @@ def test_all_empty_source_allowed_with_explicit_override(tmp_path: Path) -> None
     assert proc.returncode == 0, f"stdout:\n{proc.stdout}\nstderr:\n{proc.stderr}"
     assert harness.rclone_log.exists()
     marker = json.loads(harness.marker.read_text())
-    assert marker["counts"] == {"documents": 0, "chunks": 0, "nodes": 0}
+    assert {table: marker["counts"][table] for table in _SEED_COUNTS} == {
+        "documents": 0,
+        "chunks": 0,
+        "nodes": 0,
+    }
 
 
 def test_hostile_allow_empty_value_is_inert_and_does_not_bypass(tmp_path: Path) -> None:

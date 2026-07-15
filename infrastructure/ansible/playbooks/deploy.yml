@@ -128,10 +128,59 @@
       register: antiek_arxiv_oai_sync_timer
       tags: [systemd, arxiv_oai]
 
+    - name: re-render antiek-backup.service
+      ansible.builtin.template:
+        src: ../templates/antiek-backup.service.j2
+        dest: /etc/systemd/system/antiek-backup.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_unit
+      tags: [systemd, backup]
+
+    - name: re-render antiek-backup.timer
+      ansible.builtin.template:
+        src: ../templates/antiek-backup.timer.j2
+        dest: /etc/systemd/system/antiek-backup.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_timer
+      tags: [systemd, backup]
+
+    - name: re-render backup freshness probe
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness-probe.sh.j2
+        dest: /usr/local/bin/antiek-backup-freshness-probe
+        owner: root
+        group: root
+        mode: "0750"
+      tags: [backup]
+
+    - name: re-render antiek-backup-freshness.service
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness.service.j2
+        dest: /etc/systemd/system/antiek-backup-freshness.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_freshness_unit
+      tags: [systemd, backup]
+
+    - name: re-render antiek-backup-freshness.timer
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness.timer.j2
+        dest: /etc/systemd/system/antiek-backup-freshness.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: antiek_backup_freshness_timer
+      tags: [systemd, backup]
+
     - name: systemd daemon-reload if any unit changed
       ansible.builtin.systemd:
         daemon_reload: true
-      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed
+      when: antiek_unit.changed or antiek_continuous_unit.changed or antiek_arxiv_oai_sync_unit.changed or antiek_arxiv_oai_sync_timer.changed or antiek_backup_unit.changed or antiek_backup_timer.changed or antiek_backup_freshness_unit.changed or antiek_backup_freshness_timer.changed
       tags: [systemd]
 
     - name: enable antiek-continuous-research.service
@@ -153,6 +202,26 @@
         enabled: true
         state: started
       tags: [systemd, arxiv_oai]
+
+    - name: remove legacy backup cron job
+      ansible.builtin.file:
+        path: /etc/cron.d/antiek-backup
+        state: absent
+      tags: [backup]
+
+    - name: enable and start antiek-backup.timer
+      ansible.builtin.systemd:
+        name: antiek-backup.timer
+        enabled: true
+        state: started
+      tags: [systemd, backup]
+
+    - name: enable and start antiek-backup-freshness.timer
+      ansible.builtin.systemd:
+        name: antiek-backup-freshness.timer
+        enabled: true
+        state: started
+      tags: [systemd, backup]
 
     # ── Frontend rsync ───────────────────────────────────────────────────
     # The Phase A play built `apps/reading/dist/` locally. Push it to

@@ -5,10 +5,10 @@
 #
 # Snapshots DuckDB consistently (EXPORT DATABASE → directory of SQL +
 # Parquet), rsyncs the append-only event log and knowledge-skills dir,
-# tar+gzip, uploads to R2. Retention enforced in-script.
+# tar+gzip, uploads to R2, then reads the object back for verification.
 #
-# Runs as root via cron at {{ backup_cron_hour }}:{{ backup_cron_minute }}
-# UTC. Output to /var/log/antiek-backup.log.
+# Runs as a bounded systemd oneshot at {{ backup_cron_hour }}:{{ backup_cron_minute }}
+# UTC. Output is appended to /var/log/antiek-backup.log by the unit.
 #
 # Why EXPORT DATABASE not just `cp antiek.duckdb backup.duckdb`?
 #   Copying an open DuckDB file produces an inconsistent snapshot — the
@@ -26,10 +26,9 @@
 # Verify-before-upload gate (R1, PR #714 review):
 #   A backup that cannot IMPORT is not a backup. After EXPORT + schema
 #   normalization the export is reconstituted into a scratch DuckDB inside
-#   the staging dir and core-table row counts must match counts captured
-#   from the source connection at EXPORT time. Any failure exits non-zero
-#   BEFORE any rclone upload — the systemd journal / cron log is the alert
-#   channel. On full success a freshness marker is written to
+#   the staging dir; its full table/count and restorable catalog manifests
+#   must match the source captured at EXPORT time. Any failure exits non-zero
+#   BEFORE any rclone upload. On full success a freshness marker is written to
 #   ${STATE_DIR}/backup_freshness.json (checked by tools/backup_freshness.py).
 #
 # Single-writer coordination (R2, PR #714 review):
@@ -42,7 +41,8 @@
 #
 # This template is executed under test by tests/test_backup_deployed_script.py
 # (rendered + run end-to-end against a scratch state dir). Env overrides:
-#   ANTIEK_BACKUP_STAGING_ROOT   — staging root (default /var/tmp); test seam.
+#   ANTIEK_BACKUP_STAGING_ROOT   — private staging root; test seam.
+#   ANTIEK_BACKUP_JOB_LOCK       — whole-job flock path; test seam.
 #   ANTIEK_BACKUP_LOCK_TIMEOUT_S — flock acquisition deadline (default 180s).
 #   ANTIEK_BACKUP_ALLOW_EMPTY=1  — day-0 / fresh-install escape hatch: permit
 #     certifying a backup whose core tables are ALL zero rows. Never the
@@ -51,7 +51,7 @@
 #     own emptiness — it would verify, upload, and stamp a fresh marker,
 #     certifying data loss. Deliberate and loud, set only for a legitimately
 #     empty install.
-# Deployed defaults are unchanged when all three are unset.
+# Deployed defaults are unchanged when all overrides are unset.
 #
 # Injection posture: the shell expands ${...} into the python heredocs below,
 # i.e. env values become Python SOURCE TEXT. Every env-sourced value is
@@ -63,10 +63,12 @@
 # subject to this gate.
 
 set -euo pipefail
+umask 077
 
+# Serialize the entire job, including verification, upload, and marker
+# publication. The DuckDB write flock below protects only the source snapshot.
 readonly STATE_DIR="{{ antiek_state_dir }}"
 readonly BUCKET="{{ backup_bucket_name }}"
-readonly RETENTION_DAYS="{{ backup_retention_days }}"
 readonly TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 
 # ── Env-seam validation (see injection posture above) ─────────────────────
@@ -75,10 +77,22 @@ readonly TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 _PATH_RE='^[A-Za-z0-9/._-]+$'
 _NUM_RE='^[0-9]+(\.[0-9]+)?$'
 
-readonly STAGING_ROOT="${ANTIEK_BACKUP_STAGING_ROOT:-/var/tmp}"
+readonly STAGING_ROOT="${ANTIEK_BACKUP_STAGING_ROOT:-/var/lib/antiek-backup}"
 if [[ ! "${STAGING_ROOT}" =~ ${_PATH_RE} ]]; then
     echo "ERROR: backup: ANTIEK_BACKUP_STAGING_ROOT must match [A-Za-z0-9/._-]+ (it is interpolated into python source); refusing: ${STAGING_ROOT}" >&2
     exit 6
+fi
+
+readonly JOB_LOCK="${ANTIEK_BACKUP_JOB_LOCK:-/run/lock/antiek-backup.lock}"
+if [[ ! "${JOB_LOCK}" =~ ${_PATH_RE} ]]; then
+    echo "ERROR: backup: ANTIEK_BACKUP_JOB_LOCK must match [A-Za-z0-9/._-]+; refusing: ${JOB_LOCK}" >&2
+    exit 6
+fi
+
+exec 9>"${JOB_LOCK}"
+if ! flock -n 9; then
+    echo "ERROR: backup: another backup job is already running" >&2
+    exit 7
 fi
 
 readonly LOCK_TIMEOUT_S="${ANTIEK_BACKUP_LOCK_TIMEOUT_S:-180}"
@@ -98,15 +112,20 @@ else
     readonly ALLOW_EMPTY=0
 fi
 
-readonly STAGING="${STAGING_ROOT}/antiek-backup-${TIMESTAMP}"
-readonly ARCHIVE="${STAGING_ROOT}/antiek-backup-${TIMESTAMP}.tar.gz"
+mkdir -p "${STAGING_ROOT}"
+chmod 0700 "${STAGING_ROOT}"
+# Clean only abandoned private scratch artifacts, never remote backups.
+find "${STAGING_ROOT}" -maxdepth 1 -name 'antiek-backup.*' -mtime +2 -exec rm -rf -- {} +
+readonly STAGING="$(mktemp -d "${STAGING_ROOT%/}/antiek-backup.XXXXXXXX")"
+readonly ARCHIVE="${STAGING}.tar.gz"
 # Portable UTC ISO stamp (+%Y-%m-%dT%H:%M:%SZ): GNU date's --iso-8601 is not
 # portable to the BSD date the test harness may run under; output for UTC is
 # equivalent.
 readonly LOG_PREFIX="[$(date -u +%Y-%m-%dT%H:%M:%SZ)]"
 readonly SCRIPT_VERSION="backup.sh/2026-07-11.verify-gate-3"
+readonly REMOTE="r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz"
 
-echo "${LOG_PREFIX} backup starting → r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz"
+echo "${LOG_PREFIX} backup starting → ${REMOTE}"
 
 # Always clean staging on exit, even if something below fails. Prevents
 # the staging root filling up if a partial backup is left behind.
@@ -115,7 +134,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir -p "${STAGING}"
 # DuckDB EXPORT below runs as the antiek user (file ownership of
 # the snapshot matches the substrate's process); the staging dir
 # was created by root and antiek can't write into it without an
@@ -124,6 +142,16 @@ mkdir -p "${STAGING}"
 # owner. Fixed 2026-05-18 — was silently making nightly backups
 # fail at the EXPORT step before the timer ever fired.
 chown antiek:antiek "${STAGING}"
+
+# EXPORT, verification, and compression coexist briefly. Refuse before taking
+# the writer lock when the local filesystem cannot hold that working set.
+readonly DB_KIB="$(du -k "${STATE_DIR}/antiek.duckdb" | cut -f1)"
+readonly AVAILABLE_KIB="$(df -Pk "${STAGING_ROOT}" | awk 'NR==2 {print $4}')"
+readonly REQUIRED_KIB="$((DB_KIB * 4 + 262144))"
+if (( AVAILABLE_KIB < REQUIRED_KIB )); then
+    echo "ERROR: backup: insufficient scratch space (available=${AVAILABLE_KIB}KiB required=${REQUIRED_KIB}KiB)" >&2
+    exit 8
+fi
 
 # ── 1. DuckDB consistent snapshot (under the single-writer flock) ─────────
 # Run as the antiek user so file ownership matches — and, critically, so the
@@ -194,14 +222,44 @@ try:
         # window as the EXPORT, so the counts are exactly the snapshot's.
         # Captured BEFORE the EXPORT so the all-empty refusal below aborts
         # without wasting export effort.
+        con.execute("BEGIN TRANSACTION")
+        tables = [row[0] for row in con.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
+            "ORDER BY table_name"
+        ).fetchall()]
+        def quoted(name):
+            return '"' + name.replace('"', '""') + '"'
         counts = {
-            t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-            for t in ("documents", "chunks", "nodes")
+            t: con.execute(f"SELECT COUNT(*) FROM {quoted(t)}").fetchone()[0]
+            for t in tables
         }
+        columns = con.execute(
+            "SELECT table_name, column_name, ordinal_position, column_default, "
+            "is_nullable, data_type FROM information_schema.columns "
+            "WHERE table_schema = 'main' ORDER BY table_name, ordinal_position"
+        ).fetchall()
+        # DuckDB EXPORT currently omits self-referential foreign keys; the
+        # normalizer below repairs the malformed comma it leaves behind. Track
+        # every constraint the export format can represent and fail if any of
+        # those disappear. The excluded known limitation remains explicit.
+        constraints = con.execute(
+            "SELECT table_name, constraint_type, constraint_text, "
+            "constraint_column_names, referenced_table, referenced_column_names "
+            "FROM duckdb_constraints() WHERE schema_name = 'main' "
+            "AND NOT (constraint_type = 'FOREIGN KEY' AND referenced_table = table_name) "
+            "ORDER BY table_name, constraint_type, constraint_text, constraint_column_names"
+        ).fetchall()
+        indexes = con.execute(
+            "SELECT index_name, table_name, is_unique, is_primary, expressions, sql "
+            "FROM duckdb_indexes() WHERE schema_name = 'main' "
+            "ORDER BY table_name, index_name"
+        ).fetchall()
         # Fail closed on logical truncation: an all-empty source would
         # count-match its own empty export, pass the verify gate, upload,
         # and stamp a fresh marker — certifying data loss as a good backup.
-        if "${ALLOW_EMPTY}" != "1" and all(v == 0 for v in counts.values()):
+        core_counts = {name: counts.get(name, 0) for name in ("documents", "chunks", "nodes")}
+        if "${ALLOW_EMPTY}" != "1" and all(v == 0 for v in core_counts.values()):
             sys.stderr.write(
                 "ERROR: backup: all core tables empty (documents=0, chunks=0, "
                 "nodes=0) - refusing to certify an empty backup of a "
@@ -211,14 +269,22 @@ try:
             )
             sys.exit(5)
         con.execute("EXPORT DATABASE '${STAGING}/duckdb' (FORMAT PARQUET);")
+        con.execute("COMMIT")
     finally:
         con.close()
 finally:
     fcntl.flock(fd, fcntl.LOCK_UN)
     os.close(fd)
 
-with open("${STAGING}/source_counts.json", "w") as f:
-    json.dump(counts, f, indent=2)
+manifest = {
+    "counts": counts,
+    "columns": columns,
+    "constraints": constraints,
+    "indexes": indexes,
+    "duckdb_version": duckdb.__version__,
+}
+with open("${STAGING}/source_manifest.json", "w") as f:
+    json.dump(manifest, f, indent=2)
 print(f"  source row counts: {counts}")
 PY
 
@@ -251,10 +317,10 @@ PY
 
 # ── 1c. Verify the export BEFORE anything is uploaded (R1 gate) ───────────
 # IMPORT the normalized export into a scratch DuckDB inside the staging dir
-# and require the core-table row counts to match the counts captured from
-# the source connection at EXPORT time. Any failure → non-zero exit here,
+# and require every table/count plus the representable columns, constraints,
+# and indexes to match the source captured at EXPORT time. Any failure → non-zero exit here,
 # and set -e guarantees the rclone upload below never runs. The scratch DB
-# is removed on success so it never bloats the archive; source_counts.json
+# is removed on success so it never bloats the archive; source_manifest.json
 # stays in staging deliberately (the archive carries its own manifest).
 echo "${LOG_PREFIX} verifying export (IMPORT into scratch DB + row-count match) — gate before upload"
 sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
@@ -264,18 +330,48 @@ import sys
 
 import duckdb
 
-with open("${STAGING}/source_counts.json") as f:
-    expected = json.load(f)
+with open("${STAGING}/source_manifest.json") as f:
+    manifest = json.load(f)
+expected = manifest["counts"]
 
 scratch = "${STAGING}/verify-scratch.duckdb"
 try:
     con = duckdb.connect(scratch)
     try:
         con.execute("IMPORT DATABASE '${STAGING}/duckdb'")
+        def quoted(name):
+            return '"' + name.replace('"', '""') + '"'
+        imported_tables = [row[0] for row in con.execute(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'main' AND table_type = 'BASE TABLE' "
+            "ORDER BY table_name"
+        ).fetchall()]
+        if imported_tables != sorted(expected):
+            raise RuntimeError(
+                f"table manifest mismatch: source={sorted(expected)} "
+                f"imported={imported_tables}"
+            )
         actual = {
-            t: con.execute(f"SELECT COUNT(*) FROM {t}").fetchone()[0]
-            for t in expected
+            t: con.execute(f"SELECT COUNT(*) FROM {quoted(t)}").fetchone()[0]
+            for t in imported_tables
         }
+        actual_columns = con.execute(
+            "SELECT table_name, column_name, ordinal_position, column_default, "
+            "is_nullable, data_type FROM information_schema.columns "
+            "WHERE table_schema = 'main' ORDER BY table_name, ordinal_position"
+        ).fetchall()
+        actual_constraints = con.execute(
+            "SELECT table_name, constraint_type, constraint_text, "
+            "constraint_column_names, referenced_table, referenced_column_names "
+            "FROM duckdb_constraints() WHERE schema_name = 'main' "
+            "AND NOT (constraint_type = 'FOREIGN KEY' AND referenced_table = table_name) "
+            "ORDER BY table_name, constraint_type, constraint_text, constraint_column_names"
+        ).fetchall()
+        actual_indexes = con.execute(
+            "SELECT index_name, table_name, is_unique, is_primary, expressions, sql "
+            "FROM duckdb_indexes() WHERE schema_name = 'main' "
+            "ORDER BY table_name, index_name"
+        ).fetchall()
     finally:
         con.close()
 except Exception as e:
@@ -290,6 +386,26 @@ if mismatches:
     sys.stderr.write(
         "ERROR: backup verify FAILED - row-count mismatch source vs import "
         f"(table: [source, imported]): {mismatches}; upload blocked\n"
+    )
+    sys.exit(4)
+
+def json_shape(value):
+    """Canonicalize DuckDB tuples to the JSON array shape stored on disk."""
+    return json.loads(json.dumps(value))
+
+catalog_mismatches = {
+    name: {"source": manifest[name], "imported": value}
+    for name, value in (
+        ("columns", actual_columns),
+        ("constraints", actual_constraints),
+        ("indexes", actual_indexes),
+    )
+    if manifest[name] != json_shape(value)
+}
+if catalog_mismatches:
+    sys.stderr.write(
+        "ERROR: backup verify FAILED - restored catalog differs from source "
+        f"(columns/constraints/indexes): {catalog_mismatches}; upload blocked\n"
     )
     sys.exit(4)
 
@@ -323,35 +439,42 @@ readonly ARCHIVE_SIZE_HUMAN="$(du -h "${ARCHIVE}" | cut -f1)"
 echo "${LOG_PREFIX} archive size: ${ARCHIVE_SIZE_HUMAN}"
 
 echo "${LOG_PREFIX} uploading to R2"
-rclone copyto "${ARCHIVE}" "r2:${BUCKET}/nightly/antiek-${TIMESTAMP}.tar.gz" \
+rclone copyto "${ARCHIVE}" "${REMOTE}" \
     --config /etc/rclone/rclone.conf
+readonly ARCHIVE_SHA256="$(sha256sum "${ARCHIVE}" | cut -d' ' -f1)"
 
-# ── 5. Retention — prune old backups ──────────────────────────────────────
-# `|| true` because a delete failure shouldn't fail the whole backup
-# (more important to keep new backups landing than to keep old ones pruned).
-echo "${LOG_PREFIX} pruning backups older than ${RETENTION_DAYS}d"
-rclone delete --min-age "${RETENTION_DAYS}d" \
-    "r2:${BUCKET}/nightly/" \
-    --include "*.tar.gz" \
-    --config /etc/rclone/rclone.conf \
-    || echo "${LOG_PREFIX} WARN: retention prune failed (non-fatal)"
+# ── 5. Remote verification ────────────────────────────────────────────────
+# Download-and-compare the just-uploaded object. A successful copy command is
+# not durable evidence that the remote bytes are readable and identical.
+# Retention is intentionally NOT performed here: wall-clock skew on a host
+# must never be able to delete the last known-good backup. Configure an R2
+# lifecycle policy (and bucket versioning where available) independently.
+echo "${LOG_PREFIX} verifying uploaded object by read-back"
+readonly REMOTE_SHA256="$(rclone hashsum SHA-256 "${REMOTE}" \
+    --download \
+    --config /etc/rclone/rclone.conf | awk 'NR == 1 {print $1}')"
+if [[ ! "${REMOTE_SHA256}" =~ ^[0-9a-f]{64}$ ]] || [[ "${REMOTE_SHA256}" != "${ARCHIVE_SHA256}" ]]; then
+    echo "ERROR: backup: remote read-back SHA-256 mismatch; refusing freshness marker" >&2
+    exit 9
+fi
 
 # ── 6. Freshness marker (only reachable on full success) ──────────────────
 # tools/backup_freshness.py reads this marker; a marker older than its
 # threshold (default 26h) — or missing — means nightly backups stopped
-# landing. Written atomically (tmp + rename) as the antiek user so the
-# substrate's own tooling can read/replace it.
+# landing. Written atomically by root after remote read-back succeeds.
 readonly MARKER_TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "${LOG_PREFIX} writing freshness marker → ${STATE_DIR}/backup_freshness.json"
-sudo -u {{ antiek_user }} {{ antiek_install_dir }}/.venv/bin/python3 - <<PY
+{{ antiek_install_dir }}/.venv/bin/python3 - <<PY
 import json
 import os
 
-with open("${STAGING}/source_counts.json") as f:
-    counts = json.load(f)
+with open("${STAGING}/source_manifest.json") as f:
+    counts = json.load(f)["counts"]
 marker = {
     "completed_at": "${MARKER_TS}",
     "archive": "antiek-${TIMESTAMP}.tar.gz",
+    "remote": "${REMOTE}",
+    "sha256": "${ARCHIVE_SHA256}",
     "counts": counts,
     "script_version": "${SCRIPT_VERSION}",
 }
