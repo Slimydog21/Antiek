@@ -86,10 +86,18 @@ export const config: CustomProjectConfig = {
   // Normal legacy sweep remains advisory; an explicitly scoped story is a
   // blocking evidence gate and must surface its current/diff artifacts.
   failOnDifference: scopedStoryIds.length > 0,
-  // The scoped authored plate permits only microscopic Chromium raster jitter
-  // (roughly 6–10 pixels across the configured viewports). The legacy sweep
-  // retains its established 0.4% advisory ceiling.
-  threshold: scopedStoryIds.length > 0 ? 0.00001 : 0.004,
+  // The Home plate contains several rounded, composited edges over its authored
+  // image. Two consecutive captures on the same pinned Ubuntu/Chromium runner
+  // reproduced every semantic pixel but varied at 14–15 anti-aliased corner
+  // pixels (at 375/768px). Give only this plate a still-microscopic 0.005%
+  // raster allowance; every other scoped proof keeps the stricter 0.001%, and
+  // the legacy sweep retains its established 0.4% advisory ceiling.
+  threshold:
+    scopedStoryIds.length === 0
+      ? 0.004
+      : includesNarrowHomeCampusProof
+        ? 0.00005
+        : 0.00001,
   // Skip known-flaky stories at every breakpoint. The framer-motion
   // spring on workspace-demo produces sub-1% inter-run diffs that
   // aren't real regressions.
