@@ -12,6 +12,7 @@ import LemonButton from "../../components/lemon/LemonButton";
 import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
 import iceFishingArt from "../../brand/werner/arcade/ice-fishing-station-key-art-v1.webp";
 import paperclipArt from "../../brand/werner/arcade/paperclip-archive-key-art-v1.webp";
+import clamCatcherArt from "../../brand/werner/arcade/clam-catcher-station-key-art-v1.webp";
 import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
 import {
   RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,
@@ -40,6 +41,12 @@ const ARCADE_CHOICES: ReadonlyArray<{
     title: "Ice Fishing",
     description: "Drop the line, catch fish, avoid the boot.",
     art: iceFishingArt,
+  },
+  {
+    id: "clam-catcher",
+    title: "Clam Catcher",
+    description: "Catch pearl clams. Let the jellyfish drift past.",
+    art: clamCatcherArt,
   },
 ];
 

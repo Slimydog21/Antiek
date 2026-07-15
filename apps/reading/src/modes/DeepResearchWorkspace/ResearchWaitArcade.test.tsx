@@ -12,7 +12,7 @@ const createCartridge = vi.hoisted(() => vi.fn());
 const teardown = vi.hoisted(() => vi.fn());
 
 vi.mock("./ResearchWaitArcadeGame", () => ({
-  default: ({ game }: { game: "ice-fishing" | "zombies" }) => {
+  default: ({ game }: { game: "clam-catcher" | "ice-fishing" | "zombies" }) => {
     createCartridge(game);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     useEffect(() => {
@@ -156,18 +156,20 @@ describe("ResearchWaitArcade", () => {
     expect(isStationInstrumentSuspended()).toBe(true);
   });
 
-  it("offers both cartridges without constructing either and launches the explicit choice", async () => {
+  it("offers all cartridges without constructing any and launches the explicit choice", async () => {
     render(<Host after={0} />);
     act(() => vi.runOnlyPendingTimers());
 
     const zombies = screen.getByRole("radio", { name: /Paperclip Zombies/ });
     const fishing = screen.getByRole("radio", { name: /Ice Fishing/ });
+    const clams = screen.getByRole("radio", { name: /Clam Catcher/ });
     expect((zombies as HTMLInputElement).checked).toBe(true);
     expect((fishing as HTMLInputElement).checked).toBe(false);
+    expect((clams as HTMLInputElement).checked).toBe(false);
     expect(createCartridge).not.toHaveBeenCalled();
 
-    fireEvent.click(fishing);
-    expect((fishing as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(clams);
+    expect((clams as HTMLInputElement).checked).toBe(true);
     expect(createCartridge).not.toHaveBeenCalled();
 
     await act(async () => {
@@ -175,8 +177,8 @@ describe("ResearchWaitArcade", () => {
         screen.getByRole("button", { name: "Play while waiting" }),
       );
     });
-    expect(createCartridge).toHaveBeenCalledWith("ice-fishing");
-    expect(screen.getByText("Ice Fishing")).toBeTruthy();
+    expect(createCartridge).toHaveBeenCalledWith("clam-catcher");
+    expect(screen.getByText("Clam Catcher")).toBeTruthy();
   });
 
   it.each(["Escape", "button"])(
@@ -271,13 +273,13 @@ describe("ResearchWaitArcade", () => {
     expect(screen.getByTestId("research-wait-arcade-canvas")).toBeTruthy();
   });
 
-  it("exposes responsive containment and two decorative project assets", () => {
+  it("exposes responsive containment and three decorative project assets", () => {
     render(<Host after={0} />);
     act(() => vi.runOnlyPendingTimers());
     const host = screen.getByTestId("research-wait-arcade");
     expect(host.className).toContain("research-wait-arcade");
     const images = [...host.querySelectorAll("img")];
-    expect(images).toHaveLength(2);
+    expect(images).toHaveLength(3);
     expect(images.every((image) => image.alt === "")).toBe(true);
     expect(
       images.every((image) => image.getAttribute("aria-hidden") === "true"),

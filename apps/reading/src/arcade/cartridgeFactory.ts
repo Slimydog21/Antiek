@@ -7,15 +7,19 @@
 
 import { createSeededRng } from "./engine/rng";
 import type { Cartridge } from "./engine/types";
+import { createClamCatcherCartridge } from "./games/clam-catcher";
 import { createIceFishingCartridge } from "./games/ice-fishing";
 import { createZombiesCartridge } from "./games/zombies";
 
-export type ArcadeGameKind = "ice-fishing" | "zombies";
+export type ArcadeGameKind = "clam-catcher" | "ice-fishing" | "zombies";
 
 export function createArcadeCartridge(
   game: ArcadeGameKind,
   options?: { reducedMotion?: boolean },
 ): Cartridge {
+  if (game === "clam-catcher") {
+    return createClamCatcherCartridge();
+  }
   if (game === "ice-fishing") {
     return createIceFishingCartridge({
       reducedMotion: Boolean(options?.reducedMotion),
