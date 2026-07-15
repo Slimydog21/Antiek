@@ -433,7 +433,7 @@ export default function Settings() {
 
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Antiek-bench weekly model quality report</li>
+            <li>Recursive Antiek-bench evolution from usage outcomes</li>
             <li>Midnight oil: time + goals + price-ceiling approve UI</li>
             <li>Keyboard map customisation + layout export</li>
           </ul>

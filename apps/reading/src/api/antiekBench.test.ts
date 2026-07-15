@@ -48,6 +48,44 @@ describe("fetchWeeklyBenchView", () => {
     await expect(fetchWeeklyBenchView()).rejects.toThrow(/unavailable/);
   });
 
+  it.each([
+    { ...measured, measurements: [] },
+    { ...measured, week_id: null },
+    { ...measured, generated_at: "not-a-date" },
+    { ...measured, notes: [false] },
+    {
+      ...measured,
+      measurements: [{ ...measured.measurements[0], task: "invented" }],
+    },
+    {
+      ...measured,
+      measurements: [{ ...measured.measurements[0], samples: 1_000_001 }],
+    },
+  ])("rejects incomplete measured evidence %#", async (payload) => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => payload,
+    } as Response);
+    await expect(fetchWeeklyBenchView()).rejects.toThrow();
+  });
+
+  it("accepts only an empty, metadata-free unavailable state", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        authority: "advisory",
+        status: "unavailable",
+        week_id: null,
+        generated_at: null,
+        measurements: [],
+        notes: ["not configured"],
+      }),
+    } as Response);
+    expect((await fetchWeeklyBenchView()).status).toBe("unavailable");
+  });
+
   it("formats measured scores without inventing missing values", () => {
     expect(formatScore(0.85)).toBe("0.850");
   });
