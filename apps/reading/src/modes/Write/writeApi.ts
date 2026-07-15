@@ -21,6 +21,15 @@ export interface RepositoryHit {
   score: number;
 }
 
+/** Preserve the graph node's semantic kind across tap and native drag paths. */
+export function repositoryBlockKind(
+  nodeType: string,
+): "insight" | "open_question" | "claim" {
+  if (nodeType === "claim") return "claim";
+  if (nodeType === "question" || nodeType === "open_question") return "open_question";
+  return "insight";
+}
+
 export interface FolderSummary {
   folder_id: string;
   name: string;

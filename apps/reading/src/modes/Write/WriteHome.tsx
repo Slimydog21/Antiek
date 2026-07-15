@@ -17,6 +17,7 @@ import { ContextWindow } from "./ContextWindow/ContextWindow";
 import { IdeaDump } from "./Brainstorm/IdeaDump";
 import Outline from "./Outline";
 import { ProjectTypeField } from "./ProjectType";
+import WriteFieldKit from "./WriteFieldKit";
 import { onTraceIntent } from "./Editor/traceIntent";
 import { getTraceTarget, type RepositoryHit } from "./writeApi";
 
@@ -49,6 +50,19 @@ export default function WriteHome() {
   // The piece-view surface: the outline loop, or the imported research canvas
   // (M1 — the SPR-03 Canvas of the linked investigation's blocks).
   const [pieceView, setPieceView] = useState<"outline" | "canvas">("outline");
+  const [pendingRepositoryHit, setPendingRepositoryHit] =
+    useState<RepositoryHit | null>(null);
+  const [desktopRepository, setDesktopRepository] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(min-width: 1024px)").matches,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setDesktopRepository(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
 
   // The active tap-to-add handler, registered by the Outline (binds the tap to
   // the active section). A ref so re-registers don't re-render the repository.
@@ -322,6 +336,9 @@ export default function WriteHome() {
               onChanged={refresh}
               registerAddHandler={registerAddHandler}
               investigationId={detail.investigation_root_id}
+              pendingRepositoryHit={pendingRepositoryHit}
+              onRepositoryPlacementDone={() => setPendingRepositoryHit(null)}
+              onRepositoryPlacementCancel={() => setPendingRepositoryHit(null)}
             />
           )
         ) : (
@@ -331,9 +348,14 @@ export default function WriteHome() {
         )}
       </main>
 
-      <aside className="hidden w-80 shrink-0 flex-col border-l border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex">
-        <BlockRepository onAdd={(hit) => addHandler.current(hit)} />
-      </aside>
+      {desktopRepository && (
+        <aside className="hidden w-80 shrink-0 flex-col border-l border-rule bg-ice-0 p-4 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex">
+          <BlockRepository onAdd={(hit) => addHandler.current(hit)} />
+        </aside>
+      )}
+      {!desktopRepository && detail && pieceView === "outline" && (
+        <WriteFieldKit onSelect={setPendingRepositoryHit} />
+      )}
     </GlassSurface>
   );
 }

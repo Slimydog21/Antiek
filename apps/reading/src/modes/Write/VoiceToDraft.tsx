@@ -80,9 +80,16 @@ export default function VoiceToDraft({
           deliverable_id: deliverableId,
         });
         setSaved(true);
-        await onDrafted();
       } catch (e) {
         setError(e instanceof Error ? e.message : "Couldn't save your spoken draft.");
+        setPersisting(false);
+        return;
+      }
+      try {
+        await onDrafted();
+      } catch {
+        // The spoken block is committed. A stale outline is recoverable and
+        // must not be presented as a failed save that invites duplication.
       } finally {
         setPersisting(false);
       }

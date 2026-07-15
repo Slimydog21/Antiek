@@ -21,7 +21,7 @@ export interface UseOutlineDropOptions {
   deliverableId?: string;
   /** Resolve the block_index for the drop point (default: append). */
   blockIndexAt?: (e: React.DragEvent) => number;
-  onPlaced?: (outlineBlockId: string) => void;
+  onPlaced?: (outlineBlockId: string) => void | Promise<void>;
   onError?: (err: unknown) => void;
 }
 
@@ -50,9 +50,16 @@ export function useOutlineDrop(opts: UseOutlineDropOptions): OutlineDropHandlers
       const body = paletteDragToPlaceBlock(payload, {
         sectionId, blockIndex, deliverableId,
       });
-      placeBlock(body)
-        .then((obid) => onPlaced?.(obid))
-        .catch((err) => onError?.(err));
+      placeBlock(body).then(
+        (obid) => {
+          try {
+            void Promise.resolve(onPlaced?.(obid)).catch(() => undefined);
+          } catch {
+            // Placement committed; a consumer refresh cannot reclassify it.
+          }
+        },
+        (err) => onError?.(err),
+      );
     },
     [sectionId, deliverableId, blockIndexAt, onPlaced, onError],
   );
