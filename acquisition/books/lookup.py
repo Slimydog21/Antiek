@@ -133,6 +133,10 @@ def search_free_copy(
     ``fetcher`` is injectable for tests (``FakeFetcher``); when ``None`` a
     production :class:`SourceClientFetcher` is created internally.
     """
+    title = _validated_query_text(title, field="title", max_length=500)
+    if author is not None:
+        author = _validated_query_text(author, field="author", max_length=300)
+
     if fetcher is None:
         fetcher = SourceClientFetcher()
 
@@ -175,6 +179,25 @@ def search_free_copy(
 # ---------------------------------------------------------------------------
 # Per-source searchers
 # ---------------------------------------------------------------------------
+
+
+def _validated_query_text(value: str, *, field: str, max_length: int) -> str:
+    """Normalize operator text before it reaches a connector query grammar."""
+    if not isinstance(value, str):
+        raise TypeError(f"{field} must be a string")
+    normalized = value.strip()
+    if not normalized:
+        raise ValueError(f"{field} must not be empty")
+    if len(normalized) > max_length:
+        raise ValueError(f"{field} must be at most {max_length} characters")
+    if any(ord(char) < 32 or ord(char) == 127 for char in normalized):
+        raise ValueError(f"{field} must not contain control characters")
+    return normalized
+
+
+def _ia_phrase(value: str) -> str:
+    """Encode operator text as one literal Internet Archive query phrase."""
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 def _search_gutenberg(
@@ -233,7 +256,9 @@ def _search_ia(
     """
     from . import internet_archive as ia
 
-    query = f"title:({title})" if not author else f"title:({title}) creator:({author})"
+    query = f"title:{_ia_phrase(title)}"
+    if author:
+        query += f" AND creator:{_ia_phrase(author)}"
     try:
         # advancedsearch is typed to concrete ThrottledFetcher (owned lane);
         # _FetcherProto is structurally compatible (get_json only).

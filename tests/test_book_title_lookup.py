@@ -52,10 +52,12 @@ class StubFetcher:
         self._json = json_by_url or {}
         self._bytes = bytes_by_url or {}
         self.json_calls: list[str] = []
+        self.json_requests: list[tuple[str, dict | None]] = []
         self.bytes_calls: list[str] = []
 
     def get_json(self, url: str, *, params: dict | None = None) -> dict:
         self.json_calls.append(url)
+        self.json_requests.append((url, params))
         if url not in self._json:
             raise FetchError(
                 f"StubFetcher: unexpected URL {url!r} — test will fail. "
@@ -174,6 +176,45 @@ def test_found_at_first_source_gutenberg():
     assert result.retrieved_at  # non-empty ISO timestamp
     # Gutendex was queried.
     assert GUTENDEX_BASE in fetcher.json_calls
+
+
+def test_ia_search_runs_once_and_quotes_operator_text():
+    """Raw title syntax cannot widen the rights-constrained IA query."""
+    fetcher = _make_ia_fetcher([], {})
+
+    result = search_free_copy(
+        'A title" OR mediatype:*',
+        "An \\ Author",
+        sources=("internet_archive",),
+        fetcher=fetcher,
+    )
+
+    assert isinstance(result, NotFreelyAvailable)
+    requests = [request for request in fetcher.json_requests if request[0] == IA_SEARCH_URL]
+    assert len(requests) == 1
+    params = requests[0][1]
+    assert params is not None
+    assert params["q"].startswith(
+        '(title:"A title\\" OR mediatype:*" AND creator:"An \\\\ Author") AND '
+    )
+
+
+@pytest.mark.parametrize(
+    ("title", "author"),
+    [("   ", None), ("Walden", "Tho\nreau"), ("x" * 501, None)],
+)
+def test_rejects_invalid_operator_query_text(title, author):
+    fetcher = _make_ia_fetcher([], {})
+
+    with pytest.raises((TypeError, ValueError)):
+        search_free_copy(
+            title,
+            author,
+            sources=("internet_archive",),
+            fetcher=fetcher,
+        )
+
+    assert fetcher.json_calls == []
 
 
 # ---------------------------------------------------------------------------
