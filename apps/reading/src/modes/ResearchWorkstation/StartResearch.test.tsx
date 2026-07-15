@@ -515,8 +515,14 @@ describe("StartResearch — a failed run is surfaced honestly, never a dead rout
       expect(screen.getByText(/research didn’t complete/i)).toBeTruthy(),
     );
     // The composer is back and the question survived the failed run.
-    const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
-    expect(input.value).toBe(question);
+    // The question is restored by a useEffect that runs AFTER the failure
+    // render (onSubmit clears it only on a successful POST), so wait for that
+    // restoration instead of reading the input synchronously. The field is
+    // briefly "" between the onSubmit clear and the failure-effect restore.
+    await waitFor(() => {
+      const input = screen.getByLabelText("Research question") as HTMLTextAreaElement;
+      expect(input.value).toBe(question);
+    });
     expect(navigateMock).not.toHaveBeenCalled();
   });
 });

@@ -45,6 +45,7 @@ try:
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 except ImportError:  # pragma: no cover
     import sys
@@ -54,6 +55,7 @@ except ImportError:  # pragma: no cover
         NormalizedUsage,
         ProviderError,
         RawProviderResponse,
+        response_contains_secret,
     )
 
 
@@ -112,6 +114,7 @@ class OpenAICompatProvider:
         client: httpx.Client | None = None,
         chat_completions_path: str = "/v1/chat/completions",
         extra_body: dict[str, Any] | None = None,
+        expose_error_body: bool = True,
     ):
         """
         Args:
@@ -133,6 +136,11 @@ class OpenAICompatProvider:
                 GLM-5.2 reasoning-toggle). Lets a vendor-specific provider
                 pass non-standard params without a subclass. Defaults to
                 none (standard OpenAI body only).
+            expose_error_body: Include a bounded upstream response-body preview
+                in provider errors. Disable this for user-configured endpoints:
+                an untrusted endpoint can reflect request credentials in its
+                response, and ProviderError messages may cross API or logging
+                boundaries.
         """
         self.name = name
         self.base_url = base_url.rstrip("/")
@@ -144,6 +152,7 @@ class OpenAICompatProvider:
         self._client = client
         self._owns_client = client is None
         self._extra_body = dict(extra_body) if extra_body else {}
+        self._expose_error_body = expose_error_body
 
     def _resolve_api_key(self) -> str:
         if self._api_key:
@@ -189,33 +198,67 @@ class OpenAICompatProvider:
 
         client = self._ensure_client()
         t_start = time.monotonic()
+        resp: httpx.Response | None = None
+        sanitized_transport_error: str | None = None
         try:
             resp = client.post(url, json=body, headers=headers)
         except httpx.TimeoutException as e:
-            raise ProviderError(
-                f"{self.name}: request timeout after {self._timeout_s}s — {e}",
-                provider=self.name, model=model,
-                latency_ms=int((time.monotonic() - t_start) * 1000),
-                retryable=True,
-            ) from e
+            if self._expose_error_body:
+                raise ProviderError(
+                    f"{self.name}: request timeout after {self._timeout_s}s — {e}",
+                    provider=self.name, model=model,
+                    latency_ms=int((time.monotonic() - t_start) * 1000),
+                    retryable=True,
+                ) from e
+            sanitized_transport_error = (
+                f"{self.name}: request timeout after {self._timeout_s}s"
+            )
         except httpx.RequestError as e:
+            if self._expose_error_body:
+                raise ProviderError(
+                    f"{self.name}: network error — {e}",
+                    provider=self.name, model=model,
+                    latency_ms=int((time.monotonic() - t_start) * 1000),
+                    retryable=True,
+                ) from e
+            sanitized_transport_error = f"{self.name}: network error"
+
+        # Raise only after leaving the ``except`` context. ``raise ... from
+        # None`` would hide the cause in formatted tracebacks but still retain
+        # it in ``__context__``, including httpx's credential-bearing request.
+        if sanitized_transport_error is not None:
             raise ProviderError(
-                f"{self.name}: network error — {e}",
+                sanitized_transport_error,
                 provider=self.name, model=model,
                 latency_ms=int((time.monotonic() - t_start) * 1000),
                 retryable=True,
-            ) from e
+            )
+        assert resp is not None
         latency_ms = int((time.monotonic() - t_start) * 1000)
 
         if resp.status_code != 200:
-            # Try to surface the provider's error body for diagnosis.
-            body_preview = resp.text[:400]
+            detail = f" — {resp.text[:400]}" if self._expose_error_body else ""
             raise ProviderError(
-                f"{self.name}: HTTP {resp.status_code} — {body_preview}",
+                f"{self.name}: HTTP {resp.status_code}{detail}",
                 provider=self.name, model=model,
                 latency_ms=latency_ms,
                 retryable=resp.status_code in _RETRYABLE_STATUS,
-                request_id=resp.headers.get("x-request-id"),
+                request_id=(
+                    resp.headers.get("x-request-id")
+                    if self._expose_error_body
+                    else None
+                ),
+            )
+
+        # User-configured endpoints are untrusted. They already receive the
+        # credential to authenticate the call, but must not be able to reflect
+        # it into a nominally successful model response that Antiek would then
+        # return, log, or persist as generated content.
+        if not self._expose_error_body and api_key in resp.text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
             )
 
         try:
@@ -226,23 +269,47 @@ class OpenAICompatProvider:
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
 
+        if (
+            not self._expose_error_body
+            and response_contains_secret(data, api_key)
+        ):
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
+
         try:
             choice = data["choices"][0]
             text = choice["message"]["content"] or ""
             finish_reason = choice.get("finish_reason")
         except (KeyError, IndexError, TypeError) as e:
+            detail = (
+                f" — body: {str(data)[:400]}" if self._expose_error_body else ""
+            )
             raise ProviderError(
-                f"{self.name}: unexpected response shape — {e} — body: {str(data)[:400]}",
+                f"{self.name}: unexpected response shape — {e}{detail}",
                 provider=self.name, model=model, latency_ms=latency_ms,
             ) from e
+
+        if not self._expose_error_body and api_key in text:
+            raise ProviderError(
+                f"{self.name}: upstream response contained credential material; "
+                "response rejected.",
+                provider=self.name, model=model, latency_ms=latency_ms,
+            )
 
         return RawProviderResponse(
             text=text,
             raw_usage=data.get("usage") or {},
             finish_reason=finish_reason,
             latency_ms=latency_ms,
-            request_id=resp.headers.get("x-request-id") or data.get("id"),
-            extra={"object": data.get("object")},
+            request_id=(
+                (resp.headers.get("x-request-id") or data.get("id"))
+                if self._expose_error_body
+                else None
+            ),
+            extra={"object": data.get("object")} if self._expose_error_body else {},
         )
 
     def normalize_usage(self, raw_usage: dict[str, Any]) -> NormalizedUsage:

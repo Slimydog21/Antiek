@@ -6,6 +6,7 @@ import type { BookDetail, FullTextResponse } from "../../api/books";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
+import { useWorkspace } from "../../workspace/WorkspaceStore";
 
 const {
   getBookMock,
@@ -264,6 +265,7 @@ describe("BookReader", () => {
     getFullTextMock.mockReset();
     listBooksMock.mockReset();
     navigateMock.mockReset();
+    useWorkspace.getState().reset();
     // Default: a calm, empty reading thread (the no-key / nothing-yet case).
     useInvestigationMock.mockReset();
     useInvestigationMock.mockReturnValue({
@@ -405,7 +407,7 @@ describe("BookReader", () => {
     expect(env.payload.note_text).toBe("a thought while reading");
   });
 
-  it("Deep-research in-book routes to the SAME ChaseThread, seeded with the passage, with a way home (generalized rabbit-hole, M2/M3)", async () => {
+  it("Deep-research in-book opens a floating ChaseThread seeded with the passage (generalized rabbit-hole, M2/M3)", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
     await renderReader();
@@ -415,14 +417,15 @@ describe("BookReader", () => {
     const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
 
-    // The inline chase mounts beside the reading column (the SAME ChaseThread
-    // the old "Go deeper" affordance used — now one of four float-menu actions).
-    const chasePanel = await screen.findByRole("complementary", { name: /Following this passage/ });
-    const lifted = within(chasePanel).getAllByText(/The opening of the book\./);
-    expect(lifted.length).toBeGreaterThanOrEqual(1);
-    const back = screen.getByRole("button", { name: /back to the book/ });
-    fireEvent.click(back);
-    // Reversible: back to the companion, position held by usePosition.
+    const panel = Object.values(useWorkspace.getState().panels).find((p) => p.kind === "ChaseThread");
+    expect(panel).toBeTruthy();
+    expect(panel?.mode).toBe("floating");
+    expect(panel?.title).toBe("Follow this");
+    expect(panel?.props).toMatchObject({
+      spawnContext: "The opening of the book.",
+      parentInvestigationId: "read-doc-1",
+    });
+    // The reader stays in place while the research panel floats in workspace chrome.
     expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
   });
 
