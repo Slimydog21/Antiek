@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import os
 import tempfile
+from contextlib import contextmanager
 
 import pytest
 
+import substrate.research_artifact.compose_interrogate as interrogation_module
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight
 from substrate.research_artifact import (
@@ -127,3 +129,33 @@ def test_interrogation_preview_validates_fingerprint_and_member_hash(artifact_en
             "Question?",
             expected_fingerprint=draft.selection_fingerprint,
         )
+
+
+def test_interrogation_preview_holds_compose_lock_through_member_reads(artifact_env, monkeypatch):
+    promote_insight(text="Alpha evidence.", investigation_id="inv-alpha", source_document_id="doc")
+    promote_insight(text="Beta evidence.", investigation_id="inv-beta", source_document_id="doc")
+    draft = _draft(["inv-alpha", "inv-beta"])
+    lock_held = False
+    original_load = interrogation_module._load_validated_member
+
+    @contextmanager
+    def observed_lock():
+        nonlocal lock_held
+        lock_held = True
+        try:
+            yield
+        finally:
+            lock_held = False
+
+    def observed_load(*args, **kwargs):
+        assert lock_held is True
+        return original_load(*args, **kwargs)
+
+    monkeypatch.setattr(interrogation_module, "compose_lock", observed_lock)
+    monkeypatch.setattr(interrogation_module, "_load_validated_member", observed_load)
+    build_interrogation_preview(
+        draft.compose_id or "",
+        "Question?",
+        expected_fingerprint=draft.selection_fingerprint,
+    )
+    assert lock_held is False

@@ -223,6 +223,8 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   const mountedRef = useRef(true);
   const composePreviewRef = useRef(composePreview);
   composePreviewRef.current = composePreview;
+  const interrogationPromptRef = useRef(interrogationPrompt);
+  interrogationPromptRef.current = interrogationPrompt;
   const selectionRef = useRef(selected);
   selectionRef.current = selected;
   useEffect(() => {
@@ -333,19 +335,28 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     if (!composePreview?.view_url || interrogationPrompt.trim().length === 0) return;
     const requestedComposeId = composePreview.compose_id;
     const requestedFingerprint = composePreview.selection_fingerprint;
+    const requestedPrompt = interrogationPrompt;
     setPreviewingInterrogation(true);
     setInterrogationError(null);
     try {
       const response = await previewComposeInterrogation(
         requestedComposeId,
-        interrogationPrompt,
+        requestedPrompt,
         requestedFingerprint,
       );
-      if (composePreviewRef.current?.compose_id === requestedComposeId) {
+      if (
+        composePreviewRef.current?.compose_id === requestedComposeId &&
+        composePreviewRef.current.selection_fingerprint === requestedFingerprint &&
+        interrogationPromptRef.current === requestedPrompt
+      ) {
         setInterrogationPreview(response);
       }
     } catch (err) {
-      if (composePreviewRef.current?.compose_id === requestedComposeId) {
+      if (
+        composePreviewRef.current?.compose_id === requestedComposeId &&
+        composePreviewRef.current.selection_fingerprint === requestedFingerprint &&
+        interrogationPromptRef.current === requestedPrompt
+      ) {
         setInterrogationPreview(null);
         setInterrogationError(err instanceof Error ? err.message : "Couldn’t review this question.");
       }

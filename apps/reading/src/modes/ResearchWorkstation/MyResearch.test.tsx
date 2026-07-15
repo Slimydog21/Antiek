@@ -22,7 +22,7 @@ import { MemoryRouter } from "react-router-dom";
 import { StrictMode } from "react";
 
 import type { InvestigationSummary } from "../../lib/api";
-import type { ComposeWriteWorkspace, ResearchCompose } from "../../api/research";
+import type { ComposeInterrogationPreview, ComposeWriteWorkspace, ResearchCompose } from "../../api/research";
 import { WERNER_EXPERIENCE_EVENT } from "../../werner/reactionBus";
 
 const { listState, budgetState, authState, navigateMock, previewComposeMock, createComposeMock, createWriteWorkspaceMock, previewInterrogationMock } = vi.hoisted(() => ({
@@ -136,6 +136,7 @@ beforeEach(() => {
   previewComposeMock.mockReset();
   createComposeMock.mockReset();
   createWriteWorkspaceMock.mockReset();
+  previewInterrogationMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -250,6 +251,43 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
 });
 
 describe("MyResearch — compose light table", () => {
+  it("discards an interrogation receipt when the question changes in flight", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", status: "completed" }),
+      inv({ investigation_id: "inv-two", status: "completed" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "f".repeat(64),
+      members: [], identical_content: [], view_url: null, reused: false,
+    });
+    createComposeMock.mockResolvedValue({
+      compose_id: "cmp-created", selection_fingerprint: "f".repeat(64), members: [],
+      identical_content: [], view_url: "/research/artifact-composes/cmp-created/view", reused: false,
+    });
+    let resolvePreview!: (value: ComposeInterrogationPreview) => void;
+    previewInterrogationMock.mockReturnValue(new Promise((resolve) => { resolvePreview = resolve; }));
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    await user.click(await screen.findByRole("button", { name: "Create HTML draft" }));
+    const prompt = screen.getByPlaceholderText(/Where do these researches agree/);
+    await user.type(prompt, "Original question");
+    await user.click(screen.getByRole("button", { name: "Review question" }));
+    await user.clear(prompt);
+    await user.type(prompt, "Changed question");
+    await act(async () => resolvePreview({
+      schema_version: 1, compose_id: "cmp-created", selection_fingerprint: "f".repeat(64),
+      prompt_hash: "p".repeat(64), context: "old", prompt_chars: 17,
+      context_chars: 3, max_prompt_chars: 4000, max_context_chars: 48000,
+      truncated_fields: 0, omitted_fields: 0, omitted_chars: 0, provider_called: false,
+      member_receipts: [],
+    }));
+    expect(screen.queryByTestId("collective-interrogation-receipt")).toBeNull();
+  });
+
   it("reviews a collective question against the immutable draft without running an answer", async () => {
     listState.current.investigations = [
       inv({ investigation_id: "inv-one", question: "One", status: "completed" }),

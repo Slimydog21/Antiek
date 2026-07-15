@@ -6,7 +6,7 @@ import hashlib
 import json
 from dataclasses import dataclass
 
-from .compose import COMPOSE_SCHEMA_VERSION, ComposeMember, load_compose_draft
+from .compose import COMPOSE_SCHEMA_VERSION, ComposeMember, compose_lock, load_compose_draft
 from .import_notes import parse_body_from_html
 from .paths import compose_member_path
 from .schema import ResearchArtifactBody
@@ -65,7 +65,21 @@ def build_interrogation_preview(
     *,
     expected_fingerprint: str | None = None,
 ) -> InterrogationPreviewPacket:
-    """Return a deterministic, bounded preview packet without model execution."""
+    """Return a stable preview while sharing the compose lifecycle lock."""
+    with compose_lock():
+        return _build_interrogation_preview_locked(
+            compose_id,
+            prompt,
+            expected_fingerprint=expected_fingerprint,
+        )
+
+
+def _build_interrogation_preview_locked(
+    compose_id: str,
+    prompt: str,
+    *,
+    expected_fingerprint: str | None,
+) -> InterrogationPreviewPacket:
     clean_prompt = _validate_prompt(prompt)
     try:
         draft = load_compose_draft(compose_id)
