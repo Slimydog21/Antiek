@@ -2371,6 +2371,7 @@ def create_app(
         body: dict[str, Any],
         request: Request,
     ) -> InvestigationStartResponse:
+        from substrate.event_log import append_persisted_event
         from substrate.research_artifact.derived_asset_library import (
             DerivedAssetIntegrity,
             DerivedAssetUnavailable,
@@ -2380,7 +2381,6 @@ def create_app(
         )
         from substrate.research_artifact.derived_citation_source import (
             DerivedCitationConflict,
-            canonical_derived_sources_context,
         )
         from substrate.research_artifact.evidence_collection_repository import (
             EvidenceCollectionConflict,
@@ -2388,7 +2388,6 @@ def create_app(
             EvidenceCollectionRepository,
             EvidenceCollectionUnavailable,
         )
-        from substrate.event_log import append_persisted_event
 
         from .merge_asset_routes import EvidenceCollectionLaunchBody
         from .multimedia_reconciliation_routes import authenticated_multimedia_operator
@@ -2440,6 +2439,81 @@ def create_app(
             owner_user_id=owner, idempotency_key=key, lease_token=prepared.lease_token,
             response=result.model_dump(mode="json"),
         )
+        return result
+
+    @app.post(
+        "/research/derived-assets/evidence-manifests/{manifest_id}/launch",
+        response_model=InvestigationStartResponse, status_code=202,
+    )
+    async def launch_evidence_manifest(
+        manifest_id: str, body: dict[str, Any], request: Request,
+    ) -> InvestigationStartResponse:
+        from substrate.event_log import append_persisted_event
+        from substrate.research_artifact.derived_asset_library import (
+            DerivedAssetIntegrity,
+            DerivedAssetUnavailable,
+        )
+        from substrate.research_artifact.derived_asset_retrieval import (
+            DerivedAssetRetrievalIntegrity,
+        )
+        from substrate.research_artifact.derived_citation_source import DerivedCitationConflict
+        from substrate.research_artifact.evidence_collection_repository import (
+            EvidenceCollectionConflict,
+            EvidenceCollectionUnavailable,
+        )
+        from substrate.research_artifact.evidence_manifest_repository import (
+            EvidenceManifestConflict,
+            EvidenceManifestPrecondition,
+            EvidenceManifestRepository,
+            EvidenceManifestUnavailable,
+        )
+
+        from .merge_asset_routes import EvidenceManifestLaunchBody
+        from .multimedia_reconciliation_routes import authenticated_multimedia_operator
+
+        try:
+            launch = EvidenceManifestLaunchBody.model_validate(body)
+        except Exception as exc:
+            raise HTTPException(422, "evidence manifest launch request is invalid") from exc
+        if_match = request.headers.get("If-Match")
+        key = request.headers.get("Idempotency-Key")
+        if if_match is None or key is None:
+            raise HTTPException(428, "If-Match and Idempotency-Key are required")
+        owner = authenticated_multimedia_operator(request)
+        repository = EvidenceManifestRepository(db_path=default_db_path())
+        try:
+            prepared = repository.prepare_launch(
+                owner_user_id=owner, manifest_id=manifest_id, if_match=if_match,
+                idempotency_key=key, options=launch.model_dump(mode="json"))
+        except (EvidenceManifestUnavailable, EvidenceCollectionUnavailable):
+            raise HTTPException(404, "evidence manifest is unavailable") from None
+        except EvidenceManifestPrecondition:
+            raise HTTPException(412, "evidence manifest ETag is stale") from None
+        except (EvidenceManifestConflict, EvidenceCollectionConflict,
+                DerivedAssetIntegrity, DerivedAssetUnavailable,
+                DerivedAssetRetrievalIntegrity, DerivedCitationConflict):
+            raise HTTPException(409, "evidence manifest integrity conflict") from None
+        except ValueError:
+            raise HTTPException(422, "evidence manifest launch request is invalid") from None
+        if prepared.replay_response is not None:
+            return InvestigationStartResponse.model_validate(prepared.replay_response)
+        if prepared.delivery_event is None or prepared.lease_token is None:
+            raise HTTPException(409, "evidence manifest delivery integrity conflict")
+        event = Event.model_validate(prepared.delivery_event)
+        try:
+            append_persisted_event(event)
+            await bus.broadcast(event)
+        except Exception as exc:
+            raise HTTPException(503, "evidence manifest event delivery is unavailable") from exc
+        result = InvestigationStartResponse(
+            investigation_id=prepared.investigation_id, status="started",
+            start_event_id=event.event_id)
+        try:
+            repository.complete_launch(
+                owner_user_id=owner, idempotency_key=key,
+                lease_token=prepared.lease_token, response=result.model_dump(mode="json"))
+        except Exception as exc:
+            raise HTTPException(503, "evidence manifest receipt is unavailable") from exc
         return result
 
     @app.get(

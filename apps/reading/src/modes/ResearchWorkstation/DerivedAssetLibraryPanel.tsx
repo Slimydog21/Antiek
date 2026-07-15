@@ -1,18 +1,21 @@
 import { BookOpen, RefreshCw } from "lucide-react";
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 import {
   discoverDerivedAssets,
   getDerivedAssetHistory,
+  listAllDerivedEvidenceCollections,
   restoreDerivedAsset,
 } from "../../api/research";
 import type {
   DerivedAssetDiscoveryResponse,
   DerivedAssetHistoryResponse,
+  DerivedEvidenceCollectionSummary,
   DerivedMergeApplyResponse,
 } from "../../api/research";
 import { API_BASE } from "../../lib/api";
+import EvidenceManifestComposer from "./EvidenceManifestComposer";
 
 const operationKey = () => `op_${crypto.randomUUID().replaceAll("-", "").slice(0, 32)}`;
 
@@ -44,9 +47,31 @@ export default function DerivedAssetLibraryPanel({ disabled, onPendingChange }: 
   const [error, setError] = useState<string | null>(null);
   const [applied, setApplied] = useState<DerivedMergeApplyResponse | null>(null);
   const generation = useRef(0);
+  const [evidenceCollections, setEvidenceCollections] = useState<DerivedEvidenceCollectionSummary[]>([]);
+  const [manifestPending, setManifestPending] = useState(false);
 
   const setBusy = (value: boolean) => { setPending(value); onPendingChange(value); };
   const selected = history?.revisions.find((item) => item.revision_id === selectedRevisionId);
+
+  // Load all owner evidence collections when the panel opens.
+  // No excerpts — passage content lives in the collection.
+  const loadCollections = useCallback(async () => {
+    const exactGen = ++generation.current;
+    try {
+      // Load all collections the owner has — we need every one for the
+      // manifest composer's multi-collection selection, regardless of
+      // which asset they belong to.
+      const { collections: allCollections } = await listAllDerivedEvidenceCollections();
+      if (exactGen !== generation.current) return;
+      setEvidenceCollections(allCollections);
+    } catch {
+      if (exactGen === generation.current) setEvidenceCollections([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (opened && discovery) void loadCollections();
+  }, [opened, discovery, loadCollections]);
 
   const loadDiscovery = async () => {
     const exactGeneration = ++generation.current;
@@ -162,5 +187,14 @@ export default function DerivedAssetLibraryPanel({ disabled, onPendingChange }: 
     {pending && <div role="status" className="font-mono text-[10px]">Derived asset command in progress…</div>}
     {applied && <div role="status" className="font-mono text-[10px]">Restored as revision {applied.revision_id}, generation {applied.generation}.</div>}
     {error && <div role="alert" className="font-mono text-[10px] text-emperor">{error}</div>}
+
+    {/* Cycle 71: Evidence manifests — compose collections into a durable manifest */}
+    {opened && discovery && (
+      <EvidenceManifestComposer
+        collections={evidenceCollections}
+        disabled={disabled || manifestPending}
+        onPendingChange={setManifestPending}
+      />
+    )}
   </section>;
 }

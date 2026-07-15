@@ -382,6 +382,9 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "derived_evidence_collections",
     "derived_evidence_collection_members",
     "derived_evidence_collection_operations",
+    "derived_evidence_manifests",
+    "derived_evidence_manifest_collections",
+    "derived_evidence_manifest_operations",
 )
 
 

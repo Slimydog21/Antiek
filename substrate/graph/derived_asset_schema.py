@@ -357,6 +357,7 @@ CREATE TABLE IF NOT EXISTS derived_evidence_collections (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE (owner_user_id,collection_id),
+    UNIQUE (collection_id,version,collection_sha256),
     FOREIGN KEY (derived_asset_id,revision_id,revision_content_sha256)
         REFERENCES derived_asset_revisions(derived_asset_id,revision_id,content_sha256)
 );
@@ -418,6 +419,66 @@ CREATE TABLE IF NOT EXISTS derived_evidence_collection_operations (
             AND response_sha256=sha256(response_json)
             AND delivery_lease_expires_at IS NULL AND completed_at IS NOT NULL))
 );
+
+CREATE TABLE IF NOT EXISTS derived_evidence_manifests (
+    manifest_id TEXT PRIMARY KEY CHECK (regexp_full_match(manifest_id,'dem_[0-9a-f]{32}')),
+    owner_user_id TEXT NOT NULL,
+    label TEXT NOT NULL CHECK (octet_length(encode(label)) BETWEEN 1 AND 2048),
+    version BIGINT NOT NULL DEFAULT 1 CHECK (version>=1),
+    collection_count INTEGER NOT NULL CHECK (collection_count BETWEEN 2 AND 8),
+    total_passage_count INTEGER NOT NULL CHECK (total_passage_count BETWEEN 4 AND 32),
+    manifest_sha256 TEXT NOT NULL CHECK (regexp_full_match(manifest_sha256,'[0-9a-f]{64}')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (owner_user_id,manifest_id)
+);
+CREATE INDEX IF NOT EXISTS idx_evidence_manifests_owner
+    ON derived_evidence_manifests(owner_user_id,created_at);
+
+CREATE TABLE IF NOT EXISTS derived_evidence_manifest_collections (
+    manifest_id TEXT NOT NULL REFERENCES derived_evidence_manifests(manifest_id),
+    manifest_ordinal INTEGER NOT NULL CHECK (manifest_ordinal>=0),
+    collection_id TEXT NOT NULL,
+    collection_version BIGINT NOT NULL CHECK (collection_version>=1),
+    collection_sha256 TEXT NOT NULL CHECK (regexp_full_match(collection_sha256,'[0-9a-f]{64}')),
+    collection_etag TEXT NOT NULL,
+    PRIMARY KEY (manifest_id,manifest_ordinal),
+    UNIQUE (manifest_id,collection_id),
+    FOREIGN KEY (collection_id,collection_version,collection_sha256)
+        REFERENCES derived_evidence_collections(collection_id,version,collection_sha256)
+);
+
+CREATE TABLE IF NOT EXISTS derived_evidence_manifest_operations (
+    owner_user_id TEXT NOT NULL,
+    idempotency_key TEXT NOT NULL CHECK (octet_length(encode(idempotency_key)) BETWEEN 1 AND 256),
+    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('create','launch')),
+    request_sha256 TEXT NOT NULL CHECK (regexp_full_match(request_sha256,'[0-9a-f]{64}')),
+    state TEXT NOT NULL CHECK (state IN ('delivering','completed')),
+    manifest_id TEXT NOT NULL,
+    investigation_id TEXT,
+    response_json TEXT,
+    response_sha256 TEXT,
+    delivery_event_json TEXT,
+    delivery_event_sha256 TEXT,
+    delivery_lease_token TEXT,
+    delivery_lease_expires_at TIMESTAMP,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP,
+    PRIMARY KEY (owner_user_id,idempotency_key),
+    FOREIGN KEY (owner_user_id,manifest_id)
+        REFERENCES derived_evidence_manifests(owner_user_id,manifest_id),
+    CHECK ((operation_kind='create' AND state='completed' AND investigation_id IS NULL
+            AND delivery_event_json IS NULL AND delivery_lease_token IS NULL)
+        OR (operation_kind='launch' AND investigation_id IS NOT NULL
+            AND delivery_event_json IS NOT NULL
+            AND delivery_event_sha256=sha256(delivery_event_json)
+            AND delivery_lease_token IS NOT NULL)),
+    CHECK ((state='delivering' AND response_json IS NULL AND response_sha256 IS NULL
+            AND delivery_lease_expires_at IS NOT NULL AND completed_at IS NULL)
+        OR (state='completed' AND response_json IS NOT NULL
+            AND response_sha256=sha256(response_json)
+            AND delivery_lease_expires_at IS NULL AND completed_at IS NOT NULL))
+);
 """
 
 SENTINEL_TABLES = (
@@ -434,6 +495,9 @@ SENTINEL_TABLES = (
     "derived_evidence_collections",
     "derived_evidence_collection_members",
     "derived_evidence_collection_operations",
+    "derived_evidence_manifests",
+    "derived_evidence_manifest_collections",
+    "derived_evidence_manifest_operations",
 )
 
 

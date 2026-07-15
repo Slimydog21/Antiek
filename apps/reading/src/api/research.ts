@@ -628,6 +628,10 @@ export function listDerivedEvidenceCollections(
   return get(`/research/derived-assets/evidence-collections?asset_id=${encodeURIComponent(assetId)}&revision_id=${encodeURIComponent(revisionId)}`);
 }
 
+export function listAllDerivedEvidenceCollections(): Promise<DerivedEvidenceCollectionList> {
+  return get("/research/derived-assets/evidence-collections");
+}
+
 export function getDerivedEvidenceCollection(
   collectionId: string,
 ): Promise<DerivedEvidenceCollection> {
@@ -794,4 +798,137 @@ export function steerResearch(
  * this is here for a future EventSource upgrade to step-level liveness. */
 export function sessionStreamUrl(sessionId: string): string {
   return `${API_BASE}/research/sessions/${encodeURIComponent(sessionId)}/stream`;
+}
+
+// ── Cycle 71: Cross-asset evidence manifests ─────────────────────────
+//
+// A manifest composes 2–8 saved evidence collections into one ordered
+// research context without flattening provenance. Collections remain the
+// sole passage authority; the manifest stores bound references + digests.
+//
+// Mirrors interfaces/research/api/manifest_routes.py
+// (prefix /research/derived-assets/evidence-manifests).
+
+/** One bound collection reference inside a manifest. The manifest stores
+ * the immutable collection version + digest at creation time so detail
+ * reads can detect drift. */
+export interface ManifestCollectionRef {
+  collection_id: string;
+  version: number;
+  collection_sha256: string;
+  ordinal: number;
+}
+
+/** Summary row for the owner list. No excerpts — passage content lives
+ * in the collection, never duplicated onto the manifest. */
+export interface EvidenceManifestSummary {
+  manifest_id: string;
+  label: string;
+  version: number;
+  collection_count: number;
+  total_passage_count: number;
+  manifest_sha256: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Full manifest detail with ordered collection summaries, verified
+ * nested sources/locations for inspection, and an ETag for launch
+ * If-Match. Detail reopens every bound collection in one snapshot and
+ * rejects drift (version, digest, order, cardinality, member, revision,
+ * index, or location). */
+export interface EvidenceManifestDetail extends EvidenceManifestSummary {
+  collection_refs: ManifestCollectionRef[];
+  collections: DerivedEvidenceCollection[];
+  etag: string;
+}
+
+/** The owner-scoped list response. Bounded and summary-only. */
+export interface EvidenceManifestList {
+  manifests: EvidenceManifestSummary[];
+  limits: { manifests: number };
+}
+
+/** Create manifest request. The server requires bounded idempotency key,
+ * label, and 2–8 unique collection IDs. Within one write transaction it
+ * resolves every collection under owner scope, revalidates revision chain,
+ * complete index, members, digest, and locations, binds the current
+ * immutable version/digest, and rejects a total passage count outside
+ * 4–32 or canonical context above 96 KiB. */
+export interface CreateEvidenceManifestRequest {
+  label: string;
+  collection_ids: string[];
+  idempotency_key: string;
+}
+
+/** Launch manifest request. Accepts only manifest ID in the path, exact
+ * If-Match, idempotency key, question, parent investigation, and closed
+ * research tier. Accepts no context, collection array, source array,
+ * provider, model, spend, asset, revision, or digest. The server
+ * revalidates the complete manifest after reservation and before append,
+ * then builds context server-side. */
+export interface LaunchEvidenceManifestRequest {
+  question: string;
+  parent_investigation_id?: string;
+  research_tier?: "fast" | "deep";
+}
+
+/** The launch response. One logical investigation per manifest launch. */
+export interface LaunchEvidenceManifestResponse {
+  investigation_id: string;
+  status: string;
+  start_event_id: string;
+}
+
+/** GET /research/derived-assets/evidence-manifests — owner-scoped
+ *  summary list. No excerpts; no spend. */
+export function listEvidenceManifests(): Promise<EvidenceManifestList> {
+  return get("/research/derived-assets/evidence-manifests");
+}
+
+/** GET /research/derived-assets/evidence-manifests/{id} — full manifest
+ *  detail with verified nested sources/locations and ETag. Reopens every
+ *  bound collection in one snapshot and rejects drift. No spend. */
+export function getEvidenceManifest(manifestId: string): Promise<EvidenceManifestDetail> {
+  return get(`/research/derived-assets/evidence-manifests/${encodeURIComponent(manifestId)}`);
+}
+
+/** POST /research/derived-assets/evidence-manifests — create a manifest.
+ *  2–8 unique collection IDs. Atomic: resolves, revalidates, binds
+ *  versions/digests, persists manifest + ordered refs + create receipt. */
+export function createEvidenceManifest(
+  request: CreateEvidenceManifestRequest,
+): Promise<EvidenceManifestDetail> {
+  const path = "/research/derived-assets/evidence-manifests";
+  return apiFetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Idempotency-Key": request.idempotency_key,
+    },
+    body: JSON.stringify({ label: request.label, collection_ids: request.collection_ids }),
+  }).then((response) => jsonOrThrow<EvidenceManifestDetail>(response, `POST ${path}`));
+}
+
+/** POST /research/derived-assets/evidence-manifests/{id}/launch —
+ *  launch a research trajectory from a manifest. Manifest-authoritative:
+ *  If-Match must match the manifest's ETag; context is built server-side
+ *  from verified bound collections. One explicit confirmation gesture;
+ *  mounting/inspecting never launches. */
+export function launchEvidenceManifest(
+  manifestId: string,
+  etag: string,
+  idempotencyKey: string,
+  request: LaunchEvidenceManifestRequest,
+): Promise<LaunchEvidenceManifestResponse> {
+  const path = `/research/derived-assets/evidence-manifests/${encodeURIComponent(manifestId)}/launch`;
+  return apiFetch(`${API_BASE}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "If-Match": etag,
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify(request),
+  }).then((response) => jsonOrThrow<LaunchEvidenceManifestResponse>(response, `POST ${path}`));
 }

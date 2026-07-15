@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 35;
+export const EVENT_SCHEMA_VERSION = 36;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -209,6 +209,28 @@ export interface DerivedCitationSource {
   chunk_ordinal: number;
   chunk_text_sha256: string;
   excerpt: string;
+}
+
+/**
+ * Immutable collection binding carried by manifest-launched events.
+ */
+export interface EvidenceManifestCollectionRef {
+  collection_id: string;
+  version: number;
+  collection_sha256: string;
+  ordinal: number;
+}
+
+/**
+ * Compact provenance; exact excerpts remain owned by collections.
+ */
+export interface EvidenceManifestProvenance {
+  manifest_id: string;
+  version: number;
+  manifest_sha256: string;
+  collections: EvidenceManifestCollectionRef[];
+  collection_count: number;
+  total_passage_count: number;
 }
 
 /**
@@ -1610,6 +1632,7 @@ export interface InvestigationStartRequestedPayload {
   spawn_context?: string | null;
   derived_source?: DerivedCitationSource | null;
   derived_sources?: DerivedCitationSource[];
+  evidence_manifest?: EvidenceManifestProvenance | null;
   chase_mode?: "off" | "depth" | "duration";
   chase_value?: number;
   chase_budget_usd?: number;

@@ -12,7 +12,7 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import ThinkingStream from "./ThinkingStream";
 import VoiceChaseButton from "./VoiceChaseButton";
 import type { SelectionProvenance } from "../shared/FloatMenu/useFloatMenuSelection";
-import { launchDerivedEvidenceCollection } from "../../api/research";
+import { launchDerivedEvidenceCollection, launchEvidenceManifest } from "../../api/research";
 
 /**
  * ChaseThread — follow a highlighted passage into a child research, in one
@@ -70,6 +70,11 @@ type Props = {
   sourceSelections?: Array<{ text: string; provenance: SelectionProvenance }>;
   /** Durable server authority. When present, launch never resubmits sources. */
   evidenceCollection?: { collectionId: string; etag: string };
+  /** Cycle 71: manifest-authoritative launch. When present, launch uses
+   *  launchEvidenceManifest (server-built context from verified storage)
+   *  instead of startInvestigation. The manifest's etag is the If-Match
+   *  authority; the question is the only client-supplied input. */
+  evidenceManifest?: { manifestId: string; etag: string };
 };
 
 function derivedSource(text: string, provenance: SelectionProvenance) {
@@ -96,6 +101,7 @@ export default function ChaseThread({
   sourceProvenance,
   sourceSelections,
   evidenceCollection,
+  evidenceManifest,
 }: Props) {
   const [question, setQuestion] = useState(spawnContext);
   const [busy, setBusy] = useState(false);
@@ -116,7 +122,8 @@ export default function ChaseThread({
     setError(null);
     launchKey.current = null;
   }, [spawnContext, parentInvestigationId, reservedChildId,
-    evidenceCollection?.collectionId, evidenceCollection?.etag]);
+    evidenceCollection?.collectionId, evidenceCollection?.etag,
+    evidenceManifest?.manifestId, evidenceManifest?.etag]);
 
   async function follow() {
     if (launching.current) return;
@@ -143,7 +150,18 @@ export default function ChaseThread({
         return;
       }
       launchKey.current ??= `collection-launch-${crypto.randomUUID()}`;
-      const resp = evidenceCollection
+      // Cycle 71: manifest-authoritative launch. Context is built server-side
+      // from verified bound collections; the client sends only question +
+      // parent + tier. Per spec: "Accept no context, collection array, source
+      // array, provider, model, spend, asset, revision, or digest."
+      const resp = evidenceManifest
+        ? await launchEvidenceManifest(
+            evidenceManifest.manifestId,
+            evidenceManifest.etag,
+            launchKey.current,
+            { question: q, parent_investigation_id: parentInvestigationId },
+          )
+        : evidenceCollection
         ? await launchDerivedEvidenceCollection(
             evidenceCollection.collectionId,
             evidenceCollection.etag,
