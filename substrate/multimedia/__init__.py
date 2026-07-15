@@ -58,6 +58,19 @@ from .knowledge_registration import (
     get_multimedia_distillation_state,
     register_multimedia_with_twin,
 )
+from .local_provider_exclusion import (
+    LocalZeroEvidenceConflict,
+    LocalZeroEvidenceUnavailable,
+    ProviderExecutionExclusion,
+    exclude_provider_executions,
+)
+from .local_zero_cost_evidence import (
+    LocalZeroExternalCostEvidenceV1,
+    LocalZeroRunAuthorityV1,
+    build_local_audio_zero_cost_evidence,
+    build_local_video_zero_cost_evidence,
+    verify_local_zero_cost_evidence,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
@@ -69,6 +82,11 @@ from .narration_authorization import (
     NarrationAuthorizationResult,
     TrustedNarrationTerms,
     authorize_multimedia_chapter_narration,
+)
+from .paid_video_cost_authority import (
+    PaidRegisteredVideoCostAuthorityV1,
+    build_paid_registered_video_cost_authority,
+    verify_paid_registered_video_cost_authority,
 )
 from .planner import (
     ChapterPlan,
@@ -85,6 +103,13 @@ from .playback import (
     RegenerationTarget,
     SourceCard,
     build_playback_read_model,
+)
+from .production_cost_closure import (
+    ProductionByteConstituentV1,
+    ProductionByteProjectionV1,
+    ProductionCostClosure,
+    build_production_byte_cost_closure,
+    verify_production_byte_projection,
 )
 from .production_registration import (
     MultimediaProductionRegistrationError,
@@ -118,6 +143,15 @@ from .reviewed_visual_registry import (
     VisualCandidateBinding,
     get_reviewed_visuals,
     register_reviewed_visuals,
+)
+from .ship_cost_snapshot import (
+    MultimediaShipCostEvidenceConflict,
+    MultimediaShipCostEvidenceUnavailable,
+    MultimediaShipCostExecutionV1,
+    MultimediaShipCostSnapshotV1,
+    build_multimedia_ship_cost_snapshot,
+    validate_settled_execution,
+    verify_multimedia_ship_cost_snapshot,
 )
 from .steering import (
     RevisionPlan,
@@ -224,6 +258,32 @@ __all__ = [
     "MultimediaHardeningReport",
     "ShipStatus",
     "evaluate_multimedia_asset",
+    "MultimediaShipCostEvidenceConflict",
+    "MultimediaShipCostEvidenceUnavailable",
+    "MultimediaShipCostExecutionV1",
+    "MultimediaShipCostSnapshotV1",
+    "build_multimedia_ship_cost_snapshot",
+    "validate_settled_execution",
+    "verify_multimedia_ship_cost_snapshot",
+    # MSR-02 production-byte cost closure
+    "ProductionByteConstituentV1",
+    "ProductionByteProjectionV1",
+    "ProductionCostClosure",
+    "build_production_byte_cost_closure",
+    "PaidRegisteredVideoCostAuthorityV1",
+    "build_paid_registered_video_cost_authority",
+    "verify_paid_registered_video_cost_authority",
+    "verify_production_byte_projection",
+    # MSR-03 local zero external provider cost authority
+    "LocalZeroEvidenceConflict",
+    "LocalZeroEvidenceUnavailable",
+    "LocalZeroExternalCostEvidenceV1",
+    "LocalZeroRunAuthorityV1",
+    "ProviderExecutionExclusion",
+    "build_local_audio_zero_cost_evidence",
+    "build_local_video_zero_cost_evidence",
+    "exclude_provider_executions",
+    "verify_local_zero_cost_evidence",
     # HTML knowledge-asset projection
     "MultimediaInformationAsset",
     "MultimediaInformationAssetError",
