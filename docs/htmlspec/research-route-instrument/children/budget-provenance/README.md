@@ -5,4 +5,3 @@ Cycle 592 corrective child spec: ensure the Research route instrument never pres
 - Parent: `../../index.html`
 - Master: `index.html`
 - Sprint: `sprints/SPR-01-honest-budget-provenance.html`
-

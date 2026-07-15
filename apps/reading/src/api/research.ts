@@ -56,6 +56,35 @@ export interface ApproveResponse {
   launchable: boolean;
 }
 
+export type SpendMode = "stop_limit" | "hard_ceiling";
+
+export interface SpendPreview {
+  spend_mode: SpendMode;
+  currency: "USD";
+  amount_cents: number;
+  eligible: boolean;
+  reasons: string[];
+  authority_digest: string | null;
+  recovery_session_id?: string | null;
+  approval_revision: number;
+  assumptions: string[];
+}
+
+export interface HardCeilingSnapshot {
+  currency: "USD";
+  approval_revision: number;
+  authority_digest: string;
+  ceiling_cents: number;
+  authorized_spent_cents: number;
+  observed_provider_spend_cents: number;
+  held_cents: number;
+  available_cents: number;
+  run_state: "active" | "ceiling_breached" | "closed_unresolved" | "closed_reconciled";
+  ceiling_breached: boolean;
+  unknown_outcome_count: number;
+  blocked_stages: string[];
+}
+
 // ── Session (mirrors CascadeSession status/cost) ────────────────────────
 
 export type ResearchRunState =
@@ -89,6 +118,7 @@ export interface SessionStatus {
   researches: ResearchStatus[];
   cost?: SessionCost | null;
   all_terminal?: boolean;
+  hard_ceiling?: HardCeilingSnapshot | null;
 }
 
 export interface SessionPlan {
@@ -105,6 +135,10 @@ export interface LaunchResponse {
     plan_node_local_id: string | null;
   }[];
   aggregate_cap_usd: number | null;
+  spend_mode?: SpendMode;
+  replayed?: boolean;
+  resumed?: boolean;
+  hard_ceiling?: HardCeilingSnapshot;
 }
 
 export type SteerKind = "pause" | "resume" | "stop" | "redirect" | "deepen";
@@ -253,13 +287,47 @@ export function approvePlan(rootId: string, approver = "__operator__"): Promise<
   return post(`/research/plans/${encodeURIComponent(rootId)}/approve`, { approver });
 }
 
+export function getSpendPreview(
+  rootId: string,
+  spendMode: SpendMode,
+  amountUsd: string,
+): Promise<SpendPreview> {
+  return post(`/research/plans/${encodeURIComponent(rootId)}/spend-preview`, {
+    spend_mode: spendMode,
+    amount_usd: amountUsd,
+  });
+}
+
+export function approveSpend(
+  rootId: string,
+  amountUsd: string,
+  perResearchBudgetUsd = 0.5,
+): Promise<SpendPreview> {
+  return post(`/research/plans/${encodeURIComponent(rootId)}/spend-approval`, {
+    spend_mode: "hard_ceiling",
+    amount_usd: amountUsd,
+    per_research_budget_usd: perResearchBudgetUsd,
+  });
+}
+
 // ── Launch + session (SPR-06) ───────────────────────────────────────────
 
 export function launchPlan(rootId: string, req: {
   per_research_budget_usd?: number;
   aggregate_budget_usd?: number | null;
+  spend_mode?: SpendMode;
+  hard_ceiling_usd?: string;
+  authority_digest?: string;
 } = {}): Promise<LaunchResponse> {
   return post(`/research/plans/${encodeURIComponent(rootId)}/launch`, req);
+}
+
+export function reconcileSessionSpend(sessionId: string): Promise<{
+  hard_ceiling: HardCeilingSnapshot;
+  provider_checks_started: number;
+  message: string;
+}> {
+  return post(`/research/sessions/${encodeURIComponent(sessionId)}/spend/reconcile`, {});
 }
 
 export function getSession(sessionId: string): Promise<SessionStatus> {

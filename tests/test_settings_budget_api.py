@@ -16,7 +16,7 @@ from interfaces.research.api.settings_budget import (
     estimate_prompt_cost,
     read_operator_budget,
 )
-from orchestration.continuous.budget import DaemonBudget
+from orchestration.continuous.budget import DaemonBudget, _budget_path
 
 
 @pytest.fixture
@@ -80,6 +80,101 @@ def test_budget_default_cap_with_known_spend_sidecar(
     assert body["remaining_usd"] == 3.75
 
 
+@pytest.mark.parametrize(
+    ("operator_cap", "expected_remaining"),
+    [(200.0, 196.0), (2.0, 0.0)],
+)
+def test_budget_rebases_sidecar_spend_on_operator_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    operator_cap: float,
+    expected_remaining: float,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", str(operator_cap))
+
+    budget = read_operator_budget()
+
+    assert budget.daily_cap_usd == operator_cap
+    assert budget.spent_status == "known"
+    assert budget.spent_usd == 4.0
+    assert budget.remaining_usd == expected_remaining
+    assert budget.over_budget is (operator_cap < 4.0)
+    assert budget.over_budget_usd == max(0.0, 4.0 - operator_cap)
+
+
+@pytest.mark.parametrize(
+    "bad_spend",
+    [None, True, "1", -1.0, float("nan"), float("inf")],
+)
+def test_budget_malformed_spend_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_spend: object,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if bad_spend is None:
+        del raw["spent_usd"]
+    else:
+        raw["spent_usd"] = bad_spend
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+    assert budget.over_budget is False
+    assert budget.over_budget_usd == 0.0
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [("cap_usd", True), ("cap_usd", "5"), ("spawn_count", True), ("spawn_count", 1.5)],
+)
+def test_budget_malformed_accounting_types_are_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    bad_value: object,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw[field] = bad_value
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+
+
+def test_budget_misfiled_date_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["date_stamp"] = "2000-01-01"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+
+
 def test_budget_operator_env_cap(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -105,6 +200,21 @@ def test_budget_cap_drop_preserves_actual_spend(
 
     assert body["spent_usd"] == 4.0
     assert body["remaining_usd"] == 0.0
+
+
+@pytest.mark.parametrize("invalid_cap", ["nan", "inf", "-1"])
+def test_budget_invalid_numeric_env_is_ignored(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_cap: str,
+) -> None:
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", invalid_cap)
+    response = client.get("/settings/budget")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daily_cap_usd"] == 5.0
+    assert body["cap_env"] is None
+    assert any("finite and non-negative" in note for note in body["notes"])
 
 
 def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) -> None:
@@ -143,6 +253,24 @@ def test_model_decision_uses_server_inventory_and_honest_absent_basis(
     assert all(row["quality_basis"] == "absent" for row in body["candidates"])
     assert all(row["quality_score"] is None for row in body["candidates"])
     assert all(row["estimated_usd_high"] is None for row in body["candidates"])
+
+
+def test_composer_projection_route_is_mounted_on_production_app(client: TestClient) -> None:
+    response = client.post(
+        "/settings/composer-projection/resolve",
+        json={
+            "task": "deep_research",
+            "bounded_usage": [
+                {"unit": "input_token", "maximum": 1_000},
+                {"unit": "output_token", "maximum": 500},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["authority"] == "advisory_explanatory"
+    assert body["ranked_candidates"]
+    assert body["budget"]["spent_usd"] is None
 
 
 def test_model_decision_prefers_valid_server_owned_benchmark(
@@ -490,7 +618,5 @@ def test_estimate_with_synthetic_pricing(
 
 
 def test_caddy_allowlist_includes_settings() -> None:
-    caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(
-        encoding="utf-8"
-    )
+    caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(encoding="utf-8")
     assert "/settings*" in caddy

@@ -4,10 +4,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getMultimediaLocalAudibleCapability,
   getMultimediaLocalAudiblePlayback,
+  getListeningProgress,
   inspectMultimediaLocalAudible,
   prepareMultimediaLocalAudible,
   produceMultimediaLocalAudible,
   recoverMultimediaLocalAudible,
+  putListeningProgress,
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord, MultimediaLocalAudiblePreparedSet } from "../../api/multimedia";
 import { LocalAudiblePanel } from "./LocalAudiblePanel";
@@ -15,10 +17,13 @@ import { LocalAudiblePanel } from "./LocalAudiblePanel";
 vi.mock("../../api/multimedia", () => ({
   getMultimediaLocalAudibleCapability: vi.fn(),
   getMultimediaLocalAudiblePlayback: vi.fn(),
+  getListeningProgress: vi.fn(),
   inspectMultimediaLocalAudible: vi.fn(),
+  prepareResearchIntent: vi.fn(),
   prepareMultimediaLocalAudible: vi.fn(),
   produceMultimediaLocalAudible: vi.fn(),
   recoverMultimediaLocalAudible: vi.fn(),
+  putListeningProgress: vi.fn(),
 }));
 
 const record: MultimediaAssetRecord = {
@@ -44,6 +49,13 @@ const prepared: MultimediaLocalAudiblePreparedSet = {
 };
 
 beforeEach(() => {
+  vi.mocked(getListeningProgress).mockResolvedValue({
+    resume_available: false, asset_id: "mm-1", revision_id: "rev-1",
+    audio_sha256: "b".repeat(64), position_milliseconds: 0,
+    duration_milliseconds: 90_000, completed: false, session_id: "",
+    sequence: 0, updated_at: 0, applied: null,
+  });
+  vi.mocked(putListeningProgress).mockRejectedValue(new Error("not expected"));
   vi.mocked(getMultimediaLocalAudibleCapability).mockResolvedValue({
     available: true, reason: "ready", route_policy: "cheapest", cost_usd: 0,
   });
@@ -56,10 +68,16 @@ beforeEach(() => {
     asset_id: "mm-1", revision_id: "rev-1", receipt_sha256: "a".repeat(64),
     audio_sha256: "b".repeat(64), audio_size_bytes: 100, duration_seconds: 90,
     chapter_ids: ["chapter-1"], retention_marker_count: 2, learned_claim_count: 1,
+    chapters: [{ chapter_id: "chapter-1", title: "Flow", sequence: 0, start_offset_seconds: 0, end_offset_seconds: 90 }],
     source_count: 1, audio_url: "/multimedia/assets/mm-1/local-audible/playback/rev-1/audio",
     learned_claims: [{
-      chapter_id: "chapter-1", claim_text: "Whittle patented a turbojet design.",
-      source_count: 1, follow_up_prompt: "Review the source context.",
+      line_id: "chapter-1-line-0", chapter_id: "chapter-1", claim_text: "Whittle patented a turbojet design.",
+      source_count: 1, follow_up_prompt: "Review the source context.", source_chunk_ids: ["chunk-1"],
+      evidence_status: "verified_exact", evidence_sources: [{
+        chunk_id: "chunk-1", document_id: "doc-1", locator: "History", authority_kind: "canonical_graph",
+        chunk_sha256: "c".repeat(64), start_utf8_byte: 0, end_utf8_byte: 35,
+        span_sha256: "d".repeat(64), exact_text: "Whittle patented a turbojet design.",
+      }],
     }],
   });
 });
@@ -82,7 +100,7 @@ describe("LocalAudiblePanel", () => {
     expect(audio.getAttribute("src")).toContain("/local-audible/playback/rev-1/audio");
     fireEvent.click(screen.getByRole("button", { name: "Review learned claims" }));
     expect(await screen.findByText("Whittle patented a turbojet design.")).toBeTruthy();
-    expect(screen.getByText("Review the source context.")).toBeTruthy();
+    expect(screen.getByText(/Review the source context/)).toBeTruthy();
     expect(onRegistered).toHaveBeenCalledOnce();
   });
 
