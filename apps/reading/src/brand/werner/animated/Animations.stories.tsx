@@ -3,6 +3,7 @@ import type { Meta, StoryObj } from "@storybook/react";
 import {
   WernerCaughtAFish,
   WernerSleeping,
+  WernerWaking,
   WernerThinking,
   WernerTobogganSpinner,
   WernerWaddle,
@@ -140,6 +141,44 @@ export const SleepingFidelity: Story = {
             }
           />
         ))}
+      </div>
+    </div>
+  ),
+};
+
+export const RestLifecycleFidelity: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — long-rest lifecycle plates
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        Deterministic semantic plates: persistent authored sleep, one authored
+        wake arrival, and the reduced-motion neutral floor.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <Cell
+          label="Sleeping"
+          hint="persistent hold"
+          pose={<WernerSleeping size={96} reduced />}
+        />
+        <Cell
+          label="Waking"
+          hint="exactly once per sleep"
+          pose={<WernerWaking size={96} reduced />}
+        />
+        <Cell
+          label="Reduced motion"
+          hint="lifecycle disabled · neutral still"
+          pose={
+            <Werner
+              mood="idle"
+              size={96}
+              label="Werner at rest"
+              className="werner-motion-static"
+            />
+          }
+        />
       </div>
     </div>
   ),

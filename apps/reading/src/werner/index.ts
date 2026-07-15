@@ -62,6 +62,7 @@ export { wernerIceFishingCursor } from "./iceFishingFlags";
 export { WernerIceBait } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";
+export { useStationInstrumentSuspended } from "./stationInstrumentSuspension";
 export { catenaryPath, rodTipFromMascotRect } from "./fishingLineGeometry";
 
 export {
@@ -105,6 +106,14 @@ export {
   stationAmbientClass,
   type StationAmbientInput,
 } from "./stationAmbient";
+
+export {
+  createStationRestLifecycle,
+  STATION_LONG_REST_MS,
+  STATION_WAKE_MS,
+  type StationRestLifecycle,
+  type StationRestPhase,
+} from "./stationRestLifecycle";
 
 export { default as WernerRig, type WernerRigProps } from "./WernerRig";
 

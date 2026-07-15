@@ -141,6 +141,20 @@
   animation: werner-idle-sway 4200ms ease-in-out infinite;
   transform-origin: 50% 65%;
 }
+.werner-motion-static .werner-idle {
+  animation: none;
+  transform: rotate(0deg);
+}
+
+@keyframes werner-waking-arrive {
+  0% { opacity: 0; transform: translateY(3px) rotate(-2deg); }
+  45% { opacity: 1; transform: translateY(-1px) rotate(1deg); }
+  100% { opacity: 1; transform: translateY(0) rotate(0); }
+}
+.werner-waking {
+  animation: werner-waking-arrive 900ms ease-out both;
+  transform-origin: 50% 70%;
+}
 
 /* The lost/empty source frames Werner as a tiny figure on a 1024px horizon:
    its visible subject occupies 1.4% of the canvas versus 24–32% for the other
@@ -187,7 +201,8 @@
   .werner-fish-flipper,
   .werner-fish-sparkle,
   .penguin-mascot-wander,
-  .werner-idle {
+  .werner-idle,
+  .werner-waking {
     animation: none !important;
   }
   .penguin-mascot-wander { transform: translate(0, 0); }
