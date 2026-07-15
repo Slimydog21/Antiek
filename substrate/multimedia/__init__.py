@@ -20,6 +20,20 @@ from .authorized_production_worker import (
     ChapterNarrationAuthority,
     produce_authorized_multimedia,
 )
+from .bedrock_live_guard_acquisition import (
+    BedrockLiveGuardAcquisitionError,
+    CustodyAttestationClient,
+    LiveGuardAcquisitionAttempt,
+    LiveGuardAcquisitionCommand,
+    LiveGuardAcquisitionCoordinator,
+    LiveGuardAcquisitionJournal,
+    LiveGuardAcquisitionReceipt,
+    OrganizationsGuardEvidenceClient,
+    RevocationEvidenceClient,
+    RevocationEvidenceVerifier,
+    RevocationObservation,
+    VerifiedRevocationResult,
+)
 from .bedrock_live_guard_custody import (
     BedrockLiveGuardCustodyError,
     Cycle34AuthorityVerifier,
@@ -222,6 +236,18 @@ from .video import (
 )
 
 __all__ = [
+    "BedrockLiveGuardAcquisitionError",
+    "CustodyAttestationClient",
+    "LiveGuardAcquisitionAttempt",
+    "LiveGuardAcquisitionCommand",
+    "LiveGuardAcquisitionCoordinator",
+    "LiveGuardAcquisitionJournal",
+    "LiveGuardAcquisitionReceipt",
+    "OrganizationsGuardEvidenceClient",
+    "RevocationEvidenceClient",
+    "RevocationEvidenceVerifier",
+    "RevocationObservation",
+    "VerifiedRevocationResult",
     "BedrockLiveGuardCustodyError",
     "Cycle34AuthorityVerifier",
     "IndependentCustodyAttestation",
