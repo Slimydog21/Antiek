@@ -96,12 +96,15 @@ export default function Settings() {
     if (
       !budget ||
       budget.daily_cap_usd == null ||
-      budget.spent_usd == null ||
+      budget.reserved_estimated_usd == null ||
       budget.daily_cap_usd <= 0
     ) {
       return null;
     }
-    return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
+    return Math.min(
+      100,
+      (budget.reserved_estimated_usd / budget.daily_cap_usd) * 100,
+    );
   }, [budget]);
 
   async function onEstimate() {
@@ -272,10 +275,11 @@ export default function Settings() {
                     }
                   />
                   <Row
-                    label="Spent today"
+                    label="Reserved estimate today"
                     value={
-                      budget.spent_status === "known" && budget.spent_usd != null
-                        ? `$${budget.spent_usd.toFixed(4)}`
+                      budget.spend_basis === "reserved_estimate" &&
+                      budget.reserved_estimated_usd != null
+                        ? `$${budget.reserved_estimated_usd.toFixed(4)}`
                         : "unknown (ledger not inventing $0)"
                     }
                   />
@@ -289,6 +293,12 @@ export default function Settings() {
                   />
                   {budget.cap_env && (
                     <Row label="Cap source" value={budget.cap_env} />
+                  )}
+                  {budget.enforcement_cap_usd != null && (
+                    <Row
+                      label="Daemon enforcement cap"
+                      value={`$${budget.enforcement_cap_usd.toFixed(2)}`}
+                    />
                   )}
                 </div>
                 <div
