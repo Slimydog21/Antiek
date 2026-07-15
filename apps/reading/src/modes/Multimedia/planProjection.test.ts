@@ -4,7 +4,7 @@ import type { MultimediaPlanWire } from "../../api/multimedia";
 import { projectMultimediaPlan } from "./planProjection";
 
 const PLAN: MultimediaPlanWire = {
-  request: { topic: "Chip packaging", target_minutes: 15, mode: "video", route_policy: "balanced" },
+  request: { topic: "Chip packaging", target_minutes: 15, mode: "video", route_policy: "balanced", depth: "intermediate", selected_arc_ids: [] },
   suggestions: [{
     arc_id: "mechanism",
     title: "Packaging mechanism",
@@ -62,6 +62,22 @@ describe("projectMultimediaPlan", () => {
       status: "cited",
       detail: "§2",
     }]);
+    expect(result.value.sourceScope).toBeNull();
+  });
+
+  it("restores research intent without treating it as a citation", () => {
+    const scoped = structuredClone(PLAN);
+    scoped.request.source_scope = "Owned corpus + vetted web sources";
+    const result = projectMultimediaPlan(scoped);
+
+    expect(result.ok && result.value.sourceScope).toBe("Owned corpus + vetted web sources");
+    expect(result.ok && result.value.sources).toHaveLength(1);
+  });
+
+  it("rejects malformed persisted research scope", () => {
+    const malformed = structuredClone(PLAN);
+    malformed.request.source_scope = 42 as unknown as string;
+    expect(projectMultimediaPlan(malformed)).toEqual({ ok: false, error: "Plan research scope is unavailable." });
   });
 
   it("surfaces the server unsourced reason without inventing one", () => {
@@ -105,6 +121,8 @@ describe("projectMultimediaPlan", () => {
     [{}, "chapters"],
     [{ ...PLAN, chapters: [] }, "grounding"],
     [{ ...PLAN, script_lines: [] }, "scene identity"],
+    [{ ...PLAN, suggestions: [...PLAN.suggestions, PLAN.suggestions[0]] }, "coverage selection"],
+    [{ ...PLAN, chosen_arc_ids: ["unknown"] }, "coverage selection"],
     [{ ...PLAN, scenes: [{ ...PLAN.scenes[0], chapter_id: "missing" }] }, "narration provenance"],
     [{ ...PLAN, unsourced_line_ids: ["missing"] }, "ledger conflicts"],
   ])("rejects malformed persisted plan %#", (value, message) => {

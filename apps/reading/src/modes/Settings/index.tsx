@@ -21,13 +21,14 @@ import {
   type ModelRow,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import AddModelPanel from "./AddModelPanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset. Full "add model" + decision-tree override
- * land in later sprints.
+ * ledger or rate table is unset. Add-model securely registers BYOK providers;
+ * granting one dispatch-route authority remains a separate, explicit sprint.
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -229,7 +230,7 @@ export default function Settings() {
                           : "text-amber-700 dark:text-amber-300"
                       }
                     >
-                      {m.ready ? "ready" : "not registered"}
+                      {m.ready ? "ready" : m.registered ? "registered" : "not registered"}
                     </span>
                     {m.tier_bindings.length > 0 && (
                       <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
@@ -246,7 +247,7 @@ export default function Settings() {
               </ul>
             )}
             <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
-              Adding API keys / new models lands in SPR-02. Decision-tree
+              Add your own models with the card below. Decision-tree
               per-prompt override lands in SPR-03.
             </p>
           </div>
@@ -415,9 +416,10 @@ export default function Settings() {
           </div>
         </LemonCard>
 
+        <AddModelPanel />
+
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Add model + multi-provider secret vault (SPR-02)</li>
             <li>Antiek-bench weekly model quality report</li>
             <li>Midnight oil: time + goals + price-ceiling approve UI</li>
             <li>Keyboard map customisation + layout export</li>

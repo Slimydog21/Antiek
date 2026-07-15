@@ -17,27 +17,6 @@ NOW = datetime(2026, 7, 13, tzinfo=UTC)
 KEY = b"local-audible-workstation-test-signing-key"
 
 
-def _ground(plan):  # noqa: ANN001, ANN202
-    authority = next(line.citations for line in plan.script_lines if line.citations)
-    source_ids = tuple(citation.chunk_id for citation in authority)
-    values = plan.model_dump(mode="python")
-    lines = []
-    for line in plan.script_lines:
-        row = line.model_dump(mode="python")
-        if line.kind == "factual" and not line.citations:
-            row.update(citations=authority, unsourced_reason=None)
-        lines.append(type(line).model_validate(row))
-    chapters = []
-    for chapter in plan.chapters:
-        row = chapter.model_dump(mode="python")
-        row["source_chunk_ids"] = tuple(
-            dict.fromkeys((*chapter.source_chunk_ids, *source_ids))
-        )
-        chapters.append(type(chapter).model_validate(row))
-    values.update(script_lines=tuple(lines), chapters=tuple(chapters), unsourced_line_ids=())
-    return type(plan).model_validate(values)
-
-
 def _store(tmp_path: Path, *, mode: str = "audio"):
     store = MultimediaAssetStore(str(tmp_path / "assets"))
     draft = store.create_draft(
@@ -46,14 +25,13 @@ def _store(tmp_path: Path, *, mode: str = "audio"):
             target_minutes=15,
             mode=mode,
             route_policy="cheapest",
-            sources=("Frank Whittle patented a turbojet design in 1930.",),
+            sources=(
+                "Early jet engine history began with Frank Whittle's turbojet patent in 1930.",
+            ),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )
-    if mode == "audio":
-        store.save(
-            draft.model_copy(update={"plan": _ground(draft.plan)}), owner_id="owner-1"
-        )
     ready = store.approve_dry_run(draft.asset.asset_id, owner_id="owner-1")
     return store, ready.asset.asset_id, ready.asset.revision_id
 
