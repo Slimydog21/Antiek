@@ -137,6 +137,93 @@ def test_unknown_fields_reject_browser_authority_before_storage(
         assert response.status_code == 422
 
 
+def test_review_apply_route_is_id_only_private_and_owner_scoped(
+    fixture: tuple[TestClient, MergeDraftRepository, str, Path, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _repository, db_path, _object_path, projection_id = fixture
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
+    draft = client.post("/research/derived-assets/merge/drafts", json=payload(projection_id)).json()
+    review = client.post(
+        f"/research/derived-assets/merge/drafts/{draft['draft_id']}/reviews"
+    ).json()
+    operation_id = "op_" + "1" * 32
+
+    applied = client.post(
+        f"/research/derived-assets/merge/reviews/{review['review_id']}/apply",
+        json={"operation_id": operation_id},
+    )
+    assert applied.status_code == 200
+    assert applied.headers["cache-control"] == "no-store"
+    assert applied.json()["operation_id"] == operation_id
+    assert applied.json()["generation"] == 1
+
+    replay = client.post(
+        f"/research/derived-assets/merge/reviews/{review['review_id']}/apply",
+        json={"operation_id": operation_id},
+    )
+    assert replay.status_code == 200
+    assert replay.json()["replayed"] is True
+
+    asset_id = applied.json()["derived_asset_id"]
+    revision_id = applied.json()["revision_id"]
+    content_sha256 = applied.json()["content_sha256"]
+    restore_body = {
+        "operation_id": "op_" + "4" * 32,
+        "selected_revision_id": revision_id,
+        "expected_revision_id": revision_id,
+        "expected_content_sha256": content_sha256,
+        "expected_generation": 1,
+    }
+    restored = client.post(
+        f"/research/derived-assets/merge/assets/{asset_id}/restore", json=restore_body
+    )
+    assert restored.status_code == 200
+    assert restored.headers["cache-control"] == "no-store"
+    assert restored.json()["generation"] == 2
+    assert (
+        client.post(
+            f"/research/derived-assets/merge/assets/{asset_id}/restore", json=restore_body
+        ).json()["replayed"]
+        is True
+    )
+
+    stale = client.post(
+        f"/research/derived-assets/merge/assets/{asset_id}/restore",
+        json={**restore_body, "operation_id": "op_" + "5" * 32},
+    )
+    assert stale.status_code == 409
+    assert stale.headers["cache-control"] == "no-store"
+    assert stale.json() == {"detail": "merge command refused"}
+    foreign_restore = client.post(
+        f"/research/derived-assets/merge/assets/{asset_id}/restore",
+        json={**restore_body, "operation_id": "op_" + "6" * 32},
+        headers={"x-owner": "owner-b"},
+    )
+    assert foreign_restore.status_code == 404
+    assert foreign_restore.headers["cache-control"] == "no-store"
+    assert foreign_restore.json() == {"detail": "merge authority not found"}
+    forbidden_restore = client.post(
+        f"/research/derived-assets/merge/assets/{asset_id}/restore",
+        json={**restore_body, "operation_id": "op_" + "7" * 32, "canonical_html": "x"},
+    )
+    assert forbidden_restore.status_code == 422
+
+    forbidden = client.post(
+        f"/research/derived-assets/merge/reviews/{review['review_id']}/apply",
+        json={"operation_id": "op_" + "2" * 32, "canonical_html": "<p>authority</p>"},
+    )
+    assert forbidden.status_code == 422
+    foreign = client.post(
+        f"/research/derived-assets/merge/reviews/{review['review_id']}/apply",
+        json={"operation_id": "op_" + "3" * 32},
+        headers={"x-owner": "owner-b"},
+    )
+    assert foreign.status_code == 404
+    assert foreign.headers["cache-control"] == "no-store"
+    assert foreign.json() == {"detail": "merge authority not found"}
+
+
 def test_owner_scope_is_indistinguishable_404(
     fixture: tuple[TestClient, MergeDraftRepository, str, Path, str],
 ) -> None:

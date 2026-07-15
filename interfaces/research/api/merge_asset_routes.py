@@ -142,9 +142,17 @@ def apply_merge_review(
             db_path=default_db_path(),
         )
     except MergeCommitNotFound as exc:
-        raise HTTPException(status_code=404, detail="merge authority not found") from exc
+        raise HTTPException(
+            status_code=404,
+            detail="merge authority not found",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     except MergeCommitError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=409,
+            detail="merge command refused",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     return _commit_response(result)
 
 
@@ -164,9 +172,17 @@ def restore_merge_asset(
             **body.model_dump(),
         )
     except MergeCommitNotFound as exc:
-        raise HTTPException(status_code=404, detail="merge authority not found") from exc
+        raise HTTPException(
+            status_code=404,
+            detail="merge authority not found",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     except MergeCommitError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=409,
+            detail="merge command refused",
+            headers={"Cache-Control": "no-store"},
+        ) from exc
     return _commit_response(result)
 
 

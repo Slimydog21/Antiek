@@ -348,12 +348,22 @@ CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
 
 # Tables this schema creates. Used by tests + the diagnostic CLI.
 SCHEMA_TABLES: tuple[str, ...] = (
-    "documents", "chunks", "nodes", "edges",
-    "syntheses", "synthesis_substrate_manifest",
-    "outcomes", "chunk_tier_overrides",
-    "deliverables", "deliverable_sections", "section_blocks",
-    "interview_projects", "interviews",
-    "ip_holders", "notebooks", "notebook_blocks",
+    "documents",
+    "chunks",
+    "nodes",
+    "edges",
+    "syntheses",
+    "synthesis_substrate_manifest",
+    "outcomes",
+    "chunk_tier_overrides",
+    "deliverables",
+    "deliverable_sections",
+    "section_blocks",
+    "interview_projects",
+    "interviews",
+    "ip_holders",
+    "notebooks",
+    "notebook_blocks",
     "discovery_cache",
     "url_alias",
     "discovery_summary",
@@ -1385,7 +1395,7 @@ CREATE INDEX IF NOT EXISTS idx_merge_reviews_owner
 # SDAM SPR-02 — atomic reviewed commit/restore command ledger and outbox.
 ANTIEK_GRAPH_SCHEMA_V18_MERGE_COMMIT_SQL = """
 CREATE TABLE IF NOT EXISTS derived_asset_merge_operations (
-    operation_id TEXT PRIMARY KEY CHECK (regexp_full_match(operation_id, 'op_[0-9a-f]{32}')),
+    operation_id TEXT NOT NULL CHECK (regexp_full_match(operation_id, 'op_[0-9a-f]{32}')),
     owner_user_id TEXT NOT NULL,
     operation_kind TEXT NOT NULL CHECK (operation_kind IN ('create', 'revise', 'restore')),
     review_id TEXT,
@@ -1403,6 +1413,7 @@ CREATE TABLE IF NOT EXISTS derived_asset_merge_operations (
         regexp_full_match(receipt_sha256, '[0-9a-f]{64}') AND receipt_sha256=sha256(receipt_json)
     ),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (owner_user_id, operation_id),
     UNIQUE (result_revision_id),
     FOREIGN KEY (derived_asset_id, result_revision_id, result_content_sha256)
         REFERENCES derived_asset_revisions(derived_asset_id, revision_id, content_sha256),
@@ -1424,16 +1435,54 @@ CREATE INDEX IF NOT EXISTS idx_derived_asset_merge_operations_owner
 
 CREATE TABLE IF NOT EXISTS derived_asset_merge_outbox (
     outbox_id TEXT PRIMARY KEY CHECK (regexp_full_match(outbox_id, 'out_[0-9a-f]{32}')),
-    operation_id TEXT NOT NULL UNIQUE REFERENCES derived_asset_merge_operations(operation_id),
+    owner_user_id TEXT NOT NULL,
+    operation_id TEXT NOT NULL,
     event_kind TEXT NOT NULL CHECK (event_kind='derived_asset.revision_committed.v1'),
     payload_json TEXT NOT NULL,
     payload_sha256 TEXT NOT NULL CHECK (
         regexp_full_match(payload_sha256, '[0-9a-f]{64}') AND payload_sha256=sha256(payload_json)
     ),
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    published_at TIMESTAMP
+    published_at TIMESTAMP,
+    UNIQUE (owner_user_id, operation_id),
+    FOREIGN KEY (owner_user_id, operation_id)
+        REFERENCES derived_asset_merge_operations(owner_user_id, operation_id)
 );
 """
+
+
+def _repair_empty_legacy_v18_merge_schema(con: LockedConnection) -> None:
+    """Repair the unpublished global-key V18 shape only when it has no ledger rows."""
+    tables = {
+        str(row[0])
+        for row in con.execute(
+            "SELECT table_name FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name IN ('derived_asset_merge_operations','derived_asset_merge_outbox')"
+        ).fetchall()
+    }
+    if "derived_asset_merge_operations" not in tables:
+        return
+    owner_column = con.execute(
+        "SELECT 1 FROM information_schema.columns WHERE table_schema='main' "
+        "AND table_name='derived_asset_merge_outbox' AND column_name='owner_user_id'"
+    ).fetchone()
+    if owner_column == (1,):
+        return
+    operation_count = int(
+        con.execute("SELECT count(*) FROM derived_asset_merge_operations").fetchone()[0]
+    )
+    outbox_count = (
+        int(con.execute("SELECT count(*) FROM derived_asset_merge_outbox").fetchone()[0])
+        if "derived_asset_merge_outbox" in tables
+        else 0
+    )
+    if operation_count or outbox_count:
+        raise RuntimeError(
+            "legacy V18 merge ledger is populated; refusing an unverifiable owner-key migration"
+        )
+    if "derived_asset_merge_outbox" in tables:
+        con.execute("DROP TABLE derived_asset_merge_outbox")
+    con.execute("DROP TABLE derived_asset_merge_operations")
 
 
 def init_database(con: LockedConnection) -> None:
@@ -1485,6 +1534,7 @@ def init_database(con: LockedConnection) -> None:
     # soft ref, no FK). Lives in its own module — detect-and-rebuild logic,
     # not a static SQL string.
     from .migrate_v9_insight_question import migrate as _migrate_v9_insight_question
+
     _migrate_v9_insight_question(con)
     # SPR-04 — attribution_audit (append-only reproducible attribution record).
     # Pure idempotent CREATE IF NOT EXISTS; runs last, FK-references nothing.
@@ -1516,6 +1566,7 @@ def init_database(con: LockedConnection) -> None:
     # ordered evidence-member manifests, and a separate CAS-ready pointer.
     con.execute(ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V17_MERGE_DRAFTS_SQL)
+    _repair_empty_legacy_v18_merge_schema(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V18_MERGE_COMMIT_SQL)
 
 
@@ -1565,7 +1616,9 @@ def _schema_is_present(db_path: str) -> bool:
             "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
             "AND table_name='derived_asset_merge_operations') AND EXISTS ("
             "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
-            "AND table_name='derived_asset_merge_outbox'))"
+            "AND table_name='derived_asset_merge_outbox') AND EXISTS ("
+            "SELECT 1 FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='derived_asset_merge_outbox' AND column_name='owner_user_id'))"
         ).fetchone()
     except Exception:
         return False
