@@ -27,6 +27,7 @@ import { ModelDecisionTreeTab } from "./modelSelection/ModelDecisionTreeTab";
 import { NotDiamondShadowToggle } from "./modelSelection/NotDiamondShadowToggle";
 import { MidnightOilPanel } from "./modelSelection/MidnightOilPanel";
 import type { NotDiamondMode } from "./modelSelection/notDiamondPolicy";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -125,8 +126,15 @@ export default function Settings() {
         expected_output_tokens: outTokens,
       });
       setEstimate(res);
+      // Living-TV beat: over-budget projection makes Werner dizzy; safe stays calm.
+      if (res.would_exceed_budget === true) {
+        emitWernerExperience("fail");
+      } else if (res.would_exceed_budget === false) {
+        emitWernerExperience("highlight");
+      }
     } catch (e) {
       setEstimateError(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     } finally {
       setEstimating(false);
     }
