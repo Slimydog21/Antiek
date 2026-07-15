@@ -8,16 +8,17 @@ Register with::
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import APIRouter, FastAPI, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.twin_notes.store import (
     TwinNotesError,
     TwinNotesStore,
     TwinNotFound,
     TwinParentMismatch,
+    TwinStoreCorrupt,
 )
 
 twin_notes_router = APIRouter(prefix="/twins", tags=["twin-notes"])
@@ -36,17 +37,24 @@ def _store() -> TwinNotesStore:
 
 
 class RecordTwinRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     parent_asset_id: str = Field(min_length=1, max_length=512)
-    insights: list[str] = Field(default_factory=list)
-    questions: list[str] = Field(default_factory=list)
-    source_label: str = ""
-    twin_id: str | None = None
+    insights: list[Annotated[str, Field(min_length=1, max_length=10_000)]] = Field(
+        default_factory=list, max_length=200
+    )
+    questions: list[Annotated[str, Field(min_length=1, max_length=10_000)]] = Field(
+        default_factory=list, max_length=200
+    )
+    source_label: str = Field(default="", max_length=256)
 
 
 class MergeTwinsRequest(BaseModel):
-    twin_ids: list[str] = Field(min_length=1)
-    parent_asset_id: str | None = None
-    source_label: str = "merged"
+    model_config = ConfigDict(extra="forbid")
+    twin_ids: list[Annotated[str, Field(min_length=1, max_length=128)]] = Field(
+        min_length=1, max_length=100
+    )
+    parent_asset_id: str | None = Field(default=None, max_length=512)
+    source_label: str = Field(default="merged", max_length=256)
 
 
 @twin_notes_router.post("")
@@ -57,8 +65,9 @@ def record_twin(req: RecordTwinRequest) -> dict[str, Any]:
             insights=req.insights,
             questions=req.questions,
             source_label=req.source_label,
-            twin_id=req.twin_id,
         )
+    except TwinStoreCorrupt as e:
+        raise HTTPException(status_code=503, detail="twin store unavailable") from e
     except TwinNotesError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return doc.to_dict()
@@ -68,6 +77,8 @@ def record_twin(req: RecordTwinRequest) -> dict[str, Any]:
 def list_twins(parent_asset_id: str) -> dict[str, Any]:
     try:
         twins = _store().list_for_parent(parent_asset_id)
+    except TwinStoreCorrupt as e:
+        raise HTTPException(status_code=503, detail="twin store unavailable") from e
     except TwinNotesError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return {"parent_asset_id": parent_asset_id, "twins": [t.to_dict() for t in twins]}
@@ -79,6 +90,8 @@ def get_twin(twin_id: str, parent_asset_id: str | None = None) -> dict[str, Any]
         doc = _store().load(twin_id, parent_asset_id=parent_asset_id)
     except TwinNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except TwinStoreCorrupt as e:
+        raise HTTPException(status_code=503, detail="twin store unavailable") from e
     except TwinNotesError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return doc.to_dict()
@@ -99,6 +112,8 @@ def merge_twins(req: MergeTwinsRequest) -> dict[str, Any]:
         ) from e
     except TwinNotFound as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
+    except TwinStoreCorrupt as e:
+        raise HTTPException(status_code=503, detail="twin store unavailable") from e
     except TwinNotesError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return doc.to_dict()

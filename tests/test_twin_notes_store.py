@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor
+from inspect import signature
 from pathlib import Path
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from interfaces.research.api.app import create_app
 from interfaces.research.api.twin_notes_routes import (
     register_twin_notes_routes,
     set_twin_notes_store,
@@ -15,6 +19,7 @@ from substrate.twin_notes.store import (
     TwinNotesStore,
     TwinNotFound,
     TwinParentMismatch,
+    TwinStoreCorrupt,
 )
 
 
@@ -71,6 +76,39 @@ def test_load_missing_raises(tmp_path: Path) -> None:
         pass
 
 
+def test_concurrent_records_do_not_lose_committed_twins(tmp_path: Path) -> None:
+    store = TwinNotesStore(tmp_path)
+
+    def record(index: int) -> None:
+        store.record("shared-parent", insights=[f"insight-{index}"])
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        list(executor.map(record, range(40)))
+
+    twins = store.list_for_parent("shared-parent")
+    assert len(twins) == 40
+    assert {t.insights[0] for t in twins} == {f"insight-{index}" for index in range(40)}
+
+
+def test_corruption_fails_closed_and_next_write_preserves_file(tmp_path: Path) -> None:
+    store = TwinNotesStore(tmp_path)
+    store.record("parent", insights=["original"])
+    path = next(tmp_path.glob("*.json"))
+    path.write_text("{broken", encoding="utf-8")
+
+    with pytest.raises(TwinStoreCorrupt):
+        store.list_for_parent("parent")
+    with pytest.raises(TwinStoreCorrupt):
+        store.record("parent", insights=["must-not-overwrite"])
+
+    assert path.read_text(encoding="utf-8") == "{broken"
+
+
+def test_mutation_apis_do_not_accept_caller_selected_ids() -> None:
+    assert "twin_id" not in signature(TwinNotesStore.record).parameters
+    assert "result_twin_id" not in signature(TwinNotesStore.merge).parameters
+
+
 def test_sanitized_parent_filename_collision_does_not_clobber(tmp_path: Path) -> None:
     """Distinct parents that sanitize to the same stem must not share a file."""
     store = TwinNotesStore(tmp_path)
@@ -103,6 +141,11 @@ def test_http_record_list_merge(tmp_path: Path) -> None:
     )
     assert r1.status_code == 200, r1.text
     t1 = r1.json()["twin_id"]
+    caller_id = client.post(
+        "/twins",
+        json={"parent_asset_id": "html-asset-1", "twin_id": "caller-controlled"},
+    )
+    assert caller_id.status_code == 422
     r2 = client.post(
         "/twins",
         json={
@@ -134,4 +177,16 @@ def test_http_record_list_merge(tmp_path: Path) -> None:
     assert bad.status_code == 409
     assert bad.json()["detail"]["code"] == "cross_parent_merge_rejected"
 
+    set_twin_notes_store(None)
+
+
+def test_routes_are_mounted_in_assembled_app(tmp_path: Path) -> None:
+    set_twin_notes_store(TwinNotesStore(tmp_path))
+    app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
+    client = TestClient(app)
+    created = client.post("/twins", json={"parent_asset_id": "assembled-parent"})
+    assert created.status_code == 200
+    twin_id = created.json()["twin_id"]
+    assert client.get(f"/twins/{twin_id}").status_code == 200
+    assert client.get("/twins/by-parent/assembled-parent").status_code == 200
     set_twin_notes_store(None)
