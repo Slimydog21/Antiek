@@ -81,6 +81,10 @@ def _block_text(block: OutlineBlock, *, node_label_resolver: Callable[[str], str
     label via the resolver (the node is the content of record);
     user-originated blocks carry inline content."""
     if block.provenance_kind == "graph_node":
+        from .composition_draft import composition_snapshot_text
+        snapshot_text = composition_snapshot_text(block.metadata, node_id=block.node_id)
+        if snapshot_text is not None:
+            return snapshot_text
         if node_label_resolver and block.node_id:
             return node_label_resolver(block.node_id)
         return block.node_id or ""

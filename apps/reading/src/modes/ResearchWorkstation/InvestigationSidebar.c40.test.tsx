@@ -5,9 +5,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import InvestigationSidebar from "./InvestigationSidebar";
 
 const composeMock = vi.fn();
+const draftMock = vi.fn();
 vi.mock("../../lib/api", async (load) => {
   const actual = await load<typeof import("../../lib/api")>();
-  return { ...actual, composeResearchArtifacts: (...args: unknown[]) => composeMock(...args) };
+  return {
+    ...actual,
+    composeResearchArtifacts: (...args: unknown[]) => composeMock(...args),
+    createCompositionDraft: (...args: unknown[]) => draftMock(...args),
+  };
 });
 vi.mock("../../hooks/useInvestigationList", () => ({
   useInvestigationList: () => ({
@@ -20,7 +25,7 @@ vi.mock("../../hooks/useInvestigationList", () => ({
 }));
 
 describe("Cycle 40 investigation composition", () => {
-  beforeEach(() => { composeMock.mockReset(); });
+  beforeEach(() => { composeMock.mockReset(); draftMock.mockReset(); });
   afterEach(() => cleanup());
 
   it("selects completed rows in explicit order and opens success in a new tab", async () => {
@@ -33,7 +38,7 @@ describe("Cycle 40 investigation composition", () => {
     expect((screen.getByLabelText("Select inv-running") as HTMLInputElement).disabled).toBe(true);
     fireEvent.click(screen.getByLabelText("Select inv-b"));
     fireEvent.click(screen.getByLabelText("Select inv-a"));
-    fireEvent.click(screen.getByText("Compose HTML"));
+    fireEvent.click(screen.getByText("Open HTML"));
     await waitFor(() => expect(composeMock).toHaveBeenCalledWith(["inv-b", "inv-a"]));
     expect(open).toHaveBeenCalledWith("", "_blank");
     expect(replace).toHaveBeenCalledWith(
@@ -48,7 +53,7 @@ describe("Cycle 40 investigation composition", () => {
     fireEvent.click(screen.getByText("Select"));
     fireEvent.click(screen.getByLabelText("Select inv-a"));
     fireEvent.click(screen.getByLabelText("Select inv-b"));
-    fireEvent.click(screen.getByText("Compose HTML"));
+    fireEvent.click(screen.getByText("Open HTML"));
     expect((await screen.findByRole("alert")).textContent).toContain("inv-b is not completed");
     expect((screen.getByLabelText("Select inv-a") as HTMLInputElement).checked).toBe(true);
     expect((screen.getByLabelText("Select inv-b") as HTMLInputElement).checked).toBe(true);
@@ -63,10 +68,54 @@ describe("Cycle 40 investigation composition", () => {
     fireEvent.click(screen.getByText("Select"));
     fireEvent.click(screen.getByLabelText("Select inv-a"));
     fireEvent.click(screen.getByLabelText("Select inv-b"));
-    fireEvent.click(screen.getByText("Compose HTML"));
+    fireEvent.click(screen.getByText("Open HTML"));
     await waitFor(() => expect(composeMock).toHaveBeenCalledTimes(1));
     expect((screen.getByRole("button", { name: "Done" }) as HTMLButtonElement).disabled).toBe(true);
     expect((screen.getByLabelText("Select inv-a") as HTMLInputElement).disabled).toBe(true);
     expect((screen.getByLabelText("Select inv-b") as HTMLInputElement).disabled).toBe(true);
+  });
+
+  it("creates a source scaffold and opens it in Write", async () => {
+    composeMock.mockResolvedValue({ composition_id: `cmp-${"a".repeat(64)}` });
+    draftMock.mockResolvedValue({ deliverable_id: "dlv-review" });
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000041");
+    const replace = vi.fn();
+    vi.spyOn(window, "open").mockReturnValue(
+      { close: vi.fn(), location: { replace }, opener: window } as unknown as Window,
+    );
+    render(<MemoryRouter><InvestigationSidebar /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Select"));
+    fireEvent.click(screen.getByLabelText("Select inv-b"));
+    fireEvent.click(screen.getByLabelText("Select inv-a"));
+    fireEvent.click(screen.getByText("Create review draft"));
+    await waitFor(() => expect(draftMock).toHaveBeenCalledWith({
+      composition_id: `cmp-${"a".repeat(64)}`,
+      idempotency_key: "00000000-0000-4000-8000-000000000041",
+      title: "Analysis: Beta",
+    }));
+    expect(replace).toHaveBeenCalledWith(
+      new URL("/write/dlv-review", window.location.origin).toString(),
+    );
+  });
+
+  it("retries the exact composition request after a lost draft response", async () => {
+    composeMock.mockResolvedValueOnce({ composition_id: `cmp-${"b".repeat(64)}` });
+    draftMock
+      .mockRejectedValueOnce(new Error("response lost"))
+      .mockResolvedValueOnce({ deliverable_id: "dlv-recovered" });
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("00000000-0000-4000-8000-000000000042");
+    vi.spyOn(window, "open").mockReturnValue(
+      { close: vi.fn(), location: { replace: vi.fn() }, opener: null } as unknown as Window,
+    );
+    render(<MemoryRouter><InvestigationSidebar /></MemoryRouter>);
+    fireEvent.click(screen.getByText("Select"));
+    fireEvent.click(screen.getByLabelText("Select inv-a"));
+    fireEvent.click(screen.getByLabelText("Select inv-b"));
+    fireEvent.click(screen.getByText("Create review draft"));
+    await screen.findByText("response lost");
+    fireEvent.click(screen.getByText("Create review draft"));
+    await waitFor(() => expect(draftMock).toHaveBeenCalledTimes(2));
+    expect(composeMock).toHaveBeenCalledTimes(1);
+    expect(draftMock.mock.calls[1]).toEqual(draftMock.mock.calls[0]);
   });
 });

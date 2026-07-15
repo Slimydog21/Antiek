@@ -14,7 +14,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .export import build_html_only
+from .import_notes import parse_body_from_html
 from .paths import composition_member_path_for, composition_path_for, research_artifacts_dir
+from .schema import ResearchArtifactBody
 
 _SAFE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,127}$")
 
@@ -33,6 +35,22 @@ class ComposeResult:
     path: Path
     members: list[ComposeMember]
     hash_conflicts: list[tuple[str, str]]
+
+
+@dataclass(frozen=True)
+class VerifiedCompositionMember:
+    investigation_id: str
+    content_hash: str
+    rendered_sha256: str
+    body: ResearchArtifactBody
+
+
+@dataclass(frozen=True)
+class VerifiedComposition:
+    composition_id: str
+    ordered_set_digest: str
+    schema_version: int
+    members: list[VerifiedCompositionMember]
 
 
 def validate_investigation_ids(investigation_ids: list[str]) -> None:
@@ -142,7 +160,7 @@ def _publish_immutable(path: Path, content: str) -> None:
         os.close(directory)
 
 
-def _open_or_create_directory(path: Path) -> int:
+def _open_directory(path: Path, *, create: bool) -> int:
     absolute = path.expanduser().absolute()
     store = research_artifacts_dir().expanduser().absolute()
     try:
@@ -163,6 +181,8 @@ def _open_or_create_directory(path: Path) -> int:
             try:
                 next_descriptor = os.open(part, flags, dir_fd=descriptor)
             except FileNotFoundError:
+                if not create:
+                    raise
                 os.mkdir(part, 0o700, dir_fd=descriptor)
                 next_descriptor = os.open(part, flags, dir_fd=descriptor)
             os.close(descriptor)
@@ -171,6 +191,120 @@ def _open_or_create_directory(path: Path) -> int:
     except BaseException:
         os.close(descriptor)
         raise
+
+
+def _open_or_create_directory(path: Path) -> int:
+    return _open_directory(path, create=True)
+
+
+def read_composition_store_file(*parts: str) -> bytes:
+    if not parts or any(not part or part in {".", ".."} or "/" in part for part in parts):
+        raise ValueError("invalid composition store path")
+    directory = _open_directory(
+        composition_path_for("cmp-" + "0" * 64).parent.joinpath(*parts[:-1]),
+        create=False,
+    )
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        fd = os.open(parts[-1], flags, dir_fd=directory)
+        try:
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+                raise FileNotFoundError
+            chunks: list[bytes] = []
+            while chunk := os.read(fd, 1024 * 1024):
+                chunks.append(chunk)
+            return b"".join(chunks)
+        finally:
+            os.close(fd)
+    finally:
+        os.close(directory)
+
+
+def verify_composition_index(content: bytes, composition_id: str) -> dict[str, object]:
+    marker = b'id="composition-metadata">'
+    metadata = json.loads(content.split(marker, 1)[1].split(b"</script>", 1)[0])
+    members = metadata["members"]
+    if (
+        not isinstance(members, list)
+        or not 2 <= len(members) <= 20
+        or any(
+            not isinstance(member, dict)
+            or set(member) != {"investigation_id", "content_hash", "rendered_sha256"}
+            or not isinstance(member.get("investigation_id"), str)
+            or not _SAFE_ID.fullmatch(member["investigation_id"])
+            or not isinstance(member.get("content_hash"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", member["content_hash"])
+            or not isinstance(member.get("rendered_sha256"), str)
+            or not re.fullmatch(r"[0-9a-f]{64}", member["rendered_sha256"])
+            for member in members
+        )
+    ):
+        raise ValueError("invalid composition members")
+    identity = [
+        (member["investigation_id"], member["content_hash"], member["rendered_sha256"])
+        for member in members
+    ]
+    expected_conflicts: list[list[str]] = []
+    first_by_hash: dict[str, str] = {}
+    for investigation_id, content_hash, _rendered_sha256 in identity:
+        if content_hash in first_by_hash:
+            expected_conflicts.append([first_by_hash[content_hash], investigation_id])
+        else:
+            first_by_hash[content_hash] = investigation_id
+    if (
+        set(metadata)
+        != {
+            "composition_id",
+            "hash_conflicts",
+            "members",
+            "ordered_set_digest",
+            "schema_version",
+        }
+        or type(metadata.get("schema_version")) is not int
+        or metadata.get("schema_version") != 1
+        or metadata.get("hash_conflicts") != expected_conflicts
+        or metadata.get("composition_id") != composition_id
+        or metadata.get("ordered_set_digest") != composition_id.removeprefix("cmp-")
+        or composition_id_for(identity) != composition_id
+        or render_composition_index(metadata).encode("utf-8") != content
+    ):
+        raise ValueError("composition index integrity failure")
+    return metadata
+
+
+def load_verified_composition(composition_id: str) -> VerifiedComposition:
+    index_path = composition_path_for(composition_id)
+    metadata = verify_composition_index(
+        read_composition_store_file(index_path.name), composition_id
+    )
+    verified: list[VerifiedCompositionMember] = []
+    for member in metadata["members"]:
+        investigation_id = member["investigation_id"]
+        member_path = composition_member_path_for(composition_id, investigation_id)
+        raw = read_composition_store_file(composition_id, member_path.name)
+        if hashlib.sha256(raw).hexdigest() != member["rendered_sha256"]:
+            raise ValueError("composition member rendered hash mismatch")
+        body = parse_body_from_html(raw.decode("utf-8"))
+        if (
+            body.investigation_id != investigation_id
+            or body.content_hash() != member["content_hash"]
+        ):
+            raise ValueError("composition member semantic identity mismatch")
+        verified.append(
+            VerifiedCompositionMember(
+                investigation_id=investigation_id,
+                content_hash=member["content_hash"],
+                rendered_sha256=member["rendered_sha256"],
+                body=body,
+            )
+        )
+    return VerifiedComposition(
+        composition_id=composition_id,
+        ordered_set_digest=metadata["ordered_set_digest"],
+        schema_version=metadata["schema_version"],
+        members=verified,
+    )
 
 
 def compose_artifacts(

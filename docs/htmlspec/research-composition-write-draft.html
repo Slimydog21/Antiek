@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cycle 41 - Composition to Write draft</title>
+<style>:root{font-family:Inter,system-ui,sans-serif;color:#171717;background:#f4f5f7}body{margin:0}main{max-width:1040px;margin:auto;padding:24px}header,section{background:#fff;border:1px solid #d6dae1;border-radius:6px;padding:20px;margin-bottom:14px}h1{font-size:30px;margin:4px 0 8px}h2{font-size:20px}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}.item{border:1px solid #d6dae1;border-radius:6px;padding:12px}code{background:#eef0f3;padding:1px 4px}li{margin:6px 0}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd1d8;padding:8px;text-align:left;vertical-align:top}.decision{border-left:4px solid #23663c;padding-left:12px}@media(max-width:620px){main{padding:10px}header,section{padding:14px}}</style></head>
+<body><main>
+<header><p>Antiek / Research / Write</p><h1>Turn a verified research composition into a reviewable Write draft</h1><p>Create an editable analysis workspace from multiple completed investigations without treating concatenation as synthesis or losing immutable source identity.</p><p><strong>Status:</strong> executable · <strong>Parent:</strong> <a href="research-multi-investigation-compose.html">Cycle 40 composition</a></p></header>
+<section><h2>Decision</h2><p class="decision"><strong>Import source authority; do not generate prose.</strong> One explicit command creates a draft deliverable with a blank Analysis section and ordered source sections. Exact Cycle 40 member snapshots seed graph-backed blocks. The existing cited creative-writer command remains the only model-generation boundary and must be invoked separately.</p></section>
+<section><h2>Five values</h2><div class="grid">
+<div class="item"><strong>Intellectual honesty</strong><p><code>source_scaffold</code> is not called a synthesized analysis. Empty evidence is reported, never filled.</p></div>
+<div class="item"><strong>Fairness</strong><p>Composition order is retained. Every member remains visible even when it contributes no blocks.</p></div>
+<div class="item"><strong>Rigor</strong><p>Import reopens the canonical index and every immutable member, verifies both hashes, and persists the exact ordered tuples.</p></div>
+<div class="item"><strong>Diligence</strong><p>One owner-scoped idempotency receipt binds the complete request. Database creation is atomic and replay-stable.</p></div>
+<div class="item"><strong>Defensibility</strong><p>Every imported block records composition, member, hash, snapshot text, and source node identity; later citations can resolve both immutable and current graph authority.</p></div>
+</div></section>
+<section><h2>Durable contract</h2><ul>
+<li><code>deliverable_compositions</code> binds deliverable, authenticated owner, idempotency key, request digest, composition ID, ordered digest, schema version, analysis section, and import time.</li>
+<li><code>deliverable_composition_members</code> binds member index, investigation ID, semantic hash, rendered hash, source section, evidence count, and an explicit insufficient-evidence bit.</li>
+<li>The composition tuple order is immutable import provenance. A writer may reorder presentation sections later without changing it.</li>
+<li>Imported graph blocks retain <code>node_id</code> provenance and carry exact snapshot text plus the complete member tuple in trusted metadata. Draft generation reads snapshot text for this profile rather than mutable graph labels.</li>
+<li>The deliverable's singular <code>investigation_root_id</code> remains null; it must not lie about a multi-investigation source.</li>
+</ul></section>
+<section><h2>API and workstation</h2><table><thead><tr><th>Surface</th><th>Contract</th></tr></thead><tbody>
+<tr><td><code>POST /write/deliverables/from-composition</code></td><td>Accept exact composition ID, 16-128 character idempotency key, bounded title, and deliverable kind. Derive owner from authentication. Return the replay-stable source scaffold and no generation authority.</td></tr>
+<tr><td>Research sidebar</td><td>After composition, expose Create review draft. Open the resulting <code>/write/{deliverable_id}</code> route. Keep the HTML review available as a separate command.</td></tr>
+<tr><td>Write detail</td><td>Existing sections and outline controls render the scaffold. Future source-panel work reads normalized provenance; no private filesystem path reaches the browser.</td></tr>
+</tbody></table></section>
+<section><h2>Failure semantics</h2><ul>
+<li>Malformed/unknown composition is 404. Integrity or member disagreement is 409. Invalid input is 422.</li>
+<li>Same owner and idempotency key with exact request replays the original result. Different request terms conflict.</li>
+<li>Index/member tamper, missing bytes, duplicate snapshot node IDs within one member, unsafe IDs, request drift, or stored receipt drift creates nothing.</li>
+<li>A graph node deleted after composition remains an explicit dangling source block. Snapshot text is retained; current trace reports the deletion.</li>
+<li>No provider, model, graph-node creation, source mutation, publication, spend, approval, or automatic generation occurs.</li>
+</ul></section>
+<section><h2>Acceptance criteria</h2><ol>
+<li>Two verified members create one draft, one blank Analysis section, two ordered source sections, exact normalized tuples, and snapshot-backed outline blocks in one transaction.</li>
+<li>Analysis contains the deterministic ordered union of member evidence; source sections contain only their own evidence.</li>
+<li>Zero-evidence members remain as sections and appear in <code>insufficient_evidence_members</code>.</li>
+<li>Exact replay returns identical IDs and counts; changed title, kind, composition, or key terms under the same key returns 409.</li>
+<li>Index, member, semantic hash, rendered hash, investigation identity, or member JSON tamper leaves no deliverable rows.</li>
+<li>Generation context uses immutable snapshot text for imported blocks and retains ordinary behavior for all existing blocks.</li>
+<li>The browser freezes both commands while pending, reports one actionable failure, opens the Write route on success, and never confuses HTML review with draft creation.</li>
+<li>Existing single-investigation promotion, manual deliverables, generation, editing, and export tests remain green.</li>
+</ol></section>
+<section><h2>Known boundary</h2><p>Cycle 40 research storage is authenticated single-operator state because its event records lack owner identity. This import derives the authenticated deliverable owner but cannot prove historical per-member ownership. Multi-user enablement requires an owner-bearing research-event migration and composition owner binding; this sprint does not manufacture that claim.</p></section>
+</main></body></html>

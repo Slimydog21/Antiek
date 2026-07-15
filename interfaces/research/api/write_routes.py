@@ -40,7 +40,7 @@ from contextlib import contextmanager
 from typing import Any, Literal
 
 import duckdb
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Response
 from pydantic import BaseModel, Field
 
 from roles.creative_writer.prompt import AdjacentSection
@@ -695,3 +695,80 @@ def edit_selection(req: EditSelectionRequest) -> dict[str, Any]:
         "deliverable_id": req.deliverable_id,
         "section_id": req.section_id,
     }
+
+
+class FromCompositionRequest(BaseModel):
+    composition_id: str = Field(..., pattern=r"^cmp-[0-9a-f]{64}$")
+    idempotency_key: str = Field(..., min_length=16, max_length=128)
+    title: str = Field(..., min_length=1, max_length=300)
+    deliverable_kind: Literal[
+        "research_memo", "book_chapter", "biography_section",
+        "investor_brief", "general_essay",
+    ] = "research_memo"
+
+
+class CompositionDraftMemberResponse(BaseModel):
+    member_index: int
+    investigation_id: str
+    content_hash: str
+    rendered_sha256: str
+    source_section_id: str
+    evidence_count: int
+    insufficient_evidence: bool
+
+
+class FromCompositionResponse(BaseModel):
+    deliverable_id: str
+    composition_id: str
+    ordered_set_digest: str
+    analysis_section_id: str
+    review_state: Literal["source_scaffold"] = "source_scaffold"
+    generated: Literal[False] = False
+    replayed: bool
+    members: list[CompositionDraftMemberResponse]
+    insufficient_evidence_members: list[str]
+
+
+@write_router.post(
+    "/deliverables/from-composition", status_code=201,
+    response_model=FromCompositionResponse,
+)
+def create_draft_from_composition(
+    body: FromCompositionRequest, request: Request, response: Response,
+) -> FromCompositionResponse:
+    from substrate.research_artifact import load_verified_composition
+    from substrate.write.composition_draft import create_composition_draft
+
+    owner_user_id = getattr(request.state, "user_id", None)
+    if not owner_user_id:
+        raise HTTPException(status_code=401, detail="authentication required")
+    try:
+        composition = load_verified_composition(body.composition_id)
+    except ValueError as exc:
+        if str(exc) == "invalid composition ID":
+            raise HTTPException(status_code=404, detail="composition not found") from exc
+        raise HTTPException(
+            status_code=409, detail="composition integrity verification failed",
+        ) from exc
+    except (FileNotFoundError, NotADirectoryError, OSError, UnicodeError):
+        raise HTTPException(status_code=404, detail="composition not found") from None
+
+    try:
+        with _write("write/create_composition_draft") as con:
+            result = create_composition_draft(
+                con, owner_user_id=owner_user_id, composition=composition,
+                title=body.title, deliverable_kind=body.deliverable_kind,
+                idempotency_key=body.idempotency_key,
+            )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    response.headers["Cache-Control"] = "private, no-store"
+    return FromCompositionResponse(
+        deliverable_id=result.deliverable_id,
+        composition_id=result.composition_id,
+        ordered_set_digest=result.ordered_set_digest,
+        analysis_section_id=result.analysis_section_id,
+        replayed=result.replayed,
+        members=[CompositionDraftMemberResponse(**member.__dict__) for member in result.members],
+        insufficient_evidence_members=result.insufficient_evidence_members,
+    )
