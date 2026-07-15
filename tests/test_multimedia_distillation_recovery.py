@@ -77,6 +77,7 @@ def _ready(store: MultimediaAssetStore):
             mode="audio",
             route_policy="balanced",
             sources=("Durable claims prevent silent duplicate model spend.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-a",
     )
