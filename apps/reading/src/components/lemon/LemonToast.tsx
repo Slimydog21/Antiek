@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { notifyShellFailure } from "../../werner/shellExperienceSignals";
+
 /**
  * LemonToast — tiny pub-sub toast queue + viewport renderer.
  *
@@ -20,6 +22,7 @@ let _items: Item[] = [];
 const _listeners = new Set<(s: Item[]) => void>();
 
 function emit(kind: Kind, msg: string, ttl: number) {
+  if (kind === "err") notifyShellFailure();
   const item: Item = { id: _nextId++, kind, msg, ttl };
   _items = [..._items, item];
   _listeners.forEach((l) => l(_items));

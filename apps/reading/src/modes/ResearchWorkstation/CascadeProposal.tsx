@@ -23,6 +23,7 @@ import {
   type SpendMode,
   type SpendPreview,
 } from "../../api/research";
+import { notifyResearchStarted } from "../../werner";
 
 /**
  * CascadeProposal — the Research door's "break this into sub-questions" mode
@@ -252,8 +253,9 @@ export default function CascadeProposal({ problem, onLaunched, onFallBackToAsk }
               hard_ceiling_usd: priceCeiling,
               authority_digest: authorityDigest!,
             }
-          : { aggregate_budget_usd: parsedCeiling },
+           : { aggregate_budget_usd: parsedCeiling },
       );
+      notifyResearchStarted(r.session_id);
       onLaunched(r.session_id);
     } catch (e) {
       setFailureStage(approvalCompleted ? "launch" : "approval");

@@ -25,9 +25,9 @@ export default function WernerThinking({
       aria-label={label}
       className="inline-flex items-center gap-2 align-middle"
     >
-      {/* Idle penguin (no internal dots — those alias to sub-pixel at 20px);
-          the four external aurora dots beside it are the single thinking signal. */}
-      <Werner mood="idle" size={size} />
+      {/* The canonical thinking pose carries the semantic state; the four
+          external aurora dots make ongoing work legible even at 20–24 px. */}
+      <Werner mood="thinking" size={size} />
       <span className="inline-flex items-center gap-1.5">
         <span
           className="block werner-thinking-dot-1 rounded-full"
