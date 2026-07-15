@@ -1,5 +1,16 @@
 """Recursive twin note-taker generation and advisory search substrates."""
 
+from .compression import (
+    COMPRESSION_AUTHORITY,
+    COMPRESSOR_VERSION,
+    RENDERER_VERSION,
+    DurableTwinNoteCompression,
+    OwnershipResolver,
+    TwinNoteCompressionError,
+    TwinNoteCompressionService,
+    TwinNoteRevision,
+)
+
 from .generate import (
     AUTHORITY_VERIFY_KEY_ENV,
     MAX_CONTENT_CHARS,
@@ -58,6 +69,14 @@ from .search import (
 )
 
 __all__ = [
+    "COMPRESSION_AUTHORITY",
+    "COMPRESSOR_VERSION",
+    "RENDERER_VERSION",
+    "DurableTwinNoteCompression",
+    "OwnershipResolver",
+    "TwinNoteCompressionError",
+    "TwinNoteCompressionService",
+    "TwinNoteRevision",
     "AUTHORITY_VERIFY_KEY_ENV",
     "MAX_CONTENT_CHARS",
     "MAX_CONTENT_CLASS_CHARS",
