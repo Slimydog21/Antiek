@@ -109,9 +109,88 @@ def test_compose_preview_create_view_member_and_delete(api_env):
     assert "Later source change" not in member.text
     assert "Add note to artifact" not in member.text
     assert "<script>" not in member.text
-    assert client.delete(f"/research/artifact-composes/{draft['compose_id']}").status_code == 204
-    assert client.delete(f"/research/artifact-composes/{draft['compose_id']}").status_code == 404
-    assert client.get(draft["view_url"]).status_code == 404
+    workspace = client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/write-workspace", json={}
+    )
+    assert workspace.status_code == 201
+    receipt = workspace.json()
+    assert receipt["write_url"] == f"/write/{receipt['deliverable_id']}"
+    assert receipt["member_count"] == 2
+    assert receipt["reused"] is False
+    reused = client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/write-workspace", json={}
+    )
+    assert reused.status_code == 200
+    assert reused.json()["deliverable_id"] == receipt["deliverable_id"]
+    assert reused.json()["reused"] is True
+    protected = client.delete(f"/research/artifact-composes/{draft['compose_id']}")
+    assert protected.status_code == 409
+    assert "provenance source" in protected.json()["detail"]
+    assert client.get(draft["view_url"]).status_code == 200
+
+
+def test_compose_write_route_missing_invalid_kind_and_integrity_conflict(api_env):
+    client = _client()
+    assert client.post(
+        "/research/artifact-composes/cmp-000000000000000000000000/write-workspace", json={}
+    ).status_code == 404
+    assert client.post(
+        "/research/artifact-composes/cmp-000000000000000000000000/write-workspace",
+        json={"deliverable_kind": "surprise"},
+    ).status_code == 422
+
+    for iid, text in [("inv-one", "One"), ("inv-two", "Two")]:
+        promote_insight(text=text, investigation_id=iid, source_document_id="doc")
+        _complete(iid, api_env["events"])
+    preview = client.post(
+        "/research/artifact-composes/preview",
+        json={"investigation_ids": ["inv-one", "inv-two"]},
+    ).json()
+    draft = client.post(
+        "/research/artifact-composes",
+        json={
+            "investigation_ids": ["inv-one", "inv-two"],
+            "selection_fingerprint": preview["selection_fingerprint"],
+        },
+    ).json()
+    member_path = os.path.join(
+        api_env["arts"], "composes", draft["compose_id"], "members", "0.html"
+    )
+    with open(member_path, "a", encoding="utf-8") as handle:
+        handle.write("corrupt outside canonical body")
+    # Non-canonical surrounding HTML does not alter the immutable machine body.
+    assert client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/write-workspace", json={}
+    ).status_code == 201
+    with open(member_path, encoding="utf-8") as handle:
+        content = handle.read()
+    with open(member_path, "w", encoding="utf-8") as handle:
+        handle.write(content.replace("inv-one", "inv-swapped"))
+    # The first call already mapped it; integrity is still revalidated before reuse.
+    assert client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/write-workspace", json={}
+    ).status_code == 409
+
+
+def test_unpromoted_compose_can_still_be_deleted(api_env):
+    for iid in ("inv-one", "inv-two"):
+        promote_insight(text=iid, investigation_id=iid, source_document_id="doc")
+        _complete(iid, api_env["events"])
+    client = _client()
+    selection = ["inv-one", "inv-two"]
+    preview = client.post(
+        "/research/artifact-composes/preview", json={"investigation_ids": selection}
+    ).json()
+    draft = client.post(
+        "/research/artifact-composes",
+        json={
+            "investigation_ids": selection,
+            "selection_fingerprint": preview["selection_fingerprint"],
+        },
+    ).json()
+    url = f"/research/artifact-composes/{draft['compose_id']}"
+    assert client.delete(url).status_code == 204
+    assert client.delete(url).status_code == 404
 
 
 def test_compose_stale_fingerprint_is_conflict(api_env):

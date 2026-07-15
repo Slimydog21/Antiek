@@ -9,6 +9,7 @@ import os
 import re
 import shutil
 import tempfile
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -80,7 +81,7 @@ def create_compose_draft(
     root = compose_dir()
     root.mkdir(parents=True, exist_ok=True)
     target = root / result.compose_id
-    with _compose_lock():
+    with compose_lock():
         if compose_manifest_path(result.compose_id).is_file() and result.path.is_file():
             return ComposeResult(**{**result.__dict__, "reused": True})
         rendered_members: list[str] = []
@@ -125,11 +126,15 @@ def load_compose_draft(compose_id: str) -> ComposeResult:
     )
 
 
-def delete_compose_draft(compose_id: str) -> None:
+def delete_compose_draft(
+    compose_id: str, *, before_delete: Callable[[], bool] | None = None,
+) -> None:
     target = compose_draft_path(compose_id).parent
-    with _compose_lock():
+    with compose_lock():
         if not target.is_dir():
             raise FileNotFoundError(compose_id)
+        if before_delete is not None and not before_delete():
+            raise PermissionError("compose is protected")
         shutil.rmtree(target)
 
 
@@ -166,7 +171,7 @@ def _static_member_html(rendered: str) -> str:
 
 
 @contextmanager
-def _compose_lock():
+def compose_lock() -> Iterator[None]:
     import fcntl
 
     lock_path = compose_dir() / ".lock"

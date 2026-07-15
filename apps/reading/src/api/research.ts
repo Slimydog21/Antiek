@@ -194,6 +194,20 @@ export interface ResearchCompose {
   reused: boolean;
 }
 
+export interface ComposeWriteWorkspace {
+  compose_id: string;
+  deliverable_id: string;
+  section_id: string;
+  write_url: string;
+  member_count: number;
+  snapshot_occurrence_count: number;
+  unique_block_count: number;
+  duplicate_count: number;
+  kind_conflict_count: number;
+  dangling_count: number;
+  reused: boolean;
+}
+
 // ── Request helpers ─────────────────────────────────────────────────────
 
 async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
@@ -240,6 +254,10 @@ export function createResearchCompose(
     investigation_ids: investigationIds,
     selection_fingerprint: selectionFingerprint,
   });
+}
+
+export function createComposeWriteWorkspace(composeId: string): Promise<ComposeWriteWorkspace> {
+  return post(`/research/artifact-composes/${encodeURIComponent(composeId)}/write-workspace`, {});
 }
 
 export function createPlan(req: {

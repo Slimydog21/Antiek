@@ -280,13 +280,16 @@ def place_block(
     outline_block_id: str | None = None,
     parent_event_id: str | None = None,
     on_conflict: Literal["error", "ignore"] = "error",
+    emit_event: bool = True,
 ) -> str:
     """Place a lego block into an outline section. Returns its
-    ``outline_block_id`` and emits ``OUTLINE_BLOCK_PLACED`` after commit.
+    ``outline_block_id`` and normally emits ``OUTLINE_BLOCK_PLACED``.
 
     The composition invariants are validated *before* the write (loud,
     typed). ``on_conflict='ignore'`` makes the write idempotent for a
-    caller-supplied ``outline_block_id`` (used by the migration)."""
+    caller-supplied ``outline_block_id`` (used by the migration).
+    Transactional bulk callers must pass ``emit_event=False`` and provide a
+    durable lineage mechanism; JSONL cannot commit atomically with DuckDB."""
     _assert_write_locked(con)
     _validate_composition(
         block_kind=block_kind, provenance_kind=provenance_kind,
@@ -325,20 +328,21 @@ def place_block(
             cluster_id, _maybe_json(metadata),
         ],
     )
-    emit_typed(
-        investigation_id,
-        OutlineBlockPlacedPayload(
-            outline_block_id=obid,
-            deliverable_id=did,
-            section_id=section_id,
-            block_kind=block_kind,  # type: ignore[arg-type]
-            provenance_kind=provenance_kind,  # type: ignore[arg-type]
-            node_id=node_id,
-            block_index=final_index,
-        ),
-        parent_event_id=parent_event_id,
-        role="write_composition",
-    )
+    if emit_event:
+        emit_typed(
+            investigation_id,
+            OutlineBlockPlacedPayload(
+                outline_block_id=obid,
+                deliverable_id=did,
+                section_id=section_id,
+                block_kind=block_kind,  # type: ignore[arg-type]
+                provenance_kind=provenance_kind,  # type: ignore[arg-type]
+                node_id=node_id,
+                block_index=final_index,
+            ),
+            parent_event_id=parent_event_id,
+            role="write_composition",
+        )
     return obid
 
 
