@@ -168,6 +168,30 @@ class LiveGuardJournalIntegrityReport:
             raise ValueError("journal report capability claims are invalid")
 
 
+@dataclass(frozen=True)
+class LiveGuardJournalIntent:
+    command_json: str
+    attempt_json: str
+    completed: bool
+    production_eligible: bool = False
+
+    def __post_init__(self) -> None:
+        command = LiveGuardAcquisitionCommand.from_json(self.command_json)
+        attempt = LiveGuardAcquisitionAttempt.from_json(self.attempt_json)
+        if attempt.command_digest != command.digest:
+            raise ValueError("journal intent command binding conflicts")
+        if type(self.completed) is not bool or self.production_eligible is not False:
+            raise ValueError("journal intent capability claims are invalid")
+
+    @property
+    def command(self) -> LiveGuardAcquisitionCommand:
+        return LiveGuardAcquisitionCommand.from_json(self.command_json)
+
+    @property
+    def attempt(self) -> LiveGuardAcquisitionAttempt:
+        return LiveGuardAcquisitionAttempt.from_json(self.attempt_json)
+
+
 class SqliteLiveGuardAcquisitionJournal:
     def __init__(
         self,
@@ -287,6 +311,28 @@ class SqliteLiveGuardAcquisitionJournal:
             return self._status(command, attempt, receipt_digest)
         except sqlite3.Error as exc:
             raise LiveGuardJournalError("journal inspection failed") from exc
+        finally:
+            connection.close()
+
+    def read_intent(self, *, attempt_id: str) -> LiveGuardJournalIntent:
+        self._validate_attempt_id(attempt_id)
+        connection = self._connect(create=False)
+        try:
+            self._assert_authority(connection)
+            command, attempt = self._load_attempt_chain(connection, attempt_id)
+            completion = connection.execute(
+                "SELECT receipt_digest,receipt_json FROM live_guard_completions WHERE attempt_id=?",
+                (attempt_id,),
+            ).fetchone()
+            if completion is not None:
+                self._decode_completion(completion, command, attempt)
+            return LiveGuardJournalIntent(
+                command_json=command.canonical_json,
+                attempt_json=attempt.canonical_json,
+                completed=completion is not None,
+            )
+        except sqlite3.Error as exc:
+            raise LiveGuardJournalError("journal intent read failed") from exc
         finally:
             connection.close()
 
@@ -676,6 +722,7 @@ __all__ = [
     "LiveGuardJournalConflict",
     "LiveGuardJournalError",
     "LiveGuardJournalIntegrityReport",
+    "LiveGuardJournalIntent",
     "LiveGuardJournalUnavailable",
     "SqliteLiveGuardAcquisitionJournal",
 ]
