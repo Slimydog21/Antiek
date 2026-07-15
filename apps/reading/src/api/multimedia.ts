@@ -447,6 +447,134 @@ export interface MultimediaLocalAudiblePlayback {
 
 export type MultimediaPaidAudioPlayback = MultimediaLocalAudiblePlayback;
 
+export interface MultimediaResearchIntent {
+  intent_id: string;
+  state: "prepared";
+  asset_id: string;
+  revision_id: string;
+  receipt_sha256: string;
+  audio_sha256: string;
+  chapter_id: string;
+  line_id: string;
+  question: string;
+  claim_text: string;
+  follow_up_prompt: string;
+  evidence_sources: MultimediaLocalAudiblePlayback["learned_claims"][number]["evidence_sources"];
+  evidence_digest: string;
+  request_digest: string;
+  created_at: string;
+  plan_handoff_status: "blocked_unowned_plan_store";
+  provider_launch_authorized: false;
+  spend_authority_digest: null;
+  plan_seed: { question: string; intent_id: string; intent_digest: string; evidence_digest: string };
+}
+
+export async function prepareResearchIntent(
+  assetId: string,
+  revisionId: string,
+  receiptSha256: string,
+  audioSha256: string,
+  claim: MultimediaLocalAudiblePlayback["learned_claims"][number],
+  question: string,
+  idempotencyKey: string,
+): Promise<MultimediaResearchIntent> {
+  const resp = await apiFetch(
+    `${API_BASE}/multimedia/assets/${encodeURIComponent(assetId)}/research-intents`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        expected_revision_id: revisionId,
+        line_id: claim.line_id,
+        question,
+        idempotency_key: idempotencyKey,
+      }),
+    },
+  );
+  if (resp.status === 404) throw new Error("multimedia_research_intent_unavailable");
+  if (resp.status === 409) throw new Error("multimedia_research_intent_conflict");
+  if (!resp.ok) throw new Error(`POST research-intents: HTTP ${resp.status}`);
+  const result = (await resp.json()) as MultimediaResearchIntent;
+  const evidencePayload = {
+    asset_id: assetId,
+    revision_id: revisionId,
+    receipt_sha256: receiptSha256,
+    audio_sha256: audioSha256,
+    chapter_id: claim.chapter_id,
+    line_id: claim.line_id,
+    claim_text: claim.claim_text,
+    follow_up_prompt: claim.follow_up_prompt,
+    evidence_sources: claim.evidence_sources,
+  };
+  const expectedEvidenceDigest = await sha256Canonical(evidencePayload);
+  const expectedRequestDigest = await sha256Canonical({ ...evidencePayload, question });
+  if (
+    result.state !== "prepared" || result.asset_id !== assetId ||
+    result.revision_id !== revisionId || result.receipt_sha256 !== receiptSha256 ||
+    result.audio_sha256 !== audioSha256 || result.chapter_id !== claim.chapter_id ||
+    result.line_id !== claim.line_id || result.question !== question ||
+    result.claim_text !== claim.claim_text || result.follow_up_prompt !== claim.follow_up_prompt ||
+    !sameResearchEvidence(result.evidence_sources, claim.evidence_sources) ||
+    result.plan_handoff_status !== "blocked_unowned_plan_store" ||
+    result.provider_launch_authorized !== false || result.spend_authority_digest !== null ||
+    !/^mmri_[0-9a-f]{48}$/.test(result.intent_id) ||
+    result.evidence_digest !== expectedEvidenceDigest ||
+    result.request_digest !== expectedRequestDigest ||
+    typeof result.created_at !== "string" || !Number.isFinite(Date.parse(result.created_at)) ||
+    result.plan_seed?.intent_id !== result.intent_id ||
+    result.plan_seed?.question !== question || result.plan_seed?.evidence_digest !== result.evidence_digest
+  ) throw new Error("multimedia_research_intent_identity_conflict");
+  const expectedIntentDigest = await sha256Canonical({
+    intent_id: result.intent_id,
+    state: result.state,
+    asset_id: result.asset_id,
+    revision_id: result.revision_id,
+    receipt_sha256: result.receipt_sha256,
+    audio_sha256: result.audio_sha256,
+    chapter_id: result.chapter_id,
+    line_id: result.line_id,
+    question: result.question,
+    claim_text: result.claim_text,
+    follow_up_prompt: result.follow_up_prompt,
+    evidence_sources: result.evidence_sources,
+    evidence_digest: result.evidence_digest,
+    request_digest: result.request_digest,
+    created_at: result.created_at,
+  });
+  if (result.plan_seed.intent_digest !== expectedIntentDigest) {
+    throw new Error("multimedia_research_intent_identity_conflict");
+  }
+  return result;
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  const record = value as Record<string, unknown>;
+  return `{${Object.keys(record).sort().map((key) => (
+    `${JSON.stringify(key)}:${canonicalJson(record[key])}`
+  )).join(",")}}`;
+}
+
+async function sha256Canonical(value: unknown): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(canonicalJson(value)));
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function sameResearchEvidence(
+  actual: MultimediaResearchIntent["evidence_sources"],
+  expected: MultimediaLocalAudiblePlayback["learned_claims"][number]["evidence_sources"],
+): boolean {
+  return Array.isArray(actual) && actual.length === expected.length && actual.every((source, index) => {
+    const row = expected[index];
+    return source.chunk_id === row.chunk_id && source.document_id === row.document_id &&
+      source.locator === row.locator && source.authority_kind === row.authority_kind &&
+      source.chunk_sha256 === row.chunk_sha256 && source.start_utf8_byte === row.start_utf8_byte &&
+      source.end_utf8_byte === row.end_utf8_byte && source.span_sha256 === row.span_sha256 &&
+      source.exact_text === row.exact_text;
+  });
+}
+
 // ── Cycle 22: listening progress ─────────────────────────────────
 
 export interface MultimediaListeningProgressResponse {

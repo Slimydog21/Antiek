@@ -6,6 +6,7 @@ planner/audio/video/steering/hardening seams without live provider spend.
 
 from __future__ import annotations
 
+import hashlib
 import os
 from collections.abc import Callable
 from dataclasses import dataclass, replace
@@ -15,6 +16,7 @@ from typing import Any, cast
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Request
 
 from roles.note_taker import DispatchDistiller, Distiller
+from substrate.multimedia.authorized_production_worker import AuthorizedProductionRuntime
 from substrate.multimedia.graph_evidence import (
     CreateGroundedMultimediaDraftRequest,
     MultimediaEvidenceSearchRequest,
@@ -52,6 +54,13 @@ from substrate.multimedia.local_zero_cost_evidence import (
     build_local_audio_zero_cost_evidence,
     build_local_video_zero_cost_evidence,
 )
+from substrate.multimedia.paid_video_cost_authority import (
+    build_paid_registered_video_cost_authority,
+)
+from substrate.multimedia.production_cost_closure import (
+    build_production_byte_cost_closure,
+)
+from substrate.multimedia.production_cost_projection import ProductionByteProjectionV1
 from substrate.multimedia.production_registration import (
     MultimediaProductionRegistrationRequest,
     register_multimedia_production,
@@ -67,11 +76,14 @@ from substrate.multimedia.read_model import (
     SteeringPreviewRequest,
     SteeringPreviewResponse,
 )
+from substrate.multimedia.research_intent import ResearchIntentLedger
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceConflict,
     MultimediaShipCostEvidenceUnavailable,
     build_multimedia_ship_cost_snapshot,
 )
+from substrate.multimedia.verified_audio_playback import AudioPlaybackMetadata
+from substrate.multimedia.verified_playback import VerifiedPlaybackError
 
 from .multimedia_hardening_routes import (
     MultimediaHardeningRuntime,
@@ -89,6 +101,7 @@ from .multimedia_local_audible_routes import (
     multimedia_local_audible_router,
 )
 from .multimedia_local_audible_runtime import (
+    MultimediaLocalAudibleRuntime,
     multimedia_local_audible_runtime_from_environment,
 )
 from .multimedia_local_routes import (
@@ -125,6 +138,11 @@ from .multimedia_reconciliation_routes import (
     get_multimedia_reconciliation_runtime,
     multimedia_reconciliation_router,
     multimedia_reconciliation_runtime_from_environment,
+)
+from .multimedia_research_intent_routes import (
+    ResearchIntentRouteRuntime,
+    get_multimedia_research_intent_runtime,
+    multimedia_research_intent_router,
 )
 from .multimedia_reviewed_visual_routes import (
     get_multimedia_reviewed_visual_runtime,
@@ -169,6 +187,7 @@ multimedia_router.include_router(multimedia_local_audible_router)
 multimedia_router.include_router(multimedia_playback_router)
 multimedia_router.include_router(multimedia_paid_audio_playback_router)
 multimedia_router.include_router(multimedia_listening_progress_router)
+multimedia_router.include_router(multimedia_research_intent_router)
 multimedia_router.include_router(multimedia_narration_authorization_router)
 multimedia_router.include_router(multimedia_reviewed_visual_router)
 multimedia_router.include_router(multimedia_production_worker_router)
@@ -476,6 +495,12 @@ def run_multimedia_hardening(
         except MultimediaShipCostEvidenceConflict:
             raise
         except MultimediaShipCostEvidenceUnavailable:
+            has_registered_media = (
+                record.production_link is not None
+                or record.audio_production_link is not None
+            )
+            if has_registered_media and str(record.asset.route_policy) != "cheapest":
+                raise
             backend = (
                 runtime.local_audio_backend
                 if record.mode == "audio" or str(record.asset.kind) == "audio_experience"
@@ -495,6 +520,37 @@ def run_multimedia_hardening(
                 canonical_chunks=canonical_chunks,
                 local_zero_cost_evidence=evidence,
                 snapshot_key=runtime.local_zero_snapshot_key,
+            )
+        if record.audio_production_link is not None:
+            raise MultimediaShipCostEvidenceUnavailable("evidence_unavailable")
+        if record.production_link is not None:
+            if (
+                runtime.production_video_backend is None
+                or runtime.production_snapshot_key is None
+            ):
+                raise MultimediaShipCostEvidenceUnavailable("evidence_unavailable")
+            projection = runtime.production_video_backend(
+                owner_id=operator_id,
+                asset_id=record.asset.asset_id,
+                revision_id=record.asset.revision_id,
+                now=now,
+            )
+            authority = build_paid_registered_video_cost_authority(
+                direct_cost_snapshot=snapshot,
+                production_byte_projection=projection,
+                direct_snapshot_key=runtime.snapshot_key,
+                production_snapshot_key=runtime.production_snapshot_key,
+                owner_id=operator_id,
+                asset_id=record.asset.asset_id,
+                revision_id=record.asset.revision_id,
+                production_receipt_digest=record.production_link.receipt_sha256,
+            )
+            return get_store().run_hardening(
+                asset_id,
+                owner_id=operator_id,
+                paid_registered_video_cost_authority=authority,
+                snapshot_key=runtime.snapshot_key,
+                production_snapshot_key=runtime.production_snapshot_key,
             )
         return get_store().run_hardening(
             asset_id,
@@ -609,6 +665,58 @@ async def recover_multimedia_asset_knowledge_finalization(
         raise HTTPException(status_code=status_code, detail=str(exc)) from exc
 
 
+def _resolve_research_audio_authority(
+    *,
+    store: MultimediaAssetStore,
+    local_audible_runtime: MultimediaLocalAudibleRuntime | None,
+    production_worker_runtime: AuthorizedProductionRuntime | None,
+    asset_id: str,
+    revision_id: str,
+    operator_id: str,
+) -> AudioPlaybackMetadata:
+    try:
+        record = store.get(asset_id, owner_id=operator_id)
+    except (KeyError, ValueError) as exc:
+        raise LookupError("research intent authority is unavailable") from exc
+    if record.asset.revision_id != revision_id:
+        raise ValueError("research intent revision is not current")
+    link = record.audio_production_link
+    if link is None or link.revision_id != revision_id or link.asset_id != asset_id:
+        raise LookupError("research intent authority is unavailable")
+    try:
+        if record.asset.route_policy == "cheapest":
+            if local_audible_runtime is None:
+                raise LookupError("research intent authority is unavailable")
+            metadata = local_audible_runtime.playback.metadata(
+                asset_id=asset_id,
+                revision_id=revision_id,
+                owner_digest=link.owner_identity_digest,
+                plan=record.plan,
+            )
+        else:
+            if production_worker_runtime is None or production_worker_runtime.audio_playback is None:
+                raise LookupError("research intent authority is unavailable")
+            metadata = production_worker_runtime.audio_playback.metadata(
+                asset_id=asset_id,
+                revision_id=revision_id,
+                owner_digest=link.owner_identity_digest,
+            )
+    except VerifiedPlaybackError as exc:
+        raise LookupError("research intent authority is unavailable") from exc
+    if (
+        metadata.receipt_sha256 != link.receipt_sha256
+        or metadata.audio_sha256 != link.audio_sha256
+        or metadata.audio_size_bytes != link.audio_size_bytes
+        or metadata.duration_seconds != link.duration_seconds
+        or metadata.chapter_ids != link.chapter_ids
+        or metadata.retention_marker_count != link.retention_marker_count
+        or metadata.learned_claim_count != link.learned_claim_count
+        or metadata.source_count != link.source_count
+    ):
+        raise ValueError("research intent audio registration conflicts")
+    return metadata
+
+
 def register_multimedia_routes(app: FastAPI) -> None:
     legacy_owner = os.environ.get("ANTIEK_MULTIMEDIA_LEGACY_OWNER_ID", "").strip()
     if legacy_owner:
@@ -644,6 +752,13 @@ def register_multimedia_routes(app: FastAPI) -> None:
         app.dependency_overrides[get_multimedia_local_audible_runtime] = lambda: (
             local_audible_runtime
         )
+    production_worker_runtime = multimedia_production_worker_runtime_from_environment(
+        store=get_store()
+    )
+    if production_worker_runtime is not None:
+        app.dependency_overrides[get_multimedia_production_worker_runtime] = (
+            lambda: production_worker_runtime
+        )
     hardening_runtime = multimedia_hardening_runtime_from_environment()
     if hardening_runtime is not None:
         local_zero_key = hardening_runtime.local_zero_snapshot_key
@@ -658,6 +773,29 @@ def register_multimedia_routes(app: FastAPI) -> None:
             if local_audible_runtime is not None and local_zero_key is not None
             else None
         )
+        production_snapshot_key = hardening_runtime.production_snapshot_key
+        if production_worker_runtime is not None and production_snapshot_key is not None:
+            if (
+                production_worker_runtime.db_path != hardening_runtime.db_path
+                or production_worker_runtime.signing_key != hardening_runtime.signing_key
+            ):
+                raise RuntimeError(
+                    "multimedia hardening and production accounting authorities conflict"
+                )
+            if production_snapshot_key in {
+                production_worker_runtime.signing_key,
+                production_worker_runtime.narration_integrity_key,
+                production_worker_runtime.visual_integrity_key,
+                production_worker_runtime.evidence_authority_key,
+                production_worker_runtime.render_integrity_key,
+                production_worker_runtime.receipt_key,
+            }:
+                raise RuntimeError(
+                    "multimedia hardening signing keys must be independent"
+                )
+            production_worker_runtime.reviewed_visual_registry.assert_independent_snapshot_key(
+                production_snapshot_key
+            )
         if video_coordinator is not None:
             assert local_zero_key is not None
             video_coordinator.assert_independent_snapshot_key(local_zero_key)
@@ -695,10 +833,37 @@ def register_multimedia_routes(app: FastAPI) -> None:
                 now=now,
             )
 
+        def production_video_backend(
+            *, owner_id: str, asset_id: str, revision_id: str, now: datetime
+        ) -> ProductionByteProjectionV1:
+            if production_worker_runtime is None or production_snapshot_key is None:
+                raise RuntimeError("production byte evidence backend is unavailable")
+            closure = build_production_byte_cost_closure(
+                asset_id=asset_id,
+                owner_id=owner_id,
+                db_path=production_worker_runtime.db_path,
+                store=production_worker_runtime.store,
+                playback=production_worker_runtime.playback,
+                registry=production_worker_runtime.reviewed_visual_registry,
+                signing_key=production_worker_runtime.signing_key,
+                snapshot_key=production_snapshot_key,
+                narration_key=production_worker_runtime.narration_integrity_key,
+                now=now,
+            )
+            if closure.production_byte_projection.revision_id != revision_id:
+                raise MultimediaShipCostEvidenceConflict("evidence_conflict")
+            return closure.production_byte_projection
+
         hardening_runtime = replace(
             hardening_runtime,
             local_video_backend=video_backend if video_coordinator is not None else None,
             local_audio_backend=audio_backend if audio_coordinator is not None else None,
+            production_video_backend=(
+                production_video_backend
+                if production_worker_runtime is not None
+                and production_snapshot_key is not None
+                else None
+            ),
         )
         app.dependency_overrides[get_multimedia_hardening_runtime] = lambda: hardening_runtime
     playback_runtime = multimedia_playback_runtime_from_environment()
@@ -733,24 +898,50 @@ def register_multimedia_routes(app: FastAPI) -> None:
         app.dependency_overrides[get_multimedia_reviewed_visual_runtime] = lambda: (
             reviewed_visual_runtime
         )
-    production_worker_runtime = multimedia_production_worker_runtime_from_environment(
-        store=get_store()
-    )
-    if production_worker_runtime is not None:
-        app.dependency_overrides[get_multimedia_production_worker_runtime] = lambda: (
-            production_worker_runtime
+    if (
+        production_worker_runtime is not None
+        and production_worker_runtime.audio_playback is not None
+    ):
+        paid_audio_runtime = PaidAudioPlaybackRouteRuntime(
+            playback=production_worker_runtime.audio_playback,
+            asset_authority_resolver=lambda asset_id, operator_id: (
+                (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
+                record.audio_production_link,
+            ),
         )
-        if production_worker_runtime.audio_playback is not None:
-            paid_audio_runtime = PaidAudioPlaybackRouteRuntime(
-                playback=production_worker_runtime.audio_playback,
-                asset_authority_resolver=lambda asset_id, operator_id: (
-                    (record := get_store().get(asset_id, owner_id=operator_id)).asset.revision_id,
-                    record.audio_production_link,
-                ),
-            )
-            app.dependency_overrides[get_multimedia_paid_audio_playback_runtime] = lambda: (
-                paid_audio_runtime
-            )
+        app.dependency_overrides[get_multimedia_paid_audio_playback_runtime] = lambda: (
+            paid_audio_runtime
+        )
+    def _owner_digest(operator_id: str) -> str:
+        encoded = operator_id.strip().encode("utf-8")
+        if not encoded or len(encoded) > 512 or any(byte < 32 or byte == 127 for byte in encoded):
+            raise ValueError("multimedia owner identity is invalid")
+        return hashlib.sha256(encoded).hexdigest()
+
+    def _resolve_research_audio(
+        asset_id: str, revision_id: str, operator_id: str
+    ) -> AudioPlaybackMetadata:
+        return _resolve_research_audio_authority(
+            store=get_store(),
+            local_audible_runtime=local_audible_runtime,
+            production_worker_runtime=production_worker_runtime,
+            asset_id=asset_id,
+            revision_id=revision_id,
+            operator_id=operator_id,
+        )
+
+    if local_audible_runtime is not None or (
+        production_worker_runtime is not None
+        and production_worker_runtime.audio_playback is not None
+    ):
+        research_intent_runtime = ResearchIntentRouteRuntime(
+            ledger=ResearchIntentLedger(get_store().root),
+            owner_digest_resolver=_owner_digest,
+            audio_authority_resolver=_resolve_research_audio,
+        )
+        app.dependency_overrides[get_multimedia_research_intent_runtime] = lambda: (
+            research_intent_runtime
+        )
     # Listening progress: resolve audio identity from the store's audio_production_link
     # or the local audible playback runtime.  Both local and paid audio use the same
     # progress contract and store.
