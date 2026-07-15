@@ -1,4 +1,5 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { expect, waitFor } from "@storybook/test";
 
 import Home from "./Home";
 
@@ -15,7 +16,7 @@ import Home from "./Home";
  * it in the hero either).
  */
 const meta = {
-  title: "Home / Unified home (SPR-12)",
+  title: "Home / Alpine knowledge campus (SPR-39)",
   component: Home,
   parameters: { layout: "fullscreen" },
   tags: ["autodocs", "a11y-audit"],
@@ -30,4 +31,52 @@ export const Default: Story = {
       <Home />
     </div>
   ),
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(
+        canvasElement.querySelector('[data-campus-image-ready="true"]'),
+      ).toBeTruthy();
+    });
+    // The campus cards use backdrop-filter over a decoded image. Give Chromium
+    // one compositor turn after load so visual baselines never capture the
+    // pre-blur frame.
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+  },
+};
+
+export const ImageUnavailable: Story = {
+  ...Default,
+  play: async ({ canvasElement }) => {
+    const image = canvasElement.querySelector<HTMLImageElement>(
+      '[data-campus-map] img',
+    );
+    expect(image).toBeTruthy();
+    image!.dispatchEvent(new Event("error"));
+    await waitFor(() => {
+      expect(canvasElement.querySelector('[data-campus-map] img')).toBeNull();
+      expect(
+        canvasElement.querySelectorAll(
+          '[data-campus-map] button[data-workflow]',
+        ),
+      ).toHaveLength(4);
+    });
+  },
+};
+
+export const KeyboardFocus: Story = {
+  ...Default,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      expect(
+        canvasElement.querySelector('[data-campus-image-ready="true"]'),
+      ).toBeTruthy();
+    });
+    const firstDoor = canvasElement.querySelector<HTMLButtonElement>(
+      '[data-campus-map] button[data-workflow="research"]',
+    );
+    expect(firstDoor).toBeTruthy();
+    firstDoor!.focus();
+    await waitFor(() => expect(document.activeElement).toBe(firstDoor));
+    await new Promise((resolve) => window.setTimeout(resolve, 300));
+  },
 };

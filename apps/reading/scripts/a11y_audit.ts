@@ -14,9 +14,10 @@
  *   npm run a11y:audit
  *
  * Writes `docs/perf/a11y_audit.md` with one row per story. Exits
- * non-zero if any story has ≥ 1 "serious" or "critical" violation.
+ * non-zero if any story fails to load or has ≥ 1 "serious" or
+ * "critical" violation. A missing audit target must never produce a pass.
  */
-import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { argv, exit } from "node:process";
 
@@ -78,9 +79,9 @@ const STORIES: string[] = [
   "lemon-table--empty",
   "lemon-toast--playground",
   // S0 — design tokens
-  "design-moodboard--palette-day-off-whites-glacials",
-  "design-moodboard--palette-night-majestic-night-sky",
-  "design-moodboard--werner-bill-feet-brand-sun",
+  "design-moodboard--palette-day",
+  "design-moodboard--palette-night",
+  "design-moodboard--werner-palette",
   "design-moodboard--shadows",
   "design-moodboard--typography",
   "design-moodboard--outlined-card",
@@ -111,6 +112,10 @@ const STORIES: string[] = [
   "shell-brainstorm-fjord-atmosphere-spr-38--html-authority-plate",
   "shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-offer",
   "shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-playing",
+  // SPR-39 — semantic navigation over the decorative Home campus + fallback.
+  "home-alpine-knowledge-campus-spr-39--default",
+  "home-alpine-knowledge-campus-spr-39--image-unavailable",
+  "home-alpine-knowledge-campus-spr-39--keyboard-focus",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",
@@ -138,6 +143,32 @@ async function main() {
   console.log(`  storybook : ${args.storybook}`);
   console.log(`  stories   : ${STORIES.length}`);
 
+  // Storybook renders an unknown id as a valid "No Preview" document. Axe
+  // would correctly find nothing in that placeholder, creating a vacuous
+  // pass, so prove every requested story exists before opening a browser.
+  let availableStoryIds: Set<string>;
+  try {
+    const response = await fetch(`${args.storybook}/index.json`);
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status} from Storybook index`);
+    }
+    const index = (await response.json()) as {
+      entries?: Record<string, unknown>;
+    };
+    availableStoryIds = new Set(Object.keys(index.entries ?? {}));
+  } catch (error: unknown) {
+    console.error(
+      `[!] Could not validate Storybook index: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    exit(1);
+  }
+  const missingStoryIds = STORIES.filter((story) => !availableStoryIds.has(story));
+  if (missingStoryIds.length > 0) {
+    console.error("[!] Audit story ids missing from Storybook index:");
+    for (const story of missingStoryIds) console.error(`    - ${story}`);
+    exit(1);
+  }
+
   // Dynamic imports so a fresh checkout that hasn't run
   // `npx playwright install chromium` still gives a clear error.
   let chromium: typeof import("playwright").chromium;
@@ -151,7 +182,7 @@ async function main() {
         "`npm i -D playwright @axe-core/playwright && " +
         "npx playwright install chromium`, then re-run.",
     );
-    exit(0);
+    exit(1);
   }
 
   const browser = await chromium.launch({ headless: true });
@@ -238,6 +269,7 @@ async function main() {
 
   // ── Aggregation ────────────────────────────────────────
   const seriousOrCritical: { story: string; v: AxeViolation }[] = [];
+  const loadErrors = results.filter((r) => r.error !== null);
   for (const r of results) {
     for (const v of r.violations) {
       if (v.impact === "serious" || v.impact === "critical") {
@@ -254,14 +286,15 @@ async function main() {
   lines.push("# axe-core a11y audit\n");
   lines.push(`**Run:** ${ts}`);
   lines.push(`**Stories audited:** ${results.length}`);
+  lines.push(`**Load errors:** ${loadErrors.length}`);
   lines.push(
     `**Serious / critical violations:** ${seriousOrCritical.length}\n`,
   );
   lines.push("**Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice");
   lines.push("");
   lines.push("## Per-story summary\n");
-  lines.push("| Story | Violations | Top impact | Worst rule |");
-  lines.push("|---|---|---|---|");
+  lines.push("| Story | Status | Violations | Top impact | Worst rule |");
+  lines.push("|---|---|---|---|---|");
   for (const r of results) {
     const top = r.violations.reduce<AxeViolation | null>((acc, v) => {
       const score = (impact: string | null) =>
@@ -277,15 +310,18 @@ async function main() {
       if (!acc) return v;
       return score(v.impact) > score(acc.impact) ? v : acc;
     }, null);
-    const cell = r.error
-      ? `❌ ${r.error}`
-      : `${r.violations.length} (` +
-        (top ? `${top.impact ?? "—"} · ${top.id}` : "—") +
-        ")";
+    const status = r.error ? "❌ load error" : "✓ audited";
     lines.push(
-      `| \`${r.story}\` | ${r.violations.length} | ${top?.impact ?? "—"} | ${top?.id ?? "—"} |`,
+      `| \`${r.story}\` | ${status} | ${r.violations.length} | ${top?.impact ?? "—"} | ${top?.id ?? "—"} |`,
     );
-    void cell;
+  }
+  if (loadErrors.length > 0) {
+    lines.push("");
+    lines.push("## Story load errors (CI-blocking)\n");
+    for (const r of loadErrors) {
+      const message = (r.error ?? "Unknown load error").replace(/\s+/g, " ");
+      lines.push(`- \`${r.story}\`: ${message}`);
+    }
   }
   if (seriousOrCritical.length > 0) {
     lines.push("");
@@ -301,9 +337,11 @@ async function main() {
   writeFileSync(outPath, lines.join("\n") + "\n");
   console.log("");
   console.log(`  report  : ${outPath}`);
-  console.log(`  verdict : ${seriousOrCritical.length === 0 ? "PASS" : "FAIL"}`);
+  const passed = loadErrors.length === 0 && seriousOrCritical.length === 0;
+  console.log(`  load errors : ${loadErrors.length}`);
+  console.log(`  verdict : ${passed ? "PASS" : "FAIL"}`);
 
-  exit(seriousOrCritical.length === 0 ? 0 : 1);
+  exit(passed ? 0 : 1);
 }
 
 void main();

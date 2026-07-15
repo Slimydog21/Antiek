@@ -11,6 +11,9 @@ const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
 const includesNarrowBrainstormAtmosphereProof = scopedStoryIds.some((id) =>
   id.startsWith("shell-brainstorm-fjord-atmosphere-spr-38--"),
 );
+const includesNarrowHomeCampusProof = scopedStoryIds.some((id) =>
+  id.startsWith("home-alpine-knowledge-campus-spr-39--"),
+);
 
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
@@ -71,7 +74,8 @@ export const config: CustomProjectConfig = {
     breakpoints:
       includesNarrowIceHoleProof ||
       includesNarrowFjordSkipProof ||
-      includesNarrowBrainstormAtmosphereProof
+      includesNarrowBrainstormAtmosphereProof ||
+      includesNarrowHomeCampusProof
         ? [1280, 1024, 768, 375]
         : [1280, 1024, 768],
   },
