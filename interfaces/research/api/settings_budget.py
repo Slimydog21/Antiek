@@ -124,6 +124,17 @@ class BenchmarkReport(BaseModel):
         return self
 
 
+class WeeklyBenchmarkResponse(BaseModel):
+    """Latest validated Antiek-bench report for the operator Settings view."""
+
+    authority: Literal["advisory"] = "advisory"
+    status: BenchmarkStatus
+    week_id: str | None
+    generated_at: str | None
+    measurements: list[BenchmarkMeasurement]
+    notes: list[str] = Field(default_factory=list)
+
+
 class ModelDecisionRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -713,6 +724,32 @@ def post_model_decision(request: Request, req: ModelDecisionRequest) -> ModelDec
     return build_model_decision(request, req)
 
 
+@settings_router.get(
+    "/antiek-bench/weekly",
+    response_model=WeeklyBenchmarkResponse,
+)
+def get_weekly_benchmark() -> WeeklyBenchmarkResponse:
+    """Expose the latest validated server-owned report; never accept injected scores."""
+    report, notes = _read_benchmark_report()
+    if report is None:
+        return WeeklyBenchmarkResponse(
+            status="unavailable",
+            week_id=None,
+            generated_at=None,
+            measurements=[],
+            notes=notes,
+        )
+    generated = report.generated_at.astimezone(UTC)
+    iso = generated.isocalendar()
+    return WeeklyBenchmarkResponse(
+        status="measured",
+        week_id=f"{iso.year}-W{iso.week:02d}",
+        generated_at=generated.isoformat(),
+        measurements=report.measurements,
+        notes=notes,
+    )
+
+
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
     # Add-model admin (user-added BYOK providers) mounts through the same
@@ -728,6 +765,7 @@ __all__ = [
     "BudgetResponse",
     "BenchmarkMeasurement",
     "BenchmarkReport",
+    "WeeklyBenchmarkResponse",
     "ModelDecisionRequest",
     "ModelDecisionResponse",
     "ModelsResponse",

@@ -1,108 +1,73 @@
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import {
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+
 import AntiekBenchPanel from "./AntiekBenchPanel";
-import type { WeeklyBenchViewResponse } from "../../api/antiekBench";
 
-afterEach(() => {
-  cleanup();
-});
-
-function makeView(
-  overrides: Partial<WeeklyBenchViewResponse> = {},
-): WeeklyBenchViewResponse {
-  return {
-    week_id: "2026-W28",
-    authority: "advisory",
-    best_by_task: { deep_research: "thinker" },
-    incomplete: false,
-    notes: [],
-    scores: [
-      {
-        task: "deep_research",
-        model_id: "thinker",
-        score: 0.9,
-        n_runs: 2,
-        notes: "",
-      },
-      {
-        task: "deep_research",
-        model_id: "flash",
-        score: null,
-        n_runs: 0,
-        notes: "",
-      },
-    ],
-    ...overrides,
-  };
-}
+afterEach(cleanup);
 
 describe("AntiekBenchPanel", () => {
-  it("shows advisory authority and NOT MEASURED for null scores", async () => {
-    const fetchFn = vi.fn(async () => makeView());
+  it("loads automatically and presents the best measured model per task", async () => {
+    const fetchFn = vi.fn(async () => ({
+      authority: "advisory" as const,
+      status: "measured" as const,
+      week_id: "2026-W28",
+      generated_at: "2026-07-08T00:00:00+00:00",
+      measurements: [
+        {
+          task: "reading" as const,
+          tier: "pro",
+          provider: "zai",
+          model: "slow",
+          score: 0.7,
+          samples: 4,
+        },
+        {
+          task: "reading" as const,
+          tier: "flash",
+          provider: "zai",
+          model: "fast",
+          score: 0.9,
+          samples: 20,
+        },
+      ],
+      notes: [],
+    }));
+    render(<AntiekBenchPanel fetchFn={fetchFn} />);
+    expect(
+      (await screen.findByTestId("antiek-bench-measured")).textContent,
+    ).toMatch(/reading.*fast.*0\.900.*n=20/i);
+    expect(fetchFn).toHaveBeenCalledWith();
+  });
+
+  it("states unavailable evidence as not measured, never zero", async () => {
     render(
       <AntiekBenchPanel
-        fetchFn={fetchFn}
-        records={[
-          { task: "deep_research", model_id: "thinker", score: 0.9 },
-          { task: "deep_research", model_id: "flash", score: null },
-        ]}
+        fetchFn={async () => ({
+          authority: "advisory",
+          status: "unavailable",
+          week_id: null,
+          generated_at: null,
+          measurements: [],
+          notes: ["report is not configured"],
+        })}
       />,
     );
-    fireEvent.click(screen.getByTestId("antiek-bench-load"));
-    await waitFor(() => {
-      expect(screen.getByTestId("antiek-bench-result")).toBeTruthy();
-    });
-    expect(screen.getByTestId("antiek-bench-authority").textContent).toMatch(
-      /advisory/i,
-    );
-    expect(
-      screen.getByTestId("score-deep_research-flash").textContent,
-    ).toMatch(/NOT MEASURED/);
-    expect(
-      screen.getByTestId("score-deep_research-thinker").textContent,
-    ).toMatch(/0\.900/);
-    // Default empty records must not invent demo measurements
-    expect(fetchFn.mock.calls[0][0].records).toEqual([
-      { task: "deep_research", model_id: "thinker", score: 0.9 },
-      { task: "deep_research", model_id: "flash", score: null },
-    ]);
+    const view = await screen.findByTestId("antiek-bench-unavailable");
+    expect(view.textContent).toMatch(/not measured/i);
+    expect(view.textContent).not.toContain("0.000");
   });
 
-  it("default empty records posts empty list (no fabricated measurements)", async () => {
-    const fetchFn = vi.fn(async () =>
-      makeView({
-        best_by_task: {},
-        incomplete: true,
-        scores: [],
-      }),
+  it("surfaces errors and offers retry", async () => {
+    render(
+      <AntiekBenchPanel
+        fetchFn={async () => {
+          throw new Error("backend down");
+        }}
+      />,
     );
-    render(<AntiekBenchPanel fetchFn={fetchFn} />);
-    fireEvent.click(screen.getByTestId("antiek-bench-load"));
-    await waitFor(() => {
-      expect(fetchFn).toHaveBeenCalled();
-    });
-    expect(fetchFn.mock.calls[0][0].records).toEqual([]);
-    expect(screen.getByTestId("antiek-bench-best").textContent).toMatch(
-      /none/i,
+    await waitFor(() =>
+      expect(screen.getByRole("alert").textContent).toMatch(/backend down/),
     );
-  });
-
-  it("shows error when fetch throws", async () => {
-    const fetchFn = vi.fn(async () => {
-      throw new Error("backend down");
-    });
-    render(<AntiekBenchPanel fetchFn={fetchFn} />);
-    fireEvent.click(screen.getByTestId("antiek-bench-load"));
-    await waitFor(() => {
-      expect(screen.getByTestId("antiek-bench-error").textContent).toMatch(
-        /backend down/,
-      );
-    });
+    expect(screen.getByRole("button", { name: /retry/i })).toBeTruthy();
   });
 });

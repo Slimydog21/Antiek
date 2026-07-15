@@ -1,71 +1,54 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../lib/api", () => ({
-  API_BASE: "",
-  apiFetch: vi.fn(),
-}));
+vi.mock("../lib/api", () => ({ API_BASE: "", apiFetch: vi.fn() }));
 
 import { apiFetch } from "../lib/api";
-import {
-  fetchWeeklyBenchView,
-  formatBestModel,
-  formatScore,
-} from "./antiekBench";
+import { fetchWeeklyBenchView, formatScore } from "./antiekBench";
 
-const mockFetch = apiFetch as unknown as ReturnType<typeof vi.fn>;
+const mockFetch = vi.mocked(apiFetch);
 
-beforeEach(() => {
-  mockFetch.mockReset();
-});
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+beforeEach(() => mockFetch.mockReset());
 
-describe("formatters", () => {
-  it("null score is NOT MEASURED not 0", () => {
-    expect(formatScore(null)).toBe("NOT MEASURED");
-    expect(formatScore(undefined)).toBe("NOT MEASURED");
-    expect(formatScore(0.85)).toBe("0.850");
-  });
-
-  it("missing best model is none", () => {
-    expect(formatBestModel(undefined)).toBe("none");
-    expect(formatBestModel("thinker")).toBe("thinker");
-  });
-});
+const measured = {
+  authority: "advisory",
+  status: "measured",
+  week_id: "2026-W28",
+  generated_at: "2026-07-08T00:00:00+00:00",
+  measurements: [
+    {
+      task: "deep_research",
+      tier: "pro",
+      provider: "zai",
+      model: "glm",
+      score: 0.9,
+      samples: 12,
+    },
+  ],
+  notes: [],
+};
 
 describe("fetchWeeklyBenchView", () => {
-  it("POSTs weekly view and returns body", async () => {
+  it("GETs server-owned evidence and validates it", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
       status: 200,
-      json: async () => ({
-        week_id: "2026-W28",
-        authority: "advisory",
-        best_by_task: { deep_research: "thinker" },
-        incomplete: false,
-        notes: [],
-        scores: [
-          {
-            task: "deep_research",
-            model_id: "thinker",
-            score: 0.9,
-            n_runs: 2,
-            notes: "",
-          },
-        ],
-      }),
-      text: async () => "",
-    } as unknown as Response);
+      json: async () => measured,
+    } as Response);
+    const body = await fetchWeeklyBenchView();
+    expect(body.measurements[0].score).toBe(0.9);
+    expect(mockFetch).toHaveBeenCalledWith("/settings/antiek-bench/weekly");
+  });
 
-    const body = await fetchWeeklyBenchView({
-      week_id: "2026-W28",
-      records: [{ task: "deep_research", model_id: "thinker", score: 0.9 }],
-    });
-    expect(body.authority).toBe("advisory");
-    expect(body.best_by_task.deep_research).toBe("thinker");
-    const [url, init] = mockFetch.mock.calls[0];
-    expect(url).toBe("/settings/antiek-bench/weekly");
-    expect(init?.method).toBe("POST");
+  it("rejects fabricated or inconsistent measurements", async () => {
+    mockFetch.mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({ ...measured, status: "unavailable" }),
+    } as Response);
+    await expect(fetchWeeklyBenchView()).rejects.toThrow(/unavailable/);
+  });
+
+  it("formats measured scores without inventing missing values", () => {
+    expect(formatScore(0.85)).toBe("0.850");
   });
 });

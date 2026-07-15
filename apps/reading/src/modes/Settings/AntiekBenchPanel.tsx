@@ -1,119 +1,102 @@
-/**
- * AntiekBenchPanel — weekly model quality by task (advisory presentation).
- *
- * Injects weekly records to POST /settings/antiek-bench/weekly. Does not run
- * the bench or dispatch models. Mount from Settings/index when free (#770).
- */
+import { useEffect, useMemo, useState } from "react";
 
-import { useState } from "react";
-import { LemonButton, LemonCard, LemonInput } from "../../components/lemon";
 import {
   fetchWeeklyBenchView,
-  formatBestModel,
   formatScore,
   type WeeklyBenchViewResponse,
 } from "../../api/antiekBench";
+import { LemonButton, LemonCard } from "../../components/lemon";
 
 export interface AntiekBenchPanelProps {
   fetchFn?: typeof fetchWeeklyBenchView;
-  /**
-   * Weekly records from a real store/caller. Defaults to empty so the panel
-   * never fabricates measurements — empty week → incomplete / NOT MEASURED.
-   */
-  records?: Array<{
-    task: string;
-    model_id: string;
-    score: number | null;
-    n_runs?: number;
-  }>;
 }
 
 export default function AntiekBenchPanel({
   fetchFn = fetchWeeklyBenchView,
-  records = [],
 }: AntiekBenchPanelProps) {
-  const [weekId, setWeekId] = useState("2026-W28");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [view, setView] = useState<WeeklyBenchViewResponse | null>(null);
+  const [busy, setBusy] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  async function onLoad() {
+  async function load() {
     setBusy(true);
     setError(null);
     try {
-      const body = await fetchFn({
-        week_id: weekId,
-        records,
-      });
-      setView(body);
-    } catch (e) {
+      setView(await fetchFn());
+    } catch (caught) {
       setView(null);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setBusy(false);
     }
   }
 
+  useEffect(() => {
+    void load();
+  }, [fetchFn]);
+
+  const bestByTask = useMemo(() => {
+    const best = new Map<
+      string,
+      WeeklyBenchViewResponse["measurements"][number]
+    >();
+    for (const row of view?.measurements ?? []) {
+      const current = best.get(row.task);
+      if (
+        !current ||
+        row.score > current.score ||
+        (row.score === current.score && row.model < current.model)
+      ) {
+        best.set(row.task, row);
+      }
+    }
+    return [...best.entries()].sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+  }, [view]);
+
   return (
-    <div data-testid="antiek-bench-panel">
-      <LemonCard title="Antiek-bench (weekly)" className="antiek-bench-panel">
-        <p className="text-sm opacity-80" data-testid="antiek-bench-blurb">
-          Advisory weekly model quality by task. Presentation only — not a
-          production router. Unmeasured scores show as NOT MEASURED.
+    <LemonCard title="Antiek-bench · weekly evidence" elevation="z1">
+      <div className="p-4 space-y-3" data-testid="antiek-bench-panel">
+        <p className="text-sm text-ink-soft dark:text-starlight">
+          Advisory measurements from the latest validated server-owned report.
+          This view never dispatches a model.
         </p>
-        <div className="flex flex-col gap-3 mt-3">
-          <label className="text-sm flex flex-col gap-1">
-            <span>Week id</span>
-            <LemonInput
-              value={weekId}
-              onChange={(e) => setWeekId(e.target.value)}
-              data-testid="antiek-bench-week"
-              aria-label="Bench week id"
-            />
-          </label>
-          <LemonButton
-            variant="primary"
-            disabled={busy}
-            onClick={() => void onLoad()}
-            data-testid="antiek-bench-load"
-          >
-            {busy ? "Loading…" : "Load weekly view"}
-          </LemonButton>
-          {error ? (
-            <div className="text-sm text-danger" data-testid="antiek-bench-error">
-              {error}
-            </div>
-          ) : null}
-          {view ? (
-            <div data-testid="antiek-bench-result">
-              <div data-testid="antiek-bench-authority">
-                Authority: {view.authority}
-              </div>
-              <div data-testid="antiek-bench-incomplete">
-                Incomplete: {view.incomplete ? "yes" : "no"}
-              </div>
-              <div data-testid="antiek-bench-best">
-                Best by task:{" "}
-                {Object.keys(view.best_by_task).length === 0
-                  ? "none"
-                  : Object.entries(view.best_by_task)
-                      .map(([t, m]) => `${t}→${formatBestModel(m)}`)
-                      .join(", ")}
-              </div>
-              <ul data-testid="antiek-bench-scores">
-                {view.scores.map((s) => (
-                  <li
-                    key={`${s.task}:${s.model_id}`}
-                    data-testid={`score-${s.task}-${s.model_id}`}
-                  >
-                    {s.task} / {s.model_id}: {formatScore(s.score)}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </div>
-      </LemonCard>
-    </div>
+        {busy && <p role="status">Loading benchmark evidence…</p>}
+        {error && (
+          <div role="alert" className="space-y-2">
+            <p>{error}</p>
+            <LemonButton size="sm" onClick={() => void load()}>
+              Retry
+            </LemonButton>
+          </div>
+        )}
+        {view?.status === "unavailable" && (
+          <div data-testid="antiek-bench-unavailable">
+            <strong>Not measured</strong>
+            {view.notes.map((note) => (
+              <p key={note} className="text-xs">
+                {note}
+              </p>
+            ))}
+          </div>
+        )}
+        {view?.status === "measured" && (
+          <div data-testid="antiek-bench-measured" className="space-y-2">
+            <p className="font-mono text-xs">
+              {view.week_id} · generated {view.generated_at}
+            </p>
+            <ul className="space-y-1">
+              {bestByTask.map(([task, row]) => (
+                <li key={task}>
+                  <strong>{task}</strong>: {row.model} ({row.provider}) ·{" "}
+                  {formatScore(row.score)} · n={row.samples}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    </LemonCard>
   );
 }

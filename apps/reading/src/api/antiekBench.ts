@@ -1,67 +1,101 @@
-/**
- * Antiek-bench weekly presentation client (advisory Settings view).
- *
- * POST /settings/antiek-bench/weekly — inject records; does not run the bench.
- */
-
 import { API_BASE, apiFetch } from "../lib/api";
 
-export interface BenchScoreRow {
-  task: string;
-  model_id: string;
-  score: number | null;
-  n_runs: number;
-  notes: string;
+export type BenchTask =
+  | "deep_research"
+  | "research_synthesis"
+  | "reading"
+  | "twin_note"
+  | "writing"
+  | "multimedia"
+  | "general";
+
+export interface BenchMeasurement {
+  task: BenchTask;
+  tier: string;
+  provider: string;
+  model: string;
+  score: number;
+  samples: number;
 }
 
 export interface WeeklyBenchViewResponse {
-  week_id: string;
-  authority: string;
-  best_by_task: Record<string, string>;
-  incomplete: boolean;
+  authority: "advisory";
+  status: "measured" | "unavailable";
+  week_id: string | null;
+  generated_at: string | null;
+  measurements: BenchMeasurement[];
   notes: string[];
-  scores: BenchScoreRow[];
 }
 
-export interface WeeklyBenchRequest {
-  week_id?: string;
-  records?: Array<{
-    task?: string;
-    model_id: string;
-    score?: number | null;
-    n_runs?: number;
-    notes?: string;
-  }>;
-}
-
-async function readJson<T>(res: Response): Promise<T> {
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`antiek-bench API ${res.status}: ${text.slice(0, 200)}`);
+export class AntiekBenchHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly body: string,
+  ) {
+    super(`Antiek-bench API ${status}: ${body.slice(0, 200)}`);
+    this.name = "AntiekBenchHttpError";
   }
-  return (await res.json()) as T;
 }
 
-export async function fetchWeeklyBenchView(
-  req: WeeklyBenchRequest,
-): Promise<WeeklyBenchViewResponse> {
-  const res = await apiFetch(`${API_BASE}/settings/antiek-bench/weekly`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      week_id: req.week_id ?? "",
-      records: req.records ?? [],
-    }),
+function parseWeeklyBench(raw: unknown): WeeklyBenchViewResponse {
+  if (!raw || typeof raw !== "object")
+    throw new Error("invalid weekly benchmark response");
+  const value = raw as Record<string, unknown>;
+  if (value.authority !== "advisory")
+    throw new Error("benchmark authority must be advisory");
+  if (value.status !== "measured" && value.status !== "unavailable") {
+    throw new Error("benchmark status is invalid");
+  }
+  if (!Array.isArray(value.measurements) || !Array.isArray(value.notes)) {
+    throw new Error("benchmark measurements and notes must be arrays");
+  }
+  const measurements = value.measurements.map((rawRow, index) => {
+    if (!rawRow || typeof rawRow !== "object")
+      throw new Error(`measurement ${index} is invalid`);
+    const row = rawRow as Record<string, unknown>;
+    for (const key of ["task", "tier", "provider", "model"] as const) {
+      if (typeof row[key] !== "string" || !row[key]) {
+        throw new Error(`measurement ${index}.${key} is invalid`);
+      }
+    }
+    if (
+      typeof row.score !== "number" ||
+      !Number.isFinite(row.score) ||
+      row.score < 0 ||
+      row.score > 1
+    ) {
+      throw new Error(`measurement ${index}.score is invalid`);
+    }
+    if (
+      typeof row.samples !== "number" ||
+      !Number.isSafeInteger(row.samples) ||
+      row.samples < 1
+    ) {
+      throw new Error(`measurement ${index}.samples is invalid`);
+    }
+    return row as unknown as BenchMeasurement;
   });
-  return readJson<WeeklyBenchViewResponse>(res);
+  if (value.status === "unavailable" && measurements.length !== 0) {
+    throw new Error("unavailable benchmark cannot contain measurements");
+  }
+  return {
+    authority: "advisory",
+    status: value.status,
+    week_id: typeof value.week_id === "string" ? value.week_id : null,
+    generated_at:
+      typeof value.generated_at === "string" ? value.generated_at : null,
+    measurements,
+    notes: value.notes.map((note) => String(note)),
+  };
 }
 
-export function formatScore(score: number | null | undefined): string {
-  if (score === null || score === undefined) return "NOT MEASURED";
+export async function fetchWeeklyBenchView(): Promise<WeeklyBenchViewResponse> {
+  const response = await apiFetch(`${API_BASE}/settings/antiek-bench/weekly`);
+  if (!response.ok)
+    throw new AntiekBenchHttpError(response.status, await response.text());
+  return parseWeeklyBench(await response.json());
+}
+
+export function formatScore(score: number): string {
   return score.toFixed(3);
-}
-
-export function formatBestModel(modelId: string | undefined): string {
-  if (!modelId) return "none";
-  return modelId;
 }
