@@ -14,6 +14,8 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Write door | celebrate | write-home-werner-brand |
 | Settings Antiek-bench | thinking | antiek-bench-werner |
 | Login desk | thinking | login-werner-brand |
+| Speak door | thinking (Werner mood) | speak-home-werner-brand |
+| Thought partner panel | desk scene webp | thought-partner-desk-art |
 
 ## Living-TV interaction
 
