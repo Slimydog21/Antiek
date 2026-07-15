@@ -10,9 +10,11 @@ import {
 export default function ResearchWaitArcadeGame({
   game,
   reducedMotion,
+  sceneArtSrc,
 }: {
   game: ArcadeGameKind;
   reducedMotion: boolean;
+  sceneArtSrc: string;
 }) {
   const cartridge = useMemo(
     () => createArcadeCartridge(game, { reducedMotion }),
@@ -25,7 +27,16 @@ export default function ResearchWaitArcadeGame({
   }, []);
 
   return (
-    <div ref={shellRef}>
+    <div ref={shellRef} className="research-wait-arcade__cabinet">
+      <img
+        className="research-wait-arcade__scene-art"
+        src={sceneArtSrc}
+        alt=""
+        aria-hidden="true"
+        decoding="async"
+        draggable={false}
+        style={{ pointerEvents: "none" }}
+      />
       <ArcadeMount
         cartridge={cartridge}
         width={480}
