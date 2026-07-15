@@ -51,6 +51,12 @@ describe("fetchWeeklyBenchView", () => {
   it.each([
     { ...measured, measurements: [] },
     { ...measured, week_id: null },
+    { ...measured, week_id: "2026-W27" },
+    {
+      ...measured,
+      week_id: "2021-W01",
+      generated_at: "2021-01-04T00:30:00+02:00",
+    },
     { ...measured, generated_at: "not-a-date" },
     { ...measured, notes: [false] },
     {

@@ -3,10 +3,15 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
-from interfaces.research.api.settings_budget import register_settings_budget_routes
+from interfaces.research.api.settings_budget import (
+    BenchmarkReport,
+    register_settings_budget_routes,
+)
 
 
 def _client() -> TestClient:
@@ -71,6 +76,17 @@ def test_weekly_benchmark_rejects_bool_empty_and_mismatched_week(
         body = _client().get("/settings/antiek-bench/weekly").json()
         assert body["status"] == "unavailable"
         assert body["measurements"] == []
+
+
+def test_benchmark_week_identity_is_derived_in_utc() -> None:
+    payload = _report_payload()
+    payload["generated_at"] = "2021-01-04T00:30:00+02:00"
+    payload["week_id"] = "2021-W01"
+    with pytest.raises(ValidationError, match="week_id must match"):
+        BenchmarkReport.model_validate(payload)
+
+    payload["week_id"] = "2020-W53"
+    assert BenchmarkReport.model_validate(payload).week_id == "2020-W53"
 
 
 def test_weekly_benchmark_never_accepts_injected_records(monkeypatch) -> None:

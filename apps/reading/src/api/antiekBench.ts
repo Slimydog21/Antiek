@@ -60,6 +60,22 @@ function validGeneratedAt(value: unknown): value is string {
   );
 }
 
+function utcIsoWeekId(value: string): string | null {
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) return null;
+  const day = new Date(
+    Date.UTC(parsed.getUTCFullYear(), parsed.getUTCMonth(), parsed.getUTCDate()),
+  );
+  const isoDay = day.getUTCDay() || 7;
+  day.setUTCDate(day.getUTCDate() + 4 - isoDay);
+  const isoYear = day.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil(
+    ((day.getTime() - yearStart.getTime()) / 86_400_000 + 1) / 7,
+  );
+  return `${isoYear}-W${String(week).padStart(2, "0")}`;
+}
+
 function parseWeeklyBench(raw: unknown): WeeklyBenchViewResponse {
   if (!raw || typeof raw !== "object")
     throw new Error("invalid weekly benchmark response");
@@ -121,7 +137,8 @@ function parseWeeklyBench(raw: unknown): WeeklyBenchViewResponse {
     measurements.length === 0 ||
     typeof value.week_id !== "string" ||
     !WEEK_ID.test(value.week_id) ||
-    !validGeneratedAt(value.generated_at)
+    !validGeneratedAt(value.generated_at) ||
+    utcIsoWeekId(value.generated_at) !== value.week_id
   ) {
     throw new Error("measured benchmark metadata is invalid");
   }

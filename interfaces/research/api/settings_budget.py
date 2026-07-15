@@ -158,7 +158,10 @@ class BenchmarkReport(BaseModel):
             raise ValueError("benchmark measurements must be unique by task and route")
         if self.generated_at.tzinfo is None:
             raise ValueError("benchmark generated_at must include a timezone")
-        iso = self.generated_at.isocalendar()
+        # Week identity is a UTC contract. A source timestamp near midnight may
+        # belong to a different ISO week in its original offset than the UTC
+        # timestamp exposed by the API.
+        iso = self.generated_at.astimezone(UTC).isocalendar()
         generated_week = f"{iso.year}-W{iso.week:02d}"
         if self.week_id != generated_week:
             raise ValueError("benchmark week_id must match generated_at ISO week")
