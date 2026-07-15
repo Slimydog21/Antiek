@@ -1,0 +1,58 @@
+.research-lens-cursor {
+  position: fixed;
+  z-index: 59;
+  display: none;
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--ink);
+  border-radius: 50%;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 0 2px var(--card),
+    0 0 0 4px var(--aurora);
+  transition: opacity 160ms ease;
+}
+
+.research-lens-cursor::before,
+.research-lens-cursor::after {
+  position: absolute;
+  content: "";
+  pointer-events: none;
+}
+
+.research-lens-cursor::before {
+  inset: 7px;
+  border-radius: 50%;
+  background: var(--sun);
+}
+
+.research-lens-cursor::after {
+  right: -6px;
+  bottom: -4px;
+  width: 8px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--ink);
+  transform: rotate(45deg);
+  transform-origin: left center;
+}
+
+.research-lens-cursor__glass {
+  position: absolute;
+  inset: 3px;
+  border: 1px solid var(--aurora);
+  border-radius: 50%;
+  background: var(--card-soft);
+  opacity: 0.64;
+}
+
+.research-lens-cursor--idle {
+  opacity: 0.72;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .research-lens-cursor {
+    transition: none;
+  }
+}
