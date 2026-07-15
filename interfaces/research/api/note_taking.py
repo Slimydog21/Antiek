@@ -43,6 +43,7 @@ from roles.note_taker import (  # noqa: E402
     NOTE_TAKER_SYSTEM_PROMPT,
     parse_notes_response,
 )
+from roles.note_taker.parser import ExtractedNote  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
@@ -52,8 +53,9 @@ from substrate.schemas import (  # noqa: E402
     Event,
     NoteEmergedPayload,
 )
+from substrate.twin_notes.store import TwinDocument, TwinNotesStore  # noqa: E402
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # Action types the note-taker subscribes to. Tightened to the events
 # that ACTUALLY reflect substantive wrestling movement — distillations
@@ -75,6 +77,64 @@ DEFAULT_THRESHOLD = 5
 # trade-off between recall (more context = better notes) and cost
 # (more context = more tokens billed at the flash tier).
 SYNTHESIS_HISTORY_WINDOW = 30
+
+# Twin-document bridge (recursive note-taker substrate, PR #785).
+# Default ON so emerged notes land in the twin store; set
+# ANTIEK_TWIN_NOTES_FROM_NOTE_TAKER=0 to disable without code change.
+_TWIN_ENV = "ANTIEK_TWIN_NOTES_FROM_NOTE_TAKER"
+
+
+def _twin_bridge_enabled(explicit: bool | None = None) -> bool:
+    if explicit is not None:
+        return bool(explicit)
+    raw = os.environ.get(_TWIN_ENV, "1").strip().lower()
+    return raw not in {"0", "false", "no", "off"}
+
+
+def record_emerged_notes_as_twin(
+    notes: list[ExtractedNote],
+    *,
+    parent_asset_id: str,
+    store: TwinNotesStore | None = None,
+    enabled: bool | None = None,
+    source_label: str = "note_taker",
+) -> TwinDocument | None:
+    """Write emerged notes into the twin-document substrate.
+
+    Heuristic: note text ending with ``?`` is a question; otherwise an
+    insight. Empty note lists or disabled bridge return ``None`` without
+    touching the store. Never raises into the note-taker hot path —
+    callers that need failures should use ``TwinNotesStore`` directly.
+    """
+    if not _twin_bridge_enabled(enabled):
+        return None
+    if not notes:
+        return None
+    parent = (parent_asset_id or "").strip()
+    if not parent:
+        return None
+    insights: list[str] = []
+    questions: list[str] = []
+    for n in notes:
+        text = (n.text or "").strip()
+        if not text:
+            continue
+        if text.endswith("?"):
+            questions.append(text)
+        else:
+            insights.append(text)
+    if not insights and not questions:
+        return None
+    try:
+        twin_store = store if store is not None else TwinNotesStore()
+        return twin_store.record(
+            parent,
+            insights=insights,
+            questions=questions,
+            source_label=source_label,
+        )
+    except Exception:  # noqa: BLE001 — note-taker must not fail closed on twin I/O
+        return None
 
 
 def _resolve_threshold() -> int:
@@ -293,6 +353,15 @@ async def _run_note_synthesis(
                 except Exception:  # pragma: no cover — broadcast is best-effort
                     pass
                 break
+
+    # Recursive note-taker: also land insights/questions on the twin
+    # document for this investigation (or document when present).
+    parent_asset = (
+        str(triggering_event.document_id).strip()
+        if triggering_event.document_id
+        else str(triggering_event.investigation_id).strip()
+    )
+    record_emerged_notes_as_twin(notes, parent_asset_id=parent_asset)
 
 
 def register_handlers(
