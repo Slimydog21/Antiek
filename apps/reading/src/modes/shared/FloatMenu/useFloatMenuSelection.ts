@@ -62,6 +62,9 @@ export interface SelectionProvenance {
   derivedRevisionId?: string | null;
   derivedContentSha256?: string | null;
   derivedGeneration?: number | null;
+  derivedCitationId?: string | null;
+  derivedChunkOrdinal?: number | null;
+  derivedChunkTextSha256?: string | null;
 }
 
 /** What the host hands {@link FloatMenu}: the live selection's text + raw rect

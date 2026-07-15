@@ -106,6 +106,7 @@ GENERATED_HEADER = """\
 
 # Nested helper models (referenced by payloads). Emit first.
 NESTED_MODELS: tuple[type[BaseModel], ...] = (
+    schema_module.DerivedCitationSource,
     schema_module.ContextLayer,
     schema_module.Claim,
     schema_module.ThesisOutcome,

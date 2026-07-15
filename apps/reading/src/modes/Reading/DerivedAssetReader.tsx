@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { getDerivedAssetReading } from "../../api/research";
 import type { DerivedAssetReadingResponse } from "../../api/research";
+import type { DerivedCompanionCitation } from "../../api/research";
 import { LemonButton, LemonTag } from "../../components/lemon";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
@@ -85,6 +86,25 @@ export default function DerivedAssetReader() {
     }, { mode: "floating", title: "Follow this" });
   }, [model, openPanel]);
 
+  const onFollowCitation = useCallback((citation: DerivedCompanionCitation) => {
+    if (!model) return;
+    openPanel("ChaseThread", {
+      spawnContext: citation.text,
+      parentInvestigationId: `read-${model.derived_asset_id}:${model.revision_id}`,
+      sourceProvenance: {
+        documentId: model.derived_asset_id,
+        chunkId: null,
+        servable: true,
+        derivedRevisionId: model.revision_id,
+        derivedContentSha256: model.content_sha256,
+        derivedGeneration: model.generation,
+        derivedCitationId: citation.citation_id,
+        derivedChunkOrdinal: citation.chunk_ordinal,
+        derivedChunkTextSha256: citation.text_sha256,
+      },
+    }, { mode: "floating", title: "Follow this" });
+  }, [model, openPanel]);
+
   if (loading) return <main className="flex min-h-[60vh] items-center justify-center text-sm text-shadow-1">Opening the asset...</main>;
   if (error || !model) return <main className="flex min-h-[60vh] flex-col items-center justify-center gap-3"><p role="alert" className="text-sm text-emperor">{error}</p><Link to="/" className="text-sm underline">Return to research</Link></main>;
 
@@ -102,7 +122,7 @@ export default function DerivedAssetReader() {
       </header>
       <article ref={articleRef} className="derived-html-reading prose prose-neutral mx-auto max-w-3xl px-6 py-10 font-serif text-ink dark:prose-invert dark:text-bright" data-derived-asset-id={model.derived_asset_id} data-revision-id={model.revision_id} data-content-sha256={model.content_sha256} dangerouslySetInnerHTML={{ __html: model.canonical_html }} />
     </main>
-    <DerivedRevisionCompanion model={model} articleRef={articleRef} />
+    <DerivedRevisionCompanion model={model} articleRef={articleRef} onFollowCitation={onFollowCitation} />
     <FloatMenu selection={selection} investigationId={threadId} onDeepResearch={onDeepResearch} />
   </div>;
 }

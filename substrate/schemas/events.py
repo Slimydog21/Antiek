@@ -756,7 +756,11 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     needed for the JSONL/Parquet event log: all fields are nullable/defaulted,
 #     and historical rows validate by schema-on-read defaults. ND remains
 #     advisory only; dispatch is still the authoritative router.
-EVENT_SCHEMA_VERSION: int = 33
+# v34: investigation.start_requested gains an optional, closed
+#     DerivedCitationSource. It preserves server-verified immutable HTML
+#     citation identity separately from prompt prose. Historical events
+#     validate with the default null value.
+EVENT_SCHEMA_VERSION: int = 34
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2154,6 +2158,20 @@ class AuditFindingPayload(_PayloadBase):
 # ---------------------------------------------------------------------------
 
 
+class DerivedCitationSource(BaseModel):
+    """Exact derived HTML citation admitted by the research launch boundary."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    derived_asset_id: str = Field(pattern=r"^ast_[0-9a-f]{32}$")
+    revision_id: str = Field(pattern=r"^rev_[0-9a-f]{32}$")
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    generation: int = Field(ge=1)
+    citation_id: str = Field(pattern=r"^dchunk_[0-9a-f]{64}$")
+    chunk_ordinal: int = Field(ge=0)
+    chunk_text_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    excerpt: str = Field(min_length=1, max_length=8192)
+
+
 class InvestigationStartRequestedPayload(_PayloadBase):
     """Cold-question entry point. The orchestrator subscribes to this
     action_type and spawns a per-investigation coroutine that walks
@@ -2180,6 +2198,7 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # Sprint 11: parent investigation lineage for chase-spawned children.
     parent_investigation_id: str | None = None
     spawn_context: str | None = None  # highlighted text from parent's synthesis
+    derived_source: DerivedCitationSource | None = None
     # Sprint 12: continuous chase mode. When chase_mode != "off", the
     # orchestrator re-enters phase 1 with the strongest open question
     # from current evidentiary_gaps as a new spawned sub-investigation

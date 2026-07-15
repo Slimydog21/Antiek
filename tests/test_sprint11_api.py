@@ -21,7 +21,7 @@ _REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _REPO not in sys.path:
     sys.path.insert(0, _REPO)
 
-from substrate.schemas import (
+from substrate.schemas import (  # noqa: E402
     TYPED_PAYLOAD_ACTION_TYPES,
     ActionType,
     InvestigationSpawnedFromPayload,
@@ -129,6 +129,87 @@ def test_post_investigation_without_parent_does_not_emit_spawned_from(
     traj = client.get(f"/trajectory/{inv_id}").json()
     types = [e.get("action_type") for e in traj["events"]]
     assert ActionType.INVESTIGATION_SPAWNED_FROM.value not in types
+
+
+def _derived_source() -> dict[str, object]:
+    return {
+        "derived_asset_id": "ast_" + "a" * 32,
+        "revision_id": "rev_" + "b" * 32,
+        "content_sha256": "c" * 64,
+        "generation": 7,
+        "citation_id": "dchunk_" + "d" * 64,
+        "chunk_ordinal": 3,
+        "chunk_text_sha256": "e" * 64,
+        "excerpt": "Exact admitted passage.",
+    }
+
+
+def test_post_persists_structured_derived_citation(temp_substrate, monkeypatch):
+    monkeypatch.setattr(
+        "substrate.research_artifact.derived_citation_source."
+        "verify_derived_citation_source",
+        lambda **kwargs: kwargs["source"],
+    )
+    client = _client(temp_substrate)
+    response = client.post("/investigations", json={
+        "question": "What follows from this evidence?",
+        "context": "Exact admitted passage.",
+        "investigation_id": "inv-derived-typed",
+        "derived_source": _derived_source(),
+    })
+    assert response.status_code == 202
+    started = next(
+        event for event in client.get("/trajectory/inv-derived-typed").json()["events"]
+        if event["action_type"] == ActionType.INVESTIGATION_START_REQUESTED.value
+    )
+    assert started["payload"]["derived_source"] == _derived_source()
+    assert "source identity" not in started["payload"]["context"]
+
+
+def test_invalid_derived_citation_emits_no_start_event(temp_substrate, monkeypatch):
+    from substrate.research_artifact.derived_citation_source import DerivedCitationConflict
+
+    def refuse(**_kwargs):
+        raise DerivedCitationConflict("mutated")
+
+    monkeypatch.setattr(
+        "substrate.research_artifact.derived_citation_source."
+        "verify_derived_citation_source",
+        refuse,
+    )
+    client = _client(temp_substrate)
+    response = client.post("/investigations", json={
+        "question": "What follows from this evidence?",
+        "investigation_id": "inv-derived-refused",
+        "derived_source": _derived_source(),
+    })
+    assert response.status_code == 409
+    assert client.get("/trajectory/inv-derived-refused").json()["events"] == []
+
+
+def test_derived_citation_must_match_research_context(temp_substrate, monkeypatch):
+    verifier_called = False
+
+    def verify(**_kwargs):
+        nonlocal verifier_called
+        verifier_called = True
+
+    monkeypatch.setattr(
+        "substrate.research_artifact.derived_citation_source."
+        "verify_derived_citation_source",
+        verify,
+    )
+    client = _client(temp_substrate)
+    response = client.post("/investigations", json={
+        "question": "What follows from this evidence?",
+        "context": "Unrelated text.",
+        "spawn_context": "Exact admitted passage.",
+        "investigation_id": "inv-derived-mismatch",
+        "derived_source": _derived_source(),
+    })
+    assert response.status_code == 409
+    assert verifier_called is False
+    assert client.get("/trajectory/inv-derived-mismatch").json()["events"] == []
 
 
 # ── 3. GET /chunks/{id} ──────────────────────────────────────────────

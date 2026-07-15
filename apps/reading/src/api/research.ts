@@ -379,6 +379,16 @@ export interface DerivedAssetReadingResponse {
   exact_reader_path: string;
 }
 
+export interface DerivedCompanionCitation {
+  citation_id: string;
+  chunk_ordinal: number;
+  member_index: number;
+  section_anchor: string;
+  section_path: string;
+  text: string;
+  text_sha256: string;
+}
+
 export interface DerivedCompanionEvidenceResponse {
   client_turn_id: string;
   state: "evidence_ready" | "insufficient_evidence";
@@ -388,15 +398,7 @@ export interface DerivedCompanionEvidenceResponse {
     "derived_asset_id" | "revision_id" | "content_sha256" | "generation" | "is_current">;
   evidence_pack: {
     pack_sha256: string;
-    citations: Array<{
-      citation_id: string;
-      chunk_ordinal: number;
-      member_index: number;
-      section_anchor: string;
-      section_path: string;
-      text: string;
-      text_sha256: string;
-    }>;
+    citations: DerivedCompanionCitation[];
   };
   execution: {
     available: false;

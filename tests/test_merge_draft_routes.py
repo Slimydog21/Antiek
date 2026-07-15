@@ -19,11 +19,16 @@ from interfaces.research.api.merge_asset_routes import (
 from runtime.db_lock import connect_write
 from substrate.contracts.html_projection import HtmlProjectionContract, derive_projection_id
 from substrate.graph.schema import init_database_at_path
+from substrate.research_artifact.derived_citation_source import (
+    DerivedCitationConflict,
+    verify_derived_citation_source,
+)
 from substrate.research_artifact.derived_companion import (
     build_derived_revision_evidence_pack,
     canonical_evidence_json,
 )
 from substrate.research_artifact.merge_draft import MergeDraftRepository
+from substrate.schemas import DerivedCitationSource
 
 
 @pytest.fixture  # type: ignore[untyped-decorator]
@@ -384,6 +389,26 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert pack["citations"][0]["citation_id"] == current_search.json()["results"][0][
         "citation_id"
     ]
+    citation = pack["citations"][0]
+    source = DerivedCitationSource(
+        derived_asset_id=asset_id,
+        revision_id=restored["revision_id"],
+        content_sha256=restored["content_sha256"],
+        generation=3,
+        citation_id=citation["citation_id"],
+        chunk_ordinal=citation["chunk_ordinal"],
+        chunk_text_sha256=citation["text_sha256"],
+        excerpt=citation["text"],
+    )
+    assert verify_derived_citation_source(
+        db_path=db_path, owner_user_id="owner-a", source=source
+    ) == source
+    with pytest.raises(DerivedCitationConflict):
+        verify_derived_citation_source(
+            db_path=db_path,
+            owner_user_id="owner-a",
+            source=source.model_copy(update={"chunk_text_sha256": "f" * 64}),
+        )
     assert build_derived_revision_evidence_pack(
         db_path=db_path,
         owner_user_id="owner-a",

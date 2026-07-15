@@ -78,6 +78,7 @@ from substrate.graph.health import DuckDBHealth, probe_duckdb_health  # noqa: E4
 from substrate.schemas import (  # noqa: E402
     EVENT_SCHEMA_VERSION,
     WRESTLING_ACTION_TYPES,
+    DerivedCitationSource,
     DispatchCallPayload,
     Event,
     TypedPayload,
@@ -286,6 +287,7 @@ class InvestigationStartRequest(BaseModel):
     investigation_id: str | None = None
     parent_investigation_id: str | None = None
     spawn_context: str | None = None
+    derived_source: DerivedCitationSource | None = None
     # SPR-01 M3: curated fast/deep research tier from the research entry.
     # CLOSED set; recorded on the start event so the chosen tier is
     # queryable. "fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro (the
@@ -2208,6 +2210,7 @@ def create_app(
     )
     async def post_investigation(
         req: InvestigationStartRequest,
+        request: Request,
     ) -> InvestigationStartResponse:
         """Cold-question entry point. Emits
         ``INVESTIGATION_START_REQUESTED`` into the trajectory; the
@@ -2226,6 +2229,38 @@ def create_app(
             InvestigationStartRequestedPayload,
         )
 
+        if req.derived_source is not None:
+            from substrate.research_artifact.derived_asset_library import (
+                DerivedAssetIntegrity,
+                DerivedAssetUnavailable,
+            )
+            from substrate.research_artifact.derived_asset_retrieval import (
+                DerivedAssetRetrievalIntegrity,
+            )
+            from substrate.research_artifact.derived_citation_source import (
+                DerivedCitationConflict,
+                verify_derived_citation_source,
+            )
+
+            owner_user_id = getattr(request.state, "user_id", None) or "__operator__"
+            if (req.context != req.derived_source.excerpt
+                    or (req.spawn_context is not None
+                        and req.spawn_context != req.derived_source.excerpt)):
+                raise HTTPException(
+                    409, "derived citation does not match research context"
+                )
+            try:
+                verify_derived_citation_source(
+                    db_path=default_db_path(),
+                    owner_user_id=owner_user_id,
+                    source=req.derived_source,
+                )
+            except DerivedAssetUnavailable:
+                raise HTTPException(404, "derived citation is unavailable") from None
+            except (DerivedAssetIntegrity, DerivedAssetRetrievalIntegrity,
+                    DerivedCitationConflict):
+                raise HTTPException(409, "derived citation integrity conflict") from None
+
         investigation_id = (
             req.investigation_id or f"inv-{_uuid.uuid4().hex[:12]}"
         )
@@ -2239,6 +2274,7 @@ def create_app(
                     max_sub_questions=req.max_sub_questions,
                     parent_investigation_id=req.parent_investigation_id,
                     spawn_context=req.spawn_context,
+                    derived_source=req.derived_source,
                     # SPR-01 M3: record the chosen research tier on the
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.
