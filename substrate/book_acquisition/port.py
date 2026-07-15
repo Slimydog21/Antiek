@@ -30,6 +30,7 @@ from substrate.book_import import (
     publish_converted_book,
 )
 from substrate.books.model import get_book_asset
+from substrate.books.serve_guard import serve_full_text_guarded
 
 from .authorization import BookAcquisitionConnection, verify_authorization
 
@@ -314,22 +315,20 @@ def verify_port_receipt(
         or content_class != "personal_reading"
     ):
         raise PortReceiptIntegrityError("port receipt is tampered")
-    document = con.execute(
-        "SELECT raw_text, content_class FROM documents WHERE document_id = ?",
-        [document_id],
-    ).fetchone()
     asset = get_book_asset(con, str(document_id))
-    if document is None or asset is None:
+    if asset is None:
         raise PortReceiptIntegrityError("ported document or book asset is missing")
     if asset.taken_down:
         raise PortReceiptIntegrityError("ported document has been taken down")
-    raw_text, stored_content_class = document
+    served = serve_full_text_guarded(con, str(document_id), owner=True)
+    if served.full_text is None:
+        raise PortReceiptIntegrityError("ported document body is not owner-servable")
     expected_document_id = (
-        "doc-bookimport-" + hashlib.sha256(str(raw_text).encode("utf-8")).hexdigest()[:32]
+        "doc-bookimport-"
+        + hashlib.sha256(served.full_text.encode("utf-8")).hexdigest()[:32]
     )
     if (
         expected_document_id != document_id
-        or stored_content_class != "personal_reading"
         or asset.content_class != "personal_reading"
         or asset.servability.value != servability
     ):
