@@ -213,7 +213,7 @@ def fetch_feed(
     long-running podcast has 500+ episodes and you only want the
     most recent N."""
     try:
-        import feedparser  # type: ignore[import-untyped]
+        import feedparser  # type: ignore
     except ImportError as e:  # pragma: no cover
         raise ImportError(
             "acquisition.podcasts requires feedparser. Run "

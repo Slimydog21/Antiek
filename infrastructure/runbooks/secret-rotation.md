@@ -95,11 +95,12 @@
 
 ## Rotating other keys
 
-`ANTHROPIC_API_KEY` and `DEEPSEEK_API_KEY` follow the same procedure —
+`ANTHROPIC_API_KEY`, `DEEPSEEK_API_KEY`, and `NOTDIAMOND_API_KEY` follow the same procedure —
 substitute the dashboard URL:
 
 - Anthropic: https://console.anthropic.com/settings/keys
 - DeepSeek: https://platform.deepseek.com/api_keys
+- NotDiamond: https://notdiamond.ai
 
 In the current deployment, these are unset (everything routes through
 OpenRouter), so this section is for a future state where you've added
