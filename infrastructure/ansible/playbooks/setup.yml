@@ -65,6 +65,8 @@
           - unattended-upgrades
           - rsync
           - curl
+          - jq
+          - util-linux # flock(1), used by the whole-backup job mutex
           - ca-certificates
           - gnupg
           - debian-keyring
@@ -466,7 +468,7 @@
       tags: [caddy]
 
     # ──────────────────────────────────────────────────────────────────────
-    # 11. Backup script + rclone config + cron
+    # 11. Backup script + rclone config + bounded systemd timer
     # ──────────────────────────────────────────────────────────────────────
 
     - name: ensure /etc/rclone dir
@@ -510,14 +512,79 @@
         mode: "0750"
       tags: [backup]
 
-    - name: install backup cron job
-      ansible.builtin.cron:
-        name: antiek nightly backup
-        user: root
-        minute: "{{ backup_cron_minute }}"
-        hour: "{{ backup_cron_hour }}"
-        job: "/usr/local/bin/antiek-backup >> /var/log/antiek-backup.log 2>&1"
-        cron_file: antiek-backup
+    - name: install backup freshness probe
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness-probe.sh.j2
+        dest: /usr/local/bin/antiek-backup-freshness-probe
+        owner: root
+        group: root
+        mode: "0750"
+      tags: [backup]
+
+    - name: remove legacy backup cron job
+      ansible.builtin.file:
+        path: /etc/cron.d/antiek-backup
+        state: absent
+      tags: [backup]
+
+    - name: install backup service
+      ansible.builtin.template:
+        src: ../templates/antiek-backup.service.j2
+        dest: /etc/systemd/system/antiek-backup.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: backup_service
+      tags: [backup]
+
+    - name: install backup timer
+      ansible.builtin.template:
+        src: ../templates/antiek-backup.timer.j2
+        dest: /etc/systemd/system/antiek-backup.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: backup_timer
+      tags: [backup]
+
+    - name: install backup freshness service
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness.service.j2
+        dest: /etc/systemd/system/antiek-backup-freshness.service
+        owner: root
+        group: root
+        mode: "0644"
+      register: backup_freshness_service
+      tags: [backup]
+
+    - name: install backup freshness timer
+      ansible.builtin.template:
+        src: ../templates/antiek-backup-freshness.timer.j2
+        dest: /etc/systemd/system/antiek-backup-freshness.timer
+        owner: root
+        group: root
+        mode: "0644"
+      register: backup_freshness_timer
+      tags: [backup]
+
+    - name: reload systemd for backup units
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: backup_service.changed or backup_timer.changed or backup_freshness_service.changed or backup_freshness_timer.changed
+      tags: [backup]
+
+    - name: enable and start backup timer
+      ansible.builtin.systemd:
+        name: antiek-backup.timer
+        enabled: true
+        state: started
+      tags: [backup]
+
+    - name: enable and start backup freshness timer
+      ansible.builtin.systemd:
+        name: antiek-backup-freshness.timer
+        enabled: true
+        state: started
       tags: [backup]
 
     # ──────────────────────────────────────────────────────────────────────

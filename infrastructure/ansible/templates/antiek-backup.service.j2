@@ -22,7 +22,9 @@ TimeoutStartSec=1800
 # Hardening — root-run script that doesn't need to bind ports or
 # persist new state outside the substrate state dir.
 ProtectSystem=strict
-ReadWritePaths=/var/tmp /var/log /home/antiek/.antiek
+StateDirectory=antiek-backup
+StateDirectoryMode=0700
+ReadWritePaths=/var/lib/antiek-backup /var/log /home/antiek/.antiek
 ProtectHome=read-only
 PrivateTmp=true
 NoNewPrivileges=true

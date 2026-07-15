@@ -65,35 +65,6 @@ def _lock_path_for(db_path: str) -> str:
     return db_path + ".write.lock"
 
 
-def _stale_pid_check(lock_path: str) -> None:
-    """Remove the lock file if its stamped PID is no longer alive.
-
-    The OS releases the flock on process death, but the lock file and its
-    PID stamp persist. This is a best-effort hygiene helper called before
-    os.open() — the real serialization still happens via flock. If a live
-    writer re-creates the file between our stat and open, the flock on open
-    correctly serializes. We only clean up when the stamped PID is dead.
-    """
-    try:
-        with open(lock_path) as f:
-            content = f.read(64)
-    except (FileNotFoundError, OSError):
-        return
-
-    pid_str = content.split()[0] if content.strip() else ""
-    if not pid_str or not pid_str.isdigit():
-        return
-
-    pid = int(pid_str)
-    try:
-        os.kill(pid, 0)
-    except (ProcessLookupError, PermissionError):
-        try:
-            os.unlink(lock_path)
-        except OSError:
-            pass
-
-
 class WriteLockTimeout(RuntimeError):
     """Raised when the flock could not be acquired within the timeout."""
 
@@ -277,9 +248,10 @@ def connect_write(
     if parent and not os.path.exists(parent):
         os.makedirs(parent, exist_ok=True)
 
-    # Detect and clean up stale locks from crashed processes.
-    _stale_pid_check(lock_path)
-
+    # Never unlink the sidecar. flock authority belongs to its inode; replacing
+    # the pathname while another process still holds the old inode would allow
+    # two writers to acquire different locks. A dead process releases flock in
+    # the kernel, so the permanent file needs no stale-file cleanup.
     fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
     deadline = time.monotonic() + timeout_s
     acquire_start = time.monotonic()

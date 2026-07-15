@@ -20,6 +20,7 @@ content if needed.
 from __future__ import annotations
 
 import time
+from html import escape
 from urllib.parse import parse_qs, urlparse
 
 import pytest
@@ -157,6 +158,30 @@ def test_auth_request_allowlisted_sends_email(monkeypatch):
     assert len(sender.sent) == 1
     assert sender.sent[0].email.to == _OPERATOR
     assert "/auth/callback?token=" in sender.sent[0].email.text_body
+
+
+def test_auth_email_has_explicit_html_action_and_matching_code(monkeypatch):
+    sender = MockEmailProvider(log_to_stdout=False)
+    monkeypatch.setattr(
+        "interfaces.research.api.auth.get_email_provider",
+        lambda: sender,
+    )
+    client = _client(monkeypatch)
+
+    requested = client.post("/auth/request", json={"email": _OPERATOR}).json()
+    email = sender.sent[0].email
+    link = next(
+        part.strip()
+        for part in email.text_body.split()
+        if "/auth/callback?" in part
+    )
+
+    assert email.subject.endswith(requested["device_code"])
+    assert requested["device_code"] in email.text_body
+    assert email.html_body is not None
+    assert requested["device_code"] in email.html_body
+    assert f'href="{escape(link, quote=True)}"' in email.html_body
+    assert ">Review sign-in</a>" in email.html_body
 
 
 def test_phone_approval_unlocks_original_browser(monkeypatch):

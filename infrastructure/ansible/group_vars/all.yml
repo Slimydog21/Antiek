@@ -96,13 +96,8 @@ backup_bucket_name: "antiek-backups"
 # r2_endpoint, r2_access_key, r2_secret_key: passed at invocation via
 # --extra-vars @r2-creds.yml (gitignored). Don't put them here.
 
-# Backup cron schedule. 03:00 UTC = ~midnight in the operator's morning
+# Backup timer schedule. 03:00 UTC = 06:00 in Riyadh/Jeddah
 # (Jeddah is UTC+3), so any failure is visible early-day instead of
 # overnight.
 backup_cron_minute: "0"
 backup_cron_hour: "3"
-
-# Retention policy (days). Older backups in R2 are deleted by the backup
-# script. Increase if you have evidence-of-substantive-loss concerns;
-# decrease to save R2 storage cost (~$0.015/GB/month).
-backup_retention_days: 14

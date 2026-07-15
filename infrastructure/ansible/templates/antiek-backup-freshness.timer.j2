@@ -1,0 +1,15 @@
+# {{ ansible_managed }}
+
+[Unit]
+Description=Antiek verified-backup freshness observer (twice daily)
+Documentation=https://github.com/Slimydog21/Antiek/blob/main/tools/backup_freshness.py
+
+[Timer]
+# Observe after the configured nightly backup and again twelve hours later.
+# Persistent catches a missed observation after VM downtime.
+OnCalendar=*-*-* 06,18:30:00 UTC
+Persistent=true
+Unit=antiek-backup-freshness.service
+
+[Install]
+WantedBy=timers.target

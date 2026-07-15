@@ -5,7 +5,13 @@ budget-awareness needs. The adjacent admin router securely registers BYOK
 providers but does not grant route authority or route via NotDiamond.
 
 Honesty rules (load-bearing):
-  * Spent is ``null`` when no ledger is wired — never invent ``$0 spent``.
+  * Spent/remaining are ``null`` when no ledger is wired — never invent ``$0``.
+  * Sidecar ``spent_usd`` is a **reserved estimate** (fixed per-spawn holds),
+    not settled provider cost. Surfaces label that basis explicitly.
+  * Display (Settings) cap and enforcement (daemon) cap are both reported when
+    they diverge — never pretend one number is both.
+  * Remaining under the display cap is **signed** (negative when over budget)
+    so overrun magnitude is never clamped away.
   * Cost projection uses ``substrate/dispatch/config.yaml`` tier pricing; when
     rates are ``0.0`` (operator-placeholder), the estimate is ``null`` with an
     explicit note rather than a fake number.
@@ -23,7 +29,7 @@ from typing import Any, Literal
 
 import yaml
 from fastapi import APIRouter, FastAPI, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orchestration.continuous.budget import (
     _ENV_DAILY_CAP,
@@ -47,6 +53,7 @@ _MAX_BENCHMARK_AGE = timedelta(days=8)
 _MAX_BENCHMARK_FUTURE_SKEW = timedelta(minutes=5)
 _TEXT_DECISION_TIERS = frozenset({"flash", "pro", "synthesis", "verify"})
 _MAX_FALLBACK_DEPTH = 16
+SpendBasis = Literal["unknown", "reserved_estimate"]
 
 
 class ModelRow(BaseModel):
@@ -66,14 +73,29 @@ class ModelsResponse(BaseModel):
 
 
 class BudgetResponse(BaseModel):
+    """Operator budget readout.
+
+    ``daily_cap_usd`` is the Settings/display cap. ``enforcement_cap_usd`` is
+    what the continuous daemon actually enforces. ``spent_usd`` mirrors
+    ``reserved_estimated_usd`` for back-compat; both are reserved holds, not
+    settled provider cost (see ``spend_basis``). ``remaining_usd`` is signed:
+    ``display_cap - reserved`` (negative when over the display cap).
+    """
+
     daily_cap_usd: float | None = Field(ge=0, allow_inf_nan=False)
     spent_usd: float | None = Field(ge=0, allow_inf_nan=False)
-    remaining_usd: float | None = Field(ge=0, allow_inf_nan=False)
-    over_budget: bool = False
-    over_budget_usd: float = Field(default=0, ge=0, allow_inf_nan=False)
+    remaining_usd: float | None
     spent_status: SpentStatus
     cap_env: str | None
     notes: list[str] = Field(default_factory=list)
+    # Honesty fields (additive; older clients ignore them).
+    reserved_estimated_usd: float | None = None
+    spend_basis: SpendBasis = "unknown"
+    enforcement_cap_usd: float | None = None
+    enforcement_cap_env: str | None = None
+    caps_aligned: bool | None = None
+    over_budget: bool | None = None
+    over_budget_usd: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class PromptCostEstimateRequest(BaseModel):
@@ -101,6 +123,8 @@ class PromptCostEstimateResponse(BaseModel):
 
 
 class BenchmarkMeasurement(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     task: DecisionTask
     tier: str = Field(min_length=1, max_length=64)
     provider: str = Field(min_length=1, max_length=128)
@@ -108,11 +132,24 @@ class BenchmarkMeasurement(BaseModel):
     score: float = Field(ge=0, le=1, allow_inf_nan=False)
     samples: int = Field(ge=1, le=1_000_000)
 
+    @field_validator("score", "samples", mode="before")
+    @classmethod
+    def booleans_are_not_measurements(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("boolean benchmark measurements are invalid")
+        return value
+
 
 class BenchmarkReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     schema_version: Literal["antiek.model-bench.v1"]
+    week_id: str = Field(pattern=r"^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$")
     generated_at: datetime
-    measurements: list[BenchmarkMeasurement] = Field(max_length=10_000)
+    measurements: list[BenchmarkMeasurement] = Field(
+        min_length=1,
+        max_length=10_000,
+    )
 
     @model_validator(mode="after")
     def measurements_are_unique(self) -> BenchmarkReport:
@@ -121,7 +158,25 @@ class BenchmarkReport(BaseModel):
             raise ValueError("benchmark measurements must be unique by task and route")
         if self.generated_at.tzinfo is None:
             raise ValueError("benchmark generated_at must include a timezone")
+        # Week identity is a UTC contract. A source timestamp near midnight may
+        # belong to a different ISO week in its original offset than the UTC
+        # timestamp exposed by the API.
+        iso = self.generated_at.astimezone(UTC).isocalendar()
+        generated_week = f"{iso.year}-W{iso.week:02d}"
+        if self.week_id != generated_week:
+            raise ValueError("benchmark week_id must match generated_at ISO week")
         return self
+
+
+class WeeklyBenchmarkResponse(BaseModel):
+    """Latest validated Antiek-bench report for the operator Settings view."""
+
+    authority: Literal["advisory"] = "advisory"
+    status: BenchmarkStatus
+    week_id: str | None
+    generated_at: str | None
+    measurements: list[BenchmarkMeasurement]
+    notes: list[str] = Field(default_factory=list)
 
 
 class ModelDecisionRequest(BaseModel):
@@ -356,100 +411,163 @@ def estimate_prompt_cost(
     )
 
 
-def _read_recorded_daemon_spend(path: Path) -> float:
-    """Read the sidecar as untrusted projection input without changing enforcement."""
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, dict):
-        raise ValueError("budget snapshot must be a JSON object")
-    if raw.get("date_stamp") != _utc_date_stamp():
-        raise ValueError("budget snapshot date does not match the current UTC day")
-    if "spent_usd" not in raw or "spawn_count" not in raw or "cap_usd" not in raw:
-        raise ValueError("budget snapshot is missing required accounting fields")
-    spent_raw = raw["spent_usd"]
-    cap_raw = raw["cap_usd"]
-    if isinstance(spent_raw, bool) or not isinstance(spent_raw, (int, float)):
-        raise ValueError("budget snapshot spend must be a JSON number")
-    if isinstance(cap_raw, bool) or not isinstance(cap_raw, (int, float)):
-        raise ValueError("budget snapshot cap must be a JSON number")
-    spent = float(spent_raw)
-    stored_cap = float(cap_raw)
-    spawn_count = raw["spawn_count"]
-    if not math.isfinite(spent) or spent < 0:
-        raise ValueError("budget snapshot spend must be finite and non-negative")
-    if not math.isfinite(stored_cap) or stored_cap < 0:
-        raise ValueError("budget snapshot cap must be finite and non-negative")
-    if isinstance(spawn_count, bool) or not isinstance(spawn_count, int) or spawn_count < 0:
-        raise ValueError("budget snapshot spawn count must be a non-negative integer")
-    return spent
+def _parse_nonnegative_finite_usd(raw: str, *, label: str) -> float:
+    """Parse a USD amount that must be finite and >= 0; raise ValueError otherwise."""
+    value = float(raw)
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(f"{label} must be a finite non-negative USD amount")
+    return value
 
 
-def read_operator_budget() -> BudgetResponse:
-    """Read daily cap + spent with honest unknown-spend semantics."""
-    notes: list[str] = []
-    cap_env: str | None = None
-    daily_cap: float | None = None
-
+def _resolve_display_cap(notes: list[str]) -> tuple[float, str | None]:
+    """Settings/display cap: operator env preferred, then daemon env, then default."""
     for env_name in ("ANTIEK_OPERATOR_BUDGET_USD", _ENV_DAILY_CAP):
         raw = os.environ.get(env_name)
         if raw is None or raw.strip() == "":
             continue
         try:
-            parsed_cap = float(raw)
-            if not math.isfinite(parsed_cap) or parsed_cap < 0:
-                notes.append(f"{env_name} must be finite and non-negative; ignored")
-                continue
-            daily_cap = parsed_cap
-            cap_env = env_name
-            break
+            return _parse_nonnegative_finite_usd(raw, label=env_name), env_name
         except ValueError:
-            notes.append(f"{env_name} is not a float; ignored")
+            notes.append(f"{env_name} must be finite and non-negative; ignored")
+    notes.append(
+        f"no ANTIEK_OPERATOR_BUDGET_USD / {_ENV_DAILY_CAP}; "
+        f"showing daemon default cap ${DEFAULT_DAILY_CAP_USD:.2f}/day as reference"
+    )
+    return DEFAULT_DAILY_CAP_USD, None
 
-    if daily_cap is None:
-        # Surface the daemon default as informational only when env unset.
-        daily_cap = DEFAULT_DAILY_CAP_USD
-        cap_env = None
-        notes.append(
-            f"no ANTIEK_OPERATOR_BUDGET_USD / {_ENV_DAILY_CAP}; "
-            f"showing daemon default cap ${DEFAULT_DAILY_CAP_USD:.2f}/day as reference"
+
+def _resolve_enforcement_cap(notes: list[str]) -> tuple[float, str | None]:
+    """Cap the continuous daemon actually enforces (never the operator-only env)."""
+    raw = os.environ.get(_ENV_DAILY_CAP)
+    if raw is not None and raw.strip() != "":
+        try:
+            return (
+                _parse_nonnegative_finite_usd(raw, label=_ENV_DAILY_CAP),
+                _ENV_DAILY_CAP,
+            )
+        except ValueError:
+            notes.append(
+                f"{_ENV_DAILY_CAP} must be finite and non-negative; "
+                "enforcement uses default"
+            )
+    return DEFAULT_DAILY_CAP_USD, None
+
+
+def _read_sidecar_budget() -> tuple[float, float] | None:
+    """Read reserved-estimate spend from the daemon sidecar JSON.
+
+    Does **not** call ``DaemonBudget.remaining_today()`` (that re-bases on
+    whatever cap the DaemonBudget was constructed with) and does **not** edit
+    ``orchestration/continuous/budget.py`` (protected by the §7.4 tripwire).
+
+    Absent file → ``None`` (unknown), never a fabricated zero.
+    Present file missing/null/non-finite/negative ``spent_usd`` → raises
+    (caller maps to unknown). Defaulting missing keys to 0.0 is forbidden —
+    that is the exact "fake zero" honesty failure mode.
+    """
+    path = _budget_path()
+    if not path.is_file():
+        return None
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("budget sidecar is not a JSON object")
+    if raw.get("date_stamp") != _utc_date_stamp():
+        raise ValueError("budget sidecar date does not match the current UTC day")
+    if "spent_usd" not in raw or "spawn_count" not in raw or "cap_usd" not in raw:
+        raise ValueError("budget sidecar is missing required accounting fields")
+    spent_raw = raw["spent_usd"]
+    cap_raw = raw["cap_usd"]
+    spawn_count = raw["spawn_count"]
+    if isinstance(spent_raw, bool) or not isinstance(spent_raw, (int, float)):
+        raise ValueError("budget sidecar spent_usd must be a JSON number")
+    if isinstance(cap_raw, bool) or not isinstance(cap_raw, (int, float)):
+        raise ValueError("budget sidecar cap_usd must be a JSON number")
+    if isinstance(spawn_count, bool) or not isinstance(spawn_count, int) or spawn_count < 0:
+        raise ValueError("budget sidecar spawn_count must be a non-negative integer")
+    value = float(spent_raw)
+    stored_cap = float(cap_raw)
+    if not math.isfinite(value) or value < 0.0:
+        raise ValueError(
+            "budget sidecar spent_usd must be a finite non-negative USD amount"
         )
+    if not math.isfinite(stored_cap) or stored_cap < 0.0:
+        raise ValueError("budget sidecar cap_usd must be finite and non-negative")
+    return value, stored_cap
 
-    # Prefer daemon budget sidecar when present (shared daily spend signal).
-    # Crucial honesty detail: DaemonBudget reads fabricate an
-    # in-memory zero-spend snapshot when the file is absent. Settings is a
-    # readout, not the daemon, so absence of the sidecar means unknown spend.
-    # When the sidecar exists, read cap-independent spend and apply the selected
-    # Settings cap here. The sidecar's daemon cap may differ from the operator
-    # cap; mixing those two baselines can falsely block prompts or permit spend.
-    spent: float | None = None
+
+def read_operator_budget() -> BudgetResponse:
+    """Read display/enforcement caps + reserved-estimate spend honestly."""
+    notes: list[str] = []
+    daily_cap, cap_env = _resolve_display_cap(notes)
+    enforcement_cap, enforcement_cap_env = _resolve_enforcement_cap(notes)
+    enforcement_cap_source = enforcement_cap_env or "daemon default"
+    caps_aligned = abs(float(daily_cap) - float(enforcement_cap)) < 1e-9
+
+    reserved: float | None = None
     remaining: float | None = None
     spent_status: SpentStatus = "unknown"
+    spend_basis: SpendBasis = "unknown"
+    over_budget: bool | None = None
     try:
-        if _budget_path().is_file():
-            spent = _read_recorded_daemon_spend(_budget_path())
-            remaining = max(0.0, float(daily_cap) - spent)
-            spent_status = "known"
-            notes.append("spent sourced from continuous-daemon daily budget sidecar")
-        else:
+        sidecar_budget = _read_sidecar_budget()
+        if sidecar_budget is None:
             notes.append("spent ledger unavailable: daemon sidecar missing")
+        else:
+            reserved, persisted_enforcement_cap = sidecar_budget
+            enforcement_cap = persisted_enforcement_cap
+            enforcement_cap_env = None
+            enforcement_cap_source = "persisted daemon sidecar"
+            caps_aligned = abs(float(daily_cap) - enforcement_cap) < 1e-9
+            # Signed remaining on the Settings/display cap — no clamp.
+            remaining = float(daily_cap) - float(reserved)
+            spent_status = "known"
+            spend_basis = "reserved_estimate"
+            over_budget = remaining < 0.0
+            notes.append(
+                "reserved_estimated_usd from continuous-daemon sidecar "
+                "(fixed per-spawn holds, not settled provider cost)"
+            )
+            if over_budget:
+                notes.append(
+                    f"over display budget by ${abs(remaining):.4f} "
+                    f"(remaining_usd is signed, not clamped to 0)"
+                )
     except Exception as exc:  # noqa: BLE001 — honesty over crash
-        spent = None
+        reserved = None
         remaining = None
         spent_status = "unknown"
+        spend_basis = "unknown"
+        over_budget = None
         notes.append(f"spent ledger unavailable: {type(exc).__name__}")
 
-    over_budget_usd = max(0.0, (spent or 0.0) - float(daily_cap))
-    if over_budget_usd:
-        notes.append(f"recorded spend is ${over_budget_usd:.2f} over the operator cap")
+    if not caps_aligned:
+        notes.append(
+            f"display cap ${float(daily_cap):.2f}/day"
+            f" ({cap_env or 'default'}) differs from enforcement cap"
+            f" ${float(enforcement_cap):.2f}/day"
+            f" ({enforcement_cap_source}) —"
+            f" daemon halt uses enforcement; Settings bar uses display"
+        )
+
+    over_budget_usd = (
+        max(0.0, reserved - float(daily_cap)) if reserved is not None else None
+    )
 
     return BudgetResponse(
         daily_cap_usd=daily_cap,
-        spent_usd=spent,
+        # Back-compat alias: same number as reserved_estimated_usd.
+        spent_usd=reserved,
         remaining_usd=remaining,
-        over_budget=over_budget_usd > 0,
-        over_budget_usd=over_budget_usd,
         spent_status=spent_status,
         cap_env=cap_env,
         notes=notes,
+        reserved_estimated_usd=reserved,
+        spend_basis=spend_basis,
+        enforcement_cap_usd=enforcement_cap,
+        enforcement_cap_env=enforcement_cap_env,
+        caps_aligned=caps_aligned,
+        over_budget=over_budget,
+        over_budget_usd=over_budget_usd,
     )
 
 
@@ -713,6 +831,31 @@ def post_model_decision(request: Request, req: ModelDecisionRequest) -> ModelDec
     return build_model_decision(request, req)
 
 
+@settings_router.get(
+    "/antiek-bench/weekly",
+    response_model=WeeklyBenchmarkResponse,
+)
+def get_weekly_benchmark() -> WeeklyBenchmarkResponse:
+    """Expose the latest validated server-owned report; never accept injected scores."""
+    report, notes = _read_benchmark_report()
+    if report is None:
+        return WeeklyBenchmarkResponse(
+            status="unavailable",
+            week_id=None,
+            generated_at=None,
+            measurements=[],
+            notes=notes,
+        )
+    generated = report.generated_at.astimezone(UTC)
+    return WeeklyBenchmarkResponse(
+        status="measured",
+        week_id=report.week_id,
+        generated_at=generated.isoformat(),
+        measurements=report.measurements,
+        notes=notes,
+    )
+
+
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
     # Add-model admin (user-added BYOK providers) mounts through the same
@@ -728,6 +871,7 @@ __all__ = [
     "BudgetResponse",
     "BenchmarkMeasurement",
     "BenchmarkReport",
+    "WeeklyBenchmarkResponse",
     "ModelDecisionRequest",
     "ModelDecisionResponse",
     "ModelsResponse",
