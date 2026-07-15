@@ -37,6 +37,7 @@ import {
 import { track } from "../../lib/analytics";
 import type { DistilledNode } from "../../lib/api";
 import CostMeter from "./CostMeter";
+import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
@@ -312,6 +313,9 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
       </div>
       {session.error && (
         <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
+      )}
+      {session.hardCeiling && (
+        <HardCeilingEvidence sessionId={sessionId} snapshot={session.hardCeiling} />
       )}
       <ResearchWaitArcadeGate
         enabled={wernerResearchWaitArcadeEnabled}

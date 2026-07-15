@@ -23,6 +23,8 @@ from substrate.multimedia.local_audible_workstation import (
 )
 from substrate.multimedia.read_model import MultimediaAudioProductionLink
 from substrate.multimedia.verified_audio_playback import (
+    AudioChapterPlaybackMetadata,
+    AudioEvidenceSourceMetadata,
     AudioLearnedClaimMetadata,
     AudioPlaybackMetadata,
 )
@@ -79,7 +81,7 @@ class _Workstation:
 
 
 class _Playback:
-    def metadata(self, *, asset_id, revision_id, owner_digest):  # noqa: ANN001, ANN201
+    def metadata(self, *, asset_id, revision_id, owner_digest, plan):  # noqa: ANN001, ANN201
         return AudioPlaybackMetadata(
             asset_id=asset_id,
             revision_id=revision_id,
@@ -97,7 +99,14 @@ class _Playback:
                     claim_text="Verified claim",
                     source_count=1,
                     follow_up_prompt="Review the source.",
+                    line_id="chapter-1-line-0",
+                    evidence_sources=(_source(),),
+                    source_chunk_ids=("chunk-1",),
+                    evidence_status="verified_exact",
                 ),
+            ),
+            chapters=(
+                AudioChapterPlaybackMetadata("chapter-1", "Flow", 0, 0, 10),
             ),
         )
 
@@ -122,14 +131,17 @@ class _Store:
             revision_id="revision-1",
             receipt_sha256="a" * 64,
             audio_sha256="b" * 64,
+            audio_size_bytes=44,
             duration_seconds=10,
             chapter_ids=("chapter-1",),
             retention_marker_count=2,
             learned_claim_count=1,
+            source_count=1,
         )
         return SimpleNamespace(
             asset=SimpleNamespace(revision_id="revision-1", owner_user_id=OWNER_DIGEST),
             audio_production_link=link,
+            plan=SimpleNamespace(),
         )
 
 
@@ -161,24 +173,33 @@ def test_capability_and_authenticated_commands_use_only_opaque_set_authority() -
         "cost_usd": 0.0,
     }
     body = {"expected_revision_id": "revision-1", "set_id": SET_ID}
-    assert client.post(
-        "/multimedia/assets/asset-1/local-audible/prepare",
-        json={"expected_revision_id": "revision-1"},
-    ).status_code == 200
-    assert client.get(
-        f"/multimedia/assets/asset-1/local-audible/revision-1/{SET_ID}"
-    ).status_code == 200
-    assert client.post(
-        "/multimedia/assets/asset-1/local-audible/produce", json=body
-    ).json()["status"] == "registered"
-    assert client.post(
-        "/multimedia/assets/asset-1/local-audible/recover", json=body
-    ).status_code == 200
+    assert (
+        client.post(
+            "/multimedia/assets/asset-1/local-audible/prepare",
+            json={"expected_revision_id": "revision-1"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.get(f"/multimedia/assets/asset-1/local-audible/revision-1/{SET_ID}").status_code
+        == 200
+    )
+    assert (
+        client.post("/multimedia/assets/asset-1/local-audible/produce", json=body).json()["status"]
+        == "registered"
+    )
+    assert (
+        client.post("/multimedia/assets/asset-1/local-audible/recover", json=body).status_code
+        == 200
+    )
     assert all(call[-1] == "owner-1" for call in runtime.workstation.calls)  # type: ignore[attr-defined]
-    assert client.post(
-        "/multimedia/assets/asset-1/local-audible/produce",
-        json={**body, "output_path": "/tmp/forged"},
-    ).status_code == 422
+    assert (
+        client.post(
+            "/multimedia/assets/asset-1/local-audible/produce",
+            json={**body, "output_path": "/tmp/forged"},
+        ).status_code
+        == 422
+    )
 
 
 def test_registered_metadata_and_audio_range_are_private_and_link_verified() -> None:
@@ -189,14 +210,40 @@ def test_registered_metadata_and_audio_range_are_private_and_link_verified() -> 
     )
     assert metadata.status_code == 200
     assert metadata.json()["audio_url"].endswith("/revision-1/audio")
-    assert metadata.json()["learned_claims"] == [{
-        "chapter_id": "chapter-1",
-        "claim_text": "Verified claim",
-        "source_count": 1,
-        "follow_up_prompt": "Review the source.",
-    }]
+    assert metadata.json()["chapters"] == [
+        {
+            "chapter_id": "chapter-1",
+            "title": "Flow",
+            "sequence": 0,
+            "start_offset_seconds": 0.0,
+            "end_offset_seconds": 10.0,
+        }
+    ]
+    assert metadata.json()["learned_claims"] == [
+        {
+            "chapter_id": "chapter-1",
+            "claim_text": "Verified claim",
+            "source_count": 1,
+            "follow_up_prompt": "Review the source.",
+            "line_id": "chapter-1-line-0",
+            "source_chunk_ids": ["chunk-1"],
+            "evidence_status": "verified_exact",
+            "evidence_sources": [
+                {
+                    "chunk_id": "chunk-1",
+                    "document_id": "doc-1",
+                    "locator": "History / Flow",
+                    "authority_kind": "canonical_graph",
+                    "chunk_sha256": "c" * 64,
+                    "start_utf8_byte": 4,
+                    "end_utf8_byte": 18,
+                    "span_sha256": "d" * 64,
+                    "exact_text": "Verified claim",
+                }
+            ],
+        }
+    ]
     assert "output_path" not in metadata.text and "manifest_mac" not in metadata.text
-    assert "source_chunk" not in metadata.text
     audio = client.get(
         "/multimedia/assets/asset-1/local-audible/playback/revision-1/audio",
         headers={"Range": "bytes=0-10"},
@@ -216,3 +263,17 @@ def test_absent_runtime_is_opaque_and_commands_are_503() -> None:
     )
     assert response.status_code == 503
     assert response.json() == {"detail": "local audible runtime is unavailable"}
+
+
+def _source() -> AudioEvidenceSourceMetadata:
+    return AudioEvidenceSourceMetadata(
+        chunk_id="chunk-1",
+        document_id="doc-1",
+        locator="History / Flow",
+        authority_kind="canonical_graph",
+        chunk_sha256="c" * 64,
+        start_utf8_byte=4,
+        end_utf8_byte=18,
+        span_sha256="d" * 64,
+        exact_text="Verified claim",
+    )

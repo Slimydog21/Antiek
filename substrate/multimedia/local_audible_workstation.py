@@ -16,6 +16,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from runtime.db_lock import FlockWriteCoordinator, connect_read
 
+from .graph_evidence import (
+    MultimediaGraphEvidenceUnavailable,
+    load_canonical_multimedia_chunks,
+)
 from .local_audible_coordinator import (
     LocalAudibleOutcomeUnknown,
     LocalAudibleRunRequest,
@@ -277,10 +281,29 @@ class LocalAudibleWorkstationRuntime:
                 "local audible workstation requires the current ready cheapest audio revision"
             )
         try:
-            requests = prepare_local_audible_span_requests(
-                record.plan, asset_id=asset_id, revision_id=revision_id
+            canonical_ids = tuple(
+                dict.fromkeys(
+                    span.chunk_id
+                    for line in record.plan.script_lines
+                    if line.evidence_derivation is not None
+                    for span in line.evidence_derivation.spans
+                    if span.authority_kind == "canonical_graph"
+                )
             )
-        except ValueError as exc:
+            canonical_chunks = (
+                load_canonical_multimedia_chunks(
+                    self.db_path, canonical_ids, owner_id=owner_id
+                )
+                if canonical_ids
+                else None
+            )
+            requests = prepare_local_audible_span_requests(
+                record.plan,
+                asset_id=asset_id,
+                revision_id=revision_id,
+                canonical_chunks=canonical_chunks,
+            )
+        except (MultimediaGraphEvidenceUnavailable, OSError, RuntimeError, ValueError) as exc:
             raise LocalAudibleWorkstationError(
                 "local audible workstation requires grounded spoken content"
             ) from exc
