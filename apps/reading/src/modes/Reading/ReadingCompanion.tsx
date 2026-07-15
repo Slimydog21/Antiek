@@ -3,6 +3,7 @@ import { useMemo } from "react";
 import { useInvestigation } from "../../hooks/useInvestigation";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import Thinking from "../../shared/Thinking";
+import { TwinNotesPanel } from "../shared/twinNotes";
 
 /**
  * ReadingCompanion — the Read glass-box (Read SPR-06 M2).
@@ -133,6 +134,11 @@ export default function ReadingCompanion({
             ))}
           </ol>
         )}
+      </div>
+
+      {/* Recursive twin note-taker — live GET /twins/:id when available. */}
+      <div className="shrink-0 border-t border-rule p-2 dark:border-charcoal-1">
+        <TwinNotesPanel parentAssetId={documentId} autoLoad />
       </div>
     </aside>
   );
