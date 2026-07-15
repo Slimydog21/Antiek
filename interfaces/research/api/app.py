@@ -1712,6 +1712,9 @@ def create_app(
     # HPRJ SPR-06 — deliverable (Write surface) export: GET /api/deliverables/{id}/artifact
     from .deliverable_artifact import register_deliverable_artifact_routes
     register_deliverable_artifact_routes(app)
+    from .merge_asset_routes import register_merge_asset_routes
+
+    register_merge_asset_routes(app)
     # Read SPR-09 — ad-border surfaces: per-window frame-attention telemetry
     # (composes the SPR-05 accrual engine + the one escrow seam; accrues, never
     # disburses) + reader slot fill (house fill is the zero-buyer default).

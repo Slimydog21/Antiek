@@ -370,6 +370,15 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "write_event_outbox",
     "event_consumer_receipts",
     "note_taker_windows",
+    "derived_assets",
+    "derived_asset_revisions",
+    "derived_asset_revision_members",
+    "derived_asset_current_revisions",
+    "html_projections",
+    "derived_asset_merge_drafts",
+    "derived_asset_merge_reviews",
+    "derived_asset_merge_operations",
+    "derived_asset_merge_outbox",
 )
 
 
@@ -1931,6 +1940,9 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V22_TWIN_NOTE_SERVING_SQL)
     _repair_empty_partial_v23_twin_notes(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V23_TWIN_NOTE_WORKFLOW_SQL)
+    from .derived_asset_schema import install as _install_derived_asset_schema
+
+    _install_derived_asset_schema(con)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -2012,6 +2024,10 @@ def _schema_is_present(db_path: str) -> bool:
         if present:
             present = (_v21_twin_note_shape_is_valid(con) and _v22_twin_note_shape_is_valid(con)
                        and _v23_twin_note_shape_is_valid(con))
+        if present:
+            from .derived_asset_schema import sentinel_is_present
+
+            present = sentinel_is_present(con)
     except Exception:
         return False
     finally:
