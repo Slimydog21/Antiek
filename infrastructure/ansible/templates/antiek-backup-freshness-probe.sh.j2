@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+# Scheduled observer for the root-owned post-R2-readback freshness marker.
+
+set -euo pipefail
+
+set -a
+if [[ -r /etc/antiek/secrets.env ]]; then
+    # shellcheck disable=SC1091
+    source /etc/antiek/secrets.env
+fi
+set +a
+
+set +e
+verdict="$({{ antiek_install_dir }}/.venv/bin/python3 \
+    {{ antiek_install_dir }}/tools/backup_freshness.py \
+    --marker {{ antiek_state_dir }}/backup_freshness.json \
+    --max-age-hours 26 2>&1)"
+status=$?
+set -e
+
+if [[ ${status} -eq 0 ]]; then
+    echo "${verdict}"
+    exit 0
+fi
+
+host="$(hostname -s 2>/dev/null || echo unknown)"
+message="[antiek-backup@${host} $(date -u +%FT%TZ)] ${verdict}"
+webhook="${ANTIEK_ALERT_WEBHOOK:-}"
+if [[ -n "${webhook}" ]]; then
+    curl -fsS --max-time 15 -X POST "${webhook}" \
+        -H 'Content-Type: application/json' \
+        -d "$(jq -nc --arg text "${message}" '{text: $text}')" >/dev/null \
+        || echo "WARN: backup freshness webhook delivery failed" >&2
+fi
+
+echo "${message}" >&2
+exit 1

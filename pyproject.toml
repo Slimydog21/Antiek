@@ -121,6 +121,9 @@ export = [
 
 # Dev / test
 dev = [
+  # Deployment-template execution tests render backup.sh.j2 with
+  # StrictUndefined; this is a hard test dependency, not an optional skip.
+  "jinja2>=3.1",
   "pytest>=8.3",
   "pytest-asyncio>=0.24",
   "pytest-cov>=5.0",

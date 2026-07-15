@@ -84,8 +84,8 @@ agent six months from now can understand what's actually running.
 
 - **Hetzner CCX23**: ~€26/month (4 dedicated AMD EPYC vCPUs, 16GB RAM,
   160GB NVMe, 20TB egress).
-- **Cloudflare R2**: ~$0.50/month at expected backup volumes (~100MB
-  per nightly backup × 14-day retention × $0.015/GB).
+- **Cloudflare R2**: storage scales with the independently configured bucket
+  lifecycle policy; the backup host never deletes recovery points.
 - **Cloudflare DNS + TLS**: free tier.
 - **Domain renewal**: Porkbun, ~$15/year for `.ai`.
 
