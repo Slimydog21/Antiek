@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import homeEnvironment from "../../brand/werner/home/antiek-knowledge-home-v1.webp";
 import GlassSurface from "../../shell/GlassSurface";
 import { WORKFLOWS, WORKFLOW_ORDER } from "../../shell/workflowTaxonomy";
@@ -157,6 +158,44 @@ export function Home() {
               </div>
             </div>
           </section>
+
+        <section
+          aria-label="Werner arcade"
+          data-testid="home-arcade"
+          className="mt-6 rounded-hog border-edge border-rule bg-ice-0/90 p-5 dark:border-charcoal-1 dark:bg-charcoal-2/90"
+        >
+          <div className="flex items-start gap-4">
+            <Werner mood="idle" size={48} label="" />
+            <div className="min-w-0">
+              <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
+                Play in Werner&rsquo;s igloo
+              </h2>
+              <p className="mt-1 text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+                Ice Fishing and Paperclip Zombies live in the arcade —
+                Club Penguin–inspired mini-games for when you want a break, or
+                while deep research is running. Always opt-in; never blocks work.
+              </p>
+              <button
+                type="button"
+                data-testid="home-arcade-cta"
+                onClick={() => {
+                  emitWernerExperience("highlight");
+                  navigate("/arcade");
+                }}
+                className={
+                  "mt-3 inline-flex items-center rounded-hog border-edge border-sun " +
+                  "bg-ice-1 px-3 py-1.5 text-[13px] font-semibold text-ink shadow-z1 transition " +
+                  "hover:bg-sun/30 hover:shadow-z2 focus-visible:outline focus-visible:outline-2 " +
+                  "focus-visible:outline-offset-2 focus-visible:outline-sun " +
+                  "dark:bg-charcoal-1 dark:text-bright"
+                }
+              >
+                Open the arcade
+              </button>
+            </div>
+          </div>
+        </section>
+
         </div>
       </GlassSurface>
     </div>

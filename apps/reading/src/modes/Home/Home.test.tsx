@@ -59,6 +59,7 @@ function mount() {
         <Route path="/write" element={<div>WRITE SURFACE</div>} />
         <Route path="/speak" element={<div>SPEAK SURFACE</div>} />
         <Route path="/biography" element={<div>BIOGRAPHY SURFACE</div>} />
+        <Route path="/arcade" element={<div>ARCADE SURFACE</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -168,4 +169,20 @@ describe("Home (SPR-12 M1)", () => {
     fireEvent.click(screen.getByTestId("home-biographies-cta"));
     expect(screen.getByText(/BIOGRAPHY SURFACE/)).toBeTruthy();
   });
+
+  it("features Werner's arcade and opens /arcade in one click (opt-in mini-games)", () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    mount();
+    expect(screen.getByTestId("home-arcade")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("home-arcade-cta"));
+    expect(screen.getByText(/ARCADE SURFACE/)).toBeTruthy();
+    expect(seen).toContain("highlight");
+    window.removeEventListener("antiek:werner-experience", onExp);
+  });
 });
+
