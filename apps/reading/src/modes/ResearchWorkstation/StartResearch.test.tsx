@@ -21,7 +21,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import type { Event } from "../../generated/types";
 
-const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
+const { startInvestigationMock, navigateMock, eventStreamState, routePreviewState } = vi.hoisted(
   () => ({
     startInvestigationMock: vi.fn(),
     navigateMock: vi.fn(),
@@ -32,6 +32,7 @@ const { startInvestigationMock, navigateMock, eventStreamState } = vi.hoisted(
         reconnects: 0,
       },
     },
+    routePreviewState: { current: {} as Record<string, unknown> },
   }),
 );
 
@@ -46,6 +47,12 @@ vi.mock("../../lib/api", async (orig) => {
 vi.mock("../../hooks/useEventStream", () => ({
   useEventStream: (id: string | null) =>
     id ? eventStreamState.current : { events: [], status: "closed", reconnects: 0 },
+}));
+
+// Existing start-flow cases exercise the promised preview-outage fallback.
+// The route instrument's ready/race behavior has focused tests of its own.
+vi.mock("../../hooks/useResearchRoutePreview", () => ({
+  useResearchRoutePreview: () => routePreviewState.current,
 }));
 
 vi.mock("react-router-dom", async (orig) => {
@@ -106,6 +113,12 @@ beforeEach(() => {
   startInvestigationMock.mockReset();
   navigateMock.mockReset();
   eventStreamState.current = { events: [], status: "closed", reconnects: 0 };
+  routePreviewState.current = {
+    status: "error",
+    preview: null,
+    error: "preview unavailable",
+    retry: vi.fn(),
+  };
 });
 afterEach(() => cleanup());
 
@@ -206,6 +219,113 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     expect(screen.getByText(/final synthesis stays on its dedicated reasoning route/i)).toBeTruthy();
     expect(screen.getByText(/cost depends on the sources and work required/i)).toBeTruthy();
     expect(screen.queryByText(/\$0\.08|\$0\.16|MiMo|DeepSeek/i)).toBeNull();
+  });
+
+  it("renders and submits only the server-issued ready route proof", async () => {
+    routePreviewState.current = {
+      status: "ready",
+      error: null,
+      retry: vi.fn(),
+      preview: {
+        policy_version: "research-route.v1",
+        prompt_fingerprint: "prompt-proof",
+        candidates: [
+          {
+            choice_id: "rr_fast",
+            tier: "fast",
+            configuration_fingerprint: "cfg-fast",
+            display_name: "Fast lens",
+            model_policy_label: "GLM-5.2 · thinking off",
+            rationale: "Exploratory work",
+            ready: true,
+            readiness_label: "Ready",
+            projected_cost_usd: null,
+          },
+          {
+            choice_id: "rr_deep",
+            tier: "deep",
+            configuration_fingerprint: "cfg-deep",
+            display_name: "Deep lens",
+            model_policy_label: "GLM-5.2 · thinking on",
+            rationale: "Reasoning-heavy work",
+            ready: true,
+            readiness_label: "Ready",
+            projected_cost_usd: null,
+          },
+        ],
+        budget: {
+          authority: "advisory",
+          daily_cap_usd: 5,
+          spent_usd: null,
+          projected_cost_usd: null,
+          would_exceed_budget: null,
+        },
+      },
+    };
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-route" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Compare these sources and resolve their disagreement." },
+    });
+    expect(screen.getByRole("radiogroup", { name: "Research route" })).toBeTruthy();
+    expect(screen.getByText(/spent unknown · \$5\.00 ceiling · projection unknown/i)).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole("radio", { name: /Deep lens/i }), { key: "ArrowLeft" });
+    expect(screen.getByRole("radio", { name: /Fast lens/i }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("radio", { name: /Fast lens/i }), { key: "End" });
+    expect(screen.getByRole("radio", { name: /Deep lens/i }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.keyDown(screen.getByRole("radio", { name: /Deep lens/i }), { key: "Home" });
+    expect(screen.getByRole("radio", { name: /Fast lens/i }).getAttribute("aria-checked")).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        research_tier: undefined,
+        route_choice_id: "rr_fast",
+        route_prompt_fingerprint: "prompt-proof",
+        route_policy_version: "research-route.v1",
+        route_configuration_fingerprint: "cfg-fast",
+      }),
+    ));
+  });
+
+  it("offers the explicit recovery-chain fallback when preferred drivers are unavailable", async () => {
+    routePreviewState.current = {
+      status: "ready",
+      error: null,
+      retry: vi.fn(),
+      preview: {
+        policy_version: "research-route.v1",
+        prompt_fingerprint: "prompt-proof",
+        candidates: [{
+          choice_id: "rr_deep",
+          tier: "deep",
+          configuration_fingerprint: "cfg-deep",
+          display_name: "Deep lens",
+          model_policy_label: "GLM-5.2 · thinking on",
+          rationale: "Reasoning-heavy work",
+          ready: false,
+          readiness_label: "Provider unavailable",
+          projected_cost_usd: null,
+        }],
+        budget: {
+          authority: "advisory",
+          daily_cap_usd: null,
+          spent_usd: null,
+          projected_cost_usd: null,
+          would_exceed_budget: null,
+        },
+      },
+    };
+    startInvestigationMock.mockResolvedValue({ investigation_id: "inv-recovery" });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Research this through the configured recovery chain." },
+    });
+    expect(screen.getByText(/preferred drivers are unavailable/i)).toBeTruthy();
+    expect(screen.getByRole("radiogroup", { name: "Research depth" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Ask" }));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledWith(
+      expect.objectContaining({ research_tier: "deep", route_choice_id: undefined }),
+    ));
   });
 
   it("rejects a too-short question without POSTing", async () => {

@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { startInvestigation } from "../lib/api";
-import type { ResearchTier } from "../lib/api";
+import type { ResearchRouteCandidate, ResearchTier } from "../lib/api";
 import type { Event } from "../generated/types";
 import { useEventStream } from "./useEventStream";
 
@@ -73,6 +73,11 @@ export interface StartInvestigationState {
     spawnContext?: string;
     /** SPR-01 M3: curated fast/deep tier from the research entry. */
     researchTier?: ResearchTier;
+    route?: {
+      candidate: ResearchRouteCandidate;
+      promptFingerprint: string;
+      policyVersion: string;
+    };
   }) => Promise<string | null>;
   /** Reset back to idle (e.g. after the caller has navigated away). */
   reset: () => void;
@@ -138,6 +143,11 @@ export function useStartInvestigation(): StartInvestigationState {
       parentInvestigationId?: string;
       spawnContext?: string;
       researchTier?: ResearchTier;
+      route?: {
+        candidate: ResearchRouteCandidate;
+        promptFingerprint: string;
+        policyVersion: string;
+      };
     }): Promise<string | null> => {
       const q = input.question.trim();
       if (!q || q.length < 3) {
@@ -147,12 +157,19 @@ export function useStartInvestigation(): StartInvestigationState {
       setPosting(true);
       setError(null);
       try {
+        const route = input.route;
         const resp = await startInvestigation({
           question: q,
           parent_investigation_id: input.parentInvestigationId,
           spawn_context: input.spawnContext,
           // Omitted when undefined → server defaults to "deep".
-          research_tier: input.researchTier,
+          // Exactly one launch authority input. Preview failure deliberately
+          // falls back to the legacy tier contract instead of blocking launch.
+          research_tier: route ? undefined : input.researchTier,
+          route_choice_id: route?.candidate.choice_id,
+          route_prompt_fingerprint: route?.promptFingerprint,
+          route_policy_version: route?.policyVersion,
+          route_configuration_fingerprint: route?.candidate.configuration_fingerprint,
         });
         setStartedId(resp.investigation_id);
         return resp.investigation_id;

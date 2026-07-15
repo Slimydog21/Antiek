@@ -2212,6 +2212,13 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # meaning for the research-runner lane is UNCHANGED — see
     # substrate/dispatch/research_tier.py.
     research_tier: Literal["fast", "deep"] | None = None
+    # Safe composer provenance. These values identify the server policy and
+    # prompt/config proofs only; provider/model and secrets are never persisted
+    # from client-controlled input.
+    research_route_choice_id: str | None = None
+    research_route_prompt_fingerprint: str | None = None
+    research_route_policy_version: str | None = None
+    research_route_configuration_fingerprint: str | None = None
 
 
 class InvestigationChaseHaltedPayload(_PayloadBase):

@@ -242,6 +242,47 @@ export async function getHealth(): Promise<{
  */
 export type ResearchTier = "fast" | "deep";
 
+export interface ResearchRouteCandidate {
+  choice_id: string;
+  tier: ResearchTier;
+  configuration_fingerprint: string;
+  display_name: string;
+  model_policy_label: string;
+  rationale: string;
+  ready: boolean;
+  readiness_label: string;
+  projected_cost_usd: number | null;
+}
+
+export interface ResearchRoutePreview {
+  policy_version: string;
+  prompt_fingerprint: string;
+  candidates: ResearchRouteCandidate[];
+  budget: {
+    authority: "advisory";
+    daily_cap_usd: number | null;
+    spent_usd: number | null;
+    projected_cost_usd: number | null;
+    would_exceed_budget: boolean | null;
+  };
+}
+
+export async function previewResearchRoutes(
+  question: string,
+  signal?: AbortSignal,
+): Promise<ResearchRoutePreview> {
+  const resp = await apiFetch(`${API_BASE}/research/routes/preview`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+    signal,
+  });
+  if (!resp.ok) {
+    throw new ApiError("Research route preview failed", resp.status, await resp.text());
+  }
+  return resp.json();
+}
+
 export interface StartInvestigationRequest {
   question: string;
   context?: string;
@@ -252,6 +293,10 @@ export interface StartInvestigationRequest {
   investigation_id?: string;
   /** Curated fast/deep tier; defaults server-side to "deep" when omitted. */
   research_tier?: ResearchTier;
+  route_choice_id?: string;
+  route_prompt_fingerprint?: string;
+  route_policy_version?: string;
+  route_configuration_fingerprint?: string;
 }
 
 export interface StartInvestigationResponse {
