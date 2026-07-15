@@ -4,13 +4,14 @@ import Werner, { type WernerMood } from "../../Werner";
 import WernerAuthoredPose from "../WernerAuthoredPose";
 import "./semantic-reactions.css";
 
-type SemanticReactionKind = "curious" | "happy" | "dizzy" | "hit";
+type SemanticReactionKind = "curious" | "happy" | "dizzy" | "hit" | "noted";
 
 const DURATION_MS: Record<SemanticReactionKind, number> = {
   curious: 1200,
   happy: 800,
   dizzy: 1300,
   hit: 800,
+  noted: 1000,
 };
 
 const MOOD: Record<SemanticReactionKind, WernerMood> = {
@@ -18,6 +19,7 @@ const MOOD: Record<SemanticReactionKind, WernerMood> = {
   happy: "idle",
   dizzy: "empty",
   hit: "idle",
+  noted: "idle",
 };
 
 const LABEL: Record<SemanticReactionKind, string> = {
@@ -25,6 +27,7 @@ const LABEL: Record<SemanticReactionKind, string> = {
   happy: "Werner marks the work verified",
   dizzy: "Werner regains his bearings",
   hit: "Werner bumps the control",
+  noted: "Werner files the note",
 };
 
 type Props = { size: number; reduced: boolean };
@@ -86,11 +89,26 @@ function BrassTab() {
   );
 }
 
+function NoteSlip() {
+  return (
+    <svg
+      className="werner-semantic__note-slip"
+      viewBox="0 0 28 34"
+      aria-hidden="true"
+    >
+      <rect x="3" y="2" width="22" height="30" rx="1.5" />
+      <path d="M8 10h12M8 16h10M8 22h12" />
+      <path className="werner-semantic__note-fold" d="M18 2v8h8" />
+    </svg>
+  );
+}
+
 const CHROME: Record<SemanticReactionKind, ReactNode> = {
   curious: <EvidenceCard />,
   happy: <VerificationStamp />,
   dizzy: <PaperclipOrbit />,
   hit: <BrassTab />,
+  noted: <NoteSlip />,
 };
 
 function SemanticReaction({
@@ -141,6 +159,10 @@ export function WernerDizzy(props: Props) {
 
 export function WernerHit(props: Props) {
   return <SemanticReaction kind="hit" {...props} />;
+}
+
+export function WernerNoted(props: Props) {
+  return <SemanticReaction kind="noted" {...props} />;
 }
 
 export { DURATION_MS as WERNER_SEMANTIC_DURATION_MS };

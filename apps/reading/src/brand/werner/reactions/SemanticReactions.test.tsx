@@ -10,6 +10,7 @@ import {
   WernerDizzy,
   WernerHappy,
   WernerHit,
+  WernerNoted,
   WERNER_SEMANTIC_DURATION_MS,
 } from ".";
 
@@ -18,6 +19,7 @@ const semantic = [
   ["happy", WernerHappy, "marks the work verified"],
   ["dizzy", WernerDizzy, "regains his bearings"],
   ["hit", WernerHit, "bumps the control"],
+  ["noted", WernerNoted, "files the note"],
 ] as const;
 
 afterEach(cleanup);
@@ -50,12 +52,14 @@ describe("Werner semantic reactions", () => {
       happy: 800,
       dizzy: 1300,
       hit: 800,
+      noted: 1000,
     });
     expect(WERNER_SEMANTIC_DURATION_MS).toEqual({
       curious: EMOTE_DURATION_MS.curious,
       happy: EMOTE_DURATION_MS.happy,
       dizzy: EMOTE_DURATION_MS.dizzy,
       hit: EMOTE_DURATION_MS.hit,
+      noted: EMOTE_DURATION_MS.noted,
     });
   });
 
@@ -88,11 +92,12 @@ describe("Werner semantic reactions", () => {
       [WernerHappy, "werner_default"],
       [WernerDizzy, "werner_lost"],
       [WernerHit, "werner_default"],
+      [WernerNoted, "werner_default"],
     ] as const) {
       const other = render(<Reaction size={64} reduced={false} />);
-      expect(other.container.querySelector("img")?.getAttribute("src")).toContain(
-        source,
-      );
+      expect(
+        other.container.querySelector("img")?.getAttribute("src"),
+      ).toContain(source);
       expect(
         other.container.querySelector('[data-werner-authored-pose="headTilt"]'),
       ).toBeNull();
@@ -128,12 +133,13 @@ describe("Werner semantic reactions", () => {
     expect(getComputedStyle(prop as Element).animationName).toBe("none");
   });
 
-  it("uses four distinct semantic compositions instead of legacy aliases", () => {
+  it("uses five distinct semantic compositions instead of legacy aliases", () => {
     const source = readFileSync("src/werner/emotes.tsx", "utf8");
     expect(source).toContain("<WernerCurious");
     expect(source).toContain("<WernerHappy");
     expect(source).toContain("<WernerDizzy");
     expect(source).toContain("<WernerHit");
+    expect(source).toContain("<WernerNoted");
     expect(source).not.toMatch(/<WernerCaughtAFish|<WernerTobogganSpinner/);
   });
 
@@ -154,6 +160,8 @@ describe("Werner semantic reactions", () => {
     expect(mediaGuard).toContain(".werner-semantic__evidence");
     expect(mediaGuard).toContain(".werner-semantic__stamp");
     expect(mediaGuard).toContain(".werner-semantic__orbit");
+    expect(mediaGuard).toContain(".werner-semantic__note-slip");
+    expect(mediaGuard).toContain("translate(-34%, 34%)");
     expect(css).not.toContain("infinite");
     expect(source).not.toMatch(
       /fetch\(|localStorage|sessionStorage|useNavigate|window\.|document\.|Date\.|Math\.random|requestAnimationFrame|setTimeout|setInterval/,

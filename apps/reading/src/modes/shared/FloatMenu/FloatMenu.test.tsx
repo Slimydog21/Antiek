@@ -17,19 +17,33 @@
  * `selectionchange` — the pattern the diligence prescribes.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { useRef } from "react";
 
 // Mock the api boundary: capture postTypedEvent + searchBlocks + startInvestigation.
 const postTypedEventMock = vi.fn((_envelope: unknown) =>
   Promise.resolve({ event_id: "ev-note-1", action_type: "marginalia.noted" }),
 );
-const searchBlocksMock = vi.fn((_q: string) => Promise.resolve({ count: 0, hits: [] }));
+const searchBlocksMock = vi.fn((_q: string) =>
+  Promise.resolve({ count: 0, hits: [] }),
+);
 const startInvestigationMock = vi.fn((_req: unknown) =>
-  Promise.resolve({ investigation_id: "child-1", status: "in_progress", start_event_id: "ev-start" }),
+  Promise.resolve({
+    investigation_id: "child-1",
+    status: "in_progress",
+    start_event_id: "ev-start",
+  }),
 );
 const apiFetchMock = vi.fn((_input: unknown, _init?: unknown) =>
-  Promise.resolve(new Response(JSON.stringify({ text: "model reply" }), { status: 200 })),
+  Promise.resolve(
+    new Response(JSON.stringify({ text: "model reply" }), { status: 200 }),
+  ),
 );
 
 vi.mock("../../../lib/api", async (importOriginal) => {
@@ -88,12 +102,20 @@ import {
 } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 import { useFloatMenuSelection } from "./useFloatMenuSelection";
+import {
+  WERNER_EXPERIENCE_EVENT,
+  type ProductExperience,
+} from "../../../werner/reactionBus";
 
 // ── jsdom selection helper ──────────────────────────────────────────────────
 
 /** Select `text` inside `scope` (creates a text node if empty), give the range
  * a rect, and fire `selectionchange`. Returns the range. */
-function selectTextIn(scope: HTMLElement, text: string, rect = { top: 200, left: 100, width: 80, height: 18 }): Range {
+function selectTextIn(
+  scope: HTMLElement,
+  text: string,
+  rect = { top: 200, left: 100, width: 80, height: 18 },
+): Range {
   if (!scope.firstChild) scope.appendChild(document.createTextNode(text));
   const node = scope.firstChild as Text;
   // A real Range over a node INSIDE the scope, so the hook's
@@ -157,9 +179,16 @@ function Host({
   hybridEnabled?: boolean;
   investigationId?: string;
   testId?: string;
-  provenance?: { servable?: boolean; chunkId?: string | null; documentId?: string | null };
+  provenance?: {
+    servable?: boolean;
+    chunkId?: string | null;
+    documentId?: string | null;
+  };
   /** SPR-09 M4: when given, the Write rewrite actions are passed (mode-gated). */
-  onRewrite?: (intent: { kind: string; safeText: string | null }, s: FloatMenuSelection) => void;
+  onRewrite?: (
+    intent: { kind: string; safeText: string | null },
+    s: FloatMenuSelection,
+  ) => void;
   /** CK-5: the Write edit-context + apply callback (mode-gated). */
   editContext?: { deliverableId: string; sectionId: string };
   onApplyEdit?: (editedText: string) => void;
@@ -215,7 +244,9 @@ describe("FloatMenu — open on selection (M1)", () => {
     expect(screen.getByRole("menuitem", { name: "Note" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Dialogue" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Search" })).toBeTruthy();
-    expect(screen.getByRole("menuitem", { name: "Deep-research" })).toBeTruthy();
+    expect(
+      screen.getByRole("menuitem", { name: "Deep-research" }),
+    ).toBeTruthy();
     // Positioned (fixed) from the raw rect.
     expect((menu as HTMLElement).style.position).toBe("fixed");
   });
@@ -232,10 +263,20 @@ describe("FloatMenu — open on selection (M1)", () => {
   it("repositions when a new selection arrives (reset to menu view)", () => {
     render(<Host />);
     const scope = screen.getByTestId("scope");
-    selectTextIn(scope, "the selected passage", { top: 200, left: 100, width: 80, height: 18 });
+    selectTextIn(scope, "the selected passage", {
+      top: 200,
+      left: 100,
+      width: 80,
+      height: 18,
+    });
     const first = screen.getByRole("menu") as HTMLElement;
     const firstTop = first.style.top;
-    selectTextIn(scope, "the selected passage text", { top: 400, left: 100, width: 120, height: 18 });
+    selectTextIn(scope, "the selected passage text", {
+      top: 400,
+      left: 100,
+      width: 120,
+      height: 18,
+    });
     const second = screen.getByRole("menu") as HTMLElement;
     expect(second.style.top).not.toBe(firstTop); // moved to the new rect
   });
@@ -248,8 +289,12 @@ describe("FloatMenu — open on selection (M1)", () => {
     expect(screen.getByRole("menu")).toBeTruthy();
     // The four core actions are unchanged; no rewrite items leak in.
     expect(screen.queryByRole("menuitem", { name: "Rewrite" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Make stronger" })).toBeNull();
-    expect(screen.queryByRole("menuitem", { name: "Spin a sub-agent" })).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: "Make stronger" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("menuitem", { name: "Spin a sub-agent" }),
+    ).toBeNull();
   });
 
   it("shows rewrite actions for a Write host + routes text through the §9.0 chokepoint", () => {
@@ -259,7 +304,10 @@ describe("FloatMenu — open on selection (M1)", () => {
     expect(screen.getByRole("menuitem", { name: "Rewrite" })).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitem", { name: "Make stronger" }));
     expect(onRewrite).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: "stronger", safeText: expect.any(String) }),
+      expect.objectContaining({
+        kind: "stronger",
+        safeText: expect.any(String),
+      }),
       expect.anything(),
     );
   });
@@ -279,7 +327,12 @@ describe("FloatMenu — open on selection (M1)", () => {
     render(<Host />);
     const scope = screen.getByTestId("scope");
     // A selection far past the right edge — the menu must clamp inside.
-    selectTextIn(scope, "edge text", { top: 50, left: 2000, width: 80, height: 18 });
+    selectTextIn(scope, "edge text", {
+      top: 50,
+      left: 2000,
+      width: 80,
+      height: 18,
+    });
     const menu = screen.getByRole("menu") as HTMLElement;
     const left = parseFloat(menu.style.left);
     expect(left).toBeGreaterThanOrEqual(0);
@@ -287,7 +340,9 @@ describe("FloatMenu — open on selection (M1)", () => {
   });
 
   it("mounts the SAME component in >1 host (two scopes, one component)", () => {
-    const { unmount } = render(<Host testId="scope-a" investigationId="inv-A" />);
+    const { unmount } = render(
+      <Host testId="scope-a" investigationId="inv-A" />,
+    );
     selectTextIn(screen.getByTestId("scope-a"), "host A passage");
     expect(screen.getByRole("menu")).toBeTruthy();
     unmount();
@@ -301,12 +356,12 @@ describe("FloatMenu — open on selection (M1)", () => {
 
   it("shows the Edit affordance + opens the Edit panel for a wired Write host", () => {
     render(
-        <Host
-          onRewrite={vi.fn()}
-          editContext={{ deliverableId: "d1", sectionId: "s1" }}
-          onApplyEdit={vi.fn()}
-          provenance={{ servable: true }}
-        />,
+      <Host
+        onRewrite={vi.fn()}
+        editContext={{ deliverableId: "d1", sectionId: "s1" }}
+        onApplyEdit={vi.fn()}
+        provenance={{ servable: true }}
+      />,
     );
     selectTextIn(screen.getByTestId("scope"), "the selected passage");
     expect(screen.getByRole("menuitem", { name: "Edit…" })).toBeTruthy();
@@ -332,12 +387,22 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
       rect: { top: 0, left: 0, width: 10, height: 10 },
       provenance: { documentId: "doc-9", chunkId: "chunk-7" },
     };
-    await saveFloatMenuNote({ investigationId: "inv-1", selection, noteText: "my note" });
+    await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const envelope = postTypedEventMock.mock.calls[0][0] as {
       investigation_id: string;
       document_id?: string;
-      payload: { action_type: string; source_kind: string; note_text: string; excerpt: string; chunk_id: string | null };
+      payload: {
+        action_type: string;
+        source_kind: string;
+        note_text: string;
+        excerpt: string;
+        chunk_id: string | null;
+      };
     };
     // user-sourced label (§9 — never a model label on a user note).
     expect(envelope.payload.action_type).toBe("marginalia.noted");
@@ -350,7 +415,11 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
   });
 
   it("the Note action saves through postTypedEvent from the menu (no side store)", async () => {
-    render(<Host provenance={{ documentId: "doc-1", chunkId: "c-1", servable: true }} />);
+    render(
+      <Host
+        provenance={{ documentId: "doc-1", chunkId: "c-1", servable: true }}
+      />,
+    );
     selectTextIn(screen.getByTestId("scope"), "notable text");
     fireEvent.click(screen.getByRole("menuitem", { name: "Note" }));
     const textarea = screen.getByPlaceholderText("Type a note, or speak it…");
@@ -359,8 +428,163 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
       fireEvent.click(screen.getByText("Save note"));
     });
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
-    const payload = (postTypedEventMock.mock.calls[0][0] as { payload: { source_kind: string } }).payload;
+    const payload = (
+      postTypedEventMock.mock.calls[0][0] as {
+        payload: { source_kind: string };
+      }
+    ).payload;
     expect(payload.source_kind).toBe("user");
+  });
+});
+
+// ── note_saved Werner experience — metadata-only emission ──────────────────
+
+describe("saveFloatMenuNote emits note_saved only on confirmed save", () => {
+  function captureExperiences(): {
+    seen: ProductExperience[];
+    teardown: () => void;
+  } {
+    const seen: ProductExperience[] = [];
+    const listener = (event: Event) => {
+      const experience = (event as CustomEvent).detail?.experience;
+      if (experience) seen.push(experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    return {
+      seen,
+      teardown: () =>
+        window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener),
+    };
+  }
+
+  const selection: FloatMenuSelection = {
+    text: "a passage",
+    rect: { top: 0, left: 0, width: 10, height: 10 },
+    provenance: { documentId: "doc-1", chunkId: "c-1" },
+  };
+
+  it("emits note_saved when postTypedEvent resolves with a nonempty event_id", async () => {
+    postTypedEventMock.mockResolvedValueOnce({
+      event_id: "ev-confirmed",
+      action_type: "marginalia.noted",
+    });
+    const capture = captureExperiences();
+    await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
+    expect(capture.seen).toEqual(["note_saved"]);
+    capture.teardown();
+  });
+
+  it("silences note_saved when event_id is an empty string", async () => {
+    postTypedEventMock.mockResolvedValueOnce({
+      event_id: "",
+      action_type: "marginalia.noted",
+    });
+    const capture = captureExperiences();
+    await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
+    expect(capture.seen).toEqual([]);
+    capture.teardown();
+  });
+
+  it("silences note_saved when event_id is whitespace only", async () => {
+    postTypedEventMock.mockResolvedValueOnce({
+      event_id: "   ",
+      action_type: "marginalia.noted",
+    });
+    const capture = captureExperiences();
+    await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
+    expect(capture.seen).toEqual([]);
+    capture.teardown();
+  });
+
+  it("silences note_saved when event_id is missing (undefined)", async () => {
+    postTypedEventMock.mockResolvedValueOnce({
+      action_type: "marginalia.noted",
+      event_id: undefined as unknown as string,
+    });
+    const capture = captureExperiences();
+    await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
+    expect(capture.seen).toEqual([]);
+    capture.teardown();
+  });
+
+  it("stays silent while persistence is pending, then emits once", async () => {
+    let resolve!: (value: { event_id: string; action_type: string }) => void;
+    postTypedEventMock.mockReturnValueOnce(
+      new Promise((settle) => {
+        resolve = settle;
+      }),
+    );
+    const capture = captureExperiences();
+    const saving = saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
+
+    await Promise.resolve();
+    expect(capture.seen).toEqual([]);
+    resolve({ event_id: "ev-later", action_type: "marginalia.noted" });
+    await saving;
+    expect(capture.seen).toEqual(["note_saved"]);
+    capture.teardown();
+  });
+
+  it("stays silent for a mismatched persisted action type", async () => {
+    postTypedEventMock.mockResolvedValueOnce({
+      event_id: "ev-wrong-action",
+      action_type: "source.read",
+    });
+    const capture = captureExperiences();
+    await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
+    expect(capture.seen).toEqual([]);
+    capture.teardown();
+  });
+
+  it("does not emit note_saved when postTypedEvent rejects (error propagates)", async () => {
+    postTypedEventMock.mockRejectedValueOnce(new Error("network"));
+    const capture = captureExperiences();
+    await expect(
+      saveFloatMenuNote({
+        investigationId: "inv-1",
+        selection,
+        noteText: "my note",
+      }),
+    ).rejects.toThrow("network");
+    expect(capture.seen).toEqual([]);
+    capture.teardown();
+  });
+
+  it("still returns the eventId even when note_saved is emitted", async () => {
+    postTypedEventMock.mockResolvedValueOnce({
+      event_id: "ev-ok",
+      action_type: "marginalia.noted",
+    });
+    const result = await saveFloatMenuNote({
+      investigationId: "inv-1",
+      selection,
+      noteText: "my note",
+    });
+    expect(result.eventId).toBe("ev-ok");
   });
 });
 
@@ -372,7 +596,11 @@ describe("VOICE note keeps source_kind 'user' through the fold (M3)", () => {
     // voice affordance reads "■ Stop": one click → stopAndCapture → the
     // USER-sourced transcript folds into the note text.
     voiceState.phase = "recording";
-    render(<Host provenance={{ documentId: "doc-v", chunkId: "c-v", servable: true }} />);
+    render(
+      <Host
+        provenance={{ documentId: "doc-v", chunkId: "c-v", servable: true }}
+      />,
+    );
     selectTextIn(screen.getByTestId("scope"), "spoken-over passage");
     fireEvent.click(screen.getByRole("menuitem", { name: "Note" }));
 
@@ -382,7 +610,9 @@ describe("VOICE note keeps source_kind 'user' through the fold (M3)", () => {
     });
     expect(stopAndCaptureMock).toHaveBeenCalledTimes(1);
     // The transcript landed in the note textarea (the fold voice → note text).
-    const textarea = screen.getByPlaceholderText("Type a note, or speak it…") as HTMLTextAreaElement;
+    const textarea = screen.getByPlaceholderText(
+      "Type a note, or speak it…",
+    ) as HTMLTextAreaElement;
     expect(textarea.value).toContain(VOICE_TRANSCRIPT);
 
     // Save the spoken note — it persists as a marginalia.noted typed event.
@@ -407,7 +637,12 @@ describe("VOICE note keeps source_kind 'user' through the fold (M3)", () => {
 describe("DEEP-RESEARCH spawns a child linked to the highlight (M2)", () => {
   it("the Deep-research action hands the host the selection text (chase path)", () => {
     const onDeepResearch = vi.fn();
-    render(<Host onDeepResearch={onDeepResearch} provenance={{ servable: true, documentId: "d", chunkId: null }} />);
+    render(
+      <Host
+        onDeepResearch={onDeepResearch}
+        provenance={{ servable: true, documentId: "d", chunkId: null }}
+      />,
+    );
     selectTextIn(screen.getByTestId("scope"), "chase me");
     fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
     expect(onDeepResearch).toHaveBeenCalledTimes(1);
@@ -428,7 +663,9 @@ describe("DEEP-RESEARCH spawns a child linked to the highlight (M2)", () => {
       spawn_context: "chase me",
     });
     expect(startInvestigationMock).toHaveBeenCalledTimes(1);
-    const req = startInvestigationMock.mock.calls[0][0] as { parent_investigation_id: string };
+    const req = startInvestigationMock.mock.calls[0][0] as {
+      parent_investigation_id: string;
+    };
     expect(req.parent_investigation_id).toBe("inv-1"); // child linked back to source
   });
 });
@@ -473,7 +710,12 @@ describe("§9.0 no-leak — withheld body never goes to Search / Deep-research",
 
   it("DEEP-RESEARCH hands the host null for a withheld selection (host refuses)", () => {
     const onDeepResearch = vi.fn();
-    render(<Host onDeepResearch={onDeepResearch} provenance={{ servable: false, documentId: "d", chunkId: "c" }} />);
+    render(
+      <Host
+        onDeepResearch={onDeepResearch}
+        provenance={{ servable: false, documentId: "d", chunkId: "c" }}
+      />,
+    );
     selectTextIn(screen.getByTestId("scope"), "withheld region text");
     fireEvent.click(screen.getByRole("menuitem", { name: "Deep-research" }));
     const [safeText] = onDeepResearch.mock.calls[0];
@@ -481,7 +723,9 @@ describe("§9.0 no-leak — withheld body never goes to Search / Deep-research",
   });
 
   it("the Search panel surfaces the withheld reason instead of leaking", async () => {
-    render(<Host provenance={{ servable: false, documentId: "d", chunkId: "c" }} />);
+    render(
+      <Host provenance={{ servable: false, documentId: "d", chunkId: "c" }} />,
+    );
     selectTextIn(screen.getByTestId("scope"), "withheld region text");
     await act(async () => {
       fireEvent.click(screen.getByRole("menuitem", { name: "Search" }));
@@ -515,7 +759,9 @@ describe("DIALOGUE keeps the user prompt distinct from the model reply (§9)", (
       fireEvent.click(ask);
     });
     // AIActionFailure renders role="alert" with the no-provider sentence.
-    expect(screen.getByRole("alert").textContent).toMatch(/provider isn|no result/i);
+    expect(screen.getByRole("alert").textContent).toMatch(
+      /provider isn|no result/i,
+    );
   });
 });
 

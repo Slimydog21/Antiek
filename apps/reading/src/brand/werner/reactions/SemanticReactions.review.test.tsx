@@ -8,8 +8,8 @@ const storySource = fs.readFileSync(storyPath, "utf8");
 const cssSource = fs.readFileSync(cssPath, "utf8");
 
 describe("semantic motion proof sheet", () => {
-  it("covers all four reactions and all four named review frames", () => {
-    for (const reaction of ["curious", "happy", "dizzy", "hit"]) {
+  it("covers all five reactions and all four named review frames", () => {
+    for (const reaction of ["curious", "happy", "dizzy", "hit", "noted"]) {
       expect(storySource).toContain(`${reaction}: Werner`);
     }
     for (const frame of ["start", "semantic-beat", "settle", "reduced"]) {
@@ -42,11 +42,15 @@ describe("semantic motion proof sheet", () => {
       "werner-paperclip-orbit",
       "werner-hit-rebound",
       "werner-tab-impact",
+      "werner-note-tuck",
     ]) {
       expect(cssSource).toContain(`animation: ${animation}`);
     }
     expect(cssSource).toContain('[data-reduced="false"]');
     expect(cssSource).not.toContain('[data-reduced="true"]');
+    for (const frame of ["start", "semantic-beat", "settle"]) {
+      expect(cssSource).toContain(`[data-review-frame="${frame}"]`);
+    }
   });
 
   it("is story-only and introduces no animation or raw color vocabulary", () => {
