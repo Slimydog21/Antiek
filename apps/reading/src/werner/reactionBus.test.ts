@@ -21,6 +21,7 @@ describe("Werner product reaction bus", () => {
     ["idle", "sleeping"],
     ["fail", "dizzy"],
     ["note_saved", "noted"],
+    ["piece_started", "happy"],
   ];
 
   it.each(cases)("maps %s to %s", (experience, emote) => {

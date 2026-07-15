@@ -11,6 +11,7 @@ import {
 } from "../../lib/api";
 import GlassSurface from "../../shell/GlassSurface";
 import celebrateArt from "../../brand/werner/poses/session/werner_celebrate_session_v1.png";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
 import ConnectResearch from "./ConnectResearch";
@@ -139,6 +140,8 @@ export default function WriteHome() {
         // investigation_root_id; reused, not a new column — see decision D-1).
         investigation_root_id: resolved.investigationId,
       });
+      // Living-TV: starting a piece is a happy craft beat at the home of the penguin.
+      emitWernerExperience("piece_started");
       navigate(`/write/${d.deliverable_id}`);
     } finally {
       setStarting(false);
