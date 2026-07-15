@@ -1,0 +1,88 @@
+.research-wait-arcade {
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--edge) solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--card-soft);
+  color: var(--text);
+  box-shadow: var(--shadow-z1);
+}
+
+.research-wait-arcade__rail {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  min-height: calc(var(--spacing) * 10);
+  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  border-bottom: 1px solid var(--border);
+  background: var(--inset);
+}
+
+.research-wait-arcade__pulse {
+  width: calc(var(--spacing) * 2);
+  height: calc(var(--spacing) * 2);
+  border: 1px solid var(--sun-deep);
+  background: var(--sun);
+  transform: rotate(45deg);
+}
+
+.research-wait-arcade__trace {
+  min-width: 0;
+  height: 1px;
+  background: var(--sun-light-deep);
+  box-shadow:
+    calc(var(--spacing) * 3) calc(var(--spacing) * -1) 0 var(--sun-light-deep),
+    calc(var(--spacing) * 6) calc(var(--spacing) * 1) 0 var(--sun-light-deep);
+  opacity: var(--opacity-icon);
+}
+
+.research-wait-arcade__drawer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+  padding: calc(var(--spacing) * 3);
+  background: var(--card);
+}
+
+.research-wait-arcade__game {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+}
+
+.research-wait-arcade__canvas-shell {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+  padding: calc(var(--spacing) * 2);
+}
+
+.research-wait-arcade button:focus-visible,
+.research-wait-arcade canvas:focus-visible {
+  outline: var(--edge) solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+@media (max-width: 420px) {
+  .research-wait-arcade__rail {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .research-wait-arcade__rail-status {
+    grid-column: 1 / -1;
+  }
+
+  .research-wait-arcade__drawer {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .research-wait-arcade__pulse {
+    transform: none;
+  }
+}

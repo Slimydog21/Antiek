@@ -81,4 +81,49 @@ export {
   type TargetChoreographyOptions,
 } from "./choreography";
 
+export {
+  emoteForExperience,
+  emitWernerExperience,
+  installReactionBus,
+  isProductExperience,
+  PRODUCT_EXPERIENCES,
+  WERNER_EXPERIENCE_EVENT,
+  type ProductExperience,
+  type ReactionBusOptions,
+  type WernerExperienceDetail,
+} from "./reactionBus";
+
+export {
+  consumeLocallyStartedResearchSession,
+  notifyPointerIdleEdge,
+  notifyResearchPhaseEdge,
+  notifyResearchStarted,
+  notifyShellFailure,
+  type ResearchReactionPhase,
+} from "./shellExperienceSignals";
+
 export { default as WernerRig, type WernerRigProps } from "./WernerRig";
+
+// SPR-01 — the station-activity surface. Importing this registers the built-in
+// activities (ice-fishing self-registers as the default); the mascot + shell
+// render "the active (default) activity" through these accessors instead of
+// hard-coding the fishing behavior.
+export {
+  registerActivity,
+  getActivity,
+  listActivities,
+  getDefaultActivity,
+  iceFishingActivity,
+  researchLensActivity,
+  activityIdForPathname,
+  getActivityForPathname,
+  type ActivityId,
+  type ActivityUnlock,
+  type CursorInstrument,
+  type CursorInstrumentProps,
+  type InstrumentSeamField,
+  type StationActivity,
+} from "./activities";
+
+export { useStationActivity } from "./useStationActivity";
+export { ResearchLensCursor } from "./ResearchLensCursor";
