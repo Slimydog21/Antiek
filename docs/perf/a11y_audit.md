@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-15T02:44:47.573Z
-**Stories audited:** 52
+**Run:** 2026-07-15T04:09:54.177Z
+**Stories audited:** 55
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -59,6 +59,9 @@
 | `shell-speak-listening-room-atmosphere-spr-27--scene-chrome-integration` | 0 | — | — |
 | `shell-read-glacial-cloister-atmosphere-spr-28--html-authority-plate` | 0 | — | — |
 | `shell-read-glacial-cloister-atmosphere-spr-28--scene-chrome-integration` | 0 | — | — |
+| `shell-brainstorm-fjord-atmosphere-spr-38--html-authority-plate` | 0 | — | — |
+| `shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-offer` | 0 | — | — |
+| `shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-playing` | 0 | — | — |
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |
