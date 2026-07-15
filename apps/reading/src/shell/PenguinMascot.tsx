@@ -17,8 +17,9 @@ import {
   type EmoteKind,
   type StageHost,
   type WernerStageController,
-  WernerRig,,
-  emitWernerExperience} from "../werner";
+  WernerRig,
+  emitWernerExperience,
+} from "../werner";
 import "../werner/waddle.css";
 
 /**
