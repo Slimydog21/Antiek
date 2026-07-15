@@ -118,6 +118,7 @@ def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPat
     import interfaces.research.api.library as lib
 
     calls: list[dict] = []
+    transaction_commands: list[str] = []
 
     class _Asset:
         document_id = "d1"
@@ -138,12 +139,16 @@ def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPat
         limit=200,
         offset=0,
     ):
+        assert transaction_commands == ["BEGIN TRANSACTION"]
         calls.append(
             {"servable_only": servable_only, "limit": limit, "offset": offset}
         )
         return [_Asset()] * limit if offset == 0 else [_Asset()]
 
     class _Con:
+        def execute(self, command: str) -> None:
+            transaction_commands.append(command)
+
         def close(self) -> None:
             return None
 
@@ -173,3 +178,41 @@ def test_register_library_exhausts_bounded_batches(monkeypatch: pytest.MonkeyPat
         },
     ]
     assert r.json()["total"] == lib._CATALOG_BATCH_SIZE + 1
+    assert transaction_commands == ["BEGIN TRANSACTION", "COMMIT"]
+
+
+def test_register_library_rolls_back_failed_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A failed batch cannot leave the read connection in a transaction."""
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    import interfaces.research.api.library as lib
+
+    transaction_commands: list[str] = []
+    closed = False
+
+    class _Con:
+        def execute(self, command: str) -> None:
+            transaction_commands.append(command)
+
+        def close(self) -> None:
+            nonlocal closed
+            closed = True
+
+    def fail_list(*args, **kwargs):
+        assert transaction_commands == ["BEGIN TRANSACTION"]
+        raise RuntimeError("catalog changed")
+
+    monkeypatch.setattr(lib, "list_book_assets", fail_list)
+    monkeypatch.setattr(lib, "_resolve_db_path", lambda: ":memory:")
+    monkeypatch.setattr("runtime.db_lock.connect_read", lambda db: _Con())
+
+    app = FastAPI()
+    lib.register_library_routes(app)
+    with pytest.raises(RuntimeError, match="catalog changed"):
+        TestClient(app).get("/library")
+
+    assert transaction_commands == ["BEGIN TRANSACTION", "ROLLBACK"]
+    assert closed

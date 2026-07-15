@@ -38,7 +38,12 @@ def register_library_routes(app: FastAPI) -> None:
 
         db = _resolve_db_path()
         con = connect_read(db)
+        committed = False
         try:
+            # DuckDB snapshots are transaction-scoped. Keep every offset batch
+            # on one snapshot so concurrent inserts/takedowns cannot shift the
+            # remaining pages and corrupt the catalog total.
+            con.execute("BEGIN TRANSACTION")
             assets = []
             offset = 0
             while True:
@@ -52,7 +57,11 @@ def register_library_routes(app: FastAPI) -> None:
                 if len(batch) < _CATALOG_BATCH_SIZE:
                     break
                 offset += len(batch)
+            con.execute("COMMIT")
+            committed = True
         finally:
+            if not committed:
+                con.execute("ROLLBACK")
             con.close()
 
         summaries = [BookSummary.from_asset(a) for a in assets]
