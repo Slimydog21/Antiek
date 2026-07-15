@@ -18,6 +18,10 @@ from substrate.multimedia.local_zero_cost_evidence import (
     LocalZeroExternalCostEvidenceV1,
     verify_local_zero_cost_evidence,
 )
+from substrate.multimedia.paid_video_cost_authority import (
+    PaidRegisteredVideoCostAuthorityV1,
+    verify_paid_registered_video_cost_authority,
+)
 from substrate.multimedia.ship_cost_snapshot import (
     MultimediaShipCostEvidenceUnavailable,
     MultimediaShipCostSnapshotV1,
@@ -53,11 +57,15 @@ class MultimediaHardeningReport(_HardeningBase):
     gates: tuple[GateResult, ...]
     residual_risks: tuple[str, ...] = Field(default_factory=tuple)
     cost_snapshot: MultimediaShipCostSnapshotV1 | None = None
+    paid_registered_video_cost_authority: PaidRegisteredVideoCostAuthorityV1 | None = None
     local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None
 
     @model_validator(mode="after")
-    def has_at_most_one_cost_authority(self) -> MultimediaHardeningReport:
-        if self.cost_snapshot is not None and self.local_zero_cost_evidence is not None:
+    def has_at_most_one_cost_authority_family(self) -> MultimediaHardeningReport:
+        paid_count = int(self.cost_snapshot is not None) + int(
+            self.paid_registered_video_cost_authority is not None
+        )
+        if paid_count > 1 or (paid_count and self.local_zero_cost_evidence is not None):
             raise ValueError("multimedia hardening report has multiple cost authorities")
         return self
 
@@ -75,8 +83,11 @@ def evaluate_multimedia_asset(
     *,
     acknowledged_unsourced_line_ids: tuple[str, ...] = (),
     cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
+    paid_registered_video_cost_authority: PaidRegisteredVideoCostAuthorityV1 | None = None,
     local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None,
     snapshot_key: bytes | None = None,
+    production_snapshot_key: bytes | None = None,
+    production_receipt_digest: str | None = None,
     owner_id: str | None = None,
     scenes: Iterable[Any] = (),
     retry_attempts: int = 0,
@@ -95,8 +106,11 @@ def evaluate_multimedia_asset(
         _cost_gate(
             asset,
             cost_snapshot=cost_snapshot,
+            paid_registered_video_cost_authority=paid_registered_video_cost_authority,
             local_zero_cost_evidence=local_zero_cost_evidence,
             snapshot_key=snapshot_key,
+            production_snapshot_key=production_snapshot_key,
+            production_receipt_digest=production_receipt_digest,
             owner_id=owner_id,
         ),
         _playback_gate(asset),
@@ -119,6 +133,9 @@ def evaluate_multimedia_asset(
             "Custom voice likeness/licensing requires operator review before release.",
         ),
         cost_snapshot=(cost_snapshot if gates[1].status == "pass" else None),
+        paid_registered_video_cost_authority=(
+            paid_registered_video_cost_authority if gates[1].status == "pass" else None
+        ),
         local_zero_cost_evidence=(
             local_zero_cost_evidence if gates[1].status == "pass" else None
         ),
@@ -166,8 +183,11 @@ def _cost_gate(
     asset: MultimediaAssetContract,
     *,
     cost_snapshot: MultimediaShipCostSnapshotV1 | None,
+    paid_registered_video_cost_authority: PaidRegisteredVideoCostAuthorityV1 | None,
     local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None,
     snapshot_key: bytes | None,
+    production_snapshot_key: bytes | None,
+    production_receipt_digest: str | None,
     owner_id: str | None,
 ) -> GateResult:
     if snapshot_key is None or owner_id is None:
@@ -177,7 +197,15 @@ def _cost_gate(
             message="Authoritative direct-provider cost evidence is unavailable.",
         )
         return GateResult(gate_id="cost_and_budget", status="fail", findings=(finding,))
-    if (cost_snapshot is None) == (local_zero_cost_evidence is None):
+    authority_count = sum(
+        authority is not None
+        for authority in (
+            cost_snapshot,
+            paid_registered_video_cost_authority,
+            local_zero_cost_evidence,
+        )
+    )
+    if authority_count != 1:
         finding = GateFinding(
             code="cost_evidence_ambiguous",
             severity="error",
@@ -185,7 +213,19 @@ def _cost_gate(
         )
         return GateResult(gate_id="cost_and_budget", status="fail", findings=(finding,))
     try:
-        if cost_snapshot is not None:
+        if paid_registered_video_cost_authority is not None:
+            if production_snapshot_key is None or production_receipt_digest is None:
+                raise MultimediaShipCostEvidenceUnavailable("evidence_unavailable")
+            verify_paid_registered_video_cost_authority(
+                paid_registered_video_cost_authority,
+                direct_snapshot_key=snapshot_key,
+                production_snapshot_key=production_snapshot_key,
+                owner_id=owner_id,
+                asset_id=asset.asset_id,
+                revision_id=asset.revision_id,
+                production_receipt_digest=production_receipt_digest,
+            )
+        elif cost_snapshot is not None:
             verify_multimedia_ship_cost_snapshot(
                 cost_snapshot,
                 snapshot_key=snapshot_key,
@@ -194,7 +234,8 @@ def _cost_gate(
                 revision_id=asset.revision_id,
             )
         else:
-            assert local_zero_cost_evidence is not None
+            if local_zero_cost_evidence is None:
+                raise MultimediaShipCostEvidenceUnavailable("evidence_unavailable")
             verify_local_zero_cost_evidence(
                 local_zero_cost_evidence,
                 snapshot_key=snapshot_key,

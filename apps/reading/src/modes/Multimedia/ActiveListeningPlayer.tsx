@@ -4,13 +4,14 @@ import { ListRestart, ListStart, RotateCcw, RotateCw } from "lucide-react";
 
 import {
   getListeningProgress,
+  prepareResearchIntent,
   putListeningProgress,
 } from "../../api/multimedia";
 import type {
   MultimediaListeningProgressResponse,
   MultimediaLocalAudiblePlayback,
 } from "../../api/multimedia";
-import { LemonButton } from "../../components/lemon";
+import { LemonButton, LemonTextarea } from "../../components/lemon";
 
 const SPEEDS = [1, 1.25, 1.5, 2] as const;
 const CHECKPOINT_INTERVAL_MS = 15_000;
@@ -41,6 +42,12 @@ export function ActiveListeningPlayer({
   const [speed, setSpeed] = useState<number>(1);
   const [claimsOpen, setClaimsOpen] = useState(false);
   const [evidenceLineId, setEvidenceLineId] = useState<string | null>(null);
+  const [researchLineId, setResearchLineId] = useState<string | null>(null);
+  const [researchQuestion, setResearchQuestion] = useState("");
+  const [researchStatus, setResearchStatus] = useState<"idle" | "submitting" | "prepared" | "error">("idle");
+  const researchKeyRef = useRef<string | null>(null);
+  const researchRequestRef = useRef(0);
+  const researchSubmittingRef = useRef(false);
 
   // ── Listening progress state ──
   const sessionIdRef = useRef(mintSessionId());
@@ -140,6 +147,12 @@ export function ActiveListeningPlayer({
     setSpeed(1);
     setClaimsOpen(false);
     setEvidenceLineId(null);
+    setResearchLineId(null);
+    setResearchQuestion("");
+    setResearchStatus("idle");
+    researchKeyRef.current = null;
+    researchRequestRef.current += 1;
+    researchSubmittingRef.current = false;
 
     if (audioRef.current) {
       audioRef.current.currentTime = 0;
@@ -460,6 +473,77 @@ export function ActiveListeningPlayer({
                 <div className="mt-2 border-y border-rule py-2 dark:border-charcoal-1">
                   <p className="text-[11px] text-shadow-1 dark:text-moonlight">Legacy receipt · exact excerpt unavailable</p>
                   <p className="mt-1 font-mono text-[10px] text-shadow-2">Evidence records: {claim.source_chunk_ids.join(", ")}</p>
+                </div>
+              )}
+              {claim.evidence_status === "verified_exact" && <LemonButton
+                className="mt-2 ml-2"
+                size="sm"
+                variant="secondary"
+                disabled={researchStatus === "submitting"}
+                aria-expanded={researchLineId === claim.line_id}
+                onClick={() => {
+                  const opening = researchLineId !== claim.line_id;
+                  setResearchLineId(opening ? claim.line_id : null);
+                  setResearchQuestion(opening ? claim.follow_up_prompt : "");
+                  setResearchStatus("idle");
+                  researchKeyRef.current = null;
+                  researchRequestRef.current += 1;
+                  researchSubmittingRef.current = false;
+                }}
+              >Research this</LemonButton>}
+              {researchLineId === claim.line_id && claim.evidence_status === "verified_exact" && (
+                <div className="mt-2 border-y border-rule py-3 dark:border-charcoal-1" aria-label={`Prepare research for ${claim.claim_text}`}>
+                  <p className="font-semibold">{claim.claim_text}</p>
+                  {claim.evidence_sources.map((source) => (
+                    <blockquote key={source.chunk_id} className="mt-2 border-l-2 border-sun pl-3 text-[12px]">{source.exact_text}</blockquote>
+                  ))}
+                  <label className="mt-3 block text-[11px] font-semibold" htmlFor={`research-${claim.line_id}`}>Research question</label>
+                  <LemonTextarea
+                    id={`research-${claim.line_id}`}
+                    className="mt-1 text-[12px]"
+                    minRows={3}
+                    maxRows={8}
+                    value={researchQuestion}
+                    maxLength={2000}
+                    disabled={researchStatus === "submitting"}
+                    onChange={(event) => {
+                      setResearchQuestion(event.target.value);
+                      if (researchStatus !== "idle") setResearchStatus("idle");
+                      researchKeyRef.current = null;
+                      researchRequestRef.current += 1;
+                      researchSubmittingRef.current = false;
+                    }}
+                  />
+                  <LemonButton
+                    className="mt-2"
+                    size="sm"
+                    disabled={researchStatus === "submitting" || researchStatus === "prepared" || researchQuestion.trim().length < 3}
+                    onClick={() => {
+                      const question = researchQuestion.trim();
+                      if (question.length < 3 || researchSubmittingRef.current) return;
+                      researchKeyRef.current ??= mintSessionId();
+                      const generation = identityGenerationRef.current;
+                      const requestGeneration = ++researchRequestRef.current;
+                      researchSubmittingRef.current = true;
+                      setResearchStatus("submitting");
+                      void prepareResearchIntent(
+                        playback.asset_id, playback.revision_id, playback.receipt_sha256,
+                        playback.audio_sha256, claim, question, researchKeyRef.current,
+                      ).then(() => {
+                        if (generation === identityGenerationRef.current && requestGeneration === researchRequestRef.current) {
+                          researchSubmittingRef.current = false;
+                          setResearchStatus("prepared");
+                        }
+                      }).catch(() => {
+                        if (generation === identityGenerationRef.current && requestGeneration === researchRequestRef.current) {
+                          researchSubmittingRef.current = false;
+                          setResearchStatus("error");
+                        }
+                      });
+                    }}
+                  >{researchStatus === "submitting" ? "Preparing…" : "Prepare research"}</LemonButton>
+                  {researchStatus === "prepared" && <p className="mt-2 text-[11px]">Research prepared. Plan review is the next step and is currently unavailable.</p>}
+                  {researchStatus === "error" && <p className="mt-2 text-[11px]" role="alert">Could not prepare research. Try again.</p>}
                 </div>
               )}
               {evidenceLineId === claim.line_id && (

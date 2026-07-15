@@ -96,6 +96,13 @@ class ReviewedVisualRegistry:
         self._db_path = db_path
         self._integrity_key = integrity_key
 
+    def assert_independent_snapshot_key(self, snapshot_key: bytes) -> None:
+        """Reject reuse of the key authenticating reviewed visual selections."""
+        if not isinstance(snapshot_key, bytes) or len(snapshot_key) < 32:
+            raise ValueError("production snapshot key is invalid")
+        if hmac.compare_digest(snapshot_key, self._integrity_key):
+            raise ValueError("production snapshot key must be independent")
+
     def register(
         self,
         *,
