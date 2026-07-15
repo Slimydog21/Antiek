@@ -3,12 +3,20 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import replace
+from datetime import UTC, datetime
 
 import pytest
 
+import substrate.multimedia.bedrock_batch_adapter as bedrock_adapter_module
 from substrate.multimedia.bedrock_batch_adapter import (
+    BedrockBatchError,
     BedrockBatchRecoveryAdapter,
     BedrockBatchRequest,
+)
+from substrate.multimedia.bedrock_workload_bound import (
+    BedrockBatchModelProfile,
+    BedrockBatchRateSnapshot,
+    materialize_bedrock_batch_workload,
 )
 from substrate.research_spend import (
     IdempotencyConflict,
@@ -73,20 +81,141 @@ def _authority(tmp_path):
 
 
 def _request(account: str = "123456789012") -> BedrockBatchRequest:
-    return BedrockBatchRequest(
+    workload_bytes, bound = _bounded_workload()
+    assert workload_bytes
+    return BedrockBatchRequest.from_workload_bound(
+        workload_bound=bound,
         job_name="job-name", model_id="provider-model",
         role_arn=f"arn:aws:iam::{account}:role/AntiekBedrockBatch",
-        input_s3_uri="s3://input-bucket/prefix/manifest.jsonl",
+        input_s3_uri=f"s3://input-bucket/{bound.workload_sha256}/manifest.jsonl",
         output_s3_uri="s3://output-bucket/prefix/", timeout_hours=24,
         account_digest=hashlib.sha256(account.encode()).hexdigest(), region="us-east-1",
     )
+
+
+def _bounded_workload():
+    profile = BedrockBatchModelProfile(
+        provider_model_id="provider-model", antiek_model="batch-model",
+        region="us-east-1", rate_tier="test", context_tokens=100_000,
+        maximum_records=1, maximum_output_tokens_per_record=1,
+        output_cap_field="max_tokens", profile_version="test-v1",
+    )
+    rates = BedrockBatchRateSnapshot(
+        provider_model_id="provider-model", region="us-east-1", rate_tier="test",
+        input_usd_per_million_tokens="20", output_usd_per_million_tokens="0",
+        fixed_request_usd="0", currency="USD", effective_at="2026-07-15T00:00:00Z",
+        valid_until="2026-07-16T00:00:00Z", source_digest="a" * 64,
+        rate_version="test-v1",
+    )
+    return materialize_bedrock_batch_workload(
+        [{"recordId": "record-1", "modelInput": {"max_tokens": 1}}], profile, rates
+    )
+
+
+def _prepare_bound(adapter: BedrockBatchRecoveryAdapter, **kwargs):
+    kwargs.pop("projected_max_cents", None)
+    kwargs.pop("projection_digest", None)
+    kwargs.pop("rate_snapshot", None)
+    workload_bytes, _ = _bounded_workload()
+    return adapter.prepare(**kwargs, workload_bytes=workload_bytes)
+
+
+def test_stale_rate_blocks_create_recovery_without_provider_call(tmp_path, monkeypatch) -> None:
+    class Clock:
+        current = datetime(2026, 7, 15, 1, tzinfo=UTC)
+
+        @classmethod
+        def now(cls, tz):  # noqa: ANN001, ANN206
+            return cls.current.astimezone(tz)
+
+    monkeypatch.setattr(bedrock_adapter_module, "datetime", Clock)
+    ledger, binding = _authority(tmp_path)
+    service = StatefulBedrock("123456789012", "us-east-1")
+    adapter = BedrockBatchRecoveryAdapter(ledger, service)
+    submission = _prepare_bound(
+        adapter,
+        command_key="prepare",
+        binding=binding,
+        operation_id="operation-1",
+        model="batch-model",
+        request=_request(),
+    )
+    submission = adapter.advance(
+        command_key="mark", submission_id=submission.intent.submission_id, owner_id="owner-1"
+    )
+    Clock.current = datetime(2026, 7, 16, 1, tzinfo=UTC)
+    with pytest.raises(BedrockBatchError, match="recovery validation"):
+        adapter.advance(
+            command_key="create", submission_id=submission.intent.submission_id, owner_id="owner-1"
+        )
+    assert service.create_attempts == 0
+
+
+def test_unknown_adapter_contract_fails_closed_without_provider_call(tmp_path) -> None:
+    ledger, binding = _authority(tmp_path)
+    service = StatefulBedrock("123456789012", "us-east-1")
+    adapter = BedrockBatchRecoveryAdapter(ledger, service)
+    submission = _prepare_bound(
+        adapter,
+        command_key="prepare",
+        binding=binding,
+        operation_id="operation-1",
+        model="batch-model",
+        request=_request(),
+    )
+    unknown = replace(
+        submission,
+        intent=replace(submission.intent, adapter_contract="unknown-v99"),
+    )
+    ledger.provider_submission = lambda submission_id, owner_id: unknown  # type: ignore[method-assign]
+    with pytest.raises(BedrockBatchError, match="unsupported Bedrock adapter contract"):
+        adapter.advance(
+            command_key="mark", submission_id=submission.intent.submission_id, owner_id="owner-1"
+        )
+    assert service.create_attempts == 0
+
+
+@pytest.mark.parametrize("field", ["clientRequestToken", "modelId"])
+def test_recovery_rederives_create_identity_before_provider_call(tmp_path, field) -> None:
+    ledger, binding = _authority(tmp_path)
+    service = StatefulBedrock("123456789012", "us-east-1")
+    adapter = BedrockBatchRecoveryAdapter(ledger, service)
+    submission = _prepare_bound(
+        adapter,
+        command_key="prepare",
+        binding=binding,
+        operation_id="operation-1",
+        model="batch-model",
+        request=_request(),
+    )
+    create_request = json.loads(submission.intent.create_request_json)
+    create_request[field] = "b" * 64 if field == "clientRequestToken" else "other-model"
+    changed_intent = replace(
+        submission.intent,
+        create_request_json=json.dumps(
+            create_request, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        ),
+        client_request_token=(
+            "b" * 64 if field == "clientRequestToken" else submission.intent.client_request_token
+        ),
+        provider_model_id=(
+            "other-model" if field == "modelId" else submission.intent.provider_model_id
+        ),
+    )
+    substituted = replace(submission, intent=changed_intent)
+    ledger.provider_submission = lambda submission_id, owner_id: substituted  # type: ignore[method-assign]
+    with pytest.raises(BedrockBatchError, match="recovery validation"):
+        adapter.advance(
+            command_key="mark", submission_id=submission.intent.submission_id, owner_id="owner-1"
+        )
+    assert service.create_attempts == 0
 
 
 def test_lost_create_response_replays_exact_request_and_binds_one_job(tmp_path) -> None:
     ledger, binding = _authority(tmp_path)
     service = StatefulBedrock("123456789012", "us-east-1")
     adapter = BedrockBatchRecoveryAdapter(ledger, service)
-    submission = adapter.prepare(
+    submission = _prepare_bound(adapter,
         command_key="prepare", binding=binding, operation_id="operation-1",
         model="batch-model", request=_request(), projected_max_cents=200,
         projection_digest="projection-digest", rate_snapshot="unresolved-bedrock-billing",
@@ -135,10 +264,12 @@ def test_prepare_replay_is_exact_and_changed_terms_conflict(tmp_path) -> None:
         request=_request(), projected_max_cents=200, projection_digest="projection-digest",
         rate_snapshot="unresolved-bedrock-billing",
     )
-    first = adapter.prepare(**kwargs)
-    assert adapter.prepare(**kwargs) == first
+    first = _prepare_bound(adapter, **kwargs)
+    assert _prepare_bound(adapter, **kwargs) == first
     with pytest.raises(IdempotencyConflict):
-        adapter.prepare(**{**kwargs, "request": replace(_request(), output_s3_uri="s3://other/prefix/")})
+        _prepare_bound(adapter,
+            **{**kwargs, "request": replace(_request(), output_s3_uri="s3://other/prefix/")}
+        )
     assert ledger.balance("run-1").held_cents == 200
 
 
@@ -147,7 +278,7 @@ def test_bad_arn_freezes_submission_without_releasing_hold(tmp_path) -> None:
     service = StatefulBedrock("999999999999", "us-east-1")
     service.lose_next_response = False
     adapter = BedrockBatchRecoveryAdapter(ledger, service)
-    submission = adapter.prepare(
+    submission = _prepare_bound(adapter,
         command_key="prepare", binding=binding, operation_id="operation-1", model="batch-model",
         request=_request(), projected_max_cents=200, projection_digest="projection-digest",
         rate_snapshot="unresolved-bedrock-billing",
@@ -164,7 +295,7 @@ def test_bad_poll_arn_is_recorded_as_integrity_conflict(tmp_path) -> None:
     service = StatefulBedrock("123456789012", "us-east-1")
     service.lose_next_response = False
     adapter = BedrockBatchRecoveryAdapter(ledger, service)
-    submission = adapter.prepare(
+    submission = _prepare_bound(adapter,
         command_key="prepare", binding=binding, operation_id="operation-1",
         model="batch-model", request=_request(), projected_max_cents=200,
         projection_digest="projection-digest", rate_snapshot="unresolved-bedrock-billing",
@@ -196,7 +327,7 @@ def test_definitive_pre_acceptance_failure_releases_authority(tmp_path) -> None:
     adapter = BedrockBatchRecoveryAdapter(
         ledger, StatefulBedrock("123456789012", "us-east-1")
     )
-    submission = adapter.prepare(
+    submission = _prepare_bound(adapter,
         command_key="prepare", binding=binding, operation_id="operation-1",
         model="batch-model", request=_request(), projected_max_cents=200,
         projection_digest="projection-digest", rate_snapshot="unresolved-bedrock-billing",
