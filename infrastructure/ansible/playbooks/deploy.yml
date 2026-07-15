@@ -148,6 +148,15 @@
       register: antiek_backup_timer
       tags: [systemd, backup]
 
+    - name: re-render backup script before enabling its persistent timer
+      ansible.builtin.template:
+        src: ../templates/backup.sh.j2
+        dest: /usr/local/bin/antiek-backup
+        owner: root
+        group: "{{ antiek_group }}"
+        mode: "0750"
+      tags: [backup]
+
     - name: re-render backup freshness probe
       ansible.builtin.template:
         src: ../templates/antiek-backup-freshness-probe.sh.j2
@@ -332,15 +341,6 @@
         state: restarted
       when: caddyfile.changed
       tags: [caddy]
-
-    - name: re-render backup script
-      ansible.builtin.template:
-        src: ../templates/backup.sh.j2
-        dest: /usr/local/bin/antiek-backup
-        owner: root
-        group: "{{ antiek_group }}"
-        mode: "0750"
-      tags: [backup]
 
     # ── 3.5 Debug: what does Caddy think the route table is? ────────────
     - name: debug — fetch live Caddy config JSON

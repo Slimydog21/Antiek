@@ -65,6 +65,8 @@
           - unattended-upgrades
           - rsync
           - curl
+          - jq
+          - util-linux # flock(1), used by the whole-backup job mutex
           - ca-certificates
           - gnupg
           - debian-keyring

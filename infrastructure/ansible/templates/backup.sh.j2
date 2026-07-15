@@ -83,7 +83,7 @@ if [[ ! "${STAGING_ROOT}" =~ ${_PATH_RE} ]]; then
     exit 6
 fi
 
-readonly JOB_LOCK="${ANTIEK_BACKUP_JOB_LOCK:-/run/lock/antiek-backup.lock}"
+readonly JOB_LOCK="${ANTIEK_BACKUP_JOB_LOCK:-/run/antiek-backup/job.lock}"
 if [[ ! "${JOB_LOCK}" =~ ${_PATH_RE} ]]; then
     echo "ERROR: backup: ANTIEK_BACKUP_JOB_LOCK must match [A-Za-z0-9/._-]+; refusing: ${JOB_LOCK}" >&2
     exit 6
