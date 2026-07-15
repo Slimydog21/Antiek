@@ -122,6 +122,15 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
   });
 
+  it("keeps the production chart decorative and every heading in live HTML", () => {
+    renderStart();
+    const chart = screen.getByTestId("research-expedition-chart");
+    expect(chart.getAttribute("src")).toContain("research_expedition_chart_v1");
+    expect(chart.getAttribute("alt")).toBe("");
+    expect(chart.getAttribute("aria-hidden")).toBe("true");
+    expect(screen.getByRole("heading", { name: "Start with the question worth chasing" })).toBeTruthy();
+  });
+
   it("renders a real composer: input + Ask button + example pills", () => {
     renderStart();
     expect(screen.getByLabelText("Research question")).toBeTruthy();
@@ -205,9 +214,10 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     fireEvent.keyDown(input, { key: "Enter", metaKey: true });
     // (LemonTextarea only fires onSubmit for non-empty; "ab" is non-empty
     //  but the hook validates >= 3 and refuses to POST.)
-    await waitFor(() =>
-      expect(screen.getByText(/at least 3 characters/i)).toBeTruthy(),
-    );
+    await waitFor(() => {
+      expect(screen.getByText(/at least 3 characters/i)).toBeTruthy();
+      expect(screen.queryByText(/provider keys/i)).toBeNull();
+    });
     expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 });
@@ -345,8 +355,8 @@ describe("StartResearch — a failed run is surfaced honestly, never a dead rout
     );
     expect(screen.queryByText(/Working on it/i)).toBeNull();
     expect(screen.queryByText(/Starting your research/i)).toBeNull();
-    // The diagnostic reason is shown (framed, not raw-as-prose).
-    expect(screen.getByText(/no model provider configured/i)).toBeTruthy();
+    // Event/provider detail stays private; the fixed recovery surface remains.
+    expect(screen.queryByText(/no model provider configured/i)).toBeNull();
     // It MUST NOT have navigated to the dead /inv/:id route.
     expect(navigateMock).not.toHaveBeenCalled();
     // A Try-again action is offered.

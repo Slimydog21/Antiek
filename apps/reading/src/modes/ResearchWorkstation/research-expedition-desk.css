@@ -1,0 +1,141 @@
+.research-expedition-desk {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  overflow: auto;
+  padding: clamp(1rem, 3vw, 2.5rem);
+  color: var(--ink);
+}
+
+.research-expedition-desk > img {
+  position: absolute;
+  inset: clamp(0.75rem, 2vw, 1.5rem);
+  z-index: -3;
+  width: calc(100% - clamp(1.5rem, 4vw, 3rem));
+  height: calc(100% - clamp(1.5rem, 4vw, 3rem));
+  border-radius: 1.5rem;
+  object-fit: cover;
+  pointer-events: none;
+  filter: saturate(0.86) contrast(0.94);
+}
+
+.research-expedition-desk__veil {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--bright) 34%, transparent), color-mix(in srgb, var(--bright) 72%, transparent));
+  pointer-events: none;
+}
+
+.research-expedition-desk__masthead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1.5rem;
+  width: min(100%, 70rem);
+  margin: 0 auto clamp(1.25rem, 3vw, 2.5rem);
+}
+
+.research-expedition-desk__masthead h1 {
+  max-width: 40rem;
+  margin-top: 0.25rem;
+  font: 700 clamp(1.75rem, 4vw, 3.4rem) / 0.98 var(--serif);
+  letter-spacing: -0.045em;
+}
+
+.research-expedition-desk__masthead > div > p:last-child {
+  max-width: 38rem;
+  margin-top: 0.75rem;
+  color: var(--shadow-1);
+  font: 1rem / 1.55 var(--serif);
+}
+
+.research-expedition-desk__eyebrow,
+.research-expedition-desk__phase {
+  font: 700 0.68rem / 1.2 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.research-expedition-desk__eyebrow { color: var(--shadow-1); }
+
+.research-expedition-desk__phase {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.55rem;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--bright) 82%, transparent);
+  padding: 0.55rem 0.8rem;
+  box-shadow: var(--shadow-z1);
+}
+
+.research-expedition-desk__phase span {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--aurora);
+}
+
+.research-expedition-desk__console {
+  display: flex;
+  justify-content: center;
+  width: min(100%, 70rem);
+  margin: 0 auto;
+}
+
+.research-expedition-desk__launch-card {
+  margin-inline: auto;
+  background: color-mix(in srgb, var(--bright) 91%, transparent);
+  box-shadow: var(--shadow-z1);
+}
+
+.research-expedition-desk__state,
+.research-expedition-desk__proposal {
+  width: min(100%, 38rem);
+  border: 1px solid var(--rule);
+  border-radius: 1.25rem;
+  background: color-mix(in srgb, var(--bright) 91%, transparent);
+  padding: clamp(1.5rem, 5vw, 3rem);
+  box-shadow: var(--shadow-z1);
+}
+
+.research-expedition-desk__validation {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--emperor) 42%, transparent);
+  border-radius: 0.75rem;
+  padding: 0.65rem 0.8rem;
+  background: color-mix(in srgb, var(--emperor) 10%, transparent);
+  color: var(--ink);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.research-expedition-desk__state { text-align: center; }
+
+.research-expedition-desk--fixture > img { visibility: hidden; }
+
+.research-expedition-desk--fixture {
+  background: linear-gradient(145deg, var(--ice-1), var(--ice-2));
+}
+
+@media (max-width: 767px) {
+  .research-expedition-desk { padding: 1rem; }
+  .research-expedition-desk__masthead { flex-direction: column; gap: 0.85rem; }
+  .research-expedition-desk__masthead h1 { font-size: clamp(1.75rem, 9vw, 2.5rem); }
+  .research-expedition-desk__phase { align-self: flex-start; }
+  .research-expedition-desk__launch-card { padding: 1.25rem; }
+}
+
+@media (prefers-color-scheme: dark) {
+  .research-expedition-desk__veil {
+    background: linear-gradient(180deg, color-mix(in srgb, var(--space-2) 54%, transparent), color-mix(in srgb, var(--space-2) 82%, transparent));
+  }
+  .research-expedition-desk__phase,
+  .research-expedition-desk__launch-card,
+  .research-expedition-desk__state,
+  .research-expedition-desk__proposal {
+    background: color-mix(in srgb, var(--charcoal-2) 91%, transparent);
+  }
+}
