@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -11,7 +11,7 @@ vi.mock("../../api/research", () => ({
 vi.mock("../../workspace/WorkspaceStore", () => ({
   useWorkspace: (selector: (state: { open: typeof mocks.open }) => unknown) => selector({ open: mocks.open }),
 }));
-vi.mock("./DerivedRevisionCompanion", () => ({ default: (props: { model: { derived_asset_id: string; revision_id: string } }) => <aside data-testid="companion" data-document-id={props.model.derived_asset_id} data-revision-id={props.model.revision_id} /> }));
+vi.mock("./DerivedRevisionCompanion", () => ({ default: (props: { model: { derived_asset_id: string; revision_id: string }; onFollowCitation: (citation: unknown) => void }) => <aside data-testid="companion" data-document-id={props.model.derived_asset_id} data-revision-id={props.model.revision_id}><button onClick={() => props.onFollowCitation({ citation_id: `dchunk_${"d".repeat(64)}`, chunk_ordinal: 3, member_index: 0, section_anchor: "turbofan", section_path: "Engines / Turbofan", text: "Bypass ratio matters.", text_sha256: "e".repeat(64) })}>Follow citation</button></aside> }));
 vi.mock("../shared/FloatMenu/FloatMenu", () => ({ default: (props: { investigationId: string }) => <div data-testid="float-menu" data-thread-id={props.investigationId} /> }));
 
 const assetId = `ast_${"a".repeat(32)}`;
@@ -56,6 +56,17 @@ describe("Cycle 57 derived HTML reader", () => {
     const threadId = `read-${assetId}:${revisionId}`;
     expect(screen.getByTestId("float-menu").dataset.threadId).toBe(threadId);
     expect(mocks.getReading).toHaveBeenCalledWith(assetId, undefined);
+    expect(mocks.open).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Follow citation"));
+    expect(mocks.open).toHaveBeenCalledWith("ChaseThread", expect.objectContaining({
+      spawnContext: "Bypass ratio matters.",
+      parentInvestigationId: `read-${assetId}:${revisionId}`,
+      sourceProvenance: expect.objectContaining({
+        derivedCitationId: `dchunk_${"d".repeat(64)}`,
+        derivedChunkOrdinal: 3,
+        derivedChunkTextSha256: "e".repeat(64),
+      }),
+    }), { mode: "floating", title: "Follow this" });
   });
 
   it("pins immutable routes and refuses conflicting server identity", async () => {

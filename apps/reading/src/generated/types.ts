@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 33;
+export const EVENT_SCHEMA_VERSION = 34;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -196,6 +196,20 @@ export type DiscoveryProvider = "exa" | "parallel" | "operator";
 export type DiscoveryDecision = "ingested" | "rejected_by_legal_gate" | "rejected_by_operator" | "fetch_failed";
 
 export type ProvenanceSourceKind = "user" | "ai" | "system";
+
+/**
+ * Exact derived HTML citation admitted by the research launch boundary.
+ */
+export interface DerivedCitationSource {
+  derived_asset_id: string;
+  revision_id: string;
+  content_sha256: string;
+  generation: number;
+  citation_id: string;
+  chunk_ordinal: number;
+  chunk_text_sha256: string;
+  excerpt: string;
+}
 
 /**
  * One layer of an assembled context pack. Embedded inside
@@ -1594,6 +1608,7 @@ export interface InvestigationStartRequestedPayload {
   max_sub_questions?: number;
   parent_investigation_id?: string | null;
   spawn_context?: string | null;
+  derived_source?: DerivedCitationSource | null;
   chase_mode?: "off" | "depth" | "duration";
   chase_value?: number;
   chase_budget_usd?: number;

@@ -96,25 +96,45 @@ export default function ChaseThread({
     setBusy(true);
     setError(null);
     try {
-      const derivedSource = /^ast_[0-9a-f]{32}$/.test(sourceProvenance?.documentId ?? "")
-        && /^rev_[0-9a-f]{32}$/.test(sourceProvenance?.derivedRevisionId ?? "")
-        && /^[0-9a-f]{64}$/.test(sourceProvenance?.derivedContentSha256 ?? "")
-        && Number.isInteger(sourceProvenance?.derivedGeneration)
-        && (sourceProvenance?.derivedGeneration ?? 0) >= 1
+      const documentId = sourceProvenance?.documentId;
+      const revisionId = sourceProvenance?.derivedRevisionId;
+      const contentSha256 = sourceProvenance?.derivedContentSha256;
+      const generation = sourceProvenance?.derivedGeneration;
+      const citationId = sourceProvenance?.derivedCitationId;
+      const chunkOrdinal = sourceProvenance?.derivedChunkOrdinal;
+      const chunkTextSha256 = sourceProvenance?.derivedChunkTextSha256;
+      const hasCitationClaim = documentId?.startsWith("ast_")
+        || revisionId != null || contentSha256 != null || generation != null
+        || citationId != null || chunkOrdinal != null || chunkTextSha256 != null;
+      const derivedSource = typeof documentId === "string"
+        && /^ast_[0-9a-f]{32}$/.test(documentId)
+        && typeof revisionId === "string" && /^rev_[0-9a-f]{32}$/.test(revisionId)
+        && typeof contentSha256 === "string" && /^[0-9a-f]{64}$/.test(contentSha256)
+        && typeof generation === "number" && Number.isInteger(generation) && generation >= 1
+        && typeof citationId === "string" && /^dchunk_[0-9a-f]{64}$/.test(citationId)
+        && typeof chunkOrdinal === "number" && Number.isInteger(chunkOrdinal) && chunkOrdinal >= 0
+        && typeof chunkTextSha256 === "string" && /^[0-9a-f]{64}$/.test(chunkTextSha256)
         ? {
-            derived_asset_id: sourceProvenance?.documentId,
-            revision_id: sourceProvenance?.derivedRevisionId,
-            content_sha256: sourceProvenance?.derivedContentSha256,
-            generation: sourceProvenance?.derivedGeneration,
+            derived_asset_id: documentId,
+            revision_id: revisionId,
+            content_sha256: contentSha256,
+            generation,
+            citation_id: citationId,
+            chunk_ordinal: chunkOrdinal,
+            chunk_text_sha256: chunkTextSha256,
+            excerpt: spawnContext,
           }
         : null;
+      if (hasCitationClaim && !derivedSource) {
+        setError({ reason: "This citation could not be verified for research." });
+        return;
+      }
       const resp = await startInvestigation({
         question: q,
-        context: derivedSource
-          ? `${spawnContext}\n\nAntiek source identity: ${JSON.stringify(derivedSource)}`
-          : spawnContext,
+        context: spawnContext,
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
+        ...(derivedSource ? { derived_source: derivedSource } : {}),
         // Consume the reserved escalation id when the passage carries one;
         // omit it otherwise so the substrate mints a fresh child. This is
         // the no-orphan / one-research-per-question seam.

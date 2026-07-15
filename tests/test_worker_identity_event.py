@@ -60,7 +60,7 @@ def test_event_schema_version_bumped():
     (SkillPatchGateDecided + SkillPatchGateReviewed, GF-3c/d Phase-8
     gate calibration audit events) -> 32 (multimedia authority events) -> 33
     (NotDiamond DispatchCallPayload attribution fields)."""
-    assert EVENT_SCHEMA_VERSION == 33
+    assert EVENT_SCHEMA_VERSION == 34
 
 
 # ── validation (rigor #3: rejects bad input at emit time) ───────────────────

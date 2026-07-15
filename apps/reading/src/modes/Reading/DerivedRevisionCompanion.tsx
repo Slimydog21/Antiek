@@ -1,10 +1,11 @@
-import { BookOpenText, LoaderCircle, Search } from "lucide-react";
+import { BookOpenText, LoaderCircle, Search, Telescope } from "lucide-react";
 import { FormEvent, RefObject, useEffect, useRef, useState } from "react";
 
 import {
   getDerivedCompanionConversation,
   prepareDerivedCompanionEvidence,
   type DerivedAssetReadingResponse,
+  type DerivedCompanionCitation,
   type DerivedCompanionEvidenceResponse,
 } from "../../api/research";
 import { LemonButton, LemonTag } from "../../components/lemon";
@@ -12,6 +13,7 @@ import { LemonButton, LemonTag } from "../../components/lemon";
 interface Props {
   model: DerivedAssetReadingResponse;
   articleRef: RefObject<HTMLElement>;
+  onFollowCitation: (citation: DerivedCompanionCitation) => void;
 }
 
 type PersistedTurn = Awaited<ReturnType<typeof getDerivedCompanionConversation>>["turns"][number];
@@ -20,7 +22,9 @@ function clientTurnId(): string {
   return `reader-${crypto.randomUUID()}`;
 }
 
-export default function DerivedRevisionCompanion({ model, articleRef }: Props) {
+export default function DerivedRevisionCompanion({
+  model, articleRef, onFollowCitation,
+}: Props) {
   const activeClientId = useRef<string | null>(null);
   const requestGeneration = useRef(0);
   const [question, setQuestion] = useState("");
@@ -125,12 +129,12 @@ export default function DerivedRevisionCompanion({ model, articleRef }: Props) {
       {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until pricing and spend recovery are qualified.</p></div> : null}
       {result?.state === "insufficient_evidence" ? <p className="font-serif text-sm leading-relaxed text-ink-mute dark:text-moonlight">No matching evidence was found in this revision. No model was called.</p> : null}
       {result?.state === "evidence_ready" ? <ol className="space-y-3" aria-label="Matching revision evidence">{result.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-3 dark:border-charcoal-1">
-        <button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button>
+        <div className="flex items-center justify-between gap-2"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button></div>
         <blockquote className="mt-1 font-serif text-sm leading-relaxed text-ink dark:text-bright">{citation.text}</blockquote>
       </li>)}</ol> : null}
       {!result && turns.length > 0 ? <ol className="space-y-4" aria-label="Saved revision evidence">{turns.map((turn) => <li key={turn.client_turn_id}>
         <p className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">{turn.question}</p>
-        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : <ol className="space-y-2">{turn.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-2 dark:border-charcoal-1"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><blockquote className="mt-1 font-serif text-sm text-ink dark:text-bright">{citation.text}</blockquote></li>)}</ol>}
+        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : <ol className="space-y-2">{turn.evidence_pack.citations.map((citation) => <li key={citation.citation_id} className="border-b border-rule pb-2 dark:border-charcoal-1"><div className="flex items-center justify-between gap-2"><button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">{citation.section_path || "Open cited section"}</button><button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button></div><blockquote className="mt-1 font-serif text-sm text-ink dark:text-bright">{citation.text}</blockquote></li>)}</ol>}
       </li>)}</ol> : null}
     </div>
   </aside>;

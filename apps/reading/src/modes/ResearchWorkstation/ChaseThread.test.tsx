@@ -82,6 +82,9 @@ function renderChase(props: {
     derivedRevisionId: string;
     derivedContentSha256: string;
     derivedGeneration: number;
+    derivedCitationId?: string;
+    derivedChunkOrdinal?: number;
+    derivedChunkTextSha256?: string;
   };
 }) {
   return render(
@@ -148,14 +151,65 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
         derivedRevisionId: `rev_${"b".repeat(32)}`,
         derivedContentSha256: "c".repeat(64),
         derivedGeneration: 7,
+        derivedCitationId: `dchunk_${"d".repeat(64)}`,
+        derivedChunkOrdinal: 3,
+        derivedChunkTextSha256: "e".repeat(64),
       },
     });
     fireEvent.click(screen.getByText("Follow this"));
     await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
     const arg = startInvestigationMock.mock.calls[0][0];
     expect(arg.spawn_context).toBe("A selected canonical passage");
-    expect(arg.context).toContain(`"revision_id":"rev_${"b".repeat(32)}"`);
-    expect(arg.context).toContain(`"generation":7`);
+    expect(arg.context).toBe("A selected canonical passage");
+    expect(arg.derived_source).toEqual({
+      derived_asset_id: `ast_${"a".repeat(32)}`,
+      revision_id: `rev_${"b".repeat(32)}`,
+      content_sha256: "c".repeat(64),
+      generation: 7,
+      citation_id: `dchunk_${"d".repeat(64)}`,
+      chunk_ordinal: 3,
+      chunk_text_sha256: "e".repeat(64),
+      excerpt: "A selected canonical passage",
+    });
+  });
+
+  it("does not downgrade a malformed citation into an unverified launch", async () => {
+    renderChase({
+      spawnContext: "A selected canonical passage",
+      parentInvestigationId: "read-asset",
+      sourceProvenance: {
+        documentId: `ast_${"a".repeat(32)}`,
+        derivedRevisionId: `rev_${"b".repeat(32)}`,
+        derivedContentSha256: "c".repeat(64),
+        derivedGeneration: 7,
+        derivedCitationId: "malformed",
+        derivedChunkOrdinal: 3,
+        derivedChunkTextSha256: "e".repeat(64),
+      },
+    });
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(
+      "This citation could not be verified for research.",
+    ));
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+  });
+
+  it("does not downgrade derived revision provenance missing citation fields", async () => {
+    renderChase({
+      spawnContext: "A selected canonical passage",
+      parentInvestigationId: "read-asset",
+      sourceProvenance: {
+        documentId: `ast_${"a".repeat(32)}`,
+        derivedRevisionId: `rev_${"b".repeat(32)}`,
+        derivedContentSha256: "c".repeat(64),
+        derivedGeneration: 7,
+      },
+    });
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(
+      "This citation could not be verified for research.",
+    ));
+    expect(startInvestigationMock).not.toHaveBeenCalled();
   });
 });
 
