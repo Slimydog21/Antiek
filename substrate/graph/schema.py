@@ -368,6 +368,9 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "derived_asset_revisions",
     "derived_asset_revision_members",
     "derived_asset_current_revisions",
+    "html_projections",
+    "derived_asset_merge_drafts",
+    "derived_asset_merge_reviews",
 )
 
 
@@ -1309,6 +1312,74 @@ CREATE TABLE IF NOT EXISTS derived_asset_current_revisions (
 """
 
 
+# SDAM SPR-01 — immutable, owner-scoped canonical drafts and exact reviews.
+# Runtime repositories only perform DML; all DDL remains in startup schema init.
+ANTIEK_GRAPH_SCHEMA_V17_MERGE_DRAFTS_SQL = """
+CREATE TABLE IF NOT EXISTS html_projections (
+    projection_id TEXT PRIMARY KEY,
+    identity_json JSON NOT NULL UNIQUE,
+    projection_json JSON NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS derived_asset_merge_drafts (
+    draft_id                 TEXT PRIMARY KEY CHECK (regexp_full_match(draft_id, 'drf_[0-9a-f]{32}')),
+    owner_user_id            TEXT NOT NULL,
+    intent                   TEXT NOT NULL CHECK (intent IN ('create', 'revise')),
+    target_asset_id          TEXT,
+    expected_parent_revision_id TEXT,
+    expected_parent_sha256   TEXT,
+    title                    TEXT NOT NULL,
+    asset_kind               TEXT NOT NULL CHECK (asset_kind IN (
+        'document', 'analysis', 'synthesis', 'composite'
+    )),
+    canonical_html           TEXT NOT NULL,
+    canonical_byte_count     BIGINT NOT NULL
+        CHECK (canonical_byte_count = octet_length(encode(canonical_html))),
+    canonical_sha256         TEXT NOT NULL CHECK (
+        regexp_full_match(canonical_sha256, '[0-9a-f]{64}')
+        AND canonical_sha256 = sha256(canonical_html)
+    ),
+    manifest_json            TEXT NOT NULL,
+    manifest_sha256          TEXT NOT NULL CHECK (
+        regexp_full_match(manifest_sha256, '[0-9a-f]{64}')
+        AND manifest_sha256 = sha256(manifest_json)
+    ),
+    sanitizer_policy         TEXT NOT NULL,
+    sanitizer_version        TEXT NOT NULL,
+    created_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (intent = 'create' AND target_asset_id IS NULL
+            AND expected_parent_revision_id IS NULL AND expected_parent_sha256 IS NULL)
+        OR (intent = 'revise' AND target_asset_id IS NOT NULL
+            AND expected_parent_revision_id IS NOT NULL
+            AND regexp_full_match(expected_parent_sha256, '[0-9a-f]{64}'))
+    ),
+    UNIQUE (draft_id, owner_user_id, canonical_sha256, manifest_sha256)
+);
+CREATE INDEX IF NOT EXISTS idx_merge_drafts_owner
+    ON derived_asset_merge_drafts(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS derived_asset_merge_reviews (
+    review_id                TEXT PRIMARY KEY CHECK (regexp_full_match(review_id, 'rvw_[0-9a-f]{32}')),
+    draft_id                 TEXT NOT NULL,
+    owner_user_id            TEXT NOT NULL,
+    canonical_sha256         TEXT NOT NULL CHECK (regexp_full_match(canonical_sha256, '[0-9a-f]{64}')),
+    manifest_sha256          TEXT NOT NULL CHECK (regexp_full_match(manifest_sha256, '[0-9a-f]{64}')),
+    sanitizer_policy         TEXT NOT NULL,
+    sanitizer_version        TEXT NOT NULL,
+    acknowledgement_version TEXT NOT NULL,
+    created_at               TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (draft_id),
+    FOREIGN KEY (draft_id, owner_user_id, canonical_sha256, manifest_sha256)
+        REFERENCES derived_asset_merge_drafts(
+            draft_id, owner_user_id, canonical_sha256, manifest_sha256
+        )
+);
+CREATE INDEX IF NOT EXISTS idx_merge_reviews_owner
+    ON derived_asset_merge_reviews(owner_user_id);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1388,6 +1459,7 @@ def init_database(con: LockedConnection) -> None:
     # SDAM SPR-00 — stable owned assets, immutable canonical revisions,
     # ordered evidence-member manifests, and a separate CAS-ready pointer.
     con.execute(ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V17_MERGE_DRAFTS_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1430,7 +1502,9 @@ def _schema_is_present(db_path: str) -> bool:
             "information_schema.tables WHERE table_schema='main' "
             "AND table_name='multimedia_distillation_claims') AND EXISTS ("
             "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
-            "AND table_name='derived_asset_current_revisions'))"
+            "AND table_name='derived_asset_current_revisions') AND EXISTS ("
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name='derived_asset_merge_reviews'))"
         ).fetchone()
     except Exception:
         return False
