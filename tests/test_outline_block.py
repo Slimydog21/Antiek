@@ -475,7 +475,7 @@ def test_cross_deliverable_move_is_rejected(db):
 
 
 def test_invalidation_failure_rolls_back_block_placement(db, monkeypatch):
-    import substrate.write.outline_block as outline_module
+    import substrate.write.event_outbox as outbox_module
     import substrate.write.provenance_validity as validity_module
 
     def fail(*_args, **_kwargs):
@@ -483,7 +483,11 @@ def test_invalidation_failure_rolls_back_block_placement(db, monkeypatch):
 
     monkeypatch.setattr(validity_module, "invalidate_structural_provenance", fail)
     emitted = []
-    monkeypatch.setattr(outline_module, "emit_typed", lambda *_args, **_kwargs: emitted.append(True))
+    monkeypatch.setattr(
+        outbox_module,
+        "dispatch_pending_best_effort",
+        lambda *_args, **_kwargs: emitted.append(True),
+    )
     with connect_write(db["path"], purpose="t") as con:
         with pytest.raises(RuntimeError, match="injected"):
             place_user_authored_block(
@@ -491,6 +495,46 @@ def test_invalidation_failure_rolls_back_block_placement(db, monkeypatch):
             )
         assert list_section_blocks(con, db["section"]) == []
     assert emitted == []
+
+
+def test_remove_and_recreate_same_block_id_uses_new_lifecycle_identity(db):
+    with connect_write(db["path"], purpose="t") as con:
+        for _ in range(2):
+            assert place_user_authored_block(
+                con,
+                section_id=db["section"],
+                content="repeatable",
+                block_index=0,
+                outline_block_id="oblk-repeat",
+            ) == "oblk-repeat"
+            assert remove_block(con, outline_block_id="oblk-repeat")
+        operations = [
+            row[0]
+            for row in con.execute(
+                "SELECT operation_id FROM write_event_outbox "
+                "WHERE aggregate_id='oblk-repeat' ORDER BY outbox_sequence"
+            ).fetchall()
+        ]
+    assert operations == [
+        "outline.place:oblk-repeat:v1",
+        "outline.remove:oblk-repeat:v2",
+        "outline.place:oblk-repeat:v3",
+        "outline.remove:oblk-repeat:v4",
+    ]
+
+
+def test_repeated_move_transition_uses_new_mutation_identity(db):
+    with connect_write(db["path"], purpose="t") as con:
+        obid = place_user_authored_block(
+            con, section_id=db["section"], content="move me", block_index=0,
+        )
+        move_block(con, outline_block_id=obid, to_section_id=db["subsection"], to_index=1)
+        move_block(con, outline_block_id=obid, to_section_id=db["section"], to_index=0)
+        move_block(con, outline_block_id=obid, to_section_id=db["subsection"], to_index=1)
+        assert con.execute(
+            "SELECT COUNT(DISTINCT operation_id) FROM write_event_outbox "
+            "WHERE aggregate_id=?", [obid]
+        ).fetchone()[0] == 4
 # ── M6 — migration ─────────────────────────────────────────────────
 
 

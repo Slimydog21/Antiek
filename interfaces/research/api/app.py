@@ -3154,9 +3154,22 @@ def create_app(
         to a first-class operator-asserted claim in the graph (master
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
-        from substrate.event_log import emit_typed
-        from substrate.graph.ops import ProseConflictError, insert_node, update_section_prose
-        from substrate.schemas import ClaimAssertedByOperatorPayload
+        from substrate.graph.ops import (
+            ProseConflictError,
+            content_addressed_id,
+            insert_node,
+            update_section_prose,
+        )
+        from substrate.schemas import (
+            ClaimAssertedByOperatorPayload,
+            GraphNodeInsertedPayload,
+        )
+        from substrate.write.event_outbox import (
+            build_typed_envelope,
+            dispatch_pending_best_effort,
+            enqueue_event,
+            eventful_transaction,
+        )
 
         db = _resolve_db_path()
         with connect_write(db, purpose="sections/prose_update") as con:
@@ -3170,58 +3183,89 @@ def create_app(
                 )
             deliverable_id = row[0]
             try:
-                mutation = update_section_prose(
-                    con,
-                    section_id=section_id,
-                    prose_text=req.prose_text,
-                    expected_prose=req.original_text,
-                    mutation_origin=req.mutation_origin,
-                )
+                with eventful_transaction(con, req.investigation_id):
+                    mutation = update_section_prose(
+                        con,
+                        section_id=section_id,
+                        prose_text=req.prose_text,
+                        expected_prose=req.original_text,
+                        mutation_origin=req.mutation_origin,
+                    )
+                    claim_node_id: str | None = None
+                    claim_event_id: str | None = None
+                    if req.promote_to_graph:
+                        label = req.prose_text.strip().splitlines()[0]
+                        if len(label) > 160:
+                            label = label[:159] + "…"
+                        claim_node_id = content_addressed_id(
+                            "node", f"{label}|claim|cross_domain"
+                        )
+                        node_existed = con.execute(
+                            "SELECT 1 FROM nodes WHERE node_id=?", [claim_node_id]
+                        ).fetchone() is not None
+                        insert_node(
+                            con,
+                            canonical_label=label,
+                            node_type="claim",
+                            graph_scope="cross_domain",
+                            investigation_id=req.investigation_id,
+                            node_id=claim_node_id,
+                            metadata={
+                                "source": "operator_asserted",
+                                "deliverable_id": deliverable_id,
+                                "section_id": section_id,
+                                "policy_id": f"operator/{deliverable_id}",
+                                "cited_chunk_ids": req.cited_chunk_ids,
+                            },
+                            on_conflict="ignore",
+                            emit_event=False,
+                        )
+                        if not node_existed:
+                            node_event = build_typed_envelope(
+                                req.investigation_id,
+                                GraphNodeInsertedPayload(
+                                    node_id=claim_node_id,
+                                    canonical_label=label,
+                                    node_type="claim",
+                                    graph_scope="cross_domain",
+                                    has_embedding=False,
+                                ),
+                                role="connector",
+                            )
+                            enqueue_event(
+                                con,
+                                operation_id=f"graph.node:{node_event.event_id}",
+                                aggregate_kind="graph_node",
+                                aggregate_id=claim_node_id,
+                                event=node_event,
+                            )
+                        claim_event = build_typed_envelope(
+                            req.investigation_id,
+                            ClaimAssertedByOperatorPayload(
+                                deliverable_id=deliverable_id,
+                                section_id=section_id,
+                                claim_text=req.prose_text,
+                                original_text=req.original_text,
+                                node_id=claim_node_id,
+                                source_tier=5,
+                                cited_chunk_ids=req.cited_chunk_ids,
+                            ),
+                            role="creation_surface",
+                            policy_id=f"operator/{deliverable_id}",
+                        )
+                        claim_event_id = enqueue_event(
+                            con,
+                            operation_id=f"claim.asserted:{claim_event.event_id}",
+                            aggregate_kind="deliverable_section",
+                            aggregate_id=section_id,
+                            event=claim_event,
+                        )
             except ProseConflictError as exc:
                 raise HTTPException(status_code=409, detail=str(exc)) from exc
-            claim_node_id: str | None = None
             if req.promote_to_graph:
-                # Use the section title + first line of the prose as
-                # the claim's canonical label (keeps it indexable).
-                label = req.prose_text.strip().splitlines()[0]
-                if len(label) > 160:
-                    label = label[:159] + "…"
-                claim_node_id = insert_node(
-                    con,
-                    canonical_label=label,
-                    node_type="claim",
-                    graph_scope="cross_domain",
-                    investigation_id=req.investigation_id,
-                    metadata={
-                        "source": "operator_asserted",
-                        "deliverable_id": deliverable_id,
-                        "section_id": section_id,
-                        "policy_id": f"operator/{deliverable_id}",
-                        "cited_chunk_ids": req.cited_chunk_ids,
-                    },
-                    on_conflict="ignore",
-                )
+                dispatch_pending_best_effort(con, req.investigation_id)
 
-        claim_event_id: str | None = None
         if req.promote_to_graph and claim_node_id is not None:
-            # Source tier: default 5 (unsupported) unless the operator
-            # explicitly attached chunk citations. Even with citations
-            # we keep it at tier 5 until the grounder verifies — the
-            # grounder demotes the tier on success.
-            payload = ClaimAssertedByOperatorPayload(
-                deliverable_id=deliverable_id,
-                section_id=section_id,
-                claim_text=req.prose_text,
-                original_text=req.original_text,
-                node_id=claim_node_id,
-                source_tier=5,
-                cited_chunk_ids=req.cited_chunk_ids,
-            )
-            claim_event_id = emit_typed(
-                req.investigation_id, payload,
-                role="creation_surface",
-                policy_id=f"operator/{deliverable_id}",
-            )
             return UpdateSectionProseResponse(
                 status="saved_and_promoted",
                 section_id=section_id,
@@ -6538,6 +6582,18 @@ def create_app(
     from interfaces.research.api.supersession_routes import supersession_router
     app.include_router(supersession_router)
 
+    def _recover_write_event_outbox() -> None:
+        db_path = _resolve_db_path()
+        if not os.path.exists(db_path):
+            return
+        from substrate.write.event_outbox import recover_pending_events
+
+        try:
+            recover_pending_events(db_path)
+        except Exception as exc:
+            print(f"Write event outbox recovery remains pending: {exc!r}", file=sys.stderr)
+
+    app.router.on_startup.append(_recover_write_event_outbox)
     return app
 
 

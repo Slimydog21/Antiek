@@ -76,8 +76,10 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
 import os
+import re
 import sys
 import time
 import traceback
@@ -172,6 +174,39 @@ def _events_disabled() -> bool:
     return os.environ.get("ANTIEK_EVENTS_DISABLED", "").lower() in ("1", "true", "yes")
 
 
+@contextmanager
+def investigation_event_lock(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+    timeout_s: float = 10.0,
+) -> Iterator[None]:
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}", investigation_id):
+        raise ValueError("investigation_id is not safe for event storage")
+    root = events_dir or default_events_dir()
+    os.makedirs(root, mode=0o700, exist_ok=True)
+    if os.path.islink(root) or not os.path.isdir(root):
+        raise RuntimeError("event root must be a real directory")
+    lock_path = os.path.join(root, f".{investigation_id}.delivery.lock")
+    fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    try:
+        deadline = time.monotonic() + timeout_s
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise TimeoutError(
+                        "timed out waiting for investigation event lock"
+                    ) from None
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def _append_jsonl(path: str, row: dict[str, Any]) -> None:
     """Append a single JSON line. Open in 'a' mode — atomic at OS level for
     single-line writes ≤ PIPE_BUF. We never write multi-line payloads."""
@@ -181,6 +216,17 @@ def _append_jsonl(path: str, row: dict[str, Any]) -> None:
         line = line.replace("\n", "\\n")
     with open(path, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+
+
+def _append_jsonl_locked(
+    investigation_id: str,
+    path: str,
+    row: dict[str, Any],
+    *,
+    events_dir: str | None,
+) -> None:
+    with investigation_event_lock(investigation_id, events_dir=events_dir):
+        _append_jsonl(path, row)
 
 
 def log_event(
@@ -224,8 +270,13 @@ def log_event(
         "document_id": document_id,
     }
     path = _jsonl_path(investigation_id, events_dir=events_dir)
-    if _safe(_append_jsonl, path, row) is None:
-        return event_id
+    _safe(
+        _append_jsonl_locked,
+        investigation_id,
+        path,
+        row,
+        events_dir=events_dir,
+    )
     return event_id
 
 
@@ -290,7 +341,13 @@ def emit_typed(
 
     row = event.model_dump(mode="json")
     path = _jsonl_path(investigation_id, events_dir=events_dir)
-    _safe(_append_jsonl, path, row)
+    _safe(
+        _append_jsonl_locked,
+        investigation_id,
+        path,
+        row,
+        events_dir=events_dir,
+    )
     return event_id
 
 
@@ -462,12 +519,15 @@ class EventEmitter:
 # Sealing — JSONL → Parquet at investigation completion
 # ---------------------------------------------------------------------------
 
+_DEFAULT_OUTBOX_DB = object()
+
 
 def seal_investigation(
     investigation_id: str,
     *,
     events_dir: str | None = None,
     delete_jsonl: bool = True,
+    outbox_db_path: str | None | object = _DEFAULT_OUTBOX_DB,
 ) -> str | None:
     """Convert the live JSONL trajectory to its sealed Parquet form.
 
@@ -478,6 +538,51 @@ def seal_investigation(
     Idempotent: if the Parquet already exists, we re-seal (overwrite) only
     if the JSONL is newer (mtime check).
     """
+    if outbox_db_path is _DEFAULT_OUTBOX_DB:
+        from substrate.graph import default_db_path
+
+        db_path: str | None = default_db_path()
+    elif isinstance(outbox_db_path, str) or outbox_db_path is None:
+        db_path = outbox_db_path
+    else:  # pragma: no cover - protects the public boundary from invalid sentinels
+        raise TypeError("outbox_db_path must be a path or None")
+    if db_path and os.path.exists(db_path):
+        from runtime.db_lock import connect_write
+
+        # Match eventful Write's database -> event-stream lock order. Holding
+        # both locks makes the pending check and Parquet seal one exclusion
+        # region with respect to every new transactional outbox intent.
+        with connect_write(db_path, purpose="event_log/seal") as con:
+            with investigation_event_lock(investigation_id, events_dir=events_dir):
+                _refuse_pending_write_events(con, investigation_id)
+                return _seal_investigation_unlocked(
+                    investigation_id, events_dir=events_dir, delete_jsonl=delete_jsonl
+                )
+    with investigation_event_lock(investigation_id, events_dir=events_dir):
+        return _seal_investigation_unlocked(
+            investigation_id, events_dir=events_dir, delete_jsonl=delete_jsonl
+        )
+
+
+def _refuse_pending_write_events(con: Any, investigation_id: str) -> None:
+    exists = con.execute(
+        "SELECT COUNT(*) FROM information_schema.tables "
+        "WHERE table_name='write_event_outbox'"
+    ).fetchone()[0]
+    if exists and con.execute(
+        "SELECT 1 FROM write_event_outbox WHERE investigation_id=? "
+        "AND state='pending' LIMIT 1",
+        [investigation_id],
+    ).fetchone():
+        raise RuntimeError("cannot seal an investigation with pending Write events")
+
+
+def _seal_investigation_unlocked(
+    investigation_id: str,
+    *,
+    events_dir: str | None,
+    delete_jsonl: bool,
+) -> str | None:
     jl = _jsonl_path(investigation_id, events_dir=events_dir)
     pq = _parquet_path(investigation_id, events_dir=events_dir)
 
@@ -767,8 +872,11 @@ def _cmd_counts(args: argparse.Namespace) -> None:
 
 
 def _cmd_seal(args: argparse.Namespace) -> None:
+    from substrate.graph import default_db_path
+
     out = seal_investigation(args.investigation_id, events_dir=args.events_dir,
-                             delete_jsonl=not args.keep_jsonl)
+                             delete_jsonl=not args.keep_jsonl,
+                             outbox_db_path=default_db_path())
     print(out or "<nothing-to-seal>")
 
 

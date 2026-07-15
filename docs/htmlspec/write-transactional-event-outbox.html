@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cycle 44: Write transactional event outbox</title>
+  <style>
+    body { max-width: 980px; margin: 40px auto; padding: 0 24px; color: #1f2421; font: 16px/1.55 system-ui, sans-serif; }
+    h1, h2 { line-height: 1.2; } code { background: #eef1ee; padding: 2px 4px; }
+    table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #b8c0ba; padding: 8px; text-align: left; vertical-align: top; }
+  </style>
+</head>
+<body>
+  <h1>Cycle 44: Write transactional event outbox</h1>
+  <p><strong>Status:</strong> executable master sprint spec. <strong>Base:</strong> Cycle 43 reviewed commit <code>31ebfa833</code>.</p>
+
+  <h2>Problem</h2>
+  <p>Write mutations commit to DuckDB and then call <code>emit_typed</code>. The event emitter deliberately suppresses filesystem failures and still returns the allocated ID. A crash or append failure can therefore leave authoritative prose, provenance, graph promotion, or outline state without the recursive trajectory event that downstream note-taking and learning depend on.</p>
+
+  <h2>Authority boundary</h2>
+  <p>DuckDB is authoritative for mutation plus delivery intent. JSONL remains authoritative for live trajectory consumption. This sprint does not move trajectory history into the graph database. It adds a durable bridge: an exact typed envelope is inserted into a V18 outbox in the same transaction as its Write mutation, then dispatched after commit.</p>
+
+  <h2>Stored intent</h2>
+  <p>Each row binds a unique event ID, investigation ID, aggregate kind and ID, monotonically allocated outbox sequence, canonical event JSON, SHA-256, state, attempt count, creation time, and optional delivered time. Rows are append-only except the closed delivery transition from pending to delivered. Reusing an event ID or operation identity with different bytes fails.</p>
+
+  <h2>Delivery protocol</h2>
+  <ol>
+    <li>Build and validate the complete typed <code>Event</code> envelope before the mutation transaction. Disabled telemetry does not disable authoritative Write outbox intent.</li>
+    <li>Commit domain mutation and exact outbox row together. A transaction failure leaves neither.</li>
+    <li>After commit, acquire a new investigation-scoped event-file lock shared by dispatch and sealing. Reconcile the event ID against the live JSONL before append.</li>
+    <li>If absent, append the exact canonical line, flush, and fsync. If present with identical canonical bytes, treat it as recovered delivery. If present with different bytes, fail closed.</li>
+    <li>Mark delivered in a new short DuckDB transaction only after durable append or exact reconciliation. A crash after append but before receipt creates no duplicate on retry.</li>
+  </ol>
+
+  <h2>Ordering and sealing</h2>
+  <p>Dispatch pending rows in outbox sequence order per investigation. A later row cannot pass an earlier pending or failed row. Sealing must refuse while pending rows exist and must share the database-then-investigation lock order with eventful writes and dispatch. Antiek's established reopen contract permits a durable JSONL tail after a Parquet snapshot; resealing merges and deduplicates the snapshot and tail by immutable event ID.</p>
+
+  <h2>Initial mutation scope</h2>
+  <table>
+    <tr><th>Path</th><th>Event intent</th></tr>
+    <tr><td>Outline place, move, remove</td><td>Replace post-commit direct emission with transactional intent and immediate bounded drain.</td></tr>
+    <tr><td>Generated section draft</td><td>Bind prose, provenance validity, and <code>section.draft_generated</code> intent in one transaction.</td></tr>
+    <tr><td>Operator prose promotion</td><td>Bind prose, promoted graph claim, and <code>claim.asserted_by_operator</code> intent. Plain autosave remains a domain mutation without a fabricated event until a typed prose-edited event is separately designed.</td></tr>
+  </table>
+
+  <h2>Crash matrix</h2>
+  <table>
+    <tr><th>Boundary</th><th>Required result</th></tr>
+    <tr><td>Before domain commit</td><td>No domain mutation, no outbox row, no JSONL event.</td></tr>
+    <tr><td>After commit before append</td><td>Pending intent survives restart and dispatches once.</td></tr>
+    <tr><td>During append or fsync</td><td>Retry reconciles complete identical lines; malformed or partial tails fail closed and never mark delivered.</td></tr>
+    <tr><td>After fsync before delivery receipt</td><td>Retry finds exact event ID and bytes, writes only the receipt, and does not append again.</td></tr>
+    <tr><td>After receipt</td><td>Replay is an exact no-op.</td></tr>
+  </table>
+
+  <h2>Acceptance</h2>
+  <ol>
+    <li>Schema fast-path detects and repairs a missing or partial V18 outbox.</li>
+    <li>Tests inject every crash boundary and prove exact domain, outbox, JSONL, and receipt state after restart.</li>
+    <li>Concurrent dispatchers produce one canonical line per event and preserve per-investigation sequence.</li>
+    <li>Changed bytes under a reused operation or event identity fail closed.</li>
+    <li>Filesystem permission, symlink, hard-link, malformed-tail, replacement, and lock-timeout failures retain pending intent and expose an actionable error.</li>
+    <li>Existing event readers consume the emitted line unchanged. No consumer-specific dual-write is introduced.</li>
+    <li>Focused Write, event-log, schema, and API suites, process-crash tests, Ruff, compileall, HardenX, and independent review pass.</li>
+  </ol>
+</body>
+</html>
