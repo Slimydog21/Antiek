@@ -43,10 +43,11 @@
   <li><code>n_executions</code>, <code>n_assets</code>, <code>n_materialized_candidates</code>, <code>n_assessed_candidates</code>, and <code>n_accepted</code>.</li>
   <li><code>mean_quality</code> and <code>acceptance_rate = n_accepted / n_assessed_candidates</code>.</li>
   <li><code>charged_cents_total</code>, counted once per distinct execution; cost per assessed candidate and cost per accepted candidate.</li>
-  <li><code>quality_lower_bound</code>, the Wilson 95% lower bound over accepted candidates.</li>
-  <li><code>efficiency_score = quality_lower_bound / (charged_cents_per_assessed_candidate / 100)</code>.</li>
+  <li><code>quality_lower_bound</code> remains the Wilson 95% lower bound over accepted candidates for API compatibility.</li>
+  <li><code>acceptance_efficiency_score</code> (also exposed under the v1-compatible <code>efficiency_score</code>) divides that lower bound by dollars per assessed candidate. <code>quality_efficiency_score</code> is the descriptive mean four-dimension rubric score per dollar; it is not a causal or confidence claim.</li>
 </ul>
-<p>A cohort is recommendation-eligible only with at least 20 assessed candidates, 10 distinct executions, 3 distinct assets, 80 percent assessment coverage of materialized candidates, nonzero fully verified charged cost, and no unresolved accounting in included executions. Sparse, mixed, zero-cost, unknown-capability, and partially authoritative evidence remains visible but cannot win.</p>
+<p>A cohort is recommendation-eligible only with at least 20 assessed candidates, 10 distinct executions, 3 distinct assets, 80 percent assessment coverage of materialized candidates, nonzero fully verified charged cost, and no unresolved accounting in included executions. A recommendation is emitted only when acceptance efficiency and descriptive rubric-quality efficiency each have one unique winner and select the same cohort. Otherwise the report names <code>quality_acceptance_disagreement</code> or <code>ambiguous_ranking</code> and emits no winner. Sparse, mixed, tied, zero-cost, unknown-capability, and partially authoritative evidence remains visible but cannot win.</p>
+<p>Scores are canonicalized to eight decimal places before ranking. Differences below that public score resolution are deliberately treated as ties rather than routing evidence.</p>
 
 <h2>Five-values rigor</h2>
 <ul>
