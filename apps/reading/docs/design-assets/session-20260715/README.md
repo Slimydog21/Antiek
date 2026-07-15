@@ -13,3 +13,4 @@ mapped unless promoted through `sessionAssets` alpha integrity + UI import.
 Product path remains:
 `src/brand/werner/poses/session/werner_*_session_v1.png` + `sessionAssets.ts`.
 | werner_zombies_refedit_v1.jpg | image_edit from product thinking pose | Paperclip Zombies wait-game key art candidate |
+| werner_clam_catcher_refedit_v1.jpg | image_edit from product thinking pose | Clam Catcher key art candidate |
