@@ -40,6 +40,7 @@ import CostMeter from "./CostMeter";
 import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import ResearchSessionTwinRail from "./ResearchSessionTwinRail";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
@@ -339,6 +340,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           />
         ))}
       </div>
+      {sessionId ? <ResearchSessionTwinRail parentAssetId={sessionId} /> : null}
     </div>
   );
 }
