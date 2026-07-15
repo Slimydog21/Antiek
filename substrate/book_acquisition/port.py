@@ -349,9 +349,7 @@ def verify_port_receipt(
 __all__ = [
     "AuthorizedBookPort",
     "PortReceiptIntegrityError",
-    "commit_authorized_port",
     "convert_authorized_epub",
     "ensure_port_schema",
-    "port_authorized_epub",
     "verify_port_receipt",
 ]
