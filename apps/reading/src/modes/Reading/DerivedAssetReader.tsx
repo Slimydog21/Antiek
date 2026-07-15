@@ -80,7 +80,7 @@ export default function DerivedAssetReader() {
     window.getSelection()?.removeAllRanges();
     openPanel("ChaseThread", {
       spawnContext: text,
-      parentInvestigationId: `read-${model.derived_asset_id}`,
+      parentInvestigationId: `read-${model.derived_asset_id}:${model.revision_id}`,
       sourceProvenance: selected.provenance,
     }, { mode: "floating", title: "Follow this" });
   }, [model, openPanel]);
@@ -88,7 +88,7 @@ export default function DerivedAssetReader() {
   if (loading) return <main className="flex min-h-[60vh] items-center justify-center text-sm text-shadow-1">Opening the asset...</main>;
   if (error || !model) return <main className="flex min-h-[60vh] flex-col items-center justify-center gap-3"><p role="alert" className="text-sm text-emperor">{error}</p><Link to="/" className="text-sm underline">Return to research</Link></main>;
 
-  const threadId = `read-${model.derived_asset_id}`;
+  const threadId = `read-${model.derived_asset_id}:${model.revision_id}`;
   return <div className="flex h-full min-h-0 bg-ice-0 dark:bg-charcoal-2">
     <main className="min-w-0 flex-1 overflow-y-auto">
       <header className="sticky top-0 z-10 border-b border-rule bg-ice-0/95 px-5 py-3 backdrop-blur dark:border-charcoal-1 dark:bg-charcoal-2/95">

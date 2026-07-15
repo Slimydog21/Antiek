@@ -11,6 +11,12 @@ from typing import Any, Final
 
 from runtime.db_lock import connect_write
 from services.html_projection.canonical_merge import POLICY, VERSION
+from substrate.research_artifact.derived_html_index import (
+    chunks_for_policy,
+    index_sha256,
+    publish_revision_index,
+    revision_chunk_id,
+)
 from substrate.research_artifact.merge_draft import ACKNOWLEDGEMENT_VERSION
 
 FaultHook = Callable[[str], None]
@@ -189,6 +195,14 @@ def _apply_review(
     hook("revision")
     _insert_members(con, asset_id, revision_id, manifest)
     hook("members")
+    publish_revision_index(
+        con,
+        asset_id=asset_id,
+        revision_id=revision_id,
+        content_sha256=str(row[7]),
+        canonical_html=str(row[6]),
+    )
+    hook("index")
     if intent == "create":
         con.execute(
             "INSERT INTO derived_asset_current_revisions "
@@ -271,6 +285,14 @@ def _restore(con: Any, command: dict[str, Any], digest: str, hook: FaultHook) ->
     hook("revision")
     _insert_members(con, asset_id, revision_id, manifest)
     hook("members")
+    publish_revision_index(
+        con,
+        asset_id=asset_id,
+        revision_id=revision_id,
+        content_sha256=str(selected[1]),
+        canonical_html=str(selected[0]),
+    )
+    hook("index")
     changed = con.execute(
         "UPDATE derived_asset_current_revisions SET current_revision_id=?,current_content_sha256=?,"
         "generation=?,updated_at=CURRENT_TIMESTAMP WHERE derived_asset_id=? AND current_revision_id=? "
@@ -479,6 +501,57 @@ def _replay(con: Any, command: dict[str, Any]) -> MergeCommitResult | None:
         for item in manifest
     ]
     if members != expected_members:
+        raise MergeCommitError("operation replay state drifted")
+    index_row = con.execute(
+        "SELECT revision_content_sha256,chunk_count,index_sha256,chunker_policy,chunker_version "
+        "FROM derived_asset_revision_indexes WHERE derived_asset_id=? AND revision_id=?",
+        [row[0], row[1]],
+    ).fetchone()
+    if index_row is None:
+        raise MergeCommitError("operation replay state drifted")
+    try:
+        expected_chunks = chunks_for_policy(
+            str(index_row[3]), str(index_row[4]), str(revision[0])
+        )
+    except ValueError as exc:
+        raise MergeCommitError("operation replay state drifted") from exc
+    stored_chunks = con.execute(
+        "SELECT chunk_ordinal,citation_id,member_index,section_anchor,section_path,chunk_text,"
+        "chunk_text_sha256,token_count,chunker_policy,chunker_version "
+        "FROM derived_asset_revision_chunks WHERE derived_asset_id=? AND revision_id=? "
+        "ORDER BY chunk_ordinal",
+        [row[0], row[1]],
+    ).fetchall()
+    expected_index = (
+        str(row[2]),
+        len(expected_chunks),
+        index_sha256(expected_chunks),
+        str(index_row[3]),
+        str(index_row[4]),
+    )
+    expected_stored_chunks = [
+        (
+            chunk.ordinal,
+            revision_chunk_id(
+                asset_id=str(row[0]),
+                revision_id=str(row[1]),
+                content_sha256=str(row[2]),
+                chunker_policy=str(index_row[3]),
+                chunker_version=str(index_row[4]),
+                chunk=chunk,
+            ),
+            chunk.member_index,
+            chunk.section_anchor,
+            chunk.section_path,
+            chunk.text,
+            chunk.text_sha256,
+            chunk.token_count,
+            str(index_row[3]),
+            str(index_row[4]),
+        )
+        for chunk in expected_chunks
+    ]
+    if index_row != expected_index or stored_chunks != expected_stored_chunks:
         raise MergeCommitError("operation replay state drifted")
     return MergeCommitResult(operation_id, str(row[0]), str(row[1]), str(row[2]), int(row[3]), True)
 
