@@ -36,3 +36,17 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 - Clam Catcher Imagine not alpha-promoted to product PNG
 - CF Pages external-pending often
 - Operator merge wall on #2416
+
+## Living-TV product-door emotes (choreography)
+
+| Product id | Emote |
+|---|---|
+| research | thinking |
+| read | curious |
+| write | happy |
+| speak | curious |
+| home | happy |
+| more | noted |
+| (other) | hit |
+
+Exported as `emoteForProductDoor` from `werner` barrel. Tip at densify close: `de93a97e5` axe+LP green.
