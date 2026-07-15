@@ -71,6 +71,7 @@ def prepared(tmp_path, monkeypatch):
             mode="audio",
             route_policy="balanced",
             sources=("High-bypass engines changed long-haul economics.",),
+            selected_arc_ids=("mechanism",),
         ),
         owner_id="owner-a",
     )
@@ -249,6 +250,7 @@ async def test_identical_notes_are_scoped_per_owner_asset(tmp_path, monkeypatch)
                 mode="audio",
                 route_policy="balanced",
                 sources=("Same source.",),
+                selected_arc_ids=("history",),
             ),
             owner_id=owner,
         )
