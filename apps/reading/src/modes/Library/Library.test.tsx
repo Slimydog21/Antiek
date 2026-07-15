@@ -125,6 +125,8 @@ describe("Library", () => {
     );
     const surface = container.querySelector("[data-glass-surface]");
     expect(surface, "the full-page Library must render through GlassSurface").toBeTruthy();
+    // Session brand mark is UI-consumed on the Read door (not inventory-only).
+    expect(screen.getByTestId("library-werner-brand")).toBeTruthy();
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
 
     cleanup();
