@@ -40,6 +40,7 @@ import CostMeter from "./CostMeter";
 import HardCeilingEvidence from "./HardCeilingEvidence";
 import PlanEditor from "./PlanEditor";
 import ResearchPanel from "./ResearchPanel";
+import ResearchTrail from "./ResearchTrail";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
@@ -217,6 +218,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   // overlay, dismissed back to the canvas.
   const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
   const monitorHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const researchRefs = useRef(new Map<string, HTMLDivElement>());
 
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
@@ -229,6 +231,9 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
     } finally {
       setSteering(null);
     }
+  };
+  const steerFromTrail = (iid: string, kind: SteerKind, payload?: Record<string, unknown>) => {
+    void steer(iid)(kind, payload);
   };
 
   // Connecting: arrived on a session (e.g. a fresh launch from the Research
@@ -328,16 +333,36 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         allTerminal={session.allTerminal}
         returnFocusRef={monitorHeadingRef}
       />
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-        {session.researches.map((r) => (
-          <ResearchPanel
-            key={r.investigation_id}
-            research={r}
-            costUsd={session.cost?.per_research[r.investigation_id] ?? 0}
-            busy={busy || steering === r.investigation_id}
-            onSteer={steer(r.investigation_id)}
+      <div className={`grid min-w-0 gap-3 ${session.plan ? "lg:grid-cols-[minmax(16rem,0.72fr)_minmax(0,2fr)]" : ""}`}>
+        {session.plan && (
+          <ResearchTrail
+            plan={session.plan}
+            researches={session.researches}
+            steeringId={steering}
+            onSteer={steerFromTrail}
+            onFocusResearch={(investigationId) => researchRefs.current.get(investigationId)?.focus()}
           />
-        ))}
+        )}
+        <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {session.researches.map((r) => (
+            <div
+              key={r.investigation_id}
+              ref={(element) => {
+                if (element) researchRefs.current.set(r.investigation_id, element);
+                else researchRefs.current.delete(r.investigation_id);
+              }}
+              tabIndex={-1}
+              className="rounded-md focus:outline-none focus:ring-2 focus:ring-aurora focus:ring-offset-2"
+            >
+              <ResearchPanel
+                research={r}
+                costUsd={session.cost?.per_research[r.investigation_id] ?? 0}
+                busy={busy || steering === r.investigation_id}
+                onSteer={steer(r.investigation_id)}
+              />
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );

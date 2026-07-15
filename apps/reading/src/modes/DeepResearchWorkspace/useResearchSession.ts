@@ -22,11 +22,13 @@ import {
   type ResearchStatus,
   type HardCeilingSnapshot,
   type SessionCost,
+  type SessionPlan,
 } from "../../api/research";
 
 export interface SessionView {
   researches: ResearchStatus[];
   cost: SessionCost | null;
+  plan: SessionPlan | null;
   hardCeiling: HardCeilingSnapshot | null;
   live: boolean;
   allTerminal: boolean;
@@ -38,6 +40,7 @@ export interface SessionView {
 const EMPTY: SessionView = {
   researches: [],
   cost: null,
+  plan: null,
   hardCeiling: null,
   live: false,
   allTerminal: false,
@@ -72,6 +75,7 @@ export function useResearchSession(
         setView({
           researches: s.researches,
           cost: s.cost ?? null,
+          plan: s.plan ?? null,
           hardCeiling: s.hard_ceiling ?? null,
           live: s.live,
           allTerminal,

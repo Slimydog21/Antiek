@@ -226,8 +226,11 @@ class HostLocalRunner:
         if plan.parent_investigation_id:
             log_event(
                 investigation_id, ActionType.INVESTIGATION_SPAWNED_FROM,
-                payload={"parent_investigation_id": plan.parent_investigation_id,
-                         "sub_question": plan.sub_question},
+                payload=self._lifecycle_payload(
+                    plan,
+                    {"parent_investigation_id": plan.parent_investigation_id,
+                     "sub_question": plan.sub_question},
+                ),
                 role="user_agent", events_dir=self._events_dir,
             )
 
@@ -238,7 +241,9 @@ class HostLocalRunner:
             st.state = RunState.BUDGET_HALTED
             st.error = reason
             log_event(investigation_id, ActionType.INVESTIGATION_CHASE_HALTED,
-                      payload={"reason": "aggregate_budget", "detail": reason},
+                      payload=self._lifecycle_payload(
+                          plan, {"reason": "aggregate_budget", "detail": reason}
+                      ),
                       role="user_agent", events_dir=self._events_dir)
             await st.queue.put(StepEvent(investigation_id, 0, "status",
                                          text=reason, state=RunState.BUDGET_HALTED))
@@ -311,7 +316,9 @@ class HostLocalRunner:
                 st.state = RunState.BUDGET_HALTED
                 st.error = reason
                 log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
-                          payload={"reason": "aggregate_budget", "detail": reason},
+                          payload=self._lifecycle_payload(
+                              st.plan, {"reason": "aggregate_budget", "detail": reason}
+                          ),
                           role="user_agent", events_dir=self._events_dir)
                 await self._push(st, StepEvent(iid, 0, "status", text=reason,
                                                state=RunState.BUDGET_HALTED))
@@ -326,7 +333,9 @@ class HostLocalRunner:
             # SPR-06 decides what else to persist). Each investigation writes
             # only its own file — automatic isolation by investigation_id.
             log_event(iid, ActionType.INVESTIGATION_START_REQUESTED,
-                      payload={"sub_question": ctx.sub_question},
+                      payload=self._lifecycle_payload(
+                          st.plan, {"sub_question": ctx.sub_question}
+                      ),
                       role="user_agent", events_dir=self._events_dir)
             await self._push(st, StepEvent(iid, 0, "status", text="running",
                                            state=RunState.RUNNING))
@@ -353,8 +362,11 @@ class HostLocalRunner:
                 st.state = RunState.BUDGET_HALTED
                 st.error = str(exc)
                 log_event(iid, ActionType.INVESTIGATION_CHASE_HALTED,
-                          payload={"reason": exc.scope, "detail": str(exc),
-                                   "spent_usd": self.budget.spent(iid)},
+                          payload=self._lifecycle_payload(
+                              st.plan,
+                              {"reason": exc.scope, "detail": str(exc),
+                               "spent_usd": self.budget.spent(iid)},
+                          ),
                           role="user_agent", events_dir=self._events_dir)
                 await self._finish(st, None, None, halted=True)
                 return
@@ -367,7 +379,8 @@ class HostLocalRunner:
                 st.state = RunState.FAILED
                 st.error = f"{type(exc).__name__}: {exc}"
                 log_event(iid, ActionType.INVESTIGATION_FAILED,
-                          payload={"error": st.error}, role="user_agent",
+                          payload=self._lifecycle_payload(st.plan, {"error": st.error}),
+                          role="user_agent",
                           events_dir=self._events_dir)
                 await self._push(st, StepEvent(iid, 0, "error", text=st.error,
                                                state=RunState.FAILED))
@@ -381,6 +394,20 @@ class HostLocalRunner:
         if self._on_emit is not None and ev.kind in ("note", "question"):
             await self._on_emit(ev)
 
+    @staticmethod
+    def _lifecycle_payload(
+        plan: ResearchPlan, payload: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Carry an optional cascade generation through durable lifecycle events.
+
+        The metadata field is ignored for ordinary researches. Cascade recovery
+        uses it as a monotonic generation boundary, avoiding wall-clock ordering.
+        """
+        generation = plan.metadata.get("cascade_launch_generation")
+        if isinstance(generation, int) and not isinstance(generation, bool) and generation > 0:
+            return {**payload, "cascade_launch_generation": generation}
+        return payload
+
     async def _finish(
         self,
         st: _ResearchState,
@@ -392,7 +419,9 @@ class HostLocalRunner:
     ) -> None:
         iid = st.plan.investigation_id
         if action is not None and not already_logged:
-            log_event(iid, action, payload=payload or {}, role="user_agent",
+            log_event(iid, action,
+                      payload=self._lifecycle_payload(st.plan, payload or {}),
+                      role="user_agent",
                       events_dir=self._events_dir)
         if self._seal_on_complete:
             # seal is best-effort (also clears the SIM105 my contextlib import

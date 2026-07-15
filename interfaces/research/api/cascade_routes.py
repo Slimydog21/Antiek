@@ -51,7 +51,12 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from interfaces.research.api.dispatch_failure import classify_dispatch_failure
-from orchestration.cascade_session import CascadeSession, Leaf, reconstruct_session
+from orchestration.cascade_session import (
+    CascadeSession,
+    LaunchGenerationActive,
+    Leaf,
+    reconstruct_session,
+)
 from roles.cascade_planner import (
     PlanNotApproved,
     PlanReport,
@@ -115,6 +120,7 @@ cascade_router = APIRouter(prefix="/research", tags=["deep-research"])
 
 _SESSIONS: dict[str, CascadeSession] = {}
 _SESSION_TASKS: dict[str, asyncio.Task[None]] = {}
+_LAUNCHING: set[str] = set()
 _HARD_CEILING_RUNS: dict[CascadeSession, tuple[ResearchProviderGateway, RunBinding]] = {}
 _HARD_CEILING_LAUNCHING: set[str] = set()
 
@@ -1149,12 +1155,10 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
             )
 
     leaves = [
-        Leaf(
-            investigation_id=f"{session_id}-leaf-{i}",
-            sub_question=leaf.question,
-            question_node_id=leaf.graph_node_id,
-            budget=BudgetCap(cost_usd=req.per_research_budget_usd),
-        )
+        Leaf(investigation_id=f"{session_id}-leaf-{i}", sub_question=leaf.question,
+             question_node_id=leaf.graph_node_id,
+             plan_node_local_id=leaf.local_id,
+             budget=BudgetCap(cost_usd=req.per_research_budget_usd))
         for i, leaf in enumerate(tree.leaves)
     ]
     budget = BudgetManager(aggregate_cap_usd=req.aggregate_budget_usd)
@@ -1259,16 +1263,33 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
         retrieval_substrate=reuse_substrate,
     )
     session = CascadeSession(session_id, runner=runner, funnel=funnel, db_path=_db())
+    existing_task = _SESSION_TASKS.get(session_id)
+    if session_id in _LAUNCHING or (
+        existing_task is not None and not existing_task.done()
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=f"session {session_id!r} is already launching or running",
+        )
+    # No await occurs between the check and reservation: under the process's
+    # single event loop this is an atomic ownership claim for deterministic
+    # session/leaf ids.
+    _LAUNCHING.add(session_id)
     if gateway is not None:
         _HARD_CEILING_LAUNCHING.add(session_id)
     try:
-        await session.launch(root_id, leaves)
+        try:
+            await session.launch(root_id, leaves, approved_plan_tree=tree.to_dict())
+        except LaunchGenerationActive as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         if gateway is not None and launch_receipt is not None:
             gateway.complete_zero_cost(
                 launch_receipt,
                 outcome={"session_id": session_id, "leaf_count": len(leaves)},
             )
     finally:
+        _LAUNCHING.discard(session_id)
+        _HARD_CEILING_LAUNCHING.discard(session_id)
         # The reuse reads happen synchronously during launch(); close the shared
         # read handle NOW so it never overlaps the connect_read readers that run
         # during the background/polling phase (a held read-write handle is the
@@ -1287,11 +1308,9 @@ async def launch(root_id: str, req: LaunchRequest, request: Request) -> dict[str
     response: dict[str, Any] = {
         "session_id": session_id,
         "researches": [
-            {
-                "investigation_id": leaf.investigation_id,
-                "sub_question": leaf.sub_question,
-                "question_node_id": leaf.question_node_id,
-            }
+            {"investigation_id": leaf.investigation_id, "sub_question": leaf.sub_question,
+             "question_node_id": leaf.question_node_id,
+             "plan_node_local_id": leaf.plan_node_local_id}
             for leaf in leaves
         ],
         "aggregate_cap_usd": budget.aggregate_cap_usd,
@@ -1320,13 +1339,21 @@ async def _run_to_completion(session: CascadeSession) -> None:
         await session.join_and_merge()
         if _SYNTHESIS_TAIL_RUNNER is not None and session not in _HARD_CEILING_RUNS:
             stage = "synthesis_tail"
-            pack = session.build_evidence_pack()
+            pack = session.build_evidence_pack(
+                plan_root_node_id=session.plan_root_node_id
+            )
             await _SYNTHESIS_TAIL_RUNNER(session, pack)
     except Exception as exc:
         # Capture, do not swallow: record WITH the failing stage (so a join/merge
         # failure isn't mislabeled as a synthesis-tail one) + audit, stay non-fatal.
         session.record_synthesis_tail_error(exc, stage=stage)
     finally:
+        try:
+            session.record_session_terminal()
+        except Exception as exc:
+            # Without this durable release marker another worker must fail
+            # closed instead of launching against the same child identities.
+            session.record_synthesis_tail_error(exc, stage="session_terminal")
         hard_run = _HARD_CEILING_RUNS.get(session)
         if hard_run is not None:
             gateway, binding = hard_run
@@ -1350,13 +1377,14 @@ async def session_status(session_id: str, request: Request) -> dict[str, Any]:
         response = {
             "session_id": session_id,
             "live": True,
+            "plan": _plan_envelope(
+                live.plan_root_node_id, live.approved_plan_tree, live.status()
+            ),
             "researches": [
-                {
-                    "investigation_id": s.investigation_id,
-                    "sub_question": s.sub_question,
-                    "state": s.state,
-                    "question_node_id": s.question_node_id,
-                }
+                {"investigation_id": s.investigation_id, "sub_question": s.sub_question,
+                 "state": s.state, "question_node_id": s.question_node_id,
+                 "plan_node_local_id": s.plan_node_local_id,
+                 "control_available": True}
                 for s in live.status()
             ],
             "cost": cost,
@@ -1377,12 +1405,14 @@ async def session_status(session_id: str, request: Request) -> dict[str, Any]:
     response = {
         "session_id": session_id,
         "live": False,
+        "plan": _plan_envelope(
+            rec.plan_root_node_id, rec.approved_plan_tree, rec.researches
+        ),
         "researches": [
-            {
-                "investigation_id": r.investigation_id,
-                "sub_question": r.sub_question,
-                "state": r.state,
-            }
+            {"investigation_id": r.investigation_id, "sub_question": r.sub_question,
+             "state": r.state, "question_node_id": r.question_node_id,
+             "plan_node_local_id": r.plan_node_local_id,
+             "control_available": False}
             for r in rec.researches
         ],
         "all_terminal": rec.all_terminal,
@@ -1421,6 +1451,53 @@ async def reconcile_session_spend(session_id: str, request: Request) -> dict[str
             else "Authoritative status refreshed; no provider outcomes need reconciliation."
         ),
     }
+
+
+def _plan_envelope(
+    root_id: str | None,
+    approved_plan_tree: dict[str, Any] | None,
+    researches: Sequence[Any],
+) -> dict[str, Any] | None:
+    """Return the immutable approved-tree receipt for a session.
+
+    Old sessions may not carry a snapshot. That is honest ``null`` rather than
+    reloading a mutable graph plan that may no longer equal what launched.
+    """
+    if root_id is None or approved_plan_tree is None:
+        return None
+    try:
+        tree = PlanTree.from_dict(approved_plan_tree)
+        nodes = list(tree.root.iter_all())
+        local_ids = [node.local_id for node in nodes]
+        leaf_ids = {node.local_id for node in tree.leaves}
+        mapped_ids = [research.plan_node_local_id for research in researches]
+        leaves_by_id = {node.local_id: node for node in tree.leaves}
+        if (
+            not root_id
+            or root_id != tree.root.graph_node_id
+            or tree.approval.state != "approved"
+            or not nodes
+            or any(not node.question or not node.local_id for node in nodes)
+            or len(local_ids) != len(set(local_ids))
+            or any(local_id is None for local_id in mapped_ids)
+            or len(mapped_ids) != len(set(mapped_ids))
+            or set(mapped_ids) != leaf_ids
+            or any(
+                not leaves_by_id[research.plan_node_local_id].graph_node_id
+                or research.question_node_id
+                != leaves_by_id[research.plan_node_local_id].graph_node_id
+                or research.sub_question
+                != leaves_by_id[research.plan_node_local_id].question
+                for research in researches
+            )
+        ):
+            return None
+    except Exception:
+        # The receipt is untrusted durable input. Deep/cyclic-shaped payloads,
+        # non-finite versions, and future schema variants must degrade to no
+        # canonical plan rather than taking down the status endpoint.
+        return None
+    return {"root_node_id": root_id, "tree": tree.to_dict()}
 
 
 @cascade_router.get("/sessions/{session_id}/cost")

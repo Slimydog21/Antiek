@@ -100,6 +100,8 @@ export interface ResearchStatus {
   sub_question: string;
   state: ResearchRunState;
   question_node_id?: string | null;
+  plan_node_local_id?: string | null;
+  control_available?: boolean;
 }
 
 export interface SessionCost {
@@ -112,15 +114,26 @@ export interface SessionCost {
 export interface SessionStatus {
   session_id: string;
   live: boolean;
+  plan?: SessionPlan | null;
   researches: ResearchStatus[];
   cost?: SessionCost | null;
   all_terminal?: boolean;
   hard_ceiling?: HardCeilingSnapshot | null;
 }
 
+export interface SessionPlan {
+  root_node_id: string;
+  tree: PlanTree;
+}
+
 export interface LaunchResponse {
   session_id: string;
-  researches: { investigation_id: string; sub_question: string; question_node_id: string | null }[];
+  researches: {
+    investigation_id: string;
+    sub_question: string;
+    question_node_id: string | null;
+    plan_node_local_id: string | null;
+  }[];
   aggregate_cap_usd: number | null;
   spend_mode?: SpendMode;
   replayed?: boolean;
