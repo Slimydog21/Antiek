@@ -35,6 +35,12 @@ _nd_ctx: contextvars.ContextVar[NDDecision | None] = contextvars.ContextVar(
     "antiek_nd_decision",
     default=None,
 )
+_nd_repeat_ctx: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "antiek_nd_decision_repeat", default=False
+)
+_nd_scope_ctx: contextvars.ContextVar[object | None] = contextvars.ContextVar(
+    "antiek_nd_decision_scope", default=None
+)
 
 
 def record_nd_decision(
@@ -61,13 +67,46 @@ def record_nd_decision(
     )
 
 
-def consume_nd_decision() -> NDDecision:
+def consume_nd_decision(*, scope: object | None = None) -> NDDecision:
     """Drain staged ND attribution once, returning defaults when absent."""
     staged = _nd_ctx.get()
     if staged is None:
         return _ND_DEFAULTS.copy()
-    _nd_ctx.set(None)
+    staged_scope = _nd_scope_ctx.get()
+    if staged_scope is not None and scope is not staged_scope:
+        return _ND_DEFAULTS.copy()
+    if not _nd_repeat_ctx.get():
+        _nd_ctx.set(None)
     return staged.copy()
+
+
+def push_nd_decision(
+    decision: NDDecision, *, scope: object
+) -> tuple[
+    contextvars.Token[NDDecision | None],
+    contextvars.Token[bool],
+    contextvars.Token[object | None],
+]:
+    """Install repeatable attribution for one nested dispatch scope."""
+    return (
+        _nd_ctx.set(decision.copy()),
+        _nd_repeat_ctx.set(True),
+        _nd_scope_ctx.set(scope),
+    )
+
+
+def reset_nd_decision(
+    tokens: tuple[
+        contextvars.Token[NDDecision | None],
+        contextvars.Token[bool],
+        contextvars.Token[object | None],
+    ],
+) -> None:
+    """Restore the exact enclosing attribution scope."""
+    decision_token, repeat_token, scope_token = tokens
+    _nd_scope_ctx.reset(scope_token)
+    _nd_repeat_ctx.reset(repeat_token)
+    _nd_ctx.reset(decision_token)
 
 
 def peek_nd_decision() -> NDDecision | None:

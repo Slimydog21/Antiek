@@ -1189,7 +1189,7 @@ export default function Multimedia() {
                                     onChange={() => setSelectedEvidenceIds((current) =>
                                       current.includes(candidate.chunk_id)
                                         ? current.filter((id) => id !== candidate.chunk_id)
-                                        : [...current, candidate.chunk_id]
+                                        : current.concat(candidate.chunk_id)
                                     )}
                                     aria-label={`Include evidence from ${candidate.document_title}`}
                                   />

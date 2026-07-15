@@ -18,6 +18,11 @@ Environment:
 
 - `NOTDIAMOND_API_KEY`: required only for live calls; resolved at first call and
   never logged.
+- `ANTIEK_NOTDIAMOND_MODE=shadow`: explicitly enables DRW shadow evaluation;
+  unset or `disabled` performs no NotDiamond call and never changes routing.
+- `ANTIEK_NOTDIAMOND_ALLOW_PROMPT_DISCLOSURE=true`: separate required consent
+  for sending the assembled DRW prompt to NotDiamond. Shadow mode without this
+  flag records `prompt_disclosure_not_approved` and performs no external call.
 
 Install:
 
@@ -30,5 +35,6 @@ Tests:
 - `pytest runtime/notdiamond/test_adapter.py`
 - `NOTDIAMOND_API_KEY=... pytest runtime/notdiamond/test_smoke.py -v -s`
 
-No dispatch integration — see SPR-03. Spec:
-`/Users/slimydog/specs/antiek-notdiamond/index.html`.
+Dispatch integration is shadow-only, disabled by default, and specified in
+`docs/htmlspec/notdiamond-shadow-measurement.html`. It records recommendations
+without changing the authoritative provider order.
