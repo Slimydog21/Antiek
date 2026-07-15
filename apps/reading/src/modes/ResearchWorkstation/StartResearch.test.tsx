@@ -119,6 +119,8 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     const { container } = renderStart();
     const surface = container.querySelector("[data-glass-surface]");
     expect(surface, "the idle home column must render through GlassSurface").toBeTruthy();
+    // Session brand mark UI-consumed on the Research home (living-TV).
+    expect(screen.getByTestId("research-home-werner-brand")).toBeTruthy();
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
   });
 

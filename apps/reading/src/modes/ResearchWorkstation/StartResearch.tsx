@@ -11,6 +11,7 @@ import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useStartInvestigation } from "../../hooks/useStartInvestigation";
 import { ApiError, ingestSource, ingestVoiceNote } from "../../lib/api";
 import type { ResearchTier } from "../../lib/api";
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import CascadeProposal from "./CascadeProposal";
 import MyResearch from "./MyResearch";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -449,14 +450,23 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
           " rounded-hog-lg px-6 py-7"
         }
       >
-        <h1 className="text-2xl font-serif text-ink dark:text-bright mb-2 text-center">
-          What do you want to research?
-        </h1>
+        <div className="flex flex-col items-center gap-2 mb-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="research-home-werner-brand"
+            className="h-14 w-14 object-contain"
+          />
+          <h1 className="text-2xl font-serif text-ink dark:text-bright text-center">
+            What do you want to research?
+          </h1>
+        </div>
         <p className="text-sm text-shadow-1 dark:text-moonlight leading-relaxed font-serif text-center mb-6">
           Ask a question. The substrate runs a recursive note-taking chain
           across your corpus, distills insights and open questions, and
           renders a cited thesis. Highlight anything in the result to chase
-          it further.
+          it further. Werner keeps the home of the penguin here.
         </p>
 
         <div className="flex flex-col gap-3">
