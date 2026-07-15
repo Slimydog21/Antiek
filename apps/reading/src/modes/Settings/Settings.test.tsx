@@ -1,7 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { fetchModelDecision, type ModelDecisionResponse } from "../../api/settings";
+import {
+  fetchModelDecision,
+  type ModelDecisionResponse,
+} from "../../api/settings";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner/reactionBus";
 import Settings from "./index";
 
 vi.mock("../../workspace/useViewportTier", () => ({
@@ -41,7 +45,8 @@ const budget = {
   notes: ["test note"],
 };
 
-vi.mock("../../api/settings", () => ({
+vi.mock("../../api/settings", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../api/settings")>()),
   fetchSettingsModels: vi.fn(async () => models),
   fetchSettingsBudget: vi.fn(async () => budget),
   fetchModelDecision: vi.fn(async () => ({
@@ -130,6 +135,11 @@ describe("Settings SPR-01", () => {
   });
 
   it("compares server-owned model candidates in the evidence tab", async () => {
+    const experiences: string[] = [];
+    const listener = (event: Event) => {
+      experiences.push((event as CustomEvent).detail?.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
     const user = userEvent.setup();
     render(<Settings />);
     await user.click(screen.getByRole("tab", { name: "Decision tree" }));
@@ -138,6 +148,8 @@ describe("Settings SPR-01", () => {
     expect(screen.getByText("synthesis", { selector: "strong" })).toBeTruthy();
     expect(screen.getByText(/2\/2 routes measured/i)).toBeTruthy();
     expect(screen.getByText(/n=40/i)).toBeTruthy();
+    expect(experiences).toEqual(["model_evidence_compared"]);
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
   });
 
   it("links tabs to panels and supports arrow-key navigation", async () => {
@@ -155,6 +167,8 @@ describe("Settings SPR-01", () => {
   });
 
   it("does not render an in-flight result after the task changes", async () => {
+    const listener = vi.fn();
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
     let resolveDecision: ((value: ModelDecisionResponse) => void) | undefined;
     vi.mocked(fetchModelDecision).mockImplementationOnce(
       () => new Promise<ModelDecisionResponse>((resolve) => { resolveDecision = resolve; }),
@@ -164,15 +178,111 @@ describe("Settings SPR-01", () => {
     await user.click(screen.getByRole("tab", { name: "Decision tree" }));
     await user.click(screen.getByRole("button", { name: "Compare models" }));
     await user.selectOptions(screen.getByLabelText("Task"), "writing");
-    resolveDecision?.({
-      authority: "advisory",
-      task: "deep_research",
-      recommended_tier: "pro",
+    await act(async () => {
+      resolveDecision?.({
+        authority: "advisory",
+        task: "deep_research",
+        recommended_tier: "pro",
+        benchmark_status: "unavailable",
+        benchmark_generated_at: null,
+        notes: [],
+        candidates: [],
+      });
+    });
+    await waitFor(() => expect(screen.queryByText(/Recommended tier:/)).toBeNull());
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+  });
+
+  it("keeps a response silent when shared overview inputs invalidate it", async () => {
+    let resolveDecision: ((value: ModelDecisionResponse) => void) | undefined;
+    vi.mocked(fetchModelDecision).mockImplementationOnce(
+      () => new Promise<ModelDecisionResponse>((resolve) => { resolveDecision = resolve; }),
+    );
+    const listener = vi.fn();
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(screen.getByRole("button", { name: "Compare models" }));
+    await user.click(screen.getByRole("tab", { name: "Overview" }));
+    const input = screen.getByLabelText("Input chars");
+    await user.clear(input);
+    await user.type(input, "3000");
+    await act(async () => {
+      resolveDecision?.({
+        authority: "advisory",
+        task: "deep_research",
+        recommended_tier: null,
+        benchmark_status: "unavailable",
+        benchmark_generated_at: null,
+        notes: [],
+        candidates: [],
+      });
+    });
+    await waitFor(() => expect(listener).not.toHaveBeenCalled());
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+  });
+
+  it("keeps rejected and post-unmount responses silent", async () => {
+    const listener = vi.fn();
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    vi.mocked(fetchModelDecision).mockRejectedValueOnce(new Error("offline"));
+    const user = userEvent.setup();
+    const view = render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(screen.getByRole("button", { name: "Compare models" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("offline");
+    expect(listener).not.toHaveBeenCalled();
+
+    let resolveDecision: ((value: ModelDecisionResponse) => void) | undefined;
+    vi.mocked(fetchModelDecision).mockImplementationOnce(
+      () => new Promise<ModelDecisionResponse>((resolve) => { resolveDecision = resolve; }),
+    );
+    await user.click(screen.getByRole("button", { name: "Compare models" }));
+    view.unmount();
+    await act(async () => {
+      resolveDecision?.({
+        authority: "advisory",
+        task: "deep_research",
+        recommended_tier: null,
+        benchmark_status: "unavailable",
+        benchmark_generated_at: null,
+        notes: [],
+        candidates: [],
+      });
+    });
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
+  });
+
+  it.each([
+    { authority: "unexpected", task: "deep_research" },
+    { authority: "advisory", task: "writing" },
+    { authority: "advisory", task: "deep_research", omitPayload: true },
+  ])("rejects a mismatched runtime response without a reaction: %o", async (mismatch) => {
+    vi.mocked(fetchModelDecision).mockResolvedValueOnce((mismatch.omitPayload ? {
+      authority: mismatch.authority,
+      task: mismatch.task,
+    } : {
+      authority: mismatch.authority,
+      task: mismatch.task,
+      recommended_tier: null,
       benchmark_status: "unavailable",
       benchmark_generated_at: null,
       notes: [],
       candidates: [],
-    });
-    await waitFor(() => expect(screen.queryByText(/Recommended tier:/)).toBeNull());
+    }) as unknown as ModelDecisionResponse);
+    const listener = vi.fn();
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, listener);
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    await user.click(screen.getByRole("button", { name: "Compare models" }));
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "did not match",
+    );
+    expect(listener).not.toHaveBeenCalled();
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, listener);
   });
 });

@@ -21,6 +21,7 @@ describe("Werner product reaction bus", () => {
     ["source_read_committed", "happy"],
     ["outline_block_committed", "curious"],
     ["speak_invite_committed", "happy"],
+    ["model_evidence_compared", "curious"],
     ["fail", "dizzy"],
   ];
 

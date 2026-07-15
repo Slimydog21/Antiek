@@ -29,6 +29,10 @@ export function notifySpeakInviteCommitted(): void {
   emitWernerExperience("speak_invite_committed");
 }
 
+export function notifyModelEvidenceCompared(): void {
+  emitWernerExperience("model_evidence_compared");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);
