@@ -387,6 +387,7 @@ class LiveGuardAcquisitionCoordinator:
         approved_revocation_verifier_digest: str,
         approved_revocation_trust_root_digest: str,
         approved_audit_source_digest: str,
+        runtime_guard: Callable[[], None] | None = None,
     ) -> None:
         for name, value in (
             ("approved_revocation_verifier_digest", approved_revocation_verifier_digest),
@@ -412,6 +413,7 @@ class LiveGuardAcquisitionCoordinator:
         self.approved_revocation_verifier_digest = approved_revocation_verifier_digest
         self.approved_revocation_trust_root_digest = approved_revocation_trust_root_digest
         self.approved_audit_source_digest = approved_audit_source_digest
+        self.runtime_guard = runtime_guard
 
     def acquire(
         self,
@@ -420,18 +422,28 @@ class LiveGuardAcquisitionCoordinator:
         cycle34_receipt: BedrockS3NamespaceLeaseReceipt,
         attempt_nonce: str,
         predecessor: LiveGuardCustodyReceipt | None = None,
+        attempt_started_at: str | None = None,
     ) -> LiveGuardAcquisitionReceipt:
         self._verify_command_bindings(command, cycle34_receipt, predecessor)
         started = self._read_clock("trusted start")
         start_text = _time_text(started)
+        attempt_start_text = start_text
+        if attempt_started_at is not None:
+            try:
+                attempt_start = _parse_time(attempt_started_at)
+            except ValueError as exc:
+                raise BedrockLiveGuardAcquisitionError("recovery attempt start is invalid") from exc
+            if attempt_start > started:
+                raise BedrockLiveGuardAcquisitionError("recovery attempt start is in the future")
+            attempt_start_text = attempt_started_at
         attempt = LiveGuardAcquisitionAttempt(
             command_digest=command.digest,
             attempt_id="lga_"
             + hashlib.sha256(
-                f"{command.digest}:{start_text}:{attempt_nonce}".encode("ascii")
+                f"{command.digest}:{attempt_start_text}:{attempt_nonce}".encode("ascii")
             ).hexdigest(),
             attempt_nonce=attempt_nonce,
-            trusted_start=start_text,
+            trusted_start=attempt_start_text,
         )
         try:
             self.journal.record_intent(
@@ -446,6 +458,7 @@ class LiveGuardAcquisitionCoordinator:
             command, attempt, cycle34_receipt, initial, predecessor
         )
         try:
+            self._guard_runtime()
             custody_receipt = self.qualifier.qualify(
                 cycle34_receipt=cycle34_receipt,
                 guard_snapshot=initial,
@@ -469,6 +482,7 @@ class LiveGuardAcquisitionCoordinator:
         observation = self._observe_revocation(
             command, attempt, final, attestation, custody_receipt, revocation_time
         )
+        self._guard_runtime()
         completed = self._read_clock("completion")
         if completed < revocation_time:
             raise BedrockLiveGuardAcquisitionError("trusted clock moved backward")
@@ -490,7 +504,7 @@ class LiveGuardAcquisitionCoordinator:
             revocation_trust_root_digest=observation.trust_root_digest,
             audit_source_digest=observation.audit_source_digest,
             predecessor_receipt_digest=custody_receipt.predecessor_receipt_digest,
-            trusted_start=start_text,
+            trusted_start=attempt_start_text,
             revocation_observed_at=observation.observed_at,
             revocation_complete_through=observation.audit_complete_through,
             completed_at=_time_text(completed),
@@ -504,6 +518,7 @@ class LiveGuardAcquisitionCoordinator:
         )
         commit_error: Exception | None = None
         try:
+            self._guard_runtime()
             self.journal.commit_attempt(
                 attempt_id=attempt.attempt_id,
                 receipt_json=receipt.canonical_json,
@@ -559,7 +574,9 @@ class LiveGuardAcquisitionCoordinator:
             ("rcp", command.rcp_policy_id),
         ):
             try:
+                self._guard_runtime()
                 described = self.organizations.describe_policy(PolicyId=policy_id)
+                self._guard_runtime()
                 targets = self.organizations.list_targets_for_policy(PolicyId=policy_id)
                 described_json = self._canonical_mapping(described)
                 targets_json = self._canonical_mapping(targets)
@@ -626,6 +643,7 @@ class LiveGuardAcquisitionCoordinator:
         )
         context_digest = hashlib.sha256(request_json.encode("ascii")).hexdigest()
         try:
+            self._guard_runtime()
             raw = self.custody.acquire_attestation(
                 request_json=request_json,
                 idempotency_key=attempt.attempt_id,
@@ -666,6 +684,7 @@ class LiveGuardAcquisitionCoordinator:
             }
         )
         try:
+            self._guard_runtime()
             raw = self.revocations.observe_revocation(request_json=request_json)
             if type(raw) is not str or len(raw.encode("ascii")) > 64_000:
                 raise ValueError("revocation response must be bounded canonical text")
@@ -682,6 +701,7 @@ class LiveGuardAcquisitionCoordinator:
         ):
             raise BedrockLiveGuardAcquisitionError("revocation observation was substituted")
         try:
+            self._guard_runtime()
             verifier_digest = self.revocation_verifier.verifier_digest
             trust_root_digest = self.revocation_verifier.trust_root_digest
             _require_digest("revocation verifier digest", verifier_digest)
@@ -707,6 +727,10 @@ class LiveGuardAcquisitionCoordinator:
         ):
             raise BedrockLiveGuardAcquisitionError("revocation audit watermark regressed")
         return observation
+
+    def _guard_runtime(self) -> None:
+        if self.runtime_guard is not None:
+            self.runtime_guard()
 
     @staticmethod
     def _verify_revocation_freshness(
