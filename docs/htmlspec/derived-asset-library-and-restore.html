@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 56 - Derived Asset Library and Restore</title>
+  <style>
+    :root{--paper:#fffdf7;--ink:#151515;--lemon:#f9bd2b;--blue:#1d4aff;--muted:#626262}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+    main{max-width:1100px;margin:auto;padding:32px}header,section{border:2px solid var(--ink);padding:20px;margin:0 0 18px}
+    header{background:var(--lemon)}h1,h2,h3{margin:0 0 10px;letter-spacing:0}code{background:#fff;border:1px solid;padding:1px 4px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.card{border:2px solid var(--blue);padding:14px}
+    .must{border-left:8px solid var(--blue)}.reject{border-left:8px solid #bd2b2b}small{color:var(--muted)}
+  </style>
+</head>
+<body><main>
+  <header><h1>Cycle 56: Derived Asset Library and Restore</h1><p>Make applied canonical HTML assets readable and historically inspectable without creating a second mutation authority.</p></header>
+  <section id="spec-lineage" data-spec-depth="0" data-parent-spec="twin-note-merge-workstation-handoff.html">
+    <h2>Spec lineage</h2><p>Parent: <a href="twin-note-merge-workstation-handoff.html">Cycle 55 twin-note merge workstation handoff</a></p><ul class="child-specs"></ul>
+  </section>
+  <section class="must"><h2>Outcome</h2><p>An authenticated operator can discover only their derived assets, inspect the exact current HTML and every verified historical revision, compare one historical revision with the current head, and explicitly create an append-only restore revision through the existing generation-bound restore authority.</p></section>
+  <section><h2>Authority boundaries</h2><div class="grid">
+    <div class="card"><h3>Read model only</h3><p>Cycle 56 adds no pointer write, delete, replacement, or alternate merge endpoint. <code>merge_commit.restore()</code> remains the sole restore authority.</p></div>
+    <div class="card"><h3>Owner derived</h3><p>Discovery accepts no parameters. Asset and revision reads join through the authenticated owner. Foreign and missing resources are indistinguishable.</p></div>
+    <div class="card"><h3>Exact HTML</h3><p>Previews return exact stored canonical bytes after hash, byte-count, manifest, member, policy, lineage, and current-pointer verification.</p></div>
+    <div class="card"><h3>Bounded complete chains</h3><p>At most 200 assets and 400 revisions per asset. Exceeding either ceiling is an integrity refusal, never silent truncation.</p></div>
+  </div></section>
+  <section><h2>API contract</h2><ul>
+    <li><code>GET /research/derived-assets</code>: parameter-free owner discovery.</li>
+    <li><code>GET /research/derived-assets/assets/{asset_id}/revisions</code>: complete verified current-to-root chain.</li>
+    <li><code>GET /research/derived-assets/assets/{asset_id}/current/frame-preview</code>: exact current HTML.</li>
+    <li><code>GET /research/derived-assets/assets/{asset_id}/revisions/{revision_id}/frame-preview</code>: exact historical HTML.</li>
+    <li><code>POST /research/derived-assets/merge/assets/{asset_id}/restore</code>: unchanged exact operation ID, selected revision, expected head revision/hash/generation.</li>
+  </ul><p>All reads are private/no-store. HTML frames use <code>default-src 'none'</code>, <code>frame-ancestors 'self'</code>, <code>sandbox</code>, <code>nosniff</code>, and no referrer.</p></section>
+  <section><h2>Workstation state machine</h2><ol>
+    <li>Discover assets without caller filters.</li><li>Select an asset and load its verified complete history.</li>
+    <li>Inspect current and selected exact revision in separate empty-sandbox frames.</li>
+    <li>Explicitly restore a non-current revision using the exact current tuple and one retained operation ID.</li>
+    <li>On success, require exact response identity/generation and refresh. On ambiguous failure, retain the command for exact retry.</li>
+  </ol><p>Asset switch, refresh, or revision selection invalidates downstream state. Monotonic generations refuse late responses. Related workstation controls freeze during commands.</p></section>
+  <section><h2>Acceptance harness</h2><ul>
+    <li>Owner-only discovery/history/current/exact preview; foreign equals missing.</li>
+    <li>Query and GET-body rejection; bounded asset and revision counts.</li>
+    <li>Hash, byte count, manifest, member order, parent chain, restore lineage, policy, acknowledgement, and pointer drift all fail closed.</li>
+    <li>Restore is append-only, generation-CAS bound, idempotently replayable, and creates no residue on refusal.</li>
+    <li>UI retains operation identity after ambiguous failure and rejects stale discovery, history, and restore responses.</li>
+    <li>Frontend tests, TypeScript, production build, backend compatibility matrix, hostile review, and HardenX pass.</li>
+  </ul></section>
+  <section class="reject"><h2>Rejected alternatives</h2><ul>
+    <li>Client owner IDs, filters, locators, or HTML: expands authority and foreign-oracle surface.</li>
+    <li>Directly setting the current pointer: destroys append-only provenance and bypasses CAS receipts.</li>
+    <li>Regenerating previews from manifests: no longer proves the exact reviewed and committed bytes.</li>
+    <li>Returning timestamps, manifests, storage paths, provider metadata, or investigation IDs: irrelevant disclosure.</li>
+    <li>Silent pagination or truncation: falsely presents partial history as complete authority.</li>
+    <li>Restore on selection: collapses inspection and irreversible authority into one action.</li>
+  </ul></section>
+  <section><h2>Five-values rigor</h2><p><strong>Honesty:</strong> only verified persisted bytes are shown. <strong>Fairness:</strong> missing and foreign states are identical. <strong>Rigor:</strong> restore binds the exact observed head. <strong>Diligence:</strong> every revision and member is re-opened. <strong>Defensibility:</strong> one append-only authority and explicit acknowledgement preserve an auditable history.</p></section>
+  <section id="harness-hint-run" data-pattern="adversarial-verification" data-scope="cycle56-derived-asset-library" data-done-bar="backend+frontend+build+hostile-review+hardenx"><h2>Harness hint</h2><p>Implement service, routes, client, and UI in dependency order; then refute ownership, chain integrity, stale-response, and restore-replay claims before publication.</p></section>
+</main></body></html>

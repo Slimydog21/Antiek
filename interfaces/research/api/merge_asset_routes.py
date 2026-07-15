@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
+from substrate.research_artifact.derived_asset_library import (
+    DerivedAssetIntegrity,
+    DerivedAssetLibrary,
+    DerivedAssetUnavailable,
+)
 from substrate.research_artifact.merge_commit import (
     MergeCommitError,
     MergeCommitNotFound,
@@ -94,6 +100,80 @@ def get_merge_draft_repository() -> MergeDraftRepository:
 merge_asset_router = APIRouter(
     prefix="/research/derived-assets/merge", tags=["derived-asset-merge"]
 )
+derived_asset_router = APIRouter(
+    prefix="/research/derived-assets", tags=["derived-assets"]
+)
+
+NO_STORE = {"Cache-Control": "private, no-store"}
+FRAME_HEADERS = {
+    **NO_STORE,
+    "Content-Security-Policy": (
+        "default-src 'none'; frame-ancestors 'self'; base-uri 'none'; "
+        "form-action 'none'; sandbox"
+    ),
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "no-referrer",
+}
+
+
+def _library() -> DerivedAssetLibrary:
+    return DerivedAssetLibrary(db_path=default_db_path())
+
+
+def _library_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, DerivedAssetUnavailable):
+        return HTTPException(404, "derived asset is unavailable", headers=NO_STORE)
+    return HTTPException(409, "derived asset integrity conflict", headers=NO_STORE)
+
+
+@derived_asset_router.get("")
+async def discover_derived_assets(request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "derived asset request is invalid", headers=NO_STORE)
+    try:
+        result = _library().discover(authenticated_multimedia_operator(request))
+    except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
+        raise _library_error(exc) from None
+    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
+                    headers=NO_STORE)
+
+
+@derived_asset_router.get("/assets/{asset_id}/revisions")
+async def derived_asset_history(asset_id: str, request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "derived asset request is invalid", headers=NO_STORE)
+    try:
+        result = _library().history(authenticated_multimedia_operator(request), asset_id)
+    except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
+        raise _library_error(exc) from None
+    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
+                    headers=NO_STORE)
+
+
+@derived_asset_router.get("/assets/{asset_id}/current/frame-preview")
+async def current_derived_asset_preview(asset_id: str, request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "derived asset request is invalid", headers=NO_STORE)
+    try:
+        content = _library().current_preview(authenticated_multimedia_operator(request), asset_id)
+    except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
+        raise _library_error(exc) from None
+    return Response(content, media_type="text/html; charset=utf-8", headers=FRAME_HEADERS)
+
+
+@derived_asset_router.get("/assets/{asset_id}/revisions/{revision_id}/frame-preview")
+async def exact_derived_asset_preview(
+    asset_id: str, revision_id: str, request: Request
+) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "derived asset request is invalid", headers=NO_STORE)
+    try:
+        content = _library().revision_preview(
+            authenticated_multimedia_operator(request), asset_id, revision_id
+        )
+    except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
+        raise _library_error(exc) from None
+    return Response(content, media_type="text/html; charset=utf-8", headers=FRAME_HEADERS)
 
 
 @merge_asset_router.post("/drafts", response_model=DraftResponse, status_code=201)
@@ -274,6 +354,7 @@ def register_merge_asset_routes(app: object) -> None:
     if not isinstance(app, FastAPI):
         raise TypeError("app must be FastAPI")
     app.router.on_startup.append(_initialize_merge_schema)
+    app.include_router(derived_asset_router)
     app.include_router(merge_asset_router)
 
 
@@ -282,4 +363,7 @@ def _initialize_merge_schema() -> None:
     init_database_at_path(default_db_path())
 
 
-__all__ = ["get_merge_draft_repository", "merge_asset_router", "register_merge_asset_routes"]
+__all__ = [
+    "derived_asset_router", "get_merge_draft_repository", "merge_asset_router",
+    "register_merge_asset_routes",
+]
