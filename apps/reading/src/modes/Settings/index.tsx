@@ -23,6 +23,10 @@ import {
 } from "../../api/settings";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
+import { ModelDecisionTreeTab } from "./modelSelection/ModelDecisionTreeTab";
+import { NotDiamondShadowToggle } from "./modelSelection/NotDiamondShadowToggle";
+import { MidnightOilPanel } from "./modelSelection/MidnightOilPanel";
+import type { NotDiamondMode } from "./modelSelection/notDiamondPolicy";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -54,6 +58,9 @@ export default function Settings() {
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "decision">("overview");
+  // NotDiamond is advisory-only — shared state drives the heuristic decision-tree chip.
+  const [notDiamondMode, setNotDiamondMode] =
+    useState<NotDiamondMode>("disabled");
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     const tabs = ["overview", "decision"] as const;
@@ -431,10 +438,28 @@ export default function Settings() {
 
         <AntiekBenchPanel />
 
+        {/* Heuristic demo tree + NotDiamond advisor + Midnight Oil preflight.
+            Lives on Overview so the Decision tree tab keeps a single live
+            Task control (server-owned compare) without label collisions. */}
+        <LemonCard
+          title="Heuristic tree · NotDiamond · Midnight Oil"
+          elevation="z1"
+          colour="glacial"
+        >
+          <div className="p-4 space-y-6">
+            <ModelDecisionTreeTab notDiamondMode={notDiamondMode} />
+            <NotDiamondShadowToggle
+              mode={notDiamondMode}
+              onModeChange={setNotDiamondMode}
+            />
+            <MidnightOilPanel />
+          </div>
+        </LemonCard>
+
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
             <li>Recursive Antiek-bench evolution from usage outcomes</li>
-            <li>Midnight oil: time + goals + price-ceiling approve UI</li>
+            <li>NotDiamond live HTTP adapter (bench promotion gate — not this UI)</li>
             <li>Keyboard map customisation + layout export</li>
           </ul>
         </LemonCard>
