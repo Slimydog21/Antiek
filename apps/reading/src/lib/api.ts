@@ -262,6 +262,16 @@ export interface StartInvestigationRequest {
     chunk_text_sha256: string;
     excerpt: string;
   };
+  derived_sources?: Array<{
+    derived_asset_id: string;
+    revision_id: string;
+    content_sha256: string;
+    generation: number;
+    citation_id: string;
+    chunk_ordinal: number;
+    chunk_text_sha256: string;
+    excerpt: string;
+  }>;
 }
 
 export interface StartInvestigationResponse {

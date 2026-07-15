@@ -212,6 +212,67 @@ def test_derived_citation_must_match_research_context(temp_substrate, monkeypatc
     assert client.get("/trajectory/inv-derived-mismatch").json()["events"] == []
 
 
+def test_post_persists_ordered_derived_citations(temp_substrate, monkeypatch):
+    sources = [_derived_source(), {
+        **_derived_source(),
+        "citation_id": "dchunk_" + "f" * 64,
+        "chunk_ordinal": 4,
+        "chunk_text_sha256": "1" * 64,
+        "excerpt": "Second exact passage.",
+    }]
+    context = (
+        "[Evidence 1 of 2]\nExact admitted passage.\n\n"
+        "[Evidence 2 of 2]\nSecond exact passage."
+    )
+    monkeypatch.setattr(
+        "substrate.research_artifact.derived_citation_source."
+        "verify_derived_citation_sources",
+        lambda **kwargs: tuple(kwargs["sources"]),
+    )
+    client = _client(temp_substrate)
+    response = client.post("/investigations", json={
+        "question": "What follows from these passages?",
+        "context": context,
+        "investigation_id": "inv-derived-curated",
+        "derived_sources": sources,
+    })
+    assert response.status_code == 202
+    events = client.get("/trajectory/inv-derived-curated").json()["events"]
+    started = next(event for event in events if event["action_type"]
+                   == ActionType.INVESTIGATION_START_REQUESTED.value)
+    assert started["payload"]["derived_source"] is None
+    assert started["payload"]["derived_sources"] == sources
+
+
+def test_invalid_derived_citation_set_emits_no_event(temp_substrate, monkeypatch):
+    from substrate.research_artifact.derived_citation_source import DerivedCitationConflict
+
+    sources = [_derived_source(), {
+        **_derived_source(),
+        "citation_id": "dchunk_" + "f" * 64,
+        "chunk_ordinal": 4,
+        "chunk_text_sha256": "1" * 64,
+        "excerpt": "Second exact passage.",
+    }]
+    context = (
+        "[Evidence 1 of 2]\nExact admitted passage.\n\n"
+        "[Evidence 2 of 2]\nSecond exact passage."
+    )
+    monkeypatch.setattr(
+        "substrate.research_artifact.derived_citation_source."
+        "verify_derived_citation_sources",
+        lambda **_kwargs: (_ for _ in ()).throw(DerivedCitationConflict("last failed")),
+    )
+    client = _client(temp_substrate)
+    response = client.post("/investigations", json={
+        "question": "What follows from these passages?", "context": context,
+        "investigation_id": "inv-derived-curated-refused",
+        "derived_sources": sources,
+    })
+    assert response.status_code == 409
+    assert client.get("/trajectory/inv-derived-curated-refused").json()["events"] == []
+
+
 # ── 3. GET /chunks/{id} ──────────────────────────────────────────────
 
 

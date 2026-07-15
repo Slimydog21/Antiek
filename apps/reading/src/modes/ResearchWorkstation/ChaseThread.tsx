@@ -65,13 +65,33 @@ type Props = {
   reservedChildId?: string | null;
   /** Exact source identity for revisioned derived HTML selections. */
   sourceProvenance?: SelectionProvenance;
+  /** Ordered exact citations selected from one immutable evidence briefing. */
+  sourceSelections?: Array<{ text: string; provenance: SelectionProvenance }>;
 };
+
+function derivedSource(text: string, provenance: SelectionProvenance) {
+  const { documentId, derivedRevisionId, derivedContentSha256, derivedGeneration,
+    derivedCitationId, derivedChunkOrdinal, derivedChunkTextSha256 } = provenance;
+  return typeof documentId === "string" && /^ast_[0-9a-f]{32}$/.test(documentId)
+    && typeof derivedRevisionId === "string" && /^rev_[0-9a-f]{32}$/.test(derivedRevisionId)
+    && typeof derivedContentSha256 === "string" && /^[0-9a-f]{64}$/.test(derivedContentSha256)
+    && typeof derivedGeneration === "number" && Number.isInteger(derivedGeneration) && derivedGeneration >= 1
+    && typeof derivedCitationId === "string" && /^dchunk_[0-9a-f]{64}$/.test(derivedCitationId)
+    && typeof derivedChunkOrdinal === "number" && Number.isInteger(derivedChunkOrdinal) && derivedChunkOrdinal >= 0
+    && typeof derivedChunkTextSha256 === "string" && /^[0-9a-f]{64}$/.test(derivedChunkTextSha256)
+    ? { derived_asset_id: documentId, revision_id: derivedRevisionId,
+        content_sha256: derivedContentSha256, generation: derivedGeneration,
+        citation_id: derivedCitationId, chunk_ordinal: derivedChunkOrdinal,
+        chunk_text_sha256: derivedChunkTextSha256, excerpt: text }
+    : null;
+}
 
 export default function ChaseThread({
   spawnContext,
   parentInvestigationId,
   reservedChildId,
   sourceProvenance,
+  sourceSelections,
 }: Props) {
   const [question, setQuestion] = useState(spawnContext);
   const [busy, setBusy] = useState(false);
@@ -96,36 +116,15 @@ export default function ChaseThread({
     setBusy(true);
     setError(null);
     try {
-      const documentId = sourceProvenance?.documentId;
-      const revisionId = sourceProvenance?.derivedRevisionId;
-      const contentSha256 = sourceProvenance?.derivedContentSha256;
-      const generation = sourceProvenance?.derivedGeneration;
-      const citationId = sourceProvenance?.derivedCitationId;
-      const chunkOrdinal = sourceProvenance?.derivedChunkOrdinal;
-      const chunkTextSha256 = sourceProvenance?.derivedChunkTextSha256;
-      const hasCitationClaim = documentId?.startsWith("ast_")
-        || revisionId != null || contentSha256 != null || generation != null
-        || citationId != null || chunkOrdinal != null || chunkTextSha256 != null;
-      const derivedSource = typeof documentId === "string"
-        && /^ast_[0-9a-f]{32}$/.test(documentId)
-        && typeof revisionId === "string" && /^rev_[0-9a-f]{32}$/.test(revisionId)
-        && typeof contentSha256 === "string" && /^[0-9a-f]{64}$/.test(contentSha256)
-        && typeof generation === "number" && Number.isInteger(generation) && generation >= 1
-        && typeof citationId === "string" && /^dchunk_[0-9a-f]{64}$/.test(citationId)
-        && typeof chunkOrdinal === "number" && Number.isInteger(chunkOrdinal) && chunkOrdinal >= 0
-        && typeof chunkTextSha256 === "string" && /^[0-9a-f]{64}$/.test(chunkTextSha256)
-        ? {
-            derived_asset_id: documentId,
-            revision_id: revisionId,
-            content_sha256: contentSha256,
-            generation,
-            citation_id: citationId,
-            chunk_ordinal: chunkOrdinal,
-            chunk_text_sha256: chunkTextSha256,
-            excerpt: spawnContext,
-          }
-        : null;
-      if (hasCitationClaim && !derivedSource) {
+      const singularSource = sourceProvenance
+        ? derivedSource(spawnContext, sourceProvenance) : null;
+      const multipleSources = sourceSelections?.map(
+        (selection) => derivedSource(selection.text, selection.provenance),
+      );
+      const malformed = (sourceProvenance && !singularSource)
+        || (multipleSources && (multipleSources.length < 2
+          || multipleSources.length > 6 || multipleSources.some((source) => !source)));
+      if (malformed || (sourceProvenance && sourceSelections)) {
         setError({ reason: "This citation could not be verified for research." });
         return;
       }
@@ -134,7 +133,10 @@ export default function ChaseThread({
         context: spawnContext,
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
-        ...(derivedSource ? { derived_source: derivedSource } : {}),
+        ...(singularSource ? { derived_source: singularSource } : {}),
+        ...(multipleSources ? { derived_sources: multipleSources.filter(
+          (source): source is NonNullable<typeof source> => source !== null,
+        ) } : {}),
         // Consume the reserved escalation id when the passage carries one;
         // omit it otherwise so the substrate mints a fresh child. This is
         // the no-orphan / one-research-per-question seam.
@@ -172,9 +174,13 @@ export default function ChaseThread({
         <label className="text-[10px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight block mb-1.5">
           Following from this passage
         </label>
-        <blockquote className="text-sm font-serif text-ink-soft dark:text-starlight italic border-l-edge border-sun pl-3 py-1 leading-relaxed">
+        {sourceSelections ? <ol className="space-y-2">
+          {sourceSelections.map((selection, index) => <li key={selection.provenance.derivedCitationId ?? index} className="text-sm font-serif text-ink-soft dark:text-starlight italic border-l-edge border-sun pl-3 py-1 leading-relaxed">
+            <span className="mr-1 font-mono text-[10px] not-italic">{index + 1}.</span>{selection.text}
+          </li>)}
+        </ol> : <blockquote className="text-sm font-serif text-ink-soft dark:text-starlight italic border-l-edge border-sun pl-3 py-1 leading-relaxed">
           “{spawnContext}”
-        </blockquote>
+        </blockquote>}
       </div>
 
       <div className="flex-1 flex flex-col min-h-0">

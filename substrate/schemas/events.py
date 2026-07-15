@@ -760,7 +760,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 #     DerivedCitationSource. It preserves server-verified immutable HTML
 #     citation identity separately from prompt prose. Historical events
 #     validate with the default null value.
-EVENT_SCHEMA_VERSION: int = 34
+# v35: investigation.start_requested gains an ordered derived_sources tuple
+#     for one cohesive launch from 2-6 citations in the same immutable
+#     revision. The empty default preserves historical and singleton events.
+EVENT_SCHEMA_VERSION: int = 35
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2199,6 +2202,18 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     parent_investigation_id: str | None = None
     spawn_context: str | None = None  # highlighted text from parent's synthesis
     derived_source: DerivedCitationSource | None = None
+    derived_sources: tuple[DerivedCitationSource, ...] = ()
+
+    @model_validator(mode="after")
+    def _valid_derived_sources(self) -> InvestigationStartRequestedPayload:
+        if self.derived_source is not None and self.derived_sources:
+            raise ValueError("derived source fields are mutually exclusive")
+        if self.derived_sources:
+            from substrate.research_artifact.derived_citation_source import (
+                canonical_derived_sources_context,
+            )
+            canonical_derived_sources_context(self.derived_sources)
+        return self
     # Sprint 12: continuous chase mode. When chase_mode != "off", the
     # orchestrator re-enters phase 1 with the strongest open question
     # from current evidentiary_gaps as a new spawned sub-investigation
