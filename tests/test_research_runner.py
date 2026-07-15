@@ -316,6 +316,42 @@ async def test_aggregate_cap_blocks_next_launch(events_dir):
     assert "aggregate acquisition budget" in (st.error or "")
 
 
+async def test_queued_research_rechecks_aggregate_before_provider_work(events_dir):
+    provider_calls = 0
+
+    async def one_paid_step(ctx: LoopContext):
+        nonlocal provider_calls
+        provider_calls += 1
+        yield ctx.step("paid", cost_usd=0.02)
+
+    budget = BudgetManager(aggregate_cap_usd=0.01)
+    runner = HostLocalRunner(
+        one_paid_step,
+        max_concurrency=1,
+        budget=budget,
+        events_dir=events_dir,
+        seal_on_complete=False,
+    )
+    handles = [
+        await runner.start(
+            f"inv-{i}",
+            _plan(i, budget=BudgetCap(cost_usd=1.0)),
+        )
+        for i in range(4)
+    ]
+    async def drain(handle):
+        return [event async for event in runner.stream(handle)]
+
+    await asyncio.gather(*(drain(handle) for handle in handles))
+
+    assert provider_calls == 1
+    assert runner.status(handles[0]).state == RunState.BUDGET_HALTED
+    assert all(
+        runner.status(handle).state == RunState.BUDGET_HALTED
+        for handle in handles[1:]
+    )
+
+
 async def test_cost_reconciles_with_reported_steps(events_dir):
     # The ledger total equals the sum of per-step cost the loop reported —
     # the same number a step's DispatchCall event carries (no under-count).

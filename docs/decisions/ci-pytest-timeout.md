@@ -1,5 +1,21 @@
 # Decision: raise CI `pytest` job `timeout-minutes` 15 → 25 → 40
 
+> **2026-07-13 resolution: shard instead of bumping again.** Run
+> `29230281708` reached 95% with no failures and was cancelled at the exact
+> 40-minute job ceiling after FFmpeg-backed multimedia tests became executable
+> on Linux. The binding reconsider-if below is now active: `tests/` is split
+> deterministically by source file across three parallel runners. The initial
+> two-shard version passed on the PR but shard 0 varied from 24m36s to the
+> 30-minute ceiling on the immediate `main` push while still at 90% with no
+> failure. Three shards retain the same full file-atomic coverage while adding
+> runner-variance headroom without another timeout increase. A stable
+> aggregate `pytest` job always runs, fails unless all three shards succeeded, and
+> owns the service and structural tail gates. Shards keep file-local tests
+> together, their assignment is complete/disjoint/stable under unit test, and no
+> test or assertion is skipped. The shard ceiling is 30 minutes and the
+> aggregate ceiling is 20; the 40-minute monolith is retired rather than raised
+> to 60.
+
 **Date:** 2026-05-30 (15→25), amended **2026-06-01** (25→40)
 **Context:** PR #31 (`ingest/integration` → `main`, the 10-sprint corpus-ingest
 architecture). CI's `pytest` job was reported **cancelled**, not failed.

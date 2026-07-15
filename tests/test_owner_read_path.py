@@ -31,6 +31,7 @@ from __future__ import annotations
 import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
@@ -210,6 +211,197 @@ def test_owner_ask_book_reads_own_gated_content(
     assert any("GATEDPROBE" in p for p in provider.prompts), (
         "the owner's own gated/personal body must reach the model context"
     )
+    assert body["answer_id"].startswith("evt-")
+
+
+def test_answer_capture_judgment_and_eval_export(
+    db, owner_client, stub_embeddings,
+):
+    from substrate.event_log import trajectory
+
+    _gated_book(db, "doc-eval", content_class="personal_reading", title="Eval")
+    register_fake("A grounded answer for evaluation.")
+    answered = owner_client.post(
+        "/books/doc-eval/ask",
+        json={"question": "what does the passage establish?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert answered.status_code == 200, answered.text
+    answer_id = answered.json()["answer_id"]
+    answer_row = next(row for row in trajectory("read-doc-eval") if row["event_id"] == answer_id)
+    payload = answer_row["payload"]
+    assert payload["provider"] == "zai_reasoning"
+    assert payload["model"]
+    assert payload["input_tokens"] == 0
+    assert payload["output_tokens"] == 0
+    assert payload["latency_ms"] == 1
+    assert payload["citations"][0]["document_id"] == "doc-eval"
+
+    judged = owner_client.post(
+        f"/books/doc-eval/answers/{answer_id}/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert judged.status_code == 200, judged.text
+    replay = owner_client.post(
+        f"/books/doc-eval/answers/{answer_id}/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert replay.status_code == 200
+    assert replay.json()["judgment_id"] == judged.json()["judgment_id"]
+    conflict = owner_client.post(
+        f"/books/doc-eval/answers/{answer_id}/judgment",
+        json={"verdict": "bad"},
+        headers=_OWNER_HEADERS,
+    )
+    assert conflict.status_code == 409
+
+    exported = owner_client.get(
+        "/books/doc-eval/answer-evaluations",
+        headers=_OWNER_HEADERS,
+    )
+    assert exported.status_code == 200, exported.text
+    assert exported.json()["count"] == 1
+    record = exported.json()["answers"][0]
+    assert record["answer_id"] == answer_id
+    assert record["verdict"] == "good"
+    assert record["question"] == "what does the passage establish?"
+
+
+def test_disabled_event_log_returns_answer_without_inviting_paid_retry(
+    db, owner_client, stub_embeddings, monkeypatch,
+):
+    _gated_book(db, "doc-disabled", content_class="personal_reading", title="Disabled")
+    provider = register_fake()
+    monkeypatch.setenv("ANTIEK_EVENTS_DISABLED", "1")
+    response = owner_client.post(
+        "/books/doc-disabled/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["answer_id"] is None
+    assert response.json()["capture_status"] == "unavailable"
+    assert response.json()["answer"]
+    assert len(provider.prompts) == 1
+
+
+def test_capture_exception_returns_paid_answer_once(
+    db, owner_client, stub_embeddings, monkeypatch,
+):
+    import substrate.event_log
+
+    _gated_book(db, "doc-capture-error", content_class="personal_reading", title="Capture")
+    provider = register_fake()
+
+    def fail_capture(*_args, **_kwargs):
+        raise OSError("simulated event-store failure")
+
+    monkeypatch.setattr(substrate.event_log, "emit_typed", fail_capture)
+    response = owner_client.post(
+        "/books/doc-capture-error/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 200
+    assert response.json()["answer_id"] is None
+    assert response.json()["capture_status"] == "unavailable"
+    assert len(provider.prompts) == 1
+
+
+def test_concurrent_judgment_requests_append_once(
+    db, owner_client, stub_embeddings,
+):
+    from substrate.event_log import trajectory
+
+    _gated_book(db, "doc-race", content_class="personal_reading", title="Race")
+    register_fake()
+    answered = owner_client.post(
+        "/books/doc-race/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    answer_id = answered.json()["answer_id"]
+
+    def judge_once(_index):
+        return owner_client.post(
+            f"/books/doc-race/answers/{answer_id}/judgment",
+            json={"verdict": "good"},
+            headers=_OWNER_HEADERS,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        responses = list(pool.map(judge_once, range(8)))
+    assert {response.status_code for response in responses} == {200}
+    assert len({response.json()["judgment_id"] for response in responses}) == 1
+    judgments = [
+        row for row in trajectory("read-doc-race")
+        if row["action_type"] == "read.book_answer_judged"
+    ]
+    assert len(judgments) == 1
+
+
+def test_ungrounded_answer_records_explicit_no_model_receipt(
+    db, owner_client, stub_embeddings,
+):
+    from substrate.event_log import trajectory
+
+    con = connect_write(db, purpose="empty-book")
+    insert_document(
+        con, document_id="doc-empty", source_tier=2, document_type="book",
+        title="Scanned", author="Author", raw_text="",
+    )
+    bingest.register_book(
+        con, document_id="doc-empty", content_class="personal_reading",
+        provenance="owner scan",
+    )
+    con.close()
+    response = owner_client.post(
+        "/books/doc-empty/ask",
+        json={"question": "what is here?"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 200, response.text
+    row = next(
+        row for row in trajectory("read-doc-empty")
+        if row["event_id"] == response.json()["answer_id"]
+    )
+    assert row["payload"]["grounded"] is False
+    for field in ("provider", "model", "input_tokens", "output_tokens", "cost_usd", "latency_ms"):
+        assert row["payload"][field] is None
+
+
+def test_judgment_rejects_forged_or_other_owner_answer(
+    db, owner_client,
+):
+    from substrate.event_log import emit_typed
+    from substrate.schemas import ReadBookAnsweredPayload
+
+    answer_id = emit_typed(
+        "read-doc-owned-by-other",
+        ReadBookAnsweredPayload(
+            owner_id="other-owner",
+            question="private question",
+            answer="private answer",
+            grounded=False,
+            context_chunk_count=0,
+            research_tier="deep",
+        ),
+        document_id="doc-owned-by-other",
+    )
+    response = owner_client.post(
+        f"/books/doc-owned-by-other/answers/{answer_id}/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert response.status_code == 404
+    forged = owner_client.post(
+        "/books/doc-owned-by-other/answers/evt-forged/judgment",
+        json={"verdict": "good"},
+        headers=_OWNER_HEADERS,
+    )
+    assert forged.status_code == 404
 
 
 @pytest.mark.parametrize(

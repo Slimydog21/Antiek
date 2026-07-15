@@ -119,7 +119,8 @@ CREATE TABLE IF NOT EXISTS nodes (
     )),
     created_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     degree_cached    INTEGER NOT NULL DEFAULT 0,
-    metadata         TEXT
+    metadata         TEXT,
+    owner_user_id    TEXT
 );
 
 -- ============================================================
@@ -361,6 +362,8 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "monitors",
     "supersession_candidates",
     "embeddings_meta",
+    "multimedia_twin_runs",
+    "multimedia_distillation_claims",
 )
 
 
@@ -417,8 +420,33 @@ CREATE INDEX IF NOT EXISTS idx_ip_holders_status ON ip_holders(status);
 --   'user_public_contribution'      → user-posted to public graph (§13.9)
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS content_class TEXT;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS ip_holder_id TEXT;
+ALTER TABLE nodes ADD COLUMN IF NOT EXISTS owner_user_id TEXT;
 CREATE INDEX IF NOT EXISTS idx_documents_content_class ON documents(content_class);
 CREATE INDEX IF NOT EXISTS idx_documents_ip_holder ON documents(ip_holder_id);
+CREATE INDEX IF NOT EXISTS idx_nodes_owner ON nodes(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS multimedia_twin_runs (
+    run_id               TEXT PRIMARY KEY,
+    owner_user_id        TEXT NOT NULL,
+    source_document_id   TEXT NOT NULL REFERENCES documents(document_id),
+    source_html_sha256   TEXT NOT NULL,
+    source_event_id      TEXT NOT NULL,
+    distillation_json    TEXT NOT NULL,
+    distillation_sha256  TEXT NOT NULL,
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS multimedia_distillation_claims (
+    run_id               TEXT PRIMARY KEY,
+    owner_user_id        TEXT NOT NULL,
+    source_document_id   TEXT NOT NULL REFERENCES documents(document_id),
+    source_html_sha256   TEXT NOT NULL,
+    source_event_id      TEXT NOT NULL,
+    claim_token          TEXT NOT NULL,
+    status               TEXT NOT NULL CHECK (status IN ('in_progress', 'completed')),
+    created_at           TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at         TIMESTAMP
+);
 
 -- ============================================================
 -- notebooks — Wedge 2 linchpin (Sprint 18-19, §4.2)
@@ -1255,15 +1283,20 @@ def _schema_is_present(db_path: str) -> bool:
         return False
     try:
         row = con.execute(
-            "SELECT count(*) FROM information_schema.tables "
-            "WHERE table_schema = 'main' AND table_name = 'nodes'"
+            "SELECT (EXISTS (SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='nodes' "
+            "AND column_name='owner_user_id') AND EXISTS (SELECT 1 FROM "
+            "information_schema.tables WHERE table_schema='main' "
+            "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
+            "information_schema.tables WHERE table_schema='main' "
+            "AND table_name='multimedia_distillation_claims'))"
         ).fetchone()
     except Exception:
         return False
     finally:
         with contextlib.suppress(Exception):
             con.close()
-    present = bool(row and row[0] > 0)
+    present = bool(row and row[0])
     if present:
         _INITIALIZED_PATHS.add(db_path)
     return present

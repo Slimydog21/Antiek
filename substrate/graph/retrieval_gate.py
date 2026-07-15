@@ -55,10 +55,10 @@ RESTRICTED_CONTENT_CLASSES: frozenset[str] = frozenset({
 # Content classes that are OWNER-ONLY: the owner reads them in full on a
 # privileged path, but they NEVER surface on a non-privileged (public /
 # attribution-eligible) retrieval. personal_reading (the Personal-Reading Lane
-# SPR-01 fourth rights state) is the only member: it is the owner's private
+# SPR-01 fourth rights state) is the owner's private
 # third-party reading (a fetched essay / transcript / tweet) with no rights basis
 # to serve publicly and — unlike restricted_pending_opt_in — no escrow economics
-# at all (it never earns). It is kept as a SEPARATE set from
+# at all (it never earns). It stays separate from
 # RESTRICTED_CONTENT_CLASSES on purpose: the two gate states have OPPOSITE
 # monetization semantics (restricted EARNS to escrow; personal_reading earns
 # nothing), and RESTRICTED_CONTENT_CLASSES carries the documented contract that
@@ -81,10 +81,28 @@ _NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES: frozenset[str] = (
 )
 
 
+def node_owner_sql_clause(
+    *, node_alias: str = "n", owner_user_id: str | None = None
+) -> tuple[str, list[str]]:
+    """Deny private graph nodes unless the accessing owner matches exactly.
+
+    NULL-owned rows are shared/legacy knowledge. This gate is independent of
+    rights policy: a privileged policy tag never grants access to another
+    account's private graph.
+    """
+    if owner_user_id is None:
+        return f" AND {node_alias}.owner_user_id IS NULL", []
+    return (
+        f" AND ({node_alias}.owner_user_id IS NULL OR {node_alias}.owner_user_id = ?)",
+        [owner_user_id],
+    )
+
+
 def non_privileged_chunk_sql_clause(
     *,
     table_alias: str = "d",
     policy_tag: str = "attribution_eligible",
+    owner_user_id: str = "__operator__",
 ) -> tuple[str, list[str]]:
     """SQL fragment + bind params for the non-privileged chunk gate.
 
@@ -94,8 +112,8 @@ def non_privileged_chunk_sql_clause(
     ingest always writes an explicit class via ``register_source_document``, so
     NULL denotes only pre-migration legacy content, which the codebase serves by
     contract (``test_sprint11_api::test_get_chunk_null_content_class_grandfathered``,
-    ``test_graph``, ``test_grounding``). On a privileged tag
-    (``private_research`` / ``operator_only``), returns ``("", [])``.
+    ``test_graph``, ``test_grounding``). A privileged tag bypasses rights
+    withholding but still requires exact ownership for owner-only classes.
 
     NOTE: ASR SR-07 proposed flipping NULL fail-closed here; that was rejected for
     #65 because it hides legacy content from search/grounding with no backfill.
@@ -103,10 +121,18 @@ def non_privileged_chunk_sql_clause(
 
     Args:
         table_alias: Alias of the ``documents`` row in the query (default ``d``).
-        policy_tag: Retrieval policy; only PRIVILEGED_POLICY_TAGS bypass the gate.
+        policy_tag: Retrieval policy; privileged tags bypass rights withholding.
+        owner_user_id: Account allowed to retrieve owner-only classes.
     """
     if policy_tag in PRIVILEGED_POLICY_TAGS:
-        return "", []
+        owner_only = sorted(PERSONAL_ONLY_CONTENT_CLASSES)
+        placeholders = ",".join("?" for _ in owner_only)
+        return (
+            f" AND ({table_alias}.content_class IS NULL OR "
+            f"{table_alias}.content_class NOT IN ({placeholders}) OR "
+            f"{table_alias}.owner_user_id = ?)",
+            [*owner_only, owner_user_id],
+        )
     excluded = sorted(_NON_PRIVILEGED_EXCLUDED_CONTENT_CLASSES)
     placeholders = ",".join("?" for _ in excluded)
     sql = (
