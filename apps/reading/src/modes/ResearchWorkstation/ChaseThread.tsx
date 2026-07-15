@@ -8,6 +8,7 @@ import { recordSpawnRelationship } from "../../hooks/useInvestigationTree";
 import { startInvestigation, ApiError } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import { CelebrateBurst, useCelebrate } from "../../shared/delight";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import ThinkingStream from "./ThinkingStream";
 import VoiceChaseButton from "./VoiceChaseButton";
@@ -107,9 +108,11 @@ export default function ChaseThread({
       // The payoff is already in hand (the id is back); the beat just
       // decorates it — non-blocking, fires once.
       celebrate();
+      emitWernerExperience("deep_research_complete");
     } catch (e) {
       const reason = e instanceof ApiError ? e.body || null : null;
       setError({ reason });
+      emitWernerExperience("deep_research_error");
     } finally {
       setBusy(false);
     }

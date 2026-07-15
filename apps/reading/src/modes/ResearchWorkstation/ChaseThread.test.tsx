@@ -159,3 +159,45 @@ describe("ChaseThread — honest no-key (M4)", () => {
     expect(screen.queryByText(/following the thread/)).toBeNull();
   });
 });
+
+describe("ChaseThread — living Werner product edges", () => {
+  it("emits deep_research_complete on successful Follow this", async () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-ok",
+      status: "in_progress",
+      start_event_id: "e-ok",
+    });
+    renderChase({
+      spawnContext: "a passage",
+      parentInvestigationId: "inv-parent",
+    });
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
+    expect(seen).toContain("deep_research_complete");
+    window.removeEventListener("antiek:werner-experience", onExp);
+  });
+
+  it("emits deep_research_error when launch fails", async () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    startInvestigationMock.mockRejectedValue(new Error("network"));
+    renderChase({
+      spawnContext: "a passage",
+      parentInvestigationId: "inv-parent",
+    });
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(seen).toContain("deep_research_error"));
+    window.removeEventListener("antiek:werner-experience", onExp);
+  });
+});
+
