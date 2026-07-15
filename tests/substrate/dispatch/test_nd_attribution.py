@@ -11,7 +11,9 @@ from substrate.dispatch.nd_attribution import (
     clear_nd_decision,
     consume_nd_decision,
     peek_nd_decision,
+    push_nd_decision,
     record_nd_decision,
+    reset_nd_decision,
 )
 from substrate.schemas.events import EVENT_SCHEMA_VERSION, DispatchCallPayload
 
@@ -139,6 +141,27 @@ def test_record_writes_nothing_and_returns_none() -> None:
     assert staged["nd_bypassed"] is True
 
 
+def test_scoped_attribution_ignores_unrelated_emitter_and_remains_available() -> None:
+    scope = object()
+    decision = {
+        "nd_session_id": "scoped",
+        "nd_recommended_provider": "zai",
+        "nd_recommended_model": "glm-5.2",
+        "nd_tradeoff": "quality",
+        "nd_decision_latency_ms": 4,
+        "nd_bypassed": True,
+        "nd_bypass_reason": "shadow",
+    }
+    tokens = push_nd_decision(decision, scope=scope)
+    try:
+        assert consume_nd_decision()["nd_session_id"] is None
+        assert consume_nd_decision(scope=object())["nd_session_id"] is None
+        assert consume_nd_decision(scope=scope)["nd_session_id"] == "scoped"
+        assert consume_nd_decision(scope=scope)["nd_session_id"] == "scoped"
+    finally:
+        reset_nd_decision(tokens)
+
+
 def test_remote_exec_emitter_also_drains_nd(monkeypatch: pytest.MonkeyPatch) -> None:
     import runtime.remote_exec.cost as costmod
 
@@ -174,7 +197,7 @@ def test_remote_exec_emitter_also_drains_nd(monkeypatch: pytest.MonkeyPatch) -> 
     assert peek_nd_decision() is None
 
 
-def test_no_callers_of_record_nd_decision_in_hot_path() -> None:
+def test_shadow_uses_only_the_scoped_push_in_hot_path() -> None:
     out = subprocess.run(
         [
             "grep",
@@ -188,9 +211,24 @@ def test_no_callers_of_record_nd_decision_in_hot_path() -> None:
         text=True,
         check=False,
     )
-    offending = [
+    record_callers = [
         line
         for line in out.stdout.splitlines()
         if "nd_attribution.py" not in line
     ]
-    assert offending == []
+    assert record_callers == []
+    push = subprocess.run(
+        [
+            "grep",
+            "-rInE",
+            "--include=*.py",
+            r"push_nd_decision\(",
+            str(_REPO / "substrate" / "dispatch"),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    push_callers = [line for line in push.stdout.splitlines() if "nd_attribution.py" not in line]
+    assert len(push_callers) == 1
+    assert "substrate/dispatch/router.py" in push_callers[0]
