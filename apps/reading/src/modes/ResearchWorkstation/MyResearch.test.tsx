@@ -38,7 +38,12 @@ const { listState, budgetState, authState, navigateMock } = vi.hoisted(() => ({
       host_local_max_concurrency: 20,
     } as Record<string, number> | null,
   },
-  authState: { current: { status: "authenticated" as "authenticated" | "unauthenticated" | "loading" } },
+  authState: {
+    current: {
+      status: "authenticated" as
+        "authenticated" | "unauthenticated" | "loading",
+    },
+  },
   navigateMock: vi.fn(),
 }));
 
@@ -71,9 +76,11 @@ vi.mock("react-router-dom", async (orig) => {
   return { ...actual, useNavigate: () => navigateMock };
 });
 
-import MyResearch from "./MyResearch";
+import MyResearch, { ResearchLineageBoard } from "./MyResearch";
 
-function inv(over: Partial<InvestigationSummary> & { investigation_id: string }): InvestigationSummary {
+function inv(
+  over: Partial<InvestigationSummary> & { investigation_id: string },
+): InvestigationSummary {
   return {
     question: "A question",
     status: "completed",
@@ -113,9 +120,21 @@ afterEach(() => cleanup());
 describe("MyResearch — one monitor, plain language (M1)", () => {
   it("shows plain-language status, never the raw state enum", async () => {
     listState.current.investigations = [
-      inv({ investigation_id: "inv-aaa111", question: "Running one", status: "in_progress" }),
-      inv({ investigation_id: "inv-bbb222", question: "Done one", status: "completed" }),
-      inv({ investigation_id: "inv-ccc333", question: "Broken one", status: "failed" }),
+      inv({
+        investigation_id: "inv-aaa111",
+        question: "Running one",
+        status: "in_progress",
+      }),
+      inv({
+        investigation_id: "inv-bbb222",
+        question: "Done one",
+        status: "completed",
+      }),
+      inv({
+        investigation_id: "inv-ccc333",
+        question: "Broken one",
+        status: "failed",
+      }),
     ];
     renderMonitor();
     // Plain words present on the row tags ("done" also appears in the
@@ -130,8 +149,18 @@ describe("MyResearch — one monitor, plain language (M1)", () => {
 
   it("badges a daemon-spawned research 'found by the loop', not an operator one (SPR-09)", async () => {
     listState.current.investigations = [
-      inv({ investigation_id: "inv-loop01", question: "Loop launched this", status: "completed", spawned_by_daemon: true }),
-      inv({ investigation_id: "inv-op01", question: "I launched this", status: "completed", spawned_by_daemon: false }),
+      inv({
+        investigation_id: "inv-loop01",
+        question: "Loop launched this",
+        status: "completed",
+        spawned_by_daemon: true,
+      }),
+      inv({
+        investigation_id: "inv-op01",
+        question: "I launched this",
+        status: "completed",
+        spawned_by_daemon: false,
+      }),
     ];
     renderMonitor();
     // The loop-launched one carries the distinction badge; exactly one row has it.
@@ -141,18 +170,44 @@ describe("MyResearch — one monitor, plain language (M1)", () => {
 
   it("groups cascade/chase children under their parent session", () => {
     listState.current.investigations = [
-      inv({ investigation_id: "inv-parent01", question: "The big question", status: "in_progress" }),
-      inv({ investigation_id: "inv-leaf01", question: "Sub one", status: "in_progress", parent_investigation_id: "inv-parent01" }),
-      inv({ investigation_id: "inv-leaf02", question: "Sub two", status: "completed", parent_investigation_id: "inv-parent01" }),
-      inv({ investigation_id: "inv-solo01", question: "Standalone", status: "completed" }),
+      inv({
+        investigation_id: "inv-parent01",
+        question: "The big question",
+        status: "in_progress",
+      }),
+      inv({
+        investigation_id: "inv-leaf01",
+        question: "Sub one",
+        status: "in_progress",
+        parent_investigation_id: "inv-parent01",
+      }),
+      inv({
+        investigation_id: "inv-leaf02",
+        question: "Sub two",
+        status: "completed",
+        parent_investigation_id: "inv-parent01",
+      }),
+      inv({
+        investigation_id: "inv-solo01",
+        question: "Standalone",
+        status: "completed",
+      }),
     ];
     renderMonitor();
     // The family header names the parent (which also appears as its own row,
     // since the parent IS a research) + counts its members (parent + 2).
     expect(screen.getAllByText("The big question").length).toBeGreaterThan(0);
-    expect(screen.getByText("3 researches")).toBeTruthy();
+    expect(screen.queryByText("3 researches")).toBeNull();
     // The standalone research is its own row, not under a family header.
     expect(screen.getByText("Standalone")).toBeTruthy();
+    expect(screen.getByText("Research family")).toBeTruthy();
+    expect(screen.getByText("2 branches")).toBeTruthy();
+    expect(screen.getByText("Origin")).toBeTruthy();
+    expect(screen.getByText("Branch 01")).toBeTruthy();
+    expect(screen.getByText("Branch 02")).toBeTruthy();
+    expect(
+      document.querySelectorAll('[data-lineage-role="branch"]'),
+    ).toHaveLength(2);
   });
 });
 
@@ -183,8 +238,16 @@ describe("MyResearch — honest aggregate (M2)", () => {
 
   it("sums real per-research cost, not an estimate", () => {
     listState.current.investigations = [
-      inv({ investigation_id: "inv-c1", status: "completed", cost_usd_total: 0.0123 }),
-      inv({ investigation_id: "inv-c2", status: "completed", cost_usd_total: 0.0077 }),
+      inv({
+        investigation_id: "inv-c1",
+        status: "completed",
+        cost_usd_total: 0.0123,
+      }),
+      inv({
+        investigation_id: "inv-c2",
+        status: "completed",
+        cost_usd_total: 0.0077,
+      }),
     ];
     renderMonitor();
     // 0.0123 + 0.0077 = 0.0200 — the real sum, rendered to 4dp.
@@ -205,10 +268,16 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
     authState.current = { status: "unauthenticated" };
     // Non-empty list so the empty-state retry button (also "Start a research")
     // doesn't collide — this test isolates the launch-bar gate.
-    listState.current.investigations = [inv({ investigation_id: "inv-z1", status: "completed" })];
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-z1", status: "completed" }),
+    ];
     renderMonitor();
-    const start = screen.getByRole("button", { name: "Start a research" }) as HTMLButtonElement;
-    const several = screen.getByRole("button", { name: "Launch several at once" }) as HTMLButtonElement;
+    const start = screen.getByRole("button", {
+      name: "Start a research",
+    }) as HTMLButtonElement;
+    const several = screen.getByRole("button", {
+      name: "Launch several at once",
+    }) as HTMLButtonElement;
     expect(start.disabled).toBe(true);
     expect(several.disabled).toBe(true);
     expect(screen.getByText(/Sign in to start a research/i)).toBeTruthy();
@@ -218,10 +287,167 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
     listState.current.investigations = [
       inv({ investigation_id: "inv-x1", status: "completed" }),
     ];
-    const { default: userEventModule } = await import("@testing-library/user-event");
+    const { default: userEventModule } =
+      await import("@testing-library/user-event");
     const user = userEventModule.setup();
     renderMonitor();
-    await user.click(screen.getByRole("button", { name: "Launch several at once" }));
+    await user.click(
+      screen.getByRole("button", { name: "Launch several at once" }),
+    );
     expect(navigateMock).toHaveBeenCalledWith("/");
+  });
+});
+
+// ── Lineage board: tree structure (the visual hierarchy) ────────────────
+//
+// Focused tests for ResearchLineageBoard — the pure component that renders
+// the parent/child tree. Uses the component directly (no hooks) so these
+// are true unit tests of the tree-building and rendering logic.
+
+describe("ResearchLineageBoard — tree structure", () => {
+  function renderBoard(investigations: InvestigationSummary[]) {
+    return render(
+      <MemoryRouter>
+        <ResearchLineageBoard investigations={investigations} />
+      </MemoryRouter>,
+    );
+  }
+
+  it("renders a family header with origin and branch labels for a parent+children group", () => {
+    renderBoard([
+      inv({ investigation_id: "inv-root", question: "The big question" }),
+      inv({ investigation_id: "inv-a", question: "Sub A", parent_investigation_id: "inv-root" }),
+      inv({ investigation_id: "inv-b", question: "Sub B", parent_investigation_id: "inv-root" }),
+    ]);
+    // Family header
+    expect(screen.getByText("Research family")).toBeTruthy();
+    // Family header + root row both show the question
+    expect(screen.getAllByText("The big question").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("2 branches")).toBeTruthy();
+    // Origin label on the root row
+    expect(screen.getByText("Origin")).toBeTruthy();
+    // Branch labels (one-indexed, zero-padded)
+    expect(screen.getByText("Branch 01")).toBeTruthy();
+    expect(screen.getByText("Branch 02")).toBeTruthy();
+    // data-lineage-role attributes on the li elements
+    expect(document.querySelectorAll('[data-lineage-role="origin"]')).toHaveLength(1);
+    expect(document.querySelectorAll('[data-lineage-role="branch"]')).toHaveLength(2);
+  });
+
+  it("renders standalone research as a flat card with no family header", () => {
+    renderBoard([
+      inv({ investigation_id: "inv-solo", question: "Standalone topic" }),
+    ]);
+    // No family header
+    expect(screen.queryByText("Research family")).toBeNull();
+    expect(screen.queryByText("Origin")).toBeNull();
+    // The research question is rendered
+    expect(screen.getByText("Standalone topic")).toBeTruthy();
+    // Standalone role attribute
+    expect(document.querySelectorAll('[data-lineage-role="standalone"]')).toHaveLength(1);
+  });
+
+  it("marks children as 'found by the loop' when spawned_by_daemon is true", () => {
+    renderBoard([
+      inv({ investigation_id: "inv-root", question: "Root" }),
+      inv({
+        investigation_id: "inv-child",
+        question: "Daemon child",
+        parent_investigation_id: "inv-root",
+        spawned_by_daemon: true,
+      }),
+    ]);
+    expect(screen.getByText("found by the loop")).toBeTruthy();
+  });
+
+  it("renders recursive descendants once inside their original family", () => {
+    renderBoard([
+      inv({ investigation_id: "inv-root", question: "Root question" }),
+      inv({
+        investigation_id: "inv-child",
+        question: "Child question",
+        parent_investigation_id: "inv-root",
+      }),
+      inv({
+        investigation_id: "inv-grandchild",
+        question: "Grandchild question",
+        parent_investigation_id: "inv-child",
+      }),
+    ]);
+
+    expect(screen.getAllByText("Research family")).toHaveLength(1);
+    expect(screen.getByText("2 branches")).toBeTruthy();
+    expect(screen.getByText("Grandchild question")).toBeTruthy();
+    expect(screen.getByText("Depth 2 · Branch 01")).toBeTruthy();
+    expect(document.querySelectorAll('[data-lineage-role="branch"]')).toHaveLength(2);
+    expect(document.querySelectorAll('[data-lineage-depth="2"]')).toHaveLength(1);
+  });
+
+  it("returns null when the investigations list is empty", () => {
+    const { container } = renderBoard([]);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("handles orphan children (parent not in the list) as standalone roots", () => {
+    renderBoard([
+      inv({
+        investigation_id: "inv-orphan",
+        question: "Orphan child",
+        parent_investigation_id: "inv-missing",
+      }),
+    ]);
+    // No family header — the orphan becomes a standalone root.
+    expect(screen.queryByText("Research family")).toBeNull();
+    expect(screen.getByText("Orphan child")).toBeTruthy();
+    expect(document.querySelectorAll('[data-lineage-role="standalone"]')).toHaveLength(1);
+  });
+
+  it("keeps cyclic lineage visible as standalone roots", () => {
+    renderBoard([
+      inv({
+        investigation_id: "inv-cycle-a",
+        question: "Cycle A",
+        parent_investigation_id: "inv-cycle-b",
+      }),
+      inv({
+        investigation_id: "inv-cycle-b",
+        question: "Cycle B",
+        parent_investigation_id: "inv-cycle-a",
+      }),
+    ]);
+
+    expect(screen.getByText("Cycle A")).toBeTruthy();
+    expect(screen.getByText("Cycle B")).toBeTruthy();
+    expect(document.querySelectorAll('[data-lineage-role="standalone"]')).toHaveLength(2);
+  });
+
+  it("renders a repeated investigation id only once", () => {
+    renderBoard([
+      inv({ investigation_id: "inv-duplicate", question: "Canonical row" }),
+      inv({ investigation_id: "inv-duplicate", question: "Repeated row" }),
+    ]);
+
+    expect(screen.getByText("Canonical row")).toBeTruthy();
+    expect(screen.queryByText("Repeated row")).toBeNull();
+    expect(document.querySelectorAll('[data-lineage-role="standalone"]')).toHaveLength(1);
+  });
+
+  it("separates independent families and standalones into distinct sections", () => {
+    renderBoard([
+      inv({ investigation_id: "inv-fam-root", question: "Family root" }),
+      inv({ investigation_id: "inv-fam-child", question: "Family child", parent_investigation_id: "inv-fam-root" }),
+      inv({ investigation_id: "inv-solo", question: "Lone research" }),
+    ]);
+    // Two sections: one family, one standalone
+    const sections = document.querySelectorAll("section.research-lineage");
+    expect(sections).toHaveLength(2);
+    // Family root appears in header + origin row
+    expect(screen.getAllByText("Family root").length).toBeGreaterThanOrEqual(2);
+    expect(screen.getByText("Family child")).toBeTruthy();
+    expect(screen.getByText("Lone research")).toBeTruthy();
+    // Exactly one family header
+    expect(screen.getAllByText("Research family")).toHaveLength(1);
+    // Exactly one standalone role
+    expect(document.querySelectorAll('[data-lineage-role="standalone"]')).toHaveLength(1);
   });
 });

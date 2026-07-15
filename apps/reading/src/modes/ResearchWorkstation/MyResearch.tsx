@@ -35,7 +35,7 @@
  * semaphore, and the surface says exactly that.
  */
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { getBudgetDefaults, type BudgetDefaults } from "../../api/research";
@@ -46,6 +46,10 @@ import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
 import SuggestedResearch from "./SuggestedResearch";
+
+// CSS-only tree connectors for the lineage board — pseudo-elements draw
+// the trunk and branches; no SVG, no JS, no generated art.
+import "./research-lineage-board.css";
 
 // ── Status → plain language (SPR-02 narration vocabulary) ─────────────────
 //
@@ -93,49 +97,63 @@ function assertNever(x: never): never {
   throw new Error(`unhandled investigation status: ${String(x)}`);
 }
 
-// ── Grouping: a "session" is a parent research + the researches spawned from
-//    it (a cascade's leaves, or a chase's child). Standalone researches with
-//    no parent are their own single-row group. This mirrors the substrate's
-//    parent/child relationship — no separate session concept invented. ──
+// ── Lineage forest. Every research appears exactly once, at its real depth.
+//    Standalones remain flat cards; cascades and recursive chases retain their
+//    full ancestry without inventing a separate session concept. ───────────
 
-interface Group {
-  /** The parent research id, or the standalone research's own id. */
-  rootId: string;
-  /** The parent summary if it is itself in the list; else null (orphan root). */
-  root: InvestigationSummary | null;
-  /** Members in newest-first order (root first when present). */
-  members: InvestigationSummary[];
+interface TreeNode {
+  summary: InvestigationSummary;
+  children: TreeNode[];
 }
 
-function groupByParent(items: InvestigationSummary[]): Group[] {
-  const byId = new Map(items.map((s) => [s.investigation_id, s]));
-  const groups = new Map<string, InvestigationSummary[]>();
-  for (const s of items) {
-    // A research belongs to its parent's group when the parent is also in the
-    // list; otherwise it heads its own group (an orphan root, or a standalone).
-    const parent = s.parent_investigation_id;
-    const key = parent && byId.has(parent) ? parent : s.investigation_id;
-    const arr = groups.get(key) ?? [];
-    arr.push(s);
-    groups.set(key, arr);
+function buildLineageTree(items: InvestigationSummary[]): TreeNode[] {
+  // The list contract normally returns unique IDs. Preserve the first row if
+  // a malformed response repeats one so React keys and lineage stay stable.
+  const byId = new Map<string, InvestigationSummary>();
+  for (const summary of items) {
+    if (!byId.has(summary.investigation_id)) {
+      byId.set(summary.investigation_id, summary);
+    }
   }
-  const out: Group[] = [];
-  for (const [rootId, members] of groups) {
-    // Root first (if present), then newest-first.
-    members.sort((a, b) => {
-      if (a.investigation_id === rootId) return -1;
-      if (b.investigation_id === rootId) return 1;
-      return (b.started_at ?? "").localeCompare(a.started_at ?? "");
-    });
-    out.push({ rootId, root: byId.get(rootId) ?? null, members });
+  const nodes = new Map(
+    [...byId.values()].map((summary) => [
+      summary.investigation_id,
+      { summary, children: [] } as TreeNode,
+    ]),
+  );
+  const roots: TreeNode[] = [];
+
+  const wouldCreateCycle = (childId: string, parentId: string): boolean => {
+    const seen = new Set<string>();
+    let current: string | null | undefined = parentId;
+    while (current && byId.has(current) && !seen.has(current)) {
+      if (current === childId) return true;
+      seen.add(current);
+      current = byId.get(current)?.parent_investigation_id;
+    }
+    return false;
+  };
+
+  for (const s of byId.values()) {
+    const pid = s.parent_investigation_id;
+    const node = nodes.get(s.investigation_id)!;
+    if (pid && byId.has(pid) && !wouldCreateCycle(s.investigation_id, pid)) {
+      nodes.get(pid)!.children.push(node);
+    } else {
+      // Missing parents and cyclic edges become visible roots, never omissions.
+      roots.push(node);
+    }
   }
-  // Newest group first, by the freshest member's start time.
-  out.sort((a, b) => {
-    const ta = a.members[0]?.started_at ?? "";
-    const tb = b.members[0]?.started_at ?? "";
-    return tb.localeCompare(ta);
-  });
-  return out;
+
+  const newestFirst = (a: TreeNode, b: TreeNode) =>
+    (b.summary.started_at ?? "").localeCompare(a.summary.started_at ?? "");
+  for (const node of nodes.values()) node.children.sort(newestFirst);
+  roots.sort(newestFirst);
+  return roots;
+}
+
+function descendantCount(node: TreeNode): number {
+  return node.children.reduce((total, child) => total + 1 + descendantCount(child), 0);
 }
 
 // ── Aggregate (M2): real counts + real summed cost. ───────────────────────
@@ -178,12 +196,16 @@ function aggregate(items: InvestigationSummary[]): Aggregate {
  * renders exactly as before: full page, header, launch bar, suggested lane.
  * The row → /inv/{id} navigation contract is identical in both.
  */
-export default function MyResearch({ embedded = false }: { embedded?: boolean } = {}) {
+export default function MyResearch({
+  embedded = false,
+}: { embedded?: boolean } = {}) {
   const navigate = useNavigate();
   const { state: auth } = useAuth();
   // The substrate's own list, polled. Limit generous — the monitor is the
   // home for ALL researches, not a recent slice.
-  const { investigations, loading, error, refetch } = useInvestigationList({ limit: 200 });
+  const { investigations, loading, error, refetch } = useInvestigationList({
+    limit: 200,
+  });
 
   // The real host-local concurrency bound, read off the contract (never
   // hardcoded — it would drift from runtime/research_runner). Best-effort: a
@@ -205,7 +227,6 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   }, []);
 
   const agg = useMemo(() => aggregate(investigations), [investigations]);
-  const groups = useMemo(() => groupByParent(investigations), [investigations]);
 
   // Honest "N running, M queued": the host-local runner multiplexes browse
   // loops under a bounded semaphore (the contract's max_concurrency). More
@@ -242,9 +263,10 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
               </h1>
               {!embedded && (
                 <p className="max-w-2xl text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
-                  Every research you have running and finished, in one place. Each
-                  shows what it is doing in plain language; open any one for the
-                  full view. Launch several at once and watch them here together.
+                  Every research you have running and finished, in one place.
+                  Each shows what it is doing in plain language; open any one
+                  for the full view. Launch several at once and watch them here
+                  together.
                 </p>
               )}
             </div>
@@ -308,16 +330,12 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
         )}
 
         {loading && investigations.length === 0 && (
-          <p className="text-sm italic text-shadow-1 dark:text-moonlight">Loading…</p>
+          <p className="text-sm italic text-shadow-1 dark:text-moonlight">
+            Loading…
+          </p>
         )}
 
-        {groups.length > 0 && (
-          <div className="space-y-4">
-            {groups.map((g) => (
-              <GroupCard key={g.rootId} group={g} />
-            ))}
-          </div>
-        )}
+        <ResearchLineageBoard investigations={investigations} />
       </div>
     </div>
   );
@@ -359,7 +377,8 @@ function ConcurrencyBar({
         </span>
       )}
       <span>
-        <span className="text-ink dark:text-bright">${costUsd.toFixed(4)}</span> spent so far
+        <span className="text-ink dark:text-bright">${costUsd.toFixed(4)}</span>{" "}
+        spent so far
       </span>
       {/* The honest concurrency framing: how many can run at once, and the
           fact that "20 at once" is the remote-provisioned ceiling, not what
@@ -384,10 +403,20 @@ function LaunchBar({
 }) {
   return (
     <div className="flex flex-wrap items-center gap-3">
-      <LemonButton variant="primary" size="md" onClick={onStartOne} disabled={disabled}>
+      <LemonButton
+        variant="primary"
+        size="md"
+        onClick={onStartOne}
+        disabled={disabled}
+      >
         Start a research
       </LemonButton>
-      <LemonButton variant="secondary" size="md" onClick={onLaunchSeveral} disabled={disabled}>
+      <LemonButton
+        variant="secondary"
+        size="md"
+        onClick={onLaunchSeveral}
+        disabled={disabled}
+      >
         Launch several at once
       </LemonButton>
       {disabled && (
@@ -399,98 +428,206 @@ function LaunchBar({
   );
 }
 
-function GroupCard({ group }: { group: Group }) {
-  // A group with one member is a standalone research; >1 is a cascade/chase
-  // family. The header names the family by its parent question when present.
-  const isFamily = group.members.length > 1;
-  const headTitle =
-    group.root?.question ??
-    group.members[0]?.question ??
-    "Research";
+/**
+ * The visual read of the canonical parent/child relationship. Kept pure so
+ * Storybook can prove the hierarchy without replacing production hooks or
+ * inventing a second research model.
+ */
+export function ResearchLineageBoard({
+  investigations,
+  nowMs = Date.now(),
+}: {
+  investigations: InvestigationSummary[];
+  /** Fixed by visual fixtures; production naturally uses the current time. */
+  nowMs?: number;
+}) {
+  const tree = useMemo(() => buildLineageTree(investigations), [investigations]);
+  if (tree.length === 0) return null;
+  return (
+    <div className="research-lineage-board" aria-label="Research lineages">
+      {tree.map((node) => (
+        <FamilyCard key={node.summary.investigation_id} node={node} nowMs={nowMs} />
+      ))}
+    </div>
+  );
+}
+
+function FamilyCard({ node, nowMs }: { node: TreeNode; nowMs: number }) {
+  // A node with children is a cascade/chase family; without children it is a
+  // standalone research. The header names the family by the root's question.
+  const isFamily = node.children.length > 0;
+  const headTitle = node.summary.question ?? "Research";
+  const descendants = descendantCount(node);
 
   return (
-    <section className="rounded-md border border-rule dark:border-charcoal-1">
+    <section
+      className={`research-lineage ${isFamily ? "research-lineage--family" : "research-lineage--standalone"}`}
+      aria-label={
+        isFamily
+          ? `Research family: ${headTitle}`
+          : `Standalone research: ${headTitle}`
+      }
+    >
       {isFamily && (
-        <header className="flex items-baseline justify-between gap-3 border-b border-rule px-4 py-2.5 dark:border-charcoal-1">
-          <p className="min-w-0 flex-1 truncate font-serif text-sm text-ink dark:text-bright">
-            {headTitle}
-          </p>
-          <span className="shrink-0 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-            {group.members.length} researches
+        <header className="research-lineage__header">
+          <div className="min-w-0 flex-1">
+            <p className="research-lineage__eyebrow">Research family</p>
+            <h2 className="research-lineage__title">{headTitle}</h2>
+          </div>
+          <span className="research-lineage__count">
+            {descendants} {descendants === 1 ? "branch" : "branches"}
           </span>
         </header>
       )}
-      <div className="divide-y divide-rule dark:divide-charcoal-1">
-        {group.members.map((s) => (
-          <ResearchRow key={s.investigation_id} summary={s} indented={isFamily} />
+      <ol
+        className="research-lineage__members"
+        data-tree-role={isFamily ? "family" : "standalone"}
+      >
+        {/* Origin/root first — it anchors the tree trunk. */}
+        <ResearchRow
+          summary={node.summary}
+          role={isFamily ? "origin" : "standalone"}
+          branchNumber={null}
+          depth={0}
+          nowMs={nowMs}
+        />
+        {node.children.map((child, index) => (
+          <LineageBranch
+            key={child.summary.investigation_id}
+            node={child}
+            index={index + 1}
+            depth={1}
+            nowMs={nowMs}
+          />
         ))}
-      </div>
+      </ol>
     </section>
+  );
+}
+
+function LineageBranch({
+  node,
+  index,
+  depth,
+  nowMs,
+}: {
+  node: TreeNode;
+  index: number;
+  depth: number;
+  nowMs: number;
+}) {
+  return (
+    <>
+      <ResearchRow
+        summary={node.summary}
+        role="branch"
+        branchNumber={index}
+        depth={depth}
+        nowMs={nowMs}
+      />
+      {node.children.map((child, childIndex) => (
+        <LineageBranch
+          key={child.summary.investigation_id}
+          node={child}
+          index={childIndex + 1}
+          depth={depth + 1}
+          nowMs={nowMs}
+        />
+      ))}
+    </>
   );
 }
 
 function ResearchRow({
   summary,
-  indented,
+  role,
+  branchNumber,
+  depth,
+  nowMs,
 }: {
   summary: InvestigationSummary;
-  indented: boolean;
+  role: "origin" | "branch" | "standalone";
+  branchNumber: number | null;
+  depth: number;
+  nowMs: number;
 }) {
   const ps = plainStatus(summary.status);
   return (
-    <article
-      className={`px-4 py-3 transition-colors hover:bg-ice-1 dark:hover:bg-charcoal-1 ${
-        indented ? "pl-6" : ""
-      }`}
+    <li
+      className="research-lineage__member"
+      data-lineage-role={role}
+      data-lineage-depth={depth}
+      style={{ "--lineage-depth": depth } as CSSProperties}
     >
-      <div className="flex items-baseline justify-between gap-3">
-        <Link to={`/inv/${encodeURIComponent(summary.investigation_id)}`} className="min-w-0 flex-1">
-          <p className="truncate font-serif text-sm text-ink dark:text-bright">
-            {summary.question ?? "Untitled research"}
-          </p>
-        </Link>
-        <div className="flex shrink-0 items-center gap-3">
-          {/* SPR-09 distinction: a research the §7 loop launched autonomously
+      <article className="research-lineage__research">
+        <div className="research-lineage__marker" aria-hidden="true" />
+        <div className="research-lineage__body">
+          {role !== "standalone" && (
+            <p className="research-lineage__role">
+              {role === "origin"
+                ? "Origin"
+                : `${depth > 1 ? `Depth ${depth} · ` : ""}Branch ${String(branchNumber).padStart(2, "0")}`}
+            </p>
+          )}
+          <div className="research-lineage__summary flex items-baseline justify-between gap-3">
+            <Link
+              to={`/inv/${encodeURIComponent(summary.investigation_id)}`}
+              className="min-w-0 flex-1"
+            >
+              <p className="truncate font-serif text-sm text-ink dark:text-bright">
+                {summary.question ?? "Untitled research"}
+              </p>
+            </Link>
+            <div className="research-lineage__meta flex shrink-0 items-center gap-3">
+              {/* SPR-09 distinction: a research the §7 loop launched autonomously
               is badged "found by the loop" (translated from its policy_id —
               the id is never shown), so the user can tell what the loop did on
               its own from what they launched. */}
-          {summary.spawned_by_daemon && (
-            <LemonTag colour="muted" className="text-[10px]">
-              found by the loop
-            </LemonTag>
-          )}
-          <LemonTag dot colour={ps.colour} className="text-[10px]">
-            {ps.label}
-          </LemonTag>
-          <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight tabular-nums">
-            ${(summary.cost_usd_total ?? 0).toFixed(4)}
-          </span>
+              {summary.spawned_by_daemon && (
+                <LemonTag colour="muted" className="text-[10px]">
+                  found by the loop
+                </LemonTag>
+              )}
+              <LemonTag dot colour={ps.colour} className="text-[10px]">
+                {ps.label}
+              </LemonTag>
+              <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight tabular-nums">
+                ${(summary.cost_usd_total ?? 0).toFixed(4)}
+              </span>
+            </div>
+          </div>
+          <div className="mt-1.5 flex items-center gap-3 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
+            <Link
+              to={`/replay/${encodeURIComponent(summary.investigation_id)}`}
+              className="hover:text-ink hover:underline dark:hover:text-bright"
+            >
+              replay →
+            </Link>
+            {summary.started_at && (
+              <span>started {relative(summary.started_at, nowMs)}</span>
+            )}
+          </div>
         </div>
-      </div>
-      <div className="mt-1.5 flex items-center gap-3 font-mono text-[11px] text-shadow-1 dark:text-moonlight">
-        <Link
-          to={`/replay/${encodeURIComponent(summary.investigation_id)}`}
-          className="hover:text-ink hover:underline dark:hover:text-bright"
-        >
-          replay →
-        </Link>
-        {summary.started_at && <span>started {relative(summary.started_at)}</span>}
-      </div>
-    </article>
+      </article>
+    </li>
   );
 }
 
 function ListError({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
     <div className="rounded-md border border-rule px-4 py-6 dark:border-charcoal-1">
-      <AIActionFailure title="Couldn’t load your research" reason={error} onRetry={onRetry} />
+      <AIActionFailure
+        title="Couldn’t load your research"
+        reason={error}
+        onRetry={onRetry}
+      />
     </div>
   );
 }
 
-function relative(iso: string): string {
+function relative(iso: string, nowMs: number): string {
   try {
-    const ago = Date.now() - new Date(iso).getTime();
+    const ago = nowMs - new Date(iso).getTime();
     const s = Math.floor(ago / 1000);
     if (s < 60) return `${s}s ago`;
     const m = Math.floor(s / 60);
