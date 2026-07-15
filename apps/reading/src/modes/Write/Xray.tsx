@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from "react";
 
 import { getTraceTarget, type OutlineBlockView } from "./writeApi";
+import type { ProseProvenanceValidity } from "../../lib/api";
 
 /**
  * Xray — the paragraph ↔ blocks provenance view (Write SPR-09 M3).
@@ -31,6 +32,7 @@ export interface XrayProps {
   proseText: string;
   /** paragraph_index (string key) → driving block references (persisted). */
   proseProvenance: Record<string, string[]>;
+  proseValidity?: ProseProvenanceValidity;
   /** The section's blocks, for resolving a block reference → its display text +
    * provenance kind (a graph-node block's id is its node reference). */
   blocks: OutlineBlockView[];
@@ -82,10 +84,14 @@ function blockLabel(blockId: string, blocks: OutlineBlockView[]): {
 export default function Xray({
   proseText,
   proseProvenance,
+  proseValidity,
   blocks,
   onRegenerateParagraph,
 }: XrayProps) {
   const paragraphs = useMemo(() => splitParagraphs(proseText), [proseText]);
+  const hasNonCurrent = paragraphs.some(
+    (_, index) => proseValidity?.paragraphs[String(index)]?.status !== "current",
+  );
   const [selectedParagraph, setSelectedParagraph] = useState<number | null>(null);
   const [selectedBlock, setSelectedBlock] = useState<string | null>(null);
   // The trace chain for the block the user opened (chunk → document).
@@ -98,6 +104,7 @@ export default function Xray({
   const blockToParagraphs = useMemo(() => {
     const m = new Map<string, number[]>();
     for (const [k, ids] of Object.entries(proseProvenance)) {
+      if (proseValidity?.paragraphs[k]?.status !== "current") continue;
       const idx = Number(k);
       for (const id of ids) {
         const arr = m.get(id) ?? [];
@@ -106,7 +113,7 @@ export default function Xray({
       }
     }
     return m;
-  }, [proseProvenance]);
+  }, [proseProvenance, proseValidity]);
 
   // Chain a block through to its source chunk/document (resolve_provenance via
   // the trace endpoint) — the X-ray is the visible proof, the chain is real.
@@ -146,7 +153,7 @@ export default function Xray({
   return (
     <div data-testid="xray" className="space-y-2">
       <p className="text-[11px] uppercase tracking-wide text-ink-mute dark:text-moonlight">
-        X-ray — every paragraph traced to its blocks
+        {hasNonCurrent ? "X-ray — grounding needs review" : "X-ray — every paragraph traced to its blocks"}
       </p>
 
       {/* The selected block's uses + its source chain (block → paragraphs, and
@@ -185,7 +192,8 @@ export default function Xray({
 
       <ol className="space-y-2">
         {paragraphs.map((para, idx) => {
-          const ids = proseProvenance[String(idx)] ?? [];
+          const status = proseValidity?.paragraphs[String(idx)]?.status ?? "legacy_unverified";
+          const ids = status === "current" ? proseProvenance[String(idx)] ?? [] : [];
           const open = selectedParagraph === idx;
           return (
             <li
@@ -208,12 +216,24 @@ export default function Xray({
                 {para}
               </button>
 
+              {status !== "current" && (
+                <p className="mt-1 text-[11px] text-emperor" data-testid={`xray-validity-${idx}`}>
+                  {status === "stale"
+                    ? "Edited since grounding. Regenerate this section to refresh sources."
+                    : status === "legacy_unverified"
+                      ? "This older provenance is not bound to the current text."
+                      : status === "unsupported"
+                        ? "No support was established for this paragraph."
+                        : "This paragraph has not been grounded yet."}
+                </p>
+              )}
+
               {/* The paragraph's driving blocks (click paragraph → its blocks). */}
               {open && (
                 <div data-testid={`xray-paragraph-blocks-${idx}`} className="mt-1.5 space-y-1">
                   {ids.length === 0 ? (
                     <p className="text-[11px] italic text-emperor">
-                      No blocks recorded for this paragraph — unsupported, verify before keeping.
+                      No current blocks are available for this paragraph.
                     </p>
                   ) : (
                     ids.map((bid) => {
@@ -240,7 +260,7 @@ export default function Xray({
                       );
                     })
                   )}
-                  {onRegenerateParagraph && ids.length > 0 && (
+                  {onRegenerateParagraph && (
                     <button
                       type="button"
                       onClick={() => void onRegenerateParagraph(idx)}

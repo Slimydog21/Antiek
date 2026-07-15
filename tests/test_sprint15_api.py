@@ -84,7 +84,7 @@ def test_patch_prose_saves_without_promote(temp_substrate):
     _, sid = _make_deliverable_with_section(client)
     resp = client.patch(
         f"/sections/{sid}/prose",
-        json={"prose_text": "Edited prose for the section."},
+        json={"prose_text": "Edited prose for the section.", "original_text": ""},
     )
     assert resp.status_code == 202
     body = resp.json()
@@ -105,7 +105,7 @@ def test_patch_prose_404_for_unknown_section(temp_substrate):
     client = _client(temp_substrate)
     resp = client.patch(
         "/sections/sec-nope/prose",
-        json={"prose_text": "x"},
+        json={"prose_text": "x", "original_text": ""},
     )
     assert resp.status_code == 404
 
@@ -115,7 +115,7 @@ def test_patch_prose_empty_rejected(temp_substrate):
     _, sid = _make_deliverable_with_section(client)
     resp = client.patch(
         f"/sections/{sid}/prose",
-        json={"prose_text": ""},
+        json={"prose_text": "", "original_text": ""},
     )
     assert resp.status_code == 422
 
@@ -133,7 +133,7 @@ def test_patch_prose_promote_writes_claim_node_and_event(temp_substrate):
         f"/sections/{sid}/prose",
         json={
             "prose_text": "The substrate compounds nonlinearly.\nThis is operator-asserted.",
-            "original_text": "The substrate compounds linearly.",
+            "original_text": "",
             "promote_to_graph": True,
             "cited_chunk_ids": ["chunk-A", "chunk-B"],
         },
@@ -170,6 +170,7 @@ def test_patch_prose_promote_emits_claim_asserted_event(temp_substrate):
         f"/sections/{sid}/prose",
         json={
             "prose_text": "Operator-asserted claim text here.",
+            "original_text": "",
             "promote_to_graph": True,
         },
     )
@@ -202,7 +203,7 @@ def test_export_markdown_includes_title_and_sections(temp_substrate):
     did, sid = _make_deliverable_with_section(client)
     client.patch(
         f"/sections/{sid}/prose",
-        json={"prose_text": "Intro prose."},
+        json={"prose_text": "Intro prose.", "original_text": ""},
     )
     resp = client.get(f"/deliverables/{did}/export?format=markdown")
     assert resp.status_code == 200
@@ -229,7 +230,9 @@ def test_edit_round_trip_reload_and_export_agree(temp_substrate):
     # The manual edit the /write editor persists (was silently dropped before
     # the onContentChange wiring — the Outline mount had no handler).
     edited = "The operator sharpened this thesis by hand — keep it."
-    resp = client.patch(f"/sections/{sid}/prose", json={"prose_text": edited})
+    resp = client.patch(
+        f"/sections/{sid}/prose", json={"prose_text": edited, "original_text": ""}
+    )
     assert resp.status_code == 202
     assert resp.json()["status"] == "saved"
 
@@ -252,7 +255,7 @@ def test_export_html_escapes_content(temp_substrate):
     did, sid = _make_deliverable_with_section(client)
     client.patch(
         f"/sections/{sid}/prose",
-        json={"prose_text": "Has <script>alert(1)</script> in prose."},
+        json={"prose_text": "Has <script>alert(1)</script> in prose.", "original_text": ""},
     )
     resp = client.get(f"/deliverables/{did}/export?format=html")
     body = resp.json()
@@ -267,7 +270,7 @@ def test_export_json_returns_structured_bundle(temp_substrate):
     client = _client(temp_substrate)
     did, sid = _make_deliverable_with_section(client)
     client.patch(
-        f"/sections/{sid}/prose", json={"prose_text": "Prose"},
+        f"/sections/{sid}/prose", json={"prose_text": "Prose", "original_text": ""},
     )
     resp = client.get(f"/deliverables/{did}/export?format=json")
     body = resp.json()
@@ -303,7 +306,7 @@ def test_export_substack_omits_h1_title_and_uses_blockquote_kind(temp_substrate)
     did, sid = _make_deliverable_with_section(client)
     client.patch(
         f"/sections/{sid}/prose",
-        json={"prose_text": "Substack-ready prose with em-dashes — preserved."},
+        json={"prose_text": "Substack-ready prose with em-dashes — preserved.", "original_text": ""},
     )
     resp = client.get(f"/deliverables/{did}/export?format=substack")
     assert resp.status_code == 200
@@ -331,7 +334,9 @@ def test_export_pdf_returns_base64_pdf_bytes(temp_substrate):
         pytest.skip("xhtml2pdf not installed — pip install -e '.[export]'")
     client = _client(temp_substrate)
     did, sid = _make_deliverable_with_section(client)
-    client.patch(f"/sections/{sid}/prose", json={"prose_text": "Body text."})
+    client.patch(
+        f"/sections/{sid}/prose", json={"prose_text": "Body text.", "original_text": ""}
+    )
     resp = client.get(f"/deliverables/{did}/export?format=pdf")
     assert resp.status_code == 200
     body = resp.json()
@@ -357,7 +362,9 @@ def test_export_epub_returns_base64_epub_zip(temp_substrate):
         pytest.skip("ebooklib not installed — pip install -e '.[export]'")
     client = _client(temp_substrate)
     did, sid = _make_deliverable_with_section(client)
-    client.patch(f"/sections/{sid}/prose", json={"prose_text": "Chapter prose."})
+    client.patch(
+        f"/sections/{sid}/prose", json={"prose_text": "Chapter prose.", "original_text": ""}
+    )
     resp = client.get(f"/deliverables/{did}/export?format=epub")
     assert resp.status_code == 200
     body = resp.json()

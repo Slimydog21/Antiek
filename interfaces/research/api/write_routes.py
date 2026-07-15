@@ -498,6 +498,7 @@ def generate_section_draft(section_id: str) -> dict[str, Any]:
         raise HTTPException(status_code=503, detail=f"generation unavailable: {e}") from e
 
     report = result.citation_report
+    validity = None
     # M3: persist prose_provenance so the X-ray can read paragraph→blocks back.
     # ONLY on a clean generation (gate passed, parser valid). A gate_failed /
     # invalid result never ships, so it never persists provenance either (no
@@ -505,6 +506,14 @@ def generate_section_draft(section_id: str) -> dict[str, Any]:
     # through the single-writer funnel together (db_lock + emit_typed),
     # mirroring patch_section_prose. See docs/decisions/spr-09-*.md (D-2).
     if result.status == "generated" and report is not None:
+        from substrate.write.provenance_validity import generated_validity
+
+        immediate_provenance = {str(i): v for i, v in result.prose_provenance.items()}
+        validity = generated_validity(
+            result.prose_text,
+            immediate_provenance,
+            unsupported_paragraphs=set(report.unsupported_paragraphs),
+        )
         with _translate(), _write("write/persist_draft") as con:
             persist_section_draft(
                 con,
@@ -528,6 +537,8 @@ def generate_section_draft(section_id: str) -> dict[str, Any]:
             {str(i): v for i, v in result.prose_provenance.items()}
             if result.status == "generated" else {}
         ),
+        "prose_provenance_validity": validity,
+        "prose_provenance_status": validity["status"] if validity else None,
     }
 
 

@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cycle 42: Write provenance validity</title>
+  <style>
+    body { max-width: 960px; margin: 40px auto; padding: 0 24px; color: #1f2421; font: 16px/1.55 system-ui, sans-serif; }
+    h1, h2 { line-height: 1.2; } code { background: #eef1ee; padding: 2px 4px; }
+    table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #b8c0ba; padding: 8px; text-align: left; vertical-align: top; }
+    .reject { color: #8a2f26; } .accept { color: #21633d; }
+  </style>
+</head>
+<body>
+  <h1>Cycle 42: edited-draft provenance validity</h1>
+  <p><strong>Status:</strong> executable master sprint spec. <strong>Parent:</strong> Antiek infinite research, reading, and writing workstation. <strong>Base:</strong> Cycle 41 reviewed commit <code>e72ec11d90a617a53e6ec1ccba760072d7a04c14</code>.</p>
+
+  <h2>Problem</h2>
+  <p>Write currently preserves <code>prose_provenance</code> after arbitrary prose replacement. X-ray, JSON export, and human-readable Sources then present the old paragraph-to-block map as current. A prompt asking a model to make only a stylistic change reduces risk but cannot prove factual equivalence. The product must distinguish remembered historical provenance from provenance valid for the exact prose now displayed.</p>
+
+  <h2>Invariant</h2>
+  <p>A paragraph-to-block mapping is current only when the paragraph text is byte-identical to the text for which that mapping was established. Exact hashes prove identity, not semantic equivalence. Any changed, inserted, split, merged, moved ambiguously, or model-rewritten paragraph is not currently grounded until a generation or future verification path supplies a fresh validated map.</p>
+
+  <h2>Storage contract</h2>
+  <p>Add normalized sidecar table <code>deliverable_section_provenance_validity</code> through an idempotent V17 migration and require the table and its validity column in the schema fast-path sentinel. A sidecar is required because DuckDB refuses an in-place column alteration on the foreign-key-dependent <code>deliverable_sections</code> table. The soft section reference avoids a second ownership tree; the write primitive verifies the section and updates both rows in one transaction. Version 1 binds the full prose SHA-256 and every current paragraph's text SHA-256, status, and origin. Closed paragraph statuses are <code>current</code>, <code>stale</code>, <code>unsupported</code>, <code>ungrounded</code>, and <code>legacy_unverified</code>. Closed origins are <code>generated</code>, <code>manual</code>, <code>ai_assisted</code>, and <code>legacy</code>.</p>
+  <p>Fresh generation atomically replaces prose, provenance, and validity. Existing rows with provenance but no validity read as <code>legacy_unverified</code>; they are never backfilled as current. Rows without provenance read as <code>ungrounded</code>. Malformed or unknown validity fails closed as <code>legacy_unverified</code>.</p>
+
+  <h2>Mutation contract</h2>
+  <table>
+    <tr><th>Mutation</th><th>Required behavior</th></tr>
+    <tr><td>Exact server-side no-op</td><td>No row write, timestamp advance, invalidation, or audit claim. Preserve exact validity.</td></tr>
+    <tr><td>Generated draft</td><td>Persist validated map and hash binding in the same database transaction. Supported paragraphs are current; reported unsupported paragraphs remain explicit.</td></tr>
+    <tr><td>Manual or AI-assisted edit</td><td>Require the caller's exact prior prose as a compare-and-swap precondition. Return HTTP 409 without mutation on mismatch.</td></tr>
+    <tr><td>Paragraph preservation</td><td>Use deterministic order-preserving exact paragraph matching. Remap only unambiguous byte-identical paragraphs and their mappings. All unmatched current paragraphs become stale or ungrounded. Never infer semantic equivalence.</td></tr>
+    <tr><td>Legacy caller without precondition</td><td>Rejected at the HTTP boundary. Internal generation uses the distinct fresh-provenance path.</td></tr>
+  </table>
+
+  <h2>Read and export contract</h2>
+  <p>Section detail and PATCH responses expose aggregate validity plus versioned paragraph validity. X-ray receives server-derived validity. It may trace only <code>current</code> mappings as present support; stale, unsupported, and legacy paragraphs receive explicit language and a section-regeneration action. It must not say “every paragraph traced” when that is false.</p>
+  <p>JSON export carries both the current-only provenance map and validity object. Human-readable Sources resolve only mappings whose paragraph status is <code>current</code>. Body prose still exports; stale provenance never silently mints a source attribution. Existing content-class withholding remains unchanged.</p>
+
+  <h2>Concurrency and failure</h2>
+  <p>The backend, not the debounce client, decides no-op, compare-and-swap, paragraph matching, and validity. A delayed autosave or second tab cannot overwrite newer prose. The UI updates its prose and validity state from the PATCH response. Generation gate failure writes neither prose nor validity. This sprint does not claim DuckDB rows and the file-backed typed event log are one atomic transaction; a transactional outbox is a separate future authority if durable edit history is required.</p>
+
+  <h2>Rejected shortcuts</h2>
+  <ul class="reject">
+    <li>Preserve the old map and call it current after a typo or “stylistic” rewrite.</li>
+    <li>Mark legacy maps current without an exact authoritative prose hash.</li>
+    <li>Recompute validity in TypeScript or trust client-reported paragraph indices.</li>
+    <li>Carry mappings across duplicate, moved, split, or merged paragraphs by guess.</li>
+    <li>Use stale mappings to populate public Sources.</li>
+    <li>Add word-level or semantic provenance in this cycle.</li>
+  </ul>
+
+  <h2>Acceptance matrix</h2>
+  <ul class="accept">
+    <li>Fresh and partially migrated databases obtain the V17 sidecar idempotently; the warm sentinel rejects a missing or partial table.</li>
+    <li>Generation round-trips exact prose/map/hash validity; failed generation leaves no partial state.</li>
+    <li>An exact no-op preserves bytes and validity; stale compare-and-swap returns 409 and changes nothing.</li>
+    <li>A one-paragraph edit preserves only exact unaffected paragraphs. Insert/delete remaps exact unique matches. Duplicate ambiguity, split, merge, and rewrite never produce guessed current mappings.</li>
+    <li>Manual and Cmd+K-applied edits invalidate changed paragraphs regardless of prompt wording.</li>
+    <li>GET, PATCH, reload, X-ray, and JSON export agree on validity.</li>
+    <li>X-ray does not expose trace controls or current-grounding language for non-current paragraphs.</li>
+    <li>Human-readable Sources exclude stale-only and legacy-only mappings while retaining the existing rights gate.</li>
+    <li>Focused backend and frontend tests, TypeScript, production build, Ruff, compileall, diff hygiene, independent review, and HardenX pass.</li>
+  </ul>
+
+  <h2>Non-goals</h2>
+  <p>No automatic model call, semantic equivalence classifier, paragraph-level regeneration endpoint, graph merge, publication transition, transactional event outbox, model training, spend, or provider routing is authorized.</p>
+</body>
+</html>

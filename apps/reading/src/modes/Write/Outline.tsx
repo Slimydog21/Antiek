@@ -5,6 +5,7 @@ import {
   createSection,
   updateSectionProse,
   type SectionResponse,
+  type ProseProvenanceValidity,
 } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
@@ -182,6 +183,9 @@ function SectionCard({
   const [proseProvenance, setProseProvenance] = useState<Record<string, string[]>>(
     section.prose_provenance ?? {},
   );
+  const [proseValidity, setProseValidity] = useState<ProseProvenanceValidity | undefined>(
+    section.prose_provenance_validity,
+  );
   // M4: the spin-a-sub-agent proposal over a highlighted claim (null = closed).
   const [proposal, setProposal] = useState<{ text: string } | null>(null);
 
@@ -197,9 +201,22 @@ function SectionCard({
   // The most recent editor text, so a retry re-sends the current draft.
   const latestProseRef = useRef<string>(section.prose_text ?? "");
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const nextMutationOriginRef = useRef<"manual" | "ai_assisted">("manual");
+  const saveInFlightRef = useRef(false);
+  const queuedSaveRef = useRef<{
+    proseText: string;
+    origin: "manual" | "ai_assisted";
+  } | null>(null);
+  const persistProseRef = useRef<(plainText: string) => Promise<void>>(async () => {});
 
   const persistProse = useCallback(
     async (plainText: string) => {
+      const mutationOrigin = nextMutationOriginRef.current;
+      if (saveInFlightRef.current) {
+        queuedSaveRef.current = { proseText: plainText, origin: mutationOrigin };
+        setSaveState({ status: "pending" });
+        return;
+      }
       const original = savedProseRef.current;
       // Empty prose is rejected by the API (min_length=1) and would blank a
       // draft — mirror CreationStudio's non-empty guard.
@@ -209,15 +226,20 @@ function SectionCard({
         setSaveState({ status: "saved" });
         return;
       }
+      saveInFlightRef.current = true;
       setSaveState({ status: "pending" });
       try {
-        await updateSectionProse(section.section_id, {
+        const saved = await updateSectionProse(section.section_id, {
           prose_text: plainText,
-          original_text: original ?? undefined,
+          original_text: original ?? "",
+          mutation_origin: mutationOrigin,
           promote_to_graph: false,
         });
-        savedProseRef.current = plainText;
-        setProseText(plainText); // keep the X-ray / reload view in sync
+        savedProseRef.current = saved.prose_text;
+        setProseText(saved.prose_text);
+        setProseProvenance(saved.prose_provenance ?? {});
+        setProseValidity(saved.prose_provenance_validity);
+        nextMutationOriginRef.current = "manual";
         setSaveState({ status: "saved" });
       } catch (e) {
         // Do NOT swallow (contrast Editor.tsx's edit.captured .catch(()=>{})):
@@ -229,14 +251,24 @@ function SectionCard({
               ? e.message
               : String(e);
         setSaveState({ status: "error", message });
+      } finally {
+        saveInFlightRef.current = false;
+        const queued = queuedSaveRef.current;
+        queuedSaveRef.current = null;
+        if (queued && queued.proseText !== savedProseRef.current) {
+          nextMutationOriginRef.current = queued.origin;
+          void persistProseRef.current(queued.proseText);
+        }
       }
     },
     [section.section_id],
   );
+  persistProseRef.current = persistProse;
 
   const handleContentChange = useCallback(
     (plainText: string) => {
       latestProseRef.current = plainText;
+      nextMutationOriginRef.current = "manual";
       // A keystroke means unsaved work is in flight — reflect it at once so a
       // stale "Saved" never sits over an edit mid-debounce.
       setSaveState({ status: "pending" });
@@ -278,10 +310,11 @@ function SectionCard({
   useEffect(() => {
     setProseText(section.prose_text);
     setProseProvenance(section.prose_provenance ?? {});
+    setProseValidity(section.prose_provenance_validity);
     // The re-fetched value is server truth — reset the autosave baseline so the
     // next edit diffs against it (not a stale local snapshot).
     savedProseRef.current = section.prose_text;
-  }, [section.prose_text, section.prose_provenance]);
+  }, [section.prose_text, section.prose_provenance, section.prose_provenance_validity]);
 
   async function handleDrop(e: React.DragEvent) {
     e.preventDefault();
@@ -340,6 +373,7 @@ function SectionCard({
         // exists in the graph, this is just the immediate echo).
         setProseText(r.prose_text);
         setProseProvenance(r.prose_provenance ?? {});
+        setProseValidity(r.prose_provenance_validity);
         // The server persisted this prose (SECTION_DRAFT_GENERATED) — it is the
         // autosave baseline the first manual edit diffs against.
         savedProseRef.current = r.prose_text;
@@ -406,10 +440,18 @@ function SectionCard({
     (editedText: string) => {
       const sel = selection;
       if (!sel || !sel.text) return;
-      setProseText((prev) => (prev == null ? prev : prev.replace(sel.text, editedText)));
+      const current = latestProseRef.current;
+      const updated = current.replace(sel.text, editedText);
+      if (updated === current) return;
+      nextMutationOriginRef.current = "ai_assisted";
+      latestProseRef.current = updated;
+      setDraftContent(proseToEditorHtml(updated));
+      setProseText(updated);
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+      void persistProse(updated);
       window.getSelection()?.removeAllRanges();
     },
-    [selection],
+    [persistProse, selection],
   );
 
   const canGenerate = blocks.length > 0 && !generating;
@@ -560,6 +602,7 @@ function SectionCard({
           <Xray
             proseText={proseText}
             proseProvenance={proseProvenance}
+            proseValidity={proseValidity}
             blocks={blocks}
             // `idx` is the affected paragraph; handleRegenerate intentionally
             // re-drafts the whole SECTION this sprint (the shipped endpoint is

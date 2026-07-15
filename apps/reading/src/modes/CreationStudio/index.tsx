@@ -355,7 +355,8 @@ function ProseEditor({
     try {
       const r = await updateSectionProse(section.section_id, {
         prose_text: text,
-        original_text: section.prose_text || undefined,
+        original_text: section.prose_text || "",
+        mutation_origin: "manual",
         promote_to_graph: promote,
       });
       setLastStatus(r.status);

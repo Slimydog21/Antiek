@@ -116,6 +116,12 @@ export function WriteEditor({
     },
   });
 
+  useEffect(() => {
+    if (!editor || initialContent === undefined || editor.getHTML() === initialContent) return;
+    editor.commands.setContent(initialContent, { emitUpdate: false });
+    prevBlocks.current = docToBlocks(editor.getJSON());
+  }, [editor, initialContent]);
+
   // Detect undo/redo at the keyboard layer so the next onUpdate is flagged
   // reverted. (ProseMirror's history plugin does not surface "this update
   // was an undo" in onUpdate; the keyboard signal is the reliable hook.)

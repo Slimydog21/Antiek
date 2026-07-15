@@ -366,6 +366,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "multimedia_distillation_claims",
     "deliverable_compositions",
     "deliverable_composition_members",
+    "deliverable_section_provenance_validity",
 )
 
 
@@ -1205,6 +1206,14 @@ CREATE INDEX IF NOT EXISTS idx_deliverable_compositions_identity
     ON deliverable_compositions(composition_id);
 """
 
+ANTIEK_GRAPH_SCHEMA_V17_PROVENANCE_VALIDITY_SQL = """
+CREATE TABLE IF NOT EXISTS deliverable_section_provenance_validity (
+    section_id TEXT PRIMARY KEY,
+    validity_json TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
@@ -1283,6 +1292,7 @@ def init_database(con: LockedConnection) -> None:
     # reference; pure idempotent CREATE IF NOT EXISTS.
     con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V16_COMPOSITION_DRAFT_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V17_PROVENANCE_VALIDITY_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1332,7 +1342,10 @@ def _schema_is_present(db_path: str) -> bool:
             "table_name='deliverable_compositions' AND column_name='request_digest') "
             "AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
             "table_schema='main' AND table_name='deliverable_composition_members' "
-            "AND column_name='rendered_sha256'))"
+            "AND column_name='rendered_sha256')"
+            " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='deliverable_section_provenance_validity' "
+            "AND column_name='validity_json'))"
         ).fetchone()
     except Exception:
         return False
