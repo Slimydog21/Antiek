@@ -369,6 +369,9 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "derived_asset_revision_members",
     "derived_asset_current_revisions",
     "write_event_outbox",
+    "event_consumer_events",
+    "event_consumer_receipts",
+    "event_consumer_frontiers",
 )
 
 
@@ -1344,6 +1347,231 @@ _V17_OUTBOX_COLUMNS = {
 }
 
 
+ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
+CREATE TABLE IF NOT EXISTS event_consumer_events (
+    consumer_name TEXT NOT NULL,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    logical_ordinal BIGINT NOT NULL CHECK (logical_ordinal >= 0),
+    event_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    normalized_sha256 TEXT NOT NULL CHECK (regexp_full_match(normalized_sha256, '[0-9a-f]{64}')),
+    resolution TEXT NOT NULL CHECK (resolution IN ('succeeded', 'quarantined', 'unsupported')),
+    chain_sha256 TEXT NOT NULL CHECK (regexp_full_match(chain_sha256, '[0-9a-f]{64}')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (consumer_name, consumer_version, event_id),
+    UNIQUE (consumer_name, consumer_version, investigation_id, logical_ordinal)
+);
+CREATE INDEX IF NOT EXISTS idx_event_consumer_events_investigation
+    ON event_consumer_events(consumer_name, consumer_version, investigation_id);
+
+CREATE TABLE IF NOT EXISTS event_consumer_receipts (
+    consumer_name TEXT NOT NULL,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    normalized_sha256 TEXT NOT NULL CHECK (regexp_full_match(normalized_sha256, '[0-9a-f]{64}')),
+    status TEXT NOT NULL CHECK (status IN ('succeeded', 'quarantined')),
+    output_ref TEXT,
+    error_class TEXT,
+    error_digest TEXT,
+    attempt_count INTEGER NOT NULL CHECK (attempt_count >= 1),
+    processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (status = 'succeeded' AND output_ref IS NOT NULL
+            AND error_class IS NULL AND error_digest IS NULL)
+        OR
+        (status = 'quarantined' AND output_ref IS NULL
+            AND error_class IS NOT NULL AND error_digest IS NOT NULL)
+    ),
+    PRIMARY KEY (consumer_name, consumer_version, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_consumer_receipts_investigation
+    ON event_consumer_receipts(consumer_name, consumer_version, investigation_id);
+
+CREATE TABLE IF NOT EXISTS event_consumer_frontiers (
+    consumer_name TEXT NOT NULL,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    next_ordinal BIGINT NOT NULL CHECK (next_ordinal >= 0),
+    chain_sha256 TEXT,
+    snapshot_generation TEXT,
+    snapshot_row_count BIGINT NOT NULL DEFAULT 0 CHECK (snapshot_row_count >= 0),
+    next_snapshot_row_offset BIGINT NOT NULL DEFAULT 0 CHECK (next_snapshot_row_offset >= 0),
+    jsonl_byte_offset BIGINT NOT NULL DEFAULT 0 CHECK (jsonl_byte_offset >= 0),
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (next_ordinal = 0 AND chain_sha256 IS NULL)
+        OR (next_ordinal > 0 AND regexp_full_match(chain_sha256, '[0-9a-f]{64}'))
+    ),
+    CHECK (next_snapshot_row_offset <= snapshot_row_count),
+    PRIMARY KEY (consumer_name, consumer_version, investigation_id)
+);
+"""
+
+_V19_RECEIPT_COLUMNS = {
+    "consumer_name", "consumer_version", "investigation_id", "event_id",
+    "action_type", "normalized_sha256", "status", "output_ref", "error_class",
+    "error_digest", "attempt_count", "processed_at",
+}
+
+_V19_RECEIPT_REQUIRED_SHAPE = {
+    "consumer_name": ("VARCHAR", "NO", "PRI"),
+    "consumer_version": ("INTEGER", "NO", "PRI"),
+    "investigation_id": ("VARCHAR", "NO", None),
+    "event_id": ("VARCHAR", "NO", "PRI"),
+    "action_type": ("VARCHAR", "NO", None),
+    "normalized_sha256": ("VARCHAR", "NO", None),
+    "status": ("VARCHAR", "NO", None),
+    "output_ref": ("VARCHAR", "YES", None),
+    "error_class": ("VARCHAR", "YES", None),
+    "error_digest": ("VARCHAR", "YES", None),
+    "attempt_count": ("INTEGER", "NO", None),
+    "processed_at": ("TIMESTAMP", "NO", None),
+}
+
+_V19_RECEIPT_CHECKS = {
+    "CHECK((attempt_count >= 1))",
+    "CHECK(regexp_full_match(normalized_sha256, '[0-9a-f]{64}'))",
+    "CHECK((status IN ('succeeded', 'quarantined')))",
+    "CHECK((((status = 'succeeded') AND (output_ref IS NOT NULL) AND "
+    "(error_class IS NULL) AND (error_digest IS NULL)) OR "
+    "((status = 'quarantined') AND (output_ref IS NULL) AND "
+    "(error_class IS NOT NULL) AND (error_digest IS NOT NULL))))",
+}
+
+_V19_EVENT_COLUMNS = {
+    "consumer_name", "consumer_version", "investigation_id", "logical_ordinal",
+    "event_id", "action_type", "normalized_sha256", "resolution",
+    "chain_sha256", "created_at", "resolved_at",
+}
+
+_V19_EVENT_REQUIRED_SHAPE = {
+    "consumer_name": ("VARCHAR", "NO", "PRI"),
+    "consumer_version": ("INTEGER", "NO", "PRI"),
+    "investigation_id": ("VARCHAR", "NO", "UNI"),
+    "logical_ordinal": ("BIGINT", "NO", "UNI"),
+    "event_id": ("VARCHAR", "NO", "PRI"),
+    "action_type": ("VARCHAR", "NO", None),
+    "normalized_sha256": ("VARCHAR", "NO", None),
+    "resolution": ("VARCHAR", "NO", None),
+    "chain_sha256": ("VARCHAR", "NO", None),
+    "created_at": ("TIMESTAMP", "NO", None),
+    "resolved_at": ("TIMESTAMP", "NO", None),
+}
+
+_V19_FRONTIER_COLUMNS = {
+    "consumer_name", "consumer_version", "investigation_id", "next_ordinal",
+    "chain_sha256", "snapshot_generation", "snapshot_row_count",
+    "next_snapshot_row_offset", "jsonl_byte_offset", "updated_at",
+}
+
+_V19_FRONTIER_REQUIRED_SHAPE = {
+    "consumer_name": ("VARCHAR", "NO", "PRI"),
+    "consumer_version": ("INTEGER", "NO", "PRI"),
+    "investigation_id": ("VARCHAR", "NO", "PRI"),
+    "next_ordinal": ("BIGINT", "NO", None),
+    "chain_sha256": ("VARCHAR", "YES", None),
+    "snapshot_generation": ("VARCHAR", "YES", None),
+    "snapshot_row_count": ("BIGINT", "NO", None),
+    "next_snapshot_row_offset": ("BIGINT", "NO", None),
+    "jsonl_byte_offset": ("BIGINT", "NO", None),
+    "updated_at": ("TIMESTAMP", "NO", None),
+}
+
+
+class SchemaCorruptionError(RuntimeError):
+    """A populated graph schema cannot be repaired without operator recovery."""
+
+
+def _v19_receipt_shape_is_valid(
+    con: duckdb.DuckDBPyConnection | LockedConnection,
+) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE event_consumer_receipts").fetchall()
+    }
+    if described != _V19_RECEIPT_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='event_consumer_receipts'"
+    ).fetchall()
+    primary_keys = [tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"]
+    checks = {row[2] for row in constraints if row[0] == "CHECK"}
+    indexes = con.execute(
+        "SELECT expressions FROM duckdb_indexes() "
+        "WHERE table_name='event_consumer_receipts' "
+        "AND index_name='idx_event_consumer_receipts_investigation'"
+    ).fetchall()
+    return (
+        primary_keys == [("consumer_name", "consumer_version", "event_id")]
+        and checks == _V19_RECEIPT_CHECKS
+        and indexes == [("[consumer_name, consumer_version, investigation_id]",)]
+    )
+
+
+def _v19_frontier_shape_is_valid(
+    con: duckdb.DuckDBPyConnection | LockedConnection,
+) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE event_consumer_frontiers").fetchall()
+    }
+    if described != _V19_FRONTIER_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='event_consumer_frontiers'"
+    ).fetchall()
+    primary_keys = [tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"]
+    checks = {row[2] for row in constraints if row[0] == "CHECK"}
+    return primary_keys == [(
+        "consumer_name", "consumer_version", "investigation_id"
+    )] and checks == {
+        "CHECK((next_ordinal >= 0))",
+        "CHECK((snapshot_row_count >= 0))",
+        "CHECK((next_snapshot_row_offset >= 0))",
+        "CHECK((jsonl_byte_offset >= 0))",
+        "CHECK((next_snapshot_row_offset <= snapshot_row_count))",
+        "CHECK((((next_ordinal = 0) AND (chain_sha256 IS NULL)) OR "
+        "((next_ordinal > 0) AND regexp_full_match(chain_sha256, '[0-9a-f]{64}'))))",
+    }
+
+
+def _v19_event_shape_is_valid(
+    con: duckdb.DuckDBPyConnection | LockedConnection,
+) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE event_consumer_events").fetchall()
+    }
+    if described != _V19_EVENT_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() "
+        "WHERE table_name='event_consumer_events'"
+    ).fetchall()
+    keys = {(row[0], tuple(row[1])) for row in constraints if row[0] in {"PRIMARY KEY", "UNIQUE"}}
+    checks = {row[2] for row in constraints if row[0] == "CHECK"}
+    indexes = con.execute(
+        "SELECT expressions FROM duckdb_indexes() WHERE table_name='event_consumer_events' "
+        "AND index_name='idx_event_consumer_events_investigation'"
+    ).fetchall()
+    return keys == {
+        ("PRIMARY KEY", ("consumer_name", "consumer_version", "event_id")),
+        ("UNIQUE", ("consumer_name", "consumer_version", "investigation_id", "logical_ordinal")),
+    } and checks == {
+        "CHECK((logical_ordinal >= 0))",
+        "CHECK(regexp_full_match(normalized_sha256, '[0-9a-f]{64}'))",
+        "CHECK((resolution IN ('succeeded', 'quarantined', 'unsupported')))",
+        "CHECK(regexp_full_match(chain_sha256, '[0-9a-f]{64}'))",
+    } and indexes == [("[consumer_name, consumer_version, investigation_id]",)]
+
+
 def _repair_empty_partial_v17_outbox(con: LockedConnection) -> None:
     columns = {
         row[0] for row in con.execute(
@@ -1356,6 +1584,58 @@ def _repair_empty_partial_v17_outbox(con: LockedConnection) -> None:
     if con.execute("SELECT COUNT(*) FROM write_event_outbox").fetchone()[0]:
         raise RuntimeError("populated partial V17 outbox requires explicit recovery")
     con.execute("DROP TABLE write_event_outbox")
+
+
+def _repair_empty_partial_v19_receipts(con: LockedConnection) -> None:
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='event_consumer_receipts'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if columns == _V19_RECEIPT_COLUMNS and _v19_receipt_shape_is_valid(con):
+        return
+    count = con.execute("SELECT COUNT(*) FROM event_consumer_receipts").fetchone()[0]
+    if count:
+        raise SchemaCorruptionError(
+            "populated partial V19 receipts require explicit recovery"
+        )
+    con.execute("DROP TABLE event_consumer_receipts")
+
+
+def _repair_empty_partial_v19_events(con: LockedConnection) -> None:
+    columns = {row[0] for row in con.execute(
+        "SELECT column_name FROM information_schema.columns WHERE table_schema='main' "
+        "AND table_name='event_consumer_events'"
+    ).fetchall()}
+    if not columns:
+        return
+    if columns == _V19_EVENT_COLUMNS and _v19_event_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM event_consumer_events").fetchone()[0]:
+        raise SchemaCorruptionError("populated partial V19 events require explicit recovery")
+    con.execute("DROP TABLE event_consumer_events")
+
+
+def _repair_empty_partial_v19_frontiers(con: LockedConnection) -> None:
+    columns = {
+        row[0] for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='event_consumer_frontiers'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if columns == _V19_FRONTIER_COLUMNS and _v19_frontier_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM event_consumer_frontiers").fetchone()[0]:
+        raise SchemaCorruptionError(
+            "populated partial V19 frontiers require explicit recovery"
+        )
+    con.execute("DROP TABLE event_consumer_frontiers")
 
 
 def init_database(con: LockedConnection) -> None:
@@ -1439,6 +1719,10 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL)
     _repair_empty_partial_v17_outbox(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V17_WRITE_EVENT_OUTBOX_SQL)
+    _repair_empty_partial_v19_events(con)
+    _repair_empty_partial_v19_receipts(con)
+    _repair_empty_partial_v19_frontiers(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1486,20 +1770,43 @@ def _schema_is_present(db_path: str) -> bool:
             "table_name='write_event_outbox' AND column_name='event_sha256') AND "
             "EXISTS (SELECT 1 FROM information_schema.columns WHERE "
             "table_schema='main' AND table_name='write_event_outbox' AND "
-            "column_name='operation_id'))"
+            "column_name='operation_id')"
+            " AND (SELECT count(*) = 11 AND count(DISTINCT column_name) = 11 "
+            "FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_events' AND column_name IN ("
+            "'consumer_name','consumer_version','investigation_id','logical_ordinal',"
+            "'event_id','action_type','normalized_sha256','resolution','chain_sha256',"
+            "'created_at','resolved_at')) AND (SELECT count(*) = 12 AND "
+            "count(DISTINCT column_name) = 12 "
+            "FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_receipts' AND column_name IN ("
+            "'consumer_name','consumer_version','investigation_id','event_id',"
+            "'action_type','normalized_sha256','status','output_ref','error_class',"
+            "'error_digest','attempt_count','processed_at')) AND "
+            "(SELECT count(*) = 10 AND count(DISTINCT column_name) = 10 "
+            "FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_frontiers' AND column_name IN ("
+            "'consumer_name','consumer_version','investigation_id','next_ordinal',"
+            "'chain_sha256','snapshot_generation','snapshot_row_count',"
+            "'next_snapshot_row_offset','jsonl_byte_offset','updated_at')))"
         ).fetchone()
+        present = (
+            bool(row and row[0])
+            and _v19_receipt_shape_is_valid(con)
+            and _v19_frontier_shape_is_valid(con)
+            and _v19_event_shape_is_valid(con)
+        )
     except Exception:
         return False
     finally:
         with contextlib.suppress(Exception):
             con.close()
-    present = bool(row and row[0])
     if present:
         _INITIALIZED_PATHS.add(db_path)
     return present
 
 
-def init_database_at_path(db_path: str) -> None:
+def init_database_at_path(db_path: str, *, timeout_s: float | None = None) -> None:
     """Make sure the schema is present at ``db_path``. Idempotent.
 
     Fast path: if ``_schema_is_present`` confirms the schema is already
@@ -1520,7 +1827,14 @@ def init_database_at_path(db_path: str) -> None:
     parent = os.path.dirname(db_path)
     if parent:
         os.makedirs(parent, exist_ok=True)
-    con = connect_write(db_path, purpose="graph_schema_init")
+    if timeout_s is None:
+        con = connect_write(db_path, purpose="graph_schema_init")
+    else:
+        con = connect_write(
+            db_path,
+            purpose="graph_schema_init",
+            timeout_s=timeout_s,
+        )
     try:
         init_database(con)
     finally:

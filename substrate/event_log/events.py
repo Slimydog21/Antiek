@@ -77,6 +77,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import fcntl
+import hashlib
 import json
 import os
 import re
@@ -265,6 +266,10 @@ def _append_jsonl(path: str, row: dict[str, Any]) -> None:
         written = 0
         while written < len(data):
             written += os.write(fd, data[written:])
+        os.fsync(fd)
+        # The file may have been created by this append. Synchronizing the
+        # directory makes that name durable before the event is acknowledged.
+        os.fsync(root_fd)
     finally:
         if fd >= 0:
             os.close(fd)
@@ -657,6 +662,8 @@ def _seal_investigation_unlocked(
         if os.path.exists(pq):
             return pq  # already sealed
         return None
+    if _event_file_has_incomplete_tail(jl):
+        raise PhysicalTrajectoryError("cannot seal an incomplete JSONL append")
 
     try:
         import pyarrow as pa  # type: ignore[import-not-found]
@@ -709,6 +716,7 @@ def _seal_investigation_unlocked(
             src_dir_fd=root_fd,
             dst_dir_fd=root_fd,
         )
+        os.fsync(root_fd)
 
         if delete_jsonl and tail_before is not None:
             tail_name = os.path.basename(jl)
@@ -721,6 +729,7 @@ def _seal_investigation_unlocked(
             ):
                 raise PhysicalTrajectoryError("event tail changed during seal")
             os.unlink(tail_name, dir_fd=root_fd)
+            os.fsync(root_fd)
     finally:
         if tmp_fd >= 0:
             os.close(tmp_fd)
@@ -815,9 +824,285 @@ def _open_regular_event_file(path: str) -> int | None:
     return fd
 
 
+def _event_file_has_incomplete_tail(path: str) -> bool:
+    fd = _open_regular_event_file(path)
+    if fd is None:
+        return False
+    try:
+        size = os.fstat(fd).st_size
+        if size == 0:
+            return False
+        os.lseek(fd, -1, os.SEEK_END)
+        return os.read(fd, 1) != b"\n"
+    finally:
+        os.close(fd)
+
+
+def normalize_semantic_event(value: Any) -> Any:
+    """Remove Arrow struct null-fill that was never present in JSON.
+
+    PyArrow unions keys across dictionary rows when a Parquet file is written
+    directly from nested payloads.  Missing keys then round-trip as ``None``;
+    JSONL retains the original absence.  Lists preserve nulls because their
+    positions are semantic.
+    """
+    if isinstance(value, dict):
+        return {
+            key: normalize_semantic_event(item)
+            for key, item in value.items()
+            if item is not None
+        }
+    if isinstance(value, list):
+        return [normalize_semantic_event(item) for item in value]
+    return value
+
+
 def _physical_identity(row: dict[str, Any]) -> str:
     return json.dumps(
-        row, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str
+        normalize_semantic_event(row),
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+        default=str,
+    )
+
+
+def physical_event_sha256(row: dict[str, Any]) -> str:
+    """Digest the canonical normalized physical identity."""
+    return hashlib.sha256(_physical_identity(row).encode("utf-8")).hexdigest()
+
+
+@dataclass(frozen=True)
+class PhysicalStorageCursor:
+    """Opaque durable position in the current snapshot/tail generation."""
+
+    snapshot_generation: str | None
+    snapshot_row_count: int
+    next_snapshot_row_offset: int
+    jsonl_byte_offset: int
+
+
+@dataclass(frozen=True)
+class PhysicalEventPage:
+    """A bounded slice of complete physical observations."""
+
+    observations: tuple[PhysicalEventObservation, ...]
+    has_more: bool
+    scanned: int
+
+    @property
+    def events(self) -> tuple[dict[str, Any], ...]:
+        return tuple(item.event for item in self.observations)
+
+    @property
+    def cursors(self) -> tuple[PhysicalStorageCursor, ...]:
+        return tuple(item.cursor_after for item in self.observations)
+
+
+@dataclass(frozen=True)
+class PhysicalEventObservation:
+    event: dict[str, Any]
+    normalized_sha256: str
+    cursor_before: PhysicalStorageCursor
+    cursor_after: PhysicalStorageCursor
+    source_kind: str
+
+
+def read_physical_event_page(
+    investigation_id: str,
+    *,
+    storage_cursor: PhysicalStorageCursor | None = None,
+    limit: int = 100,
+    scan_limit: int | None = None,
+    deadline: float | None = None,
+    events_dir: str | None = None,
+    lock_timeout_s: float = 10.0,
+) -> PhysicalEventPage:
+    """Return every complete snapshot/tail observation without suppression.
+
+    A cursor for the current snapshot generation is a direct seek.  A changed
+    generation deliberately restarts snapshot and tail at their physical
+    origins so the database authority can reconcile overlaps.
+    """
+    if limit < 1:
+        raise ValueError("limit must be positive")
+    if scan_limit is None:
+        scan_limit = limit
+    if scan_limit < 1:
+        raise ValueError("scan_limit must be positive")
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}", investigation_id):
+        raise ValueError("investigation_id is not safe for event storage")
+
+    root = events_dir or default_events_dir()
+    page: list[PhysicalEventObservation] = []
+    scanned = 0
+    has_more = False
+    deadline_hit = False
+
+    def deadline_expired() -> bool:
+        return deadline is not None and time.monotonic() >= deadline
+
+    def normalized_row(row: dict[str, Any]) -> dict[str, Any]:
+        if isinstance(row.get("payload"), str):
+            with contextlib.suppress(TypeError, ValueError):
+                row["payload"] = json.loads(row["payload"])
+        return row
+
+    with investigation_event_lock(
+        investigation_id, events_dir=root, timeout_s=lock_timeout_s
+    ):
+        snapshot_fd = _open_regular_event_file(
+            _parquet_path(investigation_id, events_dir=root)
+        )
+        parquet = None
+        snapshot = None
+        snapshot_generation: str | None = None
+        snapshot_count = 0
+        try:
+            if snapshot_fd is not None:
+                try:
+                    import pyarrow.parquet as pq_reader
+                except ImportError as exc:  # pragma: no cover
+                    raise PhysicalTrajectoryError(
+                        "reading a snapshot requires pyarrow"
+                    ) from exc
+                snapshot = os.fdopen(snapshot_fd, "rb")
+                snapshot_fd = -1
+                parquet = pq_reader.ParquetFile(snapshot)
+                info = os.fstat(snapshot.fileno())
+                snapshot_generation = (
+                    f"{info.st_dev:x}:{info.st_ino:x}:{info.st_size:x}:"
+                    f"{info.st_mtime_ns:x}"
+                )
+                snapshot_count = parquet.metadata.num_rows
+
+            if storage_cursor is not None and (
+                storage_cursor.snapshot_row_count < 0
+                or storage_cursor.next_snapshot_row_offset < 0
+                or storage_cursor.jsonl_byte_offset < 0
+            ):
+                raise PhysicalTrajectoryError("physical storage cursor is invalid")
+            generation_matches = storage_cursor is not None and (
+                storage_cursor.snapshot_generation == snapshot_generation
+                and storage_cursor.snapshot_row_count == snapshot_count
+            )
+            parquet_start = (
+                storage_cursor.next_snapshot_row_offset
+                if generation_matches and storage_cursor is not None
+                else 0
+            )
+            if parquet_start > snapshot_count:
+                raise PhysicalTrajectoryError("snapshot cursor is beyond row count")
+            tail_start = (
+                storage_cursor.jsonl_byte_offset
+                if generation_matches and storage_cursor is not None
+                else 0
+            )
+            cursor = PhysicalStorageCursor(
+                snapshot_generation, snapshot_count, parquet_start, tail_start
+            )
+
+            def read_snapshot_row(ordinal: int) -> dict[str, Any]:
+                nonlocal scanned
+                assert parquet is not None
+                base = 0
+                for group in range(parquet.num_row_groups):
+                    count = parquet.metadata.row_group(group).num_rows
+                    if ordinal < base + count:
+                        row = parquet.read_row_group(group).slice(
+                            ordinal - base, 1
+                        ).to_pylist()[0]
+                        scanned += 1
+                        return normalized_row(row)
+                    base += count
+                raise PhysicalTrajectoryError("snapshot row ordinal is unavailable")
+
+            scan_baseline = scanned
+            ordinal = parquet_start
+            while (
+                not deadline_hit
+                and ordinal < snapshot_count
+                and len(page) < limit
+                and len(page) < scan_limit
+            ):
+                if deadline_expired():
+                    deadline_hit = has_more = True
+                    break
+                row = read_snapshot_row(ordinal)
+                event_id = row.get("event_id")
+                if not isinstance(event_id, str) or not event_id:
+                    raise PhysicalTrajectoryError("snapshot event is missing event_id")
+                before = cursor
+                ordinal += 1
+                cursor = PhysicalStorageCursor(
+                    snapshot_generation, snapshot_count, ordinal, tail_start
+                )
+                page.append(PhysicalEventObservation(
+                    row, physical_event_sha256(row), before, cursor, "snapshot"
+                ))
+            has_more = ordinal < snapshot_count
+
+            tail_fd = _open_regular_event_file(
+                _jsonl_path(investigation_id, events_dir=root)
+            )
+            if tail_fd is not None:
+                with os.fdopen(tail_fd, "rb") as stream:
+                    tail_offset = tail_start
+                    if tail_offset > os.fstat(stream.fileno()).st_size:
+                        raise PhysicalTrajectoryError("physical tail cursor is beyond EOF")
+                    if tail_offset:
+                        stream.seek(tail_offset - 1)
+                        if stream.read(1) != b"\n":
+                            raise PhysicalTrajectoryError(
+                                "physical tail cursor is not at a record boundary"
+                            )
+                    stream.seek(tail_offset)
+                    line_number = 0
+                    while not has_more and not deadline_hit:
+                        if (
+                            len(page) >= limit
+                            or scanned - scan_baseline >= scan_limit
+                        ):
+                            has_more = stream.tell() < os.fstat(stream.fileno()).st_size
+                            break
+                        if deadline_expired():
+                            deadline_hit = has_more = True
+                            break
+                        raw_line = stream.readline()
+                        if not raw_line:
+                            break
+                        line_number += 1
+                        if not raw_line.endswith(b"\n"):
+                            break
+                        scanned += 1
+                        try:
+                            row = json.loads(raw_line)
+                        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                            raise PhysicalTrajectoryError(
+                                f"malformed completed JSONL record at line {line_number}"
+                            ) from exc
+                        if not isinstance(row, dict):
+                            raise PhysicalTrajectoryError("non-object JSONL record")
+                        event_id = row.get("event_id")
+                        if not isinstance(event_id, str) or not event_id:
+                            raise PhysicalTrajectoryError("tail event is missing event_id")
+                        before = cursor
+                        cursor = PhysicalStorageCursor(
+                            snapshot_generation, snapshot_count, snapshot_count,
+                            stream.tell(),
+                        )
+                        page.append(PhysicalEventObservation(
+                            row, physical_event_sha256(row), before, cursor, "tail"
+                        ))
+        finally:
+            if snapshot is not None:
+                snapshot.close()
+            if snapshot_fd is not None and snapshot_fd >= 0:
+                os.close(snapshot_fd)
+    return PhysicalEventPage(
+        observations=tuple(page),
+        has_more=has_more,
+        scanned=scanned,
     )
 
 
@@ -831,8 +1116,8 @@ def iter_physical_events(
     """Yield completed durable events in physical snapshot-then-tail order.
 
     Delivery authority cannot use presentation timestamps. Incomplete final
-    appends remain invisible until newline completion; malformed completed
-    records and conflicting immutable identities fail closed.
+    appends remain invisible until newline completion. Identity classification
+    belongs to the transactional consumer, so overlaps are intentionally kept.
     """
     if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}", investigation_id):
         raise ValueError("investigation_id is not safe for event storage")
@@ -846,11 +1131,9 @@ def iter_physical_events(
             investigation_id, events_dir=root, timeout_s=lock_timeout_s
         )
     )
-    captured: list[dict[str, Any]] = []
     with lock:
         pq = _parquet_path(investigation_id, events_dir=root)
         jl = _jsonl_path(investigation_id, events_dir=root)
-        seen: dict[str, str] = {}
         snapshot_fd = _open_regular_event_file(pq)
         if snapshot_fd is not None:
             try:
@@ -878,16 +1161,7 @@ def iter_physical_events(
                                 raise PhysicalTrajectoryError(
                                     "snapshot event is missing event_id"
                                 )
-                            identity = _physical_identity(row)
-                            prior = seen.get(event_id)
-                            if prior is not None:
-                                if prior != identity:
-                                    raise PhysicalTrajectoryError(
-                                        "snapshot contains conflicting event identities"
-                                    )
-                                continue
-                            seen[event_id] = identity
-                            captured.append(row)
+                            yield row
             except PhysicalTrajectoryError:
                 raise
             except Exception as exc:
@@ -919,17 +1193,7 @@ def iter_physical_events(
                         raise PhysicalTrajectoryError(
                             f"event missing event_id at {jl}:{line_number}"
                         )
-                    identity = _physical_identity(row)
-                    prior = seen.get(event_id)
-                    if prior is not None:
-                        if prior != identity:
-                            raise PhysicalTrajectoryError(
-                                "event identity conflicts between snapshot and tail"
-                            )
-                        continue
-                    seen[event_id] = identity
-                    captured.append(row)
-    yield from captured
+                    yield row
 
 
 def action_counts(

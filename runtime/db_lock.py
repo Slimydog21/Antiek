@@ -81,6 +81,7 @@ def _log_write_event(
     duration_s: float,
     success: bool,
     error: str | None = None,
+    max_wait_s: float = 5.0,
 ) -> None:
     """Append one row to the `write_log` table on a fresh, briefly-locked
     connection.
@@ -108,7 +109,7 @@ def _log_write_event(
         # log entry rather than block the caller's clean exit.
         lock_path = _lock_path_for(db_path)
         fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
-        deadline = time.monotonic() + 5.0  # 5s grace
+        deadline = time.monotonic() + max_wait_s
         acquired = False
         try:
             while True:
@@ -172,6 +173,7 @@ class LockedConnection:
         db_path: str = "",
         purpose: str = "",
         acquired_at: float = 0.0,
+        close_log_max_wait_s: float = 5.0,
     ):
         self._con = con
         self._lock_fd = lock_fd
@@ -181,6 +183,7 @@ class LockedConnection:
         self._purpose = purpose or "-"
         self._acquired_at = acquired_at or time.monotonic()
         self._error: str | None = None
+        self._close_log_max_wait_s = close_log_max_wait_s
 
     def __getattr__(self, name):
         return getattr(self._con, name)
@@ -220,6 +223,7 @@ class LockedConnection:
                 duration,
                 success=(self._error is None),
                 error=self._error,
+                max_wait_s=self._close_log_max_wait_s,
             )
 
 
@@ -229,6 +233,7 @@ def connect_write(
     timeout_s: float = DEFAULT_TIMEOUT_S,
     poll_interval_s: float = 0.25,
     purpose: str = "",
+    close_log_max_wait_s: float = 5.0,
 ) -> LockedConnection:
     """Acquire an exclusive flock on the sidecar lock file, then open DuckDB
     for write. Returns a LockedConnection that releases the lock on close().
@@ -275,12 +280,17 @@ def connect_write(
                         elapsed,
                         success=False,
                         error=f"WriteLockTimeout after {timeout_s}s",
+                        # The caller's acquisition deadline has expired;
+                        # observability must not add a second wait budget.
+                        max_wait_s=0.0,
                     )
                     raise WriteLockTimeout(
                         f"Could not acquire write lock on {lock_path} within {timeout_s}s. "
                         f"Another writer is holding it; inspect with `lsof {lock_path}`."
                     )
-                time.sleep(poll_interval_s)
+                time.sleep(
+                    min(poll_interval_s, max(0.0, deadline - time.monotonic()))
+                )
     except WriteLockTimeout:
         raise
     except Exception:
@@ -298,7 +308,12 @@ def connect_write(
     except OSError:
         pass
 
-    con = duckdb.connect(db_path)
+    try:
+        con = duckdb.connect(db_path)
+    except Exception:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        raise
     return LockedConnection(
         con,
         fd,
@@ -306,6 +321,7 @@ def connect_write(
         db_path=db_path,
         purpose=purpose or "-",
         acquired_at=time.monotonic(),
+        close_log_max_wait_s=close_log_max_wait_s,
     )
 
 
