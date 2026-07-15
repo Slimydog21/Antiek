@@ -379,6 +379,7 @@ class InvestigationSummary(BaseModel):
     # translates this into the "found by the loop" badge — the raw policy_id is
     # never sent to the client, only this honest boolean.
     spawned_by_daemon: bool = False
+    artifact_composable: bool = False
 
 
 class InvestigationListResponse(BaseModel):
@@ -2524,6 +2525,15 @@ def create_app(
                 cost_usd_total=round(cost_total, 6),
                 parent_investigation_id=parent_inv_id,
                 spawned_by_daemon=spawned_by_daemon,
+                artifact_composable=(
+                    terminal_status == "completed"
+                    and any(
+                        r.get("action_type") == completed_action
+                        and (r.get("payload") or {}).get("outcome")
+                        not in ("stopped", "cancelled")
+                        for r in rows
+                    )
+                ),
             ))
 
         # Derive each session container's status from its leaves (the same

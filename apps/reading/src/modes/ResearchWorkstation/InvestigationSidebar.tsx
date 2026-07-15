@@ -4,6 +4,7 @@ import { NavLink, useParams } from "react-router-dom";
 import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { useInvestigationTree } from "../../hooks/useInvestigationTree";
 import type { TreeNode } from "../../hooks/useInvestigationTree";
+import { API_BASE, composeResearchArtifacts } from "../../lib/api";
 import type { InvestigationSummary } from "../../lib/api";
 
 /**
@@ -20,6 +21,36 @@ export default function InvestigationSidebar() {
   const tree = useInvestigationTree(investigations);
   const params = useParams<{ investigationId?: string }>();
   const activeId = params.investigationId ?? null;
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<string[]>([]);
+  const [composeError, setComposeError] = useState<string | null>(null);
+  const [pending, setPending] = useState(false);
+
+  const toggle = (id: string) => {
+    setComposeError(null);
+    setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  };
+  const compose = async () => {
+    const preview = window.open("", "_blank");
+    if (preview) preview.opener = null;
+    setPending(true);
+    setComposeError(null);
+    try {
+      const result = await composeResearchArtifacts(selected);
+      if (preview) {
+        preview.location.replace(
+          new URL(result.url, API_BASE || window.location.origin).toString(),
+        );
+      } else {
+        setComposeError("Allow pop-ups to open the composed HTML review");
+      }
+    } catch (cause) {
+      preview?.close();
+      setComposeError(cause instanceof Error ? cause.message : "Could not compose these investigations");
+    } finally {
+      setPending(false);
+    }
+  };
 
   return (
     <div className="p-3 text-xs text-ink dark:text-bright">
@@ -28,6 +59,12 @@ export default function InvestigationSidebar() {
           Investigations
         </div>
         <button
+          onClick={() => { setSelecting((value) => !value); setComposeError(null); }}
+          disabled={pending}
+          aria-pressed={selecting}
+          className="text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors mr-2"
+        >{selecting ? "Done" : "Select"}</button>
+        <button
           onClick={refetch}
           className="text-ink-mute dark:text-moonlight hover:text-ink dark:hover:text-bright transition-colors"
           aria-label="Refresh"
@@ -35,6 +72,17 @@ export default function InvestigationSidebar() {
           ⟳
         </button>
       </div>
+      {selecting && (
+        <div className="mb-3 border border-ink-mute/30 rounded p-2" aria-label="Composition selection">
+          <div className="font-mono text-[10px] mb-1" aria-live="polite">{selected.length}/20 selected</div>
+          {selected.length > 0 && <ol className="list-decimal ml-4 mb-2">{selected.map((id) => <li key={id}>{id}</li>)}</ol>}
+          <button onClick={compose} disabled={pending || selected.length < 2 || selected.length > 20}
+            className="bg-sun text-ink px-2 py-1 rounded disabled:opacity-40">
+            {pending ? "Composing…" : "Compose HTML"}
+          </button>
+          {composeError && <div role="alert" className="text-emperor font-mono text-[10px] mt-2">{composeError}</div>}
+        </div>
+      )}
       {loading && investigations.length === 0 && (
         <div className="text-ink-mute dark:text-moonlight italic font-mono">Loading…</div>
       )}
@@ -48,7 +96,8 @@ export default function InvestigationSidebar() {
       )}
       <ul className="space-y-1">
         {tree.map((node) => (
-          <TreeRow key={node.investigationId} node={node} depth={0} activeId={activeId} />
+          <TreeRow key={node.investigationId} node={node} depth={0} activeId={activeId}
+            selecting={selecting} selected={selected} onToggle={toggle} pending={pending} />
         ))}
       </ul>
     </div>
@@ -59,10 +108,15 @@ function TreeRow({
   node,
   depth,
   activeId,
+  selecting, selected, onToggle, pending,
 }: {
   node: TreeNode;
   depth: number;
   activeId: string | null;
+  selecting: boolean;
+  selected: string[];
+  onToggle: (id: string) => void;
+  pending: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const summary = node.summary;
@@ -70,6 +124,16 @@ function TreeRow({
   return (
     <li>
       <div className="flex items-start gap-1.5">
+        {selecting && <input type="checkbox" aria-label={`Select ${node.investigationId}`}
+          checked={selected.includes(node.investigationId)}
+          disabled={pending || summary?.artifact_composable !== true || (!selected.includes(node.investigationId) && selected.length >= 20)}
+          aria-describedby={!summary?.artifact_composable ? `compose-reason-${node.investigationId}` : undefined}
+          onChange={() => onToggle(node.investigationId)} />}
+        {selecting && !summary?.artifact_composable && (
+          <span id={`compose-reason-${node.investigationId}`} className="sr-only">
+            Only completed research investigations can be composed
+          </span>
+        )}
         {node.children.length > 0 ? (
           <button
             onClick={() => setExpanded((v) => !v)}
@@ -117,6 +181,10 @@ function TreeRow({
               node={child}
               depth={depth + 1}
               activeId={activeId}
+              selecting={selecting}
+              selected={selected}
+              onToggle={onToggle}
+              pending={pending}
             />
           ))}
         </ul>
