@@ -17,6 +17,10 @@ from substrate.research_artifact.derived_asset_library import (
     DerivedAssetLibrary,
     DerivedAssetUnavailable,
 )
+from substrate.research_artifact.derived_asset_retrieval import (
+    DerivedAssetRetrievalIntegrity,
+    search_derived_asset,
+)
 from substrate.research_artifact.merge_commit import (
     MergeCommitError,
     MergeCommitNotFound,
@@ -78,6 +82,12 @@ class RestoreAssetBody(BaseModel):
     expected_revision_id: str = Field(pattern=r"^rev_[0-9a-f]{32}$")
     expected_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     expected_generation: int = Field(ge=1)
+
+
+class DerivedAssetSearchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    query: str = Field(min_length=1, max_length=8000)
+    top_k: int = Field(default=6, ge=1, le=12)
 
 
 class MergeCommitResponse(BaseModel):
@@ -209,6 +219,51 @@ async def exact_derived_asset_reading(
         owner_id=authenticated_multimedia_operator(request),
         asset_id=asset_id,
         revision_id=revision_id,
+    )
+
+
+def _search_response(
+    *, owner_id: str, asset_id: str, body: DerivedAssetSearchBody,
+    revision_id: str | None = None,
+) -> Response:
+    try:
+        result = search_derived_asset(
+            db_path=default_db_path(),
+            owner_user_id=owner_id,
+            asset_id=asset_id,
+            revision_id=revision_id,
+            **body.model_dump(),
+        )
+    except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
+        raise _library_error(exc) from None
+    except DerivedAssetRetrievalIntegrity:
+        raise HTTPException(409, "derived asset retrieval integrity conflict", headers=NO_STORE) \
+            from None
+    except ValueError:
+        raise HTTPException(422, "derived asset retrieval request is invalid", headers=NO_STORE) \
+            from None
+    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
+                    headers=NO_STORE)
+
+
+@derived_asset_router.post("/assets/{asset_id}/search")
+def search_current_derived_asset(
+    asset_id: str,
+    body: DerivedAssetSearchBody,
+    owner_id: str = Depends(authenticated_multimedia_operator),
+) -> Response:
+    return _search_response(owner_id=owner_id, asset_id=asset_id, body=body)
+
+
+@derived_asset_router.post("/assets/{asset_id}/revisions/{revision_id}/search")
+def search_exact_derived_asset(
+    asset_id: str,
+    revision_id: str,
+    body: DerivedAssetSearchBody,
+    owner_id: str = Depends(authenticated_multimedia_operator),
+) -> Response:
+    return _search_response(
+        owner_id=owner_id, asset_id=asset_id, revision_id=revision_id, body=body
     )
 
 

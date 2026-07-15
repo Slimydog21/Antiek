@@ -9,6 +9,7 @@ import duckdb
 import pytest
 
 from runtime.db_lock import connect_write
+from substrate.graph import schema as graph_schema
 from substrate.graph.schema import init_database_at_path
 from substrate.research_artifact.merge_commit import MergeCommitError, apply_review, restore
 
@@ -25,9 +26,14 @@ def _review(
     asset: str | None = None,
     parent: str | None = None,
     parent_hash: str | None = None,
+    body: str = "<p>reviewed</p>",
 ) -> str:
     review, draft = _id("rvw"), _id("drf")
-    html = "<article>reviewed</article>"
+    html = (
+        '<article data-antiek-canonical-policy="antiek-derived-asset-merge" '
+        'data-antiek-canonical-version="1"><section data-member-index="0">'
+        f'{body}</section></article>'
+    )
     manifest = json.dumps(
         [
             {
@@ -90,8 +96,32 @@ def _review(
     return review
 
 
+def test_textless_revision_survives_index_schema_backfill(tmp_path: Path) -> None:
+    db = str(tmp_path / "graph.duckdb")
+    init_database_at_path(db)
+    created = apply_review(
+        review_id=_review(db, body="<hr>"),
+        operation_id=_id("op"),
+        owner_user_id="owner-a",
+        db_path=db,
+    )
+    with connect_write(db, purpose="simulate-pre-index-schema") as con:
+        con.execute("DROP TABLE derived_asset_revision_indexes")
+        con.execute("DROP TABLE derived_asset_revision_chunks")
+    graph_schema._INITIALIZED_PATHS.discard(db)
+    init_database_at_path(db)
+    with duckdb.connect(db, read_only=True) as con:
+        receipt = con.execute(
+            "SELECT revision_content_sha256,chunk_count FROM derived_asset_revision_indexes "
+            "WHERE derived_asset_id=? AND revision_id=?",
+            [created.derived_asset_id, created.revision_id],
+        ).fetchone()
+        assert receipt == (created.content_sha256, 0)
+        assert con.execute("SELECT count(*) FROM derived_asset_revision_chunks").fetchone() == (0,)
+
+
 @pytest.mark.parametrize(
-    "fault_stage", ["asset", "revision", "members", "pointer", "receipt", "outbox"]
+    "fault_stage", ["asset", "revision", "members", "index", "pointer", "receipt", "outbox"]
 )
 def test_create_revise_restore_replay_and_atomic_fault(tmp_path: Path, fault_stage: str) -> None:
     db = str(tmp_path / "graph.duckdb")
@@ -312,7 +342,7 @@ def test_operation_identity_is_owner_scoped(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "fault_stage", ["asset", "revision", "members", "pointer", "receipt", "outbox"]
+    "fault_stage", ["asset", "revision", "members", "index", "pointer", "receipt", "outbox"]
 )
 def test_create_faults_leave_no_unsealed_rows(tmp_path: Path, fault_stage: str) -> None:
     db = str(tmp_path / "graph.duckdb")
@@ -340,7 +370,7 @@ def test_create_faults_leave_no_unsealed_rows(tmp_path: Path, fault_stage: str) 
 
 
 @pytest.mark.parametrize(
-    "fault_stage", ["asset", "revision", "members", "pointer", "receipt", "outbox"]
+    "fault_stage", ["asset", "revision", "members", "index", "pointer", "receipt", "outbox"]
 )
 def test_revise_faults_preserve_exact_head(tmp_path: Path, fault_stage: str) -> None:
     db = str(tmp_path / "graph.duckdb")

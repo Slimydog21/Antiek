@@ -337,6 +337,24 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert exact_reading.json()["is_current"] is False
     assert exact_reading.json()["generation"] == 1
     assert exact_reading.json()["canonical_html"] == exact_preview.text
+    current_search_path = f"/research/derived-assets/assets/{asset_id}/search"
+    exact_search_path = (
+        f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/search"
+    )
+    current_search = client.post(current_search_path, json={"query": "Ready", "top_k": 3})
+    exact_search = client.post(exact_search_path, json={"query": "Ready"})
+    assert current_search.status_code == exact_search.status_code == 200
+    assert current_search.headers["cache-control"] == "private, no-store"
+    assert current_search.json()["revision_id"] == restored["revision_id"]
+    assert current_search.json()["is_current"] is True
+    assert exact_search.json()["revision_id"] == first_revision
+    assert exact_search.json()["is_current"] is False
+    assert current_search.json()["retrieval_mode"] == "deterministic_lexical_v1"
+    assert current_search.json()["results"][0]["citation_id"].startswith("dchunk_")
+    assert current_search.json()["results"][0]["text"] == "Ready\n\nup"
+    assert client.post(current_search_path, json={"query": "absent"}).json()["results"] == []
+    assert client.post(current_search_path, json={"query": "x", "unknown": True}).status_code == 422
+    assert client.post(current_search_path, json={"query": "😀" * 3000}).status_code == 422
     assert client.get(current_reading_path + "?revision=forged").status_code == 422
     assert client.request("GET", current_reading_path, content=b"forged").status_code == 422
     with duckdb.connect(db_path, read_only=True) as con:
@@ -361,6 +379,17 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         exact_reading_path,
     ):
         assert client.get(path, headers={"x-owner": "owner-b"}).status_code == 404
+    for path in (current_search_path, exact_search_path):
+        assert client.post(
+            path, headers={"x-owner": "owner-b"}, json={"query": "Ready"}
+        ).status_code == 404
+    with connect_write(db_path, purpose="derived-index-tamper-proof") as con:
+        con.execute(
+            "UPDATE derived_asset_revision_chunks SET citation_id=? "
+            "WHERE derived_asset_id=? AND revision_id=?",
+            ["dchunk_" + "f" * 64, asset_id, restored["revision_id"]],
+        )
+    assert client.post(current_search_path, json={"query": "Ready"}).status_code == 409
 
 
 def test_derived_asset_library_refuses_member_drift(

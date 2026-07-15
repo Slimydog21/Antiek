@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 58 - Derived HTML Revision Indexing and Companion</title>
+  <style>
+    :root{--paper:#fffdf7;--ink:#151515;--lemon:#f9bd2b;--blue:#1d4aff;--red:#a32020}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+    main{max-width:1100px;margin:auto;padding:32px}header,section{border:2px solid var(--ink);padding:20px;margin:0 0 18px}
+    header{background:var(--lemon)}h1,h2,h3{margin:0 0 10px;letter-spacing:0}code{background:#fff;border:1px solid;padding:1px 4px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:12px}.card{border:2px solid var(--blue);padding:14px}
+    .must{border-left:8px solid var(--blue)}.reject{border-left:8px solid var(--red)}
+  </style>
+</head>
+<body><main>
+  <header><h1>Cycle 58: Derived HTML Revision Indexing and Companion</h1><p>Make canonical derived HTML queryable and discussable with immutable section citations, without turning retrieval projections into a second body authority.</p></header>
+  <section id="spec-lineage" data-spec-depth="0" data-parent-spec="derived-asset-first-class-reading.html"><h2>Spec lineage</h2><p>Parent: <a href="derived-asset-first-class-reading.html">Cycle 57 first-class reading</a></p><ul class="child-specs"></ul></section>
+  <section class="must"><h2>Outcome</h2><p>Every committed derived revision receives a deterministic, transactionally complete section index. The authenticated owner can retrieve or ask against the current head or one immutable pinned revision. Every result identifies the exact asset, revision, content hash, revision generation, chunk, section anchor, and normalized text hash.</p></section>
+  <section><h2>Authority model</h2><div class="grid">
+    <div class="card"><h3>Canonical body</h3><p><code>derived_asset_revisions.canonical_html</code> remains the sole body authority. Chunk text and vectors are disposable projections and are accepted only after complete re-derivation from canonical bytes.</p></div>
+    <div class="card"><h3>Immutable citation</h3><p>Chunk identity hashes asset, revision, content hash, ordinal, section anchor, text hash, policy, and version. Identical text in two revisions has different citation identity.</p></div>
+    <div class="card"><h3>Explicit scope</h3><p>Stable reading asks resolve the verified current pointer at request time. Historical reading asks name an exact owned revision. No caller supplies owner, HTML, content hash, generation, or chunk rows.</p></div>
+    <div class="card"><h3>Dedicated projection</h3><p>Global <code>chunks</code> remain source-document atoms and are unchanged. Only the verified derived retrieval service reads revision-index rows; shared ranking utilities may be reused without weakening the global contract.</p></div>
+  </div></section>
+  <section><h2>Index schema</h2><ul>
+    <li><code>derived_asset_revision_chunks</code>: immutable ordered revision-scoped citation row containing member index, section anchor/path, normalized projection text, text hash, token count, and chunker policy/version.</li>
+    <li><code>derived_asset_revision_chunk_embeddings</code>: optional projection vectors with exact provider/model/dimension/fingerprint identity; never the citation or body authority.</li>
+    <li><code>derived_asset_revision_indexes</code>: one completion receipt per revision binding content hash, exact chunk count, canonical ordered index digest, chunker identity, and embedding fingerprint.</li>
+    <li>Both tables have exact foreign keys to the revision/content tuple and chunk rows. No update/delete authority is added.</li>
+    <li>Revision create, revise, and restore insert the complete projection before advancing the current pointer, in the same DuckDB transaction. Any parse/index/constraint failure rolls back the revision and document identity.</li>
+  </ul></section>
+  <section><h2>Deterministic HTML chunker</h2><ol>
+    <li>Parse only the closed canonical merge vocabulary, require the exact policy/version wrapper, and require contiguous top-level member indexes.</li>
+    <li>Walk semantic block order. Heading levels establish a bounded section path; rewritten canonical heading IDs are preferred anchors, otherwise a deterministic synthetic anchor is derived.</li>
+    <li>Normalize text with HTMLParser-decoded characters and collapsed Unicode whitespace. Empty and whitespace-only blocks disappear.</li>
+    <li>Pack whole blocks to a fixed token ceiling without ever crossing a member or section anchor; split oversized blocks deterministically by word windows. Table rows, list items, blockquotes, preformatted blocks, and paragraphs remain attributable.</li>
+    <li>Enforce ceilings for HTML bytes, nodes, headings, blocks, chunks, text bytes, token count, and path bytes. Overflow fails the merge transaction rather than truncating silently.</li>
+  </ol></section>
+  <section><h2>Embedding posture</h2><p>Commit publishes complete lexical rows only and never loads an embedding model or makes a provider call while holding the writer transaction. Verified retrieval provides immediate deterministic token-overlap ranking. Optional semantic embeddings publish later with their own exact fingerprint; the UI must not label lexical retrieval semantic.</p></section>
+  <section><h2>Service and API</h2><ul>
+    <li><code>POST /research/derived-assets/assets/{asset_id}/reading/search</code>: bounded question and top-k; resolves current.</li>
+    <li><code>POST /research/derived-assets/assets/{asset_id}/revisions/{revision_id}/reading/search</code>: same contract pinned to exact history.</li>
+    <li><code>POST .../reading/ask</code>: retrieves through the same verified service, dispatches only when grounded chunks exist, and returns model-labelled prose plus exact citations. No context means no model call.</li>
+    <li>All responses are private/no-store. Foreign and missing are identical. Index absence, incompleteness, drift, or incompatible embedding returns an integrity conflict, never partial results.</li>
+  </ul></section>
+  <section><h2>Reader companion</h2><p>The derived reader gains a persistent conversation surface scoped to the exact model already on screen. Current and pinned routes call distinct endpoints. Citation commands scroll to the exact canonical section anchor when present and otherwise expose a bounded quote without inventing a location. Route or revision changes cancel stale requests and reset the active thread; an answer from one revision can never land in another revision's UI.</p></section>
+  <section><h2>Acceptance harness</h2><ul>
+    <li>Parser/chunker determinism across processes, entities, nested sections, lists, tables, preformatted text, oversized blocks, duplicate headings, empty bodies, malformed HTML, and every ceiling.</li>
+    <li>Two revisions containing identical text receive distinct chunk IDs; restore receives new IDs while preserving the selected canonical text.</li>
+    <li>Index receipt reopens and re-derives every tuple. Missing, extra, reordered, altered, foreign, orphaned, or provider-drift rows fail closed.</li>
+    <li>Create/revise/restore faults at every index stage leave no revision, chunk, sidecar, pointer, document, receipt, or outbox residue.</li>
+    <li>Generic brute-force and VSS retrieval remain byte-for-byte unchanged because derived projections never enter <code>chunks</code>. Dedicated current and pinned searches return only the exact verified revision.</li>
+    <li>Owner isolation, query bounds, no-context no-dispatch, exact citation response, stale frontend responses, anchor navigation, TypeScript, production build, hostile review, and HardenX pass.</li>
+  </ul></section>
+  <section class="reject"><h2>Rejected alternatives</h2><ul>
+    <li>Plain text-hash chunk IDs: collapse identical passages across revisions and make citations drift.</li>
+    <li>Only indexing the current head: destroys historical citation reopenability after revise or restore.</li>
+    <li>Putting all revisions into generic search: silently mixes obsolete and current claims.</li>
+    <li>Deleting old chunks on pointer movement: breaks notes, citations, audit, and immutable deep links.</li>
+    <li>Copying canonical HTML into <code>documents.raw_text</code>: creates a second mutable body authority.</li>
+    <li>Loading sentence-transformers or calling a provider inside merge commit: extends writer lock duration and couples content authority to optional infrastructure.</li>
+    <li>Trusting persisted chunks without re-derivation: lets a disposable projection become de facto truth.</li>
+  </ul></section>
+  <section><h2>Five-values rigor</h2><p><strong>Honesty:</strong> hash retrieval is labelled lexical and ungrounded asks do not dispatch. <strong>Fairness:</strong> only server-derived ownership can expose text. <strong>Rigor:</strong> citations bind exact immutable identity. <strong>Diligence:</strong> every index is completely re-derived before use. <strong>Defensibility:</strong> generic retrieval remains closed until shared semantics are explicit.</p></section>
+  <section id="harness-hint-run" data-pattern="adversarial-verification" data-scope="cycle58-derived-html-indexing" data-done-bar="parser+schema+transaction+retrieval+companion+build+hostile-review+hardenx"><h2>Harness hint</h2><p>Implement parser and pure identities first, then schema and transactional indexing, verified retrieval, HTTP, and UI. Refute projection drift and cross-revision leakage before publication.</p></section>
+</main></body></html>

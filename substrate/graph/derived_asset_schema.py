@@ -77,6 +77,52 @@ CREATE TABLE IF NOT EXISTS derived_asset_revision_members (
         REFERENCES derived_asset_revisions(derived_asset_id,revision_id)
 );
 
+CREATE TABLE IF NOT EXISTS derived_asset_revision_chunks (
+    derived_asset_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    revision_content_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(revision_content_sha256,'[0-9a-f]{64}')
+    ),
+    chunk_ordinal INTEGER NOT NULL CHECK (chunk_ordinal>=0),
+    citation_id TEXT NOT NULL UNIQUE CHECK (
+        regexp_full_match(citation_id,'dchunk_[0-9a-f]{64}')
+    ),
+    member_index INTEGER NOT NULL CHECK (member_index>=0),
+    section_anchor TEXT NOT NULL,
+    section_path TEXT NOT NULL,
+    chunk_text TEXT NOT NULL,
+    chunk_text_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(chunk_text_sha256,'[0-9a-f]{64}')
+        AND chunk_text_sha256=sha256(chunk_text)
+    ),
+    token_count INTEGER NOT NULL CHECK (token_count>=1),
+    chunker_policy TEXT NOT NULL,
+    chunker_version TEXT NOT NULL,
+    PRIMARY KEY (derived_asset_id,revision_id,chunk_ordinal),
+    FOREIGN KEY (derived_asset_id,revision_id,revision_content_sha256)
+        REFERENCES derived_asset_revisions(derived_asset_id,revision_id,content_sha256),
+    FOREIGN KEY (derived_asset_id,revision_id,member_index)
+        REFERENCES derived_asset_revision_members(derived_asset_id,revision_id,member_index)
+);
+CREATE INDEX IF NOT EXISTS idx_derived_revision_chunks_revision
+    ON derived_asset_revision_chunks(derived_asset_id,revision_id);
+
+CREATE TABLE IF NOT EXISTS derived_asset_revision_indexes (
+    derived_asset_id TEXT NOT NULL,
+    revision_id TEXT NOT NULL,
+    revision_content_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(revision_content_sha256,'[0-9a-f]{64}')
+    ),
+    chunk_count INTEGER NOT NULL CHECK (chunk_count>=0),
+    index_sha256 TEXT NOT NULL CHECK (regexp_full_match(index_sha256,'[0-9a-f]{64}')),
+    chunker_policy TEXT NOT NULL,
+    chunker_version TEXT NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (derived_asset_id,revision_id),
+    FOREIGN KEY (derived_asset_id,revision_id,revision_content_sha256)
+        REFERENCES derived_asset_revisions(derived_asset_id,revision_id,content_sha256)
+);
+
 CREATE TABLE IF NOT EXISTS derived_asset_current_revisions (
     derived_asset_id TEXT PRIMARY KEY REFERENCES derived_assets(derived_asset_id),
     current_revision_id TEXT NOT NULL,
@@ -203,6 +249,8 @@ CREATE TABLE IF NOT EXISTS derived_asset_merge_outbox (
 
 SENTINEL_TABLES = (
     "derived_asset_current_revisions",
+    "derived_asset_revision_chunks",
+    "derived_asset_revision_indexes",
     "derived_asset_merge_reviews",
     "derived_asset_merge_operations",
     "derived_asset_merge_outbox",
@@ -213,6 +261,11 @@ def install(con: LockedConnection) -> None:
     """Install the owner-scoped merge schema after the graph's V23 blocks."""
     _repair_empty_legacy_merge_schema(con)
     con.execute(DERIVED_ASSET_SCHEMA_SQL)
+    from substrate.research_artifact.derived_html_index import (
+        backfill_missing_revision_indexes,
+    )
+
+    backfill_missing_revision_indexes(con)
 
 
 def sentinel_is_present(con: object) -> bool:

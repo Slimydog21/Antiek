@@ -114,6 +114,8 @@ def test_existing_pre_v16_database_is_upgraded(db_path: str) -> None:
             "derived_asset_merge_outbox",
             "derived_asset_merge_operations",
             "derived_asset_current_revisions",
+            "derived_asset_revision_indexes",
+            "derived_asset_revision_chunks",
             "derived_asset_revision_members",
             "derived_asset_revisions",
             "derived_assets",
