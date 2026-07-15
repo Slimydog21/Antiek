@@ -8,7 +8,6 @@ import pytest
 
 from substrate.multimedia.bedrock_batch_adapter import (
     BedrockBatchRecoveryAdapter,
-    BedrockBatchRequest,
 )
 from substrate.research_spend import (
     BillingClassification,
@@ -28,6 +27,7 @@ from substrate.research_spend import (
     RunNotFound,
 )
 from substrate.research_spend.ledger import _DDL, _MIGRATIONS, APPLICATION_ID
+from tests.test_multimedia_bedrock_batch_adapter import _bounded_workload, _request
 
 
 class TerminalBedrock:
@@ -76,27 +76,15 @@ def _billing_pending(tmp_path):
         LaunchOperationState.PENDING,
     )
     ledger.materialize_launch_execution("materialize", binding, execution, (operation,))
-    account = "123456789012"
-    request = BedrockBatchRequest(
-        "job-1",
-        "provider-model",
-        f"arn:aws:iam::{account}:role/Antiek",
-        "s3://in/x",
-        "s3://out/x",
-        24,
-        hashlib.sha256(account.encode()).hexdigest(),
-        "us-east-1",
-    )
+    workload_bytes, _ = _bounded_workload()
     adapter = BedrockBatchRecoveryAdapter(ledger, TerminalBedrock())
     submission = adapter.prepare(
         command_key="prepare",
         binding=binding,
         operation_id="operation-1",
         model="batch-model",
-        request=request,
-        projected_max_cents=200,
-        projection_digest="projection",
-        rate_snapshot="unresolved",
+        request=_request(),
+        workload_bytes=workload_bytes,
     )
     for key in ("mark", "create-job", "terminal"):
         submission = adapter.advance(

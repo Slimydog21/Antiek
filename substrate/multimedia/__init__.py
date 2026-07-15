@@ -20,6 +20,12 @@ from .authorized_production_worker import (
     ChapterNarrationAuthority,
     produce_authorized_multimedia,
 )
+from .bedrock_workload_bound import (
+    BedrockBatchModelProfile,
+    BedrockBatchRateSnapshot,
+    BedrockBatchWorkloadBound,
+    materialize_bedrock_batch_workload,
+)
 from .hardening import (
     GateFinding,
     GateResult,
@@ -194,6 +200,11 @@ from .video import (
 )
 
 __all__ = [
+    # Cycle 32 Bedrock workload authority
+    "BedrockBatchModelProfile",
+    "BedrockBatchRateSnapshot",
+    "BedrockBatchWorkloadBound",
+    "materialize_bedrock_batch_workload",
     # SPR-02 planner
     "ChapterPlan",
     "CoverageSuggestion",
