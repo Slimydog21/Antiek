@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useState, type CSSProperties } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 
 import { emitWernerExperience } from "../werner";
 import {
@@ -51,6 +57,8 @@ export function SceneHotspots({
   const [viewport, setViewport] = useState(viewportProp ?? readViewport);
   const [hovered, setHovered] = useState<SceneHotspotId | null>(null);
   const [lastClick, setLastClick] = useState<SceneHotspotId | null>(null);
+  // Living-TV: one curious glance per hotspot per mount (no hover spam).
+  const hoverGlanced = useRef(new Set<SceneHotspotId>());
 
   useEffect(() => {
     if (viewportProp) {
@@ -66,7 +74,14 @@ export function SceneHotspots({
   const activate = useCallback(
     (h: SceneHotspot, kind: "hover" | "click") => {
       onActivate?.(h.id, kind);
-      if (kind === "hover") setHovered(h.id);
+      if (kind === "hover") {
+        setHovered(h.id);
+        if (!hoverGlanced.current.has(h.id)) {
+          hoverGlanced.current.add(h.id);
+          // Ambient TV beat — scenery notice without navigation.
+          emitWernerExperience("highlight");
+        }
+      }
       if (kind === "click") {
         setLastClick(h.id);
         // Product experience: interacting with the home of the penguin is a

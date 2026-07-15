@@ -37,6 +37,24 @@ describe("SceneHotspots — interactive Flipbook-feel regions", () => {
     );
   });
 
+  it("hover emits one Werner highlight per hotspot per mount (no spam)", () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.experience) seen.push(d.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<SceneHotspots viewport={vp} mode="inline" />);
+    const btn = screen.getByTestId("scene-hotspot-peak-left");
+    fireEvent.mouseEnter(btn);
+    fireEvent.mouseLeave(btn);
+    fireEvent.mouseEnter(btn);
+    fireEvent.mouseEnter(screen.getByTestId("scene-hotspot-peak-right"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    // peak-left once + peak-right once — second peak-left hover must not re-fire.
+    expect(seen.filter((e) => e === "highlight")).toHaveLength(2);
+  });
+
   it("click path records last-click and uses hotspot geometry", () => {
     const onActivate = vi.fn();
     const seen: string[] = [];
