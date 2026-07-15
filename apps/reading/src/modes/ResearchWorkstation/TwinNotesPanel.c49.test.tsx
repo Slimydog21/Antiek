@@ -1,9 +1,11 @@
 import {cleanup,fireEvent,render,screen,waitFor} from "@testing-library/react";
 import {afterEach,describe,expect,it,vi} from "vitest";
 import TwinNotesPanel from "./TwinNotesPanel";
+const candidates={assets:[{asset_id:"asset",asset_label:"Asset",truncated:false,windows:[{window_id:"w-1",investigation_id:"inv",consumer_version:20,window_ordinal:1,note_count:1,source_count:1,eligibility:"eligible",exclusion_reason:null}]}],truncated:false,limits:{assets:20,windows_per_asset:50,total_windows:500,selection_members:20}};
 const preview=vi.fn(),apply=vi.fn(),draft=vi.fn(),list=vi.fn<()=>Promise<any>>(()=>Promise.resolve({assets:[]}));
 vi.mock("../../api/research",async(load)=>{const actual=await load<typeof import("../../api/research")>();return {...actual,
- listTwinNotes:()=>list(),getTwinNoteHistory:vi.fn(),composeTwinNotes:vi.fn(),
+ listTwinNotes:()=>list(),getTwinNoteHistory:vi.fn(()=>Promise.resolve({asset_id:"asset",revisions:[]})),composeTwinNotes:vi.fn(),
+ discoverTwinNoteRevisionCandidates:()=>Promise.resolve(candidates),
  previewTwinNoteRevision:(...a:unknown[])=>preview(...a),applyTwinNoteRevision:(...a:unknown[])=>apply(...a),
  createTwinNoteWriteDraft:(...a:unknown[])=>draft(...a)};});
 afterEach(()=>{cleanup();vi.clearAllMocks();});
@@ -12,8 +14,8 @@ describe("Cycle 49 twin-note workflow",()=>{
   preview.mockResolvedValue({asset_id:"asset",expected_predecessor:null,preview_digest:"a".repeat(64),members:[{member_ordinal:0,investigation_id:"inv",window_id:"w-1"}],note_count:1,source_count:1});
   apply.mockResolvedValue({revision_id:`tnr-${"b".repeat(32)}`});
   render(<TwinNotesPanel/>); await screen.findByText("No twin notes yet.");
-  fireEvent.change(screen.getByLabelText("Twin-note asset ID"),{target:{value:"asset"}});
-  fireEvent.change(screen.getByLabelText("Ordered window IDs"),{target:{value:"w-1"}});
+  fireEvent.change(screen.getByLabelText("Twin-note asset"),{target:{value:"asset"}});
+  fireEvent.click(screen.getByLabelText("Add window w-1"));
   fireEvent.click(screen.getByText("Preview")); expect(await screen.findByText("1 notes · 1 sources")).toBeTruthy();
   fireEvent.click(screen.getByText("Apply revision")); await waitFor(()=>expect(apply).toHaveBeenCalledTimes(1));
  expect(apply.mock.calls[0][0].idempotency_key).toBeTruthy();
@@ -23,15 +25,15 @@ describe("Cycle 49 twin-note workflow",()=>{
   list.mockResolvedValueOnce({assets:[{asset_id:"a",asset_label:"A",current_revision:{revision_id:rid,asset_id:"a",note_count:1,source_count:1},revision_count:1}]});
   let finish:((value:any)=>void)|undefined; preview.mockReturnValue(new Promise(resolve=>{finish=resolve;}));
   render(<TwinNotesPanel/>); await screen.findByText("A");
-  fireEvent.change(screen.getByLabelText("Twin-note asset ID"),{target:{value:"a"}});
-  fireEvent.change(screen.getByLabelText("Ordered window IDs"),{target:{value:"w-1"}});
+  fireEvent.change(screen.getByLabelText("Twin-note asset"),{target:{value:"asset"}});
+  fireEvent.click(screen.getByLabelText("Add window w-1"));
   fireEvent.click(screen.getByText("Preview")); await waitFor(()=>expect(preview).toHaveBeenCalledTimes(1));
   expect((screen.getByLabelText("Select current A") as HTMLInputElement).disabled).toBe(true);
   expect((screen.getByText("Open current") as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByText("History") as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByText("Create Write draft") as HTMLButtonElement).disabled).toBe(true);
   expect((screen.getByLabelText("Refresh twin notes") as HTMLButtonElement).disabled).toBe(true);
-  finish?.({asset_id:"a",expected_predecessor:null,preview_digest:"a".repeat(64),members:[],note_count:0,source_count:0});
+  finish?.({asset_id:"asset",expected_predecessor:null,preview_digest:"a".repeat(64),members:[{member_ordinal:0,investigation_id:"inv",window_id:"w-1"}],note_count:0,source_count:0});
   await screen.findByText("0 notes · 0 sources");
  });
  it("retains exact import command after an ambiguous failure",async()=>{

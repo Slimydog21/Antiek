@@ -228,9 +228,50 @@ export interface TwinNoteApplyResponse extends TwinNoteRevision {
   supersedes_revision_id:string|null; replayed:boolean; url:string;
 }
 
+export type TwinNoteCandidateExclusionReason =
+  | "evidence_incomplete"
+  | "evidence_digest_mismatch"
+  | "evidence_noncanonical"
+  | "evidence_binding_mismatch"
+  | "evidence_output_invalid";
+
+export interface TwinNoteRevisionCandidate {
+  window_id: string;
+  investigation_id: string;
+  consumer_version: number;
+  window_ordinal: number;
+  note_count: number;
+  source_count: number;
+  eligibility: "eligible" | "excluded";
+  exclusion_reason: TwinNoteCandidateExclusionReason | null;
+}
+
+export interface TwinNoteRevisionCandidateAsset {
+  asset_id: string;
+  asset_label: string;
+  windows: TwinNoteRevisionCandidate[];
+  truncated: boolean;
+}
+
+export interface TwinNoteRevisionCandidatesResponse {
+  assets: TwinNoteRevisionCandidateAsset[];
+  truncated: boolean;
+  limits: {
+    assets: number;
+    windows_per_asset: number;
+    total_windows: number;
+    selection_members: number;
+  };
+}
+
 /** Owner-scoped verified current twin-note revisions. */
 export function listTwinNotes(): Promise<TwinNoteListResponse> {
   return get("/research/twin-notes");
+}
+
+/** Owner-derived, advisory candidates for a Cycle 49 revision command. */
+export function discoverTwinNoteRevisionCandidates(): Promise<TwinNoteRevisionCandidatesResponse> {
+  return get("/research/twin-notes/revision-candidates");
 }
 
 /** Verified current-to-root history for one owner-scoped asset. */
