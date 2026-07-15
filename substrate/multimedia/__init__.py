@@ -12,6 +12,14 @@ from .audio_assembly import (
     ChapterAudio,
     assemble_audio_experience,
 )
+from .authorized_production_worker import (
+    AuthorizedProductionError,
+    AuthorizedProductionRequest,
+    AuthorizedProductionRuntime,
+    AuthorizedProductionUnavailable,
+    ChapterNarrationAuthority,
+    produce_authorized_multimedia,
+)
 from .hardening import (
     GateFinding,
     GateResult,
@@ -20,10 +28,65 @@ from .hardening import (
     ShipStatus,
     evaluate_multimedia_asset,
 )
+from .information_asset import (
+    MultimediaInformationAsset,
+    MultimediaInformationAssetError,
+    MultimediaKnowledgeRegistrar,
+    MultimediaKnowledgeRegistrationReceipt,
+    MultimediaSourceReference,
+    project_multimedia_information_asset,
+    register_multimedia_information_asset,
+)
+from .knowledge_finalization import (
+    MultimediaKnowledgeFinalizationError,
+    MultimediaKnowledgeFinalizationRequest,
+    MultimediaKnowledgeFinalizationResponse,
+    MultimediaKnowledgeFinalizationStatus,
+    MultimediaKnowledgeRecoveryRequest,
+    MultimediaTwinDocument,
+    finalize_multimedia_knowledge,
+    inspect_multimedia_knowledge_finalization,
+    read_multimedia_twin_document,
+    recover_multimedia_knowledge_finalization,
+)
+from .knowledge_registration import (
+    CanonicalMultimediaKnowledgeRegistrar,
+    MultimediaDistillationState,
+    MultimediaKnowledgeRegistrationError,
+    MultimediaTwinResult,
+    authorize_multimedia_distillation_recovery,
+    get_multimedia_distillation_state,
+    register_multimedia_with_twin,
+)
+from .local_provider_exclusion import (
+    LocalZeroEvidenceConflict,
+    LocalZeroEvidenceUnavailable,
+    ProviderExecutionExclusion,
+    exclude_provider_executions,
+)
+from .local_zero_cost_evidence import (
+    LocalZeroExternalCostEvidenceV1,
+    LocalZeroRunAuthorityV1,
+    build_local_audio_zero_cost_evidence,
+    build_local_video_zero_cost_evidence,
+    verify_local_zero_cost_evidence,
+)
 from .narration import (
     NarrationParagraph,
     normalize_line,
     normalize_script,
+)
+from .narration_authorization import (
+    NarrationAuthorizationError,
+    NarrationAuthorizationRequest,
+    NarrationAuthorizationResult,
+    TrustedNarrationTerms,
+    authorize_multimedia_chapter_narration,
+)
+from .paid_video_cost_authority import (
+    PaidRegisteredVideoCostAuthorityV1,
+    build_paid_registered_video_cost_authority,
+    verify_paid_registered_video_cost_authority,
 )
 from .planner import (
     ChapterPlan,
@@ -41,6 +104,18 @@ from .playback import (
     SourceCard,
     build_playback_read_model,
 )
+from .production_cost_closure import (
+    ProductionByteConstituentV1,
+    ProductionByteProjectionV1,
+    ProductionCostClosure,
+    build_production_byte_cost_closure,
+    verify_production_byte_projection,
+)
+from .production_registration import (
+    MultimediaProductionRegistrationError,
+    MultimediaProductionRegistrationRequest,
+    register_multimedia_production,
+)
 from .provider_router import (
     BudgetExceeded,
     KreaProviderAdapter,
@@ -52,12 +127,31 @@ from .provider_router import (
 )
 from .read_model import (
     CreateMultimediaDraftRequest,
-    LiveProviderExecutionRequest,
     MultimediaAssetList,
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaAssetSummary,
+    MultimediaKnowledgeLink,
     SteeringRequest,
+)
+from .reviewed_visual_registry import (
+    RegisterReviewedVisualsRequest,
+    ResolvedReviewedVisualSet,
+    ReviewedVisualRegistry,
+    ReviewedVisualRegistryError,
+    ReviewedVisualSetReceipt,
+    VisualCandidateBinding,
+    get_reviewed_visuals,
+    register_reviewed_visuals,
+)
+from .ship_cost_snapshot import (
+    MultimediaShipCostEvidenceConflict,
+    MultimediaShipCostEvidenceUnavailable,
+    MultimediaShipCostExecutionV1,
+    MultimediaShipCostSnapshotV1,
+    build_multimedia_ship_cost_snapshot,
+    validate_settled_execution,
+    verify_multimedia_ship_cost_snapshot,
 )
 from .steering import (
     RevisionPlan,
@@ -75,6 +169,12 @@ from .tts import (
     TTSRequest,
     TTSResult,
     make_tts_provider,
+)
+from .verified_playback import (
+    MediaByteRange,
+    PlaybackMediaMetadata,
+    VerifiedPlaybackError,
+    VerifiedPlaybackRuntime,
 )
 from .video import (
     CaptionCue,
@@ -154,16 +254,94 @@ __all__ = [
     # SPR-08 evaluation + hardening
     "GateFinding",
     "GateResult",
-    "LiveProviderExecutionRequest",
     "GateStatus",
     "MultimediaHardeningReport",
     "ShipStatus",
     "evaluate_multimedia_asset",
+    "MultimediaShipCostEvidenceConflict",
+    "MultimediaShipCostEvidenceUnavailable",
+    "MultimediaShipCostExecutionV1",
+    "MultimediaShipCostSnapshotV1",
+    "build_multimedia_ship_cost_snapshot",
+    "validate_settled_execution",
+    "verify_multimedia_ship_cost_snapshot",
+    # MSR-02 production-byte cost closure
+    "ProductionByteConstituentV1",
+    "ProductionByteProjectionV1",
+    "ProductionCostClosure",
+    "build_production_byte_cost_closure",
+    "PaidRegisteredVideoCostAuthorityV1",
+    "build_paid_registered_video_cost_authority",
+    "verify_paid_registered_video_cost_authority",
+    "verify_production_byte_projection",
+    # MSR-03 local zero external provider cost authority
+    "LocalZeroEvidenceConflict",
+    "LocalZeroEvidenceUnavailable",
+    "LocalZeroExternalCostEvidenceV1",
+    "LocalZeroRunAuthorityV1",
+    "ProviderExecutionExclusion",
+    "build_local_audio_zero_cost_evidence",
+    "build_local_video_zero_cost_evidence",
+    "exclude_provider_executions",
+    "verify_local_zero_cost_evidence",
+    # HTML knowledge-asset projection
+    "MultimediaInformationAsset",
+    "MultimediaInformationAssetError",
+    "MultimediaKnowledgeRegistrar",
+    "MultimediaKnowledgeRegistrationReceipt",
+    "MultimediaSourceReference",
+    "project_multimedia_information_asset",
+    "register_multimedia_information_asset",
+    "CanonicalMultimediaKnowledgeRegistrar",
+    "MultimediaKnowledgeRegistrationError",
+    "MultimediaTwinResult",
+    "register_multimedia_with_twin",
+    "MultimediaKnowledgeFinalizationError",
+    "MultimediaKnowledgeFinalizationRequest",
+    "MultimediaKnowledgeFinalizationResponse",
+    "MultimediaKnowledgeFinalizationStatus",
+    "MultimediaKnowledgeRecoveryRequest",
+    "MultimediaTwinDocument",
+    "finalize_multimedia_knowledge",
+    "inspect_multimedia_knowledge_finalization",
+    "recover_multimedia_knowledge_finalization",
+    "read_multimedia_twin_document",
+    "MultimediaDistillationState",
+    "authorize_multimedia_distillation_recovery",
+    "get_multimedia_distillation_state",
     # SPR-09 API persistence/read-model
     "CreateMultimediaDraftRequest",
     "MultimediaAssetList",
     "MultimediaAssetRecord",
     "MultimediaAssetStore",
     "MultimediaAssetSummary",
+    "MultimediaKnowledgeLink",
     "SteeringRequest",
+    # Receipt-verified browser delivery
+    "MediaByteRange",
+    "PlaybackMediaMetadata",
+    "VerifiedPlaybackError",
+    "VerifiedPlaybackRuntime",
+    "MultimediaProductionRegistrationError",
+    "MultimediaProductionRegistrationRequest",
+    "register_multimedia_production",
+    "NarrationAuthorizationError",
+    "NarrationAuthorizationRequest",
+    "NarrationAuthorizationResult",
+    "TrustedNarrationTerms",
+    "authorize_multimedia_chapter_narration",
+    "RegisterReviewedVisualsRequest",
+    "ResolvedReviewedVisualSet",
+    "ReviewedVisualRegistry",
+    "ReviewedVisualRegistryError",
+    "ReviewedVisualSetReceipt",
+    "VisualCandidateBinding",
+    "get_reviewed_visuals",
+    "register_reviewed_visuals",
+    "AuthorizedProductionError",
+    "AuthorizedProductionRequest",
+    "AuthorizedProductionRuntime",
+    "AuthorizedProductionUnavailable",
+    "ChapterNarrationAuthority",
+    "produce_authorized_multimedia",
 ]

@@ -1,5 +1,5 @@
 import { startRegistration } from "@simplewebauthn/browser";
-import { useEffect, useMemo, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useViewportTier } from "../../workspace/useViewportTier";
 import LemonCard from "../../components/lemon/LemonCard";
 import { LemonButton } from "../../components/lemon";
@@ -12,19 +12,24 @@ import {
 } from "../../lib/auth";
 import {
   estimatePromptCost,
+  fetchModelDecision,
   fetchSettingsBudget,
   fetchSettingsModels,
   type BudgetResponse,
+  type ModelDecisionResponse,
+  type ModelDecisionTask,
   type ModelRow,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import AddModelPanel from "./AddModelPanel";
+import AntiekBenchPanel from "./AntiekBenchPanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset. Full "add model" + decision-tree override
- * land in later sprints.
+ * ledger or rate table is unset. Add-model securely registers BYOK providers;
+ * granting one dispatch-route authority remains a separate, explicit sprint.
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -48,6 +53,22 @@ export default function Settings() {
   );
   const [estimateError, setEstimateError] = useState<string | null>(null);
   const [estimating, setEstimating] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "decision">("overview");
+
+  function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const tabs = ["overview", "decision"] as const;
+    const current = tabs.indexOf(activeTab);
+    let next = current;
+    if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
+    else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = tabs.length - 1;
+    else return;
+    event.preventDefault();
+    const selected = tabs[next];
+    setActiveTab(selected);
+    document.getElementById(`settings-${selected}-tab`)?.focus();
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -76,12 +97,15 @@ export default function Settings() {
     if (
       !budget ||
       budget.daily_cap_usd == null ||
-      budget.spent_usd == null ||
+      budget.reserved_estimated_usd == null ||
       budget.daily_cap_usd <= 0
     ) {
       return null;
     }
-    return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
+    return Math.min(
+      100,
+      (budget.reserved_estimated_usd / budget.daily_cap_usd) * 100,
+    );
   }, [budget]);
 
   async function onEstimate() {
@@ -112,8 +136,44 @@ export default function Settings() {
             Models, budget ceiling, and prompt cost projection. Numbers over
             placeholders — unknown spend stays unknown.
           </p>
+          <div className="mt-5 flex gap-1 border-b border-ink/15 dark:border-bright/15" role="tablist" aria-label="Settings views">
+            <button
+              id="settings-overview-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "overview"}
+              aria-controls="settings-overview-panel"
+              tabIndex={activeTab === "overview" ? 0 : -1}
+              onClick={() => setActiveTab("overview")}
+              onKeyDown={onTabKeyDown}
+              className={`px-3 py-2 text-sm font-semibold ${activeTab === "overview" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
+            >
+              Overview
+            </button>
+            <button
+              id="settings-decision-tab"
+              type="button"
+              role="tab"
+              aria-selected={activeTab === "decision"}
+              aria-controls="settings-decision-panel"
+              tabIndex={activeTab === "decision" ? 0 : -1}
+              onClick={() => setActiveTab("decision")}
+              onKeyDown={onTabKeyDown}
+              className={`px-3 py-2 text-sm font-semibold ${activeTab === "decision" ? "border-b-2 border-ink text-ink dark:border-bright dark:text-bright" : "text-ink-soft dark:text-starlight"}`}
+            >
+              Decision tree
+            </button>
+          </div>
         </header>
 
+        {activeTab === "overview" ? (
+          <div
+            id="settings-overview-panel"
+            role="tabpanel"
+            aria-labelledby="settings-overview-tab"
+            tabIndex={0}
+            className="space-y-6"
+          >
         <LemonCard title="Environment" elevation="z1">
           <div className="p-4 space-y-3 font-mono text-[13px]">
             <Row label="Viewport tier" value={tier} />
@@ -174,7 +234,7 @@ export default function Settings() {
                           : "text-amber-700 dark:text-amber-300"
                       }
                     >
-                      {m.ready ? "ready" : "not registered"}
+                      {m.ready ? "ready" : m.registered ? "registered" : "not registered"}
                     </span>
                     {m.tier_bindings.length > 0 && (
                       <span className="w-full text-[11px] text-ink-soft dark:text-starlight">
@@ -191,7 +251,7 @@ export default function Settings() {
               </ul>
             )}
             <p className="text-[11px] text-ink-soft dark:text-starlight font-serif italic">
-              Adding API keys / new models lands in SPR-02. Decision-tree
+              Add your own models with the card below. Decision-tree
               per-prompt override lands in SPR-03.
             </p>
           </div>
@@ -216,10 +276,11 @@ export default function Settings() {
                     }
                   />
                   <Row
-                    label="Spent today"
+                    label="Reserved estimate today"
                     value={
-                      budget.spent_status === "known" && budget.spent_usd != null
-                        ? `$${budget.spent_usd.toFixed(4)}`
+                      budget.spend_basis === "reserved_estimate" &&
+                      budget.reserved_estimated_usd != null
+                        ? `$${budget.reserved_estimated_usd.toFixed(4)}`
                         : "unknown (ledger not inventing $0)"
                     }
                   />
@@ -233,6 +294,12 @@ export default function Settings() {
                   />
                   {budget.cap_env && (
                     <Row label="Cap source" value={budget.cap_env} />
+                  )}
+                  {budget.enforcement_cap_usd != null && (
+                    <Row
+                      label="Daemon enforcement cap"
+                      value={`$${budget.enforcement_cap_usd.toFixed(2)}`}
+                    />
                   )}
                 </div>
                 <div
@@ -360,17 +427,166 @@ export default function Settings() {
           </div>
         </LemonCard>
 
+        <AddModelPanel />
+
+        <AntiekBenchPanel />
+
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Add model + multi-provider secret vault (SPR-02)</li>
-            <li>Decision-tree per-prompt model override (SPR-03)</li>
-            <li>Antiek-bench weekly model quality report</li>
+            <li>Recursive Antiek-bench evolution from usage outcomes</li>
             <li>Midnight oil: time + goals + price-ceiling approve UI</li>
             <li>Keyboard map customisation + layout export</li>
           </ul>
         </LemonCard>
+          </div>
+        ) : (
+          <div
+            id="settings-decision-panel"
+            role="tabpanel"
+            aria-labelledby="settings-decision-tab"
+            tabIndex={0}
+          >
+            <DecisionTreePanel
+              inputChars={inputChars}
+              setInputChars={setInputChars}
+              outputTokens={outTokens}
+              setOutputTokens={setOutTokens}
+            />
+          </div>
+        )}
       </div>
     </div>
+  );
+}
+const DECISION_TASKS: Array<{ value: ModelDecisionTask; label: string }> = [
+  { value: "deep_research", label: "Deep research" },
+  { value: "research_synthesis", label: "Research synthesis" },
+  { value: "reading", label: "Reading" },
+  { value: "twin_note", label: "Twin note" },
+  { value: "writing", label: "Writing" },
+  { value: "multimedia", label: "Multimedia" },
+  { value: "general", label: "General" },
+];
+
+function DecisionTreePanel({
+  inputChars,
+  setInputChars,
+  outputTokens,
+  setOutputTokens,
+}: {
+  inputChars: number;
+  setInputChars: (value: number) => void;
+  outputTokens: number;
+  setOutputTokens: (value: number) => void;
+}) {
+  const [task, setTask] = useState<ModelDecisionTask>("deep_research");
+  const [decision, setDecision] = useState<ModelDecisionResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const requestVersion = useRef(0);
+
+  function invalidateDecision() {
+    requestVersion.current += 1;
+    setDecision(null);
+    setError(null);
+    setLoading(false);
+  }
+
+  async function compare() {
+    const version = requestVersion.current + 1;
+    requestVersion.current = version;
+    setLoading(true);
+    setError(null);
+    try {
+      const response = await fetchModelDecision({
+        task,
+        input_chars: inputChars,
+        expected_output_tokens: outputTokens,
+      });
+      if (requestVersion.current === version) setDecision(response);
+    } catch (caught) {
+      if (requestVersion.current === version) {
+        setError(caught instanceof Error ? caught.message : String(caught));
+      }
+    } finally {
+      if (requestVersion.current === version) setLoading(false);
+    }
+  }
+
+  return (
+    <section aria-labelledby="decision-tree-title" className="space-y-5">
+      <div>
+        <h2 id="decision-tree-title" className="font-serif text-xl text-ink dark:text-bright">Model decision</h2>
+        <p className="mt-1 text-sm text-ink-soft dark:text-starlight">Advisory comparison from registered providers, the operator budget, and measured Antiek-bench evidence when available.</p>
+      </div>
+      <div className="grid gap-3 border-y border-ink/15 py-4 dark:border-bright/15 sm:grid-cols-3">
+        <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
+          Task
+          <select
+            value={task}
+            onChange={(event) => {
+              invalidateDecision();
+              setTask(event.target.value as ModelDecisionTask);
+            }}
+            className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright"
+          >
+            {DECISION_TASKS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
+          Input characters
+          <input type="number" min={0} value={inputChars} onChange={(event) => { invalidateDecision(); setInputChars(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
+        </label>
+        <label className="text-xs font-semibold text-ink-soft dark:text-starlight">
+          Output tokens
+          <input type="number" min={0} value={outputTokens} onChange={(event) => { invalidateDecision(); setOutputTokens(Number(event.target.value) || 0); }} className="mt-1 block h-10 w-full border border-ink/20 bg-transparent px-2 text-sm text-ink dark:border-bright/20 dark:text-bright" />
+        </label>
+      </div>
+      <LemonButton type="button" variant="primary" size="md" disabled={loading} onClick={() => void compare()}>
+        {loading ? "Comparing..." : "Compare models"}
+      </LemonButton>
+      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+      {decision && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-ink/15 pb-3 dark:border-bright/15">
+            <p className="text-sm text-ink dark:text-bright">
+              Recommended tier: <strong>{decision.recommended_tier ?? "none available"}</strong>
+            </p>
+            <p className="font-mono text-xs text-ink-soft dark:text-starlight">
+              {decision.benchmark_status === "measured" ? "Measured evidence" : "Static quality prior"}
+            </p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[680px] border-collapse text-left text-sm">
+              <thead className="border-b-2 border-ink/70 text-xs text-ink-soft dark:border-bright/70 dark:text-starlight">
+                <tr><th className="py-2 pr-3">Rank</th><th className="py-2 pr-3">Tier</th><th className="py-2 pr-3">Model</th><th className="py-2 pr-3">Quality</th><th className="py-2 pr-3">Estimate high</th><th className="py-2">Status</th></tr>
+              </thead>
+              <tbody>
+                {decision.candidates.map((candidate) => (
+                  <tr key={`${candidate.tier}:${candidate.provider}:${candidate.model}`} className="border-b border-ink/10 dark:border-bright/10">
+                    <td className="py-3 pr-3 font-mono">{candidate.rank}</td>
+                    <td className="py-3 pr-3 font-semibold">{candidate.tier}</td>
+                    <td className="py-3 pr-3"><span className="block">{candidate.model}</span><span className="text-xs text-ink-soft dark:text-starlight">{candidate.provider}</span></td>
+                    <td className="py-3 pr-3 font-mono">{candidate.quality_score.toFixed(2)} <span className="text-xs text-ink-soft dark:text-starlight">{candidate.quality_basis === "measured" ? `n=${candidate.benchmark_samples}` : "prior"}</span></td>
+                    <td className="py-3 pr-3 font-mono">{candidate.estimated_usd_high == null ? "unknown" : `$${candidate.estimated_usd_high.toFixed(6)}`}</td>
+                    <td className="py-3">
+                      {!candidate.ready
+                        ? "Unavailable"
+                        : candidate.would_exceed_budget === true
+                          ? "Over budget"
+                          : candidate.would_exceed_budget === false
+                            ? "Within budget"
+                            : "Budget unknown"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {decision.notes.map((note) => <p key={note} className="text-xs text-ink-soft dark:text-starlight">{note}</p>)}
+        </div>
+      )}
+    </section>
   );
 }
 

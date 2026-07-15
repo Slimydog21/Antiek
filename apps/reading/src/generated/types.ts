@@ -9,7 +9,7 @@
 // discipline rule that keeps this file in sync.
 
 export const ANTIEK_PARAM_VERSION = "0.2.0";
-export const EVENT_SCHEMA_VERSION = 31;
+export const EVENT_SCHEMA_VERSION = 33;
 
 // Stable action vocabulary. Values are persisted to the trajectory
 // store and MUST match substrate.schemas.events.ActionType exactly.
@@ -140,6 +140,8 @@ export const ActionType = {
   BLOCK_POSITIONED: "block.positioned",
   MARGINALIA_NOTED: "marginalia.noted",
   SOURCE_READ: "source.read",
+  READ_BOOK_ANSWERED: "read.book_answered",
+  READ_BOOK_ANSWER_JUDGED: "read.book_answer_judged",
   READ_META_READING_GENERATED: "read.meta_reading.generated",
   DOCUMENT_FILED_INTO_INVESTIGATION: "document.filed_into_investigation",
   GROUNDEDNESS_SCORED: "groundedness.scored",
@@ -542,6 +544,14 @@ export interface MetaReadingCitation {
   page_resolved?: boolean;
 }
 
+export interface BookAnswerCitation {
+  chunk_id: string;
+  document_id: string;
+  page_index?: number | null;
+  page_resolved?: boolean;
+  snippet: string;
+}
+
 /**
  * One per-claim entailment verdict. ``score`` is the claim's
  * groundedness in [0, 1]; ``supported`` is the binary verdict the
@@ -596,6 +606,13 @@ export interface DispatchCallPayload {
   parent_run_id?: string | null;
   feature_label?: string | null;
   session_id?: string | null;
+  nd_session_id?: string | null;
+  nd_recommended_provider?: string | null;
+  nd_recommended_model?: string | null;
+  nd_tradeoff?: string | null;
+  nd_decision_latency_ms?: number | null;
+  nd_bypassed?: boolean;
+  nd_bypass_reason?: string | null;
 }
 
 /**
@@ -2560,6 +2577,40 @@ export interface SourceReadPayload {
 }
 
 /**
+ * One durable talk-to-book output, including the real dispatch receipt.
+ */
+export interface ReadBookAnsweredPayload {
+  action_type: "read.book_answered";
+  owner_id: string;
+  question: string;
+  answer: string;
+  citations?: BookAnswerCitation[];
+  grounded: boolean;
+  context_chunk_count: number;
+  research_tier: "fast" | "deep";
+  provider?: string | null;
+  model?: string | null;
+  input_tokens?: number | null;
+  output_tokens?: number | null;
+  cached_input_tokens?: number | null;
+  cache_creation_input_tokens?: number | null;
+  cost_usd?: number | null;
+  latency_ms?: number | null;
+  dispatch_event_id?: string | null;
+}
+
+/**
+ * The operator's append-only verdict on one captured book answer.
+ */
+export interface ReadBookAnswerJudgedPayload {
+  action_type: "read.book_answer_judged";
+  answer_id: string;
+  owner_id: string;
+  verdict: "good" | "bad";
+  note?: string | null;
+}
+
+/**
  * A one-shot, READ-ONLY, page-cited synthesis over the reader's OWNED
  * corpus, saved as a re-openable Read asset (Read SPR-08 M4).
  * 
@@ -2742,6 +2793,8 @@ export type TypedPayload =
   | MarginaliaNotedPayload
   | BlockPositionPayload
   | SourceReadPayload
+  | ReadBookAnsweredPayload
+  | ReadBookAnswerJudgedPayload
   | ReadMetaReadingGeneratedPayload
   | DocumentFiledIntoInvestigationPayload;
 
@@ -2850,6 +2903,8 @@ export const TYPED_PAYLOAD_ACTION_TYPES: ReadonlySet<ActionType> = new Set<Actio
   "question.escalated_to_research",
   "question.identified",
   "question.resolved_by_doc",
+  "read.book_answer_judged",
+  "read.book_answered",
   "read.meta_reading.generated",
   "reuse.gated",
   "rev_share.decided",

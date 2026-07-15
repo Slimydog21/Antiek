@@ -13,6 +13,7 @@ import hashlib
 import os
 import tempfile
 
+import duckdb
 import pytest
 
 from processing.embedding import _reset_default_provider, set_default_embedding_provider
@@ -30,6 +31,7 @@ from substrate.graph.insight_question import (
     promote_from_note_event,
     promote_insight,
     promote_question,
+    question_node_id,
 )
 from substrate.graph.migrate_v9_insight_question import (
     NODE_TYPES_AFTER,
@@ -98,7 +100,7 @@ def test_fresh_db_accepts_insight_and_question_nodes(graph_env):
 def test_fresh_db_rejects_unknown_node_type(graph_env):
     con = connect_write(graph_env["db_path"], purpose="t")
     try:
-        with pytest.raises(Exception):
+        with pytest.raises(duckdb.ConstraintException):
             con.execute(
                 "INSERT INTO nodes (node_id, canonical_label, node_type, graph_scope) "
                 "VALUES ('n-bad','x','not_a_type','depth')"
@@ -201,11 +203,11 @@ def test_migration_rebuilds_legacy_db_preserving_data(tmp_path):
         con.execute("INSERT INTO nodes (node_id,canonical_label,node_type,graph_scope) "
                     "VALUES ('n3','insight!','insight','depth')")
         # Old types still accepted; bogus still rejected.
-        with pytest.raises(Exception):
+        with pytest.raises(duckdb.ConstraintException):
             con.execute("INSERT INTO nodes (node_id,canonical_label,node_type,graph_scope) "
                         "VALUES ('n4','x','bogus','depth')")
         # FK to nodes still enforced.
-        with pytest.raises(Exception):
+        with pytest.raises(duckdb.ConstraintException):
             con.execute(
                 "INSERT INTO edges (edge_id,source_node_id,target_node_id,relation,source_tier,extraction_confidence) "
                 "VALUES ('e9','nX','n2','r',2,0.5)"
@@ -450,3 +452,13 @@ def test_node_types_after_constant_matches_db(graph_env):
     # The migration's NODE_TYPES_AFTER must equal what the DB CHECK accepts.
     assert "insight" in NODE_TYPES_AFTER and "question" in NODE_TYPES_AFTER
     assert canonical_text("  Foo   BAR ") == "foo bar"
+
+
+def test_optional_identity_scope_isolates_same_text_without_changing_default() -> None:
+    assert insight_node_id("same") == insight_node_id(" SAME ")
+    assert insight_node_id("same", identity_scope="owner-a") != insight_node_id(
+        "same", identity_scope="owner-b"
+    )
+    assert question_node_id("same?", identity_scope="owner-a") != question_node_id(
+        "same?", identity_scope="owner-b"
+    )

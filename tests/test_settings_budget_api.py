@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +16,7 @@ from interfaces.research.api.settings_budget import (
     estimate_prompt_cost,
     read_operator_budget,
 )
-from orchestration.continuous.budget import DaemonBudget
+from orchestration.continuous.budget import DaemonBudget, _budget_path
 
 
 @pytest.fixture
@@ -23,6 +25,7 @@ def client(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Iterator[TestClie
     monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
     monkeypatch.delenv("ANTIEK_OPERATOR_BUDGET_USD", raising=False)
     monkeypatch.delenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", raising=False)
+    monkeypatch.delenv("ANTIEK_BENCH_REPORT_PATH", raising=False)
     from interfaces.research.api.app import create_app
 
     app = create_app()
@@ -75,6 +78,106 @@ def test_budget_default_cap_with_known_spend_sidecar(
     assert body["spent_status"] == "known"
     assert body["spent_usd"] == 1.25
     assert body["remaining_usd"] == 3.75
+    # Honesty: same number is labeled reserved estimate, not settled cost.
+    assert body["reserved_estimated_usd"] == 1.25
+    assert body["spend_basis"] == "reserved_estimate"
+    assert body["over_budget"] is False
+    assert any("reserved" in n.lower() for n in body["notes"])
+
+
+@pytest.mark.parametrize(
+    ("operator_cap", "expected_remaining"),
+    [(200.0, 196.0), (2.0, -2.0)],
+)
+def test_budget_rebases_sidecar_spend_on_operator_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    operator_cap: float,
+    expected_remaining: float,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", str(operator_cap))
+
+    budget = read_operator_budget()
+
+    assert budget.daily_cap_usd == operator_cap
+    assert budget.spent_status == "known"
+    assert budget.spent_usd == 4.0
+    assert budget.remaining_usd == expected_remaining
+    assert budget.over_budget is (operator_cap < 4.0)
+    assert budget.over_budget_usd == max(0.0, 4.0 - operator_cap)
+
+
+@pytest.mark.parametrize(
+    "bad_spend",
+    [None, True, "1", -1.0, float("nan"), float("inf")],
+)
+def test_budget_malformed_spend_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    bad_spend: object,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if bad_spend is None:
+        del raw["spent_usd"]
+    else:
+        raw["spent_usd"] = bad_spend
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+    assert budget.over_budget is None
+    assert budget.over_budget_usd is None
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    [("cap_usd", True), ("cap_usd", "5"), ("spawn_count", True), ("spawn_count", 1.5)],
+)
+def test_budget_malformed_accounting_types_are_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    field: str,
+    bad_value: object,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw[field] = bad_value
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+
+
+def test_budget_misfiled_date_is_unknown(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["date_stamp"] = "2000-01-01"
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
 
 
 def test_budget_operator_env_cap(
@@ -89,6 +192,149 @@ def test_budget_operator_env_cap(
     body = r.json()
     assert body["daily_cap_usd"] == 12.5
     assert body["cap_env"] == "ANTIEK_OPERATOR_BUDGET_USD"
+    # Operator display cap differs from daemon default enforcement ($5).
+    assert body["enforcement_cap_usd"] == 5.0
+    assert body["caps_aligned"] is False
+    assert any("differs from enforcement" in n for n in body["notes"])
+
+
+def test_budget_operator_cap_differs_from_daemon_cap_stays_consistent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression (#704 + #715 residual): spent + remaining share Settings baseline.
+
+    Sidecar: daemon cap $5, reserved $4. Operator Settings cap $200.
+    Pre-fix bug: remaining came from remaining_today() ($1) and spent was
+    re-based as $200 - $1 = $199 (bar shows ~100% used). Fix: reserved=$4,
+    remaining=$196 on the Settings cap.
+    """
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.delenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", raising=False)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "200")
+
+    budget = read_operator_budget()
+
+    assert budget.daily_cap_usd == 200.0
+    assert budget.spent_status == "known"
+    assert budget.spent_usd == 4.0
+    assert budget.reserved_estimated_usd == 4.0
+    assert budget.remaining_usd == 196.0
+    assert budget.spend_basis == "reserved_estimate"
+    assert budget.enforcement_cap_usd == 5.0
+    assert budget.caps_aligned is False
+    assert budget.over_budget is False
+    # Pre-fix failure mode must not reappear.
+    assert budget.spent_usd != 199.0
+    assert budget.remaining_usd != 1.0
+
+
+def test_budget_reports_persisted_daemon_cap_over_changed_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", "5")
+    DaemonBudget.from_env().reserve(1.0)
+    monkeypatch.setenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", "10")
+
+    budget = read_operator_budget()
+
+    assert budget.enforcement_cap_usd == 5.0
+    assert budget.spent_usd == 1.0
+
+
+def test_budget_signed_remaining_exposes_overrun_magnitude(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When reserved exceeds the display cap, remaining is negative (not clamped)."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    # Reserve $4 against daemon $5, then tighten Settings to $2.
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "2")
+
+    budget = read_operator_budget()
+
+    assert budget.reserved_estimated_usd == 4.0
+    assert budget.remaining_usd == -2.0  # signed, not max(0, ...)
+    assert budget.over_budget is True
+    assert any("over display budget" in n for n in budget.notes)
+
+
+def test_budget_sidecar_read_does_not_require_budget_py_mutation() -> None:
+    """§7.4 tripwire: this residual must not edit orchestration/continuous/budget.py."""
+    budget_mod = Path("orchestration/continuous/budget.py").read_text(encoding="utf-8")
+    # Guard: residual must not add spent_today() (the #715 placement that tripped CI).
+    assert "def spent_today" not in budget_mod
+
+
+def test_budget_malformed_sidecar_missing_spent_key_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Present sidecar without spent_usd must NOT fabricate $0 known spend."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    # Create a sidecar-shaped file missing the required key via reserve then edit.
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    del raw["spent_usd"]
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+    assert budget.spend_basis == "unknown"
+
+
+def test_budget_malformed_sidecar_negative_spent_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Negative sidecar spend is corrupt data → unknown, not clamped to 0."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["spent_usd"] = -3.0
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+
+
+def test_budget_rejects_non_finite_operator_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """nan/inf/negative display caps are ignored; fall back with an explicit note."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "nan")
+    budget = read_operator_budget()
+    assert budget.daily_cap_usd == 5.0  # daemon default fallback
+    assert any("finite" in n and "non-negative" in n for n in budget.notes)
+
+
+@pytest.mark.parametrize("invalid_cap", ["nan", "inf", "-1"])
+def test_budget_invalid_numeric_env_is_ignored(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    invalid_cap: str,
+) -> None:
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", invalid_cap)
+    response = client.get("/settings/budget")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["daily_cap_usd"] == 5.0
+    assert body["cap_env"] is None
+    assert any("finite and non-negative" in note for note in body["notes"])
 
 
 def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) -> None:
@@ -107,6 +353,275 @@ def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) ->
     assert body["estimated_usd_low"] is None
     assert body["estimated_usd_high"] is None
     assert any("placeholder" in n.lower() or "0.0" in n for n in body["notes"])
+
+
+def test_model_decision_uses_server_inventory_and_honest_static_basis(
+    client: TestClient,
+) -> None:
+    response = client.post(
+        "/settings/model-decision",
+        json={"task": "deep_research", "input_chars": 4000, "expected_output_tokens": 500},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["authority"] == "advisory"
+    assert body["recommended_tier"] is None
+    assert body["benchmark_status"] == "unavailable"
+    assert body["candidates"]
+    assert all(row["eligible"] is False for row in body["candidates"])
+    assert all(row["quality_basis"] == "static_prior" for row in body["candidates"])
+    assert all(row["estimated_usd_high"] is None for row in body["candidates"])
+
+
+def test_composer_projection_route_is_mounted_on_production_app(client: TestClient) -> None:
+    response = client.post(
+        "/settings/composer-projection/resolve",
+        json={
+            "task": "deep_research",
+            "bounded_usage": [
+                {"unit": "input_token", "maximum": 1_000},
+                {"unit": "output_token", "maximum": 500},
+            ],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["authority"] == "advisory_explanatory"
+    assert body["ranked_candidates"]
+    assert body["budget"]["spent_usd"] is None
+
+
+def test_model_decision_prefers_valid_server_owned_benchmark(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = tmp_path / "bench.json"
+    generated = datetime.now(UTC)
+    generated_at = generated.isoformat()
+    generated_iso = generated.isocalendar()
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": "antiek.model-bench.v1",
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
+                "generated_at": generated_at,
+                "measurements": [
+                    {
+                        "task": "writing",
+                        "tier": "flash",
+                        "provider": "zai",
+                        "model": "glm-5.2",
+                        "score": 1.0,
+                        "samples": 40,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTIEK_BENCH_REPORT_PATH", str(report))
+    response = client.post("/settings/model-decision", json={"task": "writing"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["benchmark_status"] == "measured"
+    assert datetime.fromisoformat(body["benchmark_generated_at"]) == datetime.fromisoformat(
+        generated_at
+    )
+    assert body["recommended_tier"] is None
+    assert body["candidates"][0]["quality_basis"] == "measured"
+    assert body["candidates"][0]["benchmark_samples"] == 40
+
+
+def test_model_decision_uses_first_registered_fallback_route(
+    client: TestClient,
+) -> None:
+    client.app.state.registered_providers = {"deepseek"}
+    body = client.post("/settings/model-decision", json={"task": "general"}).json()
+    assert body["recommended_tier"] is None
+    candidate = next(row for row in body["candidates"] if row["tier"] == "pro")
+    assert candidate["ready"] is True
+    assert candidate["provider"] == "deepseek"
+    assert candidate["model"] == "deepseek-v4-pro"
+    assert candidate["estimated_usd_high"] is None
+    assert candidate["eligible"] is False
+
+
+def test_model_decision_prices_the_selected_fallback_route(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import interfaces.research.api.settings_budget as sb
+
+    fake: dict[str, Any] = {
+        "tiers": {
+            "pro": {
+                "provider": "primary",
+                "model": "primary-model",
+                "pricing": {"input_per_mtok": 100.0, "output_per_mtok": 100.0},
+                "fallback": {
+                    "provider": "fallback",
+                    "model": "fallback-model",
+                    "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 2.0},
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(sb, "_load_dispatch_config", lambda: fake)
+    monkeypatch.setattr(
+        sb,
+        "read_operator_budget",
+        lambda: sb.BudgetResponse(
+            daily_cap_usd=5.0,
+            spent_usd=1.0,
+            remaining_usd=4.0,
+            spent_status="known",
+            cap_env=None,
+            notes=[],
+        ),
+    )
+    client.app.state.registered_providers = {"fallback"}
+    body = client.post(
+        "/settings/model-decision",
+        json={"task": "general", "input_chars": 4000, "expected_output_tokens": 1000},
+    ).json()
+    candidate = body["candidates"][0]
+    assert candidate["provider"] == "fallback"
+    assert candidate["model"] == "fallback-model"
+    assert candidate["estimated_usd_high"] == pytest.approx(0.0036)
+    assert candidate["eligible"] is True
+    assert body["recommended_tier"] == "pro"
+
+
+def test_model_decision_bounds_cyclic_fallback_config(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import interfaces.research.api.settings_budget as sb
+
+    route: dict[str, Any] = {"provider": "missing", "model": "model"}
+    route["fallback"] = route
+    monkeypatch.setattr(sb, "_load_dispatch_config", lambda: {"tiers": {"pro": route}})
+    client.app.state.registered_providers = {"other"}
+    response = client.post("/settings/model-decision", json={"task": "general"})
+    assert response.status_code == 200
+    assert response.json()["candidates"][0]["ready"] is False
+
+
+def test_model_decision_does_not_label_nonmatching_report_as_measured(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    report = tmp_path / "bench-nonmatching.json"
+    generated = datetime.now(UTC)
+    generated_iso = generated.isocalendar()
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": "antiek.model-bench.v1",
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
+                "generated_at": generated.isoformat(),
+                "measurements": [
+                    {
+                        "task": "writing",
+                        "tier": "flash",
+                        "provider": "zai",
+                        "model": "retired-model",
+                        "score": 0.99,
+                        "samples": 40,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTIEK_BENCH_REPORT_PATH", str(report))
+    body = client.post("/settings/model-decision", json={"task": "writing"}).json()
+    assert body["benchmark_status"] == "unavailable"
+    assert body["benchmark_generated_at"] is None
+    assert all(row["quality_basis"] == "static_prior" for row in body["candidates"])
+    assert any("no matching measurement" in note for note in body["notes"])
+
+
+def test_model_decision_rejects_client_supplied_inventory(client: TestClient) -> None:
+    response = client.post(
+        "/settings/model-decision",
+        json={
+            "task": "general",
+            "models": [{"provider": "attacker", "model": "free", "score": 1}],
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_model_decision_rejects_duplicate_benchmark_routes(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    measurement = {
+        "task": "general",
+        "tier": "pro",
+        "provider": "zai",
+        "model": "glm-5.2",
+        "score": 0.9,
+        "samples": 10,
+    }
+    report = tmp_path / "bench-duplicates.json"
+    generated = datetime.now(UTC)
+    generated_iso = generated.isocalendar()
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": "antiek.model-bench.v1",
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
+                "generated_at": generated.isoformat(),
+                "measurements": [measurement, measurement],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTIEK_BENCH_REPORT_PATH", str(report))
+    body = client.post("/settings/model-decision", json={"task": "general"}).json()
+    assert body["benchmark_status"] == "unavailable"
+    assert any("failed validation" in note for note in body["notes"])
+
+
+@pytest.mark.parametrize("age", [timedelta(days=9), timedelta(minutes=-6)])
+def test_model_decision_ignores_stale_or_future_benchmark(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    age: timedelta,
+) -> None:
+    report = tmp_path / "bench-invalid-time.json"
+    generated = datetime.now(UTC) - age
+    generated_iso = generated.isocalendar()
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": "antiek.model-bench.v1",
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
+                "generated_at": generated.isoformat(),
+                "measurements": [
+                    {
+                        "task": "general",
+                        "tier": "pro",
+                        "provider": "zai",
+                        "model": "glm-5.2",
+                        "score": 0.9,
+                        "samples": 10,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTIEK_BENCH_REPORT_PATH", str(report))
+    body = client.post("/settings/model-decision", json={"task": "general"}).json()
+    assert body["benchmark_status"] == "unavailable"
+    assert any("stale" in note or "future-dated" in note for note in body["notes"])
 
 
 def test_estimate_with_synthetic_pricing(
@@ -147,7 +662,5 @@ def test_estimate_with_synthetic_pricing(
 
 
 def test_caddy_allowlist_includes_settings() -> None:
-    caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(
-        encoding="utf-8"
-    )
+    caddy = Path("infrastructure/ansible/templates/Caddyfile.j2").read_text(encoding="utf-8")
     assert "/settings*" in caddy
