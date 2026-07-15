@@ -1,6 +1,7 @@
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
+import { emitProductActivate } from "../../components/hotkeys";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import homeEnvironment from "../../brand/werner/home/antiek-knowledge-home-v1.webp";
 import GlassSurface from "../../shell/GlassSurface";
@@ -103,7 +104,14 @@ export function Home() {
                   key={wf}
                   type="button"
                   data-workflow={wf}
-                  onClick={() => navigate(meta.defaultRoute)}
+                  data-product-id={wf}
+                  data-werner-target="curious"
+                  onClick={() => {
+                    // Living-TV: home doors share the product-activate choreography
+                    // (distinct emote per door via emoteForProductDoor) before route.
+                    emitProductActivate({ productId: wf, source: "click" });
+                    navigate(meta.defaultRoute);
+                  }}
                   className={
                     "group flex flex-col items-start rounded-hog border-edge border-sun " +
                     "bg-ice-0 p-5 text-left shadow-z1 transition " +

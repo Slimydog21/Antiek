@@ -163,6 +163,28 @@ describe("Home (SPR-12 M1)", () => {
     }
   });
 
+  it("emits PRODUCT_ACTIVATE living-TV choreography before navigating each door", () => {
+    const seen: string[] = [];
+    const onAct = (e: Event) => {
+      const id = (e as CustomEvent<{ productId?: string }>).detail?.productId;
+      if (id) seen.push(id);
+    };
+    window.addEventListener("antiek:product:activate", onAct);
+    for (const wf of WORKFLOW_ORDER) {
+      cleanup();
+      const { container } = mount();
+      const card = container.querySelector<HTMLButtonElement>(
+        `button[data-workflow="${wf}"]`,
+      );
+      expect(card?.getAttribute("data-product-id")).toBe(wf);
+      fireEvent.click(card!);
+    }
+    window.removeEventListener("antiek:product:activate", onAct);
+    for (const wf of WORKFLOW_ORDER) {
+      expect(seen).toContain(wf);
+    }
+  });
+
   it("features biographies and opens the dedicated /biography landing (SPR-11)", () => {
     mount();
     const bio = screen.getByTestId("home-biographies");
