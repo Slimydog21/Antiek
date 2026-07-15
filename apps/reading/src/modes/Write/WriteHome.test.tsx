@@ -101,6 +101,8 @@ describe("WriteHome — the re-homed door", () => {
     await screen.findByPlaceholderText(/what are you writing/i);
     const surface = container.querySelector("[data-glass-surface]");
     expect(surface, "the Write home must render through GlassSurface").toBeTruthy();
+    // Session celebrate mark UI-consumed on the Write door (living-TV).
+    expect(screen.getByTestId("write-home-werner-brand")).toBeTruthy();
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
   });
 
