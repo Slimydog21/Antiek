@@ -124,18 +124,6 @@ export const POSE_GAPS: readonly PoseGap[] = [
     note: "No clear-dawn pose exists; idle is honest and restrained.",
   },
   {
-    sceneKey: "dusk|snow",
-    fallbackMood: "thinking",
-    wantedPose: "a dusk-gaze pose for snow as the light fades",
-    note: "The thinking pose is the closest current watching pose.",
-  },
-  {
-    sceneKey: "dusk|clear",
-    fallbackMood: "thinking",
-    wantedPose: "a dusk-gaze pose under clear light",
-    note: "The thinking pose is the closest current watching pose.",
-  },
-  {
     sceneKey: "night|snow",
     fallbackMood: "idle",
     wantedPose: "a settled-night pose under aurora and snow",

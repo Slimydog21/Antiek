@@ -12,7 +12,7 @@ import { clampRectToViewport } from "../workspace/panelLayoutLogic";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import { WernerSleeping } from "../brand/werner/animated";
-import type { SceneMomentCue } from "../scene/useDawnCue";
+import type { SceneMomentCue } from "../scene/useSceneMomentCue";
 import {
   createStationRestLifecycle,
   createWernerStage,
@@ -117,6 +117,13 @@ const STATION_RETURN_MS = 900;
 
 const loadWernerWaking = () => import("../brand/werner/animated/WernerWaking");
 const LazyWernerWaking = lazy(loadWernerWaking);
+const loadWernerDuskGaze = () => import("../brand/werner/animated/WernerDuskGaze");
+const LazyWernerDuskGaze = lazy(loadWernerDuskGaze);
+const DUSK_GAZE_MS = 1_400;
+
+function sceneBeatDurationMs(moment: SceneMomentCue["moment"]): number {
+  return moment === "dusk-settle" ? DUSK_GAZE_MS : STATION_WAKE_MS;
+}
 
 /** Where the Penguin's station is when first shown — lower-left, out of the way
  *  of the main composer but clearly in reach. Recomputed against the live
@@ -137,12 +144,12 @@ function initialMascotPos(): { x: number; y: number } {
 
 export function PenguinMascot({
   sceneBeat,
-  onDawnBeatEnd,
+  onSceneBeatEnd,
 }: {
-  /** One-way opaque dawn cue from Scene (SPR-22). Transient — consumed on read. */
+  /** One-way opaque scene cue from Scene. Transient — consumed on read. */
   sceneBeat?: SceneMomentCue | null;
-  /** Called when the dawn beat ends (timer expiry or preempt). */
-  onDawnBeatEnd?: (sequence: number) => void;
+  /** Called when the scene beat ends (timer expiry or preempt). */
+  onSceneBeatEnd?: (sequence: number) => void;
 } = {}) {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
@@ -152,38 +159,38 @@ export function PenguinMascot({
   restPhaseRef.current = restPhase;
   const restLifecycleRef = useRef<StationRestLifecycle | null>(null);
 
-  // SPR-22 — scene dawn beat state machine (separate from StationRestPhase).
+  // SPR-22/29 — scene beat state machine (separate from StationRestPhase).
   // Consumed at most once per cue; preempted when foreground is occupied.
-  const [dawnBeatActive, setDawnBeatActive] = useState(false);
-  const dawnBeatActiveRef = useRef(false);
-  dawnBeatActiveRef.current = dawnBeatActive;
-  const dawnTimerRef = useRef<number | null>(null);
-  const activeDawnSequenceRef = useRef<number | null>(null);
-  const handledDawnSequenceRef = useRef(0);
-  const onDawnBeatEndRef = useRef(onDawnBeatEnd);
-  onDawnBeatEndRef.current = onDawnBeatEnd;
+  const [sceneBeatActive, setSceneBeatActive] = useState(false);
+  const sceneBeatActiveRef = useRef(false);
+  sceneBeatActiveRef.current = sceneBeatActive;
+  const sceneTimerRef = useRef<number | null>(null);
+  const activeSceneSequenceRef = useRef<number | null>(null);
+  const handledSceneSequenceRef = useRef(0);
+  const onSceneBeatEndRef = useRef(onSceneBeatEnd);
+  onSceneBeatEndRef.current = onSceneBeatEnd;
 
-  const finishDawnBeat = useCallback(() => {
-    const sequence = activeDawnSequenceRef.current;
+  const finishSceneBeat = useCallback(() => {
+    const sequence = activeSceneSequenceRef.current;
     if (sequence === null) return;
-    activeDawnSequenceRef.current = null;
-    dawnBeatActiveRef.current = false;
-    if (dawnTimerRef.current !== null) {
-      window.clearTimeout(dawnTimerRef.current);
-      dawnTimerRef.current = null;
+    activeSceneSequenceRef.current = null;
+    sceneBeatActiveRef.current = false;
+    if (sceneTimerRef.current !== null) {
+      window.clearTimeout(sceneTimerRef.current);
+      sceneTimerRef.current = null;
     }
-    setDawnBeatActive(false);
-    onDawnBeatEndRef.current?.(sequence);
+    setSceneBeatActive(false);
+    onSceneBeatEndRef.current?.(sequence);
   }, []);
 
   useEffect(() => {
     if (restPhase === "sleeping") void loadWernerWaking();
   }, [restPhase]);
 
-  // Preload the waking artwork when the dawn beat starts (same artwork
-  // shared with long-rest waking; never StationRestPhase).
+  // Preload only the authored artwork named by the opaque cue.
   useEffect(() => {
-    if (sceneBeat) void loadWernerWaking();
+    if (sceneBeat?.moment === "daybreak") void loadWernerWaking();
+    if (sceneBeat?.moment === "dusk-settle") void loadWernerDuskGaze();
   }, [sceneBeat]);
 
   // The active (default) station activity. With one registered activity
@@ -276,8 +283,8 @@ export function PenguinMascot({
   const returningHome = useRef(false);
 
   useEffect(() => {
-    if (!sceneBeat || sceneBeat.sequence <= handledDawnSequenceRef.current) return;
-    handledDawnSequenceRef.current = sceneBeat.sequence;
+    if (!sceneBeat || sceneBeat.sequence <= handledSceneSequenceRef.current) return;
+    handledSceneSequenceRef.current = sceneBeat.sequence;
     if (
       stationInstrumentSuspended ||
       emoteRef.current !== null ||
@@ -286,35 +293,38 @@ export function PenguinMascot({
       returningHome.current ||
       restPhaseRef.current === "waking"
     ) {
-      onDawnBeatEndRef.current?.(sceneBeat.sequence);
+      onSceneBeatEndRef.current?.(sceneBeat.sequence);
       return;
     }
-    finishDawnBeat();
-    activeDawnSequenceRef.current = sceneBeat.sequence;
-    dawnBeatActiveRef.current = true;
-    setDawnBeatActive(true);
-    dawnTimerRef.current = window.setTimeout(finishDawnBeat, STATION_WAKE_MS);
-  }, [finishDawnBeat, sceneBeat, stationInstrumentSuspended]);
+    finishSceneBeat();
+    activeSceneSequenceRef.current = sceneBeat.sequence;
+    sceneBeatActiveRef.current = true;
+    setSceneBeatActive(true);
+    sceneTimerRef.current = window.setTimeout(
+      finishSceneBeat,
+      sceneBeatDurationMs(sceneBeat.moment),
+    );
+  }, [finishSceneBeat, sceneBeat, stationInstrumentSuspended]);
 
   useEffect(() => {
     if (
-      dawnBeatActiveRef.current &&
+      sceneBeatActiveRef.current &&
       (stationInstrumentSuspended ||
         emote !== null ||
         restPhase === "waking")
     ) {
-      finishDawnBeat();
+      finishSceneBeat();
     }
-  }, [emote, finishDawnBeat, restPhase, stationInstrumentSuspended]);
+  }, [emote, finishSceneBeat, restPhase, stationInstrumentSuspended]);
 
   useEffect(
     () => () => {
-      if (dawnTimerRef.current !== null) {
-        window.clearTimeout(dawnTimerRef.current);
-        dawnTimerRef.current = null;
+      if (sceneTimerRef.current !== null) {
+        window.clearTimeout(sceneTimerRef.current);
+        sceneTimerRef.current = null;
       }
-      activeDawnSequenceRef.current = null;
-      dawnBeatActiveRef.current = false;
+      activeSceneSequenceRef.current = null;
+      sceneBeatActiveRef.current = false;
     },
     [],
   );
@@ -467,7 +477,7 @@ export function PenguinMascot({
         dragStart.current !== null ||
         roamPaused.current ||
         returningHome.current;
-      if (foregroundBusy) finishDawnBeat();
+      if (foregroundBusy) finishSceneBeat();
       const lifecycleEligible =
         !reduceMotion &&
         !stationInstrumentSuspended &&
@@ -487,7 +497,7 @@ export function PenguinMascot({
           productEmote:
             emoteRef.current !== null ||
             restPhaseRef.current !== "active" ||
-            dawnBeatActiveRef.current,
+            sceneBeatActiveRef.current,
           reducedMotion: reduceMotion,
           activityEnabled:
             activeActivity.id !== "ice-fishing" || wernerIceFishingCursor,
@@ -513,7 +523,7 @@ export function PenguinMascot({
     follow,
     activeActivity,
     stationInstrumentSuspended,
-    finishDawnBeat,
+    finishSceneBeat,
   ]);
 
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
@@ -542,7 +552,7 @@ export function PenguinMascot({
       setRoamPaused: (paused) => {
         roamPaused.current = paused;
         if (paused) {
-          finishDawnBeat();
+          finishSceneBeat();
           return;
         }
         // A directed excursion just ended (the stage walked Werner to a button
@@ -645,7 +655,7 @@ export function PenguinMascot({
   const onPointerDown = useCallback(
     (e: React.PointerEvent) => {
       e.currentTarget.setPointerCapture(e.pointerId);
-      finishDawnBeat();
+      finishSceneBeat();
       dragStart.current = { x: e.clientX, y: e.clientY };
       moved.current = false;
       // Hand the position to the pointer: kill any in-flight stroll transition +
@@ -666,7 +676,7 @@ export function PenguinMascot({
       }
       returningHome.current = false;
     },
-    [finishDawnBeat, reduceMotion],
+    [finishSceneBeat, reduceMotion],
   );
 
   const onPointerMove = useCallback(
@@ -753,7 +763,7 @@ export function PenguinMascot({
       data-testid="penguin-mascot"
       data-werner-emote={emote ?? "none"}
       data-werner-rest-phase={restPhase}
-      data-werner-scene-beat={dawnBeatActive ? sceneBeat?.moment : "none"}
+      data-werner-scene-beat={sceneBeatActive ? sceneBeat?.moment : "none"}
       aria-label="Project — click to float the project tree, double-click to open"
       title="Project · click to float · double-click to open · drag to move"
       onPointerDown={onPointerDown}
@@ -805,7 +815,7 @@ export function PenguinMascot({
               emote ||
               restPhase === "sleeping" ||
               restPhase === "waking" ||
-              dawnBeatActive
+              sceneBeatActive
                 ? "hidden"
                 : "visible",
           }}
@@ -820,12 +830,16 @@ export function PenguinMascot({
               <LazyWernerWaking size={MASCOT_SIZE} reduced={reduceMotion} />
             </Suspense>
           </span>
-        ) : !emote && dawnBeatActive && !stationInstrumentSuspended ? (
+        ) : !emote && sceneBeatActive && !stationInstrumentSuspended ? (
           <span aria-hidden="true" style={{ position: "absolute", inset: 0 }}>
             <Suspense
               fallback={<WernerSleeping size={MASCOT_SIZE} label="" reduced />}
             >
-              <LazyWernerWaking size={MASCOT_SIZE} reduced={reduceMotion} />
+              {sceneBeat?.moment === "dusk-settle" ? (
+                <LazyWernerDuskGaze size={MASCOT_SIZE} reduced={reduceMotion} />
+              ) : (
+                <LazyWernerWaking size={MASCOT_SIZE} reduced={reduceMotion} />
+              )}
             </Suspense>
           </span>
         ) : !emote && restPhase === "sleeping" ? (

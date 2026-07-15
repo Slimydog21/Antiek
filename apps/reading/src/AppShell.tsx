@@ -7,7 +7,7 @@ import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
 import { WernerIceCursorShell } from "./werner/WernerIceCursorShell";
 import { Scene } from "./scene/Scene";
-import type { SceneMomentCue } from "./scene/useDawnCue";
+import type { SceneMomentCue } from "./scene/useSceneMomentCue";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
@@ -80,13 +80,13 @@ export function AppShell({ children }: Props) {
   // per-investigation snapshot back to localStorage debounced at 250 ms.
   useWorkspaceHydration();
 
-  // SPR-22 — opaque dawn cue transport: Scene detects the committed
-  // night→dawn transition; AppShell stores only a monotonically identified
+  // SPR-22/29 — opaque scene-moment transport: Scene detects committed
+  // night→dawn and non-dusk→dusk transitions; AppShell stores only an identified
   // cue and passes it to PenguinMascot. AppShell never reads a clock,
   // theme, daypart, or weather, and never mounts another Werner.
-  const [dawnCue, setDawnCue] = useState<SceneMomentCue | null>(null);
-  const consumeDawnCue = useCallback((sequence: number) => {
-    setDawnCue((current) =>
+  const [sceneCue, setSceneCue] = useState<SceneMomentCue | null>(null);
+  const consumeSceneCue = useCallback((sequence: number) => {
+    setSceneCue((current) =>
       current?.sequence === sequence ? null : current,
     );
   }, []);
@@ -126,7 +126,7 @@ export function AppShell({ children }: Props) {
           mood change; it freezes to one frame under reduced-motion and pauses
           on a hidden tab. (It lives INSIDE the seam frame so the ad border's
           reserved band, when SPR-07 lights it up, frames the scene too.) */}
-      <Scene onWernerMoment={setDawnCue} />
+      <Scene onWernerMoment={setSceneCue} />
 
       {/* Vertical column: topbar · full-width working region · bottom rail.
           The working region carries NO left gutter — it spans the full
@@ -166,7 +166,7 @@ export function AppShell({ children }: Props) {
           Penguin. (It sits OUTSIDE the seam frame on purpose: a free agent
           roaming the whole window, not a chrome element constrained by the
           ad-border inset.) */}
-      <PenguinMascot sceneBeat={dawnCue} onDawnBeatEnd={consumeDawnCue} />
+      <PenguinMascot sceneBeat={sceneCue} onSceneBeatEnd={consumeSceneCue} />
 
       {/* WERNER-ICE SPR-13 — live bait cursor + html cursor policy (z-59). */}
       <WernerIceCursorShell />

@@ -163,6 +163,17 @@
   transform-origin: 50% 70%;
 }
 
+/* Dusk is a single noticing beat, never a loop or a fifth product mood. */
+@keyframes werner-dusk-gaze-settle {
+  0% { opacity: 0; transform: translateY(2px) rotate(-1deg); }
+  35% { opacity: 1; transform: translateY(-1px) rotate(0.8deg); }
+  100% { opacity: 1; transform: translateY(0) rotate(0); }
+}
+.werner-dusk-gaze {
+  animation: werner-dusk-gaze-settle 1400ms ease-out both;
+  transform-origin: 50% 72%;
+}
+
 /* The lost/empty source frames Werner as a tiny figure on a 1024px horizon:
    its visible subject occupies 1.4% of the canvas versus 24–32% for the other
    canonical poses. Crop that source framing at the canonical render seam. */
@@ -209,7 +220,8 @@
   .werner-fish-sparkle,
   .penguin-mascot-wander,
   .werner-idle,
-  .werner-waking {
+  .werner-waking,
+  .werner-dusk-gaze {
     animation: none !important;
   }
   .penguin-mascot-wander { transform: translate(0, 0); }

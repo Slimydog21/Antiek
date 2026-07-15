@@ -26,7 +26,7 @@ vi.mock("../werner/iceFishingFlags", () => ({
 }));
 
 import { PenguinMascot } from "./PenguinMascot";
-import type { SceneMomentCue } from "../scene/useDawnCue";
+import type { SceneMomentCue } from "../scene/useSceneMomentCue";
 import { useWorkspace } from "../workspace/WorkspaceStore";
 import {
   emitWernerExperience,
@@ -93,7 +93,7 @@ afterAll(() => {
 
 function mount(props: {
   sceneBeat?: SceneMomentCue | null;
-  onDawnBeatEnd?: (sequence: number) => void;
+  onSceneBeatEnd?: (sequence: number) => void;
 } = {}) {
   const ui = (next = props) => (
     <MemoryRouter initialEntries={["/settings"]}>
@@ -103,7 +103,7 @@ function mount(props: {
           element={
             <PenguinMascot
               sceneBeat={next.sceneBeat}
-              onDawnBeatEnd={next.onDawnBeatEnd}
+              onSceneBeatEnd={next.onSceneBeatEnd}
             />
           }
         />
@@ -117,6 +117,11 @@ function mount(props: {
 const dawnCue = (sequence = 1): SceneMomentCue => ({
   sequence,
   moment: "daybreak",
+});
+
+const duskCue = (sequence = 1): SceneMomentCue => ({
+  sequence,
+  moment: "dusk-settle",
 });
 
 async function advanceFrames(totalMs: number) {
@@ -147,9 +152,9 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
     ).toBeNull();
   });
 
-  it("calls onDawnBeatEnd exactly once when the beat completes", async () => {
+  it("calls onSceneBeatEnd exactly once when the beat completes", async () => {
     const onEnd = vi.fn();
-    mount({ sceneBeat: dawnCue(), onDawnBeatEnd: onEnd });
+    mount({ sceneBeat: dawnCue(), onSceneBeatEnd: onEnd });
     await advanceFrames(16);
     expect(onEnd).not.toHaveBeenCalled();
     await advanceFrames(STATION_WAKE_MS + 32);
@@ -159,7 +164,7 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
 
   it("preempts when product emote fires during dawn beat", async () => {
     const onEnd = vi.fn();
-    const { container } = mount({ sceneBeat: dawnCue(), onDawnBeatEnd: onEnd });
+    const { container } = mount({ sceneBeat: dawnCue(), onSceneBeatEnd: onEnd });
     await advanceFrames(16);
     expect(
       container.querySelector('[data-werner-waking="true"]'),
@@ -176,7 +181,7 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
 
   it("preempts when drag starts during dawn beat", async () => {
     const onEnd = vi.fn();
-    mount({ sceneBeat: dawnCue(), onDawnBeatEnd: onEnd });
+    mount({ sceneBeat: dawnCue(), onSceneBeatEnd: onEnd });
     await advanceFrames(16);
     const el = screen.getByTestId("penguin-mascot") as HTMLButtonElement;
 
@@ -215,7 +220,7 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
 
   it("clears dawn timer on unmount (no stray callback)", async () => {
     const onEnd = vi.fn();
-    const { unmount } = mount({ sceneBeat: dawnCue(), onDawnBeatEnd: onEnd });
+    const { unmount } = mount({ sceneBeat: dawnCue(), onSceneBeatEnd: onEnd });
     await advanceFrames(16);
     unmount();
     await advanceFrames(STATION_WAKE_MS + 100);
@@ -250,9 +255,9 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
   it("does not replay a consumed sequence on rerender", async () => {
     const onEnd = vi.fn();
     const cue = dawnCue();
-    const view = mount({ sceneBeat: cue, onDawnBeatEnd: onEnd });
+    const view = mount({ sceneBeat: cue, onSceneBeatEnd: onEnd });
     await advanceFrames(STATION_WAKE_MS + 32);
-    view.rerenderMascot({ sceneBeat: cue, onDawnBeatEnd: onEnd });
+    view.rerenderMascot({ sceneBeat: cue, onSceneBeatEnd: onEnd });
     await advanceFrames(32);
     expect(onEnd).toHaveBeenCalledTimes(1);
     expect(view.container.querySelector('[data-werner-waking="true"]')).toBeNull();
@@ -261,7 +266,7 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
   it("rejects a cue while a product surface owns the station", async () => {
     const release = acquireStationInstrumentSuspension("dawn-test");
     const onEnd = vi.fn();
-    const { container } = mount({ sceneBeat: dawnCue(), onDawnBeatEnd: onEnd });
+    const { container } = mount({ sceneBeat: dawnCue(), onSceneBeatEnd: onEnd });
     await advanceFrames(16);
     expect(onEnd).toHaveBeenCalledWith(1);
     expect(container.querySelector('[data-werner-waking="true"]')).toBeNull();
@@ -270,7 +275,7 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
 
   it("preempts when a product surface acquires the station", async () => {
     const onEnd = vi.fn();
-    const { container } = mount({ sceneBeat: dawnCue(), onDawnBeatEnd: onEnd });
+    const { container } = mount({ sceneBeat: dawnCue(), onSceneBeatEnd: onEnd });
     await advanceFrames(16);
     const release = acquireStationInstrumentSuspension("dawn-test");
     await advanceFrames(16);
@@ -281,10 +286,10 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
 
   it("true long-rest waking preempts the dawn beat", async () => {
     const onEnd = vi.fn();
-    const view = mount({ onDawnBeatEnd: onEnd });
+    const view = mount({ onSceneBeatEnd: onEnd });
     await advanceFrames(32);
     await advanceFrames(STATION_LONG_REST_MS + 16);
-    view.rerenderMascot({ sceneBeat: dawnCue(), onDawnBeatEnd: onEnd });
+    view.rerenderMascot({ sceneBeat: dawnCue(), onSceneBeatEnd: onEnd });
     await advanceFrames(16);
     fireEvent.keyDown(window, { key: "a" });
     await advanceFrames(16);
@@ -292,5 +297,45 @@ describe("PenguinMascot — dawn waking beat (SPR-22)", () => {
     expect(
       screen.getByTestId("penguin-mascot").getAttribute("data-werner-rest-phase"),
     ).toBe("waking");
+  });
+});
+
+describe("PenguinMascot — dusk gaze beat (SPR-29)", () => {
+  it("renders the dusk pose instead of waking art", async () => {
+    const { container } = mount({ sceneBeat: duskCue() });
+    await advanceFrames(16);
+    expect(container.querySelector('[data-werner-dusk-gaze="true"]')).not.toBeNull();
+    expect(container.querySelector('[data-werner-waking="true"]')).toBeNull();
+    expect(screen.getByTestId("penguin-mascot").getAttribute("data-werner-scene-beat")).toBe("dusk-settle");
+  });
+
+  it("keeps reduced-motion dusk semantic and static", async () => {
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      configurable: true,
+      value: (q: string) => ({
+        matches: q.includes("prefers-reduced-motion"),
+        media: q,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+      }),
+    });
+    const { container } = mount({ sceneBeat: duskCue() });
+    await advanceFrames(16);
+    const gaze = container.querySelector('[data-werner-dusk-gaze="true"]');
+    expect(gaze?.getAttribute("data-reduced")).toBe("true");
+    expect(gaze?.className).toBe("");
+  });
+
+  it("is preempted and consumed by a product reaction", async () => {
+    const onEnd = vi.fn();
+    const { container } = mount({ sceneBeat: duskCue(), onSceneBeatEnd: onEnd });
+    await advanceFrames(16);
+    act(() => emitWernerExperience("highlight"));
+    await advanceFrames(32);
+    expect(onEnd).toHaveBeenCalledOnce();
+    expect(container.querySelector('[data-werner-dusk-gaze="true"]')).toBeNull();
   });
 });
