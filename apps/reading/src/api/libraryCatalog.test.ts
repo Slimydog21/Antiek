@@ -46,9 +46,9 @@ describe("parse honesty", () => {
     expect(() =>
       parseBookSummary({ ...work, body: "secret full text" }),
     ).toThrow(/body/);
-    expect(() =>
-      parseBookSummary({ ...work, full_text: "nope" }),
-    ).toThrow(/full_text/);
+    expect(() => parseBookSummary({ ...work, full_text: "nope" })).toThrow(
+      /full_text/,
+    );
     expect(() =>
       parseLibraryPage({
         works: [{ ...work, content: "x" }],
@@ -57,6 +57,15 @@ describe("parse honesty", () => {
         page_size: 20,
       }),
     ).toThrow(/content/);
+    expect(() =>
+      parseLibraryPage({
+        works: [work],
+        total: 1,
+        page: 1,
+        page_size: 20,
+        debug: { payload: { raw_text: "nested leak" } },
+      }),
+    ).toThrow(/raw_text/);
   });
 
   it("rejects missing required fields without inventing", () => {
@@ -64,6 +73,15 @@ describe("parse honesty", () => {
     expect(() =>
       parseLibraryPage({ works: [work], total: -1, page: 1, page_size: 20 }),
     ).toThrow(/total/);
+    expect(() =>
+      parseBookSummary({ ...work, title: { value: "coerce me" } }),
+    ).toThrow(/title/);
+    expect(() => parseBookSummary({ ...work, page_count: 1.5 })).toThrow(
+      /page_count/,
+    );
+    expect(() =>
+      parseLibraryPage({ works: [work], total: 0, page: 1, page_size: 20 }),
+    ).toThrow(/works length/);
   });
 
   it("formatServability honesty", () => {
@@ -124,6 +142,14 @@ describe("fetchLibraryCatalog", () => {
     await expect(fetchLibraryCatalog()).rejects.toBeInstanceOf(
       LibraryCatalogHttpError,
     );
+  });
+
+  it("rejects invalid request pagination before network I/O", async () => {
+    await expect(fetchLibraryCatalog({ page: 0 })).rejects.toThrow(/page/);
+    await expect(fetchLibraryCatalog({ page_size: 201 })).rejects.toThrow(
+      /page_size/,
+    );
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("rejects body leakage on 200", async () => {

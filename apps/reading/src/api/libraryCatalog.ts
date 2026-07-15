@@ -68,19 +68,55 @@ async function readOkBody(res: Response): Promise<unknown> {
   return res.json() as Promise<unknown>;
 }
 
-function assertNoBodyKeys(obj: Record<string, unknown>, path: string): void {
-  for (const k of FORBIDDEN_BODY_KEYS) {
-    if (k in obj) {
+function assertNoBodyKeys(
+  value: unknown,
+  path: string,
+  seen = new WeakSet<object>(),
+): void {
+  if (value === null || typeof value !== "object") return;
+  if (seen.has(value)) return;
+  seen.add(value);
+  if (Array.isArray(value)) {
+    value.forEach((item, index) =>
+      assertNoBodyKeys(item, `${path}[${index}]`, seen),
+    );
+    return;
+  }
+  const obj = value as Record<string, unknown>;
+  for (const [key, nested] of Object.entries(obj)) {
+    if ((FORBIDDEN_BODY_KEYS as readonly string[]).includes(key)) {
       throw new Error(
-        `library catalog response rejected: body-like key ${k} at ${path}`,
+        `library catalog response rejected: body-like key ${key} at ${path}`,
       );
     }
+    assertNoBodyKeys(nested, `${path}.${key}`, seen);
   }
+}
+
+function requireNullableString(value: unknown, path: string): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== "string") {
+    throw new Error(
+      `library catalog response rejected: ${path} must be string or null`,
+    );
+  }
+  return value;
+}
+
+function requireNonnegativeInteger(value: unknown, path: string): number {
+  if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0) {
+    throw new Error(
+      `library catalog response rejected: ${path} must be a nonnegative safe integer`,
+    );
+  }
+  return value;
 }
 
 export function parseBookSummary(raw: unknown, path = "work"): BookSummary {
   if (!raw || typeof raw !== "object") {
-    throw new Error(`library catalog response rejected: ${path} must be object`);
+    throw new Error(
+      `library catalog response rejected: ${path} must be object`,
+    );
   }
   const o = raw as Record<string, unknown>;
   assertNoBodyKeys(o, path);
@@ -99,11 +135,10 @@ export function parseBookSummary(raw: unknown, path = "work"): BookSummary {
       `library catalog response rejected: ${path}.taken_down must be boolean`,
     );
   }
-  if (typeof o.page_count !== "number" || !Number.isFinite(o.page_count)) {
-    throw new Error(
-      `library catalog response rejected: ${path}.page_count must be finite number`,
-    );
-  }
+  const pageCount = requireNonnegativeInteger(
+    o.page_count,
+    `${path}.page_count`,
+  );
   if (typeof o.servability !== "string") {
     throw new Error(
       `library catalog response rejected: ${path}.servability must be string`,
@@ -111,20 +146,13 @@ export function parseBookSummary(raw: unknown, path = "work"): BookSummary {
   }
   return {
     document_id: o.document_id,
-    title: o.title === null || o.title === undefined ? null : String(o.title),
-    author:
-      o.author === null || o.author === undefined ? null : String(o.author),
+    title: requireNullableString(o.title, `${path}.title`),
+    author: requireNullableString(o.author, `${path}.author`),
     servability: o.servability,
     servable_full_text: o.servable_full_text,
-    page_count: o.page_count,
-    cover_uri:
-      o.cover_uri === null || o.cover_uri === undefined
-        ? null
-        : String(o.cover_uri),
-    ip_holder_id:
-      o.ip_holder_id === null || o.ip_holder_id === undefined
-        ? null
-        : String(o.ip_holder_id),
+    page_count: pageCount,
+    cover_uri: requireNullableString(o.cover_uri, `${path}.cover_uri`),
+    ip_holder_id: requireNullableString(o.ip_holder_id, `${path}.ip_holder_id`),
     taken_down: o.taken_down,
   };
 }
@@ -138,35 +166,54 @@ export function parseLibraryPage(body: unknown): LibraryPage {
   if (!Array.isArray(o.works)) {
     throw new Error("library catalog response rejected: works must be array");
   }
-  if (typeof o.total !== "number" || !Number.isFinite(o.total) || o.total < 0) {
-    throw new Error("library catalog response rejected: total must be nonnegative number");
-  }
-  if (typeof o.page !== "number" || !Number.isFinite(o.page) || o.page < 1) {
+  const total = requireNonnegativeInteger(o.total, "total");
+  const page = requireNonnegativeInteger(o.page, "page");
+  const pageSize = requireNonnegativeInteger(o.page_size, "page_size");
+  if (page < 1)
     throw new Error("library catalog response rejected: page must be >= 1");
+  if (pageSize < 1 || pageSize > 200) {
+    throw new Error(
+      "library catalog response rejected: page_size must be in 1..200",
+    );
   }
-  if (
-    typeof o.page_size !== "number" ||
-    !Number.isFinite(o.page_size) ||
-    o.page_size < 1
-  ) {
-    throw new Error("library catalog response rejected: page_size must be >= 1");
+  if (o.works.length > pageSize || o.works.length > total) {
+    throw new Error(
+      "library catalog response rejected: works length exceeds page_size or total",
+    );
   }
   return {
     works: o.works.map((w, i) => parseBookSummary(w, `works[${i}]`)),
-    total: o.total,
-    page: o.page,
-    page_size: o.page_size,
+    total,
+    page,
+    page_size: pageSize,
   };
 }
 
 export async function fetchLibraryCatalog(
   req: LibraryCatalogRequest = {},
 ): Promise<LibraryPage> {
+  if (
+    req.page !== undefined &&
+    (!Number.isSafeInteger(req.page) || req.page < 1)
+  ) {
+    throw new RangeError("library catalog page must be a positive integer");
+  }
+  if (
+    req.page_size !== undefined &&
+    (!Number.isSafeInteger(req.page_size) ||
+      req.page_size < 1 ||
+      req.page_size > 200)
+  ) {
+    throw new RangeError(
+      "library catalog page_size must be an integer in 1..200",
+    );
+  }
   const params = new URLSearchParams();
   params.set("filter", req.filter ?? "all");
   if (req.search) params.set("search", req.search);
   if (req.page !== undefined) params.set("page", String(req.page));
-  if (req.page_size !== undefined) params.set("page_size", String(req.page_size));
+  if (req.page_size !== undefined)
+    params.set("page_size", String(req.page_size));
 
   const res = await apiFetch(`${API_BASE}/library?${params.toString()}`, {
     method: "GET",
