@@ -64,6 +64,7 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
     pointerReleased: false,
     keysDown: new Set(),
     keysPressed: new Set(),
+    keysReleased: new Set(),
   };
   let lastAccessibleStatus: string | null = null;
   const publishAccessibleStatus = () => {
@@ -99,6 +100,7 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
               pointerPressed: false,
               pointerReleased: false,
               keysPressed: new Set<string>(),
+              keysReleased: new Set<string>(),
             };
       // A catch-up frame may run several fixed steps, but a physical press is
       // an edge and therefore belongs to the first step only.

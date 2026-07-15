@@ -5,6 +5,9 @@ const scopedStoryIds = scopedStoryId?.split(",").filter(Boolean) ?? [];
 const includesNarrowIceHoleProof = scopedStoryIds.some((id) =>
   id.startsWith("read-werner-ice-hole--"),
 );
+const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
+  id.startsWith("brainstorm-fjord-skip--"),
+);
 
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
@@ -47,9 +50,10 @@ export const config: CustomProjectConfig = {
      * workspace shell, so a screenshot at 600px would only show the
      * splash.
      */
-    breakpoints: includesNarrowIceHoleProof
-      ? [1280, 1024, 768, 375]
-      : [1280, 1024, 768],
+    breakpoints:
+      includesNarrowIceHoleProof || includesNarrowFjordSkipProof
+        ? [1280, 1024, 768, 375]
+        : [1280, 1024, 768],
   },
   imagePathBaseline: ".lostpixel/baseline",
   imagePathCurrent: ".lostpixel/current",

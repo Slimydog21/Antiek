@@ -19,6 +19,8 @@ export interface InputState {
   keysDown: ReadonlySet<string>;
   /** Keys pressed this frame. */
   keysPressed: ReadonlySet<string>;
+  /** Keys released this frame. */
+  keysReleased: ReadonlySet<string>;
 }
 
 export interface CartridgeMeta {

@@ -8,6 +8,7 @@ import {
   listWatchForLater,
   type ParkedQuestionEntry,
 } from "../../lib/api";
+import FjordSkipHost from "./FjordSkipHost";
 import ParkedQuestion from "./ParkedQuestion";
 import WatchForLaterFolder from "./WatchForLaterFolder";
 
@@ -106,7 +107,15 @@ export default function BrainstormStation() {
             onLaunch={() => handleLaunch(selected)}
           />
         ) : (
-          <EmptyState parkedCount={parked.length} />
+          <EmptyState
+            parkedCount={parked.length}
+            showFjordSkip={shouldOfferFjordSkip({
+              loading,
+              error,
+              parkedCount: parked.length,
+              hasSelection: selected !== null,
+            })}
+          />
         )}
         {/* Inline watch-for-later kept for operators on small screens
             where the dock auto-collapses. Empty rendering when the
@@ -127,32 +136,55 @@ export default function BrainstormStation() {
   );
 }
 
-function EmptyState({ parkedCount }: { parkedCount: number }) {
+export function shouldOfferFjordSkip({
+  loading,
+  error,
+  parkedCount,
+  hasSelection,
+}: {
+  loading: boolean;
+  error: string | null;
+  parkedCount: number;
+  hasSelection: boolean;
+}) {
+  return !loading && error === null && parkedCount === 0 && !hasSelection;
+}
+
+function EmptyState({
+  parkedCount,
+  showFjordSkip,
+}: {
+  parkedCount: number;
+  showFjordSkip: boolean;
+}) {
   return (
-    <div className="flex-1 flex items-center justify-center p-8">
+    <div className="flex-1 flex flex-col items-center justify-center p-8 gap-6">
       <div className="max-w-md text-center space-y-3">
         <h2 className="text-lg font-serif text-ink dark:text-bright">
           The watch-for-later folder
         </h2>
         <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-          Research is gated by curiosity, not by tooling. Curiosity
-          surfaces in fragments throughout the day. This folder is
-          where unsharpened questions live until you decide to chase
-          them.
+          Research is gated by curiosity, not by tooling. Curiosity surfaces in
+          fragments throughout the day. This folder is where unsharpened
+          questions live until you decide to chase them.
         </p>
         {parkedCount === 0 ? (
           <p className="text-xs text-shadow-1 dark:text-moonlight italic">
-            No parked questions yet. As you wrestle with documents
-            and run investigations, the substrate identifies open
-            questions and parks them here.
+            No parked questions yet. As you wrestle with documents and run
+            investigations, the substrate identifies open questions and parks
+            them here.
           </p>
         ) : (
           <p className="text-xs text-shadow-1 dark:text-moonlight">
-            Select a question on the left to see its context and
-            launch an investigation.
+            Select a question on the left to see its context and launch an
+            investigation.
           </p>
         )}
       </div>
+      {/* Fjord Skip: offered only in the true empty state —
+          zero questions and no selection. Play is voluntary;
+          it never claims to generate ideas or fill a queue. */}
+      {showFjordSkip && <FjordSkipHost />}
     </div>
   );
 }

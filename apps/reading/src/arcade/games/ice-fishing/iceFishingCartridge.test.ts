@@ -10,6 +10,7 @@ const input = (press = false): InputState => ({
   pointerReleased: false,
   keysDown: new Set(press ? ["ArrowDown"] : []),
   keysPressed: new Set(press ? ["ArrowDown"] : []),
+  keysReleased: new Set(),
 });
 
 describe("Ice Fishing cartridge lifecycle", () => {
@@ -36,6 +37,7 @@ describe("Ice Fishing cartridge lifecycle", () => {
         pointerReleased: false,
         keysDown: new Set(),
         keysPressed: new Set(),
+        keysReleased: new Set(),
         ...override,
       },
       ctx,
@@ -62,6 +64,7 @@ describe("Ice Fishing cartridge lifecycle", () => {
         pointerReleased: false,
         keysDown: new Set(["Enter"]),
         keysPressed: new Set(["Enter"]),
+        keysReleased: new Set(),
       },
       ctx,
     );

@@ -65,6 +65,7 @@ export function progressCartridge(
         pointerReleased: false,
         keysDown: new Set<string>(["Enter"]),
         keysPressed: new Set<string>(["Enter", " "]),
+        keysReleased: new Set<string>(),
       },
       ctx,
     );
@@ -82,6 +83,7 @@ export function progressCartridge(
           keysPressed: new Set(
             options?.fire && i % 5 === 0 ? [" ", "ArrowDown"] : [],
           ),
+          keysReleased: new Set<string>(),
         },
         ctx,
       );

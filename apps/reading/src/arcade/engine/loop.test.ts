@@ -12,6 +12,7 @@ const emptyInput = (): InputState => ({
   pointerReleased: false,
   keysDown: new Set(),
   keysPressed: new Set(),
+  keysReleased: new Set(),
 });
 
 function loopHarness(options?: { reducedMotion?: boolean }) {
@@ -140,6 +141,17 @@ describe("arcade engine", () => {
     expect(h.update).toHaveBeenCalledTimes(3);
     expect(
       h.update.mock.calls.map((call) => call[1].keysPressed.has(" ")),
+    ).toEqual([true, false, false]);
+  });
+
+  it("does not replay a release across catch-up substeps", () => {
+    const h = loopHarness();
+    h.inputs.push({ ...emptyInput(), keysReleased: new Set([" "]) });
+    h.loop.start();
+    h.runFrame(50);
+
+    expect(
+      h.update.mock.calls.map((call) => call[1].keysReleased.has(" ")),
     ).toEqual([true, false, false]);
   });
 
