@@ -1,0 +1,81 @@
+.suggested-threads--lane {
+  position: relative;
+  overflow: hidden;
+}
+
+.suggested-threads--lane::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--sun-deep);
+}
+
+.suggested-thread-card {
+  position: relative;
+  overflow: hidden;
+  padding-top: 2rem;
+  transition:
+    background-color var(--motion-base) var(--ease-standard),
+    transform var(--motion-fast) var(--ease-standard);
+}
+
+.suggested-thread-card:hover {
+  background: var(--ice-1);
+  transform: translateY(-1px);
+}
+
+.suggested-thread-card__index {
+  position: absolute;
+  inset: 0 0 auto;
+  border-bottom: 1px dashed var(--rule);
+  padding: 0.3rem 0.75rem;
+  color: var(--shadow-1);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.suggested-thread-card__question {
+  max-width: 72ch;
+}
+
+.suggested-thread-card__lead {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0.65rem;
+  border-left: 2px solid var(--sun-deep);
+  padding: 0.35rem 0.5rem;
+  background: color-mix(in srgb, var(--sun-hl-faint) 70%, transparent);
+}
+
+.suggested-thread-card__lead-label {
+  color: var(--shadow-1);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+@media (max-width: 767px) {
+  .suggested-threads > header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .suggested-thread-card__lead {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .suggested-thread-card {
+    transition: none;
+  }
+
+  .suggested-thread-card:hover {
+    transform: none;
+  }
+}
