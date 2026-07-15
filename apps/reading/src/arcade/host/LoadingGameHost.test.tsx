@@ -46,6 +46,24 @@ describe("LoadingGameHost mount contract", () => {
     expect(screen.getByTestId("loading-game-primary")).toBeTruthy();
   });
 
+  it("renders living-TV session brand strip while host is visible", () => {
+    render(
+      <LoadingGameHost
+        waiting
+        ready={false}
+        game="zombies"
+        arcadeEnabled
+        offerAfterMs={60_000}
+      />,
+    );
+    const art = screen.getByTestId(
+      "loading-game-living-tv-brand",
+    ) as HTMLImageElement;
+    expect(art.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+
   it("primary control remains clickable while host is visible", () => {
     const onPrimary = vi.fn();
     render(

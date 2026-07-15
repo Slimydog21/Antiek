@@ -5,7 +5,9 @@ import {
   createArcadeCartridge,
   type ArcadeGameKind,
 } from "../cartridgeFactory";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { wernerArcade } from "../../werner/iceFishingFlags";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import {
   DEFAULT_OFFER_AFTER_MS,
@@ -128,6 +130,25 @@ export function LoadingGameHost({
         </button>
       </div>
 
+      {/* Living-TV brand strip — session invent promoted so wait chrome is
+          Antiek-themed, not inventory-only Imagine. Decorative only. */}
+      <img
+        src={livingTvArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="loading-game-living-tv-brand"
+        style={{
+          width: "100%",
+          height: 64,
+          objectFit: "cover",
+          objectPosition: "center top",
+          borderRadius: 8,
+          display: "block",
+        }}
+        loading="lazy"
+        decoding="async"
+      />
+
       {mode === "plain-loader" && (
         <p data-testid="plain-loader" style={{ margin: 0, fontSize: 12 }}>
           Working — games stay off until you opt in
@@ -140,7 +161,11 @@ export function LoadingGameHost({
           <button
             type="button"
             data-testid="game-offer-play"
-            onClick={() => setOptedIn(true)}
+            onClick={() => {
+              // Living-TV: opting into wait-game is a curious glance from Werner.
+              emitWernerExperience("highlight");
+              setOptedIn(true);
+            }}
             style={{
               fontSize: 12,
               padding: "6px 12px",
