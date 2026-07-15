@@ -220,6 +220,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   const [interrogationError, setInterrogationError] = useState<string | null>(null);
   const [previewingInterrogation, setPreviewingInterrogation] = useState(false);
   const openingWriteRef = useRef(false);
+  const interrogationRequestRef = useRef(0);
   const mountedRef = useRef(true);
   const composePreviewRef = useRef(composePreview);
   composePreviewRef.current = composePreview;
@@ -336,6 +337,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     const requestedComposeId = composePreview.compose_id;
     const requestedFingerprint = composePreview.selection_fingerprint;
     const requestedPrompt = interrogationPrompt;
+    const requestId = ++interrogationRequestRef.current;
     setPreviewingInterrogation(true);
     setInterrogationError(null);
     try {
@@ -361,7 +363,9 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
         setInterrogationError(err instanceof Error ? err.message : "Couldn’t review this question.");
       }
     } finally {
-      setPreviewingInterrogation(false);
+      if (interrogationRequestRef.current === requestId) {
+        setPreviewingInterrogation(false);
+      }
     }
   };
 
