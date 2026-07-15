@@ -38,11 +38,12 @@ from .provider_execution import (
 from .read_model import MultimediaAssetStore
 
 RUBRIC_VERSION = "visual-quality-v1"
-FORMULA_VERSION = "visual-routing-advisory-v1"
+FORMULA_VERSION = "visual-routing-advisory-v2"
 MIN_ASSESSED_CANDIDATES = 20
 MIN_EXECUTIONS = 10
 MIN_ASSETS = 3
 MIN_COVERAGE = 0.80
+SCORE_PRECISION = 8
 _MAX_ASSESSMENTS = 100_000
 
 _ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -159,6 +160,8 @@ class VisualRoutingCohort:
     charged_cents_per_assessed_candidate: float | None
     charged_cents_per_accepted_candidate: float | None
     efficiency_score: float | None
+    acceptance_efficiency_score: float | None
+    quality_efficiency_score: float | None
     eligible: bool
     ineligibility_reasons: tuple[str, ...]
 
@@ -167,6 +170,7 @@ class VisualRoutingCohort:
 class VisualRoutingRecommendation:
     cohort: VisualRoutingCohortKey
     efficiency_score: float
+    quality_efficiency_score: float
 
 
 @dataclass(frozen=True)
@@ -176,6 +180,12 @@ class VisualRoutingAdvisory:
     as_of: str
     cohorts: tuple[VisualRoutingCohort, ...]
     exclusions: dict[str, int]
+    recommendation_status: Literal[
+        "recommended",
+        "no_eligible_cohorts",
+        "quality_acceptance_disagreement",
+        "ambiguous_ranking",
+    ]
     recommendation: VisualRoutingRecommendation | None
 
 
@@ -578,25 +588,14 @@ class VisualQualityAdvisoryRegistry:
             raise VisualQualityAdvisoryError("visual routing advisory is unavailable") from exc
 
         cohorts = tuple(_finalize_cohort(key, accumulators[key]) for key in sorted(accumulators))
-        eligible = [cohort for cohort in cohorts if cohort.eligible]
-        eligible.sort(
-            key=lambda cohort: (
-                -(cohort.efficiency_score or 0.0),
-                -cohort.n_assessed_candidates,
-                cohort.key,
-            )
-        )
-        recommendation = None
-        if eligible:
-            winner = eligible[0]
-            assert winner.efficiency_score is not None
-            recommendation = VisualRoutingRecommendation(winner.key, winner.efficiency_score)
+        recommendation_status, recommendation = _recommend(cohorts)
         return VisualRoutingAdvisory(
             formula_version=FORMULA_VERSION,
             rubric_version=RUBRIC_VERSION,
             as_of=cutoff_text,
             cohorts=cohorts,
             exclusions=exclusions,
+            recommendation_status=recommendation_status,
             recommendation=recommendation,
         )
 
@@ -887,14 +886,17 @@ def _finalize_cohort(
     coverage = assessed / materialized if materialized else 0.0
     acceptance = acc.accepted / assessed if assessed else None
     mean_quality = acc.quality_total / (4 * assessed) if assessed else None
-    lower = _wilson_lower_bound(acc.accepted, assessed) if assessed else None
+    acceptance_lower = _wilson_lower_bound(acc.accepted, assessed) if assessed else None
     charges_complete = acc.unresolved_accounting == 0 and len(acc.charged_by_execution) == executions
     charged_total = sum(acc.charged_by_execution.values()) if charges_complete else None
     per_assessed = charged_total / assessed if charged_total is not None and assessed else None
     per_accepted = charged_total / acc.accepted if charged_total is not None and acc.accepted else None
     efficiency = None
-    if lower is not None and per_assessed is not None and per_assessed > 0:
-        efficiency = lower / (per_assessed / 100)
+    quality_efficiency = None
+    if acceptance_lower is not None and per_assessed is not None and per_assessed > 0:
+        efficiency = acceptance_lower / (per_assessed / 100)
+    if mean_quality is not None and per_assessed is not None and per_assessed > 0:
+        quality_efficiency = mean_quality / (per_assessed / 100)
     reasons: list[str] = []
     if assessed < MIN_ASSESSED_CANDIDATES:
         reasons.append("minimum_assessed_candidates")
@@ -918,16 +920,54 @@ def _finalize_cohort(
         assessment_coverage=_rounded(coverage),
         mean_quality=_rounded_optional(mean_quality),
         acceptance_rate=_rounded_optional(acceptance),
-        quality_lower_bound=_rounded_optional(lower),
+        quality_lower_bound=_rounded_optional(acceptance_lower),
         charged_cents_total=charged_total,
         charged_cents_per_assessed_candidate=_rounded_optional(per_assessed),
         charged_cents_per_accepted_candidate=_rounded_optional(per_accepted),
         efficiency_score=_rounded_optional(efficiency),
+        acceptance_efficiency_score=_rounded_optional(efficiency),
+        quality_efficiency_score=_rounded_optional(quality_efficiency),
         eligible=not reasons,
         ineligibility_reasons=tuple(reasons),
     )
 
 
+def _recommend(
+    cohorts: tuple[VisualRoutingCohort, ...],
+) -> tuple[
+    Literal[
+        "recommended",
+        "no_eligible_cohorts",
+        "quality_acceptance_disagreement",
+        "ambiguous_ranking",
+    ],
+    VisualRoutingRecommendation | None,
+]:
+    eligible = [cohort for cohort in cohorts if cohort.eligible]
+    if not eligible:
+        return "no_eligible_cohorts", None
+
+    def rank(cohort: VisualRoutingCohort, score: float | None) -> tuple[object, ...]:
+        return (-(score or 0.0), -cohort.n_assessed_candidates, cohort.key)
+
+    acceptance_winner = min(eligible, key=lambda cohort: rank(cohort, cohort.efficiency_score))
+    quality_winner = min(eligible, key=lambda cohort: rank(cohort, cohort.quality_efficiency_score))
+    if sum(
+        cohort.efficiency_score == acceptance_winner.efficiency_score for cohort in eligible
+    ) != 1 or sum(
+        cohort.quality_efficiency_score == quality_winner.quality_efficiency_score
+        for cohort in eligible
+    ) != 1:
+        return "ambiguous_ranking", None
+    if acceptance_winner.key != quality_winner.key:
+        return "quality_acceptance_disagreement", None
+    assert acceptance_winner.efficiency_score is not None
+    assert acceptance_winner.quality_efficiency_score is not None
+    return "recommended", VisualRoutingRecommendation(
+        cohort=acceptance_winner.key,
+        efficiency_score=acceptance_winner.efficiency_score,
+        quality_efficiency_score=acceptance_winner.quality_efficiency_score,
+    )
 def _wilson_lower_bound(successes: int, total: int) -> float:
     if total <= 0 or successes < 0 or successes > total:
         raise ValueError("Wilson inputs are invalid")
@@ -987,7 +1027,7 @@ def _utc_datetime(value: datetime) -> datetime:
 
 
 def _rounded(value: float) -> float:
-    return round(value, 8)
+    return round(value, SCORE_PRECISION)
 
 
 def _rounded_optional(value: float | None) -> float | None:

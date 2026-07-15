@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Protocol
 
 from .read_model import (
     MultimediaAssetRecord,
     MultimediaAssetStore,
     MultimediaAudioProductionLink,
 )
-from .verified_audio_playback import VerifiedAudioPlaybackRuntime
+from .verified_audio_playback import AudioPlaybackMetadata
 from .verified_playback import VerifiedPlaybackError
 
 
@@ -22,13 +23,19 @@ class MultimediaAudioRegistrationRequest:
     expected_revision_id: str
 
 
+class _AudioPlaybackMetadataReader(Protocol):
+    def metadata(
+        self, *, asset_id: str, revision_id: str, owner_digest: str
+    ) -> AudioPlaybackMetadata: ...
+
+
 def register_multimedia_audio_production(
     asset_id: str,
     request: MultimediaAudioRegistrationRequest,
     *,
     owner_id: str,
     store: MultimediaAssetStore,
-    playback: VerifiedAudioPlaybackRuntime,
+    playback: _AudioPlaybackMetadataReader,
 ) -> MultimediaAssetRecord:
     try:
         record = store.get(asset_id, owner_id=owner_id)

@@ -240,6 +240,12 @@ def authenticated_multimedia_operator(request: Request) -> str:
     return operator_id
 
 
+def authenticated_multimedia_policy_tag(request: Request) -> Literal["operator_only"]:
+    """Resolve privileged retrieval only from the authenticated request state."""
+    authenticated_multimedia_operator(request)
+    return "operator_only"
+
+
 multimedia_reconciliation_router = APIRouter(tags=["multimedia-reconciliation"])
 
 

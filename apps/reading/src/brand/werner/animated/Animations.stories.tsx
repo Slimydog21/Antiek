@@ -8,6 +8,12 @@ import {
   WernerWaddle,
 } from ".";
 import Werner, { type WernerMood } from "../../Werner";
+import {
+  WernerCurious,
+  WernerDizzy,
+  WernerHappy,
+  WernerHit,
+} from "../reactions";
 
 const meta = {
   title: "Brand / Werner / Animations",
@@ -80,9 +86,104 @@ export const AllPoses: Story = {
   ),
 };
 
+export const ThinkingFidelity: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — thinking fidelity
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        One canonical thinking pose and one accessible status at each supported
+        size; external aurora dots keep ongoing work readable at rail scale.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[24, 40, 64].map((size) => (
+          <Cell
+            key={size}
+            label={`${size}px`}
+            hint="AI working · canonical thinking mood"
+            pose={
+              <WernerThinking
+                size={size}
+                label={`Werner thinking at ${size} pixels`}
+              />
+            }
+          />
+        ))}
+      </div>
+    </div>
+  ),
+};
+
+export const SleepingFidelity: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — authored sleeping fidelity
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        Reduced-motion stills prove the complete authored sleeping illustration
+        at each supported review size without timing-dependent capture.
+      </p>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        {[48, 96, 120].map((size) => (
+          <Cell
+            key={size}
+            label={`${size}px`}
+            hint="idle hold · authored private pose"
+            pose={
+              <WernerSleeping
+                size={size}
+                label={`Werner sleeping at ${size} pixels`}
+                reduced
+              />
+            }
+          />
+        ))}
+      </div>
+    </div>
+  ),
+};
+
+export const SemanticReactions: Story = {
+  render: () => (
+    <div className="p-8 bg-ice-2 dark:bg-space-2 min-h-screen">
+      <h1 className="text-xl font-serif text-ink dark:text-bright mb-2">
+        Werner — semantic reaction reel
+      </h1>
+      <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
+        Four honest beats: inspect, verify, recover, rebound. Canonical Werner
+        remains the identity; each prop explains the event.
+      </p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <Cell
+          label="Curious"
+          hint="evidence-card head tilt · 1200ms"
+          pose={<WernerCurious size={80} reduced={false} />}
+        />
+        <Cell
+          label="Happy"
+          hint="archival verification · 800ms"
+          pose={<WernerHappy size={80} reduced={false} />}
+        />
+        <Cell
+          label="Dizzy"
+          hint="one paperclip orbit · 1300ms"
+          pose={<WernerDizzy size={80} reduced={false} />}
+        />
+        <Cell
+          label="Hit"
+          hint="brass-tab rebound · 800ms"
+          pose={<WernerHit size={80} reduced={false} />}
+        />
+      </div>
+    </div>
+  ),
+};
+
 /* U-02 — the canonical single-component moods at the three critical sizes.
    16 px tests favicon legibility. 28 px is the rail. 120 px proves
-   expression. The same SVG source serves both fidelities. */
+   expression. The same canonical raster mapping serves every size. */
 const moods: WernerMood[] = ["idle", "thinking", "empty", "celebrate"];
 const sizes = [16, 28, 120];
 
@@ -93,8 +194,8 @@ export const CanonicalMoods: Story = {
         Werner — canonical moods (U-02)
       </h1>
       <p className="text-sm font-serif italic text-ink-soft dark:text-starlight mb-6">
-        Single source. Rail mark must read "cute penguin" at 28 px.
-        Restraint: only the four slots named in brand/README.md.
+        Single source. Rail mark must read "cute penguin" at 28 px. Restraint:
+        only the four slots named in brand/README.md.
       </p>
       <div className="space-y-8">
         {moods.map((m) => (
@@ -106,7 +207,9 @@ export const CanonicalMoods: Story = {
               {sizes.map((s) => (
                 <div key={s} className="flex flex-col items-center gap-1.5">
                   <Werner mood={m} size={s} />
-                  <div className="font-mono text-[10px] text-ink-mute">{s}px</div>
+                  <div className="font-mono text-[10px] text-ink-mute">
+                    {s}px
+                  </div>
                 </div>
               ))}
             </div>

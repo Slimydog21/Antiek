@@ -28,7 +28,7 @@ no second gating mechanism to drift out of sync.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Literal
 
 from substrate.constants import (
     PERSONAL_READABLE_CONTENT_CLASSES,
@@ -37,6 +37,7 @@ from substrate.constants import (
     SERVE_SNIPPET_MAX_CHARS,
 )
 
+from .html_sanitizer import is_trusted_sanitized
 from .servability import ServabilityStatus, is_servable_full_text, servability_of
 
 
@@ -84,6 +85,7 @@ class ServeResult:
     ad_eligible: bool = False
     canonical_url: str | None = None
     license: str | None = None
+    content_format: Literal["text", "html"] = "text"
 
 
 def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> ServeResult:
@@ -114,7 +116,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
     """
     row = con.execute(
         """
-        SELECT d.title, d.author, d.content_class, d.raw_text,
+        SELECT d.title, d.author, d.content_class, d.raw_text, d.metadata,
                COALESCE(b.taken_down, FALSE) AS taken_down
         FROM documents d
         LEFT JOIN book_assets b ON d.document_id = b.document_id
@@ -130,7 +132,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             title=None, author=None, reason="document_not_found",
         )
 
-    title, author, content_class, raw_text, taken_down = row
+    title, author, content_class, raw_text, metadata, taken_down = row
     taken_down = bool(taken_down)
     status = servability_of(content_class, taken_down=taken_down)
 
@@ -159,6 +161,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             document_id=document_id, found=True, servability=status,
             servable=False, full_text=raw_text, snippet=None,
             title=title, author=author, reason="owner_personal_reading",
+            content_format="html" if is_trusted_sanitized(metadata) else "text",
         )
 
     if is_servable_full_text(status):
@@ -175,6 +178,7 @@ def serve_full_text(con: Any, document_id: str, *, owner: bool = False) -> Serve
             document_id=document_id, found=True, servability=status,
             servable=True, full_text=raw_text, snippet=None,
             title=title, author=author, reason="servable",
+            content_format="html" if is_trusted_sanitized(metadata) else "text",
         )
 
     # Gated → bounded snippet (Authors Guild v. Google fair-use regime).
