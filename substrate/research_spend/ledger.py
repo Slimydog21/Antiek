@@ -66,6 +66,7 @@ __all__ = [
     "RunStatus",
     "SpendCeilingExceeded",
     "SpendEvent",
+    "SettledPaidHoldReceipt",
     "ZeroCostAttemptSnapshot",
     "ZeroCostIntent",
     "ZeroCostState",
@@ -310,6 +311,16 @@ class SpendEvent:
     post_observed_cents: int
     evidence_json: str
     created_at: str
+
+
+@dataclass(frozen=True)
+class SettledPaidHoldReceipt:
+    hold: PaidHoldSnapshot
+    owner_id: str
+    command_key: str
+    evidence_json: str
+    evidence_sha256: str
+    resolution_intent_sha256: str
 
 
 @dataclass(frozen=True)
@@ -1826,6 +1837,59 @@ class ResearchSpendLedger:
         connection = self._connect()
         try:
             return self._load_hold(connection, hold_id)
+        finally:
+            connection.close()
+
+    def settled_hold_receipt(
+        self, hold_id: str, owner_id: str
+    ) -> SettledPaidHoldReceipt:
+        """Project an integrity-checked settlement without interpreting its evidence."""
+        _required_text("hold_id", hold_id)
+        _required_text("owner_id", owner_id)
+        connection = self._connect()
+        try:
+            hold = self._load_hold(connection, hold_id)
+            run = self._load_run(connection, hold.run_id)
+            if run.binding.owner_id != owner_id:
+                raise BindingConflict("settled paid hold is unavailable")
+            row = connection.execute(
+                "SELECT state,actual_cents,resolution_key,resolution_intent_json,"
+                "resolution_intent_sha256,resolution_evidence_json "
+                "FROM research_spend_holds WHERE hold_id=?", (hold_id,)
+            ).fetchone()
+            if row is None or str(row["state"]) != PaidHoldState.SETTLED.value:
+                raise InvalidTransition(hold_id, hold.state.value, "project settlement receipt")
+            evidence_json = str(row["resolution_evidence_json"])
+            try:
+                evidence = json.loads(evidence_json)
+                if not isinstance(evidence, dict):
+                    raise TypeError("settlement evidence is not an object")
+                canonical_evidence = _canonical(cast(Mapping[str, JsonScalar], evidence))
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise LedgerIntegrityError("settlement evidence is invalid") from exc
+            if canonical_evidence != evidence_json:
+                raise LedgerIntegrityError("settlement evidence is not canonical")
+            evidence_sha256 = _sha256(evidence_json)
+            intent_json = _canonical({
+                "actual_cents": int(row["actual_cents"]),
+                "evidence_sha256": evidence_sha256,
+                "hold_id": hold_id,
+            })
+            command_key = str(row["resolution_key"])
+            if (str(row["resolution_intent_json"]) != intent_json
+                    or str(row["resolution_intent_sha256"]) != _sha256(intent_json)
+                    or self._replay(
+                        connection, command_key, "settle", hold_id, intent_json
+                    ) is None):
+                raise LedgerIntegrityError("settlement command binding conflicts")
+            return SettledPaidHoldReceipt(
+                hold=hold,
+                owner_id=owner_id,
+                command_key=command_key,
+                evidence_json=evidence_json,
+                evidence_sha256=evidence_sha256,
+                resolution_intent_sha256=_sha256(intent_json),
+            )
         finally:
             connection.close()
 

@@ -17,6 +17,13 @@ from interfaces.research.api.merge_asset_routes import (
     register_merge_asset_routes,
 )
 from runtime.db_lock import connect_write
+from runtime.research_runner.derived_companion_receipt import (
+    COMPANION_OPERATION,
+    COMPANION_SEAM_ID,
+    SettledCompanionReceiptVerifier,
+    companion_operation_digest,
+    companion_settlement_evidence,
+)
 from substrate.contracts.html_projection import HtmlProjectionContract, derive_projection_id
 from substrate.graph.schema import init_database_at_path
 from substrate.research_artifact.derived_citation_source import (
@@ -33,12 +40,12 @@ from substrate.research_artifact.derived_companion_repository import (
     DerivedCompanionRepository,
 )
 from substrate.research_artifact.grounded_companion_answer import (
-    AnswerAdmissionExpectation,
     AnswerClaimInput,
     GroundedAnswerCandidate,
-    VerifiedCompanionExecutionReceipt,
+    candidate_digest,
 )
 from substrate.research_artifact.merge_draft import MergeDraftRepository
+from substrate.research_spend import PaidHoldIntent, ResearchSpendLedger, RunBinding
 from substrate.schemas import DerivedCitationSource
 
 
@@ -472,26 +479,48 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
             owner_user_id="owner-a", client_turn_id="reader-turn-0001",
             admission_key=admission_key, candidate=answer_candidate,
         )
-
-    verified_expectations = []
-
-    def verify_answer(
-        expectation: AnswerAdmissionExpectation,
-    ) -> VerifiedCompanionExecutionReceipt:
-        verified_expectations.append(expectation)
-        return VerifiedCompanionExecutionReceipt(
-            receipt_id="rex_" + "1" * 64,
-            receipt_digest="2" * 64,
-            status="settled",
+    assert spend_db.exists() is False
+    spend = ResearchSpendLedger(spend_db)
+    spend.ensure_schema()
+    binding = RunBinding(
+        "companion-run-0001", "owner-a", "companion-session-0001",
+        prepared.json()["evidence_pack"]["pack_sha256"], 1,
+    )
+    spend.create_or_reopen_run("create-companion-run-0001", binding, 20)
+    turn_id = "dturn_" + hashlib.sha256(
+        b"owner-a\0reader-turn-0001"
+    ).hexdigest()[:32]
+    hold = spend.reserve_paid(
+        "reserve-companion-answer-0001", binding,
+        PaidHoldIntent(
+            reservation_key="companion-answer-reservation-0001",
+            seam_id=COMPANION_SEAM_ID,
             provider="verified-provider",
             model="grounded-model",
-            turn_id=expectation.turn_id,
-            evidence_pack_sha256=expectation.evidence_pack_sha256,
-            output_digest=expectation.output_digest,
-        )
+            operation=COMPANION_OPERATION,
+            operation_digest=companion_operation_digest(
+                turn_id, prepared.json()["evidence_pack"]["pack_sha256"]
+            ),
+            projection_digest="8" * 64,
+            rate_snapshot="verified-provider:2026-07-15",
+            provider_idempotency_key="9" * 64,
+        ),
+        10,
+    )
+    spend.mark_dispatch_possible("dispatch-companion-answer-0001", hold.hold_id)
+    spend.settle(
+        "settle-companion-answer-0001", hold.hold_id, 7,
+        companion_settlement_evidence(
+            turn_id=turn_id,
+            evidence_pack_sha256=prepared.json()["evidence_pack"]["pack_sha256"],
+            output_digest=candidate_digest(answer_candidate),
+            provider_response_digest="a" * 64,
+        ),
+    )
+    verifier = SettledCompanionReceiptVerifier(spend, "owner-a", hold.hold_id)
 
     admitted = DerivedCompanionRepository(
-        db_path=db_path, receipt_verifier=verify_answer,
+        db_path=db_path, receipt_verifier=verifier,
     ).admit_answer(
         owner_user_id="owner-a", client_turn_id="reader-turn-0001",
         admission_key=admission_key, candidate=answer_candidate,
@@ -500,13 +529,11 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert admitted["unsupported_claim_count"] == 1
     assert "execution_receipt_id" not in admitted
     assert "execution_receipt_digest" not in admitted
-    assert len(verified_expectations) == 1
     replayed_answer = DerivedCompanionRepository(db_path=db_path).admit_answer(
         owner_user_id="owner-a", client_turn_id="reader-turn-0001",
         admission_key=admission_key, candidate=answer_candidate,
     )
     assert replayed_answer == {**admitted, "replayed": True}
-    assert len(verified_expectations) == 1
     with pytest.raises(CompanionAnswerConflict):
         DerivedCompanionRepository(db_path=db_path).admit_answer(
             owner_user_id="owner-a", client_turn_id="reader-turn-0001",
@@ -566,7 +593,7 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/companion"
     )
     assert [turn["question"] for turn in exact_conversation.json()["turns"]] == ["Ready"]
-    assert spend_db.exists() is False
+    assert ResearchSpendLedger(spend_db).integrity_check() == "ok"
     with duckdb.connect(db_path, read_only=True) as con:
         turns = con.execute(
             "SELECT state,count(*) FROM derived_asset_companion_turns GROUP BY state ORDER BY state"
