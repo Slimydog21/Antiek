@@ -2,10 +2,12 @@
 
 §7.4 tripwire (``tests/test_suggestions_surface.py``) forbids edits to
 ``budget.py`` / ``daemon.py`` / ``scoring.py`` / ``research_topic.py`` vs
-origin/main. The daemon docstring already specifies that spawn functions
-report actual cost via ``context['record_actual_cb']``, but production
-never installs that callback — so every successful spawn leaves the
-**reserved** hold as if it were settled spend forever.
+origin/main. The daemon docstring already specifies that injected spawn
+functions report actual cost via ``context['record_actual_cb']``, but the
+daemon boundary never installed that callback. This module closes that
+boundary. The configured CLI implementation remains ``no_op_spawn``; a real
+provider adapter must be injected and call the supplied reporter before its
+reserved estimate can be described as settled spend.
 
 This module is the tripwire-safe seam:
 
@@ -13,8 +15,8 @@ This module is the tripwire-safe seam:
   ``report_actual_cost`` on a spawn context (idempotent).
 * ``wrap_spawn_fn`` — production/test wrapper so any spawn callable
   receives the hooks without mutating ``daemon.py``.
-* ``run_one_iteration_settled`` — production entry that always wraps
-  the spawn_fn (used by ``python -m orchestration.continuous``).
+* ``run_one_iteration_settled`` — CLI entry seam that always wraps an
+  injected spawn function (used by ``python -m orchestration.continuous``).
 * ``report_actual_cost`` — convert absolute actual USD into the signed
   delta ``DaemonBudget.record_actual`` expects (``actual − expected``),
   fail-closed on double absolute report and non-finite amounts.
@@ -213,7 +215,7 @@ def run_one_iteration_settled(
     spawn_fn: SpawnFn = no_op_spawn,
     now: datetime | None = None,
 ) -> Any:
-    """Production entry: ``run_one_iteration`` with spawn always wrapped.
+    """CLI entry seam: ``run_one_iteration`` with spawn always wrapped.
 
     Ensures every production tick installs ``record_actual_cb`` /
     ``report_actual_cost`` on spawn contexts without editing daemon.py.

@@ -60,8 +60,8 @@ def main() -> int:
     bdg = DaemonBudget.from_env()
 
     if args.once:
-        # Production one-shot path always installs settled-cost hooks
-        # (tripwire-safe: daemon.py untouched).
+        # The one-shot CLI installs settlement hooks at the injection
+        # boundary. The configured implementation is still a no-op.
         run_one_iteration_settled(
             state=DaemonState(),
             config=cfg,
@@ -69,8 +69,8 @@ def main() -> int:
             spawn_fn=no_op_spawn,
         )
         return 0
-    # Forever path: wrap default spawn so hooks are installed without
-    # editing daemon.py; config is env-built (parity with daemon.main).
+    # Preserve the settlement-capable injection boundary. A future real
+    # adapter must replace no_op_spawn and report its actual cost.
     run_forever(
         config=cfg,
         budget=bdg,
