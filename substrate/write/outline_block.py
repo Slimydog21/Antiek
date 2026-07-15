@@ -267,6 +267,7 @@ def place_block(
     parent_event_id: str | None = None,
     on_conflict: Literal["error", "ignore"] = "error",
     emit_event: bool = True,
+    transaction_owner: bool = True,
 ) -> str:
     """Place a lego block into an outline section. Returns its
     ``outline_block_id`` and emits ``OUTLINE_BLOCK_PLACED`` after commit.
@@ -288,8 +289,13 @@ def place_block(
         if exists is not None:
             return obid  # idempotent: no INSERT, no event
     did = deliverable_id or _resolve_deliverable_id(con, section_id)
-    con.execute(
-        "INSERT INTO outline_blocks "
+    from substrate.write.provenance_validity import invalidate_structural_provenance
+
+    if transaction_owner:
+        con.execute("BEGIN TRANSACTION")
+    try:
+        con.execute(
+            "INSERT INTO outline_blocks "
         "(outline_block_id, section_id, block_kind, provenance_kind, "
         " node_id, source_block_kind, source_block_id, content, "
         " block_index, cluster_id, metadata) "
@@ -298,8 +304,15 @@ def place_block(
             obid, section_id, block_kind, provenance_kind, node_id,
             source_block_kind, source_block_id, content, int(block_index),
             cluster_id, _maybe_json(metadata),
-        ],
-    )
+            ],
+        )
+        invalidate_structural_provenance(con, section_id, reason="block_placed")
+        if transaction_owner:
+            con.execute("COMMIT")
+    except Exception:
+        if transaction_owner:
+            con.execute("ROLLBACK")
+        raise
     if emit_event:
         emit_typed(
             investigation_id,
@@ -379,18 +392,35 @@ def move_block(
     if row is None:
         raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
     from_section_id, from_index = row[0], int(row[1])
+    if to_section_id == from_section_id and int(to_index) == from_index:
+        return
     # Validate the target section exists (reparent target).
     if to_section_id != from_section_id:
-        if con.execute(
-            "SELECT 1 FROM deliverable_sections WHERE section_id = ?",
-            [to_section_id],
-        ).fetchone() is None:
+        ownership = con.execute(
+            "SELECT section_id, deliverable_id FROM deliverable_sections "
+            "WHERE section_id IN (?, ?)",
+            [from_section_id, to_section_id],
+        ).fetchall()
+        if len(ownership) != 2:
             raise OutlineBlockError(f"target section not found: {to_section_id!r}")
-    con.execute(
-        "UPDATE outline_blocks SET section_id = ?, block_index = ? "
-        "WHERE outline_block_id = ?",
-        [to_section_id, int(to_index), outline_block_id],
-    )
+        if len({item[1] for item in ownership}) != 1:
+            raise OutlineBlockError("cannot move an outline block across deliverables")
+    from substrate.write.provenance_validity import invalidate_structural_provenance
+
+    con.execute("BEGIN TRANSACTION")
+    try:
+        con.execute(
+            "UPDATE outline_blocks SET section_id = ?, block_index = ? "
+            "WHERE outline_block_id = ?",
+            [to_section_id, int(to_index), outline_block_id],
+        )
+        invalidate_structural_provenance(con, from_section_id, reason="block_moved")
+        if to_section_id != from_section_id:
+            invalidate_structural_provenance(con, to_section_id, reason="block_moved")
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
     emit_typed(
         investigation_id,
         OutlineBlockMovedPayload(
@@ -423,10 +453,19 @@ def remove_block(
     if row is None:
         return False
     section_id = row[0]
-    con.execute(
-        "DELETE FROM outline_blocks WHERE outline_block_id = ?",
-        [outline_block_id],
-    )
+    from substrate.write.provenance_validity import invalidate_structural_provenance
+
+    con.execute("BEGIN TRANSACTION")
+    try:
+        con.execute(
+            "DELETE FROM outline_blocks WHERE outline_block_id = ?",
+            [outline_block_id],
+        )
+        invalidate_structural_provenance(con, section_id, reason="block_removed")
+        con.execute("COMMIT")
+    except Exception:
+        con.execute("ROLLBACK")
+        raise
     emit_typed(
         investigation_id,
         OutlineBlockRemovedPayload(

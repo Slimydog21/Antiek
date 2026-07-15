@@ -29,6 +29,32 @@ def test_partial_schema_is_repaired(tmp_path):
         con.close()
 
 
+def test_malformed_structural_binding_fails_closed():
+    validity = generated_validity(
+        "Grounded.", {"0": ["oblk-1"]}, outline_sha256="0" * 64
+    )
+    validity["outline_sha256"] = "not-a-digest"
+    result = read_validity("Grounded.", {"0": ["oblk-1"]}, validity)
+    assert result["status"] == "legacy_unverified"
+
+
+def test_prose_edit_preserves_structural_binding_for_current_mapping():
+    old = generated_validity(
+        "Grounded.\n\nSecond.",
+        {"0": ["oblk-1"], "1": ["oblk-2"]},
+        outline_sha256="a" * 64,
+    )
+    provenance, validity = edited_provenance(
+        old_prose="Grounded.\n\nSecond.",
+        new_prose="Grounded.\n\nChanged second.",
+        old_provenance={"0": ["oblk-1"], "1": ["oblk-2"]},
+        old_validity=old,
+        origin="manual",
+    )
+    assert provenance == {"0": ["oblk-1"]}
+    assert validity["outline_sha256"] == "a" * 64
+
+
 def test_insert_before_unique_paragraphs_remaps_current_provenance():
     old = "Alpha.\n\nBeta."
     provenance = {"0": ["a"], "1": ["b"]}
