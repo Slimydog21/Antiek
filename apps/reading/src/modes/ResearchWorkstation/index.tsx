@@ -8,6 +8,7 @@ import GlassSurface from "../../shell/GlassSurface";
 import { PanelHost } from "../../workspace/PanelHost";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import type { StarterPanel } from "../../workspace/PanelHost";
+import CollectiveLineage from "./CollectiveLineage";
 import DistillView from "./DistillView";
 import HighlightToolbar from "./HighlightToolbar";
 import MasterMdViewer from "./MasterMdViewer";
@@ -144,7 +145,8 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
   if (investigation.status === "not_found") {
     return (
       <div className="h-full flex items-center justify-center text-sm text-shadow-1 dark:text-moonlight font-serif">
-        No investigation with id <code className="font-mono">{investigationId}</code>.
+        No investigation with id{" "}
+        <code className="font-mono">{investigationId}</code>.
       </div>
     );
   }
@@ -177,7 +179,14 @@ function InvestigationCenter({ investigationId }: { investigationId: string }) {
       ref={centerRef}
       className="h-full overflow-y-auto relative"
     >
-      <CenterContent investigation={investigation} onChaseQuestion={onChaseQuestion} />
+      <CollectiveLineage
+        events={investigation.events}
+        investigationId={investigation.id}
+      />
+      <CenterContent
+        investigation={investigation}
+        onChaseQuestion={onChaseQuestion}
+      />
       <HighlightToolbar
         scopeRef={centerRef}
         onChaseThis={onChaseThis}

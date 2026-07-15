@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Cycle 73: Collective research lineage navigation</title></head>
+<body>
+<main>
+  <h1>Collective research lineage navigation</h1>
+  <p>Status: executable. Base: Cycle 72 collective composition launch.</p>
+  <section>
+    <h2>Outcome</h2>
+    <p>An investigation launched from multiple completed investigations remains visibly connected to its exact ordered sources. From the active research view, the operator can inspect every member, return to a member investigation, and open the immutable combined HTML context that seeded the run.</p>
+  </section>
+  <section>
+    <h2>Authority</h2>
+    <ul>
+      <li>The schema-v37 <code>investigation.start_requested</code> event is the lineage source of truth.</li>
+      <li>The client never reconstructs composition identity, hashes, order, or membership.</li>
+      <li>Combined HTML is served only by the existing owner-scoped composition endpoint, which revalidates repository authority and exact stored bytes.</li>
+      <li>No lineage surface appears for ordinary, evidence-manifest, or legacy investigations.</li>
+    </ul>
+  </section>
+  <section>
+    <h2>Interaction</h2>
+    <ol>
+      <li>Render a compact “Collective sources” band above the investigation body when one valid composition provenance payload exists.</li>
+      <li>Show member count and ordered member investigation links.</li>
+      <li>Open the combined HTML in a new tab through the canonical API route.</li>
+      <li>Disable the HTML command when the composition identity is malformed; never guess or repair it.</li>
+    </ol>
+  </section>
+  <section>
+    <h2>Acceptance</h2>
+    <ul>
+      <li>Exact ordinal order is preserved even when event order changes.</li>
+      <li>Duplicate, gapped, count-mismatched, or malformed provenance renders nothing.</li>
+      <li>Member navigation uses <code>/inv/{encoded-id}</code>.</li>
+      <li>The HTML URL uses <code>/research/artifacts/compositions/{encoded-id}</code> and opens with <code>noopener,noreferrer</code>.</li>
+      <li>Loading, running, completed, failed, and ordinary investigation behavior remains unchanged.</li>
+      <li>Focused unit tests, TypeScript typecheck, production build, strict security scan, and hostile review pass.</li>
+    </ul>
+  </section>
+  <section><h2>Non-goals</h2><p>No composition mutation, sharing, re-launch, model selection, budget authorization, or client-side HTML reconstruction.</p></section>
+</main>
+</body>
+</html>
