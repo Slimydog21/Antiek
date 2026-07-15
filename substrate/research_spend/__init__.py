@@ -1,6 +1,10 @@
 """Durable research-spend authorization and provider-evidence ledger."""
 
 from .ledger import (
+    BillingAssessment,
+    BillingClassification,
+    BillingEvidenceKind,
+    BillingRefusalReason,
     BindingConflict,
     IdempotencyConflict,
     InvalidTransition,
@@ -34,6 +38,10 @@ from .ledger import (
 
 __all__ = [
     "BindingConflict",
+    "BillingAssessment",
+    "BillingClassification",
+    "BillingEvidenceKind",
+    "BillingRefusalReason",
     "IdempotencyConflict",
     "InvalidTransition",
     "LedgerIntegrityError",

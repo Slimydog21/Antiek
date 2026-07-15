@@ -16,6 +16,7 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import sqlite3
 import uuid
 from collections.abc import Callable, Generator, Mapping
@@ -25,8 +26,22 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Final, cast
 
+from .billing_evidence import (
+    BillingAssessment,
+    BillingClassification,
+    BillingEvidenceKind,
+    BillingRefusalReason,
+    billing_assessment_id,
+    canonical_billing_evidence,
+    classify_billing_evidence,
+)
+
 __all__ = [
     "BindingConflict",
+    "BillingAssessment",
+    "BillingClassification",
+    "BillingEvidenceKind",
+    "BillingRefusalReason",
     "default_research_spend_db_path",
     "IdempotencyConflict",
     "InvalidTransition",
@@ -58,7 +73,7 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 4
+SCHEMA_VERSION: Final = 5
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
@@ -424,6 +439,7 @@ class ProviderSubmissionIntent:
             parsed = json.loads(self.create_request_json)
         except json.JSONDecodeError as exc:
             raise ValueError("create_request_json must be canonical JSON") from exc
+
         def validate_scalar_tree(value: object) -> None:
             if value is None or isinstance(value, (str, int, bool)):
                 return
@@ -436,8 +452,12 @@ class ProviderSubmissionIntent:
                     validate_scalar_tree(item)
                 return
             raise ValueError("create_request_json accepts JSON scalars without floats")
+
         validate_scalar_tree(parsed)
-        if json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True) != self.create_request_json:
+        if (
+            json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+            != self.create_request_json
+        ):
             raise ValueError("create_request_json must be canonical JSON")
 
 
@@ -853,6 +873,50 @@ _MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
         BEGIN SELECT RAISE(ABORT, 'research provider observations are append-only'); END
         """,
     ),
+    4: (
+        """
+        CREATE TABLE research_provider_billing_assessments (
+            assessment_seq INTEGER PRIMARY KEY AUTOINCREMENT,
+            assessment_id TEXT NOT NULL UNIQUE,
+            assessment_key TEXT NOT NULL,
+            submission_id TEXT NOT NULL REFERENCES research_provider_submissions(submission_id),
+            hold_id TEXT NOT NULL REFERENCES research_spend_holds(hold_id),
+            operation_id TEXT NOT NULL REFERENCES research_launch_operations(operation_id),
+            run_id TEXT NOT NULL REFERENCES research_spend_runs(run_id),
+            owner_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            job_arn TEXT NOT NULL,
+            evidence_kind TEXT NOT NULL CHECK(evidence_kind IN (
+                'provider_metering','derived_list_price','cur_open_period',
+                'cur_final_unattributable','unsupported')),
+            evidence_json TEXT NOT NULL,
+            evidence_sha256 TEXT NOT NULL,
+            raw_digest TEXT NOT NULL,
+            classification TEXT NOT NULL CHECK(classification IN (
+                'provider_metering_only','derived_list_price','cur_aggregate_observed',
+                'invoice_period_finalized_unattributable',
+                'exact_job_final_cost_unavailable')),
+            reason_codes_json TEXT NOT NULL,
+            settlement_authorized INTEGER NOT NULL DEFAULT 0
+                CHECK(settlement_authorized = 0),
+            created_at TEXT NOT NULL,
+            UNIQUE(submission_id, assessment_key)
+        ) STRICT
+        """,
+        "CREATE INDEX research_provider_billing_assessments_submission_idx "
+        "ON research_provider_billing_assessments(submission_id, assessment_seq)",
+        """
+        CREATE TRIGGER research_provider_billing_assessments_no_update
+        BEFORE UPDATE ON research_provider_billing_assessments
+        BEGIN SELECT RAISE(ABORT, 'provider billing assessments are append-only'); END
+        """,
+        """
+        CREATE TRIGGER research_provider_billing_assessments_no_delete
+        BEFORE DELETE ON research_provider_billing_assessments
+        BEGIN SELECT RAISE(ABORT, 'provider billing assessments are append-only'); END
+        """,
+    ),
 }
 
 
@@ -956,7 +1020,7 @@ class ResearchSpendLedger:
             if version == 0:
                 connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
                 for index, statement in enumerate(
-                    (*_DDL, *_MIGRATIONS[2], *_MIGRATIONS[3]), start=1
+                    (*_DDL, *_MIGRATIONS[2], *_MIGRATIONS[3], *_MIGRATIONS[4]), start=1
                 ):
                     connection.execute(statement)
                     self._checkpoint(f"schema:after_statement:{index}")
@@ -1949,25 +2013,39 @@ class ResearchSpendLedger:
         intent: ProviderSubmissionIntent,
     ) -> ProviderSubmissionSnapshot:
         """Atomically claim one launch operation, reserve its hold, and bind replay intent."""
-        _bounded_int("projected_max_cents", projected_max_cents, minimum=1, maximum=MAX_AUTHORITY_CENTS)
+        _bounded_int(
+            "projected_max_cents", projected_max_cents, minimum=1, maximum=MAX_AUTHORITY_CENTS
+        )
         if (hold_intent.provider, hold_intent.model) != (intent.provider, intent.model):
             raise BindingConflict("submission and hold provider route changed")
         hold_json = self._paid_intent_json(binding, hold_intent, projected_max_cents)
         submission_json = self._provider_submission_json(intent)
-        command_intent = _canonical({
-            "hold_intent_sha256": _sha256(hold_json),
-            "owner_id": binding.owner_id,
-            "run_id": binding.run_id,
-            "submission_id": intent.submission_id,
-            "submission_intent_sha256": _sha256(submission_json),
-        })
+        command_intent = _canonical(
+            {
+                "hold_intent_sha256": _sha256(hold_json),
+                "owner_id": binding.owner_id,
+                "run_id": binding.run_id,
+                "submission_id": intent.submission_id,
+                "submission_intent_sha256": _sha256(submission_json),
+            }
+        )
         with self._write("prepare_provider_submission") as connection:
-            replay = self._replay(connection, command_key, "prepare_provider_submission", intent.submission_id, command_intent)
+            replay = self._replay(
+                connection,
+                command_key,
+                "prepare_provider_submission",
+                intent.submission_id,
+                command_intent,
+            )
             if replay is not None:
-                return self._load_provider_submission(connection, intent.submission_id, binding.owner_id)
+                return self._load_provider_submission(
+                    connection, intent.submission_id, binding.owner_id
+                )
             run = self._require_binding(connection, binding)
             if run.status is not RunStatus.ACTIVE:
-                raise InvalidTransition(binding.run_id, run.status.value, "prepare provider submission")
+                raise InvalidTransition(
+                    binding.run_id, run.status.value, "prepare provider submission"
+                )
             operation = connection.execute(
                 "SELECT o.state,o.provider,o.model,o.logical_operation_id FROM research_launch_operations o "
                 "JOIN research_launch_executions e ON e.execution_id=o.execution_id "
@@ -1977,93 +2055,211 @@ class ResearchSpendLedger:
             if operation is None:
                 raise BindingConflict("launch operation is unavailable")
             if str(operation["state"]) != LaunchOperationState.PENDING.value:
-                raise InvalidTransition(intent.operation_id, str(operation["state"]), "prepare provider submission")
-            if (str(operation["provider"]), str(operation["model"])) != (intent.provider, intent.model):
+                raise InvalidTransition(
+                    intent.operation_id, str(operation["state"]), "prepare provider submission"
+                )
+            if (str(operation["provider"]), str(operation["model"])) != (
+                intent.provider,
+                intent.model,
+            ):
                 raise BindingConflict("launch operation provider route changed")
             if hold_intent.provider_idempotency_key != intent.client_request_token:
                 raise BindingConflict("provider hold does not bind the launch operation")
-            if connection.execute(
-                "SELECT 1 FROM research_provider_submissions WHERE submission_id=? OR operation_id=? OR client_request_token=?",
-                (intent.submission_id, intent.operation_id, intent.client_request_token),
-            ).fetchone() is not None:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM research_provider_submissions WHERE submission_id=? OR operation_id=? OR client_request_token=?",
+                    (intent.submission_id, intent.operation_id, intent.client_request_token),
+                ).fetchone()
+                is not None
+            ):
                 raise IdempotencyConflict("provider submission identity already exists")
-            if connection.execute(
-                "SELECT 1 FROM research_spend_holds WHERE (run_id=? AND reservation_key=?) OR (provider=? AND provider_idempotency_key=?)",
-                (binding.run_id, hold_intent.reservation_key, hold_intent.provider, hold_intent.provider_idempotency_key),
-            ).fetchone() is not None:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM research_spend_holds WHERE (run_id=? AND reservation_key=?) OR (provider=? AND provider_idempotency_key=?)",
+                    (
+                        binding.run_id,
+                        hold_intent.reservation_key,
+                        hold_intent.provider,
+                        hold_intent.provider_idempotency_key,
+                    ),
+                ).fetchone()
+                is not None
+            ):
                 raise IdempotencyConflict("reservation or provider identity already exists")
             now = _now()
-            if connection.execute(
-                "UPDATE research_spend_runs SET held_cents=held_cents+?,updated_at=? WHERE run_id=? "
-                "AND owner_id=? AND session_id=? AND plan_digest=? AND approval_revision=? "
-                "AND status='active' AND ceiling_breached=0 "
-                "AND ? <= ceiling_cents-authorized_spent_cents-held_cents RETURNING run_id",
-                (projected_max_cents, now, binding.run_id, binding.owner_id, binding.session_id,
-                 binding.plan_digest, binding.approval_revision, projected_max_cents),
-            ).fetchone() is None:
+            if (
+                connection.execute(
+                    "UPDATE research_spend_runs SET held_cents=held_cents+?,updated_at=? WHERE run_id=? "
+                    "AND owner_id=? AND session_id=? AND plan_digest=? AND approval_revision=? "
+                    "AND status='active' AND ceiling_breached=0 "
+                    "AND ? <= ceiling_cents-authorized_spent_cents-held_cents RETURNING run_id",
+                    (
+                        projected_max_cents,
+                        now,
+                        binding.run_id,
+                        binding.owner_id,
+                        binding.session_id,
+                        binding.plan_digest,
+                        binding.approval_revision,
+                        projected_max_cents,
+                    ),
+                ).fetchone()
+                is None
+            ):
                 raise SpendCeilingExceeded(binding.run_id, projected_max_cents, run.available_cents)
             self._checkpoint("prepare_provider_submission:after_authority")
             hold_id = uuid.uuid4().hex
             connection.execute(
                 "INSERT INTO research_spend_holds (hold_id,run_id,reservation_key,intent_json,intent_sha256,seam_id,provider,model,operation,operation_digest,projection_digest,rate_snapshot,provider_idempotency_key,projected_max_cents,state,created_at,updated_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,'reserved',?,?)",
-                (hold_id,binding.run_id,hold_intent.reservation_key,hold_json,_sha256(hold_json),hold_intent.seam_id,
-                 hold_intent.provider,hold_intent.model,hold_intent.operation,hold_intent.operation_digest,
-                 hold_intent.projection_digest,hold_intent.rate_snapshot,hold_intent.provider_idempotency_key,
-                 projected_max_cents,now,now),
+                (
+                    hold_id,
+                    binding.run_id,
+                    hold_intent.reservation_key,
+                    hold_json,
+                    _sha256(hold_json),
+                    hold_intent.seam_id,
+                    hold_intent.provider,
+                    hold_intent.model,
+                    hold_intent.operation,
+                    hold_intent.operation_digest,
+                    hold_intent.projection_digest,
+                    hold_intent.rate_snapshot,
+                    hold_intent.provider_idempotency_key,
+                    projected_max_cents,
+                    now,
+                    now,
+                ),
             )
             self._checkpoint("prepare_provider_submission:after_hold")
             connection.execute(
                 "INSERT INTO research_provider_submissions (submission_id,operation_id,hold_id,run_id,owner_id,provider,model,adapter_contract,account_digest,region,provider_model_id,client_request_token,create_request_json,create_request_sha256,recovery_strategy,intent_json,intent_sha256,state,created_at,updated_at) "
                 "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'prepared',?,?)",
-                (intent.submission_id,intent.operation_id,hold_id,binding.run_id,binding.owner_id,intent.provider,
-                 intent.model,intent.adapter_contract,intent.account_digest,intent.region,intent.provider_model_id,
-                 intent.client_request_token,intent.create_request_json,_sha256(intent.create_request_json),
-                 intent.recovery_strategy,submission_json,_sha256(submission_json),now,now),
+                (
+                    intent.submission_id,
+                    intent.operation_id,
+                    hold_id,
+                    binding.run_id,
+                    binding.owner_id,
+                    intent.provider,
+                    intent.model,
+                    intent.adapter_contract,
+                    intent.account_digest,
+                    intent.region,
+                    intent.provider_model_id,
+                    intent.client_request_token,
+                    intent.create_request_json,
+                    _sha256(intent.create_request_json),
+                    intent.recovery_strategy,
+                    submission_json,
+                    _sha256(submission_json),
+                    now,
+                    now,
+                ),
             )
             connection.execute(
                 "UPDATE research_launch_operations SET state='claimed',hold_id=?,updated_at=? WHERE operation_id=? AND state='pending'",
-                (hold_id,now,intent.operation_id),
+                (hold_id, now, intent.operation_id),
             )
             self._checkpoint("prepare_provider_submission:after_submission")
-            snapshot = self._load_provider_submission(connection, intent.submission_id, binding.owner_id)
-            self._record_command(connection, command_key, "prepare_provider_submission", intent.submission_id,
-                                 command_intent, _canonical({"hold_id": hold_id, "submission_id": intent.submission_id}))
-            self._append_event(connection, self._load_run(connection, binding.run_id), command_key=command_key,
-                               event_kind="provider_submission_prepared", hold_id=hold_id,
-                               held_delta_cents=projected_max_cents, evidence_json=command_intent)
+            snapshot = self._load_provider_submission(
+                connection, intent.submission_id, binding.owner_id
+            )
+            self._record_command(
+                connection,
+                command_key,
+                "prepare_provider_submission",
+                intent.submission_id,
+                command_intent,
+                _canonical({"hold_id": hold_id, "submission_id": intent.submission_id}),
+            )
+            self._append_event(
+                connection,
+                self._load_run(connection, binding.run_id),
+                command_key=command_key,
+                event_kind="provider_submission_prepared",
+                hold_id=hold_id,
+                held_delta_cents=projected_max_cents,
+                evidence_json=command_intent,
+            )
             return snapshot
 
     def transition_provider_submission(
-        self, command_key: str, submission_id: str, owner_id: str,
-        target: ProviderSubmissionState, *, job_arn: str | None = None,
-        source: str, evidence_json: str, raw_digest: str,
-        provider_status: str | None = None, increment_attempt: bool = False,
+        self,
+        command_key: str,
+        submission_id: str,
+        owner_id: str,
+        target: ProviderSubmissionState,
+        *,
+        job_arn: str | None = None,
+        source: str,
+        evidence_json: str,
+        raw_digest: str,
+        provider_status: str | None = None,
+        increment_attempt: bool = False,
     ) -> ProviderSubmissionSnapshot:
         """Apply one guarded provider transition and append exactly one observation."""
         if not isinstance(target, ProviderSubmissionState):
             raise TypeError("target must be ProviderSubmissionState")
-        for name, value in (("source", source), ("evidence_json", evidence_json), ("raw_digest", raw_digest)):
+        for name, value in (
+            ("source", source),
+            ("evidence_json", evidence_json),
+            ("raw_digest", raw_digest),
+        ):
             _required_text(name, value)
         try:
             parsed_evidence = json.loads(evidence_json)
         except json.JSONDecodeError as exc:
             raise ValueError("evidence_json must be canonical JSON") from exc
-        if json.dumps(parsed_evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=True) != evidence_json:
+        if (
+            json.dumps(parsed_evidence, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+            != evidence_json
+        ):
             raise ValueError("evidence_json must be canonical JSON")
-        intent_json = _canonical({"evidence_sha256": _sha256(evidence_json), "job_arn": job_arn,
-                                  "owner_id": owner_id, "raw_digest": raw_digest,
-                                  "source": source, "submission_id": submission_id,
-                                  "target": target.value})
+        intent_json = _canonical(
+            {
+                "evidence_sha256": _sha256(evidence_json),
+                "job_arn": job_arn,
+                "owner_id": owner_id,
+                "raw_digest": raw_digest,
+                "source": source,
+                "submission_id": submission_id,
+                "target": target.value,
+            }
+        )
         allowed = {
             ProviderSubmissionState.PREPARED: {ProviderSubmissionState.SUBMIT_POSSIBLE},
-            ProviderSubmissionState.SUBMIT_POSSIBLE: {ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN, ProviderSubmissionState.IDENTITY_BOUND, ProviderSubmissionState.FAILED_PRE_ACCEPTANCE, ProviderSubmissionState.INTEGRITY_CONFLICT},
-            ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN: {ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN, ProviderSubmissionState.IDENTITY_BOUND, ProviderSubmissionState.INTEGRITY_CONFLICT},
-            ProviderSubmissionState.IDENTITY_BOUND: {ProviderSubmissionState.IDENTITY_BOUND, ProviderSubmissionState.RUNNING, ProviderSubmissionState.BILLING_PENDING, ProviderSubmissionState.INTEGRITY_CONFLICT},
-            ProviderSubmissionState.RUNNING: {ProviderSubmissionState.RUNNING, ProviderSubmissionState.BILLING_PENDING, ProviderSubmissionState.INTEGRITY_CONFLICT},
+            ProviderSubmissionState.SUBMIT_POSSIBLE: {
+                ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN,
+                ProviderSubmissionState.IDENTITY_BOUND,
+                ProviderSubmissionState.FAILED_PRE_ACCEPTANCE,
+                ProviderSubmissionState.INTEGRITY_CONFLICT,
+            },
+            ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN: {
+                ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN,
+                ProviderSubmissionState.IDENTITY_BOUND,
+                ProviderSubmissionState.INTEGRITY_CONFLICT,
+            },
+            ProviderSubmissionState.IDENTITY_BOUND: {
+                ProviderSubmissionState.IDENTITY_BOUND,
+                ProviderSubmissionState.RUNNING,
+                ProviderSubmissionState.BILLING_PENDING,
+                ProviderSubmissionState.INTEGRITY_CONFLICT,
+            },
+            ProviderSubmissionState.RUNNING: {
+                ProviderSubmissionState.RUNNING,
+                ProviderSubmissionState.BILLING_PENDING,
+                ProviderSubmissionState.INTEGRITY_CONFLICT,
+            },
         }
         with self._write("transition_provider_submission") as connection:
-            replay = self._replay(connection, command_key, "transition_provider_submission", submission_id, intent_json)
+            replay = self._replay(
+                connection,
+                command_key,
+                "transition_provider_submission",
+                submission_id,
+                intent_json,
+            )
             if replay is not None:
                 return self._load_provider_submission(connection, submission_id, owner_id)
             current = self._load_provider_submission(connection, submission_id, owner_id)
@@ -2088,7 +2284,10 @@ class ResearchSpendLedger:
                 ProviderSubmissionState.FAILED_PRE_ACCEPTANCE: "failed_terminal",
             }.get(target)
             if target is ProviderSubmissionState.SUBMIT_POSSIBLE:
-                connection.execute("UPDATE research_spend_holds SET state='dispatch_possible',dispatch_possible_at=?,updated_at=? WHERE hold_id=? AND state='reserved'", (now,now,current.hold_id))
+                connection.execute(
+                    "UPDATE research_spend_holds SET state='dispatch_possible',dispatch_possible_at=?,updated_at=? WHERE hold_id=? AND state='reserved'",
+                    (now, now, current.hold_id),
+                )
             elif target in {
                 ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN,
                 ProviderSubmissionState.IDENTITY_BOUND,
@@ -2096,7 +2295,10 @@ class ResearchSpendLedger:
                 ProviderSubmissionState.BILLING_PENDING,
                 ProviderSubmissionState.INTEGRITY_CONFLICT,
             }:
-                connection.execute("UPDATE research_spend_holds SET state='unknown',updated_at=? WHERE hold_id=? AND state IN ('dispatch_possible','unknown')", (now,current.hold_id))
+                connection.execute(
+                    "UPDATE research_spend_holds SET state='unknown',updated_at=? WHERE hold_id=? AND state IN ('dispatch_possible','unknown')",
+                    (now, current.hold_id),
+                )
             elif target is ProviderSubmissionState.FAILED_PRE_ACCEPTANCE:
                 hold = self._load_hold(connection, current.hold_id)
                 if hold.state is not PaidHoldState.DISPATCH_POSSIBLE:
@@ -2107,30 +2309,250 @@ class ResearchSpendLedger:
                     "resolution_intent_sha256=?,resolution_evidence_json=?,resolved_at=?,updated_at=? "
                     "WHERE hold_id=? AND state='dispatch_possible'",
                     (
-                        command_key, intent_json, _sha256(intent_json), evidence_json,
-                        now, now, current.hold_id,
+                        command_key,
+                        intent_json,
+                        _sha256(intent_json),
+                        evidence_json,
+                        now,
+                        now,
+                        current.hold_id,
                     ),
                 )
-                if connection.execute(
-                    "UPDATE research_spend_runs SET held_cents=held_cents-?,updated_at=? "
-                    "WHERE run_id=? AND held_cents>=? RETURNING run_id",
-                    (hold.projected_max_cents, now, current.run_id, hold.projected_max_cents),
-                ).fetchone() is None:
+                if (
+                    connection.execute(
+                        "UPDATE research_spend_runs SET held_cents=held_cents-?,updated_at=? "
+                        "WHERE run_id=? AND held_cents>=? RETURNING run_id",
+                        (hold.projected_max_cents, now, current.run_id, hold.projected_max_cents),
+                    ).fetchone()
+                    is None
+                ):
                     raise LedgerIntegrityError("pre-acceptance release could not consume authority")
             connection.execute(
                 "UPDATE research_provider_submissions SET state=?,job_arn=?,attempt_count=attempt_count+?,updated_at=? WHERE submission_id=? AND state=?",
-                (target.value,bound_arn,int(increment_attempt),now,submission_id,current.state.value),
+                (
+                    target.value,
+                    bound_arn,
+                    int(increment_attempt),
+                    now,
+                    submission_id,
+                    current.state.value,
+                ),
             )
             if operation_state is not None:
-                connection.execute("UPDATE research_launch_operations SET state=?,updated_at=? WHERE operation_id=?", (operation_state,now,current.intent.operation_id))
+                connection.execute(
+                    "UPDATE research_launch_operations SET state=?,updated_at=? WHERE operation_id=?",
+                    (operation_state, now, current.intent.operation_id),
+                )
             observation_id = hashlib.sha256(f"{submission_id}:{command_key}".encode()).hexdigest()
             connection.execute(
                 "INSERT INTO research_provider_observations (observation_id,submission_id,source,evidence_json,evidence_sha256,raw_digest,provider_identity,provider_status,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-                (observation_id,submission_id,source,evidence_json,_sha256(evidence_json),raw_digest,bound_arn,provider_status,now),
+                (
+                    observation_id,
+                    submission_id,
+                    source,
+                    evidence_json,
+                    _sha256(evidence_json),
+                    raw_digest,
+                    bound_arn,
+                    provider_status,
+                    now,
+                ),
             )
-            self._record_command(connection,command_key,"transition_provider_submission",submission_id,intent_json,
-                                 _canonical({"observation_id": observation_id, "state": target.value}))
+            self._record_command(
+                connection,
+                command_key,
+                "transition_provider_submission",
+                submission_id,
+                intent_json,
+                _canonical({"observation_id": observation_id, "state": target.value}),
+            )
             return self._load_provider_submission(connection, submission_id, owner_id)
+
+    def assess_provider_billing(
+        self,
+        command_key: str,
+        submission_id: str,
+        owner_id: str,
+        assessment_key: str,
+        evidence_kind: BillingEvidenceKind,
+        evidence: Mapping[str, object],
+        raw_digest: str,
+    ) -> BillingAssessment:
+        """Append a deterministic refusal assessment without changing authority state."""
+        for name, value in (
+            ("command_key", command_key),
+            ("submission_id", submission_id),
+            ("owner_id", owner_id),
+            ("assessment_key", assessment_key),
+        ):
+            _required_text(name, value)
+        if not isinstance(evidence_kind, BillingEvidenceKind):
+            raise TypeError("evidence_kind must be BillingEvidenceKind")
+        if re.fullmatch(r"[0-9a-f]{64}", raw_digest) is None:
+            raise ValueError("raw_digest must be a lowercase SHA-256")
+        evidence_json = canonical_billing_evidence(evidence)
+        classification, reasons = classify_billing_evidence(evidence_kind, evidence)
+        assessment_id = billing_assessment_id(submission_id, assessment_key)
+        reason_codes_json = json.dumps([reason.value for reason in reasons], separators=(",", ":"))
+        command_intent = _canonical(
+            {
+                "assessment_id": assessment_id,
+                "assessment_key": assessment_key,
+                "evidence_kind": evidence_kind.value,
+                "evidence_sha256": _sha256(evidence_json),
+                "owner_id": owner_id,
+                "raw_digest": raw_digest,
+                "submission_id": submission_id,
+            }
+        )
+        with self._write("assess_provider_billing") as connection:
+            replay = self._replay(
+                connection,
+                command_key,
+                "assess_provider_billing",
+                assessment_id,
+                command_intent,
+            )
+            if replay is not None:
+                return self._load_billing_assessment(connection, assessment_id, owner_id)
+            submission = self._load_provider_submission(connection, submission_id, owner_id)
+            if (
+                submission.state is not ProviderSubmissionState.BILLING_PENDING
+                or submission.job_arn is None
+            ):
+                raise InvalidTransition(
+                    submission_id,
+                    submission.state.value,
+                    "assess provider billing",
+                )
+            hold = self._load_hold(connection, submission.hold_id)
+            run = self._load_run(connection, submission.run_id)
+            operation = connection.execute(
+                "SELECT state,hold_id FROM research_launch_operations WHERE operation_id=?",
+                (submission.intent.operation_id,),
+            ).fetchone()
+            if (
+                hold.state is not PaidHoldState.UNKNOWN
+                or run.held_cents < hold.projected_max_cents
+                or operation is None
+                or str(operation["state"]) != LaunchOperationState.UNKNOWN.value
+                or str(operation["hold_id"]) != hold.hold_id
+            ):
+                raise LedgerIntegrityError("billing assessment requires the full unknown hold")
+            expected_identity = {
+                "account_digest": submission.intent.account_digest,
+                "job_arn": submission.job_arn,
+                "model": submission.intent.model,
+                "owner_id": owner_id,
+                "provider": submission.intent.provider,
+                "region": submission.intent.region,
+                "run_id": submission.run_id,
+                "submission_id": submission_id,
+            }
+            if any(evidence.get(key) != value for key, value in expected_identity.items()):
+                raise BindingConflict("billing evidence identity conflicts with submission")
+            if (
+                evidence_kind is BillingEvidenceKind.PROVIDER_METERING
+                and classification is BillingClassification.PROVIDER_METERING_ONLY
+            ):
+                terminal = connection.execute(
+                    "SELECT 1 FROM research_provider_observations WHERE submission_id=? "
+                    "AND evidence_sha256=? AND provider_status='Completed'",
+                    (submission_id, evidence.get("terminal_observation_digest")),
+                ).fetchone()
+                if terminal is None or evidence.get("manifest_digest") != raw_digest:
+                    classification = BillingClassification.EXACT_JOB_FINAL_COST_UNAVAILABLE
+                    reasons = (BillingRefusalReason.EVIDENCE_INVARIANT_FAILED,)
+                    reason_codes_json = json.dumps(
+                        [reason.value for reason in reasons], separators=(",", ":")
+                    )
+            elif (
+                evidence_kind is BillingEvidenceKind.DERIVED_LIST_PRICE
+                and classification is BillingClassification.DERIVED_LIST_PRICE
+            ):
+                metering = connection.execute(
+                    "SELECT evidence_json FROM research_provider_billing_assessments WHERE submission_id=? "
+                    "AND evidence_sha256=? AND classification='provider_metering_only'",
+                    (submission_id, evidence.get("metering_digest")),
+                ).fetchone()
+                metering_evidence = None if metering is None else json.loads(str(metering[0]))
+                if metering_evidence is None or any(
+                    evidence.get(name) != metering_evidence.get(name)
+                    for name in ("input_token_count", "output_token_count")
+                ):
+                    classification = BillingClassification.EXACT_JOB_FINAL_COST_UNAVAILABLE
+                    reasons = (BillingRefusalReason.EVIDENCE_INVARIANT_FAILED,)
+                    reason_codes_json = json.dumps(
+                        [reason.value for reason in reasons], separators=(",", ":")
+                    )
+            existing = connection.execute(
+                "SELECT assessment_id FROM research_provider_billing_assessments "
+                "WHERE assessment_id=? OR (submission_id=? AND assessment_key=?)",
+                (assessment_id, submission_id, assessment_key),
+            ).fetchone()
+            if existing is not None:
+                raise IdempotencyConflict("billing assessment identity already exists")
+            now = _now()
+            connection.execute(
+                "INSERT INTO research_provider_billing_assessments "
+                "(assessment_id,assessment_key,submission_id,hold_id,operation_id,run_id,"
+                "owner_id,provider,model,job_arn,evidence_kind,evidence_json,evidence_sha256,"
+                "raw_digest,classification,reason_codes_json,settlement_authorized,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0,?)",
+                (
+                    assessment_id,
+                    assessment_key,
+                    submission_id,
+                    submission.hold_id,
+                    submission.intent.operation_id,
+                    submission.run_id,
+                    owner_id,
+                    submission.intent.provider,
+                    submission.intent.model,
+                    submission.job_arn,
+                    evidence_kind.value,
+                    evidence_json,
+                    _sha256(evidence_json),
+                    raw_digest,
+                    classification.value,
+                    reason_codes_json,
+                    now,
+                ),
+            )
+            result_json = _canonical(
+                {
+                    "assessment_id": assessment_id,
+                    "classification": classification.value,
+                    "created_at": now,
+                    "settlement_authorized": False,
+                }
+            )
+            self._record_command(
+                connection,
+                command_key,
+                "assess_provider_billing",
+                assessment_id,
+                command_intent,
+                result_json,
+            )
+            return self._load_billing_assessment(connection, assessment_id, owner_id)
+
+    def provider_billing_assessments(
+        self, submission_id: str, owner_id: str
+    ) -> tuple[BillingAssessment, ...]:
+        connection = self._connect()
+        try:
+            self._load_provider_submission(connection, submission_id, owner_id)
+            rows = connection.execute(
+                "SELECT assessment_id FROM research_provider_billing_assessments "
+                "WHERE submission_id=? ORDER BY assessment_seq",
+                (submission_id,),
+            ).fetchall()
+            return tuple(
+                self._load_billing_assessment(connection, str(row[0]), owner_id) for row in rows
+            )
+        finally:
+            connection.close()
 
     def provider_submission(self, submission_id: str, owner_id: str) -> ProviderSubmissionSnapshot:
         connection = self._connect()
@@ -2139,23 +2561,33 @@ class ResearchSpendLedger:
         finally:
             connection.close()
 
-    def provider_observations(self, submission_id: str, owner_id: str) -> tuple[ProviderObservationSnapshot, ...]:
+    def provider_observations(
+        self, submission_id: str, owner_id: str
+    ) -> tuple[ProviderObservationSnapshot, ...]:
         connection = self._connect()
         try:
             self._load_provider_submission(connection, submission_id, owner_id)
-            rows = connection.execute("SELECT * FROM research_provider_observations WHERE submission_id=? ORDER BY observation_seq", (submission_id,)).fetchall()
+            rows = connection.execute(
+                "SELECT * FROM research_provider_observations WHERE submission_id=? ORDER BY observation_seq",
+                (submission_id,),
+            ).fetchall()
             snapshots = []
             for row in rows:
                 evidence_json = str(row["evidence_json"])
                 if str(row["evidence_sha256"]) != _sha256(evidence_json):
                     raise LedgerIntegrityError("provider observation evidence conflicts")
-                snapshots.append(ProviderObservationSnapshot(
-                    str(row["observation_id"]), submission_id, str(row["source"]),
-                    evidence_json, str(row["raw_digest"]),
-                    None if row["provider_identity"] is None else str(row["provider_identity"]),
-                    None if row["provider_status"] is None else str(row["provider_status"]),
-                    str(row["created_at"]),
-                ))
+                snapshots.append(
+                    ProviderObservationSnapshot(
+                        str(row["observation_id"]),
+                        submission_id,
+                        str(row["source"]),
+                        evidence_json,
+                        str(row["raw_digest"]),
+                        None if row["provider_identity"] is None else str(row["provider_identity"]),
+                        None if row["provider_status"] is None else str(row["provider_status"]),
+                        str(row["created_at"]),
+                    )
+                )
             return tuple(snapshots)
         finally:
             connection.close()
@@ -2303,10 +2735,24 @@ class ResearchSpendLedger:
                     try:
                         parsed = json.loads(evidence_json)
                     except json.JSONDecodeError as exc:
-                        raise LedgerIntegrityError("provider observation evidence is invalid") from exc
-                    canonical = json.dumps(parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
-                    if canonical != evidence_json or str(observation["evidence_sha256"]) != _sha256(evidence_json):
+                        raise LedgerIntegrityError(
+                            "provider observation evidence is invalid"
+                        ) from exc
+                    canonical = json.dumps(
+                        parsed, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+                    )
+                    if canonical != evidence_json or str(observation["evidence_sha256"]) != _sha256(
+                        evidence_json
+                    ):
                         raise LedgerIntegrityError("provider observation evidence conflicts")
+            assessments = connection.execute(
+                "SELECT assessment_id,owner_id FROM research_provider_billing_assessments "
+                "ORDER BY assessment_id"
+            ).fetchall()
+            for row in assessments:
+                self._load_billing_assessment(
+                    connection, str(row["assessment_id"]), str(row["owner_id"])
+                )
             return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
         finally:
             connection.close()
@@ -2336,7 +2782,9 @@ class ResearchSpendLedger:
 
     @staticmethod
     def _provider_submission_json(intent: ProviderSubmissionIntent) -> str:
-        return _canonical({name: cast(JsonScalar, getattr(intent, name)) for name in intent.__dataclass_fields__})
+        return _canonical(
+            {name: cast(JsonScalar, getattr(intent, name)) for name in intent.__dataclass_fields__}
+        )
 
     def _load_provider_submission(
         self, connection: sqlite3.Connection, submission_id: str, owner_id: str
@@ -2348,12 +2796,17 @@ class ResearchSpendLedger:
         if row is None:
             raise RunNotFound(submission_id)
         intent = ProviderSubmissionIntent(
-            submission_id=str(row["submission_id"]), operation_id=str(row["operation_id"]),
-            provider=str(row["provider"]), model=str(row["model"]),
-            adapter_contract=str(row["adapter_contract"]), account_digest=str(row["account_digest"]),
-            region=str(row["region"]), provider_model_id=str(row["provider_model_id"]),
+            submission_id=str(row["submission_id"]),
+            operation_id=str(row["operation_id"]),
+            provider=str(row["provider"]),
+            model=str(row["model"]),
+            adapter_contract=str(row["adapter_contract"]),
+            account_digest=str(row["account_digest"]),
+            region=str(row["region"]),
+            provider_model_id=str(row["provider_model_id"]),
             client_request_token=str(row["client_request_token"]),
-            create_request_json=str(row["create_request_json"]), recovery_strategy=str(row["recovery_strategy"]),
+            create_request_json=str(row["create_request_json"]),
+            recovery_strategy=str(row["recovery_strategy"]),
         )
         raw = str(row["intent_json"])
         if (
@@ -2382,11 +2835,128 @@ class ResearchSpendLedger:
         ):
             raise LedgerIntegrityError("provider submission cross-table binding conflicts")
         return ProviderSubmissionSnapshot(
-            intent=intent, run_id=str(row["run_id"]), owner_id=str(row["owner_id"]),
-            hold_id=str(row["hold_id"]), state=ProviderSubmissionState(str(row["state"])),
+            intent=intent,
+            run_id=str(row["run_id"]),
+            owner_id=str(row["owner_id"]),
+            hold_id=str(row["hold_id"]),
+            state=ProviderSubmissionState(str(row["state"])),
             job_arn=None if row["job_arn"] is None else str(row["job_arn"]),
-            attempt_count=int(row["attempt_count"]), created_at=str(row["created_at"]),
+            attempt_count=int(row["attempt_count"]),
+            created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
+        )
+
+    def _load_billing_assessment(
+        self, connection: sqlite3.Connection, assessment_id: str, owner_id: str
+    ) -> BillingAssessment:
+        row = connection.execute(
+            "SELECT * FROM research_provider_billing_assessments "
+            "WHERE assessment_id=? AND owner_id=?",
+            (assessment_id, owner_id),
+        ).fetchone()
+        if row is None:
+            raise RunNotFound(assessment_id)
+        submission = self._load_provider_submission(connection, str(row["submission_id"]), owner_id)
+        evidence_json = str(row["evidence_json"])
+        try:
+            evidence = json.loads(evidence_json)
+            canonical = canonical_billing_evidence(evidence)
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise LedgerIntegrityError("billing assessment evidence is invalid") from exc
+        kind = BillingEvidenceKind(str(row["evidence_kind"]))
+        if not isinstance(evidence, dict):
+            raise LedgerIntegrityError("billing assessment evidence must be an object")
+        classification, reasons = classify_billing_evidence(kind, evidence)
+        if (
+            kind is BillingEvidenceKind.PROVIDER_METERING
+            and classification is BillingClassification.PROVIDER_METERING_ONLY
+        ):
+            terminal = connection.execute(
+                "SELECT 1 FROM research_provider_observations WHERE submission_id=? "
+                "AND evidence_sha256=? AND provider_status='Completed'",
+                (submission.intent.submission_id, evidence.get("terminal_observation_digest")),
+            ).fetchone()
+            if terminal is None or evidence.get("manifest_digest") != str(row["raw_digest"]):
+                classification = BillingClassification.EXACT_JOB_FINAL_COST_UNAVAILABLE
+                reasons = (BillingRefusalReason.EVIDENCE_INVARIANT_FAILED,)
+        elif (
+            kind is BillingEvidenceKind.DERIVED_LIST_PRICE
+            and classification is BillingClassification.DERIVED_LIST_PRICE
+        ):
+            metering = connection.execute(
+                "SELECT evidence_json FROM research_provider_billing_assessments WHERE submission_id=? "
+                "AND evidence_sha256=? AND classification='provider_metering_only'",
+                (submission.intent.submission_id, evidence.get("metering_digest")),
+            ).fetchone()
+            metering_evidence = None if metering is None else json.loads(str(metering[0]))
+            if metering_evidence is None or any(
+                evidence.get(name) != metering_evidence.get(name)
+                for name in ("input_token_count", "output_token_count")
+            ):
+                classification = BillingClassification.EXACT_JOB_FINAL_COST_UNAVAILABLE
+                reasons = (BillingRefusalReason.EVIDENCE_INVARIANT_FAILED,)
+        expected_reasons = json.dumps([reason.value for reason in reasons], separators=(",", ":"))
+        expected_id = billing_assessment_id(
+            submission.intent.submission_id, str(row["assessment_key"])
+        )
+        receipt = connection.execute(
+            "SELECT intent_json,intent_sha256,result_json,result_sha256 "
+            "FROM research_spend_commands "
+            "WHERE command_kind='assess_provider_billing' AND scope_id=?",
+            (expected_id,),
+        ).fetchone()
+        if receipt is None:
+            raise LedgerIntegrityError("billing assessment has no immutable command receipt")
+        receipt_json = str(receipt["intent_json"])
+        if str(receipt["intent_sha256"]) != _sha256(receipt_json):
+            raise LedgerIntegrityError("billing assessment receipt is corrupt")
+        receipt_intent = json.loads(receipt_json)
+        receipt_result_json = str(receipt["result_json"])
+        if str(receipt["result_sha256"]) != _sha256(receipt_result_json):
+            raise LedgerIntegrityError("billing assessment result receipt is corrupt")
+        receipt_result = json.loads(receipt_result_json)
+        expected_identity = {
+            "account_digest": submission.intent.account_digest,
+            "job_arn": submission.job_arn,
+            "model": submission.intent.model,
+            "owner_id": owner_id,
+            "provider": submission.intent.provider,
+            "region": submission.intent.region,
+            "run_id": submission.run_id,
+            "submission_id": submission.intent.submission_id,
+        }
+        if (
+            canonical != evidence_json
+            or str(row["evidence_sha256"]) != _sha256(evidence_json)
+            or str(row["assessment_id"]) != expected_id
+            or str(row["hold_id"]) != submission.hold_id
+            or str(row["operation_id"]) != submission.intent.operation_id
+            or str(row["run_id"]) != submission.run_id
+            or str(row["provider"]) != submission.intent.provider
+            or str(row["model"]) != submission.intent.model
+            or str(row["job_arn"]) != submission.job_arn
+            or str(row["classification"]) != classification.value
+            or str(row["reason_codes_json"]) != expected_reasons
+            or int(row["settlement_authorized"]) != 0
+            or re.fullmatch(r"[0-9a-f]{64}", str(row["raw_digest"])) is None
+            or receipt_intent.get("raw_digest") != str(row["raw_digest"])
+            or receipt_intent.get("evidence_sha256") != str(row["evidence_sha256"])
+            or receipt_intent.get("evidence_kind") != kind.value
+            or receipt_result.get("created_at") != str(row["created_at"])
+            or any(evidence.get(key) != value for key, value in expected_identity.items())
+        ):
+            raise LedgerIntegrityError("billing assessment binding conflicts")
+        return BillingAssessment(
+            assessment_id=expected_id,
+            assessment_key=str(row["assessment_key"]),
+            submission_id=submission.intent.submission_id,
+            evidence_kind=kind,
+            evidence_json=evidence_json,
+            raw_digest=str(row["raw_digest"]),
+            classification=classification,
+            reason_codes=reasons,
+            settlement_authorized=False,
+            created_at=str(row["created_at"]),
         )
 
     def _load_run(self, connection: sqlite3.Connection, run_id: str) -> RunSnapshot:
