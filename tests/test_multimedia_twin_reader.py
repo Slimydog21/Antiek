@@ -25,9 +25,10 @@ from substrate.multimedia.knowledge_finalization import (
     read_multimedia_twin_document,
 )
 from substrate.multimedia.read_model import (
+    ApplySteeringPreviewRequest,
     CreateMultimediaDraftRequest,
     MultimediaAssetStore,
-    SteeringRequest,
+    SteeringPreviewRequest,
 )
 
 
@@ -59,6 +60,7 @@ async def _finalized(tmp_path):
             topic="Wide-body aircraft economics",
             target_minutes=15,
             sources=("Capacity and route structure changed together.",),
+            selected_arc_ids=("consequences",),
         ),
         owner_id="owner-a",
     )
@@ -196,9 +198,19 @@ async def test_concurrent_revision_change_fails_final_reopen(tmp_path, monkeypat
 
     def steer_during_read(html: str) -> None:
         real_script_gate(html)
-        store.apply_steering(
-            finalized.asset.asset.asset_id,
-            SteeringRequest(prompt="go deeper on engines in chapter 2"),
+        asset_id = finalized.asset.asset.asset_id
+        steering = SteeringPreviewRequest(
+            expected_parent_revision_id=finalized.asset.asset.revision_id,
+            prompt="go deeper on engines in chapter 2",
+        )
+        preview = store.preview_steering(asset_id, steering, owner_id="owner-a")
+        assert preview.status == "ready"
+        store.apply_steering_preview(
+            asset_id,
+            ApplySteeringPreviewRequest(
+                **steering.model_dump(),
+                preview_token=preview.preview_token,
+            ),
             owner_id="owner-a",
         )
 

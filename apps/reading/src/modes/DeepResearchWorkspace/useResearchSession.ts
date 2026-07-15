@@ -20,6 +20,7 @@ import {
   getSession,
   TERMINAL_STATES,
   type ResearchStatus,
+  type HardCeilingSnapshot,
   type SessionCost,
   type SessionPlan,
 } from "../../api/research";
@@ -28,6 +29,7 @@ export interface SessionView {
   researches: ResearchStatus[];
   cost: SessionCost | null;
   plan: SessionPlan | null;
+  hardCeiling: HardCeilingSnapshot | null;
   live: boolean;
   allTerminal: boolean;
   loading: boolean;
@@ -39,6 +41,7 @@ const EMPTY: SessionView = {
   researches: [],
   cost: null,
   plan: null,
+  hardCeiling: null,
   live: false,
   allTerminal: false,
   loading: true,
@@ -59,6 +62,7 @@ export function useResearchSession(
     }
     let cancelled = false;
     const interval = opts.intervalMs ?? 1500;
+    let terminalEvidencePolls = 0;
     setView({ ...EMPTY, loading: true });
 
     const poll = async () => {
@@ -72,6 +76,7 @@ export function useResearchSession(
           researches: s.researches,
           cost: s.cost ?? null,
           plan: s.plan ?? null,
+          hardCeiling: s.hard_ceiling ?? null,
           live: s.live,
           allTerminal,
           loading: false,
@@ -79,8 +84,19 @@ export function useResearchSession(
         });
         // Keep polling until every research is terminal; then stop (the
         // monitor shows the final state, no wasted requests).
+        const evidenceFinal =
+          !s.hard_ceiling ||
+          (s.hard_ceiling.run_state === "closed_reconciled" &&
+            s.hard_ceiling.unknown_outcome_count === 0);
         if (!allTerminal) {
+          terminalEvidencePolls = 0;
           timerRef.current = window.setTimeout(poll, interval);
+        } else if (!evidenceFinal && terminalEvidencePolls < 3) {
+          terminalEvidencePolls += 1;
+          timerRef.current = window.setTimeout(
+            poll,
+            interval * 2 ** (terminalEvidencePolls - 1),
+          );
         }
       } catch (e) {
         if (cancelled) return;

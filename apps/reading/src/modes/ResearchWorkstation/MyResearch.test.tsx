@@ -17,7 +17,7 @@
  * boundaries, so this is a true unit of the monitor (no network, no socket).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { StrictMode } from "react";
 
@@ -197,9 +197,15 @@ describe("MyResearch — honest aggregate (M2)", () => {
     ];
     renderMonitor();
     // 3 in_progress, cap 2 → 2 running, 1 queued (visible, not a hang).
-    const line = await screen.findByTestId("concurrency-line");
-    expect(line.textContent).toContain("2 running");
-    expect(line.textContent).toContain("1 queued");
+    const line = screen.getByTestId("concurrency-line");
+    // The first render intentionally has no budget contract yet and may read
+    // "3 running". Wait for getBudgetDefaults to resolve before asserting the
+    // cap-derived state; grabbing the first matching DOM node made CI timing
+    // decide whether this contract test passed.
+    await waitFor(() => {
+      expect(line.textContent).toContain("2 running");
+      expect(line.textContent).toContain("1 queued");
+    });
   });
 
   it("sums real per-research cost, not an estimate", () => {
