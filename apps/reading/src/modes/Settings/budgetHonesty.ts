@@ -55,7 +55,10 @@ export function spendAmountLabel(budget: BudgetHonestyFields): string {
     : "Reserved / ledger";
 }
 
-export function formatUsd(amount: number | null | undefined, digits = 4): string {
+export function formatUsd(
+  amount: number | null | undefined,
+  digits = 4,
+): string {
   if (amount == null || Number.isNaN(amount)) return "unknown";
   return `$${amount.toFixed(digits)}`;
 }
