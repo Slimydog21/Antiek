@@ -21,15 +21,14 @@ import { toast } from "../lemon/LemonToast";
 beforeEach(() => {
   // Reset the workspace store to a known baseline before each test.
   useWorkspace.setState({ ...EMPTY_SNAPSHOT });
-  // Silence the deferred LemonToast dynamic-import — we test the
-  // dispatched action records, not the toast renderer.
+  // Keep LemonToast's auto-dismiss timer deterministic in this suite.
   vi.useFakeTimers();
 });
 
 afterEach(() => {
-  vi.clearAllTimers();
-  vi.restoreAllMocks();
+  vi.runOnlyPendingTimers();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("AI tool-call · full dispatch round-trip", () => {
