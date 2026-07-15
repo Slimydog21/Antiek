@@ -43,6 +43,13 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 - Opaque provenance retained; four corners alpha=0; cabinet card uses session PNG
 - Authored webp key art remains for in-game visual kit (no Werner on sprites)
 
+## Thought-partner desk promote (2026-07-16)
+
+- Invent `session-20260715/werner_thought_partner_desk_refedit_v1.jpg` →
+  `poses/session/werner_thought_partner_desk_session_v1.webp` (1200×800, q88)
+- Full-bleed scene art (not alpha character mark) on ThoughtPartnerPanel
+- CTA emits Werner `highlight` living-TV beat
+
 ## Living-TV product-door emotes (choreography)
 
 | Product id | Emote |
