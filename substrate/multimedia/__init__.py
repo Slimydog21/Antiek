@@ -20,6 +20,16 @@ from .authorized_production_worker import (
     ChapterNarrationAuthority,
     produce_authorized_multimedia,
 )
+from .bedrock_s3_namespace import (
+    NAMESPACE_CONTROL_ACTIONS,
+    NAMESPACE_MUTATION_ACTIONS,
+    BedrockS3NamespaceError,
+    BedrockS3NamespaceLeaseQualifier,
+    BedrockS3NamespaceLeaseReceipt,
+    IndependentNamespaceLease,
+    IndependentNamespaceLeaseVerifier,
+    S3NamespaceEvidenceClient,
+)
 from .bedrock_s3_publication import (
     BedrockS3PublicationError,
     BedrockS3PublicationProfile,
@@ -202,10 +212,18 @@ from .video import (
 )
 
 __all__ = [
+    "NAMESPACE_CONTROL_ACTIONS",
+    "NAMESPACE_MUTATION_ACTIONS",
+    "BedrockS3NamespaceError",
+    "BedrockS3NamespaceLeaseQualifier",
+    "BedrockS3NamespaceLeaseReceipt",
     "BedrockS3PublicationError",
     "BedrockS3PublicationProfile",
     "BedrockS3VersionPublicationReceipt",
     "BedrockS3VersionPublisher",
+    "IndependentNamespaceLease",
+    "IndependentNamespaceLeaseVerifier",
+    "S3NamespaceEvidenceClient",
     "S3PublicationClient",
     # Cycle 32 Bedrock workload authority
     "BedrockBatchModelProfile",
