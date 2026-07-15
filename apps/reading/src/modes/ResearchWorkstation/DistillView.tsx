@@ -8,7 +8,9 @@ import {
 import type { DistilledNode } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
+import distillationEmpty from "../../brand/werner/research/distillation-empty-v1.webp";
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
+import "./distillation-field-ledger.css";
 
 /**
  * DistillView — insights & open questions as first-class objects (SPR-03 M2),
@@ -46,6 +48,11 @@ export interface DistillViewProps {
   /** Chase an open question (hand off to SPR-04). Optional — when absent, the
    *  question is shown but not chaseable from here. */
   onChase?: (question: DistilledNode) => void;
+  /** Story/test seam. Production uses the canonical API functions. */
+  loadDistillation?: typeof getDistillation;
+  challengeInsight?: typeof challengeNote;
+  /** Isolated visual-proof seam; the workstation keeps the outline shelf on. */
+  showArtifactOutline?: boolean;
 }
 
 type LoadState =
@@ -53,19 +60,26 @@ type LoadState =
   | { kind: "loaded"; insights: DistilledNode[]; questions: DistilledNode[] }
   | { kind: "error"; reason: string | null };
 
-export default function DistillView({ investigationId, running, onChase }: DistillViewProps) {
+export default function DistillView({
+  investigationId,
+  running,
+  onChase,
+  loadDistillation = getDistillation,
+  challengeInsight = challengeNote,
+  showArtifactOutline = true,
+}: DistillViewProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const load = useCallback(async () => {
     setState({ kind: "loading" });
     try {
-      const res = await getDistillation(investigationId);
+      const res = await loadDistillation(investigationId);
       setState({ kind: "loaded", insights: res.insights, questions: res.questions });
     } catch (e) {
       const reason = e instanceof ApiError ? e.body || null : null;
       setState({ kind: "error", reason });
     }
-  }, [investigationId]);
+  }, [investigationId, loadDistillation]);
 
   useEffect(() => {
     void load();
@@ -96,17 +110,25 @@ export default function DistillView({ investigationId, running, onChase }: Disti
   // Honest no-result (M4): nothing distilled — the common no-provider case.
   if (insights.length === 0 && questions.length === 0) {
     return (
-      <div className="px-4 py-6">
-        <AIActionFailure
-          title={
-            running
-              ? "No insights or questions yet — the research is still working"
-              : "This research distilled no insights or open questions"
-          }
-          reason={null}
-          onRetry={() => void load()}
-          retryLabel="Check again"
+      <div className="distillation-empty px-4 py-6">
+        <img
+          src={distillationEmpty}
+          alt=""
+          aria-hidden="true"
+          className="distillation-empty__image"
         />
+        <div className="distillation-empty__message">
+          <AIActionFailure
+            title={
+              running
+                ? "No insights or questions yet — the research is still working"
+                : "This research distilled no insights or open questions"
+            }
+            reason={null}
+            onRetry={() => void load()}
+            retryLabel="Check again"
+          />
+        </div>
       </div>
     );
   }
@@ -120,36 +142,57 @@ export default function DistillView({ investigationId, running, onChase }: Disti
       )}
 
       {insights.length > 0 && (
-        <Section heading="Insights">
-          <ul className="space-y-2.5">
-            {insights.map((n) => (
-              <InsightRow key={n.node_id} node={n} investigationId={investigationId} onRefined={load} />
+        <Section heading="Insights" descriptor="Filed findings" count={insights.length} kind="insight">
+          <ol className="distillation-ledger__list">
+            {insights.map((n, index) => (
+              <InsightRow key={n.node_id} index={index + 1} node={n} investigationId={investigationId} onRefined={load} challengeInsight={challengeInsight} />
             ))}
-          </ul>
+          </ol>
         </Section>
       )}
 
       {questions.length > 0 && (
-        <Section heading="Open questions">
-          <ul className="space-y-2.5">
-            {questions.map((q) => (
-              <QuestionRow key={q.node_id} node={q} onChase={onChase} />
+        <Section heading="Open questions" descriptor="Unresolved threads" count={questions.length} kind="question">
+          <ol className="distillation-ledger__list">
+            {questions.map((q, index) => (
+              <QuestionRow key={q.node_id} index={index + 1} node={q} onChase={onChase} />
             ))}
-          </ul>
+          </ol>
         </Section>
       )}
 
-      <ArtifactOutlineShelf investigationId={investigationId} />
+      {showArtifactOutline ? <ArtifactOutlineShelf investigationId={investigationId} /> : null}
     </div>
   );
 }
 
-function Section({ heading, children }: { heading: string; children: React.ReactNode }) {
+function Section({
+  heading,
+  descriptor,
+  count,
+  kind,
+  children,
+}: {
+  heading: string;
+  descriptor: string;
+  count: number;
+  kind: "insight" | "question";
+  children: React.ReactNode;
+}) {
   return (
-    <section>
-      <h3 className="mb-2 font-mono text-[11px] uppercase tracking-wider text-shadow-1 dark:text-moonlight">
-        {heading}
-      </h3>
+    <section className={`distillation-ledger distillation-ledger--${kind}`}>
+      <header className="distillation-ledger__header">
+        <div>
+          <p className="distillation-ledger__descriptor">{descriptor}</p>
+          <h3 className="distillation-ledger__heading">{heading}</h3>
+        </div>
+        <span
+          className="distillation-ledger__count"
+          aria-label={`${count} ${count === 1 ? (kind === "insight" ? "insight" : "open question") : heading.toLowerCase()}`}
+        >
+          {String(count).padStart(2, "0")}
+        </span>
+      </header>
       {children}
     </section>
   );
@@ -157,12 +200,16 @@ function Section({ heading, children }: { heading: string; children: React.React
 
 function InsightRow({
   node,
+  index,
   investigationId,
   onRefined,
+  challengeInsight,
 }: {
   node: DistilledNode;
+  index: number;
   investigationId: string;
   onRefined: () => Promise<void>;
+  challengeInsight: typeof challengeNote;
 }) {
   const [outcome, setOutcome] = useState<
     "idle" | "busy" | "changed" | "unchanged" | "escalated" | "noSource" | "noModel" | "error"
@@ -171,7 +218,7 @@ function InsightRow({
   const runChallenge = async () => {
     setOutcome("busy");
     try {
-      const res = await challengeNote(node.node_id, { investigation_id: investigationId });
+      const res = await challengeInsight(node.node_id, { investigation_id: investigationId });
       if (res.applied) {
         setOutcome("changed");
         await onRefined(); // refetch so the refined node text re-renders from the graph
@@ -196,9 +243,9 @@ function InsightRow({
   };
 
   return (
-    <li className="flex flex-col gap-1">
-      <div className="flex items-start gap-2.5">
-        <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-aurora" aria-hidden="true" />
+    <li className="distillation-ledger__row">
+      <div className="flex items-start gap-3">
+        <span className="distillation-ledger__index" aria-hidden="true">{String(index).padStart(2, "0")}</span>
         <div className="min-w-0 flex-1">
           <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">
             {node.text}
@@ -254,10 +301,10 @@ function InsightRow({
   );
 }
 
-function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: DistilledNode) => void }) {
+function QuestionRow({ node, index, onChase }: { node: DistilledNode; index: number; onChase?: (q: DistilledNode) => void }) {
   return (
-    <li className="flex items-start gap-2.5">
-      <span className="mt-[7px] h-1.5 w-1.5 shrink-0 rounded-full bg-sun-deep dark:bg-sun" aria-hidden="true" />
+    <li className="distillation-ledger__row">
+      <span className="distillation-ledger__index" aria-hidden="true">Q{String(index).padStart(2, "0")}</span>
       <div className="min-w-0 flex-1">
         <p className="font-serif text-[14px] leading-relaxed text-ink dark:text-bright">{node.text}</p>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-shadow-1 dark:text-moonlight">
