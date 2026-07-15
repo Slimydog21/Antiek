@@ -6,10 +6,43 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  DAWN_END_MINUTE,
+  DAWN_START_MINUTE,
+  DUSK_END_MINUTE,
+  DUSK_START_MINUTE,
   moodFromTheme,
+  moodFromThemeAndLocalMinutes,
   moodKey,
   sceneStateFromMood,
 } from "./mood";
+
+describe("bounded local-civil-time ambience", () => {
+  it.each([
+    [false, DAWN_START_MINUTE - 1, "day"],
+    [false, DAWN_START_MINUTE, "dawn"],
+    [false, DAWN_END_MINUTE - 1, "dawn"],
+    [false, DAWN_END_MINUTE, "day"],
+    [true, DUSK_START_MINUTE - 1, "night"],
+    [true, DUSK_START_MINUTE, "dusk"],
+    [true, DUSK_END_MINUTE - 1, "dusk"],
+    [true, DUSK_END_MINUTE, "night"],
+    [true, 0, "night"],
+    [true, 2 * 60, "night"],
+  ] as const)("dark=%s minute=%s → %s", (dark, minute, expected) => {
+    expect(moodFromThemeAndLocalMinutes(dark, minute)).toEqual({
+      dayPart: expected,
+      weather: "snow",
+    });
+  });
+
+  it.each([-1, 1.5, 24 * 60, Number.NaN])(
+    "rejects invalid local minute %s",
+    (minute) =>
+      expect(() => moodFromThemeAndLocalMinutes(false, minute)).toThrow(
+        RangeError,
+      ),
+  );
+});
 
 describe("theme → mood mapping", () => {
   it("light OS theme → day mood", () => {

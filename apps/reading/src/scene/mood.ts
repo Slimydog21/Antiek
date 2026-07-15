@@ -14,17 +14,12 @@ import type { SceneState } from "../api/krea";
  * THEME → MOOD MAPPING (documented contract; drives BOTH the procedural sky
  * palette and the Krea prompt scene-state):
  *
- *   OS prefers-color-scheme = light  ->  daypart "day"   ->  mood "day"
- *   OS prefers-color-scheme = dark   ->  daypart "night" ->  mood "night"
+ *   OS light + [05:30,08:00) local -> dawn; otherwise day
+ *   OS dark  + [17:00,20:00) local -> dusk; otherwise night
  *
- * We model FOUR dayparts (dawn / day / dusk / night) so the Krea axis and the
- * procedural palette have room to evolve, but the app only emits a binary
- * light/dark signal today, so we map light→day and dark→night. Dawn/dusk are
- * reserved transitional moods a future time-of-day source can light up WITHOUT
- * changing this contract (they already have palettes + prompts). Until such a
- * source exists, the scene is deterministically day or night, in lockstep with
- * the OS theme — change the OS theme and the whole scene (procedural + Krea
- * mood prompt) follows.
+ * OS theme deliberately owns the light/dark band; wall time cannot override it.
+ * The bounded windows are brand art direction rather than sunrise calculations,
+ * keeping behavior predictable across latitude, weather, and travel.
  *
  * WEATHER is a second mood axis, currently fixed to "snow" (the Herzog
  * Antarctic motif — wind-driven snow is always on). It is a field so a future
@@ -39,17 +34,48 @@ export interface SceneMood {
   weather: Weather;
 }
 
+/** Fixed local-civil-time ambience windows. These are deliberate Antiek art
+ * direction, not astronomical sunrise/sunset estimates. Keeping them named
+ * makes the product judgment reviewable and the timer authority injectable. */
+export const DAWN_START_MINUTE = 5 * 60 + 30;
+export const DAWN_END_MINUTE = 8 * 60;
+export const DUSK_START_MINUTE = 17 * 60;
+export const DUSK_END_MINUTE = 20 * 60;
+
+export function moodFromThemeAndLocalMinutes(
+  dark: boolean,
+  localMinutes: number,
+): SceneMood {
+  if (
+    !Number.isInteger(localMinutes) ||
+    localMinutes < 0 ||
+    localMinutes >= 24 * 60
+  ) {
+    throw new RangeError("localMinutes must be an integer in [0, 1440)");
+  }
+  const dayPart: DayPart = dark
+    ? localMinutes >= DUSK_START_MINUTE && localMinutes < DUSK_END_MINUTE
+      ? "dusk"
+      : "night"
+    : localMinutes >= DAWN_START_MINUTE && localMinutes < DAWN_END_MINUTE
+      ? "dawn"
+      : "day";
+  return { dayPart, weather: "snow" };
+}
+
 /** Reuse the app's existing day/night signal (OS prefers-color-scheme).
  *  SSR-safe. This is the SAME query Settings + Tailwind `media` darkMode use. */
 export function prefersDark(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") {
+  if (
+    typeof window === "undefined" ||
+    typeof window.matchMedia !== "function"
+  ) {
     return false;
   }
   return window.matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
-/** The current mood derived from the app theme. Binary today (light→day,
- *  dark→night); dawn/dusk reserved for a future time-of-day source. */
+/** Legacy binary mapper retained for callers that explicitly need theme only. */
 export function moodFromTheme(dark: boolean = prefersDark()): SceneMood {
   return {
     dayPart: dark ? "night" : "day",

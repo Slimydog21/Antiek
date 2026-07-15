@@ -65,8 +65,12 @@ const fallbackFetch = async (s: SceneState): Promise<SceneResult> => ({
 
 describe("Scene — compositor", () => {
   it("mounts at z-0, pointer-events-none, behind everything", () => {
-    const { container } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
-    const root = container.querySelector('[data-testid="scene-root"]') as HTMLElement;
+    const { container } = render(
+      <Scene fetchScene={fallbackFetch} reducedMotion />,
+    );
+    const root = container.querySelector(
+      '[data-testid="scene-root"]',
+    ) as HTMLElement;
     expect(root).toBeTruthy();
     expect(root.className).toContain("pointer-events-none");
     expect(root.className).toContain("z-0");
@@ -74,7 +78,9 @@ describe("Scene — compositor", () => {
   });
 
   it("renders all layers in the documented back→front order", () => {
-    const { container } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
+    const { container } = render(
+      <Scene fetchScene={fallbackFetch} reducedMotion />,
+    );
     const order = [
       "peaks-layer",
       "krea-art-layer",
@@ -82,9 +88,7 @@ describe("Scene — compositor", () => {
       "snow-layer",
       "penguin-journey",
     ];
-    const found = Array.from(
-      container.querySelectorAll("[data-testid]"),
-    )
+    const found = Array.from(container.querySelectorAll("[data-testid]"))
       .map((el) => el.getAttribute("data-testid"))
       .filter((id) => id && order.includes(id));
     // Each named layer is present and they appear in the documented order.
@@ -95,14 +99,22 @@ describe("Scene — compositor", () => {
   });
 
   it("under reduced-motion the scene reports frozen (single static frame)", () => {
-    const { container } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
-    const root = container.querySelector('[data-testid="scene-root"]') as HTMLElement;
+    const { container } = render(
+      <Scene fetchScene={fallbackFetch} reducedMotion />,
+    );
+    const root = container.querySelector(
+      '[data-testid="scene-root"]',
+    ) as HTMLElement;
     expect(root.getAttribute("data-scene-frozen")).toBe("true");
   });
 
   it("the scenery penguin is marked scenery (NOT the interactive mascot)", () => {
-    const { container } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
-    const peng = container.querySelector('[data-testid="penguin-journey"]') as HTMLElement;
+    const { container } = render(
+      <Scene fetchScene={fallbackFetch} reducedMotion />,
+    );
+    const peng = container.querySelector(
+      '[data-testid="penguin-journey"]',
+    ) as HTMLElement;
     expect(peng.getAttribute("data-scenery")).toBe("true");
     // pointer-events-none ⇒ it cannot be interactive.
     expect(peng.className).toContain("pointer-events-none");
@@ -115,14 +127,35 @@ describe("Scene — compositor", () => {
     const root = await findByTestId("scene-root");
     // The scene flags fallback; the Krea layer carries no live art.
     expect(root.getAttribute("data-scene-fallback")).toBe("true");
-    const krea = container.querySelector('[data-testid="krea-art-layer"]') as HTMLElement;
+    const krea = container.querySelector(
+      '[data-testid="krea-art-layer"]',
+    ) as HTMLElement;
     expect(krea.getAttribute("data-krea")).toBe("fallback");
   });
 
   it("preserves the Krea status badge mount and status wiring (PR 144)", () => {
-    const { getByTestId } = render(<Scene fetchScene={fallbackFetch} reducedMotion />);
+    const { getByTestId } = render(
+      <Scene fetchScene={fallbackFetch} reducedMotion />,
+    );
     const badge = getByTestId("scene-status-badge");
     expect(badge.getAttribute("data-reason")).toBe("no_key");
     expect(badge.textContent).toContain("scene: procedural / no key");
+  });
+
+  it("keeps derived theme/time authority dormant under an explicit mood", () => {
+    const matchMedia = vi.spyOn(window, "matchMedia");
+    render(
+      <Scene
+        mood={{ dayPart: "dusk", weather: "snow" }}
+        fetchScene={fallbackFetch}
+        reducedMotion
+      />,
+    );
+    expect(
+      matchMedia.mock.calls.some(([query]) =>
+        String(query).includes("prefers-color-scheme"),
+      ),
+    ).toBe(false);
+    matchMedia.mockRestore();
   });
 });

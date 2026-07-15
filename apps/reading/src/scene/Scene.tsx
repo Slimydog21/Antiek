@@ -1,6 +1,5 @@
-import { useMemo } from "react";
-
-import { moodFromTheme, prefersDark, type SceneMood } from "./mood";
+import type { SceneMood } from "./mood";
+import { useDerivedSceneMood } from "./useDerivedSceneMood";
 import { useSceneClock } from "./useSceneClock";
 import { useSceneArt } from "./useSceneArt";
 import type { SceneFetcher } from "../krea/useKreaScene";
@@ -35,11 +34,11 @@ import "./scene.css";
  * mounts it as the FIRST child of the shell frame (see AppShell.tsx); the glass
  * working surfaces float over it.
  *
- * THEME → MOOD: the mood comes from the app's EXISTING day/night signal (OS
- * prefers-color-scheme, the same `media` darkMode Tailwind uses) via
- * moodFromTheme(). Change the OS theme → the sky palette AND the Krea mood
- * prompt follow, in lockstep. No parallel theme mechanism. (mood.ts documents
- * the full mapping table.)
+ * THEME + TIME → MOOD: OS prefers-color-scheme remains the binary authority.
+ * Local civil time only refines light into dawn during [05:30,08:00), and dark
+ * into dusk during [17:00,20:00). Those are fixed Antiek ambience windows, not
+ * astronomy. A theme or bounded-time transition updates both the procedural
+ * palette and Krea mood key in lockstep; explicit `mood` overrides stay dormant.
  *
  * DEGRADATION LADDER (all seamless):
  *   live Krea  → KreaArtLayer paints art over the procedural sky
@@ -50,7 +49,8 @@ import "./scene.css";
  */
 
 export interface SceneProps {
-  /** Override the derived mood (e.g. a future time-of-day source / tests). */
+  /** Mount-time deterministic override for stories/tests. Do not toggle this
+   * authority at runtime: doing so intentionally remounts the scene substrate. */
   mood?: SceneMood;
   /** Inject a Krea fetcher for tests; production uses the real client. */
   fetchScene?: SceneFetcher;
@@ -59,14 +59,42 @@ export interface SceneProps {
   reducedMotion?: boolean;
 }
 
-export function Scene({ mood: moodProp, fetchScene, reducedMotion }: SceneProps) {
-  // Derive the mood from the app theme unless overridden. Memoize on the dark
-  // signal so the object identity is stable across renders (the art hook keys
-  // its fetch on the mood KEY, but a stable ref avoids needless effect churn).
-  const dark = prefersDark();
-  const derivedMood = useMemo(() => moodFromTheme(dark), [dark]);
-  const mood = moodProp ?? derivedMood;
+export function Scene({
+  mood: moodProp,
+  fetchScene,
+  reducedMotion,
+}: SceneProps) {
+  // A component split makes the explicit override genuinely dormant: React's
+  // hook-order rules are preserved without creating an unused theme listener
+  // or semantic boundary timer in deterministic stories/tests.
+  if (moodProp) {
+    return (
+      <SceneContent
+        mood={moodProp}
+        fetchScene={fetchScene}
+        reducedMotion={reducedMotion}
+      />
+    );
+  }
+  return <DerivedScene fetchScene={fetchScene} reducedMotion={reducedMotion} />;
+}
 
+function DerivedScene({ fetchScene, reducedMotion }: Omit<SceneProps, "mood">) {
+  const mood = useDerivedSceneMood();
+  return (
+    <SceneContent
+      mood={mood}
+      fetchScene={fetchScene}
+      reducedMotion={reducedMotion}
+    />
+  );
+}
+
+function SceneContent({
+  mood,
+  fetchScene,
+  reducedMotion,
+}: Required<Pick<SceneProps, "mood">> & Omit<SceneProps, "mood">) {
   // The single scene clock — running / frozen (reduced-motion) / paused
   // (hidden). The `frozen` flag flows to the layers so they render one static
   // frame and drop parallax/crossfade transitions.
