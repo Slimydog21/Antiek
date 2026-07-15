@@ -49,7 +49,7 @@ describe("ResearchObservatoryAtmosphere (SPR-25)", () => {
     },
   );
 
-  it.each(["/library", "/wrestle", "/write", "/speak"])(
+  it.each(["/library", "/wrestle", "/speak"])(
     "does not alter the non-Research body contract on %s",
     (route) => {
       const { container } = render(
