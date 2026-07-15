@@ -251,7 +251,6 @@ export interface ResearchRouteCandidate {
   rationale: string;
   ready: boolean;
   readiness_label: string;
-  projected_cost_usd: number | null;
 }
 
 export interface ResearchRoutePreview {
@@ -262,8 +261,11 @@ export interface ResearchRoutePreview {
     authority: "advisory";
     daily_cap_usd: number | null;
     spent_usd: number | null;
-    projected_cost_usd: number | null;
-    would_exceed_budget: boolean | null;
+    spent_status: "known" | "unknown";
+    cap_source: string | null;
+    notes: string[];
+    projection_status: "unavailable";
+    projection_note: string;
   };
 }
 

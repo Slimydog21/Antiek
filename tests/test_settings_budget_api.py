@@ -189,6 +189,19 @@ def test_budget_operator_env_cap(
     assert body["cap_env"] == "ANTIEK_OPERATOR_BUDGET_USD"
 
 
+def test_budget_cap_drop_preserves_actual_spend(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    DaemonBudget(daily_cap_usd=5.0, per_investigation_cap_usd=5.0).reserve(4.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "3")
+
+    body = client.get("/settings/budget").json()
+
+    assert body["spent_usd"] == 4.0
+    assert body["remaining_usd"] == 0.0
+
+
 @pytest.mark.parametrize("invalid_cap", ["nan", "inf", "-1"])
 def test_budget_invalid_numeric_env_is_ignored(
     client: TestClient,

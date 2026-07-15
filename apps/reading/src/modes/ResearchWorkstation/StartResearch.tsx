@@ -678,21 +678,27 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                     <li key={`${candidate.choice_id}-rationale`}><strong>{candidate.display_name}:</strong> {candidate.rationale}</li>
                   ))}
                 </ul>
-                <p className="mt-1">Trajectory cost is unknown; no per-prompt-call estimate is presented as a research total.</p>
+                <p className="mt-1">{routePreview.preview.budget.projection_note}</p>
               </details>
               <div aria-label="Daily research budget advisory" className="rounded-hog border border-rule dark:border-charcoal-1 px-3 py-2">
                 <div className="flex flex-wrap justify-between gap-2 text-[11px] font-mono text-ink-mute dark:text-moonlight">
                   <span>Daily ledger · advisory only</span>
                   <span>
-                    {routePreview.preview.budget.spent_usd == null ? "spent unknown" : `$${routePreview.preview.budget.spent_usd.toFixed(2)} spent`}
-                    {routePreview.preview.budget.daily_cap_usd == null ? " · ceiling unknown" : ` · $${routePreview.preview.budget.daily_cap_usd.toFixed(2)} ceiling`}
-                    {" · projection unknown"}
+                    {routePreview.preview.budget.spent_status === "known" && routePreview.preview.budget.spent_usd != null
+                      ? `$${routePreview.preview.budget.spent_usd.toFixed(2)} ${routePreview.preview.budget.daily_cap_usd == null ? "daemon-tracked" : "spent"}`
+                      : "spend unknown"}
+                    {routePreview.preview.budget.daily_cap_usd == null
+                      ? " · no operator ceiling"
+                      : ` · $${routePreview.preview.budget.daily_cap_usd.toFixed(2)} operator ceiling`}
+                    {" · projection unavailable"}
                   </span>
                 </div>
-                {routePreview.preview.budget.spent_usd != null &&
+                {routePreview.preview.budget.spent_status === "known" &&
+                  routePreview.preview.budget.cap_source != null &&
+                  routePreview.preview.budget.spent_usd != null &&
                   routePreview.preview.budget.daily_cap_usd != null &&
                   routePreview.preview.budget.daily_cap_usd > 0 && (
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-rule/50" aria-hidden="true">
+                    <div data-testid="research-budget-meter" className="mt-2 h-1.5 overflow-hidden rounded-full bg-rule/50" aria-hidden="true">
                       <div
                         className="h-full bg-sun-deep motion-reduce:transition-none"
                         style={{
@@ -701,6 +707,9 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
                       />
                     </div>
                   )}
+                {routePreview.preview.budget.notes.map((note) => (
+                  <p key={note} className="mt-1 text-[10px] font-mono text-ink-mute dark:text-moonlight">{note}</p>
+                ))}
               </div>
               {!hasReadyRoute && (
                 <p role="status" className="text-[11px] font-mono text-emperor">
