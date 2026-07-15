@@ -15,19 +15,23 @@ main**. Two new CI checks make those failures mechanically loud on every PR to
 - **Reachability gate** (`tools/lint/reachability_gate.py`) — reds when a PR
   introduces a NEW zero-importer module or a route with no inbound link (the
   anti-*purgatory* gate).
+- **Python reachability gate** (`tools/lint/reachability_gate_py.py`) — reds
+  when a PR introduces a NEW unmounted `interfaces/**/api/*.py` router product,
+  an uncalled `register_*_routes` wrapper, or an uncalled enforcement export in
+  `substrate/**`.
 
-Both are wired into the `pytest` job (which checks out `fetch-depth: 0`,
+All three are wired into the `pytest` job (which checks out `fetch-depth: 0`,
 satisfying merge-age's full-history need) **after** the `arXiv contact-guard
-check` step. Neither step uses `|| echo` / `|| true`: the step's pass/fail is
+check` step. None uses `|| echo` / `|| true`: each step's pass/fail is
 **exactly** the gate's exit code — a swallowed exit code would re-create the
 silent-pass hole these gates exist to close.
 
 This follows the standing **informational-then-blocking** discipline recorded in
 `docs/decisions/ci-informational-gates.md`: a gate is allowed to land
 informational while its baseline/contract settles, then flips to blocking by a
-single reviewed edit. Both gates here land **blocking from day one** because
-their non-vacuity is proven by seed-and-catch tests
-(`tests/test_anti_stranding_gate.py`) rather than left to a future flip.
+single reviewed edit. These gates are **blocking** because their non-vacuity is
+proven by seed-and-catch tests (`tests/test_anti_stranding_gate.py` and
+`tests/test_reachability_gate_py.py`) rather than left to a future flip.
 
 ## Threshold N (= 25)
 
@@ -110,6 +114,62 @@ judgment — the part reading_physics_check.py left advisory — **stays advisor
 SPR-01 does not promote it. So the two checks are complementary, not duplicative:
 reading_physics_check.py keeps its advisory prototype-import grep; reachability
 adds the blocking zero-importer / no-inbound-link check.
+
+## Python reachability gate — backend hard blocker
+
+`tools/lint/reachability_gate_py.py` is the backend sibling of the reading
+surface gate and is also hard-blocking in `.github/workflows/ci.yml`. It is not
+run from the warning-only `test_integrity.yml` workflow and its exit code must
+not be swallowed.
+
+**Promoted to enforcing (mechanically detectable):**
+- a NEW API router product in `interfaces/**/api/*.py` that no product-reachable
+  `include_router(...)` mounts;
+- a NEW `register_*_routes` wrapper that contains `include_router(...)` but is
+  never called by product code; and
+- a NEW exported enforcement callable in `substrate/**` that has no product
+  reference.
+
+The scanner covers existing backend conventions beyond `*_routes.py`: direct
+API modules such as `campaigns.py`, `register_*_routes` wrappers, module-level
+`APIRouter(...)` products, router factories, confirmed package-barrel
+re-exports, and direct `@app.get` / `@app.post` style route modules. Direct
+`@app` route modules are treated as already self-mounted so the router-product
+rule does not false-positive on them.
+
+**Reachable-code model.** The gate is conservative and documented in the tool
+docstring: it roots live module-scope code, direct `@app` routes, the observed
+production ASGI factory (`interfaces/research/api/app.py:create_app`), mounted
+router handlers, returned callback bodies from already-reachable factories, and
+methods on classes instantiated by reachable code. A FastAPI-shaped sidecar
+`create_app()` in an arbitrary API module is not a root unless reachable product
+code calls it. The scanner ignores bodies under statically dead branches such as
+`if False:`, `if 0:`, `if None:`, statically resolvable `if TYPE_CHECKING:`, and
+`if __name__ == "__main__":`, and ignores deliberately named `def unused()`
+helpers. An `include_router` inside an uncalled registration wrapper does not by
+itself mount the router; the wrapper must also be called from product code.
+Dynamic reflection, DI registries, and string-built dispatch remain
+review-owned.
+
+**Initial-baseline correction, 2026-07-15.** A hardening pass removed two unsafe
+credits: `__all__` no longer makes an exported function body reachable, and
+methods on an exported-but-uninstantiated class no longer contribute
+reachability. Re-running the real gate surfaced pre-existing findings that the
+prior scanner had failed to baseline. The current hardening pass then proved
+four of those entries reachable through conservative product edges
+(`default_legal_gate`, `attest_diagram`, `issue_execution_authorization`, and
+`verify_execution_authorization`) and removed them with the normal shrink-only
+baseline refresh. The remaining pre-existing debt retained in the baseline is:
+
+- `substrate/multimedia/local_provider_exclusion.py:31`
+  `export:uncalled:exclude_provider_executions` — reached through nested local
+  zero-cost evidence callbacks assembled from multimedia routes.
+- `substrate/multimedia/ship_cost_snapshot.py:181`
+  `export:uncalled:validate_settled_execution` — reached through production-cost
+  closure callback composition rather than a direct static root.
+- `substrate/payouts/contact_guard.py:73`
+  `export:uncalled:is_author_claimed` — only called by the already-baselined
+  dormant `guarded_send_to_author` path until the SPR-07 claim flow exists.
 
 ## Baseline burn-down rule — `reachability.json` is shrink-only
 

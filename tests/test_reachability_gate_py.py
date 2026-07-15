@@ -118,6 +118,7 @@ def run(x: int) -> int:
 
 def create_app() -> FastAPI:
     app = FastAPI()
+    _ = run(1)
     register_good_routes(app)
     return app
 '''
@@ -182,10 +183,14 @@ def test_uncalled_enforcement_export_reds_then_greens(tmp_path: Path) -> None:
     # 4. FIX: a non-test product module calls it -> GREEN.
     _write(
         root / "interfaces" / "research" / "api" / "exec_caller.py",
+        "from fastapi import FastAPI\n"
         "from substrate.multimedia.execution_authorization import "
         "execute_authorized_call\n\n\n"
-        "def do(payload: dict) -> dict:\n"
-        "    return execute_authorized_call(payload)\n",
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = execute_authorized_call({})\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     green = _run([sys.executable, str(gate)], cwd=root)
     assert green.returncode == 0, (
@@ -233,8 +238,11 @@ def test_unmounted_router_reds_then_greens(tmp_path: Path) -> None:
         root / "interfaces" / "research" / "api" / "mount.py",
         "from fastapi import FastAPI\n"
         "from .orphan_routes import create_orphan_router\n\n\n"
-        "def wire(app: FastAPI) -> None:\n"
-        "    app.include_router(create_orphan_router())\n",
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    app.include_router(create_orphan_router())\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     green = _run([sys.executable, str(gate)], cwd=root)
     assert green.returncode == 0, (
@@ -269,9 +277,11 @@ def test_uncalled_registration_wrapper_reds_then_greens(tmp_path: Path) -> None:
         root / "interfaces" / "research" / "api" / "mount_dormant.py",
         "from fastapi import FastAPI\n"
         "from .dormant_routes import register_dormant_routes as mount_dormant\n\n\n"
-        "def mount(app: FastAPI) -> None:\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
         "    mount_dormant(app)\n"
-        "\n",
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     green = _run([sys.executable, str(gate)], cwd=root)
     assert green.returncode == 0, green.stdout + green.stderr
@@ -515,8 +525,13 @@ def test_import_only_reference_still_flagged_call_clears(tmp_path: Path) -> None
     # Add an actual CALL in a product module -> cleared.
     _write(
         root / "interfaces" / "research" / "api" / "caller.py",
+        "from fastapi import FastAPI\n"
         "from substrate.authz.execution import execute_authorized_call\n\n\n"
-        "def go(x: int) -> int:\n    return execute_authorized_call(x)\n",
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = execute_authorized_call(1)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     green = _run([sys.executable, str(gate)], cwd=root)
     assert green.returncode == 0, (
@@ -539,8 +554,9 @@ def test_module_aware_mount_no_bare_name_collision(tmp_path: Path) -> None:
     _write(
         root / "interfaces" / "research" / "api" / "a_routes.py",
         "from fastapi import APIRouter, FastAPI\n\n"
+        "app = FastAPI()\n"
         'router = APIRouter(prefix="/a")\n\n\n'
-        "def register(app: FastAPI) -> None:\n    app.include_router(router)\n",
+        "app.include_router(router)\n",
     )
     # Module B: defines an identically-named `router`, NEVER mounted.
     _write(
@@ -566,7 +582,11 @@ def test_module_aware_mount_no_bare_name_collision(tmp_path: Path) -> None:
         root / "interfaces" / "research" / "api" / "mount_b.py",
         "from fastapi import FastAPI\n"
         "from .b_routes import router as b_router\n\n\n"
-        "def wire(app: FastAPI) -> None:\n    app.include_router(b_router)\n",
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    app.include_router(b_router)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     green = _run([sys.executable, str(gate)], cwd=root)
     assert green.returncode == 0, (
@@ -606,8 +626,13 @@ def test_aliased_call_clears_unused_alias_import_still_flags(tmp_path: Path) -> 
     # Now actually CALL it through the alias -> the ORIGINAL is credited -> green.
     _write(
         root / "interfaces" / "research" / "api" / "aliased_caller.py",
+        "from fastapi import FastAPI\n"
         "from substrate.authz.execution import execute_authorized_call as run\n\n\n"
-        "def go(x: int) -> int:\n    return run(x)\n",
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = run(1)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     green = _run([sys.executable, str(gate)], cwd=root)
     assert green.returncode == 0, (
@@ -649,7 +674,8 @@ def test_barrel_reexported_mount_not_flagged_sibling_still_flagged(
         "def create_app() -> FastAPI:\n"
         "    app = FastAPI()\n"
         "    app.include_router(router)\n"
-        "    return app\n",
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     res = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> NEW
     assert res.returncode == 1, (
@@ -699,7 +725,8 @@ def test_unconfirmed_reexport_does_not_credit_mount(tmp_path: Path) -> None:
         "def create_app() -> FastAPI:\n"
         "    app = FastAPI()\n"
         "    app.include_router(router)\n"
-        "    return app\n",
+        "    return app\n\n\n"
+        "app = create_app()\n",
     )
     res = _run([sys.executable, str(gate)], cwd=root)  # no baseline -> NEW
     assert res.returncode == 1, (
@@ -719,3 +746,412 @@ def test_unconfirmed_reexport_does_not_credit_mount(tmp_path: Path) -> None:
         f"a confirmed module-level re-export must clear the mount, got "
         f"{green.returncode}\n{green.stdout}\n{green.stderr}"
     )
+
+
+def test_include_router_inside_dormant_helper_does_not_mount(tmp_path: Path) -> None:
+    """An uncalled ordinary helper must not credit router mounting."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "interfaces" / "research" / "api" / "helper_routes.py",
+        "from fastapi import APIRouter, FastAPI\n\n"
+        "router = APIRouter(prefix='/helper')\n\n\n"
+        "def dormant_helper(app: FastAPI) -> None:\n"
+        "    app.include_router(router)\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 1, res.stdout + res.stderr
+    combined = res.stdout + res.stderr
+    assert "helper_routes.py:" in combined
+    assert "router product 'router'" in combined
+
+
+def test_dormant_helper_enforcement_reference_does_not_credit_symbol(
+    tmp_path: Path,
+) -> None:
+    """Calls inside arbitrary uncalled helpers and if False do not clear reachability."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "authz" / "execution.py",
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n    return x\n",
+    )
+    _write(
+        root / "interfaces" / "research" / "api" / "dead_refs.py",
+        "from substrate.authz.execution import execute_authorized_call\n\n\n"
+        "def dormant_helper() -> None:\n"
+        "    execute_authorized_call(1)\n\n\n"
+        "if False:\n"
+        "    execute_authorized_call(2)\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    assert "execute_authorized_call" in red.stdout + red.stderr
+
+    _write(
+        root / "interfaces" / "research" / "api" / "live_ref.py",
+        "from fastapi import FastAPI\n"
+        "from substrate.authz.execution import execute_authorized_call\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = execute_authorized_call(1)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
+
+
+def test_sidecar_create_app_does_not_credit_enforcement_until_real_entrypoint(
+    tmp_path: Path,
+) -> None:
+    """A never-loaded sidecar FastAPI factory is not a product root."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "authz" / "execution.py",
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n"
+        "    return x\n",
+    )
+    _write(
+        root / "interfaces" / "research" / "api" / "sidecar.py",
+        "from fastapi import FastAPI\n"
+        "from substrate.authz.execution import execute_authorized_call as run_authz\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = run_authz(1)\n"
+        "    return app\n",
+    )
+
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "execute_authorized_call" in combined
+
+    _write(
+        root / "interfaces" / "research" / "api" / "app.py",
+        "from fastapi import FastAPI\n"
+        "from substrate.authz.execution import execute_authorized_call as run_authz\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = run_authz(1)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
+
+
+def test_type_checking_and_main_guards_do_not_credit_calls_or_mounts(
+    tmp_path: Path,
+) -> None:
+    """Static non-product guards cannot clear enforcement or router findings."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "authz" / "execution.py",
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n"
+        "    return x\n",
+    )
+    _write(
+        root / "interfaces" / "research" / "api" / "guarded_refs.py",
+        "import typing as typing_mod\n"
+        "from typing import TYPE_CHECKING as TC\n"
+        "from fastapi import APIRouter, FastAPI\n"
+        "from substrate.authz.execution import execute_authorized_call\n\n\n"
+        "router = APIRouter(prefix='/guarded')\n\n\n"
+        "if TC:\n"
+        "    execute_authorized_call(1)\n"
+        "    app = FastAPI()\n"
+        "    app.include_router(router)\n\n\n"
+        "if typing_mod.TYPE_CHECKING:\n"
+        "    execute_authorized_call(2)\n\n\n"
+        "if __name__ == '__main__':\n"
+        "    execute_authorized_call(3)\n"
+        "    app = FastAPI()\n"
+        "    app.include_router(router)\n",
+    )
+
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "execute_authorized_call" in combined
+    assert "guarded_refs.py:" in combined
+    assert "router product 'router'" in combined
+
+
+def test_exported_uncalled_helper_body_does_not_credit_enforcement_export(
+    tmp_path: Path,
+) -> None:
+    """An arbitrary exported helper is not a reachability root."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "policies" / "review_tools.py",
+        '__all__ = ["format_status_report", "guard_released_payload"]\n\n\n'
+        "def format_status_report(payload: dict) -> dict:\n"
+        "    return guard_released_payload(payload)\n\n\n"
+        "def guard_released_payload(payload: dict) -> dict:\n"
+        "    return payload\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "guard_released_payload" in combined
+    assert "format_status_report" not in combined
+
+    _write(
+        root / "interfaces" / "research" / "api" / "live_gate.py",
+        "from fastapi import FastAPI\n"
+        "from substrate.policies.review_tools import guard_released_payload\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = guard_released_payload({})\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
+
+
+def test_exported_uninstantiated_class_method_does_not_credit_enforcement_export(
+    tmp_path: Path,
+) -> None:
+    """Methods on an arbitrary exported class are not reachability roots."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "safety" / "approval_gate.py",
+        '__all__ = ["ApprovalNotebook", "enforce_release_approval"]\n\n\n'
+        "class ApprovalNotebook:\n"
+        "    def write_note(self, payload: dict) -> dict:\n"
+        "        return enforce_release_approval(payload)\n\n\n"
+        "def enforce_release_approval(payload: dict) -> dict:\n"
+        "    return payload\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "enforce_release_approval" in combined
+    assert "ApprovalNotebook" not in combined
+
+    _write(
+        root / "interfaces" / "research" / "api" / "live_approval.py",
+        "from fastapi import FastAPI\n"
+        "from substrate.safety.approval_gate import enforce_release_approval\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    _ = enforce_release_approval({})\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
+
+
+def test_dormant_helper_call_does_not_credit_registration_wrapper(
+    tmp_path: Path,
+) -> None:
+    """A register_*_routes call from an uncalled helper is not product wiring."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "interfaces" / "research" / "api" / "wrapped_routes.py",
+        "from fastapi import APIRouter, FastAPI\n\n"
+        "router = APIRouter(prefix='/wrapped')\n\n\n"
+        "def register_wrapped_routes(app: FastAPI) -> None:\n"
+        "    app.include_router(router)\n",
+    )
+    _write(
+        root / "interfaces" / "research" / "api" / "dead_caller.py",
+        "from fastapi import FastAPI\n"
+        "from .wrapped_routes import register_wrapped_routes\n\n\n"
+        "def dormant_helper(app: FastAPI) -> None:\n"
+        "    register_wrapped_routes(app)\n",
+    )
+
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "register_wrapped_routes" in combined
+    assert "registration wrapper" in combined
+
+    _write(
+        root / "interfaces" / "research" / "api" / "live_caller.py",
+        "from fastapi import FastAPI\n"
+        "from .wrapped_routes import register_wrapped_routes\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    register_wrapped_routes(app)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
+
+
+def test_api_py_register_wrapper_scanned_even_without_routes_suffix(
+    tmp_path: Path,
+) -> None:
+    """interfaces/**/api/*.py wrappers are in scope, not only *_routes.py."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "interfaces" / "research" / "api" / "campaigns.py",
+        "from fastapi import APIRouter, FastAPI\n\n"
+        "campaign_router = APIRouter(prefix='/campaigns')\n\n\n"
+        "def register_campaign_routes(app: FastAPI) -> None:\n"
+        "    app.include_router(campaign_router)\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "campaigns.py:" in combined
+    assert "register_campaign_routes" in combined
+
+    _write(
+        root / "interfaces" / "research" / "api" / "app.py",
+        "from fastapi import FastAPI\n"
+        "from .campaigns import register_campaign_routes\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    register_campaign_routes(app)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
+
+
+def test_direct_app_route_module_is_not_false_positive(tmp_path: Path) -> None:
+    """Direct @app route modules are scanned but not forced through include_router."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "interfaces" / "research" / "api" / "direct.py",
+        "from fastapi import FastAPI\n\n"
+        "app = FastAPI()\n\n\n"
+        "@app.get('/direct')\n"
+        "def direct() -> dict[str, bool]:\n"
+        "    return {'ok': True}\n",
+    )
+    res = _run([sys.executable, str(gate)], cwd=root)
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_direct_app_route_does_not_hide_unmounted_router_product(
+    tmp_path: Path,
+) -> None:
+    """A mixed module can have direct @app routes and a separate orphan router."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "interfaces" / "research" / "api" / "mixed.py",
+        "from fastapi import APIRouter, FastAPI\n\n"
+        "app = FastAPI()\n"
+        "router = APIRouter(prefix='/orphan')\n\n\n"
+        "@app.get('/direct')\n"
+        "def direct() -> dict[str, bool]:\n"
+        "    return {'ok': True}\n\n\n"
+        "@router.get('/router')\n"
+        "def router_handler() -> dict[str, bool]:\n"
+        "    return {'ok': True}\n",
+    )
+    red = _run([sys.executable, str(gate)], cwd=root)
+    assert red.returncode == 1, red.stdout + red.stderr
+    combined = red.stdout + red.stderr
+    assert "mixed.py:" in combined
+    assert "router product 'router'" in combined
+
+    _write(
+        root / "interfaces" / "research" / "api" / "app.py",
+        "from fastapi import FastAPI\n"
+        "from .mixed import router\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    app.include_router(router)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    green = _run([sys.executable, str(gate)], cwd=root)
+    assert green.returncode == 0, green.stdout + green.stderr
+
+
+def test_nested_mounted_router_handler_credits_enforcement_alias_unmounted_does_not(
+    tmp_path: Path,
+) -> None:
+    """Nested APIRouter handlers are reachable only when their router is mounted."""
+    root = tmp_path / "tree"
+    root.mkdir()
+    gate = _mirror_gate(root)
+
+    _write(
+        root / "substrate" / "authz" / "execution.py",
+        '__all__ = ["execute_authorized_call"]\n\n\n'
+        "def execute_authorized_call(x: int) -> int:\n"
+        "    return x\n",
+    )
+    _write(
+        root / "interfaces" / "research" / "api" / "mounted_nested.py",
+        "from fastapi import APIRouter, FastAPI\n"
+        "from substrate.authz.execution import execute_authorized_call as run_authz\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    router = APIRouter(prefix='/mounted')\n\n"
+        "    @router.get('/run')\n"
+        "    def run() -> dict[str, int]:\n"
+        "        return {'value': run_authz(1)}\n\n"
+        "    app.include_router(router)\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+
+    mounted = _run([sys.executable, str(gate)], cwd=root)
+    assert mounted.returncode == 0, (
+        f"mounted nested router handler must credit the aliased enforcement call, "
+        f"got {mounted.returncode}\n{mounted.stdout}\n{mounted.stderr}"
+    )
+
+    _write(
+        root / "interfaces" / "research" / "api" / "mounted_nested.py",
+        "from fastapi import APIRouter, FastAPI\n"
+        "from substrate.authz.execution import execute_authorized_call as run_authz\n\n\n"
+        "def create_app() -> FastAPI:\n"
+        "    app = FastAPI()\n"
+        "    router = APIRouter(prefix='/unmounted')\n\n"
+        "    @router.get('/run')\n"
+        "    def run() -> dict[str, int]:\n"
+        "        return {'value': run_authz(1)}\n\n"
+        "    return app\n\n\n"
+        "app = create_app()\n",
+    )
+    unmounted = _run([sys.executable, str(gate)], cwd=root)
+    assert unmounted.returncode == 1, (
+        f"unmounted nested router handler must not credit the enforcement call, "
+        f"got {unmounted.returncode}\n{unmounted.stdout}\n{unmounted.stderr}"
+    )
+    combined = unmounted.stdout + unmounted.stderr
+    assert "execute_authorized_call" in combined, combined

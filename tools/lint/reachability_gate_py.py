@@ -32,7 +32,8 @@ serialization).
 THE THREE CHECKS
 ────────────────────────────────────────────────────────────────────────────
 
-**Check A — unmounted API routers.** In ``interfaces/**/api/*_routes.py``, a
+**Check A — unmounted API routers.** In ``interfaces/**/api/*.py``, excluding
+``__init__.py`` and obvious test files, a
 "router product" is either (a) a module-level ``name = APIRouter(...)``
 assignment or (b) a *factory function* that builds one (return annotation
 ``APIRouter``, or a body that ``return``\\s an ``APIRouter(...)`` call). A
@@ -58,7 +59,7 @@ stays FLAGGED. Check A thus errs toward a FALSE POSITIVE (over-flagging an
 actually-mounted router reached by an exotic re-export — the operator grandfathers
 it into the baseline) and NEVER toward a FALSE NEGATIVE (crediting an unmounted
 router, which would silently reopen the very hole this gate exists to catch).
-For an informational-first gate that is the safe bias. A product no
+For a hard gate with a shrink-only baseline, that is the safe bias. A product no
 ``include_router`` ever consumes is a route surface no mounted app exposes.
 Catches #742's ``create_multimedia_execution_router`` and the #712
 completion-route absence class.
@@ -100,11 +101,12 @@ a pure-data helper exported for future use is not the target; a claimed
 caller is exactly the money-safety hole. Narrowing to the lexicon keeps the
 gate from flagging every dormant data export in ``substrate/``.
 
-Both checks are GRANDFATHERED through the dated, shrink-only baseline
+All three checks are GRANDFATHERED through the dated, shrink-only baseline
 ``tools/lints/baselines/reachability_py.json`` so the gate reds ONLY on code
 that becomes unreachable AFTER this lands — never on today's legitimately
 dormant set. Exit 0 = clean (every current finding grandfathered); exit 1 = a
-NEW unmounted router / uncalled enforcement export, printed ``path:line:``.
+NEW unmounted router / uncalled registration wrapper / uncalled enforcement
+export, printed ``path:line:``.
 
 ────────────────────────────────────────────────────────────────────────────
 WHAT THIS GATE CANNOT CATCH (intellectual honesty — mirrors the TS gate's
@@ -129,6 +131,21 @@ CANNOT-catch list; rigor #1). Claims ONLY what its AST scan literally matches.
     themselves be called by non-test product code. A wrapper invoked only via
     reflection, a string registry, or a DI container has no statically resolvable
     call and is conservatively flagged; that dynamic wiring is review-owned.
+  - **Reachable-code model** — the scanner roots live module-scope code, direct
+    ``@app`` route handlers, the designated production ASGI factory
+    (``interfaces/research/api/app.py:create_app``), and route handlers whose
+    router is mounted. Other FastAPI-looking factories are reachable only if
+    product-reachable code calls them; an unreferenced sidecar ``create_app`` does
+    NOT root its body. The scanner then follows explicit local and
+    ``from … import …`` call edges, returned nested callback bodies, and methods
+    on classes instantiated by reachable code. Bodies of arbitrary uncalled
+    helpers do NOT count, regardless of name or ``__all__`` membership; methods
+    on exported but uninstantiated classes likewise do not count. It deliberately
+    ignores bodies under static-dead branches (``if False:``, ``if 0:``,
+    ``if None:``, statically resolvable ``if TYPE_CHECKING:``, and
+    ``if __name__ == "__main__":``). It does not prove full Python call
+    reachability; ambiguous dynamic wiring remains review-owned and should be
+    made explicit if it is product-critical.
   - **Module-object mount form (Check A)** — ``import m_routes; m_routes.router``
     passed to ``include_router`` mounts via a module OBJECT, not a name imported
     FROM the defining module, so the resolver does not tie it to the product and
@@ -182,7 +199,7 @@ string + a same-named ``def``; a ``Name`` load / attribute reference, or a used
 is mechanically enforced.
 
 ────────────────────────────────────────────────────────────────────────────
-FAIRNESS — why a (future) HARD gate is defensible (fairness #2)
+FAIRNESS — why a HARD gate is defensible (fairness #2)
 ────────────────────────────────────────────────────────────────────────────
 Steelman for staying advisory forever: a hard reachability gate reds on
 legitimately-dormant code — a seam landed ahead of its wiring — and that churn
@@ -201,10 +218,10 @@ documented reason). The baseline can only shrink under normal use (operator
 refreshes when a stranding is fixed), so the grandfathered set is a debt that
 pays down.
 
-Per CLAUDE.md's test-integrity floor, this gate is INFORMATIONAL-FIRST: it
-prints ``path:line`` findings and surfaces ``::warning::`` on nonzero, and does
-NOT red the build until a written flip-to-blocking condition lands in
-``docs/decisions/``. Never flip silently.
+This gate is a hard CI blocker in ``.github/workflows/ci.yml``. It prints
+``path:line`` findings and exits non-zero on any NEW non-grandfathered
+stranding. Do not swallow its exit code in CI; the shrink-only baseline is the
+fairness mechanism.
 
 Usage::
 
@@ -221,6 +238,7 @@ import ast
 import re
 import sys
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -310,7 +328,313 @@ def _parse(path: Path) -> ast.Module | None:
 
 
 # ── Per-file precomputed indexes (parse each product file ONCE) ─────────────
-def _reachability_reference_names(tree: ast.Module) -> set[str]:
+_DEAD_BRANCH_SENTINELS = (False, 0, None)
+_TYPE_CHECKING_MODULES = frozenset({"typing", "typing_extensions"})
+
+
+@dataclass(frozen=True)
+class _DeadBranchGuards:
+    type_checking_names: frozenset[str] = frozenset()
+    type_checking_modules: frozenset[str] = frozenset()
+
+
+_EMPTY_DEAD_BRANCH_GUARDS = _DeadBranchGuards()
+
+
+def _dead_branch_guards(statements: list[ast.stmt]) -> _DeadBranchGuards:
+    """Statically-known names that make an ``if`` body non-product code.
+
+    This intentionally recognizes only ordinary typing imports. A project-local
+    variable named ``TYPE_CHECKING`` or a runtime feature flag is not enough to
+    discard a branch.
+    """
+    type_checking_names: set[str] = set()
+    type_checking_modules: set[str] = set()
+    for stmt in statements:
+        if isinstance(stmt, ast.Import):
+            for alias in stmt.names:
+                root = alias.name.split(".", 1)[0]
+                if root in _TYPE_CHECKING_MODULES:
+                    type_checking_modules.add(alias.asname or root)
+        elif isinstance(stmt, ast.ImportFrom) and stmt.module in _TYPE_CHECKING_MODULES:
+            for alias in stmt.names:
+                if alias.name == "TYPE_CHECKING":
+                    type_checking_names.add(alias.asname or alias.name)
+    return _DeadBranchGuards(
+        type_checking_names=frozenset(type_checking_names),
+        type_checking_modules=frozenset(type_checking_modules),
+    )
+
+
+def _merge_dead_branch_guards(
+    left: _DeadBranchGuards, right: _DeadBranchGuards
+) -> _DeadBranchGuards:
+    return _DeadBranchGuards(
+        type_checking_names=left.type_checking_names | right.type_checking_names,
+        type_checking_modules=left.type_checking_modules | right.type_checking_modules,
+    )
+
+
+def _is_type_checking_guard(node: ast.expr, guards: _DeadBranchGuards) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in guards.type_checking_names
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "TYPE_CHECKING"
+        and isinstance(node.value, ast.Name)
+        and node.value.id in guards.type_checking_modules
+    )
+
+
+def _is_dunder_name(node: ast.expr) -> bool:
+    return isinstance(node, ast.Name) and node.id == "__name__"
+
+
+def _is_main_literal(node: ast.expr) -> bool:
+    return isinstance(node, ast.Constant) and node.value == "__main__"
+
+
+def _is_main_guard(node: ast.expr) -> bool:
+    return (
+        isinstance(node, ast.Compare)
+        and len(node.ops) == 1
+        and isinstance(node.ops[0], ast.Eq)
+        and len(node.comparators) == 1
+        and (
+            (_is_dunder_name(node.left) and _is_main_literal(node.comparators[0]))
+            or (_is_main_literal(node.left) and _is_dunder_name(node.comparators[0]))
+        )
+    )
+
+
+def _is_static_dead_test(
+    node: ast.expr, guards: _DeadBranchGuards = _EMPTY_DEAD_BRANCH_GUARDS
+) -> bool:
+    return (
+        (isinstance(node, ast.Constant) and node.value in _DEAD_BRANCH_SENTINELS)
+        or _is_type_checking_guard(node, guards)
+        or _is_main_guard(node)
+    )
+
+
+def _reachable_statement_nodes(
+    statements: list[ast.stmt],
+    *,
+    route_bases: frozenset[str] = frozenset(),
+    reachable_nested_functions: frozenset[str] = frozenset(),
+    dead_guards: _DeadBranchGuards = _EMPTY_DEAD_BRANCH_GUARDS,
+) -> list[ast.AST]:
+    """Nodes reachable inside already-reachable statements.
+
+    This walker is intentionally body-scoped: nested function/class/lambda
+    bodies are definitions, not execution. Static-dead ``if`` bodies are also
+    ignored, with ``else`` still inspected because it is the reachable branch.
+    """
+    out: list[ast.AST] = []
+
+    def visit(node: ast.AST) -> None:
+        out.append(node)
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            if node.name in reachable_nested_functions or any(
+                (base := _route_decorator_base(dec)) is not None and base in route_bases
+                for dec in node.decorator_list
+            ):
+                for child in node.body:
+                    visit(child)
+            return
+        if isinstance(node, (ast.ClassDef, ast.Lambda)):
+            return
+        if isinstance(node, ast.If) and _is_static_dead_test(node.test, dead_guards):
+            for child in node.orelse:
+                visit(child)
+            return
+        for child in ast.iter_child_nodes(node):
+            visit(child)
+
+    for stmt in statements:
+        visit(stmt)
+    return out
+
+
+def _module_level_reachable_nodes(tree: ast.Module) -> list[ast.AST]:
+    """Reachable nodes that are not nested inside a function/class body."""
+    return [
+        tree,
+        *_reachable_statement_nodes(
+            tree.body, dead_guards=_dead_branch_guards(tree.body)
+        ),
+    ]
+
+
+_DEFAULT_ROUTE_BASES = frozenset({"app"})
+
+
+def _returned_local_function_names(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    dead_guards: _DeadBranchGuards = _EMPTY_DEAD_BRANCH_GUARDS,
+) -> frozenset[str]:
+    """Nested functions returned by an already-reachable factory.
+
+    This is deliberately narrower than "all nested helpers": a callback body is
+    reachable when the reachable factory returns that local function object.
+    """
+    local_functions = {
+        stmt.name
+        for stmt in node.body
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef))
+    }
+    returned: set[str] = set()
+
+    def visit(stmt: ast.stmt) -> None:
+        if isinstance(stmt, ast.If) and _is_static_dead_test(stmt.test, dead_guards):
+            for child in stmt.orelse:
+                visit(child)
+            return
+        if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Name):
+            if stmt.value.id in local_functions:
+                returned.add(stmt.value.id)
+            return
+        if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            return
+        for child in ast.iter_child_nodes(stmt):
+            if isinstance(child, ast.stmt):
+                visit(child)
+
+    for stmt in node.body:
+        visit(stmt)
+    return frozenset(returned)
+
+
+def _function_body_nodes(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    *,
+    route_bases: frozenset[str] = _DEFAULT_ROUTE_BASES,
+    dead_guards: _DeadBranchGuards = _EMPTY_DEAD_BRANCH_GUARDS,
+) -> list[ast.AST]:
+    """Nodes in an already-proven-reachable function body."""
+    body_guards = _dead_branch_guards(list(node.body))
+    return [
+        node,
+        *_reachable_statement_nodes(
+            list(node.body),
+            route_bases=route_bases,
+            reachable_nested_functions=_returned_local_function_names(
+                node, dead_guards
+            ),
+            dead_guards=_merge_dead_branch_guards(dead_guards, body_guards),
+        ),
+    ]
+
+
+def _reachable_function_nodes(tree: ast.Module) -> dict[str, ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Module-level functions whose definitions are not under static-dead code."""
+    out: dict[str, ast.FunctionDef | ast.AsyncFunctionDef] = {}
+    dead_guards = _dead_branch_guards(tree.body)
+
+    def visit_stmt(node: ast.stmt) -> None:
+        if isinstance(node, ast.If) and _is_static_dead_test(node.test, dead_guards):
+            for child in node.orelse:
+                if isinstance(child, ast.stmt):
+                    visit_stmt(child)
+            return
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            out[node.name] = node
+            return
+        if isinstance(node, ast.ClassDef):
+            return
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.stmt):
+                visit_stmt(child)
+
+    for stmt in tree.body:
+        visit_stmt(stmt)
+    return out
+
+
+def _reachable_class_nodes(tree: ast.Module) -> dict[str, ast.ClassDef]:
+    """Module-level classes whose definitions are not under static-dead code."""
+    out: dict[str, ast.ClassDef] = {}
+    dead_guards = _dead_branch_guards(tree.body)
+
+    def visit_stmt(node: ast.stmt) -> None:
+        if isinstance(node, ast.If) and _is_static_dead_test(node.test, dead_guards):
+            for child in node.orelse:
+                if isinstance(child, ast.stmt):
+                    visit_stmt(child)
+            return
+        if isinstance(node, ast.ClassDef):
+            out[node.name] = node
+            return
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return
+        for child in ast.iter_child_nodes(node):
+            if isinstance(child, ast.stmt):
+                visit_stmt(child)
+
+    for stmt in tree.body:
+        visit_stmt(stmt)
+    return out
+
+
+_APP_FACTORY_NAMES = frozenset(
+    {"create_app", "make_app", "build_app", "get_app", "app_factory"}
+)
+_DESIGNATED_APP_FACTORY_ROOTS = frozenset(
+    {("interfaces/research/api/app.py", "create_app")}
+)
+
+
+@dataclass(frozen=True)
+class _Reachability:
+    nodes: list[ast.AST]
+    functions: frozenset[str]
+    classes: frozenset[str]
+
+
+def _is_fastapi_annotation(node: ast.expr | None) -> bool:
+    if node is None:
+        return False
+    if isinstance(node, ast.Name):
+        return node.id == "FastAPI"
+    if isinstance(node, ast.Attribute):
+        return node.attr == "FastAPI"
+    if isinstance(node, ast.Subscript):
+        return _is_fastapi_annotation(node.value) or _is_fastapi_annotation(node.slice)
+    if isinstance(node, ast.BinOp):
+        return _is_fastapi_annotation(node.left) or _is_fastapi_annotation(node.right)
+    return False
+
+
+def _returns_fastapi_call(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    return any(
+        isinstance(sub, ast.Return)
+        and isinstance(sub.value, ast.Call)
+        and (
+            (isinstance(sub.value.func, ast.Name) and sub.value.func.id == "FastAPI")
+            or (
+                isinstance(sub.value.func, ast.Attribute)
+                and sub.value.func.attr == "FastAPI"
+            )
+        )
+        for sub in ast.walk(node)
+    )
+
+
+def _is_app_factory(node: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """True when a function has the FastAPI factory shape.
+
+    Shape alone is not a root. It is used only to validate narrow, designated
+    product entrypoints; all other factories must be reached by ordinary product
+    call edges.
+    """
+    return (
+        node.name in _APP_FACTORY_NAMES
+        or _is_fastapi_annotation(node.returns)
+        or _returns_fastapi_call(node)
+    )
+
+
+def _reachability_reference_names(nodes: list[ast.AST]) -> set[str]:
     """The symbol names this module reaches in a GENUINE REACHABILITY position —
     i.e. actually invoked/passed as a value, NOT merely imported.
 
@@ -335,14 +659,14 @@ def _reachability_reference_names(tree: ast.Module) -> set[str]:
     over-credit (a false negative, never a false positive) — documented in the
     CANNOT-catch list."""
     used: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Load):
             used.add(node.id)
         elif isinstance(node, ast.Attribute):
             used.add(node.attr)
     # Alias credit: local alias name -> original imported symbol.
     aliases: dict[str, str] = {}
-    for node in ast.walk(tree):
+    for node in nodes:
         if isinstance(node, ast.ImportFrom):
             for alias in node.names:
                 if alias.asname:
@@ -355,7 +679,7 @@ def _reachability_reference_names(tree: ast.Module) -> set[str]:
     return credited
 
 
-def _include_router_arg_names(tree: ast.Module) -> set[str]:
+def _include_router_arg_names(nodes: list[ast.AST]) -> set[str]:
     """The LOCAL identifiers appearing inside an ``include_router(...)`` call in
     this module. ``app.include_router(multimedia_router)`` → {multimedia_router};
     ``app.include_router(make_thread_router())`` → {make_thread_router}. These
@@ -364,13 +688,14 @@ def _include_router_arg_names(tree: ast.Module) -> set[str]:
     router product is mounted only when ITS module's product is the one mounted —
     never when an unrelated same-spelled ``router`` elsewhere is."""
     names: set[str] = set()
-    for node in ast.walk(tree):
+
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         fn = node.func
-        is_include = (isinstance(fn, ast.Attribute) and fn.attr == "include_router") or (
-            isinstance(fn, ast.Name) and fn.id == "include_router"
-        )
+        is_include = (
+            isinstance(fn, ast.Attribute) and fn.attr == "include_router"
+        ) or (isinstance(fn, ast.Name) and fn.id == "include_router")
         if not is_include:
             continue
         for arg in list(node.args) + [kw.value for kw in node.keywords]:
@@ -382,10 +707,10 @@ def _include_router_arg_names(tree: ast.Module) -> set[str]:
     return names
 
 
-def _called_local_names(tree: ast.Module) -> set[str]:
+def _called_local_names(nodes: list[ast.AST]) -> set[str]:
     """Local identifiers used as call targets in this module."""
     called: set[str] = set()
-    for node in ast.walk(tree):
+    for node in nodes:
         if not isinstance(node, ast.Call):
             continue
         if isinstance(node.func, ast.Name):
@@ -447,7 +772,7 @@ def _importfrom_edges(
     return out
 
 
-def _import_map(importer: Path, tree: ast.Module) -> dict[str, set[tuple[str, str]]]:
+def _import_map(importer: Path, nodes: list[ast.AST]) -> dict[str, set[tuple[str, str]]]:
     """local-name → {(defining-module-relpath, original-name)} for EVERY
     ``from … import …`` in this module (walked — so the function-local imports
     ``create_app`` uses at the MOUNT SITE are included). This ties a mounted
@@ -456,7 +781,7 @@ def _import_map(importer: Path, tree: ast.Module) -> dict[str, set[tuple[str, st
     re-export CHAIN uses ``_reexport_map`` (module-level only) so a
     function-scoped or conditional import cannot fabricate a re-export edge."""
     return _importfrom_edges(
-        importer, [n for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)]
+        importer, [n for n in nodes if isinstance(n, ast.ImportFrom)]
     )
 
 
@@ -501,15 +826,17 @@ def _is_apirouter_annotation(node: ast.expr | None) -> bool:
 
 
 def _routes_files() -> list[Path]:
-    """``interfaces/**/api/*_routes.py`` — the scope Check A draws router
-    products from (per spec). Excludes tests."""
+    """``interfaces/**/api/*.py`` — the scope Check A draws router products
+    from. Includes ``*_routes.py``, direct ``app`` route modules, and
+    ``register_*_routes`` wrapper modules while excluding package barrels and
+    tests."""
     if not _INTERFACES.exists():
         return []
     out: list[Path] = []
-    for p in _INTERFACES.rglob("*_routes.py"):
+    for p in _INTERFACES.rglob("api/*.py"):
         if _is_excluded(p) or _is_test_path(p):
             continue
-        if p.parent.name != "api":
+        if p.name == "__init__.py" or p.parent.name != "api":
             continue
         out.append(p)
     return sorted(out)
@@ -541,6 +868,54 @@ def _router_products(path: Path, tree: ast.Module) -> list[tuple[str, int]]:
                     products.append((node.name, node.lineno))
                     break
     return products
+
+
+_ROUTE_METHODS = {"get", "post", "put", "patch", "delete", "options", "head", "websocket"}
+
+
+def _route_decorator_base(dec: ast.expr) -> str | None:
+    call = dec if isinstance(dec, ast.Call) else None
+    target = call.func if call is not None else dec
+    if not (
+        isinstance(target, ast.Attribute)
+        and target.attr in _ROUTE_METHODS
+        and isinstance(target.value, ast.Name)
+    ):
+        return None
+    return target.value.id
+
+
+def _has_direct_app_route(tree: ast.Module) -> bool:
+    """True when a module declares direct FastAPI app routes via ``@app.get`` /
+    ``@app.post`` etc. These modules are already self-mounted app surfaces, not
+    router products requiring ``include_router`` credit."""
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for dec in node.decorator_list:
+            if _route_decorator_base(dec) == "app":
+                return True
+    return False
+
+
+def _direct_app_route_handlers(tree: ast.Module) -> set[str]:
+    names: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if any(_route_decorator_base(dec) == "app" for dec in node.decorator_list):
+            names.add(node.name)
+    return names
+
+
+def _router_route_handlers(tree: ast.Module, router_names: set[str]) -> set[str]:
+    names: set[str] = set()
+    for node in tree.body:
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        if any(_route_decorator_base(dec) in router_names for dec in node.decorator_list):
+            names.add(node.name)
+    return names
 
 
 _REEXPORT_MAX_DEPTH = 6
@@ -587,6 +962,29 @@ def _resolves_to(
     return False
 
 
+def _reexport_targets(
+    origin_rel: str,
+    origin_name: str,
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
+    depth: int = _REEXPORT_MAX_DEPTH,
+    seen: frozenset[tuple[str, str]] = frozenset(),
+) -> set[tuple[str, str]]:
+    """Confirmed module-level re-export targets for a call-site binding.
+
+    Includes the original binding plus every target reached through the same
+    fail-safe barrel edges Check A trusts for router mounts.
+    """
+    out = {(origin_rel, origin_name)}
+    if depth <= 0 or (origin_rel, origin_name) in seen:
+        return out
+    seen = seen | {(origin_rel, origin_name)}
+    for next_rel, next_name in reexport_map.get(origin_rel, {}).get(origin_name, ()):
+        out |= _reexport_targets(
+            next_rel, next_name, reexport_map, depth - 1, seen
+        )
+    return out
+
+
 def _is_mounted(
     defining_rel: str,
     product: str,
@@ -612,6 +1010,9 @@ def _is_mounted(
     THIS module's ``router``: the cross-module arm requires the binding to resolve
     to ``defining_rel`` specifically. An unconfirmed re-export never credits a
     mount (see ``_resolves_to`` — fail-safe toward flagging)."""
+    # Same-module include_router is only a product mount when it is in reachable
+    # module-scope code. A mount hidden inside an uncalled register_*_routes
+    # wrapper is validated by Check C and must not credit Check A by itself.
     if product in include_local.get(defining_rel, set()):
         return True
     for n_rel, mounted_locals in include_local.items():
@@ -631,7 +1032,7 @@ def find_unmounted_routers(
     import_map: dict[str, dict[str, set[tuple[str, str]]]],
     reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
 ) -> list[Finding]:
-    """Router products in ``interfaces/**/api/*_routes.py`` that no module mounts
+    """Router products in ``interfaces/**/api/*.py`` that no module mounts
     (module-aware — see ``_is_mounted``)."""
     findings: list[Finding] = []
     for path in _routes_files():
@@ -662,7 +1063,7 @@ def find_unmounted_routers(
 def _registration_wrappers(tree: ast.Module) -> list[tuple[str, int]]:
     """Module-level register wrappers that own at least one router mount."""
     wrappers: list[tuple[str, int]] = []
-    for node in tree.body:
+    for node in _reachable_function_nodes(tree).values():
         if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
             continue
         if not (node.name.startswith("register_") and node.name.endswith("_routes")):
@@ -673,7 +1074,9 @@ def _registration_wrappers(tree: ast.Module) -> list[tuple[str, int]]:
                 (isinstance(call.func, ast.Attribute) and call.func.attr == "include_router")
                 or (isinstance(call.func, ast.Name) and call.func.id == "include_router")
             )
-            for call in ast.walk(node)
+            for call in _function_body_nodes(
+                node, dead_guards=_dead_branch_guards(tree.body)
+            )
         ):
             wrappers.append((node.name, node.lineno))
     return wrappers
@@ -828,6 +1231,264 @@ def find_uncalled_enforcement_exports(
     return findings
 
 
+def _function_local_mounted_router_names(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    dead_guards: _DeadBranchGuards = _EMPTY_DEAD_BRANCH_GUARDS,
+) -> set[str]:
+    """Router locals mounted directly by this already-reachable function body."""
+    shallow_body = _reachable_statement_nodes(
+        list(node.body), route_bases=frozenset(), dead_guards=dead_guards
+    )
+    return _include_router_arg_names(shallow_body)
+
+
+def _function_local_apirouter_names(
+    node: ast.FunctionDef | ast.AsyncFunctionDef,
+    dead_guards: _DeadBranchGuards = _EMPTY_DEAD_BRANCH_GUARDS,
+) -> set[str]:
+    """APIRouter locals built inside a reachable mounted router factory."""
+    names: set[str] = set()
+    shallow_body = _reachable_statement_nodes(
+        list(node.body), route_bases=frozenset(), dead_guards=dead_guards
+    )
+    for stmt in shallow_body:
+        if isinstance(stmt, ast.Assign) and _is_apirouter_call(stmt.value):
+            for target in stmt.targets:
+                if isinstance(target, ast.Name):
+                    names.add(target.id)
+        elif (
+            isinstance(stmt, ast.AnnAssign)
+            and isinstance(stmt.target, ast.Name)
+            and _is_apirouter_call(stmt.value)
+        ):
+            names.add(stmt.target.id)
+    return names
+
+
+def _reachable_nodes_for_functions(
+    tree: ast.Module,
+    function_names: set[str],
+    class_names: set[str] | frozenset[str] = frozenset(),
+    *,
+    route_bases: frozenset[str] = _DEFAULT_ROUTE_BASES,
+    mounted_router_products: frozenset[str] = frozenset(),
+) -> list[ast.AST]:
+    functions = _reachable_function_nodes(tree)
+    module_dead_guards = _dead_branch_guards(tree.body)
+    nodes = _module_level_reachable_nodes(tree)
+    for name in sorted(function_names):
+        fn = functions.get(name)
+        if fn is not None:
+            function_dead_guards = _merge_dead_branch_guards(
+                module_dead_guards, _dead_branch_guards(list(fn.body))
+            )
+            function_route_bases = set(route_bases)
+            function_route_bases.update(
+                _function_local_mounted_router_names(fn, function_dead_guards)
+            )
+            if name in mounted_router_products:
+                function_route_bases.update(
+                    _function_local_apirouter_names(fn, function_dead_guards)
+                )
+            nodes.extend(
+                _function_body_nodes(
+                    fn,
+                    route_bases=frozenset(function_route_bases),
+                    dead_guards=module_dead_guards,
+                )
+            )
+    for class_name in sorted(class_names):
+        cls = _reachable_class_nodes(tree).get(class_name)
+        if cls is None:
+            continue
+        nodes.append(cls)
+        for stmt in cls.body:
+            if isinstance(stmt, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                nodes.extend(_function_body_nodes(stmt, dead_guards=module_dead_guards))
+    return nodes
+
+
+def _initial_reachable_functions(rel: str, tree: ast.Module) -> set[str]:
+    functions = _reachable_function_nodes(tree)
+    roots = {
+        name
+        for name, node in functions.items()
+        if (rel, name) in _DESIGNATED_APP_FACTORY_ROOTS and _is_app_factory(node)
+    }
+    roots |= _direct_app_route_handlers(tree)
+    return roots
+
+
+def _expand_reachable_functions(
+    trees_by_rel: dict[str, ast.Module],
+    paths_by_rel: dict[str, Path],
+    reachable_functions: dict[str, set[str]],
+    reachable_classes: dict[str, set[str]],
+    *,
+    route_bases_by_rel: dict[str, frozenset[str]] | None = None,
+    mounted_router_products_by_rel: dict[str, frozenset[str]] | None = None,
+) -> None:
+    """Mutate reachable functions/classes to a fixed point over call edges."""
+    reexport_map = {
+        rel: _reexport_map(paths_by_rel[rel], tree)
+        for rel, tree in trees_by_rel.items()
+    }
+    changed = True
+    while changed:
+        changed = False
+        for rel, tree in trees_by_rel.items():
+            nodes = _reachable_nodes_for_functions(
+                tree,
+                reachable_functions[rel],
+                reachable_classes[rel],
+                route_bases=(
+                    route_bases_by_rel or {}
+                ).get(rel, _DEFAULT_ROUTE_BASES),
+                mounted_router_products=(
+                    mounted_router_products_by_rel or {}
+                ).get(rel, frozenset()),
+            )
+            called = _called_local_names(nodes)
+            local_functions = _reachable_function_nodes(tree)
+            local_classes = _reachable_class_nodes(tree)
+            for name in called:
+                if name in local_functions and name not in reachable_functions[rel]:
+                    reachable_functions[rel].add(name)
+                    changed = True
+                if name in local_classes and name not in reachable_classes[rel]:
+                    reachable_classes[rel].add(name)
+                    changed = True
+
+            imports = _import_map(paths_by_rel[rel], nodes)
+            for local in called:
+                for origin_rel, origin_name in imports.get(local, ()):
+                    for target_rel, target_name in _reexport_targets(
+                        origin_rel, origin_name, reexport_map
+                    ):
+                        target_tree = trees_by_rel.get(target_rel)
+                        if target_tree is None:
+                            continue
+                        target_functions = _reachable_function_nodes(target_tree)
+                        target_classes = _reachable_class_nodes(target_tree)
+                        if (
+                            target_name in target_functions
+                            and target_name not in reachable_functions[target_rel]
+                        ):
+                            reachable_functions[target_rel].add(target_name)
+                            changed = True
+                        if (
+                            target_name in target_classes
+                            and target_name not in reachable_classes[target_rel]
+                        ):
+                            reachable_classes[target_rel].add(target_name)
+                            changed = True
+
+
+def _mounted_router_names_by_rel(
+    trees_by_rel: dict[str, ast.Module],
+    include_local: dict[str, set[str]],
+    import_map: dict[str, dict[str, set[tuple[str, str]]]],
+    reexport_map: dict[str, dict[str, set[tuple[str, str]]]],
+) -> dict[str, set[str]]:
+    mounted: dict[str, set[str]] = {}
+    for path in _routes_files():
+        rel = path.relative_to(_REPO).as_posix()
+        tree = trees_by_rel.get(rel)
+        if tree is None:
+            continue
+        for name, _line in _router_products(path, tree):
+            if _is_mounted(rel, name, include_local, import_map, reexport_map):
+                mounted.setdefault(rel, set()).add(name)
+    return mounted
+
+
+def _build_reachability(
+    trees: dict[Path, ast.Module],
+) -> dict[str, _Reachability]:
+    trees_by_rel = {path.relative_to(_REPO).as_posix(): tree for path, tree in trees.items()}
+    paths_by_rel = {path.relative_to(_REPO).as_posix(): path for path in trees}
+    reachable_functions = {
+        rel: _initial_reachable_functions(rel, tree)
+        for rel, tree in trees_by_rel.items()
+    }
+    reachable_classes = {rel: set[str]() for rel in trees_by_rel}
+
+    _expand_reachable_functions(
+        trees_by_rel, paths_by_rel, reachable_functions, reachable_classes
+    )
+
+    include_local = {
+        rel: _include_router_arg_names(
+            _reachable_nodes_for_functions(
+                tree, reachable_functions[rel], reachable_classes[rel]
+            )
+        )
+        for rel, tree in trees_by_rel.items()
+    }
+    import_map = {
+        rel: _import_map(
+            paths_by_rel[rel],
+            _reachable_nodes_for_functions(
+                tree, reachable_functions[rel], reachable_classes[rel]
+            ),
+        )
+        for rel, tree in trees_by_rel.items()
+    }
+    reexport_map = {
+        rel: _reexport_map(paths_by_rel[rel], tree) for rel, tree in trees_by_rel.items()
+    }
+
+    mounted_router_names = _mounted_router_names_by_rel(
+        trees_by_rel, include_local, import_map, reexport_map
+    )
+    mounted_route_bases_by_rel = {
+        rel: frozenset(_DEFAULT_ROUTE_BASES | router_names)
+        for rel, router_names in mounted_router_names.items()
+    }
+    mounted_router_products_by_rel = {
+        rel: frozenset(router_names) for rel, router_names in mounted_router_names.items()
+    }
+    for rel, router_names in mounted_router_names.items():
+        route_handlers = _router_route_handlers(trees_by_rel[rel], router_names)
+        before = set(reachable_functions[rel])
+        reachable_functions[rel].update(route_handlers)
+        if reachable_functions[rel] != before:
+            _expand_reachable_functions(
+                trees_by_rel,
+                paths_by_rel,
+                reachable_functions,
+                reachable_classes,
+                route_bases_by_rel=mounted_route_bases_by_rel,
+                mounted_router_products_by_rel=mounted_router_products_by_rel,
+            )
+
+    _expand_reachable_functions(
+        trees_by_rel,
+        paths_by_rel,
+        reachable_functions,
+        reachable_classes,
+        route_bases_by_rel=mounted_route_bases_by_rel,
+        mounted_router_products_by_rel=mounted_router_products_by_rel,
+    )
+
+    return {
+        rel: _Reachability(
+            nodes=_reachable_nodes_for_functions(
+                tree,
+                reachable_functions[rel],
+                reachable_classes[rel],
+                route_bases=mounted_route_bases_by_rel.get(rel, _DEFAULT_ROUTE_BASES),
+                mounted_router_products=mounted_router_products_by_rel.get(
+                    rel, frozenset()
+                ),
+            ),
+            functions=frozenset(reachable_functions[rel]),
+            classes=frozenset(reachable_classes[rel]),
+        )
+        for rel, tree in trees_by_rel.items()
+    }
+
+
 # ── Findings → baseline keys ────────────────────────────────────────────────
 #
 # Identity is (path, line, col=0, kind). The kind embeds the product/symbol name
@@ -848,7 +1509,6 @@ def find_all() -> list[Finding]:
     """All router, registration-wrapper, and enforcement reachability findings."""
     product_files = _product_py_files()
     trees: dict[Path, ast.Module] = {}
-    include_local: dict[str, set[str]] = {}
     called_local: dict[str, set[str]] = {}
     import_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
     reexport_map: dict[str, dict[str, set[tuple[str, str]]]] = {}
@@ -857,13 +1517,21 @@ def find_all() -> list[Finding]:
         tree = _parse(f)
         if tree is None:
             continue
-        rel = f.relative_to(_REPO).as_posix()
         trees[f] = tree
-        include_local[rel] = _include_router_arg_names(tree)
-        called_local[rel] = _called_local_names(tree)
-        import_map[rel] = _import_map(f, tree)
+    reachability = _build_reachability(trees)
+
+    for f, tree in trees.items():
+        rel = f.relative_to(_REPO).as_posix()
+        nodes = reachability[rel].nodes
+        called_local[rel] = _called_local_names(nodes)
+        import_map[rel] = _import_map(f, nodes)
         reexport_map[rel] = _reexport_map(f, tree)
-        referenced |= _reachability_reference_names(tree)
+        referenced |= _reachability_reference_names(nodes)
+
+    include_local: dict[str, set[str]] = {}
+    for f in trees:
+        rel = f.relative_to(_REPO).as_posix()
+        include_local[rel] = _include_router_arg_names(reachability[rel].nodes)
     routers = find_unmounted_routers(trees, include_local, import_map, reexport_map)
     wrappers = find_uncalled_registration_wrappers(
         trees, called_local, import_map, reexport_map
@@ -878,7 +1546,7 @@ def main(argv: list[str] | None = None) -> int:
         description=(
             "Flag stranded backend code: unmounted routers, uncalled route "
             "registration wrappers, and uncalled enforcement exports. "
-            "Informational-first; shrink-only baseline."
+            "Hard-blocking with a shrink-only baseline."
         ),
     )
     parser.add_argument(
@@ -991,8 +1659,8 @@ def main(argv: list[str] | None = None) -> int:
         print(
             f"\n{len(new_keys)} NEW unreachable Python-surface finding(s) since "
             f"baseline. See reachability_gate_py.py docstring for the "
-            f"fairness/CANNOT-catch policy. Informational-first: this does not "
-            f"red the build until a flip-to-blocking decision lands.",
+            f"fairness/CANNOT-catch policy. This is a hard CI gate; do not "
+            f"swallow this exit code.",
             file=sys.stderr,
         )
 

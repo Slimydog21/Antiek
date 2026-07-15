@@ -22,13 +22,7 @@ change rather than an architecture change.
 from __future__ import annotations
 
 from . import registry
-from .predicate import (
-    author_blocked_reason,
-    content_hash_blocked_reason,
-    corpus_blocked_reason,
-    title_blocked_reason,
-    url_blocked_reason,
-)
+from .predicate import document_blocked_reason, url_blocked_reason
 
 # Local import-free re-declarations — defined in __init__.py and
 # imported lazily inside class methods to avoid an import cycle
@@ -122,27 +116,22 @@ class RegistryBackedLegalGate:
         """
         from . import LegalGateVerdict
 
-        # Composed inline rather than calling `document_blocked_reason`
-        # because the latter consults the module-level registry; this
-        # class wants to consult the instance's registry-or-injected
-        # tuples for testability.
-        candidates = (
-            url_blocked_reason(url, banned_domains=self._banned_domains)
-            if url else None,
-            corpus_blocked_reason(source_corpus, self._banned_corpus_ids)
-            if source_corpus else None,
-            author_blocked_reason(author, self._banned_authors)
-            if author else None,
-            title_blocked_reason(title, self._banned_title_substrings)
-            if title else None,
-            content_hash_blocked_reason(content_hash, self._banned_content_hash_prefixes)
-            if content_hash else None,
+        reason = document_blocked_reason(
+            url=url,
+            author=author,
+            title=title,
+            source_corpus=source_corpus,
+            content_hash=content_hash,
+            banned_domains=self._banned_domains,
+            banned_corpus_ids=self._banned_corpus_ids,
+            banned_authors=self._banned_authors,
+            banned_title_substrings=self._banned_title_substrings,
+            banned_content_hash_prefixes=self._banned_content_hash_prefixes,
         )
-        for reason in candidates:
-            if reason:
-                return LegalGateVerdict(
-                    allowed=False, reason=reason, gate_kind="sql_where_registry"
-                )
+        if reason:
+            return LegalGateVerdict(
+                allowed=False, reason=reason, gate_kind="sql_where_registry"
+            )
         return LegalGateVerdict(
             allowed=True, reason=None, gate_kind="sql_where_registry"
         )

@@ -179,6 +179,11 @@ def document_blocked_reason(
     title: str | None = None,
     source_corpus: str | None = None,
     content_hash: str | None = None,
+    banned_domains: Iterable[str] = None,
+    banned_corpus_ids: Iterable[str] = None,
+    banned_authors: Iterable[str] = None,
+    banned_title_substrings: Iterable[str] = None,
+    banned_content_hash_prefixes: Iterable[str] = None,
 ) -> str | None:
     """Compose all matchers. Returns the FIRST matching reason in
     a stable order (domain → corpus → author → title → hash) so
@@ -188,23 +193,25 @@ def document_blocked_reason(
     skipped. A document with no provenance fields is allowed by
     default (the registry has nothing to match against)."""
     if url:
-        r = url_blocked_reason(url)
+        r = url_blocked_reason(url, banned_domains=banned_domains)
         if r:
             return r
     if source_corpus:
-        r = corpus_blocked_reason(source_corpus)
+        r = corpus_blocked_reason(source_corpus, banned_corpus_ids)
         if r:
             return r
     if author:
-        r = author_blocked_reason(author)
+        r = author_blocked_reason(author, banned_authors)
         if r:
             return r
     if title:
-        r = title_blocked_reason(title)
+        r = title_blocked_reason(title, banned_title_substrings)
         if r:
             return r
     if content_hash:
-        r = content_hash_blocked_reason(content_hash)
+        r = content_hash_blocked_reason(
+            content_hash, banned_content_hash_prefixes
+        )
         if r:
             return r
     return None

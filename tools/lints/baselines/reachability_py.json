@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-15T02:46:08.709249+00:00",
+  "generated_at": "2026-07-15T16:53:25.255955+00:00",
   "lint": "reachability_gate_py",
   "schema_version": 1,
   "violations": [
@@ -20,6 +20,12 @@
       "kind": "export:uncalled:revoke_async_execution_authorization",
       "line": 667,
       "path": "substrate/multimedia/execution_authorization.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:exclude_provider_executions",
+      "line": 31,
+      "path": "substrate/multimedia/local_provider_exclusion.py"
     },
     {
       "col": 0,
@@ -65,9 +71,21 @@
     },
     {
       "col": 0,
+      "kind": "export:uncalled:validate_settled_execution",
+      "line": 181,
+      "path": "substrate/multimedia/ship_cost_snapshot.py"
+    },
+    {
+      "col": 0,
       "kind": "export:uncalled:issue_visual_rights_decision",
       "line": 123,
       "path": "substrate/multimedia/visual_evidence_authority.py"
+    },
+    {
+      "col": 0,
+      "kind": "export:uncalled:is_author_claimed",
+      "line": 73,
+      "path": "substrate/payouts/contact_guard.py"
     },
     {
       "col": 0,
