@@ -14,6 +14,7 @@ ParagraphStatus = Literal[
     "current", "stale", "unsupported", "ungrounded", "legacy_unverified"
 ]
 MutationOrigin = Literal["generated", "manual", "ai_assisted", "legacy"]
+STRUCTURAL_REASONS = {"block_placed", "block_moved", "block_removed"}
 
 
 def paragraphs(prose_text: str) -> list[str]:
@@ -22,6 +23,27 @@ def paragraphs(prose_text: str) -> list[str]:
 
 def text_sha256(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def outline_fingerprint(con: Any, section_id: str) -> str:
+    rows = con.execute(
+        "SELECT outline_block_id, block_index, block_kind, provenance_kind, "
+        "node_id, source_block_kind, source_block_id, content, cluster_id, metadata "
+        "FROM outline_blocks WHERE section_id = ? "
+        "ORDER BY block_index, outline_block_id",
+        [section_id],
+    ).fetchall()
+    canonical = []
+    for row in rows:
+        metadata = row[9]
+        if isinstance(metadata, str):
+            try:
+                metadata = json.loads(metadata)
+            except json.JSONDecodeError as exc:
+                raise ValueError("outline block metadata is malformed") from exc
+        canonical.append([*row[:9], metadata])
+    encoded = json.dumps(canonical, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+    return text_sha256(encoded)
 
 
 def _aggregate(items: list[dict[str, Any]]) -> str:
@@ -41,13 +63,24 @@ def _aggregate(items: list[dict[str, Any]]) -> str:
     return "ungrounded"
 
 
-def _document(prose_text: str, items: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
+def _document(
+    prose_text: str,
+    items: list[dict[str, Any]],
+    *,
+    outline_sha256: str | None = None,
+    structural_reason: str | None = None,
+) -> dict[str, Any]:
+    document = {
         "schema_version": SCHEMA_VERSION,
         "prose_sha256": text_sha256(prose_text),
         "status": _aggregate(items),
         "paragraphs": {str(index): item for index, item in enumerate(items)},
     }
+    if outline_sha256 is not None:
+        document["outline_sha256"] = outline_sha256
+    if structural_reason is not None:
+        document["structural_reason"] = structural_reason
+    return document
 
 
 def generated_validity(
@@ -55,6 +88,7 @@ def generated_validity(
     provenance: dict[str, list[str]],
     *,
     unsupported_paragraphs: set[int] | None = None,
+    outline_sha256: str | None = None,
 ) -> dict[str, Any]:
     unsupported = unsupported_paragraphs or set()
     items: list[dict[str, Any]] = []
@@ -73,7 +107,7 @@ def generated_validity(
                 "origin": "generated",
             }
         )
-    return _document(prose_text, items)
+    return _document(prose_text, items, outline_sha256=outline_sha256)
 
 
 def read_validity(
@@ -96,6 +130,12 @@ def read_validity(
         raw_paragraphs = value.get("paragraphs")
         if not isinstance(raw_paragraphs, dict) or len(raw_paragraphs) != len(paras):
             raise ValueError("paragraph validity cardinality mismatch")
+        outline_sha256 = value.get("outline_sha256")
+        if outline_sha256 is not None and not re.fullmatch(r"[0-9a-f]{64}", outline_sha256):
+            raise ValueError("invalid outline fingerprint")
+        structural_reason = value.get("structural_reason")
+        if structural_reason is not None and structural_reason not in STRUCTURAL_REASONS:
+            raise ValueError("unknown structural invalidation reason")
         items: list[dict[str, Any]] = []
         for index, paragraph in enumerate(paras):
             item = raw_paragraphs.get(str(index))
@@ -112,7 +152,12 @@ def read_validity(
             items.append(
                 {"text_sha256": item["text_sha256"], "status": status, "origin": origin}
             )
-        return _document(prose, items)
+        return _document(
+            prose,
+            items,
+            outline_sha256=outline_sha256,
+            structural_reason=structural_reason,
+        )
     except (TypeError, ValueError, json.JSONDecodeError):
         return _document(
             prose,
@@ -181,4 +226,69 @@ def edited_provenance(
                 "origin": item_origin,
             }
         )
-    return (new_provenance or None), _document(new_prose, items)
+    return (new_provenance or None), _document(
+        new_prose,
+        items,
+        outline_sha256=old_validity.get("outline_sha256"),
+        structural_reason=old_validity.get("structural_reason"),
+    )
+
+
+def invalidate_structural_provenance(
+    con: Any,
+    section_id: str,
+    *,
+    reason: str,
+) -> bool:
+    row = con.execute(
+        "SELECT s.prose_text, s.prose_provenance, v.validity_json "
+        "FROM deliverable_sections s LEFT JOIN "
+        "deliverable_section_provenance_validity v ON v.section_id = s.section_id "
+        "WHERE s.section_id = ?",
+        [section_id],
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"section not found: {section_id}")
+    prose = row[0] or ""
+    provenance = _decode_provenance(row[1])
+    validity = read_validity(prose, provenance, row[2])
+    changed = False
+    next_provenance = dict(provenance or {})
+    items = []
+    for index, _paragraph in enumerate(paragraphs(prose)):
+        item = dict(validity["paragraphs"][str(index)])
+        if item["status"] == "current":
+            item["status"] = "stale"
+            next_provenance.pop(str(index), None)
+            changed = True
+        items.append(item)
+    document = _document(
+        prose,
+        items,
+        outline_sha256=outline_fingerprint(con, section_id),
+        structural_reason=reason,
+    )
+    con.execute(
+        "UPDATE deliverable_sections SET prose_provenance = ? WHERE section_id = ?",
+        [json.dumps(next_provenance) if next_provenance else None, section_id],
+    )
+    con.execute(
+        "INSERT INTO deliverable_section_provenance_validity "
+        "(section_id, validity_json, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) "
+        "ON CONFLICT (section_id) DO UPDATE SET validity_json = EXCLUDED.validity_json, "
+        "updated_at = EXCLUDED.updated_at",
+        [section_id, json.dumps(document, sort_keys=True)],
+    )
+    return changed
+
+
+def _decode_provenance(raw: Any) -> dict[str, list[str]] | None:
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, json.JSONDecodeError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    return {str(key): list(ids) for key, ids in value.items() if isinstance(ids, list)}

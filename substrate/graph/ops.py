@@ -613,6 +613,7 @@ def update_section_prose(
     from substrate.write.provenance_validity import (
         edited_provenance,
         generated_validity,
+        outline_fingerprint,
         read_validity,
     )
 
@@ -648,6 +649,7 @@ def update_section_prose(
             prose_text,
             next_provenance or {},
             unsupported_paragraphs=unsupported_paragraphs,
+            outline_sha256=outline_fingerprint(con, section_id),
         )
     con.execute(
         "UPDATE deliverable_sections SET prose_text = ?, prose_provenance = ?, "

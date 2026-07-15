@@ -37,6 +37,7 @@ from substrate.graph.ops import (
     insert_document,
     insert_node,
     insert_section,
+    update_section_prose,
 )
 from substrate.graph.schema import init_database_at_path
 from substrate.schemas.events import TYPED_PAYLOAD_ACTION_TYPES
@@ -58,6 +59,7 @@ from substrate.write.outline import (
     reparent_section,
 )
 from substrate.write.provenance import resolve_provenance
+from substrate.write.provenance_validity import read_validity
 
 
 @pytest.fixture()
@@ -376,6 +378,119 @@ def test_move_and_remove(db):
     con.close()
 
 
+def _ground_section(con, section_id, block_id):
+    update_section_prose(
+        con,
+        section_id=section_id,
+        prose_text="Grounded paragraph.",
+        prose_provenance={"0": [block_id]},
+    )
+
+
+def _section_provenance(con, section_id):
+    row = con.execute(
+        "SELECT s.prose_text, s.prose_provenance, v.validity_json "
+        "FROM deliverable_sections s LEFT JOIN "
+        "deliverable_section_provenance_validity v ON v.section_id=s.section_id "
+        "WHERE s.section_id=?",
+        [section_id],
+    ).fetchone()
+    provenance = json.loads(row[1]) if row[1] else None
+    return provenance, read_validity(row[0], provenance, row[2])
+
+
+def test_structural_mutations_invalidate_current_provenance(db):
+    with connect_write(db["path"], purpose="t") as con:
+        first = place_block(
+            con, section_id=db["section"], block_kind="insight",
+            provenance_kind="graph_node", node_id=db["node"], block_index=0,
+        )
+        _ground_section(con, db["section"], first)
+        place_user_authored_block(
+            con, section_id=db["section"], content="new input", block_index=1,
+        )
+        provenance, validity = _section_provenance(con, db["section"])
+        assert provenance is None
+        assert validity["paragraphs"]["0"]["status"] == "stale"
+        assert validity["structural_reason"] == "block_placed"
+
+
+def test_move_invalidates_source_and_destination(db):
+    with connect_write(db["path"], purpose="t") as con:
+        obid = place_block(
+            con, section_id=db["section"], block_kind="insight",
+            provenance_kind="graph_node", node_id=db["node"], block_index=0,
+        )
+        _ground_section(con, db["section"], obid)
+        _ground_section(con, db["subsection"], "other-block")
+        move_block(con, outline_block_id=obid, to_section_id=db["subsection"], to_index=2)
+        for section_id in (db["section"], db["subsection"]):
+            provenance, validity = _section_provenance(con, section_id)
+            assert provenance is None
+            assert validity["status"] == "stale"
+
+
+def test_identical_move_preserves_validity(db):
+    with connect_write(db["path"], purpose="t") as con:
+        obid = place_block(
+            con, section_id=db["section"], block_kind="insight",
+            provenance_kind="graph_node", node_id=db["node"], block_index=0,
+        )
+        _ground_section(con, db["section"], obid)
+        before = _section_provenance(con, db["section"])
+        move_block(con, outline_block_id=obid, to_section_id=db["section"], to_index=0)
+        assert _section_provenance(con, db["section"]) == before
+
+
+@pytest.mark.parametrize("mutation", ["reorder", "remove"])
+def test_reorder_and_remove_invalidate_referenced_provenance(db, mutation):
+    with connect_write(db["path"], purpose="t") as con:
+        obid = place_block(
+            con, section_id=db["section"], block_kind="insight",
+            provenance_kind="graph_node", node_id=db["node"], block_index=0,
+        )
+        _ground_section(con, db["section"], obid)
+        if mutation == "reorder":
+            move_block(con, outline_block_id=obid, to_section_id=db["section"], to_index=3)
+        else:
+            assert remove_block(con, outline_block_id=obid)
+        provenance, validity = _section_provenance(con, db["section"])
+        assert provenance is None
+        assert validity["status"] == "stale"
+        assert validity["structural_reason"] == f"block_{'moved' if mutation == 'reorder' else 'removed'}"
+
+
+def test_cross_deliverable_move_is_rejected(db):
+    with connect_write(db["path"], purpose="t") as con:
+        other_did = insert_deliverable(con, title="Other", deliverable_kind="research_memo")
+        other_section = insert_section(
+            con, deliverable_id=other_did, section_index=0, title="Other"
+        )
+        obid = place_user_authored_block(
+            con, section_id=db["section"], content="mine", block_index=0,
+        )
+        with pytest.raises(OutlineBlockError, match="across deliverables"):
+            move_block(con, outline_block_id=obid, to_section_id=other_section, to_index=0)
+        assert get_block(con, obid).section_id == db["section"]
+
+
+def test_invalidation_failure_rolls_back_block_placement(db, monkeypatch):
+    import substrate.write.outline_block as outline_module
+    import substrate.write.provenance_validity as validity_module
+
+    def fail(*_args, **_kwargs):
+        raise RuntimeError("injected invalidation failure")
+
+    monkeypatch.setattr(validity_module, "invalidate_structural_provenance", fail)
+    emitted = []
+    monkeypatch.setattr(outline_module, "emit_typed", lambda *_args, **_kwargs: emitted.append(True))
+    with connect_write(db["path"], purpose="t") as con:
+        with pytest.raises(RuntimeError, match="injected"):
+            place_user_authored_block(
+                con, section_id=db["section"], content="must roll back", block_index=0,
+            )
+        assert list_section_blocks(con, db["section"]) == []
+    assert emitted == []
 # ── M6 — migration ─────────────────────────────────────────────────
 
 

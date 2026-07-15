@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cycle 43: Structural provenance validity</title>
+  <style>
+    body { max-width: 960px; margin: 40px auto; padding: 0 24px; color: #1f2421; font: 16px/1.55 system-ui, sans-serif; }
+    h1, h2 { line-height: 1.2; } code { background: #eef1ee; padding: 2px 4px; }
+    table { width: 100%; border-collapse: collapse; } th, td { border: 1px solid #b8c0ba; padding: 8px; text-align: left; vertical-align: top; }
+  </style>
+</head>
+<body>
+  <h1>Cycle 43: structural provenance validity</h1>
+  <p><strong>Status:</strong> executable master sprint spec. <strong>Base:</strong> Cycle 42 reviewed commit <code>7a3d21632</code>.</p>
+
+  <h2>Problem</h2>
+  <p>Cycle 42 binds paragraph provenance to exact prose, but outline blocks can be placed, reordered, moved, or removed while the prose remains byte-identical. Generation consumes the ordered section block set. A paragraph must therefore not remain current after that generating input changes.</p>
+
+  <h2>Identity</h2>
+  <p>The structural fingerprint is SHA-256 over canonical compact JSON containing the section's ordered tuples of outline block ID, integer index, block kind, provenance kind, node ID, source kind, source ID, content, cluster ID, and canonical metadata. Ordering is by block index then outline block ID. This proves exact input identity, not semantic equivalence.</p>
+
+  <h2>Mutation contract</h2>
+  <table>
+    <tr><th>Operation</th><th>Required behavior</th></tr>
+    <tr><td>Place</td><td>Insert and invalidate the destination section in one explicit transaction. An ignored duplicate is a true no-op.</td></tr>
+    <tr><td>Move or reorder</td><td>Reject cross-deliverable ownership. Invalidate source and destination once each in the same transaction. An identical section and index is a true no-op.</td></tr>
+    <tr><td>Remove</td><td>Delete and invalidate the former section in one transaction. A missing block is a true no-op.</td></tr>
+    <tr><td>Invalidation</td><td>Change current paragraphs to stale, remove their current mappings, preserve prose and non-current statuses, record reason and post-mutation fingerprint.</td></tr>
+  </table>
+
+  <h2>Atomicity and events</h2>
+  <p>Each public structural primitive owns an explicit DuckDB transaction and rolls back both structural and validity writes on failure. The already-atomic composition import explicitly delegates transaction ownership to its enclosing transaction. Typed JSONL events are emitted only after commit. They are not atomically durable with DuckDB; a transactional outbox remains a separate future authority boundary.</p>
+
+  <h2>Acceptance</h2>
+  <ol>
+    <li>Fresh generation records the exact current structural fingerprint.</li>
+    <li>Place, intra-section reorder, cross-section move, and remove stale all previously current paragraphs in every affected section and expose no current source mapping.</li>
+    <li>Duplicate placement, identical move, and missing removal do not alter validity.</li>
+    <li>Cross-deliverable moves fail before mutation.</li>
+    <li>Injected invalidation failure rolls back the structural mutation and emits no event.</li>
+    <li>Legacy or malformed validity remains fail-closed.</li>
+  </ol>
+</body>
+</html>

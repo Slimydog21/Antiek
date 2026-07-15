@@ -377,6 +377,7 @@ def create_composition_draft(
                     "deliverable_id": deliverable_id,
                     "investigation_id": member.investigation_id,
                     "emit_event": False,
+                    "transaction_owner": False,
                 }
                 place_block(
                     con,
