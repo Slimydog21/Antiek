@@ -750,7 +750,13 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v32: Talk-to-book outputs and their operator judgments become immutable,
 #     owner-scoped events. The answer event carries the actual dispatch receipt;
 #     the judgment links it without mutating the original output.
-EVENT_SCHEMA_VERSION: int = 32
+# v33: NotDiamond Wave 1 SPR-02 — DISPATCH_CALL gains seven additive nd_*
+#     attribution fields so later advisory-routing hooks can join an ND
+#     recommendation to the dispatch outcome. No migration runner exists or is
+#     needed for the JSONL/Parquet event log: all fields are nullable/defaulted,
+#     and historical rows validate by schema-on-read defaults. ND remains
+#     advisory only; dispatch is still the authoritative router.
+EVENT_SCHEMA_VERSION: int = 33
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -820,6 +826,17 @@ class DispatchCallPayload(_PayloadBase):
     parent_run_id: str | None = None
     feature_label: str | None = None
     session_id: str | None = None
+    # ── NotDiamond advisory-routing attribution (ANT-ND Wave 1 SPR-02) ──
+    # Written by substrate.dispatch.nd_attribution staging when SPR-03's hook
+    # ships; read by observability/training waves. Optional/defaulted so pre-v32
+    # rows and non-ND dispatches validate unchanged. ND is never authoritative.
+    nd_session_id: str | None = None
+    nd_recommended_provider: str | None = None
+    nd_recommended_model: str | None = None
+    nd_tradeoff: str | None = None
+    nd_decision_latency_ms: int | None = Field(default=None, ge=0)
+    nd_bypassed: bool = False
+    nd_bypass_reason: str | None = None
 
 
 class WorkerIdentityPayload(_PayloadBase):
