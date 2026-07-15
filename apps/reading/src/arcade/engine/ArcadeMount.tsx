@@ -64,9 +64,17 @@ export function ArcadeMount({
 
     const onKeyDown = (e: KeyboardEvent) => {
       if (
-        [" ", "ArrowDown", "ArrowUp", "Enter", "Escape", "q", "w"].includes(
-          e.key,
-        )
+        [
+          " ",
+          "ArrowDown",
+          "ArrowUp",
+          "ArrowLeft",
+          "ArrowRight",
+          "Enter",
+          "Escape",
+          "q",
+          "w",
+        ].includes(e.key)
       ) {
         e.preventDefault();
       }
@@ -182,7 +190,8 @@ export function ArcadeMount({
       />
       <span id={instructionsId} className="sr-only">
         Focus the game, then use Space or Enter to start. Arrow keys control Ice
-        Fishing. Pointer or keyboard controls Paperclip Zombies. Escape exits.
+        Fishing; Left and Right control Clam Catcher. Pointer or keyboard
+        controls Paperclip Zombies. Escape exits.
       </span>
     </>
   );

@@ -1,9 +1,22 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { progressCartridge } from "./cartridgeFactory";
+import { createArcadeCartridge, progressCartridge } from "./cartridgeFactory";
 import type { Cartridge } from "./engine/types";
 
 describe("arcade cartridge factory helpers", () => {
+  it.each([
+    ["zombies", "paperclip-zombies"],
+    ["ice-fishing", "ice-fishing"],
+    ["clam-catcher", "clam-catcher"],
+  ] as const)(
+    "constructs the %s cartridge through the shared factory",
+    (kind, id) => {
+      const cart = createArcadeCartridge(kind);
+      expect(cart.id).toBe(id);
+      cart.teardown();
+    },
+  );
+
   it("tears down the cartridge after a successful simulation", () => {
     const teardown = vi.fn();
     const cart: Cartridge = {

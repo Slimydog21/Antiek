@@ -37,6 +37,9 @@ describe("ArcadeMount input and accessibility boundary", () => {
       canvas.getAttribute("aria-describedby") ?? "",
     );
     expect(description?.textContent).toMatch(/Space or Enter to start/);
+    expect(description?.textContent).toMatch(
+      /Left and Right control Clam Catcher/,
+    );
 
     fireEvent.keyDown(window, { key: "Enter" });
     expect(cart.update).not.toHaveBeenCalled();
@@ -47,6 +50,12 @@ describe("ArcadeMount input and accessibility boundary", () => {
     expect(
       (cart.update as ReturnType<typeof vi.fn>).mock.calls[0]?.[1].keysPressed,
     ).toEqual(new Set(["Enter"]));
+
+    const arrowPropagated = fireEvent.keyDown(canvas, { key: "ArrowLeft" });
+    expect(arrowPropagated).toBe(false);
+    expect(
+      (cart.update as ReturnType<typeof vi.fn>).mock.calls[1]?.[1].keysPressed,
+    ).toEqual(new Set(["ArrowLeft"]));
   });
 
   it("scales responsive pointer coordinates into logical canvas pixels", () => {

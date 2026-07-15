@@ -65,7 +65,7 @@
 
 .research-wait-arcade__cartridges {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: calc(var(--spacing) * 2);
   margin-top: calc(var(--spacing) * 3);
 }
@@ -154,6 +154,12 @@
   outline-offset: 2px;
 }
 
+@media (max-width: 720px) {
+  .research-wait-arcade__cartridges {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 420px) {
   .research-wait-arcade__rail {
     grid-template-columns: auto minmax(0, 1fr);
@@ -164,10 +170,6 @@
   }
 
   .research-wait-arcade__drawer {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .research-wait-arcade__cartridges {
     grid-template-columns: minmax(0, 1fr);
   }
 
