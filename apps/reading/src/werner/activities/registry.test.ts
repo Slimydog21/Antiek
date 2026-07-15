@@ -8,6 +8,7 @@ import {
   listActivities,
   researchLensActivity,
   registerActivity,
+  writingNibActivity,
   type CursorInstrumentProps,
 } from "./index";
 import { WernerFishingLayer } from "../WernerFishingLayer";
@@ -38,6 +39,7 @@ describe("station activity registry", () => {
     expect(listActivities()).toEqual([
       iceFishingActivity,
       researchLensActivity,
+      writingNibActivity,
     ]);
     expect(getDefaultActivity()).toBe(iceFishingActivity);
   });
@@ -113,6 +115,27 @@ describe("station activity registry", () => {
 
     it("reads only the cursor seam", () => {
       expect(researchLensActivity.instrument.reads).toEqual([
+        "live",
+        "pointerIdle",
+        "tabHidden",
+      ]);
+    });
+  });
+
+  describe("writing-nib activity shape", () => {
+    it("declares the writing route policy and no mascot ambient", () => {
+      expect(writingNibActivity.unlock).toEqual({
+        kind: "route",
+        policyId: "writing-work",
+      });
+      expect(writingNibActivity.ambient).toEqual({
+        activeClass: null,
+        idleClass: null,
+      });
+    });
+
+    it("reads only the cursor seam", () => {
+      expect(writingNibActivity.instrument.reads).toEqual([
         "live",
         "pointerIdle",
         "tabHidden",

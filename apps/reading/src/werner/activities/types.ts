@@ -21,9 +21,9 @@ import type { ComponentType } from "react";
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-/** The catalogued activities. Only ice-fishing exists today; the arcade
- *  (SPR-05) and the easter egg (SPR-04) widen this union later. */
-export type ActivityId = "ice-fishing" | "research-lens";
+/** The catalogued fixed-station activities. The arcade (SPR-05) and easter egg
+ *  (SPR-04) may widen this union later without gaining movement authority. */
+export type ActivityId = "ice-fishing" | "research-lens" | "writing-nib";
 
 /** The useMouseFollow read-seam fields an instrument is allowed to consume.
  *  Note what is ABSENT: any read of the penguin's own whereabouts. An
@@ -57,7 +57,10 @@ export interface CursorInstrument {
  */
 export type ActivityUnlock =
   | { readonly kind: "default" }
-  | { readonly kind: "route"; readonly policyId: "knowledge-work" }
+  | {
+      readonly kind: "route";
+      readonly policyId: "knowledge-work" | "writing-work";
+    }
   | { readonly kind: "easter-egg"; readonly sequenceId: string };
 
 /**
