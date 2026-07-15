@@ -102,6 +102,13 @@ _ALLOWED_FILES: frozenset[str] = frozenset(
         "substrate/books/serve.py",
         "substrate/books/serve_guard.py",
         "substrate/books/takedown.py",
+        # EPUB publication performs one internal republish identity check:
+        # it compares the candidate's sanitized body with the existing row
+        # before any rights/chunk/asset write. The body is never returned,
+        # logged, or exposed by this writer; the check rejects ID shadows and
+        # tampered rows. Public and owner reads still go only through the
+        # guarded serve paths above.
+        "substrate/book_import/publish.py",
         "substrate/research_bridge/extractor.py",
         "substrate/research_bridge/versioning.py",
         # The standing corpus audit opens the DB READ-ONLY (connect_read, never
