@@ -99,7 +99,10 @@ export default function BrainstormStation() {
         },
       ]}
     >
-      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
+      {/* SceneChrome owns Brainstorm's tested glass contrast surface. Keep the
+          route canvas transparent so its route-scoped idea coast remains
+          perceptible; panels and interactive cards retain their own fills. */}
+      <main className="h-full overflow-y-auto bg-transparent">
         {selected ? (
           <ParkedQuestion
             question={selected}
