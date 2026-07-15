@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import stat
 from pathlib import Path
@@ -466,6 +467,45 @@ class TestListeningProgressStore:
         os.chmod(corrupt, 0o600)
         identity = _audio_identity()
         with pytest.raises(ListeningProgressIntegrityConflict, match="envelope_invalid"):
+            store.read(
+                "asset-1",
+                owner_id="owner-a",
+                revision_id="rev-1",
+                audio_identity=identity,
+            )
+
+    def test_nested_owner_digest_must_match_envelope_and_account(
+        self, tmp_path: Path
+    ) -> None:
+        store = ListeningProgressStore(tmp_path)
+        identity = _audio_identity()
+        store.checkpoint(
+            "asset-1",
+            ListeningProgressCheckpointRequest(
+                revision_id="rev-1",
+                position_milliseconds=50_000,
+                session_id=mint_session_id(),
+                sequence=1,
+            ),
+            owner_id="owner-a",
+            audio_identity=identity,
+        )
+        owner_digest = hashlib.sha256(b"owner-a").hexdigest()
+        progress_file = (
+            tmp_path
+            / "accounts"
+            / owner_digest
+            / "listening-progress"
+            / "asset-1.json"
+        )
+        payload = json.loads(progress_file.read_text())
+        payload["progress"]["owner_identity_digest"] = hashlib.sha256(
+            b"owner-b"
+        ).hexdigest()
+        progress_file.write_text(json.dumps(payload))
+        os.chmod(progress_file, 0o600)
+
+        with pytest.raises(ListeningProgressIntegrityConflict, match="identity_conflict"):
             store.read(
                 "asset-1",
                 owner_id="owner-a",

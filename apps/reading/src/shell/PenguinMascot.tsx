@@ -8,8 +8,11 @@ import {
   createWernerStage,
   EmoteView,
   installChoreography,
+  installReactionBus,
   installTargetChoreography,
+  notifyPointerIdleEdge,
   useMouseFollow,
+  useStationActivity,
   wernerIceFishingCursor,
   type EmoteKind,
   type StageHost,
@@ -105,7 +108,12 @@ function initialMascotPos(): { x: number; y: number } {
   const vw = typeof window !== "undefined" ? window.innerWidth : 1440;
   const vh = typeof window !== "undefined" ? window.innerHeight : 900;
   return clampRectToViewport(
-    { x: 88, y: vh - MASCOT_SIZE - 96, width: MASCOT_SIZE, height: MASCOT_SIZE },
+    {
+      x: 88,
+      y: vh - MASCOT_SIZE - 96,
+      width: MASCOT_SIZE,
+      height: MASCOT_SIZE,
+    },
     { width: vw, height: vh },
   );
 }
@@ -113,6 +121,14 @@ function initialMascotPos(): { x: number; y: number } {
 export function PenguinMascot() {
   const navigate = useNavigate();
   const reduceMotion = usePrefersReducedMotion();
+
+  // The active (default) station activity. With one registered activity
+  // (ice-fishing) this is always it; SPR-03 will make "active" switchable. The
+  // mascot renders THIS activity's ambient class instead of a hard-coded string
+  // — an activity can toggle CSS + mount a cursor-instrument, but has no access
+  // to Werner's position (see src/werner/activities/types.ts). Stable identity
+  // (the frozen registry singleton), so it is safe in effect deps.
+  const activeActivity = useStationActivity();
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   // The bob wrapper (the span carrying the idle wander + the walk animation
@@ -284,14 +300,24 @@ export function PenguinMascot() {
   // WERNER-ICE flag is off (no ice-fishing experience at all — no bait, no line,
   // so nothing to fish).
   useEffect(() => {
-    if (reduceMotion || !wernerIceFishingCursor || typeof window === "undefined")
+    const idleClass = activeActivity.ambient.idleClass;
+    if (
+      reduceMotion ||
+      !wernerIceFishingCursor ||
+      !idleClass ||
+      typeof window === "undefined"
+    )
       return;
 
+    // The idle-gag class comes from the active activity (ice-fishing's
+    // idleClass is the `werner-fishing` gag), not a hard-coded literal — so an
+    // activity owns its own ambient, and adding one is a registration, not a
+    // mascot edit.
     let fishing = false;
     const setFishingLoop = (on: boolean) => {
       if (on === fishing) return;
       fishing = on;
-      bobRef.current?.classList.toggle("werner-fishing", on);
+      bobRef.current?.classList.toggle(idleClass, on);
     };
 
     const tick = () => {
@@ -315,7 +341,50 @@ export function PenguinMascot() {
       // Drop the gag class on teardown so a no-rAF state (unmount, or a flip
       // into reduced motion where this effect early-returns) never strands
       // Werner mid-cast with the loop class on.
-      bobRef.current?.classList.remove("werner-fishing");
+      bobRef.current?.classList.remove(idleClass);
+    };
+  }, [reduceMotion, follow, activeActivity]);
+
+  // Product-experience idle is independent of the selected station activity:
+  // the lens, nib, and resonance modes can all let Werner fall asleep. This
+  // loop reads the existing pointer seam and emits only the active→idle edge;
+  // it owns no position or cursor writes and does not run under reduced motion.
+  useEffect(() => {
+    if (reduceMotion || typeof window === "undefined") return;
+    const canReactToIdle = (reading: ReturnType<typeof follow.read>) =>
+      !dragStart.current &&
+      !roamPaused.current &&
+      !returningHome.current &&
+      !reading.tabHidden;
+    // Pointer history is the edge authority. Drag/excursion/visibility are
+    // eligibility gates only: reopening one while an already-idle pointer is
+    // unchanged must never impersonate a fresh active→idle transition.
+    let wasPointerIdle = follow.read().pointerIdle;
+    let raf = 0;
+    const tick = () => {
+      const reading = follow.read();
+      notifyPointerIdleEdge(
+        wasPointerIdle,
+        reading.pointerIdle,
+        canReactToIdle(reading),
+      );
+      wasPointerIdle = reading.pointerIdle;
+      raf = window.requestAnimationFrame(tick);
+    };
+    // Browsers pause rAF in hidden tabs. Re-baseline on each visibility edge
+    // so time elapsed while asleep cannot surface as an active→idle edge on
+    // the first frame after the tab returns.
+    const onVisibilityChange = () => {
+      wasPointerIdle = follow.read().pointerIdle;
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    // Baseline from reality. No movement history reads idle, but that is a
+    // level, not an active→idle edge, and must not animate on mount or after a
+    // reduced-motion preference flip clears pointer history.
+    raf = window.requestAnimationFrame(tick);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.cancelAnimationFrame(raf);
     };
   }, [reduceMotion, follow]);
 
@@ -392,9 +461,11 @@ export function PenguinMascot() {
     // hotkey, via the shared event) and any opt-in `data-werner-target` button.
     const teardownChoreo = installChoreography(stage);
     const teardownTarget = installTargetChoreography(stage);
+    const teardownReactions = installReactionBus(stage);
     return () => {
       teardownChoreo();
       teardownTarget();
+      teardownReactions();
       stage.dispose();
       stageRef.current = null;
       if (returnTimer.current !== null) {
@@ -440,27 +511,31 @@ export function PenguinMascot() {
 
   // ── Drag (pointer-capture, clamped — reuses the panel clamp rule). ──
   // A drag RE-STATIONS Werner: the station home moves to where he is dropped.
-  const onPointerDown = useCallback((e: React.PointerEvent) => {
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragStart.current = { x: e.clientX, y: e.clientY };
-    moved.current = false;
-    // Hand the position to the pointer: kill any in-flight stroll transition +
-    // gait so the drag tracks the cursor 1:1 instead of easing behind it.
-    if (buttonRef.current) buttonRef.current.style.transition = "";
-    if (bobRef.current) {
-      // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
-      // `penguin-mascot-wander`. A drag ends any stroll, so swap back to the
-      // wander (gated on reduceMotion so a reduced-motion drag stays still).
-      bobRef.current.classList.remove("werner-waddle");
-      bobRef.current.classList.remove("werner-step");
-      if (!reduceMotion) bobRef.current.classList.add("penguin-mascot-wander");
-    }
-    if (returnTimer.current !== null) {
-      window.clearTimeout(returnTimer.current);
-      returnTimer.current = null;
-    }
-    returningHome.current = false;
-  }, [reduceMotion]);
+  const onPointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      dragStart.current = { x: e.clientX, y: e.clientY };
+      moved.current = false;
+      // Hand the position to the pointer: kill any in-flight stroll transition +
+      // gait so the drag tracks the cursor 1:1 instead of easing behind it.
+      if (buttonRef.current) buttonRef.current.style.transition = "";
+      if (bobRef.current) {
+        // Invariant: `werner-waddle` ⟺ actively strolling; otherwise the idle
+        // `penguin-mascot-wander`. A drag ends any stroll, so swap back to the
+        // wander (gated on reduceMotion so a reduced-motion drag stays still).
+        bobRef.current.classList.remove("werner-waddle");
+        bobRef.current.classList.remove("werner-step");
+        if (!reduceMotion)
+          bobRef.current.classList.add("penguin-mascot-wander");
+      }
+      if (returnTimer.current !== null) {
+        window.clearTimeout(returnTimer.current);
+        returnTimer.current = null;
+      }
+      returningHome.current = false;
+    },
+    [reduceMotion],
+  );
 
   const onPointerMove = useCallback(
     (e: React.PointerEvent) => {
@@ -544,6 +619,7 @@ export function PenguinMascot() {
       ref={buttonRef}
       type="button"
       data-testid="penguin-mascot"
+      data-werner-emote={emote ?? "none"}
       aria-label="Project — click to float the project tree, double-click to open"
       title="Project · click to float · double-click to open · drag to move"
       onPointerDown={onPointerDown}
