@@ -2,6 +2,9 @@ import type { CustomProjectConfig } from "lost-pixel";
 
 const scopedStoryId = process.env.LOSTPIXEL_STORY_ID;
 const scopedStoryIds = scopedStoryId?.split(",").filter(Boolean) ?? [];
+const includesNarrowIceHoleProof = scopedStoryIds.some((id) =>
+  id.startsWith("read-werner-ice-hole--"),
+);
 
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
@@ -44,7 +47,9 @@ export const config: CustomProjectConfig = {
      * workspace shell, so a screenshot at 600px would only show the
      * splash.
      */
-    breakpoints: [1280, 1024, 768],
+    breakpoints: includesNarrowIceHoleProof
+      ? [1280, 1024, 768, 375]
+      : [1280, 1024, 768],
   },
   imagePathBaseline: ".lostpixel/baseline",
   imagePathCurrent: ".lostpixel/current",

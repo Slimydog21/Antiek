@@ -34,7 +34,7 @@ describe("ArcadeMount input and accessibility boundary", () => {
 
     expect(canvas.getAttribute("tabindex")).toBe("0");
     const description = document.getElementById(
-      canvas.getAttribute("aria-describedby") ?? "",
+      canvas.getAttribute("aria-describedby")?.split(" ")[0] ?? "",
     );
     expect(description?.textContent).toMatch(/Space or Enter to start/);
 
@@ -47,6 +47,35 @@ describe("ArcadeMount input and accessibility boundary", () => {
     expect(
       (cart.update as ReturnType<typeof vi.fn>).mock.calls[0]?.[1].keysPressed,
     ).toEqual(new Set(["Enter"]));
+  });
+
+  it("preserves aspect ratio, accepts exact instructions, and announces state changes", () => {
+    let status = "Ready. Score 0.";
+    const cart = cartridge();
+    cart.getAccessibleStatus = () => status;
+    cart.update = vi.fn(() => {
+      status = "Fishing. Score 1.";
+    });
+    render(
+      <ArcadeMount
+        cartridge={cart}
+        width={480}
+        height={300}
+        reducedMotion
+        instructions="Drop with Arrow Down. Reel with Arrow Up."
+      />,
+    );
+    const canvas = screen.getByRole("application", { name: "Test cartridge" });
+    expect(canvas.style.width).toBe("480px");
+    expect(canvas.style.maxWidth).toBe("100%");
+    expect(canvas.style.height).toBe("auto");
+    expect(
+      screen.getByText("Drop with Arrow Down. Reel with Arrow Up."),
+    ).toBeTruthy();
+    expect(screen.getByText("Ready. Score 0.")).toBeTruthy();
+
+    fireEvent.keyDown(canvas, { key: "Enter" });
+    expect(screen.getByText("Fishing. Score 1.")).toBeTruthy();
   });
 
   it("scales responsive pointer coordinates into logical canvas pixels", () => {

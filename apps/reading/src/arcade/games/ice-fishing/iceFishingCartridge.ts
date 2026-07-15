@@ -5,11 +5,13 @@ import {
   stepIceFishing,
   type IceFishingState,
 } from "./logic";
+import type { IceFishingBackdropRef } from "./iceFishingBackdrop";
 
 /** Club Penguin–inspired ice fishing cartridge. */
 export function createIceFishingCartridge(options?: {
   reducedMotion?: boolean;
   lives?: number;
+  backdrop?: IceFishingBackdropRef;
 }): Cartridge {
   let state: IceFishingState | null = null;
   const reduced = Boolean(options?.reducedMotion);
@@ -55,17 +57,22 @@ export function createIceFishingCartridge(options?: {
       if (!state) return;
       const s = state;
       c2d.clearRect(0, 0, ctx.width, ctx.height);
-      // Ice
-      c2d.fillStyle = surface.day[4];
-      c2d.fillRect(0, 0, ctx.width, 48);
-      // Water
-      c2d.fillStyle = surface.day[6];
-      c2d.fillRect(0, 48, ctx.width, ctx.height - 48);
-      // Hole
-      c2d.fillStyle = surface.day[9];
-      c2d.beginPath();
-      c2d.ellipse(ctx.width / 2, 52, 40, 10, 0, 0, Math.PI * 2);
-      c2d.fill();
+      const backdrop = options?.backdrop?.current;
+      if (backdrop) {
+        // Crop the tall concept plate so its painted hole and waterline align
+        // with the cartridge's long-standing 48–52 px logical geometry.
+        c2d.drawImage(backdrop, 0, 50, 960, 550, 0, 0, ctx.width, ctx.height);
+      } else {
+        // Complete procedural fallback: play never depends on image decode.
+        c2d.fillStyle = surface.day[4];
+        c2d.fillRect(0, 0, ctx.width, 48);
+        c2d.fillStyle = surface.day[6];
+        c2d.fillRect(0, 48, ctx.width, ctx.height - 48);
+        c2d.fillStyle = surface.day[9];
+        c2d.beginPath();
+        c2d.ellipse(ctx.width / 2, 52, 40, 10, 0, 0, Math.PI * 2);
+        c2d.fill();
+      }
       // Line + hook
       c2d.strokeStyle = sun.base;
       c2d.lineWidth = 2;
@@ -88,6 +95,13 @@ export function createIceFishingCartridge(options?: {
         c2d.fillRect(f.x, f.y, f.w, f.h);
       }
       // HUD
+      c2d.globalAlpha = 0.78;
+      c2d.fillStyle = surface.day[0];
+      c2d.fillRect(4, 4, 68, 34);
+      if (s.phase === "ready" || s.phase === "gameover") {
+        c2d.fillRect(4, ctx.height - 28, 174, 20);
+      }
+      c2d.globalAlpha = 1;
       c2d.fillStyle = day.text;
       c2d.font = "12px system-ui, sans-serif";
       c2d.fillText(`Score ${s.score}`, 8, 16);
@@ -104,5 +118,20 @@ export function createIceFishingCartridge(options?: {
     },
     getScore: () => state?.score ?? 0,
     isGameOver: () => state?.phase === "gameover",
+    getAccessibleStatus: () => {
+      if (!state) return "Ice Fishing is loading.";
+      const phase =
+        state.phase === "ready"
+          ? "Ready"
+          : state.phase === "gameover"
+            ? "Game over"
+            : "Fishing";
+      const line = state.dropping
+        ? "Line casting"
+        : state.reeling
+          ? "Line reeling"
+          : "Line ready";
+      return `${phase}. ${line}. Score ${state.score}. Lives ${state.lives}.`;
+    },
   };
 }

@@ -1,0 +1,97 @@
+.werner-ice-hole {
+  position: relative;
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: calc(var(--spacing) * 3);
+  min-width: 0;
+  overflow: hidden;
+  padding: calc(var(--spacing) * 3);
+  border: var(--edge) solid var(--border);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--card) 86%, var(--sun-light));
+  box-shadow: var(--shadow-z1);
+}
+
+.werner-ice-hole__werner {
+  width: 76px;
+  height: 76px;
+  object-fit: contain;
+  align-self: end;
+}
+
+.werner-ice-hole__copy {
+  min-width: 0;
+}
+.werner-ice-hole__copy h2 {
+  margin: 0;
+  color: var(--text);
+  font-family: ui-serif, Georgia, serif;
+  font-size: 16px;
+  font-weight: 650;
+}
+.werner-ice-hole__copy p {
+  margin: calc(var(--spacing) * 1) 0 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+.werner-ice-hole__copy .werner-ice-hole__eyebrow {
+  margin: 0 0 calc(var(--spacing) * 1);
+  color: var(--sun-deep);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.werner-ice-hole__game {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.werner-ice-hole__game-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(var(--spacing) * 2);
+  margin-bottom: calc(var(--spacing) * 2);
+}
+.werner-ice-hole__game-head p,
+.werner-ice-hole__loading {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+}
+.werner-ice-hole__canvas-shell {
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+  padding: calc(var(--spacing) * 2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--inset);
+}
+.werner-ice-hole button:focus-visible,
+.werner-ice-hole canvas:focus-visible {
+  outline: var(--edge) solid var(--sun-deep);
+  outline-offset: 2px;
+}
+
+@media (max-width: 560px) {
+  .werner-ice-hole {
+    grid-template-columns: 64px minmax(0, 1fr);
+  }
+  .werner-ice-hole > button {
+    grid-column: 1 / -1;
+    justify-self: stretch;
+  }
+  .werner-ice-hole__werner {
+    width: 64px;
+    height: 64px;
+  }
+  .werner-ice-hole__game-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

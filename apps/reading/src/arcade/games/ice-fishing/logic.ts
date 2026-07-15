@@ -143,8 +143,11 @@ export function stepIceFishing(
   rng: () => number,
 ): IceFishingState {
   if (state.phase === "ready") {
-    if (input.start || input.drop) return startRound(state);
-    return state;
+    if (!input.start && !input.drop) return state;
+    state = startRound(state);
+    // A cast is an action, not a second confirmation step. Enter alone still
+    // starts a quiet round; pointer, Space, and Arrow Down start and cast.
+    if (!input.drop) return state;
   }
   if (state.phase === "gameover") {
     if (input.start) return startRound(state);
@@ -231,9 +234,12 @@ export function stepIceFishing(
   }
   next.fishes = remaining;
 
-  // Reduced-motion simplified path: click/start awards a point occasionally
+  // Reduced-motion keeps every encounter discrete: no involuntary swimming,
+  // but each explicit drop still resolves a real fish-or-boot outcome.
   if (next.reducedMotion && input.drop && !caught) {
-    next.score += 1;
+    const encounter = rng();
+    if (encounter < 0.15) next.lives -= 1;
+    else next.score += encounter < 0.55 ? 1 : 3;
   }
 
   if (next.lives <= 0) {

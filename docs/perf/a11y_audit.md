@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-05-22T18:21:45.880Z
-**Stories audited:** 38
+**Run:** 2026-07-15T02:44:47.573Z
+**Stories audited:** 52
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -45,6 +45,20 @@
 | `design-moodboard--typography` | 0 | — | — |
 | `design-moodboard--outlined-card` | 0 | — | — |
 | `brand-werner-animations--all-poses` | 0 | — | — |
+| `brand-werner-dusk-gaze-spr-29--fidelity-plate` | 0 | — | — |
+| `brand-werner-night-watch-spr-30--fidelity-plate` | 0 | — | — |
+| `workstation-write-field-kit--open-at-tablet-width` | 0 | — | — |
+| `brand-werner-igloomark-spr-06--on-rail-button` | 0 | — | — |
+| `navigation-appshell--empty` | 0 | — | — |
+| `shell-navrail-spr-04--bottom-rail` | 0 | — | — |
+| `shell-research-observatory-atmosphere-spr-25--html-authority-plate` | 0 | — | — |
+| `shell-research-observatory-atmosphere-spr-25--scene-chrome-integration` | 0 | — | — |
+| `shell-write-scriptorium-atmosphere-spr-26--html-authority-plate` | 0 | — | — |
+| `shell-write-scriptorium-atmosphere-spr-26--scene-chrome-integration` | 0 | — | — |
+| `shell-speak-listening-room-atmosphere-spr-27--html-authority-plate` | 0 | — | — |
+| `shell-speak-listening-room-atmosphere-spr-27--scene-chrome-integration` | 0 | — | — |
+| `shell-read-glacial-cloister-atmosphere-spr-28--html-authority-plate` | 0 | — | — |
+| `shell-read-glacial-cloister-atmosphere-spr-28--scene-chrome-integration` | 0 | — | — |
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |

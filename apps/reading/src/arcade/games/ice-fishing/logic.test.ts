@@ -10,7 +10,7 @@ import {
 } from "./logic";
 
 describe("ice fishing pure logic", () => {
-  it("starts a round from ready on drop/start", () => {
+  it("starts and casts from ready in the same explicit drop action", () => {
     const s0 = createIceFishingState({ width: 200, height: 160 });
     expect(s0.phase).toBe("ready");
     const s1 = stepIceFishing(
@@ -20,6 +20,37 @@ describe("ice fishing pure logic", () => {
       createSeededRng(1),
     );
     expect(s1.phase).toBe("playing");
+    expect(s1.dropping).toBe(true);
+    expect(s1.hookVy).toBe(140);
+  });
+
+  it("starts a quiet round from ready when Enter is pressed alone", () => {
+    const s0 = createIceFishingState({ width: 200, height: 160 });
+    const s1 = stepIceFishing(
+      s0,
+      1 / 60,
+      { aimX: null, drop: false, reel: false, start: true },
+      createSeededRng(1),
+    );
+    expect(s1.phase).toBe("playing");
+    expect(s1.dropping).toBe(false);
+    expect(s1.hookY).toBe(36);
+  });
+
+  it("starts and resolves the first reduced-motion cast in one action", () => {
+    const s0 = createIceFishingState({
+      width: 200,
+      height: 160,
+      reducedMotion: true,
+    });
+    const s1 = stepIceFishing(
+      s0,
+      1 / 60,
+      { aimX: 100, drop: true, reel: false, start: false },
+      () => 0.8,
+    );
+    expect(s1.phase).toBe("playing");
+    expect(s1.score).toBe(3);
   });
 
   it("spawns fish deterministically for a seed", () => {
@@ -116,7 +147,7 @@ describe("ice fishing pure logic", () => {
     expect(s.phase).toBe("gameover");
   });
 
-  it("reduced-motion path awards on drop without requiring spawn", () => {
+  it("reduced-motion path resolves fish and boot encounters without involuntary spawn", () => {
     let s = startRound(
       createIceFishingState({
         width: 200,
@@ -128,9 +159,19 @@ describe("ice fishing pure logic", () => {
       s,
       1 / 60,
       { aimX: 100, drop: true, reel: false, start: false },
+      () => 0.8,
+    );
+    expect(s.score).toBe(3);
+    expect(s.fishes).toEqual([]);
+
+    s = stepIceFishing(
+      s,
+      1 / 60,
+      { aimX: 100, drop: true, reel: false, start: false },
       () => 0.1,
     );
-    expect(s.score).toBeGreaterThanOrEqual(1);
+    expect(s.lives).toBe(2);
+    expect(s.score).toBe(3);
   });
 
   it("does not add the reduced-motion miss bonus to a real catch", () => {

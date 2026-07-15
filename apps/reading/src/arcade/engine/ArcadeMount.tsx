@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 
 import { createArcadeLoop } from "./loop";
 import { createSeededRng } from "./rng";
@@ -15,6 +15,8 @@ export interface ArcadeMountProps {
   redrawToken?: number;
   /** data-testid for shell / wait-host assertions */
   testId?: string;
+  /** Cartridge-specific controls; becomes the canvas description. */
+  instructions?: string;
 }
 
 /**
@@ -30,11 +32,14 @@ export function ArcadeMount({
   className,
   redrawToken,
   testId = "arcade-mount",
+  instructions = "Focus the game, then use Space or Enter to start. Escape exits.",
 }: ArcadeMountProps) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const renderNowRef = useRef<(() => void) | null>(null);
   const bestRef = useRef(0);
   const instructionsId = useId();
+  const statusId = useId();
+  const [accessibleStatus, setAccessibleStatus] = useState("");
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -141,6 +146,7 @@ export function ArcadeMount({
       getInput: sample,
       getCtx2d: () => c2d,
       reducedMotion,
+      onAccessibleStatusChange: setAccessibleStatus,
     });
     loop.start();
 
@@ -179,20 +185,27 @@ export function ArcadeMount({
         role="application"
         tabIndex={0}
         aria-label={cartridge.meta.title}
-        aria-describedby={instructionsId}
+        aria-describedby={`${instructionsId} ${statusId}`}
         style={{
           display: "block",
           width,
-          height,
           maxWidth: "100%",
+          height: "auto",
           touchAction: "none",
           borderRadius: 8,
           background: "var(--card-soft)",
         }}
       />
       <span id={instructionsId} className="sr-only">
-        Focus the game, then use Space or Enter to start. Arrow keys control Ice
-        Fishing. Pointer or keyboard controls Paperclip Zombies. Escape exits.
+        {instructions}
+      </span>
+      <span
+        id={statusId}
+        className="sr-only"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        {accessibleStatus}
       </span>
     </>
   );
