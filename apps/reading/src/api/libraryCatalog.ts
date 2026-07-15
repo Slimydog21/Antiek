@@ -1,5 +1,5 @@
 /**
- * Library catalog client (PR #797 /library contract).
+ * Library catalog client (PR 797 /library contract).
  *
  * GET /library?filter=&search=&page=&page_size=
  *
