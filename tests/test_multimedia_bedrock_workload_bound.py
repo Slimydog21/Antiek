@@ -7,7 +7,6 @@ import pytest
 
 from substrate.multimedia.bedrock_batch_adapter import (
     BedrockBatchError,
-    BedrockBatchRecoveryAdapter,
     BedrockBatchRequest,
 )
 from substrate.multimedia.bedrock_workload_bound import (
@@ -15,7 +14,11 @@ from substrate.multimedia.bedrock_workload_bound import (
     BedrockBatchRateSnapshot,
     materialize_bedrock_batch_workload,
 )
-from tests.test_multimedia_bedrock_batch_adapter import StatefulBedrock, _authority
+from tests.test_multimedia_bedrock_batch_adapter import (
+    BedrockBatchRecoveryAdapter,
+    StatefulBedrock,
+    _authority,
+)
 
 
 def _profile(**changes: object) -> BedrockBatchModelProfile:
@@ -265,7 +268,7 @@ def test_bound_request_drives_hold_and_all_adapter_identities(tmp_path) -> None:
     assert hold.projected_max_cents == bound.reservation_cents
     assert hold.intent.projection_digest == bound.digest
     assert hold.intent.rate_snapshot == bound.canonical_json
-    assert submission.intent.adapter_contract.endswith("workload-bound-v1")
+    assert submission.intent.adapter_contract.endswith("s3-version-publication-v2")
     assert "workload_bound" not in submission.intent.create_request_json
 
     _, changed = materialize_bedrock_batch_workload(

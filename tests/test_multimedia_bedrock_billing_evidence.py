@@ -6,9 +6,6 @@ import sqlite3
 
 import pytest
 
-from substrate.multimedia.bedrock_batch_adapter import (
-    BedrockBatchRecoveryAdapter,
-)
 from substrate.research_spend import (
     BillingClassification,
     BillingEvidenceKind,
@@ -27,7 +24,11 @@ from substrate.research_spend import (
     RunNotFound,
 )
 from substrate.research_spend.ledger import _DDL, _MIGRATIONS, APPLICATION_ID
-from tests.test_multimedia_bedrock_batch_adapter import _bounded_workload, _request
+from tests.test_multimedia_bedrock_batch_adapter import (
+    BedrockBatchRecoveryAdapter,
+    _bounded_workload,
+    _request,
+)
 
 
 class TerminalBedrock:
