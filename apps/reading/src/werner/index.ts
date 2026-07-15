@@ -58,7 +58,10 @@ export {
   type UseMouseFollowOptions,
 } from "./useMouseFollow";
 
-export { wernerIceFishingCursor } from "./iceFishingFlags";
+export {
+  wernerIceFishingCursor,
+  wernerArcade,
+} from "./iceFishingFlags";
 export { WernerIceBait } from "./WernerIceBait";
 export { WernerFishingLayer } from "./WernerFishingLayer";
 export { WernerIceCursorShell } from "./WernerIceCursorShell";
