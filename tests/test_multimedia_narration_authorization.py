@@ -42,6 +42,8 @@ def _ready(tmp_path: Path, *, route: str = "balanced"):
             target_minutes=15,
             mode="video",
             route_policy=route,
+            sources=("Early narration history is grounded in reviewed evidence.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )
