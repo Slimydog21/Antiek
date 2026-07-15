@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { StrictMode } from "react";
 import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
@@ -103,6 +104,17 @@ describe("BookCard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
     expect(onOpen).toHaveBeenCalledWith("doc-pd");
   });
+
+  it("falls back deterministically when a real cover fails", () => {
+    const covered = { ...servableBook, cover_uri: "https://example.test/cover.jpg" };
+    render(<BookCard book={covered} />);
+    const image = screen.getByRole("img", { name: "Cover of Meditations" });
+    fireEvent.error(image);
+    const fallback = screen.getByTestId("library-fallback-cover");
+    expect(fallback.getAttribute("aria-hidden")).toBe("true");
+    expect(fallback.parentElement?.getAttribute("data-cover-variant")).toBeTruthy();
+    expect(screen.queryByRole("img", { name: "Cover of Meditations" })).toBeNull();
+  });
 });
 
 describe("Library", () => {
@@ -126,6 +138,12 @@ describe("Library", () => {
     const surface = container.querySelector("[data-glass-surface]");
     expect(surface, "the full-page Library must render through GlassSurface").toBeTruthy();
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
+    const environment = screen.getByTestId("library-archive-environment") as HTMLImageElement;
+    expect(environment.alt).toBe("");
+    expect(environment.getAttribute("aria-hidden")).toBe("true");
+    expect(environment.draggable).toBe(false);
+    expect(environment.className).toContain("pointer-events-none");
+    expect(surface!.contains(environment)).toBe(false);
 
     cleanup();
     // inWindow: SPR-09 owns the window glass, so the body stays bg-transparent and
@@ -147,6 +165,78 @@ describe("Library", () => {
     ).toBeNull();
     const mainEl = inWin.container.querySelector("main");
     expect(mainEl?.className).toContain("bg-transparent");
+    expect(inWin.queryByTestId("library-archive-environment")).toBeNull();
+  });
+
+  it("renders mutually exclusive authored loading and error states with retry", async () => {
+    let reject!: (error: Error) => void;
+    listBooksMock.mockReturnValue(new Promise((_resolve, rejectPromise) => { reject = rejectPromise; }));
+    renderLibrary();
+    const status = screen.getByRole("status");
+    expect(status.textContent).toMatch(/Opening the archive/);
+    expect(screen.queryByRole("alert")).toBeNull();
+    reject(new Error("private backend detail"));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeTruthy());
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByText(/Shelf count unavailable/)).toBeTruthy();
+    expect(screen.queryByText(/0 books readable/)).toBeNull();
+    expect(screen.queryByText(/Nothing is readable/)).toBeNull();
+    expect(screen.getByRole("alert").textContent).toMatch(/Shelf contents are unavailable/);
+    expect(screen.getByRole("alert").textContent).not.toMatch(/unchanged/);
+    expect(screen.getByRole("alert").textContent).not.toMatch(/private backend detail/);
+
+    listBooksMock.mockResolvedValueOnce({ books: [servableBook], count: 1 });
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await screen.findByRole("button", { name: /Open Meditations/ });
+    expect(listBooksMock).toHaveBeenLastCalledWith("servable");
+  });
+
+  it("ignores a superseded shelf response after switching to Preview", async () => {
+    let resolveShelf!: (value: { books: BookSummary[]; count: number }) => void;
+    listBooksMock
+      .mockReturnValueOnce(new Promise((resolve) => { resolveShelf = resolve; }))
+      .mockResolvedValueOnce({ books: [gatedBook], count: 1 });
+    renderLibrary();
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await screen.findByRole("button", { name: /Open A Licensed Title/ });
+    resolveShelf({ books: [servableBook], count: 1 });
+    await Promise.resolve();
+    expect(screen.queryByRole("button", { name: /Open Meditations/ })).toBeNull();
+    expect(screen.getByRole("button", { name: /Open A Licensed Title/ })).toBeTruthy();
+  });
+
+  it("loads under React StrictMode effect replay", async () => {
+    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    render(
+      <StrictMode>
+        <MemoryRouter><Library /></MemoryRouter>
+      </StrictMode>,
+    );
+    expect(await screen.findByRole("button", { name: /Open Meditations/ })).toBeTruthy();
+  });
+
+  it("ignores a stale curation failure after switching shelves", async () => {
+    let rejectCurate!: (error: Error) => void;
+    listBooksMock
+      .mockResolvedValueOnce({ books: [servableBook], count: 1 })
+      .mockResolvedValueOnce({ books: [gatedBook], count: 1 })
+      .mockResolvedValueOnce({ books: [servableBook], count: 1 });
+    curateBooksMock.mockReturnValue(new Promise((_resolve, reject) => { rejectCurate = reject; }));
+    renderLibrary();
+    await screen.findByRole("button", { name: /Open Meditations/ });
+    fireEvent.change(screen.getByLabelText("Curate the library by prompt"), { target: { value: "stoicism" } });
+    fireEvent.click(screen.getByRole("button", { name: "Curate" }));
+    fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+    await screen.findByRole("button", { name: /Open A Licensed Title/ });
+    rejectCurate(new Error("stale curation failure"));
+    await Promise.resolve();
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByRole("button", { name: /Open A Licensed Title/ })).toBeTruthy();
+    fireEvent.click(screen.getByRole("tab", { name: "Shelf" }));
+    await screen.findByRole("button", { name: /Open Meditations/ });
+    fireEvent.change(screen.getByLabelText("Curate the library by prompt"), { target: { value: "ethics" } });
+    const curate = screen.getByRole("button", { name: "Curate" }) as HTMLButtonElement;
+    expect(curate.disabled).toBe(false);
   });
 
   it("loads the servable shelf and routes to the reader on open", async () => {

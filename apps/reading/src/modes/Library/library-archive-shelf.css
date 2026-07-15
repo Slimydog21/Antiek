@@ -1,0 +1,91 @@
+.library-archive__content {
+  min-height: 100%;
+}
+
+.library-archive__state {
+  display: grid;
+  justify-items: center;
+  gap: 0.5rem;
+  min-height: 15rem;
+  padding: 3rem 1.5rem;
+  text-align: center;
+  border: 1px solid var(--glass-border);
+  border-radius: 0.75rem;
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-z1);
+}
+
+.library-archive__state--error {
+  align-content: center;
+}
+
+.library-archive__loader {
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 2px solid var(--rule);
+  border-top-color: var(--sun-deep);
+  border-radius: 999px;
+  animation: library-archive-turn 1.1s steps(8, end) infinite;
+}
+
+.library-archive__retry {
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--ink);
+  border-radius: 0.35rem;
+  color: var(--ink);
+  background: var(--sun);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.library-archive__retry:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 3px;
+}
+
+.library-cover {
+  background: var(--ice-3);
+}
+
+.library-cover__fallback {
+  color: var(--ice-0);
+  background:
+    linear-gradient(90deg, transparent 0 12%, var(--sun-hl-faint) 12% 14%, transparent 14% 100%),
+    linear-gradient(160deg, var(--shadow-2), var(--ink));
+}
+
+.library-cover--glacier .library-cover__fallback {
+  color: var(--ink);
+  background:
+    linear-gradient(135deg, transparent 0 42%, var(--sun-hl-day) 42% 45%, transparent 45% 100%),
+    linear-gradient(160deg, var(--ice-1), var(--glacial-1));
+}
+
+.library-cover--walnut .library-cover__fallback {
+  background:
+    repeating-linear-gradient(90deg, transparent 0 9px, var(--sun-hl-faint) 9px 10px),
+    linear-gradient(160deg, var(--shadow-2), var(--ink));
+}
+
+.library-cover--midnight .library-cover__fallback {
+  background:
+    radial-gradient(circle at 75% 22%, var(--sun-glow) 0 3px, transparent 4px),
+    linear-gradient(160deg, var(--ink), var(--shadow-2));
+}
+
+.library-cover--parchment .library-cover__fallback {
+  color: var(--ink);
+  background:
+    linear-gradient(0deg, transparent 0 82%, var(--sun-hl-day) 82% 85%, transparent 85% 100%),
+    linear-gradient(160deg, var(--sun-light-soft), var(--ice-1));
+}
+
+@keyframes library-archive-turn {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-archive__loader { animation: none; }
+}
