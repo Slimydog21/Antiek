@@ -2,22 +2,23 @@ import { startAuthentication, startRegistration } from "@simplewebauthn/browser"
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
+import Werner from "../../brand/Werner";
 import { LemonButton, LemonInput } from "../../components/lemon";
 import {
+  approveLogin,
   authCallbackErrorDisplay,
   authLoginErrorDisplay,
-  approveLogin,
   beginPasskeyLogin,
   beginPasskeyRegistration,
+  claimLogin,
   finishPasskeyLogin,
   finishPasskeyRegistration,
   getPasskeyStatus,
-  claimLogin,
   requestMagicLink,
   useAuth,
 } from "../../lib/auth";
-import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 import { track, trackException } from "../../lib/analytics";
+import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 
 import "./Login.css";
 
@@ -30,10 +31,10 @@ function isPasskeyCancellation(error: unknown): boolean {
 
 function deviceLabel(): string {
   const ua = navigator.userAgent;
-  if (/iPad/i.test(ua)) return "This iPad";
-  if (/iPhone/i.test(ua)) return "This iPhone";
-  if (/Mac/i.test(ua)) return "This Mac";
-  return "This device";
+  if (/iPad/i.test(ua)) return "this iPad";
+  if (/iPhone/i.test(ua)) return "this iPhone";
+  if (/Mac/i.test(ua)) return "this Mac";
+  return "this device";
 }
 
 function PasskeyMark({ active = false }: { active?: boolean }) {
@@ -53,7 +54,11 @@ export default function Login() {
   const [errorMsg, setErrorMsg] = useState("");
   const [errorHint, setErrorHint] = useState<string | null>(null);
   const [diagnosticCode, setDiagnosticCode] = useState<AuthDiagnosticCode | null>(null);
-  const [handoff, setHandoff] = useState<{ attemptId: string; claimSecret: string; deviceCode: string } | null>(null);
+  const [handoff, setHandoff] = useState<{
+    attemptId: string;
+    claimSecret: string;
+    deviceCode: string;
+  } | null>(null);
   const [approvalWorking, setApprovalWorking] = useState(false);
 
   const navigate = useNavigate();
@@ -78,7 +83,7 @@ export default function Login() {
   }, [approvalAttempt, isSetup, navigate, nextPath, state.status]);
 
   useEffect(() => {
-    if (isSetup) return;
+    if (isSetup || approvalAttempt) return;
     let live = true;
     void getPasskeyStatus()
       .then(({ available }) => {
@@ -90,7 +95,7 @@ export default function Login() {
     return () => {
       live = false;
     };
-  }, [isSetup]);
+  }, [approvalAttempt, isSetup]);
 
   useEffect(() => {
     const callbackError = searchParams.get("error");
@@ -108,9 +113,9 @@ export default function Login() {
             ? "B-POLICY-CALLBACK-NOT-AUTH"
             : null,
     );
-    const next = new URLSearchParams(searchParams);
-    next.delete("error");
-    navigate({ pathname: "/login", search: next.toString() ? `?${next}` : "" }, { replace: true });
+    const clean = new URLSearchParams(searchParams);
+    clean.delete("error");
+    navigate({ pathname: "/login", search: clean.toString() ? `?${clean}` : "" }, { replace: true });
   }, [navigate, searchParams]);
 
   useEffect(() => {
@@ -134,12 +139,12 @@ export default function Login() {
         }
         if (result.status === "expired") {
           setEmailStatus("expired");
-          setErrorMsg("That handoff expired.");
+          setErrorMsg("That handoff melted away.");
           setErrorHint("Send a fresh one and leave this screen open.");
           return;
         }
       } catch {
-        // A brief network interruption should not cancel a valid handoff.
+        // A brief network interruption must not cancel a valid handoff.
       }
       if (live) timer = window.setTimeout(poll, 1800);
     };
@@ -210,7 +215,11 @@ export default function Login() {
     track("login_requested");
     const result = await requestMagicLink(email, nextPath);
     if (result.kind === "sent") {
-      setHandoff({ attemptId: result.attempt_id, claimSecret: result.claim_secret, deviceCode: result.device_code });
+      setHandoff({
+        attemptId: result.attempt_id,
+        claimSecret: result.claim_secret,
+        deviceCode: result.device_code,
+      });
       setEmailStatus("sent");
       track("login_link_sent");
       return;
@@ -222,9 +231,6 @@ export default function Login() {
     setDiagnosticCode(result.diagnostic_code);
     trackException(new Error(`Magic link failed: ${display.message}`));
   }
-
-  const showPasskeyFirst = passkeyState !== "absent" && passkeyState !== "checking";
-  const setupReady = isSetup && state.status === "authenticated";
 
   async function approveHandoff() {
     if (!approvalAttempt || approvalWorking) return;
@@ -241,35 +247,48 @@ export default function Login() {
 
   if (approvalAttempt) {
     return (
-      <main className="antiek-login antiek-login--receipt">
-        <section className="handoff-receipt">
-          <div className="antiek-login__eyebrow"><span /> Device handoff</div>
-          <h1>Does your other screen show this code?</h1>
+      <ReceiptShell>
+        <section className="handoff-receipt" aria-labelledby="handoff-title">
+          <Werner mood="idle" size={92} label="Werner checking the matching code" className="handoff-receipt__werner" />
+          <div className="antiek-login__eyebrow"><span /> Tiny security check</div>
+          <h1 id="handoff-title">Same four digits?</h1>
           <p className="handoff-code" aria-label={`Device code ${approvalCode}`}>{approvalCode}</p>
-          <p>Only approve when the computer or iPad where you started shows the same four digits.</p>
-          <button type="button" className="antiek-login__primary" onClick={() => void approveHandoff()} disabled={approvalWorking}>
-            <span aria-hidden="true">✓</span>
-            <span><strong>{approvalWorking ? "Approving…" : "Yes, unlock that screen"}</strong><small>One-time approval · expires in 15 minutes</small></span>
+          <p>Approve only if the computer or iPad where you started shows this exact code.</p>
+          <button
+            type="button"
+            className="antiek-login__primary"
+            onClick={() => void approveHandoff()}
+            disabled={approvalWorking}
+          >
+            <span className="approval-tick" aria-hidden="true">✓</span>
+            <span>
+              <strong>{approvalWorking ? "Carrying the yes…" : "Yes, open that screen"}</strong>
+              <small>One-time approval · expires in 15 minutes</small>
+            </span>
             <span className="antiek-login__arrow" aria-hidden="true">→</span>
           </button>
-          {errorMsg && <div className="antiek-login__error" role="alert"><strong>{errorMsg}</strong></div>}
+          {errorMsg && <ErrorNotice message={errorMsg} />}
         </section>
-      </main>
+      </ReceiptShell>
     );
   }
 
   if (searchParams.get("approved") === "1") {
     return (
-      <main className="antiek-login antiek-login--receipt">
-        <section className="handoff-receipt" role="status">
+      <ReceiptShell>
+        <section className="handoff-receipt handoff-receipt--approved" role="status">
+          <Werner mood="idle" size={110} label="Werner celebrating the approved sign-in" className="handoff-receipt__werner" />
           <span className="handoff-receipt__stamp">Approved</span>
-          <div className="antiek-login__eyebrow"><span /> Device handoff</div>
-          <h1>Your other screen is unlocking.</h1>
-          <p>Return to the computer or iPad where you started. You can close this page.</p>
+          <div className="antiek-login__eyebrow"><span /> Delivery complete</div>
+          <h1>Your other screen is opening.</h1>
+          <p>Werner carried the yes back. You can close this page.</p>
         </section>
-      </main>
+      </ReceiptShell>
     );
   }
+
+  const showPasskeyFirst = passkeyState !== "absent" && passkeyState !== "checking";
+  const setupReady = isSetup && state.status === "authenticated";
 
   return (
     <main className="antiek-login" data-passkey-state={passkeyState}>
@@ -283,136 +302,112 @@ export default function Login() {
         <div className="antiek-login__card">
           {setupReady ? (
             <>
-              <div className="antiek-login__eyebrow"><span /> One last step</div>
+              <Eyebrow>One last step</Eyebrow>
               <h1>Leave email behind.</h1>
-              <p className="antiek-login__lede">
-                Save a passkey now. Next time, Antiek opens with Face ID, Touch ID, or your device PIN.
-              </p>
-              <button
-                type="button"
-                className="antiek-login__primary"
+              <p className="antiek-login__lede">Save a passkey now. Next time, Antiek opens with Face ID, Touch ID, or your device PIN.</p>
+              <ActionButton
+                busy={passkeyState === "working"}
+                title={passkeyState === "working" ? "Saving passkey…" : `Save to ${deviceLabel()}`}
+                detail="Encrypted and synced by your device"
                 onClick={() => void savePasskey()}
-                disabled={passkeyState === "working"}
-              >
-                <PasskeyMark active={passkeyState === "working"} />
-                <span>
-                  <strong>{passkeyState === "working" ? "Saving passkey…" : `Save to ${deviceLabel()}`}</strong>
-                  <small>Encrypted and synced by your device</small>
-                </span>
-                <span className="antiek-login__arrow" aria-hidden="true">→</span>
-              </button>
-              {errorMsg && (
-                <div className="antiek-login__error" role="alert">
-                  <strong>{errorMsg}</strong>
-                  {errorHint && <span>{errorHint}</span>}
-                </div>
-              )}
-              <button className="antiek-login__quiet" type="button" onClick={() => navigate(nextPath, { replace: true })}>
-                Do this later
-              </button>
+              />
+              {errorMsg && <ErrorNotice message={errorMsg} hint={errorHint} />}
+              <button className="antiek-login__quiet" type="button" onClick={() => navigate(nextPath, { replace: true })}>Do this later</button>
             </>
           ) : showPasskeyFirst ? (
             <>
-              <div className="antiek-login__eyebrow"><span /> Welcome back</div>
+              <Eyebrow>Welcome back</Eyebrow>
               <h1>Pick up the thread.</h1>
               <p className="antiek-login__lede">Your workstation is exactly where you left it.</p>
-              <button
-                type="button"
-                className="antiek-login__primary"
+              <ActionButton
+                busy={passkeyState === "working"}
+                title={passkeyState === "working" ? "Unlocking…" : "Unlock with passkey"}
+                detail="Face ID, Touch ID, or a nearby device"
                 onClick={() => void unlockWithPasskey()}
-                disabled={passkeyState === "working"}
-              >
-                <PasskeyMark active={passkeyState === "working"} />
-                <span>
-                  <strong>{passkeyState === "working" ? "Unlocking…" : "Unlock with passkey"}</strong>
-                  <small>Face ID, Touch ID, or a nearby device</small>
-                </span>
-                <span className="antiek-login__arrow" aria-hidden="true">→</span>
-              </button>
-
-              {(passkeyState === "error" || errorMsg) && (
-                <div className="antiek-login__error" role="alert">
-                  <strong>{errorMsg}</strong>
-                  {errorHint && <span>{errorHint}</span>}
-                </div>
-              )}
-
+              />
+              {(passkeyState === "error" || errorMsg) && <ErrorNotice message={errorMsg} hint={errorHint} />}
               <details className="antiek-login__recovery">
                 <summary>Use email recovery</summary>
-                <EmailForm
-                  email={email}
-                  setEmail={setEmail}
-                  status={emailStatus}
-                  onSubmit={onEmailSubmit}
-                  errorMsg={emailStatus === "error" ? errorMsg : ""}
-                  errorHint={emailStatus === "error" ? errorHint : null}
-                  diagnosticCode={diagnosticCode}
-                />
+                <EmailForm email={email} setEmail={setEmail} status={emailStatus} onSubmit={onEmailSubmit} errorMsg={emailStatus === "error" ? errorMsg : ""} errorHint={emailStatus === "error" ? errorHint : null} diagnosticCode={diagnosticCode} />
               </details>
             </>
           ) : emailStatus === "sent" ? (
             <div className="antiek-login__sent" role="status">
-              <div className="antiek-login__eyebrow"><span /> Handoff waiting</div>
+              <Eyebrow>Werner is waiting</Eyebrow>
               <h1>Now check your phone.</h1>
-              <p className="antiek-login__lede">
-                Open the message sent to <strong>{email}</strong>. Approve it there; this screen will unlock itself.
-              </p>
+              <p className="antiek-login__lede">Open the message sent to <strong>{email}</strong>. Approve it there; this screen will open itself.</p>
               <div className="handoff-code handoff-code--desk" aria-label={`Device code ${handoff?.deviceCode}`}>
                 <small>Match this code on your phone</small>
                 <strong>{handoff?.deviceCode}</strong>
               </div>
-              <div className="handoff-ticket" aria-label="Sign-in handoff status">
-                <div><small>01 · REQUEST</small><strong>This screen</strong></div>
-                <span className="handoff-ticket__route" aria-hidden="true"><i /><i /><i /></span>
-                <div><small>02 · APPROVE</small><strong>Your phone</strong></div>
-                <span className="handoff-ticket__route" aria-hidden="true"><i /><i /><i /></span>
-                <div><small>03 · OPEN</small><strong>Automatically</strong></div>
-              </div>
-              <button type="button" className="antiek-login__quiet" onClick={() => setEmailStatus("idle")}>
-                Use a different email
-              </button>
+              <HandoffSteps />
+              {(emailStatus as EmailStatus) === "expired" && <ErrorNotice message={errorMsg} hint={errorHint} />}
+              <button type="button" className="antiek-login__quiet" onClick={() => { setEmailStatus("idle"); setHandoff(null); }}>Use a different email</button>
             </div>
           ) : (
             <>
-              <div className="antiek-login__eyebrow"><span /> First unlock</div>
+              <Eyebrow>First unlock</Eyebrow>
               <h1>Open your desk.</h1>
-              <p className="antiek-login__lede">
-                Start here, approve on your phone. This screen opens itself—no link gymnastics.
-              </p>
-              <EmailForm
-                email={email}
-                setEmail={setEmail}
-                status={emailStatus}
-                onSubmit={onEmailSubmit}
-                errorMsg={errorMsg}
-                errorHint={errorHint}
-                diagnosticCode={diagnosticCode}
-              />
+              <p className="antiek-login__lede">Start here, approve on your phone. This screen opens itself. No link gymnastics.</p>
+              <EmailForm email={email} setEmail={setEmail} status={emailStatus} onSubmit={onEmailSubmit} errorMsg={errorMsg} errorHint={errorHint} diagnosticCode={diagnosticCode} />
             </>
           )}
         </div>
 
         <footer className="antiek-login__footer">
-          <span>Private by default</span>
-          <span aria-hidden="true">·</span>
-          <a href="/trust">How Antiek protects your work</a>
+          <span>Private by default</span><span aria-hidden="true">·</span><a href="/trust">How Antiek protects your work</a>
         </footer>
       </section>
 
-      <aside className="antiek-login__dispatch" aria-label="How device handoff works">
-        <div className="dispatch-sheet">
-          <header><span>ANTIEK / ACCESS DESK</span><span>PRIVATE</span></header>
-          <p className="dispatch-sheet__number">№ 001</p>
-          <h2>The email moves.<br />Your work doesn’t.</h2>
-          <div className="dispatch-diagram" aria-hidden="true">
-            <span className="dispatch-device">DESK</span><span className="dispatch-line" /><span className="dispatch-device dispatch-device--sun">PHONE</span><span className="dispatch-line dispatch-line--return" /><span className="dispatch-device">OPEN</span>
+      <aside className="antiek-login__trail" aria-label="Werner explains the secure device handoff">
+        <div className="handoff-world">
+          <p className="handoff-world__tag">ANTIEK ACCESS DESK · SIGNAL CLEAR</p>
+          <div className="handoff-world__bubble">I’ll carry the yes back.</div>
+          <div className="handoff-world__werner" data-waiting={emailStatus === "sent" || undefined}>
+            <Werner mood="idle" size={184} label="Werner, Antiek's penguin guide" />
+            <span className="handoff-world__thinking" aria-hidden="true"><i /><i /><i /></span>
+            <span className="handoff-world__ticket" aria-hidden="true">YES</span>
           </div>
-          <p className="dispatch-sheet__note">A one-time approval returns securely to the screen that asked for it.</p>
-          <footer><span>Expires in 15 min</span><span>No password stored</span></footer>
+          <HandoffSteps scenic />
+          <p className="handoff-world__note">The email moves.<br />Your research stays put.</p>
         </div>
       </aside>
     </main>
   );
+}
+
+function ReceiptShell({ children }: { children: React.ReactNode }) {
+  return <main className="antiek-login antiek-login--receipt"><div className="antiek-login__grain" aria-hidden="true" />{children}</main>;
+}
+
+function Eyebrow({ children }: { children: React.ReactNode }) {
+  return <div className="antiek-login__eyebrow"><span /> {children}</div>;
+}
+
+function ActionButton({ busy, title, detail, onClick }: { busy: boolean; title: string; detail: string; onClick: () => void }) {
+  return (
+    <button type="button" className="antiek-login__primary" onClick={onClick} disabled={busy}>
+      <PasskeyMark active={busy} />
+      <span><strong>{title}</strong><small>{detail}</small></span>
+      <span className="antiek-login__arrow" aria-hidden="true">→</span>
+    </button>
+  );
+}
+
+function HandoffSteps({ scenic = false }: { scenic?: boolean }) {
+  return (
+    <div className={scenic ? "handoff-ticket handoff-ticket--scenic" : "handoff-ticket"} aria-label="Sign-in handoff: request here, approve on phone, then this screen opens">
+      <div><small>01 · REQUEST</small><strong>This screen</strong></div>
+      <span className="handoff-ticket__route" aria-hidden="true"><i /><i /><i /></span>
+      <div><small>02 · APPROVE</small><strong>Your phone</strong></div>
+      <span className="handoff-ticket__route" aria-hidden="true"><i /><i /><i /></span>
+      <div><small>03 · OPEN</small><strong>Automatically</strong></div>
+    </div>
+  );
+}
+
+function ErrorNotice({ message, hint, diagnosticCode }: { message: string; hint?: string | null; diagnosticCode?: AuthDiagnosticCode | null }) {
+  return <div className="antiek-login__error" role="alert" data-auth-diagnostic={diagnosticCode ?? undefined}><strong>{message}</strong>{hint && <span>{hint}</span>}</div>;
 }
 
 interface EmailFormProps {
@@ -430,28 +425,12 @@ function EmailForm({ email, setEmail, status, onSubmit, errorMsg, errorHint, dia
     <form onSubmit={onSubmit} className="antiek-login__form">
       <label>
         <span>Email</span>
-        <LemonInput
-          type="email"
-          autoFocus
-          autoComplete="email"
-          required
-          disabled={status === "sending"}
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          placeholder="you@example.com"
-          sizing="lg"
-          wrapperClassName="w-full"
-        />
+        <LemonInput type="email" autoFocus autoComplete="email" required disabled={status === "sending"} value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" sizing="lg" wrapperClassName="w-full" />
       </label>
       <LemonButton type="submit" variant="primary" size="lg" fullWidth disabled={status === "sending" || !email}>
         {status === "sending" ? "Sending secure link…" : "Continue with email"}
       </LemonButton>
-      {status === "error" && errorMsg && (
-        <div className="antiek-login__error" role="alert" data-auth-diagnostic={diagnosticCode ?? undefined}>
-          <strong>{errorMsg}</strong>
-          {errorHint && <span>{errorHint}</span>}
-        </div>
-      )}
+      {status === "error" && errorMsg && <ErrorNotice message={errorMsg} hint={errorHint} diagnosticCode={diagnosticCode} />}
     </form>
   );
 }
