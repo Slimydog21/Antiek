@@ -17,12 +17,13 @@
  * not reach for Daytona.
  */
 
-import { lazy, Suspense, useCallback, useRef, useState, type RefObject } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useParams } from "react-router-dom";
 
 import { PanelHost } from "../../workspace/PanelHost";
 import type { StarterPanel } from "../../workspace/PanelHost";
 import LemonButton from "../../components/lemon/LemonButton";
+import missionControlEnvironment from "../../brand/werner/research/deep_research_mission_control_v1.webp";
 import {
   approvePlan,
   createPlan,
@@ -48,6 +49,7 @@ import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
 import { deriveResearchWaitArcadeMode } from "./researchWaitArcadePolicy";
+import "./deep-research-mission-control.css";
 
 const LazyResearchWaitArcade = lazy(() => import("./ResearchWaitArcade"));
 
@@ -59,15 +61,25 @@ interface PlanState {
 
 const NO_STARTERS: StarterPanel[] = [];
 
-export default function DeepResearchWorkspace() {
+export interface DeepResearchWorkspaceProps {
+  createResearchPlan?: typeof createPlan;
+  withWorkspacePanels?: boolean;
+}
+
+export default function DeepResearchWorkspace({
+  createResearchPlan = createPlan,
+  withWorkspacePanels = true,
+}: DeepResearchWorkspaceProps = {}) {
+  const workspace = <Workspace createResearchPlan={createResearchPlan} />;
+  if (!withWorkspacePanels) return workspace;
   return (
     <PanelHost starters={NO_STARTERS}>
-      <Workspace />
+      {workspace}
     </PanelHost>
   );
 }
 
-function Workspace() {
+function Workspace({ createResearchPlan }: { createResearchPlan: typeof createPlan }) {
   // A :sessionId in the route means we arrived from a launch elsewhere (the
   // Research-entry cascade). Open straight onto the live monitor — the
   // session's status is durable, so the monitor reconstructs it from the
@@ -78,92 +90,134 @@ function Workspace() {
   const [sessionId, setSessionId] = useState<string | null>(routeSessionId ?? null);
   const [sessionGeneration, setSessionGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+  const mounted = useRef(true);
+  const operationGeneration = useRef(0);
+  const operationInFlight = useRef(false);
 
-  const guard = useCallback(async (fn: () => Promise<void>) => {
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+      operationGeneration.current += 1;
+      operationInFlight.current = false;
+    };
+  }, []);
+
+  const guard = useCallback(async (fn: () => Promise<void | (() => void)>) => {
+    if (operationInFlight.current) return;
+    operationInFlight.current = true;
+    const generation = ++operationGeneration.current;
     setBusy(true);
-    setError(null);
+    setError(false);
     try {
-      await fn();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const commit = await fn();
+      if (!mounted.current || generation !== operationGeneration.current) return;
+      commit?.();
+    } catch {
+      if (!mounted.current || generation !== operationGeneration.current) return;
+      setError(true);
     } finally {
-      setBusy(false);
+      if (mounted.current && generation === operationGeneration.current) {
+        operationInFlight.current = false;
+        setBusy(false);
+      }
     }
   }, []);
 
-  const handleCreate = () =>
-    guard(async () => {
-      const q = problem.trim();
-      if (!q) return;
-      const r = await createPlan({ problem: q });
-      track("deep_research_cascade_created", {
-        problem_length: q.length,
-      });
-      setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
-      setSessionId(null);
+  const handleCreate = () => {
+    const q = problem.trim();
+    if (!q) return;
+    void guard(async () => {
+      const r = await createResearchPlan({ problem: q });
+      return () => {
+        track("deep_research_cascade_created", { problem_length: q.length });
+        setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
+        setSessionId(null);
+      };
     });
+  };
 
   const handleEdit = (edit: { op: "add_child" | "remove" | "reword"; target_local_id: string; question?: string }) =>
-    guard(async () => {
+    void guard(async () => {
       if (!plan) return;
       const r = await editPlan(plan.rootNodeId, edit);
-      setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
+      return () => setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
     });
 
   const handleApprove = () =>
-    guard(async () => {
+    void guard(async () => {
       if (!plan) return;
       await approvePlan(plan.rootNodeId);
       const r = await getPlan(plan.rootNodeId); // refresh tree + launchable
-      track("deep_research_plan_approved");
-      setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
+      return () => {
+        track("deep_research_plan_approved");
+        setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
+      };
     });
 
   const handleLaunch = () =>
-    guard(async () => {
+    void guard(async () => {
       if (!plan || !plan.launchable) return;
       const r = await launchPlan(plan.rootNodeId);
-      track("deep_research_cascade_launched", {
-        session_id: r.session_id,
-      });
-      notifyResearchStarted(r.session_id);
-      setSessionId(r.session_id);
-      // Session IDs are deterministic per plan. A successful relaunch can
-      // therefore reuse the same ID after its prior monitor stopped polling;
-      // generation forces a fresh polling + reaction episode in that case.
-      setSessionGeneration((generation) => generation + 1);
+      return () => {
+        track("deep_research_cascade_launched", { session_id: r.session_id });
+        notifyResearchStarted(r.session_id);
+        setSessionId(r.session_id);
+        // Session IDs are deterministic per plan. A successful relaunch can
+        // therefore reuse the same ID after its prior monitor stopped polling;
+        // generation forces a fresh polling + reaction episode in that case.
+        setSessionGeneration((generation) => generation + 1);
+      };
     });
 
+  const phase = sessionId ? "Live session" : plan ? "Plan room" : busy ? "Charting" : "Ready";
   return (
-    <div className="flex h-full flex-col gap-4 overflow-auto p-4">
+    <DeepResearchMissionControlFrame phase={phase} active={Boolean(sessionId)}>
       <ComposeBar problem={problem} setProblem={setProblem} busy={busy} onCreate={handleCreate} />
       {error && (
-        <p className="rounded border border-emperor/40 bg-emperor/5 px-3 py-2 text-sm text-emperor">{error}</p>
+        <div role="alert" className="deep-research-mission-control__notice">
+          <strong>Mission control could not complete that operation.</strong>
+          <p>Nothing new was launched or approved. Review the current plan and try again.</p>
+        </div>
       )}
-      {plan && (
-        <PlanEditor
-          tree={plan.tree}
-          launchable={plan.launchable}
-          busy={busy}
-          onEdit={handleEdit}
-          onApprove={handleApprove}
-          onLaunch={handleLaunch}
-        />
+      {busy && !plan && (
+        <div role="status" aria-live="polite" className="deep-research-mission-control__status">
+          <span className="deep-research-mission-control__spinner motion-safe:animate-spin" aria-hidden="true" />
+          <div><strong>Charting the first research paths…</strong><p>No research has launched yet.</p></div>
+        </div>
       )}
-      {sessionId && (
-        <Monitor
-          key={`${sessionId}:${sessionGeneration}`}
-          sessionId={sessionId}
-          sessionGeneration={sessionGeneration}
-          busy={busy}
-        />
-      )}
+      {plan && <PlanEditor tree={plan.tree} launchable={plan.launchable} busy={busy} onEdit={handleEdit} onApprove={handleApprove} onLaunch={handleLaunch} />}
+      {sessionId && <Monitor key={`${sessionId}:${sessionGeneration}`} sessionId={sessionId} sessionGeneration={sessionGeneration} busy={busy} />}
+    </DeepResearchMissionControlFrame>
+  );
+}
+
+export function DeepResearchMissionControlFrame({
+  phase,
+  active = false,
+  visualFixture = false,
+  children,
+}: {
+  phase: string;
+  active?: boolean;
+  visualFixture?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div className={`deep-research-mission-control ${active ? "deep-research-mission-control--active" : ""} ${visualFixture ? "deep-research-mission-control--fixture" : ""}`}>
+      <img src={missionControlEnvironment} alt="" aria-hidden="true" decoding="sync" draggable={false} data-testid="deep-research-mission-control-environment" />
+      <div className="deep-research-mission-control__veil" aria-hidden="true" />
+      <header className="deep-research-mission-control__header">
+        <div><p className="deep-research-mission-control__eyebrow">Antiek · parallel inquiry</p><h1>Deep research mission control</h1><p>Shape one hard problem, inspect its paths, then send only the plan you approve.</p></div>
+        <div className="deep-research-mission-control__phase"><span aria-hidden="true" /><strong>{phase}</strong></div>
+      </header>
+      <section className="deep-research-mission-control__console" aria-label="Deep research controls">{children}</section>
     </div>
   );
 }
 
-function ComposeBar({
+export function ComposeBar({
   problem, setProblem, busy, onCreate,
 }: {
   problem: string;
@@ -312,7 +366,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
         </div>
       </div>
       {session.error && (
-        <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… ({session.error})</p>
+        <p className="text-[11px] text-shadow-1 dark:text-moonlight">reconnecting… status details stay private</p>
       )}
       {session.hardCeiling && (
         <HardCeilingEvidence sessionId={sessionId} snapshot={session.hardCeiling} />
