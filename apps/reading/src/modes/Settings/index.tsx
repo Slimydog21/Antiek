@@ -15,12 +15,14 @@ import {
   fetchModelDecision,
   fetchSettingsBudget,
   fetchSettingsModels,
+  isModelDecisionResponse,
   type BudgetResponse,
   type ModelDecisionResponse,
   type ModelDecisionTask,
   type ModelRow,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import { notifyModelEvidenceCompared } from "../../werner/shellExperienceSignals";
 import ModelEvidenceInstrument from "./ModelEvidenceInstrument";
 
 /**
@@ -58,6 +60,10 @@ export default function Settings() {
   const [decisionError, setDecisionError] = useState<string | null>(null);
   const [decisionLoading, setDecisionLoading] = useState(false);
   const requestVersion = useRef(0);
+
+  useEffect(() => () => {
+    requestVersion.current += 1;
+  }, []);
 
   function onTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
     const tabs = ["overview", "decision"] as const;
@@ -144,7 +150,14 @@ export default function Settings() {
         input_chars: inputChars,
         expected_output_tokens: outTokens,
       });
-      if (requestVersion.current === version) setDecision(response);
+      if (requestVersion.current === version) {
+        if (!isModelDecisionResponse(response) || response.task !== task) {
+          setDecisionError("Model comparison response did not match the request.");
+        } else {
+          setDecision(response);
+          notifyModelEvidenceCompared();
+        }
+      }
     } catch (caught) {
       if (requestVersion.current === version) {
         setDecisionError(
@@ -376,7 +389,10 @@ export default function Settings() {
                   type="number"
                   min={0}
                   value={inputChars}
-                  onChange={(e) => setInputChars(Number(e.target.value) || 0)}
+                  onChange={(e) => {
+                    invalidateDecision();
+                    setInputChars(Number(e.target.value) || 0);
+                  }}
                   className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
                 />
               </label>
@@ -388,7 +404,10 @@ export default function Settings() {
                   type="number"
                   min={0}
                   value={outTokens}
-                  onChange={(e) => setOutTokens(Number(e.target.value) || 0)}
+                  onChange={(e) => {
+                    invalidateDecision();
+                    setOutTokens(Number(e.target.value) || 0);
+                  }}
                   className="border border-ink/20 dark:border-bright/20 bg-transparent px-2 py-1 rounded"
                 />
               </label>
