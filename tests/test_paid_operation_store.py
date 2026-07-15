@@ -257,6 +257,7 @@ def test_spr02_only_opens_consent_issued_to_queued_transition(tmp_path: Path) ->
         ("reconciliation_status", "Waiting", "lowercase canonical identifier"),
         ("result_checkpoint_hash", HASH_A.upper(), "lowercase sha256"),
         ("settled_cents", 1, "nonterminal state"),
+        ("external_charged_cents", 1, "nonterminal state"),
     ],
 )
 def test_optional_column_corruption_fails_closed(
@@ -292,6 +293,7 @@ def test_optional_column_corruption_fails_closed(
         "lease_generation",
         "lease_expires_at_ms",
         "settled_cents",
+        "external_charged_cents",
     ],
 )
 def test_sqlite_checks_reject_invalid_nullable_integer_columns(
@@ -324,6 +326,7 @@ def test_sqlite_checks_reject_invalid_nullable_integer_columns(
         "lease_generation",
         "lease_expires_at_ms",
         "settled_cents",
+        "external_charged_cents",
     ],
 )
 def test_bool_as_int_is_rejected_by_snapshot_validation(column: str) -> None:
@@ -354,6 +357,7 @@ def test_bool_as_int_is_rejected_by_snapshot_validation(column: str) -> None:
         "reconciliation_status": None,
         "result_checkpoint_hash": None,
         "settled_cents": None,
+        "external_charged_cents": None,
     }
     values[column] = True
     from substrate.paid_operations.store import OperationSnapshot, _validate_snapshot
