@@ -22,13 +22,24 @@ import {
   type PromptCostEstimateResponse,
 } from "../../api/settings";
 import AddModelPanel from "./AddModelPanel";
+import {
+  budgetStatusText,
+  dualCapNote,
+  formatRemaining,
+  formatSpendAmount,
+  spendAmountLabel,
+  spendBasisNote,
+  spendPct as computeSpendPct,
+} from "./budgetHonesty";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
  *
  * Honesty: spent/pricing may be unknown; UI never invents $0.00 when the
- * ledger or rate table is unset. Add-model securely registers BYOK providers;
- * granting one dispatch-route authority remains a separate, explicit sprint.
+ * ledger or rate table is unset. Reserved estimates are labeled as such
+ * (not settled spend); display vs enforcement caps surface when they diverge.
+ * Add-model securely registers BYOK providers; granting dispatch authority
+ * remains a separate, explicit action.
  */
 export default function Settings() {
   const tier = useViewportTier();
@@ -92,17 +103,13 @@ export default function Settings() {
     };
   }, []);
 
-  const spendPct = useMemo(() => {
-    if (
-      !budget ||
-      budget.daily_cap_usd == null ||
-      budget.spent_usd == null ||
-      budget.daily_cap_usd <= 0
-    ) {
-      return null;
-    }
-    return Math.min(100, (budget.spent_usd / budget.daily_cap_usd) * 100);
-  }, [budget]);
+  const spendPct = useMemo(
+    () => (budget ? computeSpendPct(budget) : null),
+    [budget],
+  );
+  const budgetStatus = budget ? budgetStatusText(budget) : "spend unknown";
+  const dualCap = budget ? dualCapNote(budget) : null;
+  const reservedNote = budget ? spendBasisNote(budget) : null;
 
   async function onEstimate() {
     setEstimating(true);
@@ -264,7 +271,7 @@ export default function Settings() {
               <>
                 <div className="font-mono text-[13px] space-y-2">
                   <Row
-                    label="Daily cap"
+                    label="Display cap"
                     value={
                       budget.daily_cap_usd == null
                         ? "unset"
@@ -272,32 +279,33 @@ export default function Settings() {
                     }
                   />
                   <Row
-                    label="Spent today"
-                    value={
-                      budget.spent_status === "known" && budget.spent_usd != null
-                        ? `$${budget.spent_usd.toFixed(4)}`
-                        : "unknown (ledger not inventing $0)"
-                    }
+                    label={spendAmountLabel(budget)}
+                    value={formatSpendAmount(budget)}
                   />
-                  <Row
-                    label="Remaining"
-                    value={
-                      budget.remaining_usd == null
-                        ? "unknown"
-                        : `$${budget.remaining_usd.toFixed(4)}`
-                    }
-                  />
+                  <Row label="Remaining" value={formatRemaining(budget)} />
                   {budget.cap_env && (
-                    <Row label="Cap source" value={budget.cap_env} />
+                    <Row label="Display cap source" value={budget.cap_env} />
                   )}
+                  {budget.caps_aligned === false &&
+                    budget.enforcement_cap_usd != null && (
+                      <Row
+                        label="Enforcement cap"
+                        value={`$${budget.enforcement_cap_usd.toFixed(2)}${
+                          budget.enforcement_cap_env
+                            ? ` (${budget.enforcement_cap_env})`
+                            : " (daemon default)"
+                        }`}
+                      />
+                    )}
                 </div>
                 <div
                   className="h-2 w-full rounded-full bg-ink/10 dark:bg-bright/10 overflow-hidden"
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={spendPct ?? 0}
-                  aria-label="Budget usage"
+                  // Omit aria-valuenow when unknown — 0 would lie to AT.
+                  {...(spendPct != null ? { "aria-valuenow": spendPct } : {})}
+                  aria-label={`Budget usage: ${budgetStatus}`}
                 >
                   {spendPct != null ? (
                     <div
@@ -311,6 +319,28 @@ export default function Settings() {
                 {spendPct == null && (
                   <p className="text-[11px] text-ink-soft dark:text-starlight">
                     Usage bar empty when spend is unknown or cap is unset.
+                  </p>
+                )}
+                <p
+                  className="text-[11px] text-ink-soft dark:text-starlight"
+                  aria-live="polite"
+                >
+                  Budget status: {budgetStatus}.
+                </p>
+                {reservedNote && (
+                  <p
+                    className="text-[11px] text-ink-soft dark:text-starlight"
+                    data-testid="spend-basis-note"
+                  >
+                    {reservedNote}
+                  </p>
+                )}
+                {dualCap && (
+                  <p
+                    className="text-[11px] text-amber-800 dark:text-amber-200"
+                    data-testid="dual-cap-note"
+                  >
+                    {dualCap}
                   </p>
                 )}
                 {budget.notes.length > 0 && (
