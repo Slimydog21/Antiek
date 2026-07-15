@@ -10,10 +10,11 @@ from substrate.multimedia.production_registration import (
     register_multimedia_production,
 )
 from substrate.multimedia.read_model import (
+    ApplySteeringPreviewRequest,
     CreateMultimediaDraftRequest,
     MultimediaAssetStore,
     MultimediaProductionLink,
-    SteeringRequest,
+    SteeringPreviewRequest,
 )
 from substrate.multimedia.verified_playback import PlaybackMediaMetadata
 
@@ -43,6 +44,8 @@ def _store(tmp_path: Path, *, mode: str = "video") -> tuple[MultimediaAssetStore
             target_minutes=15,
             mode=mode,
             route_policy="balanced",
+            sources=("Early production history is grounded in reviewed evidence.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )
@@ -146,9 +149,18 @@ def test_conflicting_existing_link_is_not_replaced(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="identity"):
         store.save(forged, owner_id="owner-1")
 
-    steered = store.apply_steering(
+    steering = SteeringPreviewRequest(
+        expected_parent_revision_id="rev-1",
+        prompt="Make the opening more concrete",
+    )
+    preview = store.preview_steering(asset_id, steering, owner_id="owner-1")
+    assert preview.status == "ready"
+    steered = store.apply_steering_preview(
         asset_id,
-        SteeringRequest(prompt="Make the opening more concrete"),
+        ApplySteeringPreviewRequest(
+            **steering.model_dump(),
+            preview_token=preview.preview_token,
+        ),
         owner_id="owner-1",
     )
     assert steered.asset.revision_id != "rev-1"

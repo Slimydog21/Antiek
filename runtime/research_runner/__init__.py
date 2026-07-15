@@ -47,6 +47,7 @@ from .protocol import (
     ResearchPlan,
     ResearchRunner,
     RunState,
+    SpendControlMode,
     Status,
     StepEvent,
     StopResearch,
@@ -56,7 +57,7 @@ __all__ = [
     # protocol
     "ResearchRunner", "ResearchPlan", "BudgetCap", "Command", "CommandKind",
     "CostState", "Handle", "RunState", "Status", "StepEvent",
-    "StopResearch", "BudgetExceeded",
+    "StopResearch", "BudgetExceeded", "SpendControlMode",
     "BillingUnit", "BoundedUsage", "CostProjectionRequest", "CostProjection",
     "ProjectionDisposition", "ProjectionIneligibility",
     "ProjectionRate",

@@ -11,36 +11,23 @@ from substrate.multimedia.planner import EvidenceChunk, MultimediaPlanRequest, b
 def _plan(*, route_policy: str = "cheapest"):
     plan = build_multimedia_plan(
         MultimediaPlanRequest(
-            topic="jet engine history", target_minutes=15, route_policy=route_policy
+            topic="jet engine history",
+            target_minutes=15,
+            route_policy=route_policy,
+            selected_arc_ids=("history",),
         ),
         evidence=(
             EvidenceChunk(
                 chunk_id="chunk-whittle",
                 document_id="doc-engines",
-                text="Frank Whittle patented a turbojet design in 1930.",
+                text="Early jet engine history began with Frank Whittle's turbojet patent in 1930.",
                 title="Early turbojets",
                 section_path="history/whittle",
             ),
         ),
     )
-    authority = next(line.citations for line in plan.script_lines if line.citations)
-    authority_ids = tuple(citation.chunk_id for citation in authority)
-    lines = []
-    for line in plan.script_lines:
-        values = line.model_dump(mode="python")
-        if line.kind == "factual" and not line.citations:
-            values.update(citations=authority, unsourced_reason=None)
-        lines.append(type(line).model_validate(values))
-    chapters = []
-    for chapter in plan.chapters:
-        values = chapter.model_dump(mode="python")
-        values["source_chunk_ids"] = tuple(
-            dict.fromkeys((*chapter.source_chunk_ids, *authority_ids))
-        )
-        chapters.append(type(chapter).model_validate(values))
-    values = plan.model_dump(mode="python")
-    values.update(script_lines=tuple(lines), chapters=tuple(chapters), unsourced_line_ids=())
-    return type(plan).model_validate(values)
+    assert not plan.unsourced_line_ids
+    return plan
 
 
 def test_prepares_one_canonical_request_per_transformed_span() -> None:
@@ -75,6 +62,38 @@ def test_request_body_binds_span_identity_and_source_authority() -> None:
     assert replace(request, paragraph_id="different").body_digest != request.body_digest
     assert replace(request, source_chunk_ids=("different",)).body_digest != request.body_digest
     assert replace(request, text=request.text + " Changed.").body_digest != request.body_digest
+
+
+def test_canonical_graph_plan_requires_and_accepts_reloaded_document_bytes() -> None:
+    source = "Early jet engine history began with a reviewed turbojet patent record."
+    plan = build_multimedia_plan(
+        MultimediaPlanRequest(
+            topic="jet engine history",
+            target_minutes=15,
+            route_policy="cheapest",
+            selected_arc_ids=("history",),
+        ),
+        evidence=(
+            EvidenceChunk(
+                chunk_id="chunk-canonical",
+                document_id="doc-canonical",
+                text=source,
+                authority_kind="canonical_graph",
+            ),
+        ),
+    )
+
+    with pytest.raises(ValueError, match="canonical graph bytes"):
+        prepare_local_audible_span_requests(
+            plan, asset_id="asset-1", revision_id="revision-1"
+        )
+    requests = prepare_local_audible_span_requests(
+        plan,
+        asset_id="asset-1",
+        revision_id="revision-1",
+        canonical_chunks={"chunk-canonical": ("doc-canonical", source)},
+    )
+    assert requests
 
 
 def test_refuses_non_cheapest_route_and_invalid_audio_shape() -> None:

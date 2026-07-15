@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Multimedia Voice Steering Capture</title></head>
+<body><main>
+<h1>Capture reviewable voice steering without bypassing revision authority</h1>
+<p><strong>Status:</strong> executable sub-spec. <strong>Parent:</strong> Antiek Multimedia SPR-07 Steering and Revisions, milestone 2.</p>
+<h2>Contract</h2>
+<p>The authenticated Multimedia workstation reuses Antiek's shared browser recorder and ASR client. Recording and transcription only populate the steering editor. They never apply a revision, call a media provider, or spend money. The operator can correct the transcript before the existing explicit Apply steer command.</p>
+<p>The mutation sends the reviewed editor text as <code>prompt</code>, the ASR result as <code>raw_voice_transcript</code>, and a distinct <code>corrected_voice_transcript</code> only when the operator changed the transcript. The existing backend persists these fields inside the structured steering intent and child revision. Discarding voice provenance returns the editor to text-only steering without deleting its text.</p>
+<h2>Failure model</h2>
+<ul><li>Microphone denial leaves typed steering available and states the denial.</li><li>Empty audio, empty ASR text, timeout, unavailable ASR, and malformed responses produce no steering mutation and no invented transcript.</li><li>Record, stop, and transcription states cannot race an Apply command.</li><li>Asset or revision changes clear voice provenance so a transcript cannot attach to another authority.</li></ul>
+<h2>Acceptance</h2>
+<ul><li>Record, stop, transcribe, review, correct, discard, and typed fallback states are accessible and tested.</li><li>A corrected voice steer sends raw and corrected transcript fields exactly once; an unchanged voice steer omits the correction.</li><li>A typed steer sends neither voice field.</li><li>No steering API call occurs during capture or transcription.</li><li>Focused Multimedia tests, TypeScript, production build, HTML parse, security review, and independent review pass.</li></ul>
+<h2>Non-goals</h2>
+<p>No audio persistence, streaming ASR, wake word, continuous playback steering, model-generated transcript correction, provider execution, publication, merge, or deploy.</p>
+</main></body>
+</html>
