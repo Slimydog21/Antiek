@@ -74,25 +74,32 @@ const EXAMPLE_PROMPTS: readonly string[] = [
   "Where do these authors disagree, and which side has the better-grounded claims?",
 ];
 
-/** Cost line shared with ChatInputArea — kept in sync intentionally. */
-const COST_ESTIMATE = "~$0.08-$0.16 / investigation";
+const COST_NOTE = "Cost depends on the sources and work required";
 
 /**
  * SPR-01 M3 — the curated research tiers. This is the WHOLE set the entry
  * offers: two values, no raw model dropdown, no BYO-model. The label +
  * one-line "what it's for" are the operator-facing framing; the tier→provider
- * map ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro) lives server-side in
- * substrate/dispatch/research_tier.py and is never exposed to the client.
+ * map lives server-side in substrate/dispatch/research_tier.py and is never
+ * exposed to the client.
  * Default is "deep" (mirrors DEFAULT_RESEARCH_TIER): a cold research question
- * is the high-value case; the operator opts DOWN to fast for cheap asks.
+ * is the high-value case; the operator opts DOWN to fast for lighter upstream work.
  */
 const RESEARCH_TIER_OPTIONS: ReadonlyArray<{
   value: ResearchTier;
   label: string;
   hint: string;
 }> = [
-  { value: "fast", label: "Fast", hint: "cheaper, lower-latency" },
-  { value: "deep", label: "Deep", hint: "reasoning-heavier" },
+  {
+    value: "fast",
+    label: "Fast",
+    hint: "lighter upstream investigation work",
+  },
+  {
+    value: "deep",
+    label: "Deep",
+    hint: "more reasoning for upstream investigation work",
+  },
 ];
 const DEFAULT_TIER: ResearchTier = "deep";
 
@@ -579,8 +586,7 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
 
           {/* SPR-01 M3 — the curated fast/deep tier selector. A closed
               two-value segmented control (NOT a model dropdown). Selecting
-              a tier changes which provider Hermes routes to server-side
-              ("fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro); the chosen
+              a tier changes the server-owned upstream route; the chosen
               value rides on the start request and is recorded on the
               investigation. Lives ONLY here, at the research entry. */}
           <div
@@ -625,7 +631,8 @@ export default function StartResearch({ embedded = false }: { embedded?: boolean
               <kbd className="border-2 border-ink dark:border-bright rounded px-1.5 text-[10px] font-mono bg-ice-0 dark:bg-charcoal-1 shadow-z1 dark:shadow-z1-night mr-1.5">
                 ⌘ ↵
               </kbd>
-              to ask · {COST_ESTIMATE}
+              to ask · {COST_NOTE}. Final synthesis stays on its dedicated
+              reasoning route.
             </div>
             <div className="flex items-center gap-2">
               {/* SPR-05 M2 — the OPTIONAL "plan it first" path (operator

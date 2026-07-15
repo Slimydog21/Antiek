@@ -197,6 +197,17 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
     );
   });
 
+  it("explains depth accessibly without provider names or static prices", () => {
+    renderStart();
+    expect(screen.getByRole("radiogroup", { name: "Research depth" })).toBeTruthy();
+    expect(screen.getByText(/more reasoning for upstream investigation work/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole("radio", { name: "Fast" }));
+    expect(screen.getByText(/lighter upstream investigation work/i)).toBeTruthy();
+    expect(screen.getByText(/final synthesis stays on its dedicated reasoning route/i)).toBeTruthy();
+    expect(screen.getByText(/cost depends on the sources and work required/i)).toBeTruthy();
+    expect(screen.queryByText(/\$0\.08|\$0\.16|MiMo|DeepSeek/i)).toBeNull();
+  });
+
   it("rejects a too-short question without POSTing", async () => {
     renderStart();
     const input = screen.getByLabelText("Research question");

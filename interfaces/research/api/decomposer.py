@@ -70,7 +70,8 @@ from substrate.schemas import (  # noqa: E402
     SubQuestion,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
+from .research_tier_routing import persisted_research_tier_override  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -283,12 +284,17 @@ def _dispatch_and_parse(
     when the call or the parse failed. The fallback policy_id marks
     the failure shape for trajectory filtering.
     """
+    provider_override, model_override = persisted_research_tier_override(
+        event.investigation_id,
+    )
     try:
         result = dispatch(
             prompt,
             "decomposer",
             investigation_id=event.investigation_id,
             parent_event_id=event.event_id,
+            provider_override=provider_override,
+            model_override=model_override,
         )
         response_text = result.text
         policy_id = f"{result.provider}/{result.model}"

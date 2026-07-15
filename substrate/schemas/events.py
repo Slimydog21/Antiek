@@ -2191,9 +2191,8 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # SPR-01 (Living Roadmap) M3 + SPR-01 (Foundation) §14.4: the curated
     # fast/deep research tier the operator chose at the research entry.
     # CLOSED set — its only legal values are the members of
-    # substrate.dispatch.research_tier.RESEARCH_TIERS ("fast" → MiMo V2.5
-    # Pro, "deep" → DeepSeek V4 Pro). Recorded ON the start event so the
-    # chosen tier is queryable after the fact (which provider was preferred
+    # substrate.dispatch.research_tier.RESEARCH_TIERS. Recorded ON the start
+    # event so the chosen tier is queryable after the fact (which provider was preferred
     # for this investigation's RESEARCH lane). The tier→provider resolution
     # lives in ONE place — substrate/dispatch/research_tier.py — never
     # duplicated here.
@@ -2205,8 +2204,8 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     # from an operator who deliberately asked for the deep lane — and the
     # synthesizer's override (interfaces/research/api/synthesizer.py:
     # _research_tier_override) consumed that default-"deep" to silently
-    # re-route the §14.4-pinned Opus synthesizer onto DeepSeek the instant
-    # DEEPSEEK_API_KEY was set. None == "no explicit choice recorded → the
+    # displace the dedicated synthesis route. None == "no explicit choice
+    # recorded → the
     # research lane resolves the default (DEFAULT_RESEARCH_TIER, still
     # "deep"); the synthesizer keeps its config pin." A non-null value ==
     # "the operator explicitly chose this lane." DEFAULT_RESEARCH_TIER's
