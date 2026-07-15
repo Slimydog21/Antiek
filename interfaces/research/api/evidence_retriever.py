@@ -33,6 +33,7 @@ synthesizer chain).
 from __future__ import annotations
 
 import os
+import re
 import sys
 from collections.abc import Awaitable, Callable
 
@@ -113,20 +114,35 @@ def _empty_delivered_payload(
 def _extract_chunk_ids_from_block(chunks_block: str) -> tuple[str, ...]:
     """Extract canonical chunk ids from rendered chunk lines.
 
-    The request contract renders chunks as ``[chunk_id] ...`` lines. Only that
-    structural prefix counts; IDs mentioned later in prose are not accepted as
-    provenance candidates.
+    Two production renderers exist: the bridge fixture/legacy form
+    ``[chunk_id] ...`` and Loop One's live ``### chunk_id: chunk_id`` heading.
+    Only those structural line prefixes count; IDs mentioned later in prose are
+    never accepted as provenance candidates.
     """
     out: list[str] = []
     seen: set[str] = set()
+    at_record_boundary = True
     for raw_line in chunks_block.splitlines():
         line = raw_line.strip()
-        if not line.startswith("[") or "]" not in line:
+        if line == "---":
+            at_record_boundary = True
             continue
-        chunk_id = line[1:].split("]", 1)[0].strip()
+        if not at_record_boundary:
+            continue
+        chunk_id = ""
+        bracket = re.fullmatch(r"\[([^\]]+)\](?:\s.*)?", line)
+        if bracket is not None:
+            chunk_id = bracket.group(1)
+        else:
+            heading = re.fullmatch(r"### chunk_id:\s+([^\s]+)", line)
+            if heading is not None:
+                chunk_id = heading.group(1)
+        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:/-]{0,255}", chunk_id) is None:
+            continue
         if chunk_id and chunk_id not in seen:
             out.append(chunk_id)
             seen.add(chunk_id)
+        at_record_boundary = False
     return tuple(out)
 
 
