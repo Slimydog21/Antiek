@@ -83,6 +83,11 @@ from .narration_authorization import (
     TrustedNarrationTerms,
     authorize_multimedia_chapter_narration,
 )
+from .paid_video_cost_authority import (
+    PaidRegisteredVideoCostAuthorityV1,
+    build_paid_registered_video_cost_authority,
+    verify_paid_registered_video_cost_authority,
+)
 from .planner import (
     ChapterPlan,
     CoverageSuggestion,
@@ -265,6 +270,9 @@ __all__ = [
     "ProductionByteProjectionV1",
     "ProductionCostClosure",
     "build_production_byte_cost_closure",
+    "PaidRegisteredVideoCostAuthorityV1",
+    "build_paid_registered_video_cost_authority",
+    "verify_paid_registered_video_cost_authority",
     "verify_production_byte_projection",
     # MSR-03 local zero external provider cost authority
     "LocalZeroEvidenceConflict",

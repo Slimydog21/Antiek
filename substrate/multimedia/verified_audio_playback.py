@@ -121,7 +121,9 @@ def project_audio_learned_claims(
         claim_text = getattr(claim, "claim_text", None)
         source_chunk_ids = getattr(claim, "source_chunk_ids", None)
         follow_up_prompt = getattr(claim, "follow_up_prompt", None)
-        line = lines.get(line_id) if isinstance(line_id, str) else None
+        if not isinstance(line_id, str):
+            raise VerifiedPlaybackError("audio claim evidence conflicts")
+        line = lines.get(line_id)
         if (
             line is None
             or line_id in seen_lines
@@ -195,7 +197,9 @@ def project_legacy_audio_learned_claims(
         claim_text = getattr(claim, "claim_text", None)
         source_chunk_ids = getattr(claim, "source_chunk_ids", None)
         follow_up_prompt = getattr(claim, "follow_up_prompt", None)
-        line = lines.get(line_id) if isinstance(line_id, str) else None
+        if not isinstance(line_id, str):
+            raise VerifiedPlaybackError("legacy audio claim evidence conflicts")
+        line = lines.get(line_id)
         if (
             line is None
             or line_id in seen_lines
