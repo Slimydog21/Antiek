@@ -22,7 +22,6 @@ from runtime.research_runner.derived_companion_receipt import (
     COMPANION_SEAM_ID,
     SettledCompanionReceiptVerifier,
     companion_operation_digest,
-    companion_settlement_evidence,
 )
 from substrate.contracts.html_projection import HtmlProjectionContract, derive_projection_id
 from substrate.graph.schema import init_database_at_path
@@ -42,7 +41,8 @@ from substrate.research_artifact.derived_companion_repository import (
 from substrate.research_artifact.grounded_companion_answer import (
     AnswerClaimInput,
     GroundedAnswerCandidate,
-    candidate_digest,
+    candidate_from_json,
+    canonical_candidate_json,
 )
 from substrate.research_artifact.merge_draft import MergeDraftRepository
 from substrate.research_spend import PaidHoldIntent, ResearchSpendLedger, RunBinding
@@ -151,9 +151,7 @@ def test_id_only_draft_review_and_inert_preview(
     assert preview.headers["x-content-type-options"] == "nosniff"
     assert preview.headers["x-frame-options"] == "DENY"
     assert "ready.html" not in preview.text and str(Path(db_path).parent) not in preview.text
-    framed = client.get(
-        f"/research/derived-assets/merge/frame-previews/{review['review_id']}"
-    )
+    framed = client.get(f"/research/derived-assets/merge/frame-previews/{review['review_id']}")
     assert framed.content == preview.content
     assert framed.headers["cache-control"] == "private, no-store"
     assert framed.headers["referrer-policy"] == "no-referrer"
@@ -321,14 +319,18 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert history.status_code == 200
     body = history.json()
     assert [item["revision_id"] for item in body["revisions"]] == [
-        restored["revision_id"], revised["revision_id"], first_revision
+        restored["revision_id"],
+        revised["revision_id"],
+        first_revision,
     ]
     assert body["revisions"][0]["operation_kind"] == "restore"
     assert body["revisions"][0]["restored_from_revision_id"] == first_revision
     assert body["revisions"][1]["operation_kind"] == "revise"
     assert body["revisions"][2]["operation_kind"] == "create"
-    assert all("created_at" not in repr(item) and "manifest" not in repr(item)
-               for item in body["revisions"])
+    assert all(
+        "created_at" not in repr(item) and "manifest" not in repr(item)
+        for item in body["revisions"]
+    )
 
     current_preview = client.get(asset["current"]["preview_url"])
     exact_preview = client.get(body["revisions"][2]["preview_url"])
@@ -402,13 +404,15 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     )
     assert replay == pack
     assert json.loads(canonical_evidence_json(pack)) == pack
-    assert pack["pack_sha256"] == hashlib.sha256(
-        canonical_evidence_json({key: value for key, value in pack.items()
-                                 if key != "pack_sha256"}).encode()
-    ).hexdigest()
-    assert pack["citations"][0]["citation_id"] == current_search.json()["results"][0][
-        "citation_id"
-    ]
+    assert (
+        pack["pack_sha256"]
+        == hashlib.sha256(
+            canonical_evidence_json(
+                {key: value for key, value in pack.items() if key != "pack_sha256"}
+            ).encode()
+        ).hexdigest()
+    )
+    assert pack["citations"][0]["citation_id"] == current_search.json()["results"][0]["citation_id"]
     citation = pack["citations"][0]
     source = DerivedCitationSource(
         derived_asset_id=asset_id,
@@ -420,21 +424,25 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         chunk_text_sha256=citation["text_sha256"],
         excerpt=citation["text"],
     )
-    assert verify_derived_citation_source(
-        db_path=db_path, owner_user_id="owner-a", source=source
-    ) == source
+    assert (
+        verify_derived_citation_source(db_path=db_path, owner_user_id="owner-a", source=source)
+        == source
+    )
     with pytest.raises(DerivedCitationConflict):
         verify_derived_citation_source(
             db_path=db_path,
             owner_user_id="owner-a",
             source=source.model_copy(update={"chunk_text_sha256": "f" * 64}),
         )
-    assert build_derived_revision_evidence_pack(
-        db_path=db_path,
-        owner_user_id="owner-a",
-        asset_id=asset_id,
-        question="absent",
-    )["citations"] == []
+    assert (
+        build_derived_revision_evidence_pack(
+            db_path=db_path,
+            owner_user_id="owner-a",
+            asset_id=asset_id,
+            question="absent",
+        )["citations"]
+        == []
+    )
     companion_path = f"/research/derived-assets/assets/{asset_id}/companion/evidence"
     companion_command = {
         "client_turn_id": "reader-turn-0001",
@@ -462,36 +470,45 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     assert execution["pricing_status"] == "unavailable"
     assert execution["recommended_ceiling_cents"] is None
     assert [route["provider"] for route in execution["routes"]] == [
-        "exa", "openai", "perplexity", "tavily"
+        "exa",
+        "openai",
+        "perplexity",
+        "tavily",
     ]
     replayed = client.post(companion_path, json=companion_command)
     assert replayed.status_code == 200 and replayed.json()["replayed"] is True
-    answer_candidate = GroundedAnswerCandidate(claims=(
-        AnswerClaimInput(
-            text="The revision is ready.",
-            citation_ids=(prepared.json()["evidence_pack"]["citations"][0]["citation_id"],),
-        ),
-        AnswerClaimInput(text="This remains an explicit unsupported observation."),
-    ))
+    answer_candidate = GroundedAnswerCandidate(
+        claims=(
+            AnswerClaimInput(
+                text="The revision is ready.",
+                citation_ids=(prepared.json()["evidence_pack"]["citations"][0]["citation_id"],),
+            ),
+            AnswerClaimInput(text="This remains an explicit unsupported observation."),
+        )
+    )
     admission_key = "answer-admission-0001"
     with pytest.raises(CompanionAnswerUnavailable):
         DerivedCompanionRepository(db_path=db_path).admit_answer(
-            owner_user_id="owner-a", client_turn_id="reader-turn-0001",
-            admission_key=admission_key, candidate=answer_candidate,
+            owner_user_id="owner-a",
+            client_turn_id="reader-turn-0001",
+            admission_key=admission_key,
+            candidate=answer_candidate,
         )
     assert spend_db.exists() is False
     spend = ResearchSpendLedger(spend_db)
     spend.ensure_schema()
     binding = RunBinding(
-        "companion-run-0001", "owner-a", "companion-session-0001",
-        prepared.json()["evidence_pack"]["pack_sha256"], 1,
+        "companion-run-0001",
+        "owner-a",
+        "companion-session-0001",
+        prepared.json()["evidence_pack"]["pack_sha256"],
+        1,
     )
     spend.create_or_reopen_run("create-companion-run-0001", binding, 20)
-    turn_id = "dturn_" + hashlib.sha256(
-        b"owner-a\0reader-turn-0001"
-    ).hexdigest()[:32]
+    turn_id = "dturn_" + hashlib.sha256(b"owner-a\0reader-turn-0001").hexdigest()[:32]
     hold = spend.reserve_paid(
-        "reserve-companion-answer-0001", binding,
+        "reserve-companion-answer-0001",
+        binding,
         PaidHoldIntent(
             reservation_key="companion-answer-reservation-0001",
             seam_id=COMPANION_SEAM_ID,
@@ -507,88 +524,114 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         ),
         10,
     )
-    spend.mark_dispatch_possible("dispatch-companion-answer-0001", hold.hold_id)
-    spend.settle(
-        "settle-companion-answer-0001", hold.hold_id, 7,
-        companion_settlement_evidence(
-            turn_id=turn_id,
-            evidence_pack_sha256=prepared.json()["evidence_pack"]["pack_sha256"],
-            output_digest=candidate_digest(answer_candidate),
-            provider_response_digest="a" * 64,
-        ),
+    journal_execution, journal_created = spend.prepare_companion_execution(
+        "prepare-companion-answer-0001",
+        binding,
+        hold.hold_id,
+        turn_id,
+        prepared.json()["evidence_pack"]["pack_sha256"],
     )
-    verifier = SettledCompanionReceiptVerifier(spend, "owner-a", hold.hold_id)
+    assert journal_created is True
+    spend.mark_dispatch_possible("dispatch-companion-answer-0001", hold.hold_id)
+    spend.complete_companion_execution(
+        "settle-companion-answer-0001",
+        journal_execution.execution_id,
+        "owner-a",
+        7,
+        canonical_candidate_json(answer_candidate),
+        "a" * 64,
+    )
+    reopened_spend = ResearchSpendLedger(spend_db)
+    recovered = reopened_spend.companion_execution(
+        journal_execution.execution_id, "owner-a"
+    )
+    assert recovered.output_json is not None
+    recovered_candidate = candidate_from_json(recovered.output_json)
+    verifier = SettledCompanionReceiptVerifier(reopened_spend, "owner-a", hold.hold_id)
 
     admitted = DerivedCompanionRepository(
-        db_path=db_path, receipt_verifier=verifier,
+        db_path=db_path,
+        receipt_verifier=verifier,
     ).admit_answer(
-        owner_user_id="owner-a", client_turn_id="reader-turn-0001",
-        admission_key=admission_key, candidate=answer_candidate,
+        owner_user_id="owner-a",
+        client_turn_id="reader-turn-0001",
+        admission_key=admission_key,
+        candidate=recovered_candidate,
     )
     assert admitted["replayed"] is False
     assert admitted["unsupported_claim_count"] == 1
     assert "execution_receipt_id" not in admitted
     assert "execution_receipt_digest" not in admitted
     replayed_answer = DerivedCompanionRepository(db_path=db_path).admit_answer(
-        owner_user_id="owner-a", client_turn_id="reader-turn-0001",
-        admission_key=admission_key, candidate=answer_candidate,
+        owner_user_id="owner-a",
+        client_turn_id="reader-turn-0001",
+        admission_key=admission_key,
+        candidate=answer_candidate,
     )
     assert replayed_answer == {**admitted, "replayed": True}
     with pytest.raises(CompanionAnswerConflict):
         DerivedCompanionRepository(db_path=db_path).admit_answer(
-            owner_user_id="owner-a", client_turn_id="reader-turn-0001",
+            owner_user_id="owner-a",
+            client_turn_id="reader-turn-0001",
             admission_key=admission_key,
             candidate=GroundedAnswerCandidate(claims=(AnswerClaimInput(text="changed"),)),
         )
     with pytest.raises(CompanionAnswerUnavailable):
         DerivedCompanionRepository(db_path=db_path).admit_answer(
-            owner_user_id="owner-b", client_turn_id="reader-turn-0001",
-            admission_key=admission_key, candidate=answer_candidate,
+            owner_user_id="owner-b",
+            client_turn_id="reader-turn-0001",
+            admission_key=admission_key,
+            candidate=answer_candidate,
         )
     refreshed = client.post(companion_path, json=companion_command).json()
-    assert refreshed["answer"] == {key: value for key, value in replayed_answer.items()
-                                    if key != "replayed"}
-    assert client.post(companion_path.removesuffix("/evidence") + "/answer", json={}).status_code in (
-        404, 405,
+    assert refreshed["answer"] == {
+        key: value for key, value in replayed_answer.items() if key != "replayed"
+    }
+    assert client.post(
+        companion_path.removesuffix("/evidence") + "/answer", json={}
+    ).status_code in (
+        404,
+        405,
     )
     conflict = client.post(companion_path, json={**companion_command, "question": "up"})
     assert conflict.status_code == 409
-    abstained = client.post(companion_path, json={
-        **companion_command,
-        "client_turn_id": "reader-turn-0002",
-        "question": "absent",
-    })
+    abstained = client.post(
+        companion_path,
+        json={
+            **companion_command,
+            "client_turn_id": "reader-turn-0002",
+            "question": "absent",
+        },
+    )
     assert abstained.status_code == 200
     assert abstained.json()["state"] == "insufficient_evidence"
     assert abstained.json()["evidence_pack"]["citations"] == []
-    stale = client.post(companion_path, json={
-        **companion_command,
-        "client_turn_id": "reader-turn-0003",
-        "expected_revision_id": first_revision,
-        "expected_content_sha256": created["content_sha256"],
-    })
+    stale = client.post(
+        companion_path,
+        json={
+            **companion_command,
+            "client_turn_id": "reader-turn-0003",
+            "expected_revision_id": first_revision,
+            "expected_content_sha256": created["content_sha256"],
+        },
+    )
     assert stale.status_code == 409
     assert stale.json()["current"]["revision_id"] == restored["revision_id"]
     exact_companion_path = (
-        f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}"
-        "/companion/evidence"
+        f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/companion/evidence"
     )
-    historical = client.post(exact_companion_path, json={
-        "client_turn_id": "reader-turn-0004", "question": "Ready"
-    })
+    historical = client.post(
+        exact_companion_path, json={"client_turn_id": "reader-turn-0004", "question": "Ready"}
+    )
     assert historical.status_code == 200
     assert historical.json()["scope"]["revision_id"] == first_revision
     assert historical.json()["scope"]["is_current"] is False
-    conversation = client.get(
-        f"/research/derived-assets/assets/{asset_id}/companion"
-    )
+    conversation = client.get(f"/research/derived-assets/assets/{asset_id}/companion")
     assert conversation.status_code == 200
     assert conversation.headers["cache-control"] == "private, no-store"
     assert conversation.json()["execution"] == execution
     assert conversation.json()["turns"][0]["answer"] == refreshed["answer"]
-    assert [turn["question"] for turn in conversation.json()["turns"]] == [
-        "Ready", "absent"
-    ]
+    assert [turn["question"] for turn in conversation.json()["turns"]] == ["Ready", "absent"]
     exact_conversation = client.get(
         f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/companion"
     )
@@ -603,15 +646,17 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
             "SELECT count(*) FROM derived_asset_companion_turn_citations"
         ).fetchone() == (2,)
         assert con.execute(
-            "SELECT count(*) FROM derived_asset_companion_turn_citations "
-            "WHERE used_in_answer=TRUE"
+            "SELECT count(*) FROM derived_asset_companion_turn_citations WHERE used_in_answer=TRUE"
         ).fetchone() == (1,)
-        assert con.execute(
-            "SELECT count(*) FROM derived_asset_companion_answers"
-        ).fetchone() == (1,)
-        assert "<article" not in "".join(str(row[0]) for row in con.execute(
-            "SELECT evidence_pack_json FROM derived_asset_companion_turns"
-        ).fetchall())
+        assert con.execute("SELECT count(*) FROM derived_asset_companion_answers").fetchone() == (
+            1,
+        )
+        assert "<article" not in "".join(
+            str(row[0])
+            for row in con.execute(
+                "SELECT evidence_pack_json FROM derived_asset_companion_turns"
+            ).fetchall()
+        )
     with connect_write(db_path, purpose="companion-composite-constraint-proof") as con:
         with pytest.raises(duckdb.ConstraintException):
             con.execute(
@@ -620,11 +665,11 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
             )
         with pytest.raises(duckdb.ConstraintException):
             con.execute(
-                "UPDATE derived_asset_companion_turn_citations "
-                "SET revision_id=? WHERE turn_id=?",
-                [first_revision, "dturn_" + hashlib.sha256(
-                    b"owner-a\0reader-turn-0001"
-                ).hexdigest()[:32]],
+                "UPDATE derived_asset_companion_turn_citations SET revision_id=? WHERE turn_id=?",
+                [
+                    first_revision,
+                    "dturn_" + hashlib.sha256(b"owner-a\0reader-turn-0001").hexdigest()[:32],
+                ],
             )
     assert client.post(current_search_path, json={"query": "absent"}).json()["results"] == []
     assert client.post(current_search_path, json={"query": "x", "unknown": True}).status_code == 422
@@ -634,17 +679,20 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     with duckdb.connect(db_path, read_only=True) as con:
         projection = con.execute(
             "SELECT document_type,raw_text,owner_user_id,metadata FROM documents "
-            "WHERE document_id=?", [asset_id]
+            "WHERE document_id=?",
+            [asset_id],
         ).fetchone()
     assert projection is not None
     assert projection[:3] == ("derived_html", None, "owner-a")
     assert json.loads(projection[3]) == {
-        "body_authority": "derived_asset_revisions", "derived_asset_id": asset_id
+        "body_authority": "derived_asset_revisions",
+        "derived_asset_id": asset_id,
     }
 
-    assert client.get(
-        "/research/derived-assets", headers={"x-owner": "owner-b"}
-    ).json()["assets"] == []
+    assert (
+        client.get("/research/derived-assets", headers={"x-owner": "owner-b"}).json()["assets"]
+        == []
+    )
     for path in (
         f"/research/derived-assets/assets/{asset_id}/revisions",
         asset["current"]["preview_url"],
@@ -654,9 +702,10 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
     ):
         assert client.get(path, headers={"x-owner": "owner-b"}).status_code == 404
     for path in (current_search_path, exact_search_path):
-        assert client.post(
-            path, headers={"x-owner": "owner-b"}, json={"query": "Ready"}
-        ).status_code == 404
+        assert (
+            client.post(path, headers={"x-owner": "owner-b"}, json={"query": "Ready"}).status_code
+            == 404
+        )
     with connect_write(db_path, purpose="derived-index-tamper-proof") as con:
         con.execute(
             "UPDATE derived_asset_revision_indexes SET index_sha256=? "
@@ -687,9 +736,12 @@ def test_derived_asset_library_refuses_member_drift(
             [applied["derived_asset_id"]],
         )
     assert client.get("/research/derived-assets").status_code == 409
-    assert client.get(
-        f"/research/derived-assets/assets/{applied['derived_asset_id']}/revisions"
-    ).status_code == 409
+    assert (
+        client.get(
+            f"/research/derived-assets/assets/{applied['derived_asset_id']}/revisions"
+        ).status_code
+        == 409
+    )
 
 
 def test_derived_asset_library_refuses_owned_missing_head_and_generation_drift(
@@ -705,9 +757,7 @@ def test_derived_asset_library_refuses_owned_missing_head_and_generation_drift(
             ["ast_" + "f" * 32, "Foreign incomplete", "analysis", "owner-b"],
         )
     assert client.get("/research/derived-assets").json()["assets"] == []
-    assert client.get(
-        "/research/derived-assets", headers={"x-owner": "owner-b"}
-    ).status_code == 409
+    assert client.get("/research/derived-assets", headers={"x-owner": "owner-b"}).status_code == 409
 
     draft = client.post("/research/derived-assets/merge/drafts", json=payload(projection_id)).json()
     review = client.post(

@@ -43,6 +43,8 @@ __all__ = [
     "BillingEvidenceKind",
     "BillingRefusalReason",
     "default_research_spend_db_path",
+    "CompanionExecutionSnapshot",
+    "CompanionExecutionState",
     "IdempotencyConflict",
     "InvalidTransition",
     "LedgerIntegrityError",
@@ -74,7 +76,7 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 6
+SCHEMA_VERSION: Final = 7
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
@@ -141,6 +143,11 @@ class ProviderSubmissionState(StrEnum):
     BILLING_PENDING = "billing_pending"
     FAILED_PRE_ACCEPTANCE = "failed_pre_acceptance"
     INTEGRITY_CONFLICT = "integrity_conflict"
+
+
+class CompanionExecutionState(StrEnum):
+    PREPARED = "prepared"
+    COMPLETED = "completed"
 
 
 class LedgerIntegrityError(RuntimeError):
@@ -324,6 +331,29 @@ class SettledPaidHoldReceipt:
 
 
 @dataclass(frozen=True)
+class CompanionExecutionSnapshot:
+    execution_id: str
+    hold_id: str
+    run_id: str
+    owner_id: str
+    turn_id: str
+    evidence_pack_sha256: str
+    request_digest: str
+    operation_digest: str
+    provider: str
+    model: str
+    state: CompanionExecutionState
+    output_json: str | None
+    output_digest: str | None
+    provider_response_digest: str | None
+    settlement_evidence_sha256: str | None
+    actual_cents: int | None
+    settlement_command_key: str | None
+    created_at: str
+    completed_at: str | None
+
+
+@dataclass(frozen=True)
 class RecoveryItem:
     item_id: str
     kind: str
@@ -443,9 +473,17 @@ class ProviderSubmissionIntent:
 
     def __post_init__(self) -> None:
         for name in (
-            "submission_id", "operation_id", "provider", "model", "adapter_contract",
-            "account_digest", "region", "provider_model_id", "client_request_token",
-            "create_request_json", "recovery_strategy",
+            "submission_id",
+            "operation_id",
+            "provider",
+            "model",
+            "adapter_contract",
+            "account_digest",
+            "region",
+            "provider_model_id",
+            "client_request_token",
+            "create_request_json",
+            "recovery_strategy",
         ):
             _required_text(name, cast(str, getattr(self, name)))
         if (self.publication_receipt_json is None) != (self.publication_receipt_digest is None):
@@ -460,9 +498,11 @@ class ProviderSubmissionIntent:
                 receipt = json.loads(self.publication_receipt_json)
             except json.JSONDecodeError as exc:
                 raise ValueError("publication receipt must be canonical JSON") from exc
-            if not isinstance(receipt, dict) or json.dumps(
-                receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-            ) != self.publication_receipt_json:
+            if (
+                not isinstance(receipt, dict)
+                or json.dumps(receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+                != self.publication_receipt_json
+            ):
                 raise ValueError("publication receipt must be canonical JSON object")
         if len(self.client_request_token) != 64 or any(
             char not in "0123456789abcdef" for char in self.client_request_token
@@ -972,6 +1012,75 @@ _MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
         BEGIN SELECT RAISE(ABORT, 'research provider submission immutable fields changed'); END
         """,
     ),
+    6: (
+        """
+        CREATE TABLE research_companion_executions (
+            execution_id TEXT PRIMARY KEY CHECK(
+                execution_id GLOB 'dcex_*' AND length(execution_id)=69
+            ),
+            hold_id TEXT NOT NULL UNIQUE REFERENCES research_spend_holds(hold_id),
+            run_id TEXT NOT NULL REFERENCES research_spend_runs(run_id),
+            owner_id TEXT NOT NULL,
+            turn_id TEXT NOT NULL CHECK(turn_id GLOB 'dturn_*' AND length(turn_id)=38),
+            evidence_pack_sha256 TEXT NOT NULL CHECK(
+                length(evidence_pack_sha256)=64
+                AND evidence_pack_sha256 NOT GLOB '*[^0-9a-f]*'
+            ),
+            request_digest TEXT NOT NULL CHECK(
+                length(request_digest)=64 AND request_digest NOT GLOB '*[^0-9a-f]*'
+            ),
+            operation_digest TEXT NOT NULL CHECK(
+                length(operation_digest)=64 AND operation_digest NOT GLOB '*[^0-9a-f]*'
+            ),
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            state TEXT NOT NULL CHECK(state IN ('prepared','completed')),
+            output_json TEXT,
+            output_digest TEXT,
+            provider_response_digest TEXT,
+            settlement_evidence_sha256 TEXT,
+            actual_cents INTEGER CHECK(
+                actual_cents IS NULL OR actual_cents BETWEEN 0 AND 9223372036854775807
+            ),
+            settlement_command_key TEXT,
+            created_at TEXT NOT NULL,
+            completed_at TEXT,
+            UNIQUE(run_id,turn_id,evidence_pack_sha256),
+            CHECK(
+                (state='prepared' AND output_json IS NULL AND output_digest IS NULL
+                    AND provider_response_digest IS NULL
+                    AND settlement_evidence_sha256 IS NULL AND actual_cents IS NULL
+                    AND settlement_command_key IS NULL AND completed_at IS NULL)
+                OR
+                (state='completed' AND output_json IS NOT NULL AND output_digest IS NOT NULL
+                    AND provider_response_digest IS NOT NULL
+                    AND settlement_evidence_sha256 IS NOT NULL AND actual_cents IS NOT NULL
+                    AND settlement_command_key IS NOT NULL AND completed_at IS NOT NULL)
+            )
+        ) STRICT
+        """,
+        "CREATE INDEX research_companion_executions_owner_turn_idx "
+        "ON research_companion_executions(owner_id,turn_id)",
+        """
+        CREATE TRIGGER research_companion_executions_guard_update
+        BEFORE UPDATE ON research_companion_executions
+        WHEN NEW.execution_id != OLD.execution_id OR NEW.hold_id != OLD.hold_id
+          OR NEW.run_id != OLD.run_id OR NEW.owner_id != OLD.owner_id
+          OR NEW.turn_id != OLD.turn_id
+          OR NEW.evidence_pack_sha256 != OLD.evidence_pack_sha256
+          OR NEW.request_digest != OLD.request_digest
+          OR NEW.operation_digest != OLD.operation_digest
+          OR NEW.provider != OLD.provider OR NEW.model != OLD.model
+          OR NEW.created_at != OLD.created_at
+          OR NOT (OLD.state='prepared' AND NEW.state='completed')
+        BEGIN SELECT RAISE(ABORT, 'companion execution transition rejected'); END
+        """,
+        """
+        CREATE TRIGGER research_companion_executions_no_delete
+        BEFORE DELETE ON research_companion_executions
+        BEGIN SELECT RAISE(ABORT, 'companion executions are durable'); END
+        """,
+    ),
 }
 
 
@@ -1075,7 +1184,15 @@ class ResearchSpendLedger:
             if version == 0:
                 connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
                 for index, statement in enumerate(
-                    (*_DDL, *_MIGRATIONS[2], *_MIGRATIONS[3], *_MIGRATIONS[4], *_MIGRATIONS[5]), start=1
+                    (
+                        *_DDL,
+                        *_MIGRATIONS[2],
+                        *_MIGRATIONS[3],
+                        *_MIGRATIONS[4],
+                        *_MIGRATIONS[5],
+                        *_MIGRATIONS[6],
+                    ),
+                    start=1,
                 ):
                     connection.execute(statement)
                     self._checkpoint(f"schema:after_statement:{index}")
@@ -1441,83 +1558,106 @@ class ResearchSpendLedger:
             }
         )
         with self._write("settle") as connection:
-            replay = self._replay(connection, command_key, "settle", hold_id, intent_json)
-            if replay is not None:
-                return self._load_run(connection, self._load_hold(connection, hold_id).run_id)
-            hold = self._load_hold(connection, hold_id)
-            if hold.state not in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
-                raise InvalidTransition(hold_id, hold.state.value, "settle")
-            run = self._load_run(connection, hold.run_id)
-            authorized_delta = min(actual_cents, hold.projected_max_cents)
-            observed = run.observed_provider_spend_cents + actual_cents
-            breach = actual_cents > hold.projected_max_cents
-            now = _now()
-            next_status = run.status
-            if breach and run.status is RunStatus.ACTIVE:
-                next_status = RunStatus.CEILING_BREACHED
-            updated_run = connection.execute(
-                "UPDATE research_spend_runs SET "
-                "authorized_spent_cents = authorized_spent_cents + ?, "
-                "observed_provider_spend_dec = ?, held_cents = held_cents - ?, "
-                "status = ?, ceiling_breached = CASE WHEN ? THEN 1 "
-                "ELSE ceiling_breached END, updated_at = ? "
-                "WHERE run_id = ? AND held_cents >= ? RETURNING run_id",
-                (
-                    authorized_delta,
-                    str(observed),
-                    hold.projected_max_cents,
-                    next_status.value,
-                    breach,
-                    now,
-                    hold.run_id,
-                    hold.projected_max_cents,
-                ),
-            ).fetchone()
-            if updated_run is None:
-                raise LedgerIntegrityError("settlement could not consume the persisted hold")
-            self._checkpoint("settle:after_run_update")
-            updated_hold = connection.execute(
-                "UPDATE research_spend_holds SET state = 'settled', actual_cents = ?, "
-                "authorized_applied_cents = ?, resolution_key = ?, "
-                "resolution_intent_json = ?, resolution_intent_sha256 = ?, "
-                "resolution_evidence_json = ?, resolved_at = ?, updated_at = ? "
-                "WHERE hold_id = ? AND state IN ('dispatch_possible', 'unknown') "
-                "RETURNING hold_id",
-                (
-                    actual_cents,
-                    authorized_delta,
-                    command_key,
-                    intent_json,
-                    _sha256(intent_json),
-                    evidence_json,
-                    now,
-                    now,
-                    hold_id,
-                ),
-            ).fetchone()
-            if updated_hold is None:
-                raise LedgerIntegrityError("settlement lost its dispatch state")
-            self._checkpoint("settle:after_hold_update")
-            self._advance_closed_reconciliation(connection, hold.run_id, now)
-            run = self._load_run(connection, hold.run_id)
-            result_json = self._run_result(run)
-            self._record_command(
-                connection, command_key, "settle", hold_id, intent_json, result_json
-            )
-            self._checkpoint("settle:after_command")
-            self._append_event(
+            return self._settle_in_context(
                 connection,
-                run,
                 command_key=command_key,
-                event_kind="hold_breached" if breach else "hold_settled",
                 hold_id=hold_id,
-                authorized_delta_cents=authorized_delta,
-                held_delta_cents=-hold.projected_max_cents,
-                observed_delta_cents=actual_cents,
+                actual_cents=actual_cents,
                 evidence_json=evidence_json,
+                intent_json=intent_json,
             )
-            self._checkpoint("settle:after_event")
-            return run
+
+    def _settle_in_context(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        command_key: str,
+        hold_id: str,
+        actual_cents: int,
+        evidence_json: str,
+        intent_json: str,
+    ) -> RunSnapshot:
+        replay = self._replay(connection, command_key, "settle", hold_id, intent_json)
+        if replay is not None:
+            return self._load_run(connection, self._load_hold(connection, hold_id).run_id)
+        hold = self._load_hold(connection, hold_id)
+        if hold.state not in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
+            raise InvalidTransition(hold_id, hold.state.value, "settle")
+        run = self._load_run(connection, hold.run_id)
+        authorized_delta = min(actual_cents, hold.projected_max_cents)
+        observed = run.observed_provider_spend_cents + actual_cents
+        breach = actual_cents > hold.projected_max_cents
+        now = _now()
+        next_status = run.status
+        if breach and run.status is RunStatus.ACTIVE:
+            next_status = RunStatus.CEILING_BREACHED
+        updated_run = connection.execute(
+            "UPDATE research_spend_runs SET "
+            "authorized_spent_cents = authorized_spent_cents + ?, "
+            "observed_provider_spend_dec = ?, held_cents = held_cents - ?, "
+            "status = ?, ceiling_breached = CASE WHEN ? THEN 1 "
+            "ELSE ceiling_breached END, updated_at = ? "
+            "WHERE run_id = ? AND held_cents >= ? RETURNING run_id",
+            (
+                authorized_delta,
+                str(observed),
+                hold.projected_max_cents,
+                next_status.value,
+                breach,
+                now,
+                hold.run_id,
+                hold.projected_max_cents,
+            ),
+        ).fetchone()
+        if updated_run is None:
+            raise LedgerIntegrityError("settlement could not consume the persisted hold")
+        self._checkpoint("settle:after_run_update")
+        updated_hold = connection.execute(
+            "UPDATE research_spend_holds SET state = 'settled', actual_cents = ?, "
+            "authorized_applied_cents = ?, resolution_key = ?, "
+            "resolution_intent_json = ?, resolution_intent_sha256 = ?, "
+            "resolution_evidence_json = ?, resolved_at = ?, updated_at = ? "
+            "WHERE hold_id = ? AND state IN ('dispatch_possible', 'unknown') "
+            "RETURNING hold_id",
+            (
+                actual_cents,
+                authorized_delta,
+                command_key,
+                intent_json,
+                _sha256(intent_json),
+                evidence_json,
+                now,
+                now,
+                hold_id,
+            ),
+        ).fetchone()
+        if updated_hold is None:
+            raise LedgerIntegrityError("settlement lost its dispatch state")
+        self._checkpoint("settle:after_hold_update")
+        self._advance_closed_reconciliation(connection, hold.run_id, now)
+        run = self._load_run(connection, hold.run_id)
+        self._record_command(
+            connection,
+            command_key,
+            "settle",
+            hold_id,
+            intent_json,
+            self._run_result(run),
+        )
+        self._checkpoint("settle:after_command")
+        self._append_event(
+            connection,
+            run,
+            command_key=command_key,
+            event_kind="hold_breached" if breach else "hold_settled",
+            hold_id=hold_id,
+            authorized_delta_cents=authorized_delta,
+            held_delta_cents=-hold.projected_max_cents,
+            observed_delta_cents=actual_cents,
+            evidence_json=evidence_json,
+        )
+        self._checkpoint("settle:after_event")
+        return run
 
     def release(
         self,
@@ -1840,58 +1980,284 @@ class ResearchSpendLedger:
         finally:
             connection.close()
 
-    def settled_hold_receipt(
-        self, hold_id: str, owner_id: str
-    ) -> SettledPaidHoldReceipt:
+    def settled_hold_receipt(self, hold_id: str, owner_id: str) -> SettledPaidHoldReceipt:
         """Project an integrity-checked settlement without interpreting its evidence."""
         _required_text("hold_id", hold_id)
         _required_text("owner_id", owner_id)
         connection = self._connect()
         try:
-            hold = self._load_hold(connection, hold_id)
-            run = self._load_run(connection, hold.run_id)
-            if run.binding.owner_id != owner_id:
-                raise BindingConflict("settled paid hold is unavailable")
-            row = connection.execute(
-                "SELECT state,actual_cents,resolution_key,resolution_intent_json,"
-                "resolution_intent_sha256,resolution_evidence_json "
-                "FROM research_spend_holds WHERE hold_id=?", (hold_id,)
-            ).fetchone()
-            if row is None or str(row["state"]) != PaidHoldState.SETTLED.value:
-                raise InvalidTransition(hold_id, hold.state.value, "project settlement receipt")
-            evidence_json = str(row["resolution_evidence_json"])
-            try:
-                evidence = json.loads(evidence_json)
-                if not isinstance(evidence, dict):
-                    raise TypeError("settlement evidence is not an object")
-                canonical_evidence = _canonical(cast(Mapping[str, JsonScalar], evidence))
-            except (TypeError, ValueError, json.JSONDecodeError) as exc:
-                raise LedgerIntegrityError("settlement evidence is invalid") from exc
-            if canonical_evidence != evidence_json:
-                raise LedgerIntegrityError("settlement evidence is not canonical")
-            evidence_sha256 = _sha256(evidence_json)
-            intent_json = _canonical({
+            return self._settled_hold_receipt_in_context(connection, hold_id, owner_id)
+        finally:
+            connection.close()
+
+    def _settled_hold_receipt_in_context(
+        self,
+        connection: sqlite3.Connection,
+        hold_id: str,
+        owner_id: str,
+    ) -> SettledPaidHoldReceipt:
+        hold = self._load_hold(connection, hold_id)
+        run = self._load_run(connection, hold.run_id)
+        if run.binding.owner_id != owner_id:
+            raise BindingConflict("settled paid hold is unavailable")
+        row = connection.execute(
+            "SELECT state,actual_cents,resolution_key,resolution_intent_json,"
+            "resolution_intent_sha256,resolution_evidence_json "
+            "FROM research_spend_holds WHERE hold_id=?",
+            (hold_id,),
+        ).fetchone()
+        if row is None or str(row["state"]) != PaidHoldState.SETTLED.value:
+            raise InvalidTransition(hold_id, hold.state.value, "project settlement receipt")
+        evidence_json = str(row["resolution_evidence_json"])
+        try:
+            evidence = json.loads(evidence_json)
+            if not isinstance(evidence, dict):
+                raise TypeError("settlement evidence is not an object")
+            canonical_evidence = _canonical(cast(Mapping[str, JsonScalar], evidence))
+        except (TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise LedgerIntegrityError("settlement evidence is invalid") from exc
+        if canonical_evidence != evidence_json:
+            raise LedgerIntegrityError("settlement evidence is not canonical")
+        evidence_sha256 = _sha256(evidence_json)
+        intent_json = _canonical(
+            {
                 "actual_cents": int(row["actual_cents"]),
                 "evidence_sha256": evidence_sha256,
                 "hold_id": hold_id,
-            })
-            command_key = str(row["resolution_key"])
-            if (str(row["resolution_intent_json"]) != intent_json
-                    or str(row["resolution_intent_sha256"]) != _sha256(intent_json)
-                    or self._replay(
-                        connection, command_key, "settle", hold_id, intent_json
-                    ) is None):
-                raise LedgerIntegrityError("settlement command binding conflicts")
-            return SettledPaidHoldReceipt(
-                hold=hold,
-                owner_id=owner_id,
-                command_key=command_key,
-                evidence_json=evidence_json,
-                evidence_sha256=evidence_sha256,
-                resolution_intent_sha256=_sha256(intent_json),
+            }
+        )
+        command_key = str(row["resolution_key"])
+        if (
+            str(row["resolution_intent_json"]) != intent_json
+            or str(row["resolution_intent_sha256"]) != _sha256(intent_json)
+            or self._replay(connection, command_key, "settle", hold_id, intent_json) is None
+        ):
+            raise LedgerIntegrityError("settlement command binding conflicts")
+        return SettledPaidHoldReceipt(
+            hold=hold,
+            owner_id=owner_id,
+            command_key=command_key,
+            evidence_json=evidence_json,
+            evidence_sha256=evidence_sha256,
+            resolution_intent_sha256=_sha256(intent_json),
+        )
+
+    def prepare_companion_execution(
+        self,
+        command_key: str,
+        binding: RunBinding,
+        hold_id: str,
+        turn_id: str,
+        evidence_pack_sha256: str,
+    ) -> tuple[CompanionExecutionSnapshot, bool]:
+        """Bind a reserved paid hold to one exact companion request without sending."""
+        _required_text("command_key", command_key)
+        _required_text("hold_id", hold_id)
+        if re.fullmatch(r"dturn_[0-9a-f]{32}", turn_id) is None:
+            raise ValueError("companion turn_id is invalid")
+        if re.fullmatch(r"[0-9a-f]{64}", evidence_pack_sha256) is None:
+            raise ValueError("companion evidence pack digest is invalid")
+        operation_digest = self._companion_operation_digest(turn_id, evidence_pack_sha256)
+        request_digest = self._companion_request_digest(turn_id, evidence_pack_sha256)
+        execution_id = "dcex_" + _sha256(
+            _canonical(
+                {
+                    "evidence_pack_sha256": evidence_pack_sha256,
+                    "hold_id": hold_id,
+                    "owner_id": binding.owner_id,
+                    "turn_id": turn_id,
+                }
             )
+        )
+        intent_json = _canonical(
+            {
+                "evidence_pack_sha256": evidence_pack_sha256,
+                "execution_id": execution_id,
+                "hold_id": hold_id,
+                "operation_digest": operation_digest,
+                "owner_id": binding.owner_id,
+                "request_digest": request_digest,
+                "run_id": binding.run_id,
+                "turn_id": turn_id,
+            }
+        )
+        with self._write("prepare_companion_execution") as connection:
+            replay = self._replay(
+                connection,
+                command_key,
+                "prepare_companion_execution",
+                execution_id,
+                intent_json,
+            )
+            if replay is not None:
+                return self._load_companion_execution(
+                    connection, execution_id, binding.owner_id
+                ), False
+            self._require_binding(connection, binding)
+            hold = self._load_hold(connection, hold_id)
+            if hold.run_id != binding.run_id:
+                raise BindingConflict("companion hold run binding changed")
+            if hold.state is not PaidHoldState.RESERVED:
+                raise InvalidTransition(hold_id, hold.state.value, "prepare companion execution")
+            if (
+                hold.intent.seam_id != "derived_companion.answer"
+                or hold.intent.operation != "answer"
+                or hold.intent.operation_digest != operation_digest
+            ):
+                raise BindingConflict("paid hold is not bound to the companion request")
+            collision = connection.execute(
+                "SELECT 1 FROM research_companion_executions "
+                "WHERE execution_id=? OR hold_id=? OR "
+                "(run_id=? AND turn_id=? AND evidence_pack_sha256=?)",
+                (execution_id, hold_id, binding.run_id, turn_id, evidence_pack_sha256),
+            ).fetchone()
+            if collision is not None:
+                raise IdempotencyConflict("companion execution identity already exists")
+            now = _now()
+            connection.execute(
+                "INSERT INTO research_companion_executions "
+                "(execution_id,hold_id,run_id,owner_id,turn_id,evidence_pack_sha256,"
+                "request_digest,operation_digest,provider,model,state,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,'prepared',?)",
+                (
+                    execution_id,
+                    hold_id,
+                    binding.run_id,
+                    binding.owner_id,
+                    turn_id,
+                    evidence_pack_sha256,
+                    request_digest,
+                    operation_digest,
+                    hold.intent.provider,
+                    hold.intent.model,
+                    now,
+                ),
+            )
+            snapshot = self._load_companion_execution(connection, execution_id, binding.owner_id)
+            self._record_command(
+                connection,
+                command_key,
+                "prepare_companion_execution",
+                execution_id,
+                intent_json,
+                _canonical({"execution_id": execution_id, "state": "prepared"}),
+            )
+            self._append_event(
+                connection,
+                self._load_run(connection, binding.run_id),
+                command_key=command_key,
+                event_kind="companion_execution_prepared",
+                hold_id=hold_id,
+                evidence_json=intent_json,
+            )
+            return snapshot, True
+
+    def companion_execution(self, execution_id: str, owner_id: str) -> CompanionExecutionSnapshot:
+        connection = self._connect()
+        try:
+            return self._load_companion_execution(connection, execution_id, owner_id)
         finally:
             connection.close()
+
+    def complete_companion_execution(
+        self,
+        command_key: str,
+        execution_id: str,
+        owner_id: str,
+        actual_cents: int,
+        output_json: str,
+        provider_response_digest: str,
+    ) -> CompanionExecutionSnapshot:
+        """Atomically preserve normalized output and settle its exact paid hold."""
+        _required_text("command_key", command_key)
+        _required_text("execution_id", execution_id)
+        _required_text("owner_id", owner_id)
+        _bounded_int("actual_cents", actual_cents, minimum=0, maximum=MAX_ACTUAL_CENTS)
+        if re.fullmatch(r"[0-9a-f]{64}", provider_response_digest) is None:
+            raise ValueError("provider response digest must be lowercase SHA-256")
+        if not isinstance(output_json, str) or len(output_json.encode("utf-8")) > 128 * 1024:
+            raise ValueError("companion output JSON exceeds its byte limit")
+        from substrate.research_artifact.grounded_companion_answer import (
+            GroundedAnswerError,
+            candidate_from_json,
+        )
+
+        try:
+            candidate_from_json(output_json)
+        except GroundedAnswerError as exc:
+            raise ValueError("companion output must be a canonical answer candidate") from exc
+        output_digest = _sha256(output_json)
+        with self._write("complete_companion_execution") as connection:
+            snapshot = self._load_companion_execution(connection, execution_id, owner_id)
+            evidence_json = _canonical(
+                {
+                    "evidence_pack_sha256": snapshot.evidence_pack_sha256,
+                    "output_digest": output_digest,
+                    "provider_response_digest": provider_response_digest,
+                    "schema_version": "antiek.derived-companion-settlement.v1",
+                    "turn_id": snapshot.turn_id,
+                }
+            )
+            intent_json = _canonical(
+                {
+                    "actual_cents": actual_cents,
+                    "evidence_sha256": _sha256(evidence_json),
+                    "hold_id": snapshot.hold_id,
+                }
+            )
+            if snapshot.state is CompanionExecutionState.COMPLETED:
+                if (
+                    snapshot.output_json != output_json
+                    or snapshot.output_digest != output_digest
+                    or snapshot.provider_response_digest != provider_response_digest
+                    or snapshot.actual_cents != actual_cents
+                    or snapshot.settlement_command_key != command_key
+                ):
+                    raise IdempotencyConflict("companion completion intent changed")
+                self._settle_in_context(
+                    connection,
+                    command_key=command_key,
+                    hold_id=snapshot.hold_id,
+                    actual_cents=actual_cents,
+                    evidence_json=evidence_json,
+                    intent_json=intent_json,
+                )
+            else:
+                hold = self._load_hold(connection, snapshot.hold_id)
+                if actual_cents > hold.projected_max_cents:
+                    raise SpendCeilingExceeded(hold.run_id, actual_cents, hold.projected_max_cents)
+                self._settle_in_context(
+                    connection,
+                    command_key=command_key,
+                    hold_id=snapshot.hold_id,
+                    actual_cents=actual_cents,
+                    evidence_json=evidence_json,
+                    intent_json=intent_json,
+                )
+                completed_at = _now()
+                updated = connection.execute(
+                    "UPDATE research_companion_executions SET state='completed',"
+                    "output_json=?,output_digest=?,provider_response_digest=?,"
+                    "settlement_evidence_sha256=?,actual_cents=?,"
+                    "settlement_command_key=?,completed_at=? "
+                    "WHERE execution_id=? AND owner_id=? AND state='prepared' "
+                    "RETURNING execution_id",
+                    (
+                        output_json,
+                        output_digest,
+                        provider_response_digest,
+                        _sha256(evidence_json),
+                        actual_cents,
+                        command_key,
+                        completed_at,
+                        execution_id,
+                        owner_id,
+                    ),
+                ).fetchone()
+                if updated is None:
+                    raise LedgerIntegrityError("companion completion lost its prepared row")
+                self._checkpoint("complete_companion_execution:after_journal_update")
+        return self.companion_execution(execution_id, owner_id)
 
     def zero_attempt(self, attempt_id: str) -> ZeroCostAttemptSnapshot:
         connection = self._connect()
@@ -2893,8 +3259,7 @@ class ResearchSpendLedger:
     @staticmethod
     def _provider_submission_json(intent: ProviderSubmissionIntent) -> str:
         payload = {
-            name: cast(JsonScalar, getattr(intent, name))
-            for name in intent.__dataclass_fields__
+            name: cast(JsonScalar, getattr(intent, name)) for name in intent.__dataclass_fields__
         }
         # Schema-v5 rows predate publication evidence. Preserve their exact
         # canonical intent bytes when v6 adds nullable scalar columns.
@@ -2925,11 +3290,13 @@ class ResearchSpendLedger:
             create_request_json=str(row["create_request_json"]),
             recovery_strategy=str(row["recovery_strategy"]),
             publication_receipt_json=(
-                None if row["publication_receipt_json"] is None
+                None
+                if row["publication_receipt_json"] is None
                 else str(row["publication_receipt_json"])
             ),
             publication_receipt_digest=(
-                None if row["publication_receipt_digest"] is None
+                None
+                if row["publication_receipt_digest"] is None
                 else str(row["publication_receipt_digest"])
             ),
         )
@@ -3181,6 +3548,127 @@ class ResearchSpendLedger:
             created_at=str(row["created_at"]),
             updated_at=str(row["updated_at"]),
         )
+
+    def _load_companion_execution(
+        self, connection: sqlite3.Connection, execution_id: str, owner_id: str
+    ) -> CompanionExecutionSnapshot:
+        row = connection.execute(
+            "SELECT * FROM research_companion_executions WHERE execution_id=? AND owner_id=?",
+            (execution_id, owner_id),
+        ).fetchone()
+        if row is None:
+            raise BindingConflict("companion execution is unavailable")
+        hold = self._load_hold(connection, str(row["hold_id"]))
+        run = self._load_run(connection, str(row["run_id"]))
+        expected_operation = self._companion_operation_digest(
+            str(row["turn_id"]), str(row["evidence_pack_sha256"])
+        )
+        expected_request = self._companion_request_digest(
+            str(row["turn_id"]), str(row["evidence_pack_sha256"])
+        )
+        if (
+            run.binding.owner_id != owner_id
+            or hold.run_id != run.binding.run_id
+            or hold.intent.provider != str(row["provider"])
+            or hold.intent.model != str(row["model"])
+            or hold.intent.operation_digest != expected_operation
+            or str(row["operation_digest"]) != expected_operation
+            or str(row["request_digest"]) != expected_request
+        ):
+            raise LedgerIntegrityError("companion execution request binding conflicts")
+        state = CompanionExecutionState(str(row["state"]))
+        output_json = None if row["output_json"] is None else str(row["output_json"])
+        output_digest = None if row["output_digest"] is None else str(row["output_digest"])
+        if output_json is not None:
+            try:
+                parsed_output = json.loads(output_json)
+                canonical_output = json.dumps(
+                    parsed_output, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+                )
+            except (TypeError, ValueError, json.JSONDecodeError) as exc:
+                raise LedgerIntegrityError("companion execution output is invalid") from exc
+            if (
+                canonical_output != output_json
+                or output_digest != _sha256(output_json)
+                or len(output_json.encode("utf-8")) > 128 * 1024
+            ):
+                raise LedgerIntegrityError("companion execution output integrity conflicts")
+        if state is CompanionExecutionState.COMPLETED:
+            receipt = self._settled_hold_receipt_in_context(
+                connection, str(row["hold_id"]), owner_id
+            )
+            evidence = cast(dict[str, object], json.loads(receipt.evidence_json))
+            if (
+                receipt.command_key != str(row["settlement_command_key"])
+                or receipt.evidence_sha256 != str(row["settlement_evidence_sha256"])
+                or receipt.hold.actual_cents != int(row["actual_cents"])
+                or evidence.get("turn_id") != str(row["turn_id"])
+                or evidence.get("evidence_pack_sha256") != str(row["evidence_pack_sha256"])
+                or evidence.get("output_digest") != output_digest
+                or evidence.get("provider_response_digest") != str(row["provider_response_digest"])
+            ):
+                raise LedgerIntegrityError("companion execution settlement binding conflicts")
+        return CompanionExecutionSnapshot(
+            execution_id=str(row["execution_id"]),
+            hold_id=str(row["hold_id"]),
+            run_id=str(row["run_id"]),
+            owner_id=owner_id,
+            turn_id=str(row["turn_id"]),
+            evidence_pack_sha256=str(row["evidence_pack_sha256"]),
+            request_digest=str(row["request_digest"]),
+            operation_digest=str(row["operation_digest"]),
+            provider=str(row["provider"]),
+            model=str(row["model"]),
+            state=state,
+            output_json=output_json,
+            output_digest=output_digest,
+            provider_response_digest=(
+                None
+                if row["provider_response_digest"] is None
+                else str(row["provider_response_digest"])
+            ),
+            settlement_evidence_sha256=(
+                None
+                if row["settlement_evidence_sha256"] is None
+                else str(row["settlement_evidence_sha256"])
+            ),
+            actual_cents=None if row["actual_cents"] is None else int(row["actual_cents"]),
+            settlement_command_key=(
+                None
+                if row["settlement_command_key"] is None
+                else str(row["settlement_command_key"])
+            ),
+            created_at=str(row["created_at"]),
+            completed_at=None if row["completed_at"] is None else str(row["completed_at"]),
+        )
+
+    @staticmethod
+    def _companion_operation_digest(turn_id: str, evidence_pack_sha256: str) -> str:
+        payload = json.dumps(
+            {
+                "evidence_pack_sha256": evidence_pack_sha256,
+                "schema_version": "antiek.derived-companion-settlement.v1",
+                "turn_id": turn_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        return _sha256(payload)
+
+    @staticmethod
+    def _companion_request_digest(turn_id: str, evidence_pack_sha256: str) -> str:
+        payload = json.dumps(
+            {
+                "evidence_pack_sha256": evidence_pack_sha256,
+                "schema_version": "antiek.derived-companion-request.v1",
+                "turn_id": turn_id,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        return _sha256(payload)
 
     def _load_zero(
         self, connection: sqlite3.Connection, attempt_id: str
