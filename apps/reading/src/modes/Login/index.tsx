@@ -18,6 +18,7 @@ import {
 } from "../../lib/auth";
 import type { AuthDiagnosticCode } from "../../lib/authDiagnosticCodes";
 import { track, trackException } from "../../lib/analytics";
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 
 import "./Login.css";
 
@@ -276,6 +277,15 @@ export default function Login() {
       <div className="antiek-login__grain" aria-hidden="true" />
       <section className="antiek-login__desk" aria-label="Antiek sign in">
         <header className="antiek-login__brand">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="login-werner-brand"
+            className="antiek-login__werner"
+            width={56}
+            height={56}
+          />
           <span className="antiek-login__wordmark">Antiek</span>
           <span className="antiek-login__edition">Private research workstation</span>
         </header>

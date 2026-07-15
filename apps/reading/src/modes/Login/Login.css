@@ -7,7 +7,8 @@
 }
 .antiek-login__grain { position: fixed; inset: 0; pointer-events: none; z-index: 20; opacity: .035; background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 180 180' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitchTiles'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 .antiek-login__desk { min-height: 100svh; display: flex; flex-direction: column; justify-content: space-between; padding: clamp(28px,5vw,68px); z-index: 2; }
-.antiek-login__brand { display: flex; align-items: baseline; gap: 14px; }
+.antiek-login__brand { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.antiek-login__werner { width: 56px; height: 56px; object-fit: contain; flex-shrink: 0; }
 .antiek-login__wordmark { font: 600 27px/1 Charter,"Iowan Old Style",Georgia,serif; letter-spacing: -.04em; }
 .antiek-login__edition { font: 650 9px/1 Inter,sans-serif; letter-spacing: .16em; text-transform: uppercase; color: var(--text-muted); }
 .antiek-login__card { width: min(100%,470px); margin: 6vh auto; }
