@@ -85,7 +85,7 @@ jobs:
     runs-on: ubuntu-latest
     # The full tests/ gate runs in the four pytest-suite shards above. This job
     # retains the stable required-check name and runs the service suites plus
-    # structural invariant gates only after all three shards pass.
+    # structural invariant gates only after all four shards pass.
     timeout-minutes: 20
 
     steps:
