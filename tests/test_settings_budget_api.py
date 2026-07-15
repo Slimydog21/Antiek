@@ -397,11 +397,14 @@ def test_model_decision_prefers_valid_server_owned_benchmark(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     report = tmp_path / "bench.json"
-    generated_at = datetime.now(UTC).isoformat()
+    generated = datetime.now(UTC)
+    generated_at = generated.isoformat()
+    generated_iso = generated.isocalendar()
     report.write_text(
         json.dumps(
             {
                 "schema_version": "antiek.model-bench.v1",
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
                 "generated_at": generated_at,
                 "measurements": [
                     {
@@ -511,11 +514,14 @@ def test_model_decision_does_not_label_nonmatching_report_as_measured(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     report = tmp_path / "bench-nonmatching.json"
+    generated = datetime.now(UTC)
+    generated_iso = generated.isocalendar()
     report.write_text(
         json.dumps(
             {
                 "schema_version": "antiek.model-bench.v1",
-                "generated_at": datetime.now(UTC).isoformat(),
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
+                "generated_at": generated.isoformat(),
                 "measurements": [
                     {
                         "task": "writing",
@@ -563,11 +569,14 @@ def test_model_decision_rejects_duplicate_benchmark_routes(
         "samples": 10,
     }
     report = tmp_path / "bench-duplicates.json"
+    generated = datetime.now(UTC)
+    generated_iso = generated.isocalendar()
     report.write_text(
         json.dumps(
             {
                 "schema_version": "antiek.model-bench.v1",
-                "generated_at": datetime.now(UTC).isoformat(),
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
+                "generated_at": generated.isoformat(),
                 "measurements": [measurement, measurement],
             }
         ),
@@ -587,12 +596,24 @@ def test_model_decision_ignores_stale_or_future_benchmark(
     age: timedelta,
 ) -> None:
     report = tmp_path / "bench-invalid-time.json"
+    generated = datetime.now(UTC) - age
+    generated_iso = generated.isocalendar()
     report.write_text(
         json.dumps(
             {
                 "schema_version": "antiek.model-bench.v1",
-                "generated_at": (datetime.now(UTC) - age).isoformat(),
-                "measurements": [],
+                "week_id": f"{generated_iso.year}-W{generated_iso.week:02d}",
+                "generated_at": generated.isoformat(),
+                "measurements": [
+                    {
+                        "task": "general",
+                        "tier": "pro",
+                        "provider": "zai",
+                        "model": "glm-5.2",
+                        "score": 0.9,
+                        "samples": 10,
+                    }
+                ],
             }
         ),
         encoding="utf-8",

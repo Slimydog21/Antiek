@@ -22,6 +22,7 @@ import {
   type PromptCostEstimateResponse,
 } from "../../api/settings";
 import AddModelPanel from "./AddModelPanel";
+import AntiekBenchPanel from "./AntiekBenchPanel";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -428,9 +429,11 @@ export default function Settings() {
 
         <AddModelPanel />
 
+        <AntiekBenchPanel />
+
         <LemonCard title="Coming later" elevation="z1">
           <ul className="p-4 space-y-2 text-sm text-ink dark:text-bright list-disc list-inside">
-            <li>Antiek-bench weekly model quality report</li>
+            <li>Recursive Antiek-bench evolution from usage outcomes</li>
             <li>Midnight oil: time + goals + price-ceiling approve UI</li>
             <li>Keyboard map customisation + layout export</li>
           </ul>
@@ -455,7 +458,6 @@ export default function Settings() {
     </div>
   );
 }
-
 const DECISION_TASKS: Array<{ value: ModelDecisionTask; label: string }> = [
   { value: "deep_research", label: "Deep research" },
   { value: "research_synthesis", label: "Research synthesis" },

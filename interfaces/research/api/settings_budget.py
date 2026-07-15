@@ -29,7 +29,7 @@ from typing import Any, Literal
 
 import yaml
 from fastapi import APIRouter, FastAPI, Request
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from orchestration.continuous.budget import (
     _ENV_DAILY_CAP,
@@ -123,6 +123,8 @@ class PromptCostEstimateResponse(BaseModel):
 
 
 class BenchmarkMeasurement(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True)
+
     task: DecisionTask
     tier: str = Field(min_length=1, max_length=64)
     provider: str = Field(min_length=1, max_length=128)
@@ -130,11 +132,24 @@ class BenchmarkMeasurement(BaseModel):
     score: float = Field(ge=0, le=1, allow_inf_nan=False)
     samples: int = Field(ge=1, le=1_000_000)
 
+    @field_validator("score", "samples", mode="before")
+    @classmethod
+    def booleans_are_not_measurements(cls, value: object) -> object:
+        if isinstance(value, bool):
+            raise ValueError("boolean benchmark measurements are invalid")
+        return value
+
 
 class BenchmarkReport(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     schema_version: Literal["antiek.model-bench.v1"]
+    week_id: str = Field(pattern=r"^\d{4}-W(?:0[1-9]|[1-4]\d|5[0-3])$")
     generated_at: datetime
-    measurements: list[BenchmarkMeasurement] = Field(max_length=10_000)
+    measurements: list[BenchmarkMeasurement] = Field(
+        min_length=1,
+        max_length=10_000,
+    )
 
     @model_validator(mode="after")
     def measurements_are_unique(self) -> BenchmarkReport:
@@ -143,7 +158,25 @@ class BenchmarkReport(BaseModel):
             raise ValueError("benchmark measurements must be unique by task and route")
         if self.generated_at.tzinfo is None:
             raise ValueError("benchmark generated_at must include a timezone")
+        # Week identity is a UTC contract. A source timestamp near midnight may
+        # belong to a different ISO week in its original offset than the UTC
+        # timestamp exposed by the API.
+        iso = self.generated_at.astimezone(UTC).isocalendar()
+        generated_week = f"{iso.year}-W{iso.week:02d}"
+        if self.week_id != generated_week:
+            raise ValueError("benchmark week_id must match generated_at ISO week")
         return self
+
+
+class WeeklyBenchmarkResponse(BaseModel):
+    """Latest validated Antiek-bench report for the operator Settings view."""
+
+    authority: Literal["advisory"] = "advisory"
+    status: BenchmarkStatus
+    week_id: str | None
+    generated_at: str | None
+    measurements: list[BenchmarkMeasurement]
+    notes: list[str] = Field(default_factory=list)
 
 
 class ModelDecisionRequest(BaseModel):
@@ -798,6 +831,31 @@ def post_model_decision(request: Request, req: ModelDecisionRequest) -> ModelDec
     return build_model_decision(request, req)
 
 
+@settings_router.get(
+    "/antiek-bench/weekly",
+    response_model=WeeklyBenchmarkResponse,
+)
+def get_weekly_benchmark() -> WeeklyBenchmarkResponse:
+    """Expose the latest validated server-owned report; never accept injected scores."""
+    report, notes = _read_benchmark_report()
+    if report is None:
+        return WeeklyBenchmarkResponse(
+            status="unavailable",
+            week_id=None,
+            generated_at=None,
+            measurements=[],
+            notes=notes,
+        )
+    generated = report.generated_at.astimezone(UTC)
+    return WeeklyBenchmarkResponse(
+        status="measured",
+        week_id=report.week_id,
+        generated_at=generated.isoformat(),
+        measurements=report.measurements,
+        notes=notes,
+    )
+
+
 def register_settings_budget_routes(app: FastAPI) -> None:
     app.include_router(settings_router)
     # Add-model admin (user-added BYOK providers) mounts through the same
@@ -813,6 +871,7 @@ __all__ = [
     "BudgetResponse",
     "BenchmarkMeasurement",
     "BenchmarkReport",
+    "WeeklyBenchmarkResponse",
     "ModelDecisionRequest",
     "ModelDecisionResponse",
     "ModelsResponse",
