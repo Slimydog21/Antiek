@@ -65,6 +65,29 @@ function defaultResolveTarget(detail: ProductActivateDetail): Element | null {
 }
 
 /**
+ * Distinct living-TV emotes per product door (Antiek is the home of the penguin).
+ * Unknown products keep the classic Tom-&-Jerry "hit" bump.
+ */
+export function emoteForProductDoor(productId: string): EmoteKind {
+  switch (productId) {
+    case "research":
+      return "thinking";
+    case "read":
+      return "curious";
+    case "write":
+      return "happy";
+    case "speak":
+      return "curious";
+    case "home":
+      return "happy";
+    case "more":
+      return "noted";
+    default:
+      return "hit";
+  }
+}
+
+/**
  * Wire the choreography. Returns a teardown function that removes the
  * listener. Call once (the mascot mounts it in an effect, cleaned up on
  * unmount). It never mounts twice — the mascot owns the single instance.
@@ -81,11 +104,11 @@ export function installChoreography(
     const detail = (event as CustomEvent<ProductActivateDetail>).detail;
     if (!detail || !detail.productId) return;
     const el = resolve(detail);
-    // waddleToEl is the single decision point: it no-ops on a missing /
-    // off-screen target and downshifts to an in-place emote under reduced
-    // motion. Latest-wins interruption is the stage's job. Click and hotkey
-    // both land here with the same detail shape → identical reaction.
-    stage.waddleToEl(el, "hit");
+    // Living-TV: product doors get distinct emotes (not a generic hit for all).
+    // waddleToEl no-ops on missing/off-screen targets and downshifts under
+    // reduced-motion. Latest-wins interruption is the stage's job.
+    const emote = emoteForProductDoor(detail.productId);
+    stage.waddleToEl(el, emote);
   };
 
   win.addEventListener(PRODUCT_ACTIVATE_EVENT, onActivate as EventListener);

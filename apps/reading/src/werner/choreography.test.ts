@@ -108,9 +108,22 @@ describe("installChoreography — click === hotkey parity (structural)", () => {
 
     expect(waddleToEl).toHaveBeenCalledTimes(2);
     // Both go to the SAME element with the SAME emote — identical reaction.
-    expect(waddleToEl.mock.calls[0]).toEqual([el, "hit"]);
-    expect(waddleToEl.mock.calls[1]).toEqual([el, "hit"]);
+    // Write door → happy (living-TV product map).
+    expect(waddleToEl.mock.calls[0]).toEqual([el, "happy"]);
+    expect(waddleToEl.mock.calls[1]).toEqual([el, "happy"]);
     expect(waddleToEl.mock.calls[0]).toEqual(waddleToEl.mock.calls[1]);
+  });
+
+  it("maps product doors to distinct living-TV emotes", () => {
+    const el = document.createElement("button");
+    const { stage, waddleToEl } = fakeStage();
+    teardown = installChoreography(stage, { resolveTarget: () => el });
+    emitProductActivate({ productId: "research", source: "click" });
+    emitProductActivate({ productId: "read", source: "click" });
+    emitProductActivate({ productId: "home", source: "click" });
+    expect(waddleToEl.mock.calls[0][1]).toBe("thinking");
+    expect(waddleToEl.mock.calls[1][1]).toBe("curious");
+    expect(waddleToEl.mock.calls[2][1]).toBe("happy");
   });
 });
 
