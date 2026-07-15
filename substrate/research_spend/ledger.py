@@ -73,7 +73,7 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 5
+SCHEMA_VERSION: Final = 6
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
@@ -427,10 +427,32 @@ class ProviderSubmissionIntent:
     client_request_token: str
     create_request_json: str
     recovery_strategy: str
+    publication_receipt_json: str | None = None
+    publication_receipt_digest: str | None = None
 
     def __post_init__(self) -> None:
-        for name in self.__dataclass_fields__:
+        for name in (
+            "submission_id", "operation_id", "provider", "model", "adapter_contract",
+            "account_digest", "region", "provider_model_id", "client_request_token",
+            "create_request_json", "recovery_strategy",
+        ):
             _required_text(name, cast(str, getattr(self, name)))
+        if (self.publication_receipt_json is None) != (self.publication_receipt_digest is None):
+            raise ValueError("publication receipt JSON and digest must be supplied together")
+        if self.publication_receipt_json is not None:
+            _required_text("publication_receipt_json", self.publication_receipt_json)
+            if not re.fullmatch(r"[0-9a-f]{64}", self.publication_receipt_digest or ""):
+                raise ValueError("publication_receipt_digest must be a lowercase SHA-256")
+            if _sha256(self.publication_receipt_json) != self.publication_receipt_digest:
+                raise ValueError("publication receipt digest mismatch")
+            try:
+                receipt = json.loads(self.publication_receipt_json)
+            except json.JSONDecodeError as exc:
+                raise ValueError("publication receipt must be canonical JSON") from exc
+            if not isinstance(receipt, dict) or json.dumps(
+                receipt, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+            ) != self.publication_receipt_json:
+                raise ValueError("publication receipt must be canonical JSON object")
         if len(self.client_request_token) != 64 or any(
             char not in "0123456789abcdef" for char in self.client_request_token
         ):
@@ -917,6 +939,28 @@ _MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
         BEGIN SELECT RAISE(ABORT, 'provider billing assessments are append-only'); END
         """,
     ),
+    5: (
+        "ALTER TABLE research_provider_submissions ADD COLUMN publication_receipt_json TEXT",
+        "ALTER TABLE research_provider_submissions ADD COLUMN publication_receipt_digest TEXT",
+        "DROP TRIGGER research_provider_submissions_guard_update",
+        """
+        CREATE TRIGGER research_provider_submissions_guard_update
+        BEFORE UPDATE ON research_provider_submissions
+        WHEN NEW.submission_id != OLD.submission_id OR NEW.operation_id != OLD.operation_id
+          OR NEW.hold_id != OLD.hold_id OR NEW.run_id != OLD.run_id OR NEW.owner_id != OLD.owner_id
+          OR NEW.provider != OLD.provider OR NEW.model != OLD.model
+          OR NEW.adapter_contract != OLD.adapter_contract OR NEW.account_digest != OLD.account_digest
+          OR NEW.region != OLD.region OR NEW.provider_model_id != OLD.provider_model_id
+          OR NEW.client_request_token != OLD.client_request_token
+          OR NEW.create_request_json != OLD.create_request_json
+          OR NEW.create_request_sha256 != OLD.create_request_sha256
+          OR NEW.recovery_strategy != OLD.recovery_strategy OR NEW.intent_json != OLD.intent_json
+          OR NEW.intent_sha256 != OLD.intent_sha256 OR NEW.created_at != OLD.created_at
+          OR NEW.publication_receipt_json IS NOT OLD.publication_receipt_json
+          OR NEW.publication_receipt_digest IS NOT OLD.publication_receipt_digest
+        BEGIN SELECT RAISE(ABORT, 'research provider submission immutable fields changed'); END
+        """,
+    ),
 }
 
 
@@ -1020,7 +1064,7 @@ class ResearchSpendLedger:
             if version == 0:
                 connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
                 for index, statement in enumerate(
-                    (*_DDL, *_MIGRATIONS[2], *_MIGRATIONS[3], *_MIGRATIONS[4]), start=1
+                    (*_DDL, *_MIGRATIONS[2], *_MIGRATIONS[3], *_MIGRATIONS[4], *_MIGRATIONS[5]), start=1
                 ):
                     connection.execute(statement)
                     self._checkpoint(f"schema:after_statement:{index}")
@@ -2133,8 +2177,8 @@ class ResearchSpendLedger:
             )
             self._checkpoint("prepare_provider_submission:after_hold")
             connection.execute(
-                "INSERT INTO research_provider_submissions (submission_id,operation_id,hold_id,run_id,owner_id,provider,model,adapter_contract,account_digest,region,provider_model_id,client_request_token,create_request_json,create_request_sha256,recovery_strategy,intent_json,intent_sha256,state,created_at,updated_at) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'prepared',?,?)",
+                "INSERT INTO research_provider_submissions (submission_id,operation_id,hold_id,run_id,owner_id,provider,model,adapter_contract,account_digest,region,provider_model_id,client_request_token,create_request_json,create_request_sha256,recovery_strategy,intent_json,intent_sha256,state,created_at,updated_at,publication_receipt_json,publication_receipt_digest) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,'prepared',?,?,?,?)",
                 (
                     intent.submission_id,
                     intent.operation_id,
@@ -2155,6 +2199,8 @@ class ResearchSpendLedger:
                     _sha256(submission_json),
                     now,
                     now,
+                    intent.publication_receipt_json,
+                    intent.publication_receipt_digest,
                 ),
             )
             connection.execute(
@@ -2782,9 +2828,16 @@ class ResearchSpendLedger:
 
     @staticmethod
     def _provider_submission_json(intent: ProviderSubmissionIntent) -> str:
-        return _canonical(
-            {name: cast(JsonScalar, getattr(intent, name)) for name in intent.__dataclass_fields__}
-        )
+        payload = {
+            name: cast(JsonScalar, getattr(intent, name))
+            for name in intent.__dataclass_fields__
+        }
+        # Schema-v5 rows predate publication evidence. Preserve their exact
+        # canonical intent bytes when v6 adds nullable scalar columns.
+        if intent.publication_receipt_json is None:
+            payload.pop("publication_receipt_json")
+            payload.pop("publication_receipt_digest")
+        return _canonical(payload)
 
     def _load_provider_submission(
         self, connection: sqlite3.Connection, submission_id: str, owner_id: str
@@ -2807,6 +2860,14 @@ class ResearchSpendLedger:
             client_request_token=str(row["client_request_token"]),
             create_request_json=str(row["create_request_json"]),
             recovery_strategy=str(row["recovery_strategy"]),
+            publication_receipt_json=(
+                None if row["publication_receipt_json"] is None
+                else str(row["publication_receipt_json"])
+            ),
+            publication_receipt_digest=(
+                None if row["publication_receipt_digest"] is None
+                else str(row["publication_receipt_digest"])
+            ),
         )
         raw = str(row["intent_json"])
         if (

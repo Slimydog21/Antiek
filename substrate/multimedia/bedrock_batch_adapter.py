@@ -2,15 +2,20 @@
 
 from __future__ import annotations
 
+import datetime as datetime_module
 import hashlib
 import json
 import re
 from collections.abc import Mapping
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from urllib.parse import urlsplit
 
+from substrate.multimedia.bedrock_s3_publication import (
+    BedrockS3VersionPublicationReceipt,
+    BedrockS3VersionPublisher,
+)
 from substrate.multimedia.bedrock_workload_bound import (
     BedrockBatchModelProfile,
     BedrockBatchWorkloadBound,
@@ -69,6 +74,8 @@ class BedrockBatchRequest:
     vpc_config_json: str = "null"
     workload_bound_json: str | None = None
     workload_bound_digest: str | None = None
+    publication_receipt_json: str | None = None
+    publication_receipt_digest: str | None = None
 
     def __post_init__(self) -> None:
         for name in ("job_name", "model_id", "role_arn", "input_s3_uri",
@@ -103,6 +110,16 @@ class BedrockBatchRequest:
             workload_digest = bound.workload_sha256
             if not _s3_key_has_segment(self.input_s3_uri, workload_digest):
                 raise ValueError("input S3 URI must contain the workload SHA-256 path segment")
+        if (self.publication_receipt_json is None) != (self.publication_receipt_digest is None):
+            raise ValueError("publication receipt JSON and digest must be supplied together")
+        if self.publication_receipt_json is not None:
+            receipt = BedrockS3VersionPublicationReceipt.from_json(self.publication_receipt_json)
+            if receipt.digest != self.publication_receipt_digest:
+                raise ValueError("publication receipt digest mismatch")
+            if self.workload_bound_digest != receipt.workload_bound_digest:
+                raise ValueError("publication receipt conflicts with workload bound")
+            if self.input_s3_uri != receipt.uri:
+                raise ValueError("input S3 URI must exactly equal publication receipt URI")
 
     @classmethod
     def from_workload_bound(
@@ -113,6 +130,19 @@ class BedrockBatchRequest:
             **request,
             workload_bound_json=workload_bound.canonical_json,
             workload_bound_digest=workload_bound.digest,
+        )
+
+    @classmethod
+    def from_publication(
+        cls, *, workload_bound: BedrockBatchWorkloadBound,
+        publication_receipt: BedrockS3VersionPublicationReceipt, **request: object,
+    ) -> BedrockBatchRequest:
+        return cls(
+            **request,
+            workload_bound_json=workload_bound.canonical_json,
+            workload_bound_digest=workload_bound.digest,
+            publication_receipt_json=publication_receipt.canonical_json,
+            publication_receipt_digest=publication_receipt.digest,
         )
 
     def create_request(self, token: str) -> dict[str, object]:
@@ -150,16 +180,24 @@ def _digest(value: object) -> str:
     return hashlib.sha256(_canonical(value).encode()).hexdigest()
 
 
+def _receipt_time(value: str) -> datetime:
+    return datetime_module.datetime.strptime(value, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=UTC)
+
+
 class BedrockBatchRecoveryAdapter:
     """Test-authority adapter. A client must always be explicitly injected."""
 
     provider = "aws-bedrock"
-    adapter_contract = "aws-bedrock-model-invocation-job-workload-bound-v1"
+    adapter_contract = "aws-bedrock-model-invocation-job-s3-version-publication-v2"
     recovery_strategy = "exact-create-replay-by-client-request-token"
 
-    def __init__(self, ledger: ResearchSpendLedger, client: BedrockControlPlaneClient) -> None:
+    def __init__(
+        self, ledger: ResearchSpendLedger, client: BedrockControlPlaneClient,
+        publisher: BedrockS3VersionPublisher | None = None,
+    ) -> None:
         self.ledger = ledger
         self.client = client
+        self.publisher = publisher
 
     def prepare(
         self, *, command_key: str, binding: RunBinding, operation_id: str,
@@ -167,6 +205,10 @@ class BedrockBatchRecoveryAdapter:
     ) -> ProviderSubmissionSnapshot:
         if request.workload_bound_json is None or request.workload_bound_digest is None:
             raise BedrockBatchError("prepare requires a workload-bound request")
+        if request.publication_receipt_json is None or self.publisher is None:
+            raise BedrockBatchError(
+                "prepare requires an immutable S3 publication receipt and injected publisher"
+            )
         bound_contract = BedrockBatchWorkloadBound.from_json(request.workload_bound_json)
         bound_contract.verify_workload_bytes(workload_bytes)
         if bound_contract.reservation_cents == 0:
@@ -179,9 +221,24 @@ class BedrockBatchRecoveryAdapter:
         ):
             raise BedrockBatchError("request route conflicts with workload bound")
         bound_contract.require_current(datetime.now(UTC))
+        publication_bound = request.publication_receipt_json is not None
+        if publication_bound:
+            if self.publisher is None:
+                raise BedrockBatchError("publication-bound prepare requires an injected publisher")
+            receipt = BedrockS3VersionPublicationReceipt.from_json(request.publication_receipt_json or "")
+            if receipt.workload_sha256 != bound_contract.workload_sha256 or receipt.workload_byte_length != bound_contract.workload_byte_length:
+                raise BedrockBatchError("publication receipt conflicts with exact workload")
+            if self.publisher.profile.region != request.region:
+                raise BedrockBatchError("publication profile region conflicts with request")
+            minimum_retention = _receipt_time(receipt.verified_at) + timedelta(
+                hours=request.timeout_hours + self.publisher.profile.retention_margin_hours
+            )
+            if _receipt_time(receipt.retain_until) < minimum_retention:
+                raise BedrockBatchError("publication retention is shorter than timeout plus margin")
+            self.publisher.verify(receipt)
         seed = {"operation_id": operation_id, "request": request.__dict__}
-        token = _digest({"domain": "bedrock-batch-token-v1", **seed})
-        submission_id = "rps_" + _digest({"domain": "provider-submission-v1", **seed})[:48]
+        token = _digest({"domain": "bedrock-batch-token-publication-v2", **seed})
+        submission_id = "rps_" + _digest({"domain": "provider-submission-publication-v2", **seed})[:48]
         create_json = _canonical(request.create_request(token))
         hold = PaidHoldIntent(
             reservation_key="bedrock-reservation:" + submission_id,
@@ -195,6 +252,8 @@ class BedrockBatchRecoveryAdapter:
             model=model, adapter_contract=self.adapter_contract, account_digest=request.account_digest,
             region=request.region, provider_model_id=request.model_id, client_request_token=token,
             create_request_json=create_json, recovery_strategy=self.recovery_strategy,
+            publication_receipt_json=request.publication_receipt_json,
+            publication_receipt_digest=request.publication_receipt_digest,
         )
         return self.ledger.prepare_provider_submission(
             command_key, binding, hold, bound_contract.reservation_cents, intent
@@ -202,8 +261,12 @@ class BedrockBatchRecoveryAdapter:
 
     def advance(self, *, command_key: str, submission_id: str, owner_id: str) -> ProviderSubmissionSnapshot:
         submission = self.ledger.provider_submission(submission_id, owner_id)
-        if submission.intent.adapter_contract != self.adapter_contract:
-            raise BedrockBatchError("unsupported Bedrock adapter contract")
+        if (
+            submission.intent.adapter_contract != self.adapter_contract
+            or submission.intent.publication_receipt_json is None
+            or self.publisher is None
+        ):
+            raise BedrockBatchError("immutable S3 publication authority is required")
         self._revalidate_bound_submission(
             submission,
             require_current=submission.state in {
@@ -211,6 +274,28 @@ class BedrockBatchRecoveryAdapter:
                 ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN,
             },
         )
+        if submission.state in {
+            ProviderSubmissionState.SUBMIT_POSSIBLE,
+            ProviderSubmissionState.CREATE_OUTCOME_UNKNOWN,
+        } and submission.intent.publication_receipt_json is not None:
+            if self.publisher is None:
+                raise BedrockBatchError("publication recovery requires an injected publisher")
+            try:
+                receipt = BedrockS3VersionPublicationReceipt.from_json(
+                    submission.intent.publication_receipt_json
+                )
+                if self.publisher.profile.region != submission.intent.region:
+                    raise ValueError("publication profile region conflicts")
+                request = json.loads(submission.intent.create_request_json)
+                minimum_retention = _receipt_time(receipt.verified_at) + timedelta(
+                    hours=request["timeoutDurationInHours"]
+                    + self.publisher.profile.retention_margin_hours
+                )
+                if _receipt_time(receipt.retain_until) < minimum_retention:
+                    raise ValueError("publication retention is too short")
+                self.publisher.verify(receipt)
+            except (ValueError, RuntimeError) as exc:
+                raise BedrockBatchError("publication failed pre-create verification") from exc
         if submission.state is ProviderSubmissionState.PREPARED:
             return self._transition(command_key, submission, ProviderSubmissionState.SUBMIT_POSSIBLE,
                                     "local_submit_marker", {"provider_call": False})
@@ -261,11 +346,13 @@ class BedrockBatchRecoveryAdapter:
                 region=submission.intent.region,
                 tags_json=_canonical(request.get("tags", [])),
                 vpc_config_json=_canonical(request.get("vpcConfig")),
+                publication_receipt_json=submission.intent.publication_receipt_json,
+                publication_receipt_digest=submission.intent.publication_receipt_digest,
             )
             seed = {"operation_id": submission.intent.operation_id, "request": reopened.__dict__}
-            expected_token = _digest({"domain": "bedrock-batch-token-v1", **seed})
+            expected_token = _digest({"domain": "bedrock-batch-token-publication-v2", **seed})
             expected_submission_id = "rps_" + _digest(
-                {"domain": "provider-submission-v1", **seed}
+                {"domain": "provider-submission-publication-v2", **seed}
             )[:48]
             if require_current:
                 bound_contract.require_current(datetime.now(UTC))
@@ -285,12 +372,13 @@ class BedrockBatchRecoveryAdapter:
                 and hold.intent.provider_idempotency_key == expected_token
                 and submission.intent.create_request_json
                 == _canonical(reopened.create_request(expected_token))
+                and submission.intent.publication_receipt_digest
+                == reopened.publication_receipt_digest
             )
         except (KeyError, TypeError, ValueError, json.JSONDecodeError):
             valid = False
         if not valid:
             raise BedrockBatchError("persisted workload bound failed recovery validation")
-
     def _observe(self, command_key: str, submission: ProviderSubmissionSnapshot,
                  response: Mapping[str, object]) -> ProviderSubmissionSnapshot:
         try:

@@ -20,6 +20,13 @@ from .authorized_production_worker import (
     ChapterNarrationAuthority,
     produce_authorized_multimedia,
 )
+from .bedrock_s3_publication import (
+    BedrockS3PublicationError,
+    BedrockS3PublicationProfile,
+    BedrockS3VersionPublicationReceipt,
+    BedrockS3VersionPublisher,
+    S3PublicationClient,
+)
 from .bedrock_workload_bound import (
     BedrockBatchModelProfile,
     BedrockBatchRateSnapshot,
@@ -195,6 +202,11 @@ from .video import (
 )
 
 __all__ = [
+    "BedrockS3PublicationError",
+    "BedrockS3PublicationProfile",
+    "BedrockS3VersionPublicationReceipt",
+    "BedrockS3VersionPublisher",
+    "S3PublicationClient",
     # Cycle 32 Bedrock workload authority
     "BedrockBatchModelProfile",
     "BedrockBatchRateSnapshot",

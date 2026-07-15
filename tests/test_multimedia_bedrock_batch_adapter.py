@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 from dataclasses import replace
@@ -10,12 +11,19 @@ import pytest
 import substrate.multimedia.bedrock_batch_adapter as bedrock_adapter_module
 from substrate.multimedia.bedrock_batch_adapter import (
     BedrockBatchError,
-    BedrockBatchRecoveryAdapter,
     BedrockBatchRequest,
+)
+from substrate.multimedia.bedrock_batch_adapter import (
+    BedrockBatchRecoveryAdapter as _StrictBedrockBatchRecoveryAdapter,
+)
+from substrate.multimedia.bedrock_s3_publication import (
+    BedrockS3PublicationProfile,
+    BedrockS3VersionPublicationReceipt,
 )
 from substrate.multimedia.bedrock_workload_bound import (
     BedrockBatchModelProfile,
     BedrockBatchRateSnapshot,
+    BedrockBatchWorkloadBound,
     materialize_bedrock_batch_workload,
 )
 from substrate.research_spend import (
@@ -28,6 +36,59 @@ from substrate.research_spend import (
     ResearchSpendLedger,
     RunBinding,
 )
+
+_PUBLICATION_PROFILE = BedrockS3PublicationProfile(
+    bucket="test-bedrock-input", prefix="strict/", expected_owner="123456789012",
+    region="us-east-1", retention_margin_hours=1, profile_version="test-v1",
+    namespace_policy_digest="b" * 64,
+)
+
+
+class _TestPublisher:
+    profile = _PUBLICATION_PROFILE
+
+    @staticmethod
+    def verify(receipt: BedrockS3VersionPublicationReceipt):
+        return receipt
+
+
+class BedrockBatchRecoveryAdapter(_StrictBedrockBatchRecoveryAdapter):
+    """Test-local publication harness for pre-Cycle-33 recovery assertions."""
+
+    def __init__(self, ledger, client) -> None:  # noqa: ANN001
+        super().__init__(ledger, client, _TestPublisher())  # type: ignore[arg-type]
+
+    def prepare(self, **kwargs):  # noqa: ANN003, ANN201
+        request = kwargs["request"]
+        if request.workload_bound_json is None:
+            return super().prepare(**kwargs)
+        body = kwargs["workload_bytes"]
+        bound = BedrockBatchWorkloadBound.from_json(request.workload_bound_json)
+        checksum = base64.b64encode(hashlib.sha256(body).digest()).decode("ascii")
+        key = f"strict/{bound.workload_sha256}/manifest.jsonl"
+        receipt = BedrockS3VersionPublicationReceipt(
+            workload_bound_digest=bound.digest,
+            workload_sha256=bound.workload_sha256,
+            workload_byte_length=bound.workload_byte_length,
+            profile_digest=_PUBLICATION_PROFILE.digest,
+            bucket=_PUBLICATION_PROFILE.bucket,
+            key=key,
+            uri=f"s3://{_PUBLICATION_PROFILE.bucket}/{key}",
+            owner_digest=_PUBLICATION_PROFILE.owner_digest,
+            checksum_sha256_base64=checksum,
+            version_id="test-version-1",
+            object_lock_mode="COMPLIANCE",
+            retain_until="2026-07-17T03:00:00Z",
+            namespace_policy_digest=_PUBLICATION_PROFILE.namespace_policy_digest,
+            verified_at="2026-07-15T01:00:00Z",
+        )
+        kwargs["request"] = replace(
+            request,
+            input_s3_uri=receipt.uri,
+            publication_receipt_json=receipt.canonical_json,
+            publication_receipt_digest=receipt.digest,
+        )
+        return super().prepare(**kwargs)
 
 
 class StatefulBedrock:
@@ -168,7 +229,7 @@ def test_unknown_adapter_contract_fails_closed_without_provider_call(tmp_path) -
         intent=replace(submission.intent, adapter_contract="unknown-v99"),
     )
     ledger.provider_submission = lambda submission_id, owner_id: unknown  # type: ignore[method-assign]
-    with pytest.raises(BedrockBatchError, match="unsupported Bedrock adapter contract"):
+    with pytest.raises(BedrockBatchError, match="publication authority"):
         adapter.advance(
             command_key="mark", submission_id=submission.intent.submission_id, owner_id="owner-1"
         )
