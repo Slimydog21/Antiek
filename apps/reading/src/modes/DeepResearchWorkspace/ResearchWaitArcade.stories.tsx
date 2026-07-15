@@ -1,7 +1,9 @@
 import type { Meta, StoryObj } from "@storybook/react";
+import { waitFor } from "@storybook/test";
 import { createRef, useEffect, useRef, type ComponentProps } from "react";
 import { MemoryRouter } from "react-router-dom";
 
+import backdropUrl from "../../arcade/games/zombies/assets/paperclip_zombies_night_archive_v1.jpg";
 import { WernerIceCursorShell } from "../../werner/WernerIceCursorShell";
 import { useStationInstrumentSuspended } from "../../werner/stationInstrumentSuspension";
 import ResearchWaitArcade from "./ResearchWaitArcade";
@@ -27,6 +29,15 @@ export const Offer: Story = {
 
 export const Playing: Story = {
   render: (args) => <CursorPolicyPreview {...args} playing />,
+  play: async ({ canvasElement }) => {
+    await waitFor(() => {
+      const ready = canvasElement.querySelector('[data-backdrop-ready="true"]');
+      if (!ready) throw new Error("Authored arcade backdrop is not ready");
+    });
+  },
+  parameters: {
+    lostpixel: { waitBeforeScreenshot: 750 },
+  },
 };
 
 /** Story-only proof harness; production receives no preview bypass. */
@@ -38,17 +49,37 @@ function CursorPolicyPreview({
 
   useEffect(() => {
     let frame = 0;
+    let live = true;
+    let optedIn = false;
     const activate = () => {
       window.dispatchEvent(
         new PointerEvent("pointermove", { clientX: 160, clientY: 92 }),
       );
       if (!playing) return;
+      const canvas = rootRef.current?.querySelector<HTMLCanvasElement>("canvas");
+      if (canvas) return;
       const play = rootRef.current?.querySelector<HTMLButtonElement>("button");
-      if (play) play.click();
-      else frame = window.requestAnimationFrame(activate);
+      if (play && !optedIn) {
+        optedIn = true;
+        play.click();
+      }
+      frame = window.requestAnimationFrame(activate);
     };
-    frame = window.requestAnimationFrame(activate);
-    return () => window.cancelAnimationFrame(frame);
+    if (!playing) {
+      frame = window.requestAnimationFrame(activate);
+    } else {
+      const preload = new Image();
+      preload.onload = () => {
+        void preload.decode().catch(() => undefined).then(() => {
+          if (live) frame = window.requestAnimationFrame(activate);
+        });
+      };
+      preload.src = backdropUrl;
+    }
+    return () => {
+      live = false;
+      window.cancelAnimationFrame(frame);
+    };
   }, [playing]);
 
   return (

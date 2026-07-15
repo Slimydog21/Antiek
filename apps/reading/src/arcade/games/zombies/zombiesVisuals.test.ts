@@ -24,6 +24,9 @@ function recordingContext() {
     strokeRect: method("strokeRect"),
     fillText: method("fillText"),
     ellipse: method("ellipse"),
+    rect: method("rect"),
+    clip: method("clip"),
+    drawImage: method("drawImage"),
     save: method("save"),
     restore: method("restore"),
     translate: method("translate"),
@@ -84,6 +87,24 @@ describe("Paperclip Zombies field-station visuals", () => {
     ]);
     expect(calls).toContainEqual(["fillRect", -7, 5.040000000000001, 2, 2]);
     expect(calls).toContainEqual(["fillRect", 5, 5.040000000000001, 2, 2]);
+  });
+
+  it("clips an authored plate to the passive field before deterministic chrome and targets", () => {
+    const { context, calls } = recordingContext();
+    const image = {} as CanvasImageSource;
+    drawZombiesScene(context, scene("playing"), 480, 300, {
+      current: image,
+    });
+    expect(calls).toContainEqual(["rect", 28, 20, 452, 252]);
+    expect(calls).toContainEqual(["drawImage", image, 0, 0, 480, 300]);
+    const imageIndex = calls.findIndex(([name]) => name === "drawImage");
+    const hudIndex = calls.findIndex(
+      ([name, text]) => name === "fillText" && text === "NIGHT FILE",
+    );
+    const targetIndex = calls.findIndex(([name]) => name === "translate");
+    expect(imageIndex).toBeGreaterThan(-1);
+    expect(hudIndex).toBeGreaterThan(imageIndex);
+    expect(targetIndex).toBeGreaterThan(hudIndex);
   });
 
   it("keeps all structural bands inside compact canvas bounds", () => {
@@ -204,11 +225,11 @@ describe("Paperclip Zombies field-station visuals", () => {
     expect(source).not.toMatch(/#[\da-f]{3,8}\b/i);
     expect(source).not.toContain("system-ui");
     expect(source).not.toMatch(
-      /state\.elapsed|Date\.|performance\.|Math\.random|requestAnimationFrame|setTimeout|setInterval|drawImage|createImageBitmap|fetch\(|localStorage|sessionStorage/,
+      /state\.elapsed|Date\.|performance\.|Math\.random|requestAnimationFrame|setTimeout|setInterval|createImageBitmap|fetch\(|localStorage|sessionStorage/,
     );
     expect(source).toContain("type.mono");
     expect(
       [...source.matchAll(/from "([^"]+)"/g)].map((match) => match[1]),
-    ).toEqual(["../../../design/tokens", "./logic"]);
+    ).toEqual(["../../../design/tokens", "./logic", "./zombiesBackdrop"]);
   });
 });

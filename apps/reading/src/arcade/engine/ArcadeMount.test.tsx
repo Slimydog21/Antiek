@@ -101,4 +101,20 @@ describe("ArcadeMount input and accessibility boundary", () => {
     expect(releasePointerCapture).toHaveBeenCalledWith(4);
     expect(cart.teardown).toHaveBeenCalledTimes(1);
   });
+
+  it("repaints for a redraw token without resetting cartridge state", () => {
+    const cart = cartridge();
+    const view = render(
+      <ArcadeMount cartridge={cart} reducedMotion redrawToken={0} />,
+    );
+    const rendersBeforeSignal = vi.mocked(cart.render).mock.calls.length;
+
+    view.rerender(
+      <ArcadeMount cartridge={cart} reducedMotion redrawToken={1} />,
+    );
+
+    expect(cart.init).toHaveBeenCalledTimes(1);
+    expect(cart.teardown).not.toHaveBeenCalled();
+    expect(cart.render).toHaveBeenCalledTimes(rendersBeforeSignal + 1);
+  });
 });

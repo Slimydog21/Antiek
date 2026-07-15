@@ -20,6 +20,26 @@ const pointerPress = (): InputState => ({
 });
 
 describe("Paperclip Zombies cartridge lifecycle", () => {
+  it("does not recreate or reset game state when the visual backdrop becomes ready", () => {
+    const backdrop = { current: null as CanvasImageSource | null };
+    const ctx: GameContext = {
+      width: 480,
+      height: 300,
+      rng: () => 0.5,
+      saveBestScore: vi.fn(),
+      readBestScore: () => 0,
+    };
+    const cart = createZombiesCartridge({ backdrop, reducedMotion: true });
+    cart.init(ctx);
+    cart.update(1 / 60, pointerPress(), ctx);
+    cart.update(1 / 60, pointerPress(), ctx);
+    expect(cart.getScore?.()).toBe(1);
+
+    backdrop.current = {} as CanvasImageSource;
+    expect(cart.getScore?.()).toBe(1);
+    expect(cart.isGameOver?.()).toBe(false);
+  });
+
   it("saves best score once when the fort first falls", () => {
     const saveBestScore = vi.fn();
     const ctx: GameContext = {

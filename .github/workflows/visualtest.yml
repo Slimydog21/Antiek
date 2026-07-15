@@ -1,15 +1,9 @@
 name: visualtest
 
-# S12 — Lost-Pixel as a CI blocker on the reading-app Storybook.
-#
-# Triggers when reading-app source or stories change. Blocks merge
-# until either:
-#   (a) every shot is within the 0.4 % per-shot threshold, OR
-#   (b) the PR commits the new baselines under
-#       apps/reading/.lostpixel/baseline/
-#
-# Local workflow: run `npm run visualtest:update` after a deliberate
-# visual change; commit the .png updates with the source diff.
+# Reading-app Storybook visual evidence. The authored arcade story owns a
+# blocking, 0.001%-ceiling three-breakpoint gate. The legacy repository-wide sweep
+# remains advisory because LostPixel 3.22 exits zero for differences under this
+# repository's generateOnly:false configuration.
 
 on:
   pull_request:
@@ -50,20 +44,35 @@ jobs:
       - name: Build Storybook
         run: npm run build-storybook
 
+      - name: Gate authored arcade field against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: deepresearch-research-wait-arcade--playing
+        run: |
+          for width in 768 1024 1280; do
+            plate=".lostpixel/baseline/deep-research-research-wait-arcade--playing__[w${width}px].png"
+            if [ ! -s "$plate" ]; then
+              echo "::error file=${plate}::Missing canonical authored arcade baseline"
+              exit 1
+            fi
+          done
+          npx lost-pixel
+          for width in 768 1024 1280; do
+            current=".lostpixel/current/deep-research-research-wait-arcade--playing__[w${width}px].png"
+            if [ ! -s "$current" ]; then
+              echo "::error file=${current}::Missing authored arcade capture"
+              exit 1
+            fi
+          done
+          if find .lostpixel/diff -type f -print -quit | grep -q .; then
+            echo "::error::Authored arcade field differs from its canonical baselines"
+            exit 1
+          fi
+
       - name: Run Lost-Pixel against committed baselines (informational)
-        # BLOCKING (AGH SPR-04 G2): the reconsider-if that made this
-        # informational — "baselines committed under
-        # apps/reading/.lostpixel/baseline/" (ci-informational-gates.md §3) —
-        # is now MET: 381 baseline PNGs are committed there and
-        # lostpixel.config.ts sets imagePathBaseline + generateOnly:false, so
-        # the gate compares current renders against a real committed baseline.
-        # Un-swallowed: the step's exit code is now lost-pixel's own, so a real
-        # visual regression reds the PR (which is the point). A legitimate
-        # visual change lands its own updated baseline PNGs (npm run
-        # visualtest:update) in the same PR — the same discipline as the token
-        # baselines. If this PR's own run reds, the committed baselines are
-        # stale and need an operator re-approval (an honest signal, not a
-        # reason to re-swallow).
+        # LostPixel 3.22 exits zero for differences in this repository's
+        # generateOnly:false mode, so this legacy portfolio sweep is evidence,
+        # not a merge gate. Bounded critical stories must own an explicit
+        # tightly bounded shell-level assertion like the authored arcade gate above.
         run: npx lost-pixel
 
       - name: Upload diff artifacts on failure
