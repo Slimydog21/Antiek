@@ -41,6 +41,10 @@ from substrate.multimedia.local_zero_cost_evidence import (
     LocalZeroExternalCostEvidenceV1,
     verify_local_zero_cost_evidence,
 )
+from substrate.multimedia.paid_video_cost_authority import (
+    PaidRegisteredVideoCostAuthorityV1,
+    verify_paid_registered_video_cost_authority,
+)
 from substrate.multimedia.planner import (
     CanonicalEvidenceChunk,
     EvidenceChunk,
@@ -697,19 +701,51 @@ class MultimediaAssetStore:
         owner_id: str = _DEFAULT_OWNER_ID,
         canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
         cost_snapshot: MultimediaShipCostSnapshotV1 | None = None,
+        paid_registered_video_cost_authority: PaidRegisteredVideoCostAuthorityV1 | None = None,
         local_zero_cost_evidence: LocalZeroExternalCostEvidenceV1 | None = None,
         snapshot_key: bytes | None = None,
+        production_snapshot_key: bytes | None = None,
     ) -> MultimediaAssetRecord:
         owner_digest = _owner_digest(owner_id)
         with self._locked(exclusive=True):
             record = self._load_unlocked(asset_id, owner_digest)
-            if cost_snapshot is not None and local_zero_cost_evidence is not None:
-                raise LocalZeroEvidenceConflict("evidence_conflict")
-            if cost_snapshot is not None or local_zero_cost_evidence is not None:
+            authority_count = sum(
+                authority is not None
+                for authority in (
+                    cost_snapshot,
+                    paid_registered_video_cost_authority,
+                    local_zero_cost_evidence,
+                )
+            )
+            if authority_count > 1:
+                if local_zero_cost_evidence is not None:
+                    raise LocalZeroEvidenceConflict("evidence_conflict")
+                raise MultimediaShipCostEvidenceConflict("evidence_conflict")
+            if record.production_link is not None and cost_snapshot is not None:
+                raise MultimediaShipCostEvidenceConflict("evidence_conflict")
+            if record.audio_production_link is not None and cost_snapshot is not None:
+                raise MultimediaShipCostEvidenceConflict("evidence_conflict")
+            if paid_registered_video_cost_authority is not None and (
+                record.production_link is None or record.audio_production_link is not None
+            ):
+                raise MultimediaShipCostEvidenceConflict("evidence_conflict")
+            if authority_count:
                 try:
                     if snapshot_key is None:
                         raise ValueError("snapshot key is unavailable")
-                    if cost_snapshot is not None:
+                    if paid_registered_video_cost_authority is not None:
+                        if production_snapshot_key is None or record.production_link is None:
+                            raise ValueError("production snapshot authority is unavailable")
+                        verify_paid_registered_video_cost_authority(
+                            paid_registered_video_cost_authority,
+                            direct_snapshot_key=snapshot_key,
+                            production_snapshot_key=production_snapshot_key,
+                            owner_id=owner_id,
+                            asset_id=record.asset.asset_id,
+                            revision_id=record.asset.revision_id,
+                            production_receipt_digest=record.production_link.receipt_sha256,
+                        )
+                    elif cost_snapshot is not None:
                         verify_multimedia_ship_cost_snapshot(
                             cost_snapshot,
                             snapshot_key=snapshot_key,
@@ -718,7 +754,8 @@ class MultimediaAssetStore:
                             revision_id=record.asset.revision_id,
                         )
                     else:
-                        assert local_zero_cost_evidence is not None
+                        if local_zero_cost_evidence is None:
+                            raise ValueError("local zero authority is unavailable")
                         verify_local_zero_cost_evidence(
                             local_zero_cost_evidence,
                             snapshot_key=snapshot_key,
@@ -749,8 +786,15 @@ class MultimediaAssetStore:
                 record.asset,
                 scenes=scenes,
                 cost_snapshot=cost_snapshot,
+                paid_registered_video_cost_authority=paid_registered_video_cost_authority,
                 local_zero_cost_evidence=local_zero_cost_evidence,
                 snapshot_key=snapshot_key,
+                production_snapshot_key=production_snapshot_key,
+                production_receipt_digest=(
+                    record.production_link.receipt_sha256
+                    if record.production_link is not None
+                    else None
+                ),
                 owner_id=owner_id,
             )
             updated = self._with_job(
@@ -886,7 +930,9 @@ class MultimediaAssetStore:
                 if record.production_link != link:
                     raise ValueError("multimedia production link conflicts")
                 return record
-            updated = record.model_copy(update={"production_link": link})
+            updated = record.model_copy(
+                update={"production_link": link, "hardening_report": None}
+            )
             self._save_unlocked(updated, owner_digest)
             return updated
 
@@ -919,7 +965,9 @@ class MultimediaAssetStore:
                 return record
             if record.production_link is not None:
                 raise ValueError("multimedia audio production conflicts with video authority")
-            updated = record.model_copy(update={"audio_production_link": link})
+            updated = record.model_copy(
+                update={"audio_production_link": link, "hardening_report": None}
+            )
             self._save_unlocked(updated, owner_digest)
             return updated
 

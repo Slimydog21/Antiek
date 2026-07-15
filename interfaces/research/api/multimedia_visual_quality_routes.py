@@ -98,6 +98,8 @@ class VisualRoutingCohortResponse(BaseModel):
     charged_cents_per_assessed_candidate: float | None
     charged_cents_per_accepted_candidate: float | None
     efficiency_score: float | None
+    acceptance_efficiency_score: float | None
+    quality_efficiency_score: float | None
     eligible: bool
     ineligibility_reasons: tuple[str, ...]
 
@@ -105,6 +107,7 @@ class VisualRoutingCohortResponse(BaseModel):
 class VisualRoutingRecommendationResponse(BaseModel):
     cohort: VisualRoutingCohortKeyResponse
     efficiency_score: float
+    quality_efficiency_score: float
 
 
 class VisualRoutingAdvisoryResponse(BaseModel):
@@ -114,6 +117,12 @@ class VisualRoutingAdvisoryResponse(BaseModel):
     as_of: str
     cohorts: tuple[VisualRoutingCohortResponse, ...]
     exclusions: dict[str, int]
+    recommendation_status: Literal[
+        "recommended",
+        "no_eligible_cohorts",
+        "quality_acceptance_disagreement",
+        "ambiguous_ranking",
+    ]
     recommendation: VisualRoutingRecommendationResponse | None
 
 
