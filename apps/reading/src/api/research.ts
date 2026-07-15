@@ -506,6 +506,13 @@ export interface DerivedEvidenceCollectionSummary {
 
 export interface DerivedEvidenceCollection extends DerivedEvidenceCollectionSummary {
   sources: DerivedEvidenceSource[];
+  locations: Array<{
+    citation_id: string;
+    chunk_ordinal: number;
+    member_index: number;
+    section_anchor: string;
+    section_path: string;
+  }>;
   is_current: boolean;
 }
 

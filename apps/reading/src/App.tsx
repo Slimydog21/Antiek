@@ -162,6 +162,7 @@ function AuthenticatedRoutes() {
         <Route path="/meta-readings" element={<PersonalSpace metaDocsOnly />} />
         <Route path="/read/derived/:assetId" element={<DerivedAssetReader />} />
         <Route path="/read/derived/:assetId/revisions/:revisionId" element={<DerivedAssetReader />} />
+        <Route path="/read/derived/evidence/:collectionId" element={<DerivedAssetReader />} />
         <Route path="/read/:documentId" element={<BookReader />} />
         <Route path="/billing" element={<Billing />} />
         <Route path="/stats" element={<Stats />} />
