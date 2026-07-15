@@ -131,6 +131,18 @@ describe("ArcadeMount input and accessibility boundary", () => {
     expect(cart.teardown).toHaveBeenCalledTimes(1);
   });
 
+  it("publishes a keyboard release edge in reduced motion", () => {
+    const cart = cartridge();
+    render(<ArcadeMount cartridge={cart} reducedMotion />);
+    const canvas = screen.getByRole("application", { name: "Test cartridge" });
+
+    fireEvent.keyDown(canvas, { key: " " });
+    fireEvent.keyUp(canvas, { key: " " });
+
+    const updates = vi.mocked(cart.update).mock.calls;
+    expect(updates.at(-1)?.[1].keysReleased.has(" ")).toBe(true);
+  });
+
   it("repaints for a redraw token without resetting cartridge state", () => {
     const cart = cartridge();
     const view = render(

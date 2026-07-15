@@ -49,6 +49,7 @@ export function ArcadeMount({
 
     const keysDown = new Set<string>();
     const keysPressed = new Set<string>();
+    const keysReleased = new Set<string>();
     let pointer: { x: number; y: number } | null = null;
     let pointerDown = false;
     let pointerPressed = false;
@@ -64,8 +65,10 @@ export function ArcadeMount({
         pointerReleased,
         keysDown: new Set(keysDown),
         keysPressed: new Set(keysPressed),
+        keysReleased: new Set(keysReleased),
       };
       keysPressed.clear();
+      keysReleased.clear();
       pointerPressed = false;
       pointerReleased = false;
       return snap;
@@ -85,7 +88,8 @@ export function ArcadeMount({
       if (reducedMotion && pressed) loop?.stepOnce(sample());
     };
     const onKeyUp = (e: KeyboardEvent) => {
-      keysDown.delete(e.key);
+      if (keysDown.delete(e.key)) keysReleased.add(e.key);
+      if (reducedMotion) loop?.stepOnce(sample());
     };
     const onPointerMove = (e: PointerEvent) => {
       const rect = canvas.getBoundingClientRect();
@@ -117,6 +121,7 @@ export function ArcadeMount({
     const onBlur = () => {
       keysDown.clear();
       keysPressed.clear();
+      keysReleased.clear();
       pointerDown = false;
     };
 

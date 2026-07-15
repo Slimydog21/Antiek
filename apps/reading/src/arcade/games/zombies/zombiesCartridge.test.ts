@@ -10,6 +10,7 @@ const input = (keys: string[] = []): InputState => ({
   pointerReleased: false,
   keysDown: new Set(keys),
   keysPressed: new Set(keys),
+  keysReleased: new Set(),
 });
 
 const pointerPress = (): InputState => ({
