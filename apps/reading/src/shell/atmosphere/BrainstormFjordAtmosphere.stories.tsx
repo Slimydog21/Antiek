@@ -41,6 +41,18 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+async function waitForFjordImage(canvasElement: HTMLElement) {
+  await waitFor(() => {
+    expect(
+      canvasElement.querySelector(
+        '[data-brainstorm-fjord-image-ready="true"]',
+      ),
+    ).toBeTruthy();
+  });
+  // backdrop-filter composites one frame after the image load event.
+  await new Promise((resolve) => window.setTimeout(resolve, 300));
+}
+
 export const HtmlAuthorityPlate: Story = {
   render: () => (
     <main className="relative h-screen overflow-hidden bg-ice-2 text-ink">
@@ -64,6 +76,7 @@ export const HtmlAuthorityPlate: Story = {
       </section>
     </main>
   ),
+  play: async ({ canvasElement }) => waitForFjordImage(canvasElement),
 };
 
 export const FjordSkipOffer: Story = {
@@ -85,6 +98,7 @@ export const FjordSkipOffer: Story = {
         within(canvasElement).getByRole("button", { name: "Play Fjord Skip" }),
       ).toBeTruthy();
     });
+    await waitForFjordImage(canvasElement);
   },
 };
 
@@ -103,5 +117,6 @@ export const FjordSkipPlaying: Story = {
         canvasElement.querySelector('[data-backdrop-ready="true"]'),
       ).toBeTruthy();
     });
+    await waitForFjordImage(canvasElement);
   },
 };
