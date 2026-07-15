@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 
 import type { CreatePlanResponse, PlanResponse } from "../../api/research";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner";
 
 const {
   createPlanMock,
@@ -223,7 +224,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     const hardMode = await screen.findByRole("button", { name: "Hard ceiling" });
     await waitFor(() => expect((hardMode as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(hardMode);
-    const approval = screen.getByRole("checkbox", {
+    const approval = await screen.findByRole("checkbox", {
       name: /approve a \$1\.50 hard authorized-spend ceiling/i,
     });
     fireEvent.click(approval);
@@ -256,7 +257,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     const hardMode = await screen.findByRole("button", { name: "Hard ceiling" });
     await waitFor(() => expect((hardMode as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(hardMode);
-    const approval = screen.getByRole("checkbox", { name: /hard authorized-spend ceiling/i });
+    const approval = await screen.findByRole("checkbox", { name: /hard authorized-spend ceiling/i });
     fireEvent.click(approval);
     await waitFor(() => expect((approval as HTMLInputElement).checked).toBe(true));
     fireEvent.change(screen.getByRole("spinbutton", { name: "Authorized spend ceiling" }), {
@@ -276,7 +277,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     editPlanMock.mockResolvedValue(reduced);
     renderProposal();
     await screen.findByText(/chokepoints replace oil/i);
-    fireEvent.click(screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }));
     // Remove the third sub-question.
     fireEvent.click(screen.getAllByRole("button", { name: "remove" })[2]);
     await waitFor(() =>
@@ -286,7 +287,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
       ),
     );
     await waitFor(() => expect(screen.queryByText(/chokepoints replace oil/i)).toBeNull());
-    const revisedApproval = screen.getByRole("checkbox", { name: /approve a \$1\.00 aggregate stop limit/i });
+    const revisedApproval = await screen.findByRole("checkbox", { name: /approve a \$1\.00 aggregate stop limit/i });
     expect((revisedApproval as HTMLInputElement).checked).toBe(false);
     expect((screen.getByRole("button", { name: /Start 2 researches/i }) as HTMLButtonElement).disabled).toBe(true);
   });
@@ -301,7 +302,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     );
     renderProposal();
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
-    const approval = screen.getByRole("checkbox", {
+    const approval = await screen.findByRole("checkbox", {
       name: /approve a \$1\.50 aggregate stop limit/i,
     });
     fireEvent.click(approval);
@@ -360,6 +361,8 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
   });
 
   it("launch approves then launches the plan and hands back the session", async () => {
+    const reaction = vi.fn();
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, reaction);
     createPlanMock.mockResolvedValue(CREATE_RESP);
     approvePlanMock.mockResolvedValue({
       root_node_id: "q-pn-root",
@@ -383,6 +386,11 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
       }),
     );
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("session-q-pn-root"));
+    expect(reaction).toHaveBeenCalledTimes(1);
+    expect((reaction.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
+      experience: "deep_research_start",
+    });
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, reaction);
   });
 
   it("freezes plan and budget controls while approval and launch are in flight", async () => {
@@ -401,7 +409,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     renderProposal();
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+      await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
     );
     fireEvent.click(launch);
 
@@ -428,7 +436,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     const { onLaunched } = renderProposal();
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+      await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
     );
     fireEvent.click(launch);
     fireEvent.click(await screen.findByRole("button", { name: "Check launch status" }));
@@ -461,7 +469,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     const hardMode = await screen.findByRole("button", { name: "Hard ceiling" });
     await waitFor(() => expect((hardMode as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(hardMode);
-    const approval = screen.getByRole("checkbox", { name: /hard authorized-spend ceiling/i });
+    const approval = await screen.findByRole("checkbox", { name: /hard authorized-spend ceiling/i });
     fireEvent.click(approval);
     await waitFor(() => expect((approval as HTMLInputElement).checked).toBe(true));
     fireEvent.click(screen.getByRole("button", { name: /Start 3 researches/i }));
@@ -488,7 +496,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     renderProposal();
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+      await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
     );
     fireEvent.click(launch);
     fireEvent.click(await screen.findByRole("button", { name: "Reload plan" }));
@@ -512,7 +520,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     renderProposal();
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
     fireEvent.click(
-      screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
+      await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }),
     );
     fireEvent.click(launch);
     fireEvent.click(await screen.findByRole("button", { name: "Check launch status" }));
@@ -527,7 +535,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     renderProposal();
     const launch = await screen.findByRole("button", { name: /Start 3 researches/i });
     const ceiling = screen.getByRole("spinbutton", { name: "Aggregate stop limit" });
-    const approval = screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i });
+    const approval = await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i });
     fireEvent.click(approval);
     expect((launch as HTMLButtonElement).disabled).toBe(false);
 
@@ -538,7 +546,7 @@ describe("CascadeProposal — trim + gated launch (M2)", () => {
     expect((launch as HTMLButtonElement).disabled).toBe(true);
 
     fireEvent.change(ceiling, { target: { value: "2.25" } });
-    const updatedApproval = screen.getByRole("checkbox", { name: /approve a \$2\.25 aggregate stop limit/i });
+    const updatedApproval = await screen.findByRole("checkbox", { name: /approve a \$2\.25 aggregate stop limit/i });
     expect((updatedApproval as HTMLInputElement).disabled).toBe(false);
     fireEvent.click(updatedApproval);
     expect((launch as HTMLButtonElement).disabled).toBe(false);
@@ -618,7 +626,7 @@ describe("CascadeProposal — renders the planner's REAL output, no placeholders
     );
     expect(await screen.findByText(/who controls the minerals/i)).toBeTruthy();
     // Launch approves the CURRENT (edited) tree, then launches it.
-    fireEvent.click(screen.getByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }));
+    fireEvent.click(await screen.findByRole("checkbox", { name: /approve a \$1\.50 aggregate stop limit/i }));
     fireEvent.click(await screen.findByRole("button", { name: /Start 3 researches/i }));
     await waitFor(() => expect(approvePlanMock).toHaveBeenCalledWith("q-pn-root"));
     await waitFor(() =>

@@ -4,33 +4,43 @@ import type { ReactNode } from "react";
 import {
   approveMultimediaDryRun,
   authorizeMultimediaNarration,
+  createGroundedMultimediaDraft,
   createMultimediaDraft,
   failedGateIds,
   getMultimediaAsset,
   getMultimediaLocalAudiblePlayback,
+  getMultimediaPaidAudioPlayback,
   getMultimediaPlayback,
   getMultimediaReviewedVisualSet,
   listMultimediaAssets,
   manualGateIds,
+  previewMultimediaSteering,
   runMultimediaHardening,
+  searchMultimediaEvidence,
   registerMultimediaProduction,
   produceAuthorizedMultimedia,
+  produceAuthorizedAudio,
   steerMultimediaAsset,
 } from "../../api/multimedia";
 import type {
   CreateMultimediaDraftRequest,
   MultimediaAssetRecord,
   MultimediaAssetSummary,
+  MultimediaDepth,
+  MultimediaEvidenceSearchResult,
   MultimediaLocalAudiblePlayback,
   MultimediaPlayback as MultimediaPlaybackRecord,
   MultimediaNarrationAuthorization,
   MultimediaReviewedVisualSet,
+  MultimediaSteeringPreview,
+  MultimediaSteeringRequest,
 } from "../../api/multimedia";
 import { LemonButton, LemonInput, LemonTag, LemonTextarea } from "../../components/lemon";
 import { ReconciliationPanel } from "./ReconciliationPanel";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
 import { LocalProductionPanel } from "./LocalProductionPanel";
 import { LocalAudiblePanel } from "./LocalAudiblePanel";
+import { ActiveListeningPlayer } from "./ActiveListeningPlayer";
 import { VisualReviewPanel } from "./VisualReviewPanel";
 import { VoiceSteeringInput } from "./VoiceSteeringInput";
 import { projectMultimediaPlan } from "./planProjection";
@@ -39,8 +49,12 @@ type Mode = "video" | "audio" | "hybrid";
 type RouteTier = "cheapest" | "balanced" | "highest_quality";
 type RenderState = "pending" | "rendering" | "partial" | "failed" | "over_budget" | "provider_unavailable";
 type PlayerView = "video" | "audio";
-type PendingCommand = "list" | "create" | "approve" | "steer" | "harden" | "open" | null;
+type PendingCommand = "list" | "create" | "evidence-search" | "ground" | "approve" | "steer-preview" | "steer" | "harden" | "open" | null;
 type VerifiedPlaybackRecord = MultimediaPlaybackRecord | MultimediaLocalAudiblePlayback;
+type SteeringPreviewState = {
+  preview: MultimediaSteeringPreview;
+  request: MultimediaSteeringRequest;
+};
 
 type Chapter = {
   id: string;
@@ -186,13 +200,17 @@ function distributeMinutes(total: number): number[] {
 
 export default function Multimedia() {
   const openRequestId = useRef(0);
+  const evidenceRequestId = useRef(0);
   const productionRequestId = useRef(0);
   const narrationAuthorizationRequestId = useRef(0);
+  const steeringRequestId = useRef(0);
+  const steeringApplyInFlight = useRef(false);
   const narrationIdempotency = useRef<{ key: string; requestId: string } | null>(null);
   const [topic, setTopic] = useState("The aircraft program that made cheap long-haul travel possible");
   const [duration, setDuration] = useState(30);
   const [customDuration, setCustomDuration] = useState("30");
   const [mode, setMode] = useState<Mode>("video");
+  const [depth, setDepth] = useState<MultimediaDepth>("intermediate");
   const [tier, setTier] = useState<RouteTier>("balanced");
   const [sourceScope, setSourceScope] = useState("Owned corpus + vetted web sources");
   const [style, setStyle] = useState("Asianometry-style explainer with restrained Ken Burns motion");
@@ -206,8 +224,12 @@ export default function Multimedia() {
   const [steer, setSteer] = useState("Make chapter 2 more concrete and add a voice note about turbofan reliability.");
   const [rawVoiceSteer, setRawVoiceSteer] = useState<string | null>(null);
   const [voiceSteeringBusy, setVoiceSteeringBusy] = useState(false);
+  const [steeringPreview, setSteeringPreview] = useState<SteeringPreviewState | null>(null);
   const [assets, setAssets] = useState<MultimediaAssetSummary[]>([]);
   const [selectedRecord, setSelectedRecord] = useState<MultimediaAssetRecord | null>(null);
+  const [selectedCoverageArcIds, setSelectedCoverageArcIds] = useState<string[]>([]);
+  const [evidenceSearch, setEvidenceSearch] = useState<MultimediaEvidenceSearchResult | null>(null);
+  const [selectedEvidenceIds, setSelectedEvidenceIds] = useState<string[]>([]);
   const [pendingCommand, setPendingCommand] = useState<PendingCommand>(null);
   const [knowledgeMutationPending, setKnowledgeMutationPending] = useState(false);
   const [apiError, setApiError] = useState<string | null>(null);
@@ -225,8 +247,13 @@ export default function Multimedia() {
 
   useEffect(() => {
     productionRequestId.current += 1;
+    steeringRequestId.current += 1;
     setProductionRegistrationPending(false);
+    setPendingCommand((current) =>
+      current === "steer-preview" || current === "steer" ? null : current
+    );
     setRawVoiceSteer(null);
+    setSteeringPreview(null);
   }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id]);
 
   useEffect(() => {
@@ -241,6 +268,29 @@ export default function Multimedia() {
     setChapterNarrationAuthorities({});
     setProductionWorkerPending(false);
   }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id]);
+
+  useEffect(() => {
+    if (steeringPreview?.preview.status !== "ready") return;
+    const expiresAtMs = steeringPreview.preview.expires_at_epoch_seconds * 1000;
+    const expire = () => {
+      steeringRequestId.current += 1;
+      setSteeringPreview(null);
+      setApiError("That steering preview expired. Preview the current request again.");
+    };
+    let timeout: number | undefined;
+    const scheduleExpiry = () => {
+      const remaining = expiresAtMs - Date.now();
+      if (remaining <= 0) {
+        expire();
+        return;
+      }
+      timeout = window.setTimeout(scheduleExpiry, Math.min(remaining, 2_147_483_647));
+    };
+    scheduleExpiry();
+    return () => {
+      if (timeout !== undefined) window.clearTimeout(timeout);
+    };
+  }, [steeringPreview]);
 
   useEffect(() => {
     let cancelled = false;
@@ -276,7 +326,9 @@ export default function Multimedia() {
     setPlaybackLoading(true);
     const request = shouldUseLocalAudiblePlayback(selectedRecord)
       ? getMultimediaLocalAudiblePlayback(assetId, revisionId)
-      : getMultimediaPlayback(assetId, revisionId);
+      : selectedRecord.mode === "audio"
+        ? getMultimediaPaidAudioPlayback(assetId, revisionId)
+        : getMultimediaPlayback(assetId, revisionId);
     if (selectedRecord.mode === "audio") setPlayerView("audio");
     request
       .then((result) => {
@@ -338,6 +390,7 @@ export default function Multimedia() {
   const planOmissions = projectedPlan?.omissions ?? (selectedRecord ? [] : OMISSIONS);
   const planSources = projectedPlan?.sources ?? (selectedRecord ? [] : SOURCES);
   const unsourcedClaims = projectedPlan?.unsourcedClaims ?? [];
+  const coverageOptions = projectedPlan?.coverageOptions ?? [];
 
   const activeChapter = planChapters.find((chapter) => chapter.id === activeChapterId) ?? planChapters[0];
   const selectedSource = planSources.find((source) => source.id === selectedSourceId) ?? planSources[0];
@@ -360,6 +413,22 @@ export default function Multimedia() {
     }
   }, [activeChapterId, planChapters, planSources, selectedSourceId]);
 
+  useEffect(() => {
+    if (!projectedPlan) {
+      setSelectedCoverageArcIds([]);
+      return;
+    }
+    setSelectedCoverageArcIds(projectedPlan.chosenArcIds);
+    setDepth(projectedPlan.depth);
+    setSourceScope(projectedPlan.sourceScope ?? "");
+  }, [projectedPlan]);
+
+  useEffect(() => {
+    evidenceRequestId.current += 1;
+    setEvidenceSearch(null);
+    setSelectedEvidenceIds([]);
+  }, [selectedRecord?.asset.asset_id, selectedRecord?.asset.revision_id]);
+
   function setPreset(next: number) {
     setDuration(next);
     setCustomDuration(String(next));
@@ -378,17 +447,19 @@ export default function Multimedia() {
     setAssets(result.assets);
   }
 
-  async function generatePlan() {
+  async function createPlan(selectedArcIds: string[]) {
     if (knowledgeMutationPending) return;
     const request: CreateMultimediaDraftRequest = {
       topic,
       target_minutes: duration,
       mode,
       route_policy: tier,
-      sources: [sourceScope].filter((item) => item.trim().length > 0),
+      source_scope: sourceScope.trim() || null,
       must_cover: splitOperatorList(mustCover),
       audience: "curious generalist",
       style,
+      depth,
+      selected_arc_ids: selectedArcIds,
     };
     setPendingCommand("create");
     try {
@@ -411,6 +482,68 @@ export default function Multimedia() {
     } finally {
       setPendingCommand(null);
     }
+  }
+
+  function generatePlan() {
+    return createPlan([]);
+  }
+
+  async function discoverEvidence() {
+    if (!selectedRecord || pendingCommand !== null) return;
+    const requestId = ++evidenceRequestId.current;
+    const requestedRecord = selectedRecord;
+    setPendingCommand("evidence-search");
+    try {
+      const result = await searchMultimediaEvidence(
+        requestedRecord.asset.asset_id,
+        requestedRecord.asset.revision_id,
+      );
+      if (requestId !== evidenceRequestId.current) return;
+      setEvidenceSearch(result);
+      setSelectedEvidenceIds(result.candidates.map((candidate) => candidate.chunk_id));
+      setApiError(null);
+    } catch {
+      if (requestId !== evidenceRequestId.current) return;
+      setEvidenceSearch(null);
+      setSelectedEvidenceIds([]);
+      setApiError("Could not retrieve evidence from the current knowledge graph.");
+    } finally {
+      if (requestId === evidenceRequestId.current) setPendingCommand(null);
+    }
+  }
+
+  async function createGroundedDraft() {
+    if (!selectedRecord || !evidenceSearch || pendingCommand !== null) return;
+    const selected = evidenceSearch.candidates.filter((candidate) => selectedEvidenceIds.includes(candidate.chunk_id));
+    if (!selected.length) return;
+    setPendingCommand("ground");
+    try {
+      const record = await createGroundedMultimediaDraft(
+        selectedRecord.asset.asset_id,
+        selectedRecord.asset.revision_id,
+        selected,
+      );
+      setSelectedRecord(record);
+      setPlanReady(true);
+      setApproved(false);
+      setRenderState("pending");
+      setApiError(null);
+      try {
+        await refreshAssetList();
+      } catch {
+        // best-effort: the grounded draft is already durable
+      }
+    } catch {
+      setApiError("Evidence changed or became unavailable. Search the graph again before creating a grounded draft.");
+    } finally {
+      setPendingCommand(null);
+    }
+  }
+
+  function toggleCoverageArc(arcId: string) {
+    setSelectedCoverageArcIds((current) =>
+      current.includes(arcId) ? current.filter((id) => id !== arcId) : [...current, arcId],
+    );
   }
 
   async function reopenAsset(assetId: string) {
@@ -554,19 +687,98 @@ export default function Multimedia() {
     }
   }
 
+  async function produceCurrentAudioLesson() {
+    if (!selectedRecord || productionWorkerPending) return;
+    const authorities = planChapters.map((chapter) => chapterNarrationAuthorities[chapter.id]);
+    if (authorities.some((authority) => !authority)) return;
+    const requestedRecord = selectedRecord;
+    setProductionWorkerPending(true);
+    try {
+      const produced = await produceAuthorizedAudio(
+        requestedRecord.asset.asset_id, requestedRecord.asset.revision_id,
+        authorities.map((authority, index) => ({
+          chapter_id: planChapters[index].id, authorization: authority!.authorization,
+        })),
+      );
+      setSelectedRecord((current) => (current === requestedRecord ? produced : current));
+      setApiError(null);
+    } catch {
+      setApiError("Could not produce this audio lesson from its current authorities.");
+    } finally {
+      setProductionWorkerPending(false);
+    }
+  }
+
+  function steeringRequest(): MultimediaSteeringRequest | null {
+    if (!selectedRecord || !steer.trim()) return null;
+    const prompt = steer.trim();
+    return {
+      expected_parent_revision_id: selectedRecord.asset.revision_id,
+      prompt,
+      ...(rawVoiceSteer ? {
+        raw_voice_transcript: rawVoiceSteer,
+        ...(prompt === rawVoiceSteer ? {} : { corrected_voice_transcript: prompt }),
+      } : {}),
+    };
+  }
+
+  function invalidateSteeringPreview() {
+    steeringRequestId.current += 1;
+    setSteeringPreview(null);
+    setPendingCommand((current) => current === "steer-preview" ? null : current);
+  }
+
+  function updateSteeringText(value: string) {
+    invalidateSteeringPreview();
+    setSteer(value);
+  }
+
+  async function previewSteeringPrompt() {
+    const request = steeringRequest();
+    if (!selectedRecord || !request) return;
+    const assetId = selectedRecord.asset.asset_id;
+    const requestId = ++steeringRequestId.current;
+    setSteeringPreview(null);
+    setPendingCommand("steer-preview");
+    try {
+      const preview = await previewMultimediaSteering(assetId, request);
+      if (requestId !== steeringRequestId.current) return;
+      setSteeringPreview({ preview, request });
+      setApiError(null);
+    } catch {
+      if (requestId === steeringRequestId.current) {
+        setApiError("Could not preview that steering prompt.");
+      }
+    } finally {
+      if (requestId === steeringRequestId.current) setPendingCommand(null);
+    }
+  }
+
   async function applySteeringPrompt() {
-    if (!selectedRecord || !steer.trim()) return;
+    if (!selectedRecord || !steeringPreview) return;
+    const readyPreview = steeringPreview.preview;
+    if (readyPreview.status !== "ready") return;
+    if (readyPreview.expires_at_epoch_seconds * 1000 <= Date.now()) {
+      invalidateSteeringPreview();
+      setApiError("That steering preview expired. Preview the current request again.");
+      return;
+    }
+    if (steeringApplyInFlight.current) return;
+    steeringApplyInFlight.current = true;
+    const requestedRecord = selectedRecord;
+    const requestedPreview = steeringPreview;
+    const requestId = ++steeringRequestId.current;
+    setSteeringPreview(null);
     setPendingCommand("steer");
     try {
-      const prompt = steer.trim();
-      const record = await steerMultimediaAsset(selectedRecord.asset.asset_id, {
-        prompt,
-        ...(rawVoiceSteer ? {
-          raw_voice_transcript: rawVoiceSteer,
-          ...(prompt === rawVoiceSteer ? {} : { corrected_voice_transcript: prompt }),
-        } : {}),
+      const record = await steerMultimediaAsset(requestedRecord.asset.asset_id, {
+        ...requestedPreview.request,
+        preview_token: readyPreview.preview_token,
       });
+      if (requestId !== steeringRequestId.current) return;
+      setPendingCommand(null);
       setSelectedRecord(record);
+      setSteeringPreview(null);
       setPlanReady(true);
       setApproved(record.asset.status === "ready");
       setRenderState(statusToRenderState(record));
@@ -576,10 +788,28 @@ export default function Multimedia() {
       } catch {
         // best-effort: a failed list refresh must not mask a successful mutation
       }
-    } catch {
-      setApiError("Could not apply that steering prompt.");
+    } catch (error) {
+      if (requestId !== steeringRequestId.current) return;
+      setSteeringPreview(null);
+      const code = error instanceof Error ? error.message : "";
+      if (code === "multimedia_steering_stale_parent") {
+        try {
+          const reopened = await getMultimediaAsset(requestedRecord.asset.asset_id);
+          if (requestId !== steeringRequestId.current) return;
+          setPendingCommand(null);
+          setApiError("This asset changed after preview. Review the current revision and preview again.");
+          setSelectedRecord(reopened);
+        } catch {
+          // The conflict remains actionable even if the best-effort refresh fails.
+          if (requestId !== steeringRequestId.current) return;
+          setApiError("This asset changed after preview. Review the current revision and preview again.");
+        }
+      } else {
+        setApiError("Could not apply that reviewed steering preview.");
+      }
     } finally {
-      setPendingCommand(null);
+      steeringApplyInFlight.current = false;
+      if (requestId === steeringRequestId.current) setPendingCommand(null);
     }
   }
 
@@ -679,6 +909,21 @@ export default function Multimedia() {
               ))}
             </Fieldset>
 
+            <Fieldset label="Learning depth">
+              {(["overview", "intermediate", "deep"] as MultimediaDepth[]).map((item) => (
+                <button
+                  key={item}
+                  type="button"
+                  role="radio"
+                  aria-checked={depth === item}
+                  onClick={() => setDepth(item)}
+                  className={segmentClass(depth === item)}
+                >
+                  {item}
+                </button>
+              ))}
+            </Fieldset>
+
             <div>
               <p className="mb-2 font-mono text-[12px] text-shadow-2 dark:text-moonlight">Generation route</p>
               <div className="space-y-2">
@@ -704,7 +949,7 @@ export default function Multimedia() {
               </div>
             </div>
 
-            <Labeled label="Source scope" htmlFor="multimedia-source-scope">
+            <Labeled label="Research scope" htmlFor="multimedia-source-scope">
               <LemonInput
                 id="multimedia-source-scope"
                 value={sourceScope}
@@ -782,7 +1027,7 @@ export default function Multimedia() {
                     <button
                       key={`${asset.asset_id}-${asset.revision_id}`}
                       type="button"
-                      disabled={knowledgeMutationPending || pendingCommand === "open"}
+                      disabled={knowledgeMutationPending || pendingCommand !== null}
                       onClick={() => reopenAsset(asset.asset_id)}
                       className={
                         "rounded-md border px-3 py-2 text-left disabled:cursor-not-allowed disabled:opacity-50 " +
@@ -814,7 +1059,44 @@ export default function Multimedia() {
                 ) : (
                 <>
                 <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-                  <InfoPanel title="Coverage suggestions" items={planSuggestions} testId="multimedia-suggestions" />
+                  <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1" data-testid="multimedia-suggestions">
+                    <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Coverage suggestions</p>
+                    {selectedRecord ? (
+                      <div className="mt-2 space-y-2">
+                        {coverageOptions.map((option) => {
+                          const selected = selectedCoverageArcIds.includes(option.id);
+                          return (
+                            <label key={option.id} className="flex cursor-pointer items-start gap-2 rounded border border-rule p-2 dark:border-charcoal-1">
+                              <input
+                                type="checkbox"
+                                checked={selected}
+                                onChange={() => toggleCoverageArc(option.id)}
+                                aria-label={`Include ${option.title}`}
+                              />
+                              <span className="min-w-0 text-[12px] leading-snug text-ink dark:text-bright">
+                                <strong className="block">{option.title}</strong>
+                                <span className="block text-shadow-1 dark:text-moonlight">{option.teaches}</span>
+                                <span className="mt-1 block font-mono text-[10px] text-shadow-2 dark:text-moonlight">
+                                  {option.evidenceCount} cited source{option.evidenceCount === 1 ? "" : "s"} / {option.tradeoff}
+                                </span>
+                              </span>
+                            </label>
+                          );
+                        })}
+                        <LemonButton
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={selectedCoverageArcIds.length === 0 || pendingCommand !== null || knowledgeMutationPending}
+                          onClick={() => createPlan(selectedCoverageArcIds)}
+                        >
+                          {pendingCommand === "create" ? "Creating..." : "Create focused draft"}
+                        </LemonButton>
+                      </div>
+                    ) : (
+                      <InfoList items={planSuggestions} />
+                    )}
+                  </section>
                   <InfoPanel title="Known omissions" items={planOmissions} testId="multimedia-omissions" />
                   <div className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
                     <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Render budget</p>
@@ -881,6 +1163,66 @@ export default function Multimedia() {
                     </p>
                   )}
                 </div>
+
+                {selectedRecord && unsourcedClaims.length > 0 && (
+                  <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <p className="font-mono text-[12px] text-shadow-2 dark:text-moonlight">Knowledge graph evidence</p>
+                      <LemonButton
+                        type="button"
+                        onClick={discoverEvidence}
+                        disabled={pendingCommand !== null}
+                      >
+                        {pendingCommand === "evidence-search" ? "Searching..." : "Find evidence"}
+                      </LemonButton>
+                    </div>
+                    {evidenceSearch && (
+                      <div className="mt-3 space-y-3" data-testid="multimedia-evidence-results">
+                        {evidenceSearch.candidates.length > 0 ? (
+                          <ul className="space-y-2">
+                            {evidenceSearch.candidates.map((candidate) => (
+                              <li key={candidate.chunk_id}>
+                                <label className="flex gap-3 rounded-md border border-rule p-3 dark:border-charcoal-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedEvidenceIds.includes(candidate.chunk_id)}
+                                    onChange={() => setSelectedEvidenceIds((current) =>
+                                      current.includes(candidate.chunk_id)
+                                        ? current.filter((id) => id !== candidate.chunk_id)
+                                        : current.concat(candidate.chunk_id)
+                                    )}
+                                    aria-label={`Include evidence from ${candidate.document_title}`}
+                                  />
+                                  <span className="min-w-0">
+                                    <span className="block text-[13px] font-semibold text-ink dark:text-bright">
+                                      {candidate.document_title}
+                                    </span>
+                                    <span className="mt-1 block text-[12px] leading-relaxed text-shadow-1 dark:text-moonlight">
+                                      {candidate.excerpt}
+                                    </span>
+                                    <span className="mt-1 block font-mono text-[11px] text-shadow-2 dark:text-moonlight">
+                                      {candidate.section_path ?? "Source"} · {candidate.similarity.toFixed(3)}
+                                    </span>
+                                  </span>
+                                </label>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : (
+                          <p className="text-[13px] text-shadow-1 dark:text-moonlight">No matching evidence found.</p>
+                        )}
+                        <LemonButton
+                          type="button"
+                          variant="primary"
+                          onClick={createGroundedDraft}
+                          disabled={pendingCommand !== null || selectedEvidenceIds.length === 0}
+                        >
+                          {pendingCommand === "ground" ? "Creating..." : "Create grounded draft"}
+                        </LemonButton>
+                      </div>
+                    )}
+                  </section>
+                )}
 
                 {selectedRecord && activeChapter && (
                   <section className="rounded-md border border-rule bg-ice-0 p-3 dark:border-charcoal-1 dark:bg-charcoal-1">
@@ -980,6 +1322,21 @@ export default function Multimedia() {
                   </>
                 )}
 
+                {selectedRecord && selectedRecord.mode === "audio" && selectedRecord.asset.route_policy !== "cheapest" && (
+                  <section className="border-t border-rule pt-3 dark:border-charcoal-1">
+                    <LemonButton
+                      type="button"
+                      variant="secondary"
+                      onClick={produceCurrentAudioLesson}
+                      disabled={productionWorkerPending || planChapters.some(
+                        (chapter) => !chapterNarrationAuthorities[chapter.id]
+                      )}
+                    >
+                      {productionWorkerPending ? "Producing..." : "Produce audio lesson"}
+                    </LemonButton>
+                  </section>
+                )}
+
                 <div className="flex flex-wrap items-center gap-2">
                   <LemonButton
                     type="button"
@@ -1006,7 +1363,12 @@ export default function Multimedia() {
                   >
                     Edit brief
                   </LemonButton>
-                  <LemonButton type="button" variant="tertiary" onClick={() => setSteer("Shorten the economics setup and add more diagrams.")}>
+                  <LemonButton
+                    type="button"
+                    variant="tertiary"
+                    disabled={!canRunAssetCommand}
+                    onClick={() => updateSteeringText("Shorten the economics setup and add more diagrams.")}
+                  >
                     Steer outline
                   </LemonButton>
                 </div>
@@ -1052,12 +1414,18 @@ export default function Multimedia() {
                 value={steer}
                 rawTranscript={rawVoiceSteer}
                 disabled={!canRunAssetCommand}
-                onChange={setSteer}
+                onChange={(value) => {
+                  updateSteeringText(value);
+                }}
                 onTranscript={(transcript) => {
+                  invalidateSteeringPreview();
                   setRawVoiceSteer(transcript);
                   setSteer(transcript);
                 }}
-                onDiscardTranscript={() => setRawVoiceSteer(null)}
+                onDiscardTranscript={() => {
+                  invalidateSteeringPreview();
+                  setRawVoiceSteer(null);
+                }}
                 onBusyChange={setVoiceSteeringBusy}
               />
               <div className="mt-2 flex gap-2">
@@ -1066,10 +1434,21 @@ export default function Multimedia() {
                   size="sm"
                   variant="secondary"
                   disabled={!canRunAssetCommand || voiceSteeringBusy}
-                  onClick={applySteeringPrompt}
+                  onClick={previewSteeringPrompt}
                 >
-                  {pendingCommand === "steer" ? "Applying..." : "Apply steer"}
+                  {pendingCommand === "steer-preview" ? "Previewing..." : "Preview steer"}
                 </LemonButton>
+                {steeringPreview?.preview.status === "ready" && (
+                  <LemonButton
+                    type="button"
+                    size="sm"
+                    variant="primary"
+                    disabled={!canRunAssetCommand || voiceSteeringBusy}
+                    onClick={applySteeringPrompt}
+                  >
+                    {pendingCommand === "steer" ? "Applying..." : "Apply preview"}
+                  </LemonButton>
+                )}
                 <LemonButton
                   type="button"
                   size="sm"
@@ -1080,6 +1459,35 @@ export default function Multimedia() {
                   {pendingCommand === "harden" ? "Checking..." : "Run hardening"}
                 </LemonButton>
               </div>
+              {pendingCommand === "steer" && (
+                <p className="mt-2 text-[12px] text-shadow-1 dark:text-moonlight" role="status">
+                  Applying reviewed revision...
+                </p>
+              )}
+              {steeringPreview?.preview.status === "needs_clarification" && (
+                <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright" role="status">
+                  <p className="font-mono font-semibold">Clarify before applying</p>
+                  {steeringPreview.preview.intent.clarifications.map((clarification) => (
+                    <p key={clarification} className="mt-1">{clarification}</p>
+                  ))}
+                </div>
+              )}
+              {steeringPreview?.preview.status === "ready" && (
+                <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright" data-testid="multimedia-steering-preview">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="font-mono font-semibold">Revision preview</p>
+                    <LemonTag>{steeringPreview.preview.route_policy.replace("_", " ")}</LemonTag>
+                  </div>
+                  <p className="mt-1">Incremental cost: ${steeringPreview.preview.estimated_cost_delta_usd.toFixed(4)}</p>
+                  <p>Affected: {steeringPreview.preview.affected_segment_ids.length} segments</p>
+                  <p>Reused: {steeringPreview.preview.segment_reuse.filter((row) => row.reused).length} segments</p>
+                  <ul className="mt-1 space-y-1">
+                    {steeringPreview.preview.operations.map((operation) => (
+                      <li key={operation.operation_id}>{operation.reason}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
               {selectedRecord?.hardening_report && (
                 <div className="mt-3 rounded-md border border-rule bg-ice-0 p-2 text-[12px] text-ink dark:border-charcoal-1 dark:bg-charcoal-1 dark:text-bright">
                   <p className="font-mono">Hardening: {selectedRecord.hardening_report.ship_status}</p>
@@ -1122,7 +1530,7 @@ export default function Multimedia() {
 
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_360px]">
                 <div className="space-y-3">
-                  <div className="flex aspect-video items-center justify-center overflow-hidden rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1">
+                  <div className={`flex items-center justify-center rounded-md border border-rule bg-charcoal-2 text-bright dark:border-charcoal-1 ${playback && "chapters" in playback ? "overflow-visible" : "aspect-video overflow-hidden"}`}>
                     {playbackLoading ? (
                       <p className="font-mono text-[12px] uppercase text-moonlight" role="status">Verifying media...</p>
                     ) : playback && playerView === "video" && "video_url" in playback ? (
@@ -1135,6 +1543,8 @@ export default function Multimedia() {
                         className="h-full w-full bg-black object-contain"
                         aria-label={`Video playback for ${selectedRecord?.asset.title ?? "multimedia asset"}`}
                       />
+                    ) : playback && "chapters" in playback ? (
+                      <ActiveListeningPlayer playback={playback} title={selectedRecord?.asset.title ?? "multimedia asset"} />
                     ) : playback ? (
                       <audio
                         key={`${playback.revision_id}-audio`}
@@ -1294,6 +1704,14 @@ function InfoPanel({ title, items, testId }: { title: string; items: string[]; t
         ))}
       </ul>
     </section>
+  );
+}
+
+function InfoList({ items }: { items: string[] }) {
+  return (
+    <ul className="mt-2 space-y-1 text-[13px] leading-snug text-ink dark:text-bright">
+      {items.map((item) => <li key={item}>{item}</li>)}
+    </ul>
   );
 }
 

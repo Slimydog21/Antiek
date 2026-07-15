@@ -105,20 +105,28 @@ export default function Werner({
   ) {
     throw new Error(
       `Werner: invalid mood "${effectiveMood}". Only ${MOODS.join(", ")} are permitted. ` +
-        "The four-slot restraint is non-negotiable per brand/README.md and U-02."
+        "The four-slot restraint is non-negotiable per brand/README.md and U-02.",
     );
   }
 
   const resolvedMood = effectiveMood as (typeof MOODS)[number];
   // Idle keeps the restrained breathing sway; the keyframe + its
   // prefers-reduced-motion collapse both live in animations.css.
-  const rootClass = resolvedMood === "idle" ? "werner-idle" : "";
+  const rootClass =
+    resolvedMood === "idle"
+      ? "werner-idle"
+      : resolvedMood === "empty"
+        ? "werner-pose--empty"
+        : "";
+  const viewportClass =
+    resolvedMood === "empty" ? " werner-pose-viewport--empty" : "";
+  const wrapperClass = `${className ? `inline-block align-middle ${className}` : "inline-block align-middle"}${viewportClass}`;
 
   return (
     <span
       role="img"
       aria-label={label || `Werner ${resolvedMood}`}
-      className={className ? `inline-block align-middle ${className}` : "inline-block align-middle"}
+      className={wrapperClass}
       style={{ width: size, height: size, ...style }}
     >
       <img
@@ -127,11 +135,15 @@ export default function Werner({
         aria-hidden="true"
         width={size}
         height={size}
-        // object-contain keeps every pose inside the square box regardless
-        // of the source aspect (the lost/empty pose is small-in-frame); the
-        // idle sway class rides on the img so the motion is the mark itself.
+        // The empty raster's authored subject is only 1.4% of its square canvas;
+        // its mood-specific class corrects that source framing inside this box.
         className={rootClass}
-        style={{ display: "block", width: size, height: size, objectFit: "contain" }}
+        style={{
+          display: "block",
+          width: size,
+          height: size,
+          objectFit: "contain",
+        }}
         draggable={false}
       />
     </span>

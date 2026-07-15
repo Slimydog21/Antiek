@@ -35,6 +35,7 @@ from orchestration.continuous.budget import (
     _ENV_DAILY_CAP,
     DEFAULT_DAILY_CAP_USD,
     _budget_path,
+    _utc_date_stamp,
 )
 from substrate.dispatch.advisory_decision import (
     DecisionCandidate,
@@ -81,8 +82,8 @@ class BudgetResponse(BaseModel):
     ``display_cap - reserved`` (negative when over the display cap).
     """
 
-    daily_cap_usd: float | None
-    spent_usd: float | None
+    daily_cap_usd: float | None = Field(ge=0, allow_inf_nan=False)
+    spent_usd: float | None = Field(ge=0, allow_inf_nan=False)
     remaining_usd: float | None
     spent_status: SpentStatus
     cap_env: str | None
@@ -94,6 +95,7 @@ class BudgetResponse(BaseModel):
     enforcement_cap_env: str | None = None
     caps_aligned: bool | None = None
     over_budget: bool | None = None
+    over_budget_usd: float | None = Field(default=None, ge=0, allow_inf_nan=False)
 
 
 class PromptCostEstimateRequest(BaseModel):
@@ -393,7 +395,7 @@ def _resolve_display_cap(notes: list[str]) -> tuple[float, str | None]:
         try:
             return _parse_nonnegative_finite_usd(raw, label=env_name), env_name
         except ValueError:
-            notes.append(f"{env_name} is not a finite non-negative float; ignored")
+            notes.append(f"{env_name} must be finite and non-negative; ignored")
     notes.append(
         f"no ANTIEK_OPERATOR_BUDGET_USD / {_ENV_DAILY_CAP}; "
         f"showing daemon default cap ${DEFAULT_DAILY_CAP_USD:.2f}/day as reference"
@@ -412,7 +414,7 @@ def _resolve_enforcement_cap(notes: list[str]) -> tuple[float, str | None]:
             )
         except ValueError:
             notes.append(
-                f"{_ENV_DAILY_CAP} is not a finite non-negative float; "
+                f"{_ENV_DAILY_CAP} must be finite and non-negative; "
                 "enforcement uses default"
             )
     return DEFAULT_DAILY_CAP_USD, None
@@ -436,16 +438,27 @@ def _read_sidecar_reserved_usd() -> float | None:
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict):
         raise ValueError("budget sidecar is not a JSON object")
-    if "spent_usd" not in raw:
-        raise ValueError("budget sidecar missing required spent_usd key")
+    if raw.get("date_stamp") != _utc_date_stamp():
+        raise ValueError("budget sidecar date does not match the current UTC day")
+    if "spent_usd" not in raw or "spawn_count" not in raw or "cap_usd" not in raw:
+        raise ValueError("budget sidecar is missing required accounting fields")
     spent_raw = raw["spent_usd"]
-    if spent_raw is None:
-        raise ValueError("budget sidecar spent_usd is null")
+    cap_raw = raw["cap_usd"]
+    spawn_count = raw["spawn_count"]
+    if isinstance(spent_raw, bool) or not isinstance(spent_raw, (int, float)):
+        raise ValueError("budget sidecar spent_usd must be a JSON number")
+    if isinstance(cap_raw, bool) or not isinstance(cap_raw, (int, float)):
+        raise ValueError("budget sidecar cap_usd must be a JSON number")
+    if isinstance(spawn_count, bool) or not isinstance(spawn_count, int) or spawn_count < 0:
+        raise ValueError("budget sidecar spawn_count must be a non-negative integer")
     value = float(spent_raw)
+    stored_cap = float(cap_raw)
     if not math.isfinite(value) or value < 0.0:
         raise ValueError(
             "budget sidecar spent_usd must be a finite non-negative USD amount"
         )
+    if not math.isfinite(stored_cap) or stored_cap < 0.0:
+        raise ValueError("budget sidecar cap_usd must be finite and non-negative")
     return value
 
 
@@ -496,6 +509,10 @@ def read_operator_budget() -> BudgetResponse:
         over_budget = None
         notes.append(f"spent ledger unavailable: {type(exc).__name__}")
 
+    over_budget_usd = (
+        max(0.0, reserved - float(daily_cap)) if reserved is not None else None
+    )
+
     return BudgetResponse(
         daily_cap_usd=daily_cap,
         # Back-compat alias: same number as reserved_estimated_usd.
@@ -510,6 +527,7 @@ def read_operator_budget() -> BudgetResponse:
         enforcement_cap_env=enforcement_cap_env,
         caps_aligned=caps_aligned,
         over_budget=over_budget,
+        over_budget_usd=over_budget_usd,
     )
 
 
@@ -581,17 +599,24 @@ def _effective_tier_route(
     return primary[0], primary[1], False
 
 
-def build_model_decision(
+def _model_decision_inputs(
     request: Request,
     req: ModelDecisionRequest,
-) -> ModelDecisionResponse:
-    """Build one advisory decision from server-owned state only."""
+    *,
+    budget: BudgetResponse | None = None,
+) -> tuple[
+    tuple[DecisionCandidate, ...],
+    BudgetResponse,
+    BenchmarkReport | None,
+    list[str],
+]:
+    """Return the raw server-owned candidates and their shared context."""
     cfg = _load_dispatch_config()
     tiers = cfg.get("tiers")
     if not isinstance(tiers, dict):
         tiers = {}
     ready_ids = _registered_provider_ids(request)
-    budget = read_operator_budget()
+    resolved_budget = budget if budget is not None else read_operator_budget()
     report, notes = _read_benchmark_report()
     measured: dict[tuple[DecisionTask, str, str, str], BenchmarkMeasurement] = {}
     if report is not None:
@@ -616,7 +641,7 @@ def build_model_decision(
                 input_chars=req.input_chars,
                 expected_output_tokens=req.expected_output_tokens,
             ),
-            budget=budget,
+            budget=resolved_budget,
         )
         measurement = measured.get((req.task, tier_name, provider, model))
         candidates.append(
@@ -633,13 +658,49 @@ def build_model_decision(
             )
         )
 
-    result = rank_model_candidates(req.task, tuple(candidates))
+    return tuple(candidates), resolved_budget, report, notes
+
+
+def build_model_decision_candidates(
+    request: Request,
+    req: ModelDecisionRequest,
+    *,
+    budget: BudgetResponse | None = None,
+) -> tuple[DecisionCandidate, ...]:
+    """Build unranked candidates from config, provider, budget, and bench state.
+
+    This is the server-owned input seam for adapters that compose the model
+    decision with another view.  Scores are raw benchmark measurements here;
+    callers must pass them through ``rank_model_candidates`` exactly once.
+    """
+    candidates, _, _, _ = _model_decision_inputs(request, req, budget=budget)
+    return candidates
+
+
+def build_model_decision(
+    request: Request,
+    req: ModelDecisionRequest,
+    *,
+    budget: BudgetResponse | None = None,
+) -> ModelDecisionResponse:
+    """Build one advisory decision from server-owned state only.
+
+    ``budget`` lets another server adapter compose this decision with an
+    authoritative projection from the exact same snapshot.  Ordinary callers
+    omit it and retain the Settings endpoint's existing read behavior.
+    """
+    candidates, resolved_budget, report, notes = _model_decision_inputs(
+        request,
+        req,
+        budget=budget,
+    )
+    result = rank_model_candidates(req.task, candidates)
     used_measurement = any(row.quality_basis == "measured" for row in result.ranked)
     if report is not None and not used_measurement:
         notes.append("Antiek-bench has no matching measurement for this task and route set")
-    if not ready_ids:
+    if not any(candidate.ready for candidate in candidates):
         notes.append("No text-model provider is registered at boot; no tier is eligible")
-    if budget.remaining_usd is None:
+    if resolved_budget.remaining_usd is None:
         notes.append("Remaining budget is unknown; budget eligibility is not asserted")
     return ModelDecisionResponse(
         task=req.task,
@@ -752,6 +813,7 @@ __all__ = [
     "PromptCostEstimateResponse",
     "estimate_prompt_cost",
     "build_model_decision",
+    "build_model_decision_candidates",
     "read_operator_budget",
     "register_settings_budget_routes",
     "settings_router",
