@@ -174,6 +174,31 @@ export interface ComposeWriteWorkspace {
   reused: boolean;
 }
 
+export interface ComposeInterrogationPreview {
+  schema_version: number;
+  compose_id: string;
+  selection_fingerprint: string;
+  prompt_hash: string;
+  context: string;
+  member_receipts: Array<{
+    index: number;
+    investigation_id: string;
+    content_hash: string;
+    included_chars: number;
+    omitted_chars: number;
+    truncated_fields: number;
+    omitted_fields: number;
+  }>;
+  prompt_chars: number;
+  context_chars: number;
+  max_prompt_chars: number;
+  max_context_chars: number;
+  truncated_fields: number;
+  omitted_fields: number;
+  omitted_chars: number;
+  provider_called: false;
+}
+
 // ── Request helpers ─────────────────────────────────────────────────────
 
 async function jsonOrThrow<T>(resp: Response, what: string): Promise<T> {
@@ -224,6 +249,17 @@ export function createResearchCompose(
 
 export function createComposeWriteWorkspace(composeId: string): Promise<ComposeWriteWorkspace> {
   return post(`/research/artifact-composes/${encodeURIComponent(composeId)}/write-workspace`, {});
+}
+
+export function previewComposeInterrogation(
+  composeId: string,
+  prompt: string,
+  selectionFingerprint: string,
+): Promise<ComposeInterrogationPreview> {
+  return post(
+    `/research/artifact-composes/${encodeURIComponent(composeId)}/interrogations/preview`,
+    { prompt, selection_fingerprint: selectionFingerprint },
+  );
 }
 
 export function createPlan(req: {

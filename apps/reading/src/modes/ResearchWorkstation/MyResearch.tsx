@@ -42,9 +42,11 @@ import {
   createComposeWriteWorkspace,
   createResearchCompose,
   getBudgetDefaults,
+  previewComposeInterrogation,
   previewResearchCompose,
   type BudgetDefaults,
   type ComposeWriteWorkspace,
+  type ComposeInterrogationPreview,
   type ResearchCompose,
 } from "../../api/research";
 import { useAuth } from "../../lib/auth";
@@ -213,6 +215,10 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
   const [writeWorkspace, setWriteWorkspace] = useState<ComposeWriteWorkspace | null>(null);
   const [writeError, setWriteError] = useState<string | null>(null);
   const [openingWrite, setOpeningWrite] = useState(false);
+  const [interrogationPrompt, setInterrogationPrompt] = useState("");
+  const [interrogationPreview, setInterrogationPreview] = useState<ComposeInterrogationPreview | null>(null);
+  const [interrogationError, setInterrogationError] = useState<string | null>(null);
+  const [previewingInterrogation, setPreviewingInterrogation] = useState(false);
   const openingWriteRef = useRef(false);
   const mountedRef = useRef(true);
   const composePreviewRef = useRef(composePreview);
@@ -263,6 +269,9 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     setComposeError(null);
     setWriteWorkspace(null);
     setWriteError(null);
+    setInterrogationPrompt("");
+    setInterrogationPreview(null);
+    setInterrogationError(null);
     setSelected((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
   };
 
@@ -317,6 +326,31 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     } finally {
       openingWriteRef.current = false;
       setOpeningWrite(false);
+    }
+  };
+
+  const reviewInterrogation = async () => {
+    if (!composePreview?.view_url || interrogationPrompt.trim().length === 0) return;
+    const requestedComposeId = composePreview.compose_id;
+    const requestedFingerprint = composePreview.selection_fingerprint;
+    setPreviewingInterrogation(true);
+    setInterrogationError(null);
+    try {
+      const response = await previewComposeInterrogation(
+        requestedComposeId,
+        interrogationPrompt,
+        requestedFingerprint,
+      );
+      if (composePreviewRef.current?.compose_id === requestedComposeId) {
+        setInterrogationPreview(response);
+      }
+    } catch (err) {
+      if (composePreviewRef.current?.compose_id === requestedComposeId) {
+        setInterrogationPreview(null);
+        setInterrogationError(err instanceof Error ? err.message : "Couldn’t review this question.");
+      }
+    } finally {
+      setPreviewingInterrogation(false);
     }
   };
 
@@ -442,10 +476,16 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
             writeWorkspace={writeWorkspace}
             writeError={writeError}
             openingWrite={openingWrite}
+            interrogationPrompt={interrogationPrompt}
+            interrogationPreview={interrogationPreview}
+            interrogationError={interrogationError}
+            previewingInterrogation={previewingInterrogation}
             onPreview={previewCompose}
             onCreate={createCompose}
             onOpenWrite={openInWrite}
-            onClear={() => { setSelected([]); setComposePreview(null); setComposeError(null); setWriteWorkspace(null); setWriteError(null); }}
+            onInterrogationPromptChange={(value) => { setInterrogationPrompt(value); setInterrogationPreview(null); setInterrogationError(null); }}
+            onReviewInterrogation={reviewInterrogation}
+            onClear={() => { setSelected([]); setComposePreview(null); setComposeError(null); setWriteWorkspace(null); setWriteError(null); setInterrogationPrompt(""); setInterrogationPreview(null); setInterrogationError(null); }}
           />
         )}
       </div>
@@ -625,7 +665,7 @@ function ResearchRow({
   );
 }
 
-function ComposeTray({ selectedCount, sources, preview, busy, error, writeWorkspace, writeError, openingWrite, onPreview, onCreate, onOpenWrite, onClear }: {
+function ComposeTray({ selectedCount, sources, preview, busy, error, writeWorkspace, writeError, openingWrite, interrogationPrompt, interrogationPreview, interrogationError, previewingInterrogation, onPreview, onCreate, onOpenWrite, onInterrogationPromptChange, onReviewInterrogation, onClear }: {
   selectedCount: number;
   sources: ComposeSourceLabel[];
   preview: ResearchCompose | null;
@@ -634,9 +674,15 @@ function ComposeTray({ selectedCount, sources, preview, busy, error, writeWorksp
   writeWorkspace: ComposeWriteWorkspace | null;
   writeError: string | null;
   openingWrite: boolean;
+  interrogationPrompt: string;
+  interrogationPreview: ComposeInterrogationPreview | null;
+  interrogationError: string | null;
+  previewingInterrogation: boolean;
   onPreview: () => void;
   onCreate: () => void;
   onOpenWrite: () => void;
+  onInterrogationPromptChange: (value: string) => void;
+  onReviewInterrogation: () => void;
   onClear: () => void;
 }) {
   const sourceById = new Map(sources.map((source) => [source.investigationId, source]));
@@ -713,6 +759,35 @@ function ComposeTray({ selectedCount, sources, preview, busy, error, writeWorksp
                 <a className="mt-1 inline-block text-sm font-semibold text-ink underline dark:text-bright" href={writeWorkspace.write_url}>Open in Write →</a>
               </div>
             )}
+            <section className="border-t border-rule pt-3 dark:border-charcoal-1" aria-labelledby="ask-light-table-title">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <label className="block">
+                  <span id="ask-light-table-title" className="font-serif text-sm text-ink dark:text-bright">Ask these sources together</span>
+                  <span className="mt-0.5 block text-xs text-shadow-1 dark:text-moonlight">Review exactly what the frozen sources can carry. This preview runs no model and costs nothing.</span>
+                  <textarea
+                    value={interrogationPrompt}
+                    onChange={(event) => onInterrogationPromptChange(event.target.value)}
+                    maxLength={4000}
+                    rows={3}
+                    placeholder="Where do these researches agree, and what evidence would change the conclusion?"
+                    className="mt-2 w-full resize-y rounded-md border border-rule bg-ice-0 px-3 py-2 font-serif text-sm text-ink outline-none focus:border-ink dark:border-charcoal-1 dark:bg-charcoal-2 dark:text-bright dark:focus:border-bright"
+                  />
+                </label>
+                <LemonButton variant="secondary" size="sm" onClick={onReviewInterrogation} disabled={previewingInterrogation || interrogationPrompt.trim().length === 0}>
+                  {previewingInterrogation ? "Reviewing question…" : "Review question"}
+                </LemonButton>
+              </div>
+              {interrogationError && <p className="mt-2 text-sm text-emperor" role="alert">{interrogationError}</p>}
+              {interrogationPreview && (
+                <div className="mt-3 border-l-4 border-sun pl-3" data-testid="collective-interrogation-receipt">
+                  <p className="font-serif text-sm text-ink dark:text-bright">{interrogationPreview.member_receipts.length} source folios bound into this question</p>
+                  <p className="text-xs text-shadow-1 dark:text-moonlight">
+                    {interrogationPreview.context_chars.toLocaleString()} of {interrogationPreview.max_context_chars.toLocaleString()} context characters · {interrogationPreview.truncated_fields} truncated fields · {interrogationPreview.omitted_fields} omitted fields
+                  </p>
+                  <p className="mt-1 text-xs font-semibold text-ink dark:text-bright">No answer has run. Provider choice, price ceiling, and approval are the next gate.</p>
+                </div>
+              )}
+            </section>
           </div>
         )}
       </div>
