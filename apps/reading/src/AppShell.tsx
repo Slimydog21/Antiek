@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useCallback, type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { AdBorderMount } from "./components/ad/AdBorderMount";
@@ -6,6 +6,9 @@ import { NavRail } from "./shell/NavRail";
 import { PenguinMascot } from "./shell/PenguinMascot";
 import { WernerIceCursorShell } from "./werner/WernerIceCursorShell";
 import { Scene } from "./scene/Scene";
+import { SceneHotspots } from "./scene/SceneHotspots";
+import type { SceneHotspotId } from "./scene/interactiveRegions";
+import { productActionForSceneHotspot } from "./scene/sceneHotspotProductRoutes";
 import { SceneChrome } from "./shell/SceneChrome";
 import { Topbar } from "./components/navigation/Topbar";
 import { LemonToastViewport } from "./components/lemon/LemonToast";
@@ -14,6 +17,7 @@ import { PanelLayout } from "./workspace/PanelLayout";
 import { WindowsLayer } from "./components/windows/WindowsLayer";
 import { useWorkspaceShortcuts } from "./workspace/shortcuts";
 import { useWorkspaceHydration } from "./workspace/useWorkspaceHydration";
+import { emitWernerExperience } from "./werner/reactionBus";
 
 /**
  * AppShell — the top-level chrome for the redesigned UI.
@@ -78,6 +82,20 @@ export function AppShell({ children }: Props) {
   // per-investigation snapshot back to localStorage debounced at 250 ms.
   useWorkspaceHydration();
 
+  // Flipbook-feel scenery → product routes (pure map in sceneHotspotProductRoutes).
+  // Hover is ambient; only click navigates. peak-left stays ambient for shell proof.
+  const onSceneHotspot = useCallback(
+    (id: SceneHotspotId, kind: "hover" | "click") => {
+      const action = productActionForSceneHotspot(id, kind);
+      if (!action) return;
+      if (action.wernerExperience) {
+        emitWernerExperience(action.wernerExperience);
+      }
+      navigate(action.route);
+    },
+    [navigate],
+  );
+
   return (
     // EDGE-RESERVATION SEAM (SPR-06 M3) — the outer frame fills the viewport
     // and reserves the four edges via `--akb-border-inset-*` (tokens.css,
@@ -118,30 +136,37 @@ export function AppShell({ children }: Props) {
       {/* Vertical column: topbar · full-width working region · bottom rail.
           The working region carries NO left gutter — it spans the full
           width between the (zero-inset) left/right seam edges, symmetric.
-          `relative` so it stacks above the absolute z-0 scene. */}
-      <div className="relative h-full w-full flex flex-col">
-        <Topbar />
-        <div className="relative flex-1 min-h-0 min-w-0">
-          {/* SceneChrome (SPR-04 zone 3) wraps the route view as the
-              main slot: per-workflow action bar + in-scene tabs sit
-              above the surface, while the Zustand panel workspace
-              continues to dock left/right/bottom + float around it.
-              The mode still mounts as a panel exactly as before. */}
-          <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
-          {/* SPR-09 — transparent workspace windows float over the working
-              region + scene (this container is `relative` so the layer's
-              absolute inset-0 anchors here, between Topbar and the NavRail).
-              Renders nothing until a window opens. SPR-09's one-line wiring,
-              deferred to the AppShell owner so SPR-09 kept this file untouched. */}
-          <WindowsLayer />
+          `relative` so it stacks above the absolute z-0 scene.
+          NO z-index on this column (avoids trapping child stacking).
+          pointer-events-none on the column; interactive children restore auto
+          so edge scenery hotspots (z-35) can receive hits where chrome does not. */}
+      <div
+        data-akb-chrome-column
+        className="relative h-full w-full flex flex-col pointer-events-none"
+      >
+        <div className="relative z-30 pointer-events-auto" data-akb-primary-chrome="topbar">
+          <Topbar />
         </div>
-
-        {/* SPR-06 M2 — navigation moved from the LEFT rail to a horizontal
-            BOTTOM rail (orientation defaults to "bottom"), freeing the left
-            edge so the working region above is full-width + symmetric. Four
-            doors + Search + More, all shortcuts/accent/a11y preserved. */}
-        <NavRail />
+        <div className="relative z-30 flex-1 min-h-0 min-w-0 pointer-events-none">
+          <div
+            className="pointer-events-auto h-full min-h-0"
+            data-akb-primary-chrome="worksurface"
+          >
+            <PanelLayout mainSlot={<SceneChrome>{children}</SceneChrome>} />
+          </div>
+          <div className="relative z-30 pointer-events-auto" data-akb-primary-chrome="windows">
+            <WindowsLayer />
+          </div>
+        </div>
+        <div className="relative z-30 pointer-events-auto" data-akb-primary-chrome="navrail">
+          <NavRail />
+        </div>
       </div>
+
+      {/* Flipbook-feel edge scenery — shell overlay AFTER chrome at z-35.
+          Root pointer-events:none so center/topbar/nav pixels FALL THROUGH
+          to primary chrome. Only edge-scenery buttons use pointer-events:auto. */}
+      <SceneHotspots mode="shell" onActivate={onSceneHotspot} />
 
       {/* SPR-12 M3 — the Penguin mascot IS the floating project home, now an
           AUTONOMOUS WADDLER (SPR-06 M5): it roams the viewport on its own,
