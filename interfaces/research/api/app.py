@@ -1502,6 +1502,7 @@ def create_app(
             from substrate.multi_user.auth import operator_claims as _oc
             claims = _oc()
             request.state.user_id = claims.user_id
+            request.state.account_id = os.environ.get("ANTIEK_ACCOUNT_ID", "operator-account").strip()
             request.state.scopes = frozenset(claims.scopes)
             request.state.auth_method = "unauthenticated_local"
             return await call_next(request)
@@ -1531,6 +1532,7 @@ def create_app(
             from substrate.multi_user.auth import operator_claims as _oc
             claims = _oc()
             req.state.user_id = claims.user_id
+            req.state.account_id = os.environ.get("ANTIEK_ACCOUNT_ID", "operator-account").strip()
             req.state.scopes = frozenset(claims.scopes)
             req.state.auth_method = method
             req.state.user_email = email
@@ -1623,6 +1625,8 @@ def create_app(
     # allowlist is empty, so this is safe on local dev too.
     from .auth import register_auth_routes
     register_auth_routes(app)
+    from .paid_operation_routes import register_paid_operation_routes
+    register_paid_operation_routes(app)
 
     # Phase 3 substrate surfaces — Sprint 23-24 advertiser onboarding +
     # Sprint 30+ thread 1 federation. Substrate primitives live in
