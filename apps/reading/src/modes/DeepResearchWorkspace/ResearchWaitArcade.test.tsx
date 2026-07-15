@@ -12,8 +12,8 @@ const createCartridge = vi.hoisted(() => vi.fn());
 const teardown = vi.hoisted(() => vi.fn());
 
 vi.mock("./ResearchWaitArcadeGame", () => ({
-  default: () => {
-    createCartridge();
+  default: ({ game }: { game: "ice-fishing" | "zombies" }) => {
+    createCartridge(game);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     useEffect(() => {
       canvasRef.current?.focus();
@@ -125,6 +125,22 @@ describe("ResearchWaitArcade", () => {
     expect(createCartridge).not.toHaveBeenCalled();
   });
 
+  it("keeps the optional arcade hidden for reduced-motion readers", () => {
+    const returnFocusRef = createRef<HTMLElement>();
+    render(
+      <ResearchWaitArcade
+        episodeId="session:reduced"
+        activeResearchCount={2}
+        offerAfterMs={0}
+        returnFocusRef={returnFocusRef}
+        reducedMotion
+      />,
+    );
+    act(() => vi.runOnlyPendingTimers());
+    expect(screen.queryByTestId("research-wait-arcade")).toBeNull();
+    expect(createCartridge).not.toHaveBeenCalled();
+  });
+
   it("constructs only after explicit Play and does not focus before activation", async () => {
     render(<Host after={0} />);
     act(() => vi.runOnlyPendingTimers());
@@ -135,9 +151,32 @@ describe("ResearchWaitArcade", () => {
       );
     });
     const canvas = screen.getByTestId("research-wait-arcade-canvas");
-    expect(createCartridge).toHaveBeenCalledTimes(1);
+    expect(createCartridge).toHaveBeenCalledWith("zombies");
     expect(canvas).toBe(document.activeElement);
     expect(isStationInstrumentSuspended()).toBe(true);
+  });
+
+  it("offers both cartridges without constructing either and launches the explicit choice", async () => {
+    render(<Host after={0} />);
+    act(() => vi.runOnlyPendingTimers());
+
+    const zombies = screen.getByRole("radio", { name: /Paperclip Zombies/ });
+    const fishing = screen.getByRole("radio", { name: /Ice Fishing/ });
+    expect((zombies as HTMLInputElement).checked).toBe(true);
+    expect((fishing as HTMLInputElement).checked).toBe(false);
+    expect(createCartridge).not.toHaveBeenCalled();
+
+    fireEvent.click(fishing);
+    expect((fishing as HTMLInputElement).checked).toBe(true);
+    expect(createCartridge).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Play while waiting" }),
+      );
+    });
+    expect(createCartridge).toHaveBeenCalledWith("ice-fishing");
+    expect(screen.getByText("Ice Fishing")).toBeTruthy();
   });
 
   it.each(["Escape", "button"])(
@@ -232,11 +271,21 @@ describe("ResearchWaitArcade", () => {
     expect(screen.getByTestId("research-wait-arcade-canvas")).toBeTruthy();
   });
 
-  it("exposes responsive containment and no raw runtime image", () => {
+  it("exposes responsive containment and two decorative project assets", () => {
     render(<Host after={0} />);
     act(() => vi.runOnlyPendingTimers());
     const host = screen.getByTestId("research-wait-arcade");
     expect(host.className).toContain("research-wait-arcade");
-    expect(host.querySelector("img")).toBeNull();
+    const images = [...host.querySelectorAll("img")];
+    expect(images).toHaveLength(2);
+    expect(images.every((image) => image.alt === "")).toBe(true);
+    expect(
+      images.every((image) => image.getAttribute("aria-hidden") === "true"),
+    ).toBe(true);
+    expect(
+      images.every((image) =>
+        image.getAttribute("src")?.startsWith("/src/brand/werner/arcade/"),
+      ),
+    ).toBe(true);
   });
 });
