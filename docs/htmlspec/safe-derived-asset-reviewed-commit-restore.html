@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><meta charset="utf-8"><title>Safe derived-asset reviewed commit/restore</title>
+<main><h1>Reviewed commit and restore</h1>
+<p>V18 commits only an owner-bound reviewed draft or restores an existing owned revision. HTTP commands contain opaque IDs and concurrency proofs, never content.</p>
+<h2>Invariants</h2><ul>
+<li>The reviewed draft alone supplies create/revise title, kind, canonical HTML, sanitizer fields, and canonical ordered manifest.</li>
+<li>Restore appends a revision with the selected revision's exact canonical fields and ordered members.</li>
+<li>Revise/restore compare expected revision, SHA-256, and generation; pointer mutation uses <code>UPDATE RETURNING</code> and must affect exactly one row.</li>
+<li>Asset, revision, members, receipt, outbox, current pointer, and timestamps share one explicit transaction under <code>connect_write</code>.</li>
+<li>Every stage exposes a fault hook. Any fault or stale proof leaves no residue.</li>
+<li><code>operation_id</code> binds canonical command bytes to all result rows. Exact replay returns the receipt; command or stored-result drift fails closed.</li>
+</ul>
+<h2>API</h2><p><code>POST /reviews/{review_id}/apply</code> accepts <code>operation_id</code> plus <code>expected_generation</code> only for revise, because V17 reviews seal the parent revision and hash but not its generation. Create rejects a generation. <code>POST /assets/{asset_id}/restore</code> accepts operation ID, selected revision ID, and exact expected pointer proof. Both are authenticated owner-only, extra-forbid, and <code>Cache-Control: no-store</code>.</p>
+<h2>Rejected alternatives</h2><ul><li>Mutating source documents was rejected because source evidence is immutable.</li><li>Moving the pointer directly to an old revision was rejected because restore must preserve an append-only audit trail.</li><li>Using DuckDB rowcount for CAS was rejected because it is not a reliable match signal; <code>UPDATE RETURNING</code> is authoritative.</li></ul>
+<h2>Out of scope</h2><p>Outbox delivery, generic revision mutation APIs, source/projection writes, and multimedia bridge publication are later sprints.</p>
+<h2>Acceptance</h2><p>Tests cover create, revise, restore, stale rollback, every fault stage, replay and drift, schema constraints, ownership, and unknown fields; focused pytest, Ruff, and bytecode compilation pass.</p></main></html>

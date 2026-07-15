@@ -11,6 +11,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
+from substrate.research_artifact.merge_commit import (
+    MergeCommitError,
+    MergeCommitNotFound,
+    MergeCommitResult,
+    apply_review,
+    restore,
+)
 from substrate.research_artifact.merge_draft import (
     Draft,
     MergeDraftError,
@@ -49,6 +56,31 @@ class ReviewResponse(BaseModel):
     canonical_sha256: str
     manifest_sha256: str
     acknowledgement_version: str
+
+
+class ApplyReviewBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    operation_id: str = Field(pattern=r"^op_[0-9a-f]{32}$")
+    expected_generation: int | None = Field(default=None, ge=1)
+
+
+class RestoreAssetBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    operation_id: str = Field(pattern=r"^op_[0-9a-f]{32}$")
+    selected_revision_id: str = Field(pattern=r"^rev_[0-9a-f]{32}$")
+    expected_revision_id: str = Field(pattern=r"^rev_[0-9a-f]{32}$")
+    expected_content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    expected_generation: int = Field(ge=1)
+
+
+class MergeCommitResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    operation_id: str
+    derived_asset_id: str
+    revision_id: str
+    content_sha256: str
+    generation: int
+    replayed: bool
 
 
 def get_merge_draft_repository() -> MergeDraftRepository:
@@ -91,6 +123,51 @@ def create_merge_review(
     except MergeDraftError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return _review_response(review)
+
+
+@merge_asset_router.post("/reviews/{review_id}/apply", response_model=MergeCommitResponse)
+def apply_merge_review(
+    review_id: str,
+    body: ApplyReviewBody,
+    response: Response,
+    owner_id: str = Depends(authenticated_multimedia_operator),
+) -> MergeCommitResponse:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = apply_review(
+            review_id=review_id,
+            operation_id=body.operation_id,
+            expected_generation=body.expected_generation,
+            owner_user_id=owner_id,
+            db_path=default_db_path(),
+        )
+    except MergeCommitNotFound as exc:
+        raise HTTPException(status_code=404, detail="merge authority not found") from exc
+    except MergeCommitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _commit_response(result)
+
+
+@merge_asset_router.post("/assets/{asset_id}/restore", response_model=MergeCommitResponse)
+def restore_merge_asset(
+    asset_id: str,
+    body: RestoreAssetBody,
+    response: Response,
+    owner_id: str = Depends(authenticated_multimedia_operator),
+) -> MergeCommitResponse:
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        result = restore(
+            derived_asset_id=asset_id,
+            owner_user_id=owner_id,
+            db_path=default_db_path(),
+            **body.model_dump(),
+        )
+    except MergeCommitNotFound as exc:
+        raise HTTPException(status_code=404, detail="merge authority not found") from exc
+    except MergeCommitError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return _commit_response(result)
 
 
 @merge_asset_router.get("/previews/{opaque_id}", response_class=Response)
@@ -141,6 +218,10 @@ def _review_response(review: Review) -> ReviewResponse:
     )
 
 
+def _commit_response(result: MergeCommitResult) -> MergeCommitResponse:
+    return MergeCommitResponse(**result.__dict__)
+
+
 def register_merge_asset_routes(app: object) -> None:
     from fastapi import FastAPI
 
@@ -151,7 +232,7 @@ def register_merge_asset_routes(app: object) -> None:
 
 
 def _initialize_merge_schema() -> None:
-    """Apply V17 during process startup, never inside a request."""
+    """Apply V18 during process startup, never inside a request."""
     init_database_at_path(default_db_path())
 
 

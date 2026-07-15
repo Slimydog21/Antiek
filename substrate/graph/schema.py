@@ -371,6 +371,8 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "html_projections",
     "derived_asset_merge_drafts",
     "derived_asset_merge_reviews",
+    "derived_asset_merge_operations",
+    "derived_asset_merge_outbox",
 )
 
 
@@ -1380,6 +1382,60 @@ CREATE INDEX IF NOT EXISTS idx_merge_reviews_owner
 """
 
 
+# SDAM SPR-02 — atomic reviewed commit/restore command ledger and outbox.
+ANTIEK_GRAPH_SCHEMA_V18_MERGE_COMMIT_SQL = """
+CREATE TABLE IF NOT EXISTS derived_asset_merge_operations (
+    operation_id TEXT PRIMARY KEY CHECK (regexp_full_match(operation_id, 'op_[0-9a-f]{32}')),
+    owner_user_id TEXT NOT NULL,
+    operation_kind TEXT NOT NULL CHECK (operation_kind IN ('create', 'revise', 'restore')),
+    review_id TEXT,
+    derived_asset_id TEXT NOT NULL CHECK (regexp_full_match(derived_asset_id, 'ast_[0-9a-f]{32}')),
+    selected_revision_id TEXT,
+    expected_revision_id TEXT,
+    expected_content_sha256 TEXT,
+    expected_generation BIGINT,
+    command_sha256 TEXT NOT NULL CHECK (regexp_full_match(command_sha256, '[0-9a-f]{64}')),
+    result_revision_id TEXT NOT NULL CHECK (regexp_full_match(result_revision_id, 'rev_[0-9a-f]{32}')),
+    result_content_sha256 TEXT NOT NULL CHECK (regexp_full_match(result_content_sha256, '[0-9a-f]{64}')),
+    result_generation BIGINT NOT NULL CHECK (result_generation >= 1),
+    receipt_json TEXT NOT NULL,
+    receipt_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(receipt_sha256, '[0-9a-f]{64}') AND receipt_sha256=sha256(receipt_json)
+    ),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (result_revision_id),
+    FOREIGN KEY (derived_asset_id, result_revision_id, result_content_sha256)
+        REFERENCES derived_asset_revisions(derived_asset_id, revision_id, content_sha256),
+    CHECK (
+      (operation_kind IN ('create','revise') AND review_id IS NOT NULL
+       AND selected_revision_id IS NULL)
+      OR (operation_kind='restore' AND review_id IS NULL AND selected_revision_id IS NOT NULL)
+    ),
+    CHECK (
+      (operation_kind='create' AND expected_revision_id IS NULL
+       AND expected_content_sha256 IS NULL AND expected_generation IS NULL)
+      OR (operation_kind IN ('revise','restore') AND expected_revision_id IS NOT NULL
+       AND regexp_full_match(expected_content_sha256, '[0-9a-f]{64}')
+       AND expected_generation >= 1)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_derived_asset_merge_operations_owner
+    ON derived_asset_merge_operations(owner_user_id);
+
+CREATE TABLE IF NOT EXISTS derived_asset_merge_outbox (
+    outbox_id TEXT PRIMARY KEY CHECK (regexp_full_match(outbox_id, 'out_[0-9a-f]{32}')),
+    operation_id TEXT NOT NULL UNIQUE REFERENCES derived_asset_merge_operations(operation_id),
+    event_kind TEXT NOT NULL CHECK (event_kind='derived_asset.revision_committed.v1'),
+    payload_json TEXT NOT NULL,
+    payload_sha256 TEXT NOT NULL CHECK (
+        regexp_full_match(payload_sha256, '[0-9a-f]{64}') AND payload_sha256=sha256(payload_json)
+    ),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    published_at TIMESTAMP
+);
+"""
+
+
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
 
@@ -1460,6 +1516,7 @@ def init_database(con: LockedConnection) -> None:
     # ordered evidence-member manifests, and a separate CAS-ready pointer.
     con.execute(ANTIEK_GRAPH_SCHEMA_V16_DERIVED_ASSETS_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V17_MERGE_DRAFTS_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V18_MERGE_COMMIT_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1504,7 +1561,11 @@ def _schema_is_present(db_path: str) -> bool:
             "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
             "AND table_name='derived_asset_current_revisions') AND EXISTS ("
             "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
-            "AND table_name='derived_asset_merge_reviews'))"
+            "AND table_name='derived_asset_merge_reviews') AND EXISTS ("
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name='derived_asset_merge_operations') AND EXISTS ("
+            "SELECT 1 FROM information_schema.tables WHERE table_schema='main' "
+            "AND table_name='derived_asset_merge_outbox'))"
         ).fetchone()
     except Exception:
         return False

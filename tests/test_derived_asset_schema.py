@@ -19,6 +19,8 @@ TABLES = {
     "derived_asset_revisions",
     "derived_asset_revision_members",
     "derived_asset_current_revisions",
+    "derived_asset_merge_operations",
+    "derived_asset_merge_outbox",
 }
 H1 = hashlib.sha256(b"one").hexdigest()
 H2 = hashlib.sha256(b"two").hexdigest()
@@ -107,6 +109,8 @@ def test_fresh_and_reopen_initialization(db_path: str) -> None:
 def test_existing_pre_v16_database_is_upgraded(db_path: str) -> None:
     with connect_write(db_path, purpose="derived-asset-pre-v16-fixture") as con:
         for table in (
+            "derived_asset_merge_outbox",
+            "derived_asset_merge_operations",
             "derived_asset_current_revisions",
             "derived_asset_revision_members",
             "derived_asset_revisions",
