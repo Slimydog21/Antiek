@@ -30,6 +30,8 @@ what protect the moat regardless of which model runs.
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import sys
@@ -344,28 +346,48 @@ def persist_section_draft(
     # Lazy imports: keep this module importable without the substrate event log
     # / graph ops on a bare script path (mirrors the module's other fallbacks).
     try:
-        from ..event_log import emit_typed
         from ..graph.ops import update_section_prose
     except ImportError:  # pragma: no cover — direct-script fallback
-        from substrate.event_log import emit_typed
         from substrate.graph.ops import update_section_prose
     from substrate.schemas.events import SectionDraftGeneratedPayload
+    from substrate.write.event_outbox import (
+        build_typed_envelope,
+        dispatch_pending_best_effort,
+        enqueue_event,
+        event_for_operation,
+        eventful_transaction,
+    )
 
     # JSON object keys are strings — store paragraph indices as string keys so
     # the persisted map round-trips losslessly (the reader parses back to int).
     prov: dict[str, list[str]] = {
         str(idx): list(blocks) for idx, blocks in result.prose_provenance.items()
     }
-    # 1) The table row (the durable prose + provenance) — SHIPPED writer.
-    update_section_prose(
-        con, section_id=section_id,
-        prose_text=result.prose_text, prose_provenance=prov,
-        unsupported_paragraphs=set(report.unsupported_paragraphs),
-        mutation_origin="generated",
-    )
-
-    # 2) The audit event (the §9 link, append-only) — same locked context.
-    return emit_typed(
+    operation_digest = hashlib.sha256(
+        json.dumps(
+            {
+                "section_id": section_id,
+                "prose_text": result.prose_text,
+                "provenance": prov,
+                "unsupported": report.unsupported_paragraphs,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+    ).hexdigest()
+    operation_id = f"section.draft:{section_id}:{operation_digest}"
+    existing_event = event_for_operation(con, operation_id)
+    if existing_event is not None:
+        row = con.execute(
+            "SELECT prose_text, prose_provenance FROM deliverable_sections WHERE section_id=?",
+            [section_id],
+        ).fetchone()
+        persisted_provenance = json.loads(row[1]) if row and row[1] else None
+        if row is None or row[0] != result.prose_text or persisted_provenance != prov:
+            raise RuntimeError("stored draft operation disagrees with section state")
+        dispatch_pending_best_effort(con, investigation_id)
+        return existing_event.event_id
+    event = build_typed_envelope(
         investigation_id,
         SectionDraftGeneratedPayload(
             section_id=section_id,
@@ -380,6 +402,22 @@ def persist_section_draft(
         role="creative_writer",
         policy_id=f"operator/{deliverable_id}",
     )
+    with eventful_transaction(con, investigation_id):
+        update_section_prose(
+            con, section_id=section_id,
+            prose_text=result.prose_text, prose_provenance=prov,
+            unsupported_paragraphs=set(report.unsupported_paragraphs),
+            mutation_origin="generated",
+        )
+        enqueue_event(
+            con,
+            operation_id=operation_id,
+            aggregate_kind="deliverable_section",
+            aggregate_id=section_id,
+            event=event,
+        )
+    dispatch_pending_best_effort(con, investigation_id)
+    return event.event_id
 
 
 def default_dispatch_fn(*, investigation_id: str = "__operator__") -> DispatchFn:

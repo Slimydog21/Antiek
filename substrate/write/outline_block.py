@@ -49,18 +49,17 @@ import json
 import os
 import sys
 from collections.abc import Iterable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, Literal
 
 try:
     from ...runtime.db_lock import LockedConnection
-    from ..event_log import emit_typed
     from ..graph.ops import new_random_id
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
     sys.path.insert(0, os.path.dirname(os.path.dirname(_here)))
     from runtime.db_lock import LockedConnection  # type: ignore[no-redef]
-    from substrate.event_log import emit_typed  # type: ignore[no-redef]
     from substrate.graph.ops import new_random_id  # type: ignore[no-redef]
 
 from substrate.schemas.events import (
@@ -287,34 +286,24 @@ def place_block(
             [obid],
         ).fetchone()
         if exists is not None:
+            from substrate.write.event_outbox import dispatch_pending_best_effort
+
+            dispatch_pending_best_effort(con, investigation_id)
             return obid  # idempotent: no INSERT, no event
     did = deliverable_id or _resolve_deliverable_id(con, section_id)
+    if emit_event and not transaction_owner:
+        raise OutlineBlockError("eventful block placement must own its transaction")
+    from substrate.event_log.events import investigation_event_lock
+    from substrate.write.event_outbox import (
+        build_typed_envelope,
+        dispatch_pending_best_effort,
+        enqueue_event,
+        next_aggregate_operation_id,
+    )
     from substrate.write.provenance_validity import invalidate_structural_provenance
 
-    if transaction_owner:
-        con.execute("BEGIN TRANSACTION")
-    try:
-        con.execute(
-            "INSERT INTO outline_blocks "
-        "(outline_block_id, section_id, block_kind, provenance_kind, "
-        " node_id, source_block_kind, source_block_id, content, "
-        " block_index, cluster_id, metadata) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-        [
-            obid, section_id, block_kind, provenance_kind, node_id,
-            source_block_kind, source_block_id, content, int(block_index),
-            cluster_id, _maybe_json(metadata),
-            ],
-        )
-        invalidate_structural_provenance(con, section_id, reason="block_placed")
-        if transaction_owner:
-            con.execute("COMMIT")
-    except Exception:
-        if transaction_owner:
-            con.execute("ROLLBACK")
-        raise
-    if emit_event:
-        emit_typed(
+    event = (
+        build_typed_envelope(
             investigation_id,
             OutlineBlockPlacedPayload(
                 outline_block_id=obid,
@@ -328,6 +317,54 @@ def place_block(
             parent_event_id=parent_event_id,
             role="write_composition",
         )
+        if emit_event else None
+    )
+    operation_id = (
+        next_aggregate_operation_id(
+            con,
+            action="outline.place",
+            aggregate_kind="outline_block",
+            aggregate_id=obid,
+        )
+        if event is not None else None
+    )
+
+    event_lock = (
+        investigation_event_lock(investigation_id) if event is not None else nullcontext()
+    )
+    with event_lock:
+        if transaction_owner:
+            con.execute("BEGIN TRANSACTION")
+        try:
+            con.execute(
+                "INSERT INTO outline_blocks "
+                "(outline_block_id, section_id, block_kind, provenance_kind, "
+                " node_id, source_block_kind, source_block_id, content, "
+                " block_index, cluster_id, metadata) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                [
+                    obid, section_id, block_kind, provenance_kind, node_id,
+                    source_block_kind, source_block_id, content, int(block_index),
+                    cluster_id, _maybe_json(metadata),
+                ],
+            )
+            invalidate_structural_provenance(con, section_id, reason="block_placed")
+            if event is not None:
+                enqueue_event(
+                    con,
+                    operation_id=operation_id,
+                    aggregate_kind="outline_block",
+                    aggregate_id=obid,
+                    event=event,
+                )
+            if transaction_owner:
+                con.execute("COMMIT")
+        except Exception:
+            if transaction_owner:
+                con.execute("ROLLBACK")
+            raise
+    if event is not None:
+        dispatch_pending_best_effort(con, investigation_id)
     return obid
 
 
@@ -393,6 +430,9 @@ def move_block(
         raise OutlineBlockError(f"outline block not found: {outline_block_id!r}")
     from_section_id, from_index = row[0], int(row[1])
     if to_section_id == from_section_id and int(to_index) == from_index:
+        from substrate.write.event_outbox import dispatch_pending_best_effort
+
+        dispatch_pending_best_effort(con, investigation_id)
         return
     # Validate the target section exists (reparent target).
     if to_section_id != from_section_id:
@@ -405,23 +445,16 @@ def move_block(
             raise OutlineBlockError(f"target section not found: {to_section_id!r}")
         if len({item[1] for item in ownership}) != 1:
             raise OutlineBlockError("cannot move an outline block across deliverables")
+    from substrate.write.event_outbox import (
+        build_typed_envelope,
+        dispatch_pending_best_effort,
+        enqueue_event,
+        eventful_transaction,
+        next_aggregate_operation_id,
+    )
     from substrate.write.provenance_validity import invalidate_structural_provenance
 
-    con.execute("BEGIN TRANSACTION")
-    try:
-        con.execute(
-            "UPDATE outline_blocks SET section_id = ?, block_index = ? "
-            "WHERE outline_block_id = ?",
-            [to_section_id, int(to_index), outline_block_id],
-        )
-        invalidate_structural_provenance(con, from_section_id, reason="block_moved")
-        if to_section_id != from_section_id:
-            invalidate_structural_provenance(con, to_section_id, reason="block_moved")
-        con.execute("COMMIT")
-    except Exception:
-        con.execute("ROLLBACK")
-        raise
-    emit_typed(
+    event = build_typed_envelope(
         investigation_id,
         OutlineBlockMovedPayload(
             outline_block_id=outline_block_id,
@@ -433,6 +466,30 @@ def move_block(
         parent_event_id=parent_event_id,
         role="write_composition",
     )
+    operation_id = next_aggregate_operation_id(
+        con,
+        action="outline.move",
+        aggregate_kind="outline_block",
+        aggregate_id=outline_block_id,
+    )
+
+    with eventful_transaction(con, investigation_id):
+        con.execute(
+            "UPDATE outline_blocks SET section_id = ?, block_index = ? "
+            "WHERE outline_block_id = ?",
+            [to_section_id, int(to_index), outline_block_id],
+        )
+        invalidate_structural_provenance(con, from_section_id, reason="block_moved")
+        if to_section_id != from_section_id:
+            invalidate_structural_provenance(con, to_section_id, reason="block_moved")
+        enqueue_event(
+            con,
+            operation_id=operation_id,
+            aggregate_kind="outline_block",
+            aggregate_id=outline_block_id,
+            event=event,
+        )
+    dispatch_pending_best_effort(con, investigation_id)
 
 
 def remove_block(
@@ -451,22 +508,21 @@ def remove_block(
         [outline_block_id],
     ).fetchone()
     if row is None:
+        from substrate.write.event_outbox import dispatch_pending_best_effort
+
+        dispatch_pending_best_effort(con, investigation_id)
         return False
     section_id = row[0]
+    from substrate.write.event_outbox import (
+        build_typed_envelope,
+        dispatch_pending_best_effort,
+        enqueue_event,
+        eventful_transaction,
+        next_aggregate_operation_id,
+    )
     from substrate.write.provenance_validity import invalidate_structural_provenance
 
-    con.execute("BEGIN TRANSACTION")
-    try:
-        con.execute(
-            "DELETE FROM outline_blocks WHERE outline_block_id = ?",
-            [outline_block_id],
-        )
-        invalidate_structural_provenance(con, section_id, reason="block_removed")
-        con.execute("COMMIT")
-    except Exception:
-        con.execute("ROLLBACK")
-        raise
-    emit_typed(
+    event = build_typed_envelope(
         investigation_id,
         OutlineBlockRemovedPayload(
             outline_block_id=outline_block_id, section_id=section_id,
@@ -474,6 +530,27 @@ def remove_block(
         parent_event_id=parent_event_id,
         role="write_composition",
     )
+    operation_id = next_aggregate_operation_id(
+        con,
+        action="outline.remove",
+        aggregate_kind="outline_block",
+        aggregate_id=outline_block_id,
+    )
+
+    with eventful_transaction(con, investigation_id):
+        con.execute(
+            "DELETE FROM outline_blocks WHERE outline_block_id = ?",
+            [outline_block_id],
+        )
+        invalidate_structural_provenance(con, section_id, reason="block_removed")
+        enqueue_event(
+            con,
+            operation_id=operation_id,
+            aggregate_kind="outline_block",
+            aggregate_id=outline_block_id,
+            event=event,
+        )
+    dispatch_pending_best_effort(con, investigation_id)
     return True
 
 

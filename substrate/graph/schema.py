@@ -367,6 +367,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "deliverable_compositions",
     "deliverable_composition_members",
     "deliverable_section_provenance_validity",
+    "write_event_outbox",
 )
 
 
@@ -1214,6 +1215,48 @@ CREATE TABLE IF NOT EXISTS deliverable_section_provenance_validity (
 );
 """
 
+ANTIEK_GRAPH_SCHEMA_V18_WRITE_EVENT_OUTBOX_SQL = """
+CREATE SEQUENCE IF NOT EXISTS write_event_outbox_sequence START 1;
+CREATE TABLE IF NOT EXISTS write_event_outbox (
+    outbox_sequence BIGINT PRIMARY KEY DEFAULT nextval('write_event_outbox_sequence'),
+    event_id TEXT NOT NULL UNIQUE,
+    operation_id TEXT NOT NULL UNIQUE,
+    investigation_id TEXT NOT NULL,
+    aggregate_kind TEXT NOT NULL,
+    aggregate_id TEXT NOT NULL,
+    event_json TEXT NOT NULL,
+    event_sha256 TEXT NOT NULL,
+    state TEXT NOT NULL DEFAULT 'pending' CHECK (state IN ('pending', 'delivered')),
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    delivered_at TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_write_event_outbox_pending
+    ON write_event_outbox(investigation_id, state, outbox_sequence);
+"""
+
+_V18_OUTBOX_COLUMNS = {
+    "outbox_sequence", "event_id", "operation_id", "investigation_id",
+    "aggregate_kind", "aggregate_id", "event_json", "event_sha256", "state",
+    "attempt_count", "created_at", "delivered_at",
+}
+
+
+def _repair_empty_partial_v18_outbox(con: LockedConnection) -> None:
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='write_event_outbox'"
+        ).fetchall()
+    }
+    if not columns or columns == _V18_OUTBOX_COLUMNS:
+        return
+    count = con.execute("SELECT COUNT(*) FROM write_event_outbox").fetchone()[0]
+    if count:
+        raise RuntimeError("populated partial V18 outbox requires explicit recovery")
+    con.execute("DROP TABLE write_event_outbox")
+
 
 def init_database(con: LockedConnection) -> None:
     """Initialize the Antiek graph schema on a write-locked connection.
@@ -1293,6 +1336,8 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V15_EMBEDDINGS_META_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V16_COMPOSITION_DRAFT_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V17_PROVENANCE_VALIDITY_SQL)
+    _repair_empty_partial_v18_outbox(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V18_WRITE_EVENT_OUTBOX_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1345,7 +1390,12 @@ def _schema_is_present(db_path: str) -> bool:
             "AND column_name='rendered_sha256')"
             " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
             "table_schema='main' AND table_name='deliverable_section_provenance_validity' "
-            "AND column_name='validity_json'))"
+            "AND column_name='validity_json') AND EXISTS (SELECT 1 FROM "
+            "information_schema.columns WHERE table_schema='main' AND "
+            "table_name='write_event_outbox' AND column_name='event_sha256') "
+            "AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='write_event_outbox' "
+            "AND column_name='operation_id'))"
         ).fetchone()
     except Exception:
         return False
