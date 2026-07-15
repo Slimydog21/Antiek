@@ -28,8 +28,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from orchestration.continuous.budget import (
     _ENV_DAILY_CAP,
     DEFAULT_DAILY_CAP_USD,
-    DaemonBudget,
     _budget_path,
+    _utc_date_stamp,
 )
 from substrate.dispatch.advisory_decision import (
     DecisionCandidate,
@@ -69,6 +69,8 @@ class BudgetResponse(BaseModel):
     daily_cap_usd: float | None = Field(ge=0, allow_inf_nan=False)
     spent_usd: float | None = Field(ge=0, allow_inf_nan=False)
     remaining_usd: float | None = Field(ge=0, allow_inf_nan=False)
+    over_budget: bool = False
+    over_budget_usd: float = Field(default=0, ge=0, allow_inf_nan=False)
     spent_status: SpentStatus
     cap_env: str | None
     notes: list[str] = Field(default_factory=list)
@@ -354,6 +356,33 @@ def estimate_prompt_cost(
     )
 
 
+def _read_recorded_daemon_spend(path: Path) -> float:
+    """Read the sidecar as untrusted projection input without changing enforcement."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("budget snapshot must be a JSON object")
+    if raw.get("date_stamp") != _utc_date_stamp():
+        raise ValueError("budget snapshot date does not match the current UTC day")
+    if "spent_usd" not in raw or "spawn_count" not in raw or "cap_usd" not in raw:
+        raise ValueError("budget snapshot is missing required accounting fields")
+    spent_raw = raw["spent_usd"]
+    cap_raw = raw["cap_usd"]
+    if isinstance(spent_raw, bool) or not isinstance(spent_raw, (int, float)):
+        raise ValueError("budget snapshot spend must be a JSON number")
+    if isinstance(cap_raw, bool) or not isinstance(cap_raw, (int, float)):
+        raise ValueError("budget snapshot cap must be a JSON number")
+    spent = float(spent_raw)
+    stored_cap = float(cap_raw)
+    spawn_count = raw["spawn_count"]
+    if not math.isfinite(spent) or spent < 0:
+        raise ValueError("budget snapshot spend must be finite and non-negative")
+    if not math.isfinite(stored_cap) or stored_cap < 0:
+        raise ValueError("budget snapshot cap must be finite and non-negative")
+    if isinstance(spawn_count, bool) or not isinstance(spawn_count, int) or spawn_count < 0:
+        raise ValueError("budget snapshot spawn count must be a non-negative integer")
+    return spent
+
+
 def read_operator_budget() -> BudgetResponse:
     """Read daily cap + spent with honest unknown-spend semantics."""
     notes: list[str] = []
@@ -385,17 +414,19 @@ def read_operator_budget() -> BudgetResponse:
         )
 
     # Prefer daemon budget sidecar when present (shared daily spend signal).
-    # Crucial honesty detail: DaemonBudget.remaining_today() fabricates an
+    # Crucial honesty detail: DaemonBudget reads fabricate an
     # in-memory zero-spend snapshot when the file is absent. Settings is a
     # readout, not the daemon, so absence of the sidecar means unknown spend.
+    # When the sidecar exists, read cap-independent spend and apply the selected
+    # Settings cap here. The sidecar's daemon cap may differ from the operator
+    # cap; mixing those two baselines can falsely block prompts or permit spend.
     spent: float | None = None
     remaining: float | None = None
     spent_status: SpentStatus = "unknown"
     try:
         if _budget_path().is_file():
-            bdg = DaemonBudget(daily_cap_usd=float(daily_cap))
-            remaining = float(bdg.remaining_today())
-            spent = max(0.0, float(daily_cap) - remaining)
+            spent = _read_recorded_daemon_spend(_budget_path())
+            remaining = max(0.0, float(daily_cap) - spent)
             spent_status = "known"
             notes.append("spent sourced from continuous-daemon daily budget sidecar")
         else:
@@ -406,10 +437,16 @@ def read_operator_budget() -> BudgetResponse:
         spent_status = "unknown"
         notes.append(f"spent ledger unavailable: {type(exc).__name__}")
 
+    over_budget_usd = max(0.0, (spent or 0.0) - float(daily_cap))
+    if over_budget_usd:
+        notes.append(f"recorded spend is ${over_budget_usd:.2f} over the operator cap")
+
     return BudgetResponse(
         daily_cap_usd=daily_cap,
         spent_usd=spent,
         remaining_usd=remaining,
+        over_budget=over_budget_usd > 0,
+        over_budget_usd=over_budget_usd,
         spent_status=spent_status,
         cap_env=cap_env,
         notes=notes,

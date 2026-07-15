@@ -380,6 +380,7 @@ class ListeningProgressStore:
             ) from exc
         if (
             envelope.owner_identity_digest != owner_digest
+            or envelope.progress.owner_identity_digest != owner_digest
             or envelope.progress.asset_id != asset_id
         ):
             raise ListeningProgressIntegrityConflict(

@@ -377,6 +377,30 @@ def test_emit_typed_raises_when_wrestling_event_missing_document_id(tmp_path, mo
         )
 
 
+def test_emit_typed_idempotent_event_id_appends_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    payload = DispatchCallPayload(
+        provider="p",
+        model="m",
+        tier="flash",
+        target_role="decomposer",
+        input_tokens=1,
+        output_tokens=1,
+        cost_usd=0.0,
+        latency_ms=1,
+        prompt_hash="sha",
+    )
+    for _ in range(2):
+        assert emit_typed(
+            "rt-idempotent",
+            payload,
+            strict_write=True,
+            event_id="evt-deterministic",
+            idempotent=True,
+        ) == "evt-deterministic"
+    assert len(trajectory("rt-idempotent")) == 1
+
+
 # ---------------------------------------------------------------------------
 # 6. Sanity: every wrestling action_type declared in ActionType has both a
 # payload factory AND a membership in WRESTLING_ACTION_TYPES. Catches
@@ -413,7 +437,6 @@ def test_claim_confidence_levels_match_constants():
     """Claim.confidence must use the same vocabulary as
     ``substrate.constants.CONFIDENCE_LEVELS``. If one drifts from the
     other, downstream backtests stratify against an inconsistent set."""
-    c = Claim(claim_id="c", text="t", confidence="moderate", attribution_region_ids=[])
     # The schema-side Literal accepts the constants-side tuple values.
     for level in CONFIDENCE_LEVELS:
         Claim(claim_id="c", text="t", confidence=level, attribution_region_ids=[])

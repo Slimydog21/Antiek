@@ -58,6 +58,17 @@ describe("ReadingColumn — rendering", () => {
     render(<ReadingColumn assetId="doc-1" text="" />);
     expect(screen.getByText(/no readable pages/i)).toBeTruthy();
   });
+
+  it("renders only server-attested HTML as document structure", () => {
+    const html = '<section id="antiek-chapter-1"><h1>Imported chapter</h1><p>HTML prose.</p></section>';
+    const { rerender } = render(
+      <ReadingColumn assetId={null} text={html} contentFormat="text" />,
+    );
+    expect(screen.queryByRole("heading", { name: "Imported chapter" })).toBeNull();
+    rerender(<ReadingColumn assetId={null} text={html} contentFormat="html" />);
+    expect(screen.getByRole("heading", { name: "Imported chapter" })).toBeTruthy();
+    expect(screen.getByText("HTML prose.")).toBeTruthy();
+  });
 });
 
 describe("ReadingColumn — SPR-07 attribution markers (§9.0)", () => {
