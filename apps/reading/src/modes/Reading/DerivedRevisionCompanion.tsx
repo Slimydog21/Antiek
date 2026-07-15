@@ -3,6 +3,9 @@ import { FormEvent, RefObject, useEffect, useRef, useState } from "react";
 
 import {
   getDerivedCompanionConversation,
+  createDerivedEvidenceCollection,
+  getDerivedEvidenceCollection,
+  listDerivedEvidenceCollections,
   prepareDerivedCompanionEvidence,
   type DerivedAssetReadingResponse,
   type DerivedCompanionCitation,
@@ -10,6 +13,8 @@ import {
   type DerivedCompanionEvidenceResponse,
   type DerivedCompanionExecutionProjection,
   type DerivedEvidenceBriefing,
+  type DerivedEvidenceCollection,
+  type DerivedEvidenceCollectionSummary,
 } from "../../api/research";
 import { LemonButton, LemonTag } from "../../components/lemon";
 
@@ -18,6 +23,7 @@ interface Props {
   articleRef: RefObject<HTMLElement>;
   onFollowCitation: (citation: DerivedCompanionCitation) => void;
   onResearchCitations?: (citations: DerivedCompanionCitation[]) => void;
+  onResearchCollection?: (collection: DerivedEvidenceCollection) => void;
 }
 
 type PersistedTurn = Awaited<ReturnType<typeof getDerivedCompanionConversation>>["turns"][number];
@@ -50,13 +56,14 @@ function GroundedAnswer({
 }
 
 export function EvidenceBriefing({
-  briefing, showCitation, onFollowCitation, selected, onToggleCitation,
+  briefing, showCitation, onFollowCitation, selected, onToggleCitation, selectionDisabled = false,
 }: {
   briefing: DerivedEvidenceBriefing;
   showCitation: (anchor: string) => void;
   onFollowCitation: (citation: DerivedCompanionCitation) => void;
   selected: DerivedCompanionCitation[];
   onToggleCitation: (citation: DerivedCompanionCitation, briefingId: string) => void;
+  selectionDisabled?: boolean;
 }) {
   const selectedIds = new Set(selected.map((citation) => citation.citation_id));
   return <section aria-label="Evidence briefing">
@@ -72,7 +79,7 @@ export function EvidenceBriefing({
           <button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">Open section</button>
           <div className="flex items-center gap-3">
             <label className="inline-flex items-center gap-1 font-mono text-[10px] text-ink-mute dark:text-moonlight">
-              <input type="checkbox" checked={selectedIds.has(citation.citation_id)} disabled={!selectedIds.has(citation.citation_id) && selected.length >= 6} onChange={() => onToggleCitation(citation, briefing.artifact_sha256)} />
+              <input type="checkbox" checked={selectedIds.has(citation.citation_id)} disabled={selectionDisabled || (!selectedIds.has(citation.citation_id) && selected.length >= 6)} onChange={() => onToggleCitation(citation, briefing.artifact_sha256)} />
               {selectedIds.has(citation.citation_id) ? `${selected.findIndex((item) => item.citation_id === citation.citation_id) + 1} selected` : "Select"}
             </label>
             <button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button>
@@ -98,6 +105,7 @@ function clientTurnId(): string {
 
 export default function DerivedRevisionCompanion({
   model, articleRef, onFollowCitation, onResearchCitations = () => undefined,
+  onResearchCollection = () => undefined,
 }: Props) {
   const activeClientId = useRef<string | null>(null);
   const requestGeneration = useRef(0);
@@ -109,6 +117,12 @@ export default function DerivedRevisionCompanion({
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<DerivedCompanionCitation[]>([]);
   const selectedBriefingId = useRef<string | null>(null);
+  const selectedLabel = useRef("Saved evidence");
+  const saveKey = useRef<string | null>(null);
+  const [collections, setCollections] = useState<DerivedEvidenceCollectionSummary[]>([]);
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
+  const openingCollection = useRef(false);
 
   useEffect(() => {
     const generation = ++requestGeneration.current;
@@ -120,6 +134,15 @@ export default function DerivedRevisionCompanion({
     setExecution(null);
     setSelected([]);
     selectedBriefingId.current = null;
+    saveKey.current = null;
+    setCollections([]);
+    void listDerivedEvidenceCollections(model.derived_asset_id, model.revision_id).then((response) => {
+      if (generation === requestGeneration.current) setCollections(response.collections);
+    }).catch(() => {
+      if (generation === requestGeneration.current) {
+        setError("Saved evidence collections could not be loaded.");
+      }
+    });
     void getDerivedCompanionConversation(model).then((conversation) => {
       if (generation !== requestGeneration.current) return;
       if (conversation.scope.revision_id !== model.revision_id
@@ -189,8 +212,12 @@ export default function DerivedRevisionCompanion({
   }
 
   function toggleCitation(citation: DerivedCompanionCitation, briefingId: string) {
+    const briefing = [result?.briefing, ...turns.map((turn) => turn.briefing)]
+      .find((item) => item?.artifact_sha256 === briefingId);
     if (selectedBriefingId.current !== briefingId) {
       selectedBriefingId.current = briefingId;
+      selectedLabel.current = briefing?.question || "Saved evidence";
+      saveKey.current = null;
       setSelected([citation]);
       return;
     }
@@ -198,6 +225,62 @@ export default function DerivedRevisionCompanion({
       && current.some((item) => item.citation_id === citation.citation_id)
       ? current.filter((item) => item.citation_id !== citation.citation_id)
       : current.length < 6 ? [...current, citation] : current);
+  }
+
+  async function saveCollection() {
+    if (savingRef.current || selected.length < 2) return;
+    savingRef.current = true;
+    const frozenSources = [...selected];
+    const frozenLabel = selectedLabel.current;
+    const generation = requestGeneration.current;
+    saveKey.current ??= `collection-save-${crypto.randomUUID()}`;
+    setSaving(true);
+    setError(null);
+    try {
+      const saved = await createDerivedEvidenceCollection(
+        frozenLabel.slice(0, 512),
+        frozenSources.map((citation) => ({
+          derived_asset_id: model.derived_asset_id,
+          revision_id: model.revision_id,
+          content_sha256: model.content_sha256,
+          generation: model.generation,
+          citation_id: citation.citation_id,
+          chunk_ordinal: citation.chunk_ordinal,
+          chunk_text_sha256: citation.text_sha256,
+          excerpt: citation.text,
+        })),
+        saveKey.current,
+      );
+      if (generation === requestGeneration.current) {
+        setCollections((current) => [saved, ...current.filter(
+          (item) => item.collection_id !== saved.collection_id,
+        )]);
+      }
+    } catch {
+      if (generation === requestGeneration.current) {
+        setError("This evidence collection could not be saved.");
+      }
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
+  }
+
+  async function researchCollection(summary: DerivedEvidenceCollectionSummary) {
+    if (openingCollection.current) return;
+    openingCollection.current = true;
+    const generation = requestGeneration.current;
+    setError(null);
+    try {
+      const collection = await getDerivedEvidenceCollection(summary.collection_id);
+      if (generation === requestGeneration.current) onResearchCollection(collection);
+    } catch {
+      if (generation === requestGeneration.current) {
+        setError("This saved evidence collection could not be verified.");
+      }
+    } finally {
+      openingCollection.current = false;
+    }
   }
 
   return <aside className="hidden w-80 flex-shrink-0 overflow-y-auto border-l border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex lg:flex-col" aria-label="Derived revision companion">
@@ -228,19 +311,29 @@ export default function DerivedRevisionCompanion({
     </form>
     {error ? <p role="alert" className="border-b border-rule px-4 py-3 text-xs text-danger dark:border-charcoal-1">{error}</p> : null}
     <div className="min-h-0 flex-1 p-4">
+      {collections.length > 0 ? <section className="mb-4 border-b border-rule pb-3 dark:border-charcoal-1" aria-label="Saved evidence collections">
+        <h3 className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">Saved evidence</h3>
+        <ol className="space-y-2">{collections.map((collection) => <li key={collection.collection_id} className="flex items-center justify-between gap-2">
+          <div className="min-w-0"><p className="truncate font-serif text-xs text-ink dark:text-bright">{collection.label}</p><p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">{collection.member_count} passages · generation {collection.generation}</p></div>
+          <button type="button" onClick={() => void researchCollection(collection)} className="shrink-0 font-mono text-[10px] text-link underline">Research</button>
+        </li>)}</ol>
+      </section> : null}
       {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until a route has verified idempotency, pricing, and spend recovery.</p></div> : null}
       {result?.state === "insufficient_evidence" ? <p className="font-serif text-sm leading-relaxed text-ink-mute dark:text-moonlight">No matching evidence was found in this revision. No model was called.</p> : null}
       {result?.answer ? <GroundedAnswer answer={result.answer} citations={result.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
-      {result?.briefing ? <EvidenceBriefing briefing={result.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} selected={selected} onToggleCitation={toggleCitation} /> : null}
+      {result?.briefing ? <EvidenceBriefing briefing={result.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} selected={selected} onToggleCitation={toggleCitation} selectionDisabled={saving} /> : null}
       {!result && turns.length > 0 ? <ol className="space-y-4" aria-label="Saved revision evidence">{turns.map((turn) => <li key={turn.client_turn_id}>
         <p className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">{turn.question}</p>
         {turn.answer ? <GroundedAnswer answer={turn.answer} citations={turn.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
-        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : turn.briefing ? <EvidenceBriefing briefing={turn.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} selected={selected} onToggleCitation={toggleCitation} /> : null}
+        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : turn.briefing ? <EvidenceBriefing briefing={turn.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} selected={selected} onToggleCitation={toggleCitation} selectionDisabled={saving} /> : null}
       </li>)}</ol> : null}
     </div>
     <footer className="flex items-center justify-between gap-2 border-t border-rule p-3 dark:border-charcoal-1">
       <span aria-live="polite" className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">{selected.length}/6 passages</span>
-      <LemonButton type="button" size="sm" disabled={selected.length < 2} onClick={() => onResearchCitations(selected)}>Research passages</LemonButton>
+      <div className="flex items-center gap-2">
+        <LemonButton type="button" variant="tertiary" size="sm" disabled={selected.length < 2 || saving} onClick={() => void saveCollection()}>{saving ? "Saving..." : "Save"}</LemonButton>
+        <LemonButton type="button" size="sm" disabled={selected.length < 2} onClick={() => onResearchCitations(selected)}>Research passages</LemonButton>
+      </div>
     </footer>
   </aside>;
 }

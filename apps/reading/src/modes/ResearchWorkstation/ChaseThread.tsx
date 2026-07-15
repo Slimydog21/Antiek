@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import LemonButton from "../../components/lemon/LemonButton";
@@ -12,6 +12,7 @@ import { useWorkspace } from "../../workspace/WorkspaceStore";
 import ThinkingStream from "./ThinkingStream";
 import VoiceChaseButton from "./VoiceChaseButton";
 import type { SelectionProvenance } from "../shared/FloatMenu/useFloatMenuSelection";
+import { launchDerivedEvidenceCollection } from "../../api/research";
 
 /**
  * ChaseThread — follow a highlighted passage into a child research, in one
@@ -67,6 +68,8 @@ type Props = {
   sourceProvenance?: SelectionProvenance;
   /** Ordered exact citations selected from one immutable evidence briefing. */
   sourceSelections?: Array<{ text: string; provenance: SelectionProvenance }>;
+  /** Durable server authority. When present, launch never resubmits sources. */
+  evidenceCollection?: { collectionId: string; etag: string };
 };
 
 function derivedSource(text: string, provenance: SelectionProvenance) {
@@ -92,6 +95,7 @@ export default function ChaseThread({
   reservedChildId,
   sourceProvenance,
   sourceSelections,
+  evidenceCollection,
 }: Props) {
   const [question, setQuestion] = useState(spawnContext);
   const [busy, setBusy] = useState(false);
@@ -99,20 +103,30 @@ export default function ChaseThread({
   const [error, setError] = useState<{ reason: string | null } | null>(null);
   const navigate = useNavigate();
   const { celebrating, celebrate } = useCelebrate();
+  const launchKey = useRef<string | null>(null);
+  const launching = useRef(false);
+  const launchGeneration = useRef(0);
 
   // Reopened with a new selection → reset the form.
   useEffect(() => {
+    launchGeneration.current += 1;
+    launching.current = false;
     setQuestion(spawnContext);
     setLaunchedId(null);
     setError(null);
-  }, [spawnContext]);
+    launchKey.current = null;
+  }, [spawnContext, parentInvestigationId, reservedChildId,
+    evidenceCollection?.collectionId, evidenceCollection?.etag]);
 
   async function follow() {
+    if (launching.current) return;
     const q = question.trim();
     if (q.length < 3) {
       setError({ reason: "There’s nothing here to follow yet." });
       return;
     }
+    launching.current = true;
+    const generation = launchGeneration.current;
     setBusy(true);
     setError(null);
     try {
@@ -128,7 +142,15 @@ export default function ChaseThread({
         setError({ reason: "This citation could not be verified for research." });
         return;
       }
-      const resp = await startInvestigation({
+      launchKey.current ??= `collection-launch-${crypto.randomUUID()}`;
+      const resp = evidenceCollection
+        ? await launchDerivedEvidenceCollection(
+            evidenceCollection.collectionId,
+            evidenceCollection.etag,
+            launchKey.current,
+            { question: q, parent_investigation_id: parentInvestigationId },
+          )
+        : await startInvestigation({
         question: q,
         context: spawnContext,
         parent_investigation_id: parentInvestigationId,
@@ -141,17 +163,23 @@ export default function ChaseThread({
         // omit it otherwise so the substrate mints a fresh child. This is
         // the no-orphan / one-research-per-question seam.
         ...(reservedChildId ? { investigation_id: reservedChildId } : {}),
-      });
+          });
+      if (generation !== launchGeneration.current) return;
       setLaunchedId(resp.investigation_id);
       recordSpawnRelationship(resp.investigation_id, parentInvestigationId);
       // The payoff is already in hand (the id is back); the beat just
       // decorates it — non-blocking, fires once.
       celebrate();
     } catch (e) {
-      const reason = e instanceof ApiError ? e.body || null : null;
-      setError({ reason });
+      if (generation === launchGeneration.current) {
+        const reason = e instanceof ApiError ? e.body || null : null;
+        setError({ reason });
+      }
     } finally {
-      setBusy(false);
+      if (generation === launchGeneration.current) {
+        launching.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -189,7 +217,10 @@ export default function ChaseThread({
         </label>
         <LemonTextarea
           value={question}
-          onChange={(e) => setQuestion(e.target.value)}
+          onChange={(e) => {
+            setQuestion(e.target.value);
+            launchKey.current = null;
+          }}
           disabled={busy}
           autoFocus
           minRows={5}

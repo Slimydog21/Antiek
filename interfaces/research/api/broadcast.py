@@ -25,6 +25,7 @@ import asyncio
 import os
 import sys
 import traceback
+from collections import deque
 from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Any
 
@@ -118,6 +119,8 @@ class EventBroadcaster:
         self._handlers: dict[str, list[EventHandler]] = {}
         self._handler_tasks: set[asyncio.Task] = set()
         self._lock = asyncio.Lock()
+        self._delivered_event_ids: set[str] = set()
+        self._delivered_event_order: deque[str] = deque()
 
     # ── WS subscribers ──────────────────────────────────────────
 
@@ -188,6 +191,12 @@ class EventBroadcaster:
         register/subscribe calls don't race the dispatch."""
         action_type = _action_type_str(event.action_type)
         async with self._lock:
+            if event.event_id in self._delivered_event_ids:
+                return
+            self._delivered_event_ids.add(event.event_id)
+            self._delivered_event_order.append(event.event_id)
+            if len(self._delivered_event_order) > 10_000:
+                self._delivered_event_ids.discard(self._delivered_event_order.popleft())
             sub_snapshot = tuple(self._subscribers)
             handler_snapshot = tuple(self._handlers.get(action_type, ()))
 

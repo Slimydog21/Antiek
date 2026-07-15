@@ -24,10 +24,16 @@ from substrate.research_artifact.derived_asset_retrieval import (
     DerivedAssetRetrievalIntegrity,
     search_derived_asset,
 )
+from substrate.research_artifact.derived_citation_source import DerivedCitationConflict
 from substrate.research_artifact.derived_companion_repository import (
     CompanionIdempotencyConflict,
     CompanionStaleRevision,
     DerivedCompanionRepository,
+)
+from substrate.research_artifact.evidence_collection_repository import (
+    EvidenceCollectionConflict,
+    EvidenceCollectionRepository,
+    EvidenceCollectionUnavailable,
 )
 from substrate.research_artifact.merge_commit import (
     MergeCommitError,
@@ -43,6 +49,7 @@ from substrate.research_artifact.merge_draft import (
     MergeDraftRepository,
     Review,
 )
+from substrate.schemas import DerivedCitationSource
 
 from .multimedia_reconciliation_routes import authenticated_multimedia_operator
 
@@ -106,6 +113,21 @@ class DerivedCompanionEvidenceBody(BaseModel):
     expected_content_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
+class EvidenceCollectionCreateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    label: str = Field(min_length=1, max_length=512)
+    sources: tuple[DerivedCitationSource, ...] = Field(min_length=2, max_length=6)
+
+
+class EvidenceCollectionLaunchBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    question: str = Field(min_length=3, max_length=8000)
+    topic_slug: str | None = Field(default=None, max_length=512)
+    max_sub_questions: int = Field(default=8, ge=1, le=20)
+    parent_investigation_id: str | None = Field(default=None, max_length=512)
+    research_tier: Literal["fast", "deep"] | None = None
+
+
 class MergeCommitResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     operation_id: str
@@ -150,6 +172,76 @@ def _library_error(exc: Exception) -> HTTPException:
     if isinstance(exc, DerivedAssetUnavailable):
         return HTTPException(404, "derived asset is unavailable", headers=NO_STORE)
     return HTTPException(409, "derived asset integrity conflict", headers=NO_STORE)
+
+
+def _collection_repository() -> EvidenceCollectionRepository:
+    return EvidenceCollectionRepository(db_path=default_db_path())
+
+
+def _collection_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, EvidenceCollectionUnavailable):
+        return HTTPException(404, "evidence collection is unavailable", headers=NO_STORE)
+    return HTTPException(409, "evidence collection integrity conflict", headers=NO_STORE)
+
+
+@derived_asset_router.post("/evidence-collections", status_code=201)
+def create_evidence_collection(
+    body: EvidenceCollectionCreateBody,
+    request: Request,
+    owner_id: str = Depends(authenticated_multimedia_operator),
+) -> Response:
+    key = request.headers.get("Idempotency-Key")
+    if key is None:
+        raise HTTPException(422, "Idempotency-Key is required", headers=NO_STORE)
+    try:
+        result = _collection_repository().create(
+            owner_user_id=owner_id, idempotency_key=key, **body.model_dump()
+        )
+    except (EvidenceCollectionUnavailable, EvidenceCollectionConflict,
+            DerivedAssetUnavailable, DerivedAssetIntegrity,
+            DerivedAssetRetrievalIntegrity, DerivedCitationConflict) as exc:
+        raise _collection_error(exc) from None
+    except ValueError:
+        raise HTTPException(422, "evidence collection request is invalid", headers=NO_STORE) \
+            from None
+    return Response(_canonical_response(result), status_code=201,
+                    media_type="application/json", headers={**NO_STORE, "ETag": result["etag"]})
+
+
+@derived_asset_router.get("/evidence-collections")
+async def list_evidence_collections(request: Request) -> Response:
+    if await request.body():
+        raise HTTPException(422, "evidence collection request is invalid", headers=NO_STORE)
+    asset_id = request.query_params.get("asset_id")
+    revision_id = request.query_params.get("revision_id")
+    if set(request.query_params) - {"asset_id", "revision_id"}:
+        raise HTTPException(422, "evidence collection request is invalid", headers=NO_STORE)
+    result = _collection_repository().list(
+        owner_user_id=authenticated_multimedia_operator(request), asset_id=asset_id,
+        revision_id=revision_id,
+    )
+    return Response(_canonical_response(result), media_type="application/json", headers=NO_STORE)
+
+
+@derived_asset_router.get("/evidence-collections/{collection_id}")
+async def read_evidence_collection(collection_id: str, request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "evidence collection request is invalid", headers=NO_STORE)
+    try:
+        result = _collection_repository().read(
+            owner_user_id=authenticated_multimedia_operator(request),
+            collection_id=collection_id,
+        )
+    except (EvidenceCollectionUnavailable, EvidenceCollectionConflict,
+            DerivedAssetUnavailable, DerivedAssetIntegrity,
+            DerivedAssetRetrievalIntegrity, DerivedCitationConflict) as exc:
+        raise _collection_error(exc) from None
+    return Response(_canonical_response(result), media_type="application/json",
+                    headers={**NO_STORE, "ETag": result["etag"]})
+
+
+def _canonical_response(value: object) -> str:
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
 
 
 @derived_asset_router.get("")

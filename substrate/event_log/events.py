@@ -230,6 +230,33 @@ def _append_jsonl_locked(
         _append_jsonl(path, row)
 
 
+def append_persisted_event(event: Event, *, events_dir: str | None = None) -> bool:
+    """Append a pre-persisted event once by logical event id.
+
+    Returns ``True`` for the physical append and ``False`` when the identical
+    event is already present.  The lookup and append share the trajectory
+    lock, so concurrent crash-recovery deliveries cannot append duplicates.
+    """
+    if _events_disabled():
+        raise RuntimeError("event log is disabled")
+    row = event.model_dump(mode="json")
+    path = _jsonl_path(event.investigation_id, events_dir=events_dir)
+    with investigation_event_lock(event.investigation_id, events_dir=events_dir):
+        if os.path.exists(path):
+            with open(path, encoding="utf-8") as stream:
+                for line in stream:
+                    prior = json.loads(line)
+                    if prior.get("event_id") != event.event_id:
+                        continue
+                    if prior != row:
+                        raise PhysicalTrajectoryError(
+                            f"event id {event.event_id} has conflicting persisted content"
+                        )
+                    return False
+        _append_jsonl(path, row)
+        return True
+
+
 def log_event(
     investigation_id: str,
     action_type: str | ActionType,

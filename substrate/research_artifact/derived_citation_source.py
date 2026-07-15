@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Final
+from typing import Any, Final
 
 from runtime.db_lock import connect_read
 from substrate.research_artifact.derived_asset_library import (
@@ -62,34 +62,40 @@ def verify_derived_citation_sources(
     sources: Sequence[DerivedCitationSource],
 ) -> tuple[DerivedCitationSource, ...]:
     """Verify the complete ordered set before returning any admitted member."""
+    with connect_read(db_path) as con:
+        return verify_derived_citation_sources_on_connection(
+            con=con, owner_user_id=owner_user_id, sources=sources
+        )
+
+
+def verify_derived_citation_sources_on_connection(
+    *, con: Any, owner_user_id: str,
+    sources: Sequence[DerivedCitationSource],
+) -> tuple[DerivedCitationSource, ...]:
+    """Connection-aware verifier for callers holding an atomic transaction."""
     admitted = tuple(sources)
     canonical_derived_sources_context(admitted)
     first = admitted[0]
-    library = DerivedAssetLibrary(db_path=db_path)
-    with connect_read(db_path) as con:
-        asset = library._asset_row(con, owner_user_id, first.derived_asset_id)
-        current_id, current_hash = str(asset[3]), str(asset[4])
-        revisions = library._verify_chain(
-            con, first.derived_asset_id, current_id, current_hash
-        )
-        selected = next(
-            (revision for revision in revisions
-             if revision.revision_id == first.revision_id), None
-        )
-        if selected is None:
-            raise DerivedAssetUnavailable
-        generation = len(revisions) - revisions.index(selected)
-        if (selected.content_sha256 != first.content_sha256
-                or generation != first.generation):
-            raise DerivedCitationConflict("derived citation revision identity conflict")
-        rows = con.execute(
+    library = DerivedAssetLibrary(db_path="")
+    asset = library._asset_row(con, owner_user_id, first.derived_asset_id)
+    current_id, current_hash = str(asset[3]), str(asset[4])
+    revisions = library._verify_chain(con, first.derived_asset_id, current_id, current_hash)
+    selected = next(
+        (revision for revision in revisions if revision.revision_id == first.revision_id), None
+    )
+    if selected is None:
+        raise DerivedAssetUnavailable
+    generation = len(revisions) - revisions.index(selected)
+    if selected.content_sha256 != first.content_sha256 or generation != first.generation:
+        raise DerivedCitationConflict("derived citation revision identity conflict")
+    rows = con.execute(
             "SELECT chunk_ordinal,citation_id,member_index,section_anchor,section_path,"
             "chunk_text,chunk_text_sha256,token_count,chunker_policy,chunker_version "
             "FROM derived_asset_revision_chunks WHERE derived_asset_id=? AND revision_id=? "
             "AND revision_content_sha256=? ORDER BY chunk_ordinal",
             [first.derived_asset_id, first.revision_id, first.content_sha256],
         ).fetchall()
-        receipt = con.execute(
+    receipt = con.execute(
             "SELECT revision_content_sha256,chunk_count,index_sha256,chunker_policy,"
             "chunker_version FROM derived_asset_revision_indexes "
             "WHERE derived_asset_id=? AND revision_id=?",
@@ -165,4 +171,5 @@ def verify_derived_citation_source(
 __all__ = [
     "DerivedCitationConflict", "canonical_derived_sources_context",
     "verify_derived_citation_source", "verify_derived_citation_sources",
+    "verify_derived_citation_sources_on_connection",
 ]

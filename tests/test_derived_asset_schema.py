@@ -21,6 +21,9 @@ TABLES = {
     "derived_asset_current_revisions",
     "derived_asset_merge_operations",
     "derived_asset_merge_outbox",
+    "derived_evidence_collections",
+    "derived_evidence_collection_members",
+    "derived_evidence_collection_operations",
 }
 H1 = hashlib.sha256(b"one").hexdigest()
 H2 = hashlib.sha256(b"two").hexdigest()
@@ -111,6 +114,10 @@ def test_fresh_and_reopen_initialization(db_path: str) -> None:
 def test_existing_pre_v16_database_is_upgraded(db_path: str) -> None:
     with connect_write(db_path, purpose="derived-asset-pre-v16-fixture") as con:
         for table in (
+            "derived_evidence_collection_operations",
+            "derived_evidence_collection_members",
+            "derived_evidence_collections",
+            "derived_asset_companion_answers",
             "derived_asset_companion_turn_citations",
             "derived_asset_companion_turns",
             "derived_asset_companion_threads",

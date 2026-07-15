@@ -5,6 +5,7 @@ import { Link, useParams } from "react-router-dom";
 import { getDerivedAssetReading } from "../../api/research";
 import type { DerivedAssetReadingResponse } from "../../api/research";
 import type { DerivedCompanionCitation } from "../../api/research";
+import type { DerivedEvidenceCollection } from "../../api/research";
 import { LemonButton, LemonTag } from "../../components/lemon";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import FloatMenu from "../shared/FloatMenu/FloatMenu";
@@ -128,6 +129,30 @@ export default function DerivedAssetReader() {
     }, { mode: "floating", title: "Research passages" });
   }, [model, openPanel]);
 
+  const onResearchCollection = useCallback((collection: DerivedEvidenceCollection) => {
+    if (!model || collection.derived_asset_id !== model.derived_asset_id) return;
+    const context = collection.sources.map(
+      (source, index) => `[Evidence ${index + 1} of ${collection.sources.length}]\n${source.excerpt}`,
+    ).join("\n\n");
+    openPanel("ChaseThread", {
+      spawnContext: context,
+      parentInvestigationId: `read-${collection.derived_asset_id}:${collection.revision_id}`,
+      evidenceCollection: { collectionId: collection.collection_id, etag: collection.etag },
+      sourceSelections: collection.sources.map((source) => ({
+        text: source.excerpt,
+        provenance: {
+          documentId: source.derived_asset_id, chunkId: null, servable: true,
+          derivedRevisionId: source.revision_id,
+          derivedContentSha256: source.content_sha256,
+          derivedGeneration: source.generation,
+          derivedCitationId: source.citation_id,
+          derivedChunkOrdinal: source.chunk_ordinal,
+          derivedChunkTextSha256: source.chunk_text_sha256,
+        },
+      })),
+    }, { mode: "floating", title: collection.label });
+  }, [model, openPanel]);
+
   if (loading) return <main className="flex min-h-[60vh] items-center justify-center text-sm text-shadow-1">Opening the asset...</main>;
   if (error || !model) return <main className="flex min-h-[60vh] flex-col items-center justify-center gap-3"><p role="alert" className="text-sm text-emperor">{error}</p><Link to="/" className="text-sm underline">Return to research</Link></main>;
 
@@ -145,7 +170,7 @@ export default function DerivedAssetReader() {
       </header>
       <article ref={articleRef} className="derived-html-reading prose prose-neutral mx-auto max-w-3xl px-6 py-10 font-serif text-ink dark:prose-invert dark:text-bright" data-derived-asset-id={model.derived_asset_id} data-revision-id={model.revision_id} data-content-sha256={model.content_sha256} dangerouslySetInnerHTML={{ __html: model.canonical_html }} />
     </main>
-    <DerivedRevisionCompanion model={model} articleRef={articleRef} onFollowCitation={onFollowCitation} onResearchCitations={onResearchCitations} />
+    <DerivedRevisionCompanion model={model} articleRef={articleRef} onFollowCitation={onFollowCitation} onResearchCitations={onResearchCitations} onResearchCollection={onResearchCollection} />
     <FloatMenu selection={selection} investigationId={threadId} onDeepResearch={onDeepResearch} />
   </div>;
 }

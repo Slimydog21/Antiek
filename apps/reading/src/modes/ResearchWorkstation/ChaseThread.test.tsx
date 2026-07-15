@@ -19,13 +19,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-const { startInvestigationMock, navigateMock, recordSpawnMock } = vi.hoisted(
+const { startInvestigationMock, launchCollectionMock, navigateMock, recordSpawnMock } = vi.hoisted(
   () => ({
     startInvestigationMock: vi.fn(),
+    launchCollectionMock: vi.fn(),
     navigateMock: vi.fn(),
     recordSpawnMock: vi.fn(),
   }),
 );
+
+vi.mock("../../api/research", async (orig) => {
+  const actual = await orig<typeof import("../../api/research")>();
+  return { ...actual, launchDerivedEvidenceCollection: launchCollectionMock };
+});
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
@@ -71,6 +77,7 @@ afterEach(() => {
   startInvestigationMock.mockReset();
   navigateMock.mockReset();
   recordSpawnMock.mockReset();
+  launchCollectionMock.mockReset();
 });
 
 function renderChase(props: {
@@ -98,6 +105,7 @@ function renderChase(props: {
       derivedChunkTextSha256: string;
     };
   }>;
+  evidenceCollection?: { collectionId: string; etag: string };
 }) {
   return render(
     <MemoryRouter>
@@ -216,6 +224,42 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
     expect(arg.derived_source).toBeUndefined();
     expect(arg.derived_sources.map((source: { excerpt: string }) => source.excerpt))
       .toEqual(passages);
+  });
+
+  it("launches restored evidence by collection authority only after confirmation", async () => {
+    launchCollectionMock.mockResolvedValue({
+      investigation_id: "inv-saved", status: "started", start_event_id: "e5",
+    });
+    const sourceSelections = [0, 1].map((index) => ({
+      text: `Passage ${index + 1}`,
+      provenance: {
+        documentId: `ast_${"a".repeat(32)}`,
+        derivedRevisionId: `rev_${"b".repeat(32)}`,
+        derivedContentSha256: "c".repeat(64), derivedGeneration: 2,
+        derivedCitationId: `dchunk_${String(index + 1).repeat(64)}`,
+        derivedChunkOrdinal: index,
+        derivedChunkTextSha256: String(index + 3).repeat(64),
+      },
+    }));
+    renderChase({
+      spawnContext: "[Evidence 1 of 2]\nPassage 1\n\n[Evidence 2 of 2]\nPassage 2",
+      parentInvestigationId: "read-saved",
+      sourceSelections,
+      evidenceCollection: { collectionId: `dec_${"d".repeat(32)}`, etag: '"etag"' },
+    });
+    expect(launchCollectionMock).not.toHaveBeenCalled();
+    const followButton = screen.getByText("Follow this");
+    fireEvent.click(followButton);
+    fireEvent.click(followButton);
+    await waitFor(() => expect(launchCollectionMock).toHaveBeenCalledTimes(1));
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(launchCollectionMock.mock.calls[0].slice(0, 2)).toEqual([
+      `dec_${"d".repeat(32)}`, '"etag"',
+    ]);
+    expect(launchCollectionMock.mock.calls[0][3]).toEqual({
+      question: "[Evidence 1 of 2]\nPassage 1\n\n[Evidence 2 of 2]\nPassage 2",
+      parent_investigation_id: "read-saved",
+    });
   });
 
   it("does not downgrade a malformed citation into an unverified launch", async () => {
