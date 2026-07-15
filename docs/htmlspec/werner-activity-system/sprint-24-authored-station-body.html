@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>WERNER-ACT SPR-24 — Authored station body</title>
+    <style>
+      body { max-width: 74rem; margin: auto; padding: 2rem; font: 16px/1.55 system-ui,sans-serif; background: #fafaf7; color: #151515; }
+      header, section { border: 2px solid; border-radius: 6px; padding: 1.4rem; margin-bottom: 1.4rem; background: white; box-shadow: 4px 4px 0 #151515; }
+      h1, h2 { line-height: 1.15; } table { width: 100%; border-collapse: collapse; }
+      th, td { border: 1px solid; padding: .65rem; text-align: left; vertical-align: top; }
+      code { font-family: ui-monospace,monospace; }
+      .tag { display: inline-block; border: 1px solid; border-radius: 999px; padding: .15rem .55rem; background: #f9bd2b; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <p><a href="index.html">Werner activity system</a> · SPR-24 · Wave 24</p>
+      <h1>Make the live station Werner legible at the size users actually see</h1>
+      <p>Replace a misregistered raster-plus-vector collage with one private authored fishing body and one code-owned rod/line/fish system.</p>
+      <span class="tag">Implemented</span> <span class="tag">Canonical source crop</span>
+    </header>
+    <section>
+      <h2>Observed defect and falsified premise</h2>
+      <table>
+        <tr><th>Claim</th><th>Evidence</th><th>Decision</th></tr>
+        <tr><td>The 64 px station makes canonical Werner readable.</td><td>The canonical source alpha bounds occupy only 533×725 of a 1024 square; a native 1280×720 Storybook capture renders the visible body at roughly 33×45 px.</td><td>False. Preserve the hitbox and author an explicit station frame.</td></tr>
+        <tr><td>The vector limbs articulate the raster.</td><td>Their attachment coordinates are unrelated to the raster silhouette; native capture shows detached yellow feet and an extra black grip.</td><td>False. Remove both vector feet and both vector flippers.</td></tr>
+        <tr><td>A flat asset swap is sufficient.</td><td>The current rod paints over the body, so its cap cannot appear enclosed by a hand.</td><td>False. Render rod behind body; the authored flipper covers the butt.</td></tr>
+      </table>
+    </section>
+    <section>
+      <h2>Hard-to-vary composition</h2>
+      <ol>
+        <li><code>WernerAuthoredPose</code> is the sole importer of one private station body; public moods remain exactly four.</li>
+        <li>The 64×64 station/hitbox and rod interface remain fixed: butt <code>(45,34)</code>, tip <code>(66,5)</code>.</li>
+        <li>Layer order is rod → authored body → code-owned line/fish marks that require foreground.</li>
+        <li>The body contains the exact canonical attached feet and flippers; the existing right flipper occludes the behind-body rod butt. It contains no rod, line, hook, fish, snow, shadow, background, text, or motion marks.</li>
+        <li>Locomotion is named and implemented as one whole-body silhouette waddle; no claim of alternating articulated feet remains.</li>
+        <li>Fishing timing, station movement, drag/clamp, click contract, activity selection, cursor, reduced motion, and accessibility are byte-semantically unchanged.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Acceptance gates</h2>
+      <ol>
+        <li>At native 64 px the body occupies 50–56 px vertically and 38–46 px horizontally, with ≥2 px head clearance and attached feet landing at y=57–62.</li>
+        <li>At DPR 1 and 2 on light and dark surfaces, one Werner is recognizable; no duplicate limb, yellow gap, floating butt, cap-over-hand, clipping, chroma fringe, or scale jump exists.</li>
+        <li>The visible shaft emerges from the gripping flipper, reaches the unchanged tip, and the viewport line begins within one rendered pixel of it.</li>
+        <li>Rest, fishing, directed travel, return, drag interruption, sleep/wake, dawn, emote, and reduced-motion substitution preserve one owner and one meaningful still.</li>
+        <li>Source tests prove private import, exact layer order, absent vector limbs, unchanged geometry/timing, decorative art, and unchanged 64 px target.</li>
+        <li>Focused tests, TypeScript, production/Storybook builds, deterministic visual plates, HardenX, heterogeneous review, and exact-head remote checks are green before qualification.</li>
+      </ol>
+    </section>
+    <section>
+      <h2>Withheld authority</h2>
+      <p>No canonical redraw, fifth mood, second mascot, larger target, new activity/event, gait frame set, station/cursor/game/product behavior, runtime image processing, provider call, network, spend, merge, or deployment.</p>
+    </section>
+  </body>
+</html>

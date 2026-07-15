@@ -13,8 +13,8 @@ export interface Point {
  * rod redesign updates the rig and the line in a single read.
  *
  * Coordinates are in the rig's 64-unit viewBox. The matching rig geometry:
- *   - rod butt / grip  = (45, 34)  → WernerRig `ROD_BUTT`, curled into
- *     `werner-rig-flipper-r` (the right flipper).
+ *   - rod butt / grip  = (45, 34)  → WernerRig `ROD_BUTT`, covered by the
+ *     authored station body's right flipper (SPR-24).
  *   - rod tip          = (66, 5)   → WernerRig `ROD_TIP`, the end of the shaft.
  * The tip sits PAST the 64-viewBox right/top edge on purpose (the rig SVG is
  * `overflow:visible`), so the rod reads as a long fishing rod rather than a

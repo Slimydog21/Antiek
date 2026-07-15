@@ -1,26 +1,30 @@
 /*
- * Werner steering gait (SPR-05 / SPR-10).
+ * Werner steering gait (SPR-05 / SPR-10 / SPR-24).
  *
- * These extend the mascot's existing walk feel for the FOLLOW-driven and
- * DIRECTED (waddle-to-button) strolls. The mascot already swaps the brand
- * `werner-waddle` body-bob on its bob span while strolling (PenguinMascot.tsx
- * + brand/werner/animated/animations.css); this file adds:
+ * These extend the mascot's existing walk feel for the DIRECTED
+ * (waddle-to-button) strolls and the fishing loop gag.
  *
- *   1. `werner-step` — a stronger, side-to-side foot-driven gait used on top
- *      of (not instead of) the brand bob during a directed walk, so a
- *      waddle-to-button reads as deliberate WALKING, not the ambient drift.
+ *   1. `werner-step` — a stronger, side-to-side whole-body waddle used during
+ *      a directed walk, so a waddle-to-button reads as deliberate WALKING.
  *   2. `werner-hit-bump` — the one-shot squash/lunge for SPR-10's Tom-&-Jerry
  *      button bump, composed over an existing emote mark (no new SVG art).
+ *   3. The SPR-05 fishing loop (rod swing + idle line + fish).
+ *
+ * Locomotion (SPR-24): one whole-body silhouette waddle. The vector feet +
+ * flippers are REMOVED — their geometry is baked into the authored station body
+ * PNG. The `werner-step` animation rocks the whole rig (translateY + rotate),
+ * producing a silhouette gait. No alternating articulated limbs remain.
  *
  * Both collapse to a still frame under prefers-reduced-motion (the media
  * query at the foot of this file), matching the brand animations' own guard.
  * No raw colour literals here — geometry only — so token-lint stays green.
  */
 
-/* ── Directed walking gait — a fuller waddle than the ambient drift ──────
+/* ── Directed walking gait — a whole-body silhouette waddle (SPR-24) ─────
  * A pronounced left-right rock + vertical step so the directed walk reads as
  * footwork. Rides on the same bob span the mascot already toggles; period
- * matches the brand werner-waddle (300ms) so the two stay in phase. */
+ * matches the brand werner-waddle (300ms) so the two stay in phase. This is
+ * the ONE locomotion primitive — the vector limb animations are removed. */
 @keyframes werner-step {
   0%   { transform: translateY(0) rotate(-3deg); }
   25%  { transform: translateY(-2px) rotate(0deg); }
@@ -28,7 +32,8 @@
   75%  { transform: translateY(-2px) rotate(0deg); }
   100% { transform: translateY(0) rotate(-3deg); }
 }
-.werner-step {
+.werner-waddle.werner-step { animation: none; }
+.werner-step .werner-station-body {
   animation: werner-step 320ms ease-in-out infinite;
   transform-origin: 50% 100%;
 }
@@ -48,107 +53,23 @@
   transform-origin: 50% 100%;
 }
 
-/* ── Walk-cycle rig (SPR-06 M1) — the FEET + FLIPPERS actually move ──────
- * The v1 mascot SLID: the whole penguin eased across the viewport while the
- * art stayed a single static frame, so it read as a dragged sticker, not a
- * walking bird. The rig (WernerRig.tsx) overlays two vector feet + two flipper
- * marks on the Werner art and animates THEM, so a stroll reads as real
- * footwork. The gait is driven ENTIRELY by the EXISTING walk signal: the
- * mascot's roam already toggles `werner-waddle` onto the bob span for the
- * duration of every stroll leg (ambient AND directed) and `werner-step` for a
- * directed waddle-to-button. These rules are DESCENDANT-SELECTED off those two
- * classes, so the feet animate exactly when Werner is mid-stroll and rest
- * otherwise — NO second timer, no rAF, no second motion source. One walk
- * signal, consumed declaratively.
- *
- * Period 300ms == the brand werner-waddle body-bob (animations.css), so feet,
- * body bob, and the directed werner-step stay in phase (alternating steps read
- * as a two-beat waddle, not a jitter). Tokenised easing (--ease-standard); the
- * 300ms period matches the brand pose cadence (U-05 signature-beat family),
- * declared once here rather than re-improvised. */
-
-/* Left foot lifts on the first half-beat, right foot on the second — the
- * two-beat alternation that reads as stepping. translateY only (GPU-cheap). */
-@keyframes werner-rig-foot-l {
-  0%   { transform: translateY(0) rotate(0deg); }
-  25%  { transform: translateY(-3px) rotate(-6deg); }
-  50%  { transform: translateY(0) rotate(0deg); }
-  100% { transform: translateY(0) rotate(0deg); }
-}
-@keyframes werner-rig-foot-r {
-  0%   { transform: translateY(0) rotate(0deg); }
-  50%  { transform: translateY(0) rotate(0deg); }
-  75%  { transform: translateY(-3px) rotate(6deg); }
-  100% { transform: translateY(0) rotate(0deg); }
-}
-/* Flippers swing opposite the same-side foot — the counter-rotation a walking
- * bird makes. Subtler than the feet so the silhouette stays Werner. */
-@keyframes werner-rig-flipper-l {
-  0%   { transform: rotate(8deg); }
-  50%  { transform: rotate(-10deg); }
-  100% { transform: rotate(8deg); }
-}
-@keyframes werner-rig-flipper-r {
-  0%   { transform: rotate(-8deg); }
-  50%  { transform: rotate(10deg); }
-  100% { transform: rotate(-8deg); }
-}
-
-/* At REST the limbs hold their neutral frame (no animation). They only move
- * while the bob span carries the walk signal the roam toggles. */
-.werner-rig-foot-l,
-.werner-rig-foot-r,
-.werner-rig-flipper-l,
-.werner-rig-flipper-r {
-  transform-origin: 50% 0%;
-}
-.werner-rig-flipper-l,
-.werner-rig-flipper-r {
-  transform-origin: 50% 0%;
-}
-
-/* WALKING: any ancestor carrying the roam's `werner-waddle` (ambient stroll)
- * OR `werner-step` (directed waddle) runs the foot + flipper cycle. The
- * descendant combinator is the seam — the rig owns NO state, it reads the
- * class the existing roam already sets. */
-.werner-waddle .werner-rig-foot-l,
-.werner-step .werner-rig-foot-l {
-  animation: werner-rig-foot-l 300ms var(--ease-standard) infinite;
-}
-.werner-waddle .werner-rig-foot-r,
-.werner-step .werner-rig-foot-r {
-  animation: werner-rig-foot-r 300ms var(--ease-standard) infinite;
-}
-.werner-waddle .werner-rig-flipper-l,
-.werner-step .werner-rig-flipper-l {
-  animation: werner-rig-flipper-l 300ms var(--ease-standard) infinite;
-}
-.werner-waddle .werner-rig-flipper-r,
-.werner-step .werner-rig-flipper-r {
-  animation: werner-rig-flipper-r 300ms var(--ease-standard) infinite;
-}
-
 /* ════════════════════════════════════════════════════════════════════════
  * SPR-05 — THE ENDLESS FISHING LOOP (the Scrat / Tom-&-Jerry cartoon).
  *
- * Operator ask #3: when nobody is moving the mouse, Werner runs a comic gag of
- * trying to fish and never quite catching it — forever. This is his POINTER-IDLE
- * behaviour (master decision log: SPR-05 sprint page). The shell adds the
- * `werner-fishing` class to the bob span ONLY while the loop owns Werner
- * (shouldFish in wernerState.ts: ambient idle + pointer idle; the SPR-03 reel
- * owns him otherwise — one owner at a time). When the class is absent everything
- * here is inert (no animation), so removing the class IS the interrupt.
+ * When nobody is moving the mouse, Werner runs a comic gag of trying to fish
+ * and never quite catching it — forever. This is his POINTER-IDLE behaviour.
+ * The shell adds the `werner-fishing` class to the bob span ONLY while the
+ * loop owns Werner. When the class is absent everything here is inert (no
+ * animation), so removing the class IS the interrupt.
  *
- * STANDALONE ADAPTATION: SPR-01's pose machine is deferred, so the cartoon is a
- * CSS keyframe SEQUENCE rather than rig-interpolated poses. It animates three
- * marks through the beats: the SPR-04 rod <g> (swung from its grip
- * transform-origin), Werner's OWN little fish mark (.werner-rig-fish, token
- * --werner-fish — never the cursor/bait), and the idle line (.werner-rig-line).
+ * The cartoon animates three marks through the beats: the SPR-04 rod <g>
+ * (swung from its grip transform-origin), Werner's OWN little fish mark
+ * (.werner-rig-fish, token --werner-fish — never the cursor/bait), and the
+ * idle line (.werner-rig-line).
  *
  * COMIC TIMING IS DATA: the keyframe %s below are the FISHING_BEATS holdMs
- * (wernerState.ts) as fractions of the 6400ms total — edit BOTH together. Each
- * % is annotated with its beat so a retune edits the table + these %s, not the
- * "engine". The beats, with their cumulative % (holdMs → % of 6400ms):
+ * (wernerState.ts) as fractions of the 6400ms total — edit BOTH together.
+ * The beats, with their cumulative % (holdMs → % of 6400ms):
  *   cast   0   →  14%  (900ms)  slow wind-up: rod swings out, line extends
  *   wait   14  →  39%  (1600ms) LONG held beat of nothing — sells the wait
  *   bob    39  →  50%  (700ms)  the fish drifts in, the line dips
@@ -160,23 +81,20 @@
  * The gag NEVER reaches a "caught" frame — by design (no such keyframe exists).
  *
  * PERF (M5): pure CSS keyframes on transform/opacity — GPU-cheap, NO rAF, NO JS
- * timer. The single shared 6400ms duration keeps the three tracks in phase. The
- * browser pauses CSS animations on a hidden tab automatically, and the shell
- * drops the class offscreen/under reduced motion, so the loop never busy-loops.
+ * timer. The single shared 6400ms duration keeps the three tracks in phase.
  * ════════════════════════════════════════════════════════════════════════ */
 
 /* The shared loop period. One source of truth so the three tracks stay locked. */
 .werner-fishing [data-werner-rod],
 .werner-fishing .werner-rig-fish,
 .werner-fishing .werner-rig-line {
-  /* steps/easing live per-track; the period is shared. */
   animation-duration: 6400ms;
   animation-iteration-count: infinite;
   animation-timing-function: ease-in-out;
 }
 
 /* ── Track 1: the ROD swing (reuses the SPR-04 rod <g> + its grip pivot). ──
- * The rod pivots from the hand (its transform-origin = ROD_BUTT grip). Negative
+ * The rod pivots from the hand (its transform-origin = ROD_BUTT). Negative
  * rotation tips the tip up/back (wind-up), positive tips it down/forward (cast
  * out + the yank). The yank is the punchy beat: a hard fast snap down then up. */
 @keyframes werner-fishing-rod {
@@ -192,14 +110,11 @@
 }
 .werner-fishing [data-werner-rod] {
   animation-name: werner-fishing-rod;
-  /* transform-origin is already set inline on the rod <g> (the grip) — we only
-     add the rotation here, pivoting from the hand, never re-deriving the rig. */
 }
 
 /* ── Track 2: WERNER'S OWN FISH (.werner-rig-fish, token --werner-fish). ──
  * Hidden at rest; drifts UP toward the hook on bob/nibble (the near-catch),
- * then darts AWAY on the miss (the escape — the line ends empty). It is a small
- * teal mark below the rod tip, never the cursor and never the ice bait worm. */
+ * then darts AWAY on the miss (the escape — the line ends empty). */
 @keyframes werner-fishing-fish {
   0%   { opacity: 0; transform: translate(0, 10px) scaleX(1); }   /* cast: gone */
   39%  { opacity: 0; transform: translate(0, 10px) scaleX(1); }   /* wait: still gone */
@@ -216,10 +131,10 @@
 
 /* ── Track 3: the IDLE LINE (.werner-rig-line). ──
  * ONE line, owned by the rig, only for the idle loop (the WernerFishingLayer
- * viewport line is the SEPARATE reel-follow line and is inert while idle — see
- * WernerRig.tsx). It extends DOWN from the rod tip on the cast, hangs through
- * the wait, snaps UP empty on the miss (scaleY collapses — the empty line flying
- * up), then resets. scaleY from the tip (transform-origin set inline). */
+ * viewport line is the SEPARATE reel-follow line and is inert while idle). It
+ * extends DOWN from the rod tip on the cast, hangs through the wait, snaps UP
+ * empty on the miss (scaleY collapses), then resets. scaleY from the tip
+ * (transform-origin set inline). */
 @keyframes werner-fishing-line {
   0%   { opacity: 0; transform: scaleY(0); }      /* cast start: no line yet */
   14%  { opacity: 0.5; transform: scaleY(1); }    /* cast end: line is out */
@@ -235,30 +150,20 @@
 
 /* ── Reduced-motion guard ───────────────────────────────────────────────
  * Mirrors brand/werner/animated/animations.css: no involuntary motion. The
- * directed gait, the bump, the walk-cycle rig limbs, AND the SPR-05 fishing
- * loop (rod swing + fish + line) all collapse to a still frame. (Reduced motion
- * is also enforced in JS — the mascot freezes the stage and never starts a
- * directed walk, the roam effect early-returns so the walk classes are never
- * added, and the shell never adds `werner-fishing` under reduced motion — so
- * this is the second, declarative line of defence.) */
+ * directed gait, the bump, AND the SPR-05 fishing loop (rod swing + fish +
+ * line) all collapse to a still frame. The vector limb animations (SPR-06)
+ * are removed (SPR-24); the whole-body waddle (`werner-step`) and the fishing
+ * loop are the remaining motion consumers. (Reduced motion is also enforced
+ * in JS — the mascot freezes the stage and never starts a directed walk, the
+ * roam effect early-returns so the walk classes are never added, and the shell
+ * never adds `werner-fishing` under reduced motion — so this is the second,
+ * declarative line of defence.) */
 @media (prefers-reduced-motion: reduce) {
-  .werner-step,
+  .werner-step .werner-station-body,
   .werner-hit-bump,
-  .werner-rig-foot-l,
-  .werner-rig-foot-r,
-  .werner-rig-flipper-l,
-  .werner-rig-flipper-r,
   [data-werner-rod],
   .werner-rig-fish,
   .werner-rig-line,
-  .werner-waddle .werner-rig-foot-l,
-  .werner-waddle .werner-rig-foot-r,
-  .werner-waddle .werner-rig-flipper-l,
-  .werner-waddle .werner-rig-flipper-r,
-  .werner-step .werner-rig-foot-l,
-  .werner-step .werner-rig-foot-r,
-  .werner-step .werner-rig-flipper-l,
-  .werner-step .werner-rig-flipper-r,
   .werner-fishing [data-werner-rod],
   .werner-fishing .werner-rig-fish,
   .werner-fishing .werner-rig-line {
@@ -271,7 +176,6 @@
  * The rod <g> [data-werner-rod] owns no animation today — at rest it draws a
  * STRAIGHT shaft (the component forces bend 0 under reduced motion via the JS
  * usePrefersReducedMotion guard). This belt-and-braces CSS guard is the second
- * line of defence: should a later sprint (SPR-05's cast) add a transform/animation
- * to swing the rod, reduced motion neutralises it here, just as the walk-cycle
- * limbs above are neutralised — the rod holds a neutral angle, never a frozen
- * mid-cast frame. (Listed in the @media block above with the other rig parts.) */
+ * line of defence: should a later sprint add a transform/animation to swing
+ * the rod, reduced motion neutralises it here — the rod holds a neutral angle,
+ * never a frozen mid-cast frame. (Listed in the @media block above.) */

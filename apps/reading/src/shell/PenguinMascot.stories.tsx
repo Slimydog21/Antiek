@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from "@storybook/react";
 
 import { PenguinMascot } from "./PenguinMascot";
+import WernerRig from "../werner/WernerRig";
 
 /**
  * PenguinMascot (SPR-12 M3) — the floating project home, now a FIXED STATION
@@ -91,6 +92,72 @@ export const ReducedMotionNote: Story = {
         reload to see the still variant.
       </div>
       <PenguinMascot />
+    </div>
+  ),
+};
+
+/**
+ * SPR-24 — Deterministic station-body fidelity plate.
+ *
+ * Renders the WernerRig at native 64px on both light and dark surfaces, plus
+ * a neutral still reference, so a Storybook reviewer can verify:
+ *   - the authored station body is recognizable at 64px
+ *   - no duplicate limb, yellow gap, floating butt, cap-over-hand, clipping,
+ *     chroma fringe, or scale jump exists on either theme
+ *   - the rod protrudes correctly behind the body
+ *   - reduced motion holds a still frame (no fishing gag, no idle wander)
+ *
+ * This is a visual regression anchor — not a behaviour test. The behaviour
+ * (click→float, drag→re-station, fishing loop timing) is asserted in
+ * PenguinMascot.test.tsx + PenguinMascot.station.test.tsx.
+ */
+export const StationBodyFidelity: Story = {
+  render: () => (
+    <div className="flex flex-col gap-8 p-8">
+      {/* Light surface */}
+      <section>
+        <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+          Light surface — 64px native
+        </h2>
+        <div className="flex items-center gap-6 rounded-hog border border-rule bg-ice-0 p-6 dark:bg-charcoal-2">
+          <div className="flex items-center justify-center" style={{ width: 64, height: 64 }}>
+            <WernerRig size={64} label="Project" />
+          </div>
+          <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight">
+            Authored body + code rod + line/fish foreground
+          </span>
+        </div>
+      </section>
+
+      {/* Dark surface */}
+      <section>
+        <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+          Dark surface — 64px native
+        </h2>
+        <div className="flex items-center gap-6 rounded-hog border border-rule bg-charcoal-2 p-6">
+          <div className="flex items-center justify-center" style={{ width: 64, height: 64 }}>
+            <WernerRig size={64} label="Project" />
+          </div>
+          <span className="font-mono text-[10px] text-moonlight">
+            No chroma fringe, no ghost backdrop on dark
+          </span>
+        </div>
+      </section>
+
+      {/* Neutral still: the media-query substitution itself is mechanically tested. */}
+      <section>
+        <h2 className="mb-2 font-mono text-xs uppercase tracking-wider text-ink-soft dark:text-starlight">
+          Neutral still — reduced-motion fallback
+        </h2>
+        <div className="flex items-center gap-6 rounded-hog border border-rule bg-ice-0 p-6 dark:bg-charcoal-2">
+          <div className="flex items-center justify-center" style={{ width: 64, height: 64 }}>
+            <WernerRig size={64} label="Project" />
+          </div>
+          <span className="font-mono text-[10px] text-ink-mute dark:text-moonlight">
+            Reduced-motion media query is covered by deterministic tests
+          </span>
+        </div>
+      </section>
     </div>
   ),
 };
