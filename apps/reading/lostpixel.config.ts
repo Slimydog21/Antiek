@@ -23,6 +23,12 @@ const includesNarrowBrainstormAtmosphereProof = scopedStoryIds.some((id) =>
  *   npm run visualtest         # check current vs baseline
  *   npm run visualtest:update  # accept current as the new baseline
  *
+ * Canonical blocking plates are rendered by the visualtest workflow's pinned
+ * Ubuntu + Playwright Chromium environment. Local macOS captures are useful
+ * review evidence but must not replace canonical plates: system-font metrics
+ * and rasterization differ across operating systems even at identical viewport
+ * dimensions.
+ *
  * Known flaky story `workspace-demo--scene` (framer-motion spring
  * timing) is skipped via `shotsExcludeList` — the spring physics
  * lands at slightly different stages on each Chromium run. The skip
