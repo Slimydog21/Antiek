@@ -10,6 +10,7 @@ import {
   createArcadeCartridge,
   progressCartridge,
 } from "./cartridgeFactory";
+import { WERNER_EXPERIENCE_EVENT } from "../werner/reactionBus";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -64,10 +65,18 @@ describe("ArcadeCabinet host entry", () => {
   });
 
   it("starts ice-fishing cartridge from cabinet click and progresses score via factory", () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.experience) seen.push(d.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
     render(<ArcadeCabinet />);
     fireEvent.click(screen.getByTestId("cabinet-ice-fishing"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
     expect(screen.getByTestId("cabinet-play-surface")).toBeTruthy();
     expect(screen.getByTestId("cabinet-arcade-mount")).toBeTruthy();
+    expect(seen).toContain("highlight");
 
     const cart = createArcadeCartridge("ice-fishing", { reducedMotion: true });
     expect(cart.id).toBe("ice-fishing");

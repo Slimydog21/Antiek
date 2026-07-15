@@ -6,6 +6,7 @@ import {
   type ArcadeGameKind,
 } from "./cartridgeFactory";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
+import { emitWernerExperience } from "../werner/reactionBus";
 // Session brand PNGs — UI-consumed cabinet key art + chrome marks.
 // Inventory: brand/werner/sessionAssets.ts (alpha integrity gated).
 import iceFishingArt from "../brand/werner/poses/session/werner_ice_fishing_session_v1.png";
@@ -32,6 +33,12 @@ export function ArcadeCabinet() {
         : null,
     [active, reduced],
   );
+
+  function playGame(game: CabinetGame) {
+    // Living-TV: cabinet play is a curious glance from the home of the penguin.
+    emitWernerExperience("highlight");
+    setActive(game);
+  }
 
   return (
     <div
@@ -80,7 +87,7 @@ export function ArcadeCabinet() {
           blurb="Drop the line. Catch fish. Avoid the boot."
           art={iceFishingArt}
           selected={active === "ice-fishing"}
-          onPlay={() => setActive("ice-fishing")}
+          onPlay={() => playGame("ice-fishing")}
           testId="cabinet-ice-fishing"
         />
         <CabinetCard
@@ -88,7 +95,7 @@ export function ArcadeCabinet() {
           blurb="Scoop clams on the tide. Club Penguin energy."
           art={clamCatcherArt}
           selected={active === "clam-catcher"}
-          onPlay={() => setActive("clam-catcher")}
+          onPlay={() => playGame("clam-catcher")}
           testId="cabinet-clam-catcher"
         />
         <CabinetCard
@@ -96,7 +103,7 @@ export function ArcadeCabinet() {
           blurb="Defend the fort while research runs."
           art={zombiesArt}
           selected={active === "zombies"}
-          onPlay={() => setActive("zombies")}
+          onPlay={() => playGame("zombies")}
           testId="cabinet-zombies"
         />
       </div>
