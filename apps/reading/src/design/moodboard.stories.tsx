@@ -45,6 +45,24 @@ const SURFACE_NAMES_NIGHT = [
   "slate-1", "slate-2", "moonlight", "starlight", "bright",
 ];
 
+function swatchTextColor(hex: string) {
+  const channels = hex
+    .slice(1)
+    .match(/.{2}/g)!
+    .map((channel) => Number.parseInt(channel, 16) / 255)
+    .map((channel) =>
+      channel <= 0.04045
+        ? channel / 12.92
+        : ((channel + 0.055) / 1.055) ** 2.4,
+    );
+  const luminance =
+    0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  // Pure endpoints guarantee the WCAG 4.5:1 floor even for mid-ramp samples;
+  // the swatch is a token specimen, so its overlaid annotation must not use a
+  // softer brand off-black/off-white at the contrast boundary.
+  return luminance > 0.179 ? "black" : "white";
+}
+
 function Swatch({
   name, hex, dark, role,
 }: { name: string; hex: string; dark?: boolean; role?: string }) {
@@ -57,14 +75,14 @@ function Swatch({
         boxShadow: dark ? "5px 5px 0 0 #8A7300" : "5px 5px 0 0 #0F1419",
         padding: 14,
         minHeight: 88,
-        color: dark || ["ink", "shadow-2", "shadow-1", "void", "space-1", "space-2", "charcoal-1", "charcoal-2", "slate-1", "slate-2"].includes(name) ? "#FBFCFD" : "#0F1419",
+        color: swatchTextColor(hex),
         fontFamily: '"JetBrains Mono", monospace',
         fontSize: 11.5,
       }}
     >
       <div style={{ fontSize: 13, fontWeight: 700 }}>{hex}</div>
-      <div style={{ marginTop: 6, opacity: 0.85, textTransform: "uppercase", letterSpacing: "0.05em" }}>{name}</div>
-      {role && <div style={{ marginTop: 4, opacity: 0.6 }}>{role}</div>}
+      <div style={{ marginTop: 6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{name}</div>
+      {role && <div style={{ marginTop: 4 }}>{role}</div>}
     </div>
   );
 }
