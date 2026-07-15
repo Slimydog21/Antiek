@@ -38,6 +38,13 @@ const budget = {
   remaining_usd: 4,
   spent_status: "known" as const,
   cap_env: null,
+  reserved_estimated_usd: 1,
+  spend_basis: "reserved_estimate" as const,
+  enforcement_cap_usd: 5,
+  enforcement_cap_env: null,
+  caps_aligned: true,
+  over_budget: false,
+  over_budget_usd: 0,
   notes: ["test note"],
 };
 
@@ -96,8 +103,10 @@ describe("Settings SPR-01", () => {
     });
     expect(screen.getByText(/ready/i)).toBeTruthy();
     expect(screen.getAllByText("registered").length).toBeGreaterThan(0);
-    expect(screen.getByText("$5.00")).toBeTruthy();
+    expect(screen.getAllByText("$5.00")).toHaveLength(2);
     expect(screen.getByText("$1.0000")).toBeTruthy();
+    expect(screen.getByText("Reserved estimate today")).toBeTruthy();
+    expect(screen.queryByText("Spent today")).toBeNull();
   });
 
   it("projects cost and shows honest unknown pricing", async () => {

@@ -78,11 +78,16 @@ def test_budget_default_cap_with_known_spend_sidecar(
     assert body["spent_status"] == "known"
     assert body["spent_usd"] == 1.25
     assert body["remaining_usd"] == 3.75
+    # Honesty: same number is labeled reserved estimate, not settled cost.
+    assert body["reserved_estimated_usd"] == 1.25
+    assert body["spend_basis"] == "reserved_estimate"
+    assert body["over_budget"] is False
+    assert any("reserved" in n.lower() for n in body["notes"])
 
 
 @pytest.mark.parametrize(
     ("operator_cap", "expected_remaining"),
-    [(200.0, 196.0), (2.0, 0.0)],
+    [(200.0, 196.0), (2.0, -2.0)],
 )
 def test_budget_rebases_sidecar_spend_on_operator_cap(
     monkeypatch: pytest.MonkeyPatch,
@@ -129,8 +134,8 @@ def test_budget_malformed_spend_is_unknown(
     assert budget.spent_status == "unknown"
     assert budget.spent_usd is None
     assert budget.remaining_usd is None
-    assert budget.over_budget is False
-    assert budget.over_budget_usd == 0.0
+    assert budget.over_budget is None
+    assert budget.over_budget_usd is None
 
 
 @pytest.mark.parametrize(
@@ -187,6 +192,134 @@ def test_budget_operator_env_cap(
     body = r.json()
     assert body["daily_cap_usd"] == 12.5
     assert body["cap_env"] == "ANTIEK_OPERATOR_BUDGET_USD"
+    # Operator display cap differs from daemon default enforcement ($5).
+    assert body["enforcement_cap_usd"] == 5.0
+    assert body["caps_aligned"] is False
+    assert any("differs from enforcement" in n for n in body["notes"])
+
+
+def test_budget_operator_cap_differs_from_daemon_cap_stays_consistent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Regression (#704 + #715 residual): spent + remaining share Settings baseline.
+
+    Sidecar: daemon cap $5, reserved $4. Operator Settings cap $200.
+    Pre-fix bug: remaining came from remaining_today() ($1) and spent was
+    re-based as $200 - $1 = $199 (bar shows ~100% used). Fix: reserved=$4,
+    remaining=$196 on the Settings cap.
+    """
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.delenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", raising=False)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "200")
+
+    budget = read_operator_budget()
+
+    assert budget.daily_cap_usd == 200.0
+    assert budget.spent_status == "known"
+    assert budget.spent_usd == 4.0
+    assert budget.reserved_estimated_usd == 4.0
+    assert budget.remaining_usd == 196.0
+    assert budget.spend_basis == "reserved_estimate"
+    assert budget.enforcement_cap_usd == 5.0
+    assert budget.caps_aligned is False
+    assert budget.over_budget is False
+    # Pre-fix failure mode must not reappear.
+    assert budget.spent_usd != 199.0
+    assert budget.remaining_usd != 1.0
+
+
+def test_budget_reports_persisted_daemon_cap_over_changed_environment(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", "5")
+    DaemonBudget.from_env().reserve(1.0)
+    monkeypatch.setenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", "10")
+
+    budget = read_operator_budget()
+
+    assert budget.enforcement_cap_usd == 5.0
+    assert budget.spent_usd == 1.0
+
+
+def test_budget_signed_remaining_exposes_overrun_magnitude(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """When reserved exceeds the display cap, remaining is negative (not clamped)."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    # Reserve $4 against daemon $5, then tighten Settings to $2.
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    DaemonBudget(daily_cap_usd=5.0).reserve(2.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "2")
+
+    budget = read_operator_budget()
+
+    assert budget.reserved_estimated_usd == 4.0
+    assert budget.remaining_usd == -2.0  # signed, not max(0, ...)
+    assert budget.over_budget is True
+    assert any("over display budget" in n for n in budget.notes)
+
+
+def test_budget_sidecar_read_does_not_require_budget_py_mutation() -> None:
+    """§7.4 tripwire: this residual must not edit orchestration/continuous/budget.py."""
+    budget_mod = Path("orchestration/continuous/budget.py").read_text(encoding="utf-8")
+    # Guard: residual must not add spent_today() (the #715 placement that tripped CI).
+    assert "def spent_today" not in budget_mod
+
+
+def test_budget_malformed_sidecar_missing_spent_key_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Present sidecar without spent_usd must NOT fabricate $0 known spend."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    # Create a sidecar-shaped file missing the required key via reserve then edit.
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    del raw["spent_usd"]
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+    assert budget.spend_basis == "unknown"
+
+
+def test_budget_malformed_sidecar_negative_spent_is_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Negative sidecar spend is corrupt data → unknown, not clamped to 0."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+    path = _budget_path()
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["spent_usd"] = -3.0
+    path.write_text(json.dumps(raw), encoding="utf-8")
+
+    budget = read_operator_budget()
+    assert budget.spent_status == "unknown"
+    assert budget.spent_usd is None
+    assert budget.remaining_usd is None
+
+
+def test_budget_rejects_non_finite_operator_cap(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """nan/inf/negative display caps are ignored; fall back with an explicit note."""
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "nan")
+    budget = read_operator_budget()
+    assert budget.daily_cap_usd == 5.0  # daemon default fallback
+    assert any("finite" in n and "non-negative" in n for n in budget.notes)
 
 
 @pytest.mark.parametrize("invalid_cap", ["nan", "inf", "-1"])

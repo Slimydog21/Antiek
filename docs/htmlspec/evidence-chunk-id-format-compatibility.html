@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Evidence chunk ID compatibility repair</title></head>
+<body><main>
+<h1>Keep live Loop One citations inside the canonical chunk allowlist</h1>
+<p>Loop One phase 2 renders retrieved chunks as <code>### chunk_id: ID</code>. The evidence bridge historically extracted only <code>[ID] …</code> lines, so the live canonical allowlist was empty and correct model citations failed closed as parse errors.</p>
+<h2>Contract</h2>
+<ul>
+<li>Accept the legacy bracket prefix and the exact live Loop One heading.</li>
+<li>Loop One prefixes every retrieved-text line and the bridge accepts headings only at trusted record boundaries, so source text cannot inject citation authority.</li>
+<li>IDs are bounded structural tokens; whitespace, controls, empty IDs, malformed headings, and prose mentions are rejected.</li>
+<li>Duplicates preserve first occurrence. Unknown model citations remain rejected by the existing parser allowlist.</li>
+<li>No schema, dispatch, app registration, or external citation-authority change.</li>
+</ul>
+<h2>Acceptance</h2>
+<pre>uv run --with pytest --with pytest-asyncio --with mypy python -m pytest tests/test_evidence_retriever_bridge.py tests/test_roles_evidence_retriever_extraction.py tests/test_loop_one_phase2_parallel.py -q
+uv run --with mypy mypy --strict --explicit-package-bases interfaces/research/api/evidence_retriever.py
+uv run --with ruff ruff check interfaces/research/api/evidence_retriever.py tests/test_evidence_retriever_bridge.py
+uv run --python 3.12 python -m compileall -q interfaces/research/api/evidence_retriever.py
+git diff --check</pre>
+</main></body></html>
