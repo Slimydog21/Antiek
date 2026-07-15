@@ -34,13 +34,15 @@ vi.mock("../../api/multimedia", async (importOriginal) => {
       updated_at: 1000,
       applied: true,
     }),
+    prepareResearchIntent: vi.fn().mockResolvedValue({ intent_id: "mmri_test", state: "prepared" }),
   };
 });
 
-import { getListeningProgress, putListeningProgress } from "../../api/multimedia";
+import { getListeningProgress, prepareResearchIntent, putListeningProgress } from "../../api/multimedia";
 
 const mockGetProgress = vi.mocked(getListeningProgress);
 const mockPutProgress = vi.mocked(putListeningProgress);
+const mockPrepareResearch = vi.mocked(prepareResearchIntent);
 
 const playback: MultimediaLocalAudiblePlayback = {
   asset_id: "asset-1", revision_id: "revision-1", receipt_sha256: "a".repeat(64),
@@ -141,6 +143,65 @@ describe("ActiveListeningPlayer", () => {
     expect(screen.getByText(/exact excerpt unavailable/)).toBeTruthy();
     expect(screen.getByText(/Evidence records: chunk-1/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Inspect evidence" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Research this" })).toBeNull();
+  });
+
+  it("prepares editable research from immutable exact evidence without execution calls", async () => {
+    render(<ActiveListeningPlayer playback={playback} title="Flight lesson" />);
+    fireEvent.click(screen.getByRole("button", { name: "Review learned claims" }));
+    fireEvent.click(screen.getByRole("button", { name: "Research this" }));
+    const question = screen.getByLabelText("Research question") as HTMLTextAreaElement;
+    expect(question.value).toBe("Recall the mechanism.");
+    expect(screen.getAllByText("Lift changes with airflow.").length).toBeGreaterThan(1);
+    fireEvent.change(question, { target: { value: "Why does airflow alter lift?" } });
+    const prepare = screen.getByRole("button", { name: "Prepare research" });
+    fireEvent.click(prepare);
+    fireEvent.click(prepare);
+    await waitFor(() => expect(mockPrepareResearch).toHaveBeenCalledOnce());
+    expect(mockPrepareResearch).toHaveBeenCalledWith(
+      "asset-1",
+      "revision-1",
+      "a".repeat(64),
+      "b".repeat(64),
+      playback.learned_claims[0],
+      "Why does airflow alter lift?",
+      expect.any(String),
+    );
+    expect(screen.getByText(/Plan review is the next step/)).toBeTruthy();
+  });
+
+  it("locks claim and question changes until research preparation resolves", async () => {
+    let resolveResearch!: (value: Awaited<ReturnType<typeof prepareResearchIntent>>) => void;
+    mockPrepareResearch.mockReturnValueOnce(new Promise((resolve) => { resolveResearch = resolve; }));
+    const secondClaim = {
+      ...playback.learned_claims[0],
+      line_id: "two-line-1",
+      claim_text: "Drag also changes with airflow.",
+      follow_up_prompt: "How does drag change?",
+      evidence_sources: [{
+        ...playback.learned_claims[0].evidence_sources[0],
+        chunk_id: "chunk-2",
+        exact_text: "Drag also changes with airflow.",
+      }],
+      source_chunk_ids: ["chunk-2"],
+    };
+    render(<ActiveListeningPlayer playback={{
+      ...playback,
+      learned_claim_count: 2,
+      learned_claims: [...playback.learned_claims, secondClaim],
+    }} title="Flight lesson" />);
+    fireEvent.click(screen.getByRole("button", { name: "Review learned claims" }));
+    const researchButtons = screen.getAllByRole("button", { name: "Research this" });
+    fireEvent.click(researchButtons[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Prepare research" }));
+    expect(screen.getByLabelText("Research question")).toHaveProperty("disabled", true);
+    expect(researchButtons[1]).toHaveProperty("disabled", true);
+    fireEvent.click(researchButtons[1]);
+    resolveResearch({} as Awaited<ReturnType<typeof prepareResearchIntent>>);
+    await waitFor(() => expect(screen.getByText(/Plan review is the next step/)).toBeTruthy());
+    expect(screen.getByLabelText("Research question")).toHaveProperty(
+      "value", "Recall the mechanism.",
+    );
   });
 
   it("registers Media Session actions and clears owned state", () => {
