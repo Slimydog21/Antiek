@@ -20,8 +20,13 @@ if _PKG_ROOT not in sys.path:
 from substrate.event_log import ActionType, trajectory  # noqa: E402
 from substrate.graph import default_db_path, ensure_initialized  # noqa: E402
 from substrate.research_artifact import (  # noqa: E402
+    MAX_INTERROGATION_PROMPT_CHARS,
+    ComposeInterrogationIntegrityError,
     ComposeResult,
+    InterrogationPreviewPacket,
+    InvalidInterrogationPrompt,
     StaleComposePreview,
+    build_interrogation_preview,
     create_compose_draft,
     delete_compose_draft,
     export_research_artifact,
@@ -118,6 +123,38 @@ class ComposeWriteOut(BaseModel):
     reused: bool
 
 
+class InterrogationPreviewIn(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=MAX_INTERROGATION_PROMPT_CHARS)
+    selection_fingerprint: str = Field(..., min_length=64, max_length=64)
+
+
+class InterrogationMemberReceiptOut(BaseModel):
+    index: int
+    investigation_id: str
+    content_hash: str
+    included_chars: int
+    omitted_chars: int
+    truncated_fields: int
+    omitted_fields: int
+
+
+class InterrogationPreviewOut(BaseModel):
+    schema_version: int
+    compose_id: str
+    selection_fingerprint: str
+    prompt_hash: str
+    context: str
+    member_receipts: list[InterrogationMemberReceiptOut]
+    prompt_chars: int
+    context_chars: int
+    max_prompt_chars: int
+    max_context_chars: int
+    truncated_fields: int
+    omitted_fields: int
+    omitted_chars: int
+    provider_called: bool
+
+
 def _compose_out(result: ComposeResult, *, include_url: bool = False) -> ComposeOut:
     assert result.compose_id and result.selection_fingerprint
     return ComposeOut(
@@ -127,6 +164,28 @@ def _compose_out(result: ComposeResult, *, include_url: bool = False) -> Compose
         identical_content=result.hash_conflicts,
         view_url=f"/research/artifact-composes/{result.compose_id}/view" if include_url else None,
         reused=result.reused,
+    )
+
+
+def _interrogation_preview_out(packet: InterrogationPreviewPacket) -> InterrogationPreviewOut:
+    return InterrogationPreviewOut(
+        schema_version=packet.schema_version,
+        compose_id=packet.compose_id,
+        selection_fingerprint=packet.selection_fingerprint,
+        prompt_hash=packet.prompt_hash,
+        context=packet.context,
+        member_receipts=[
+            InterrogationMemberReceiptOut(**receipt.__dict__)
+            for receipt in packet.member_receipts
+        ],
+        prompt_chars=packet.prompt_chars,
+        context_chars=packet.context_chars,
+        max_prompt_chars=packet.max_prompt_chars,
+        max_context_chars=packet.max_context_chars,
+        truncated_fields=packet.truncated_fields,
+        omitted_fields=packet.omitted_fields,
+        omitted_chars=packet.omitted_chars,
+        provider_called=packet.provider_called,
     )
 
 
@@ -200,6 +259,31 @@ async def get_compose(compose_id: str) -> ComposeOut:
         return _compose_out(load_compose_draft(compose_id), include_url=True)
     except (FileNotFoundError, ValueError) as exc:
         raise HTTPException(status_code=404, detail="compose draft not found") from exc
+
+
+@artifact_router.post(
+    "/artifact-composes/{compose_id}/interrogations/preview",
+    response_model=InterrogationPreviewOut,
+)
+async def post_compose_interrogation_preview(
+    compose_id: str,
+    body: InterrogationPreviewIn,
+) -> InterrogationPreviewOut:
+    try:
+        packet = build_interrogation_preview(
+            compose_id,
+            body.prompt,
+            expected_fingerprint=body.selection_fingerprint,
+        )
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="compose draft not found") from exc
+    except InvalidInterrogationPrompt as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except ComposeInterrogationIntegrityError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="compose draft not found") from exc
+    return _interrogation_preview_out(packet)
 
 
 @artifact_router.post(

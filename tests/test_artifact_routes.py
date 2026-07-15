@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 import os
+import sys
 import tempfile
+from pathlib import Path
+
+_REPO = str(Path(__file__).resolve().parents[1])
+if _REPO not in sys.path:
+    sys.path.insert(0, _REPO)
 
 import pytest
 from fastapi.testclient import TestClient
@@ -127,6 +133,91 @@ def test_compose_preview_create_view_member_and_delete(api_env):
     assert protected.status_code == 409
     assert "provenance source" in protected.json()["detail"]
     assert client.get(draft["view_url"]).status_code == 200
+
+
+def test_compose_interrogation_preview_route_receipt_and_statuses(api_env):
+    for iid, text in [("inv-one", "One evidence"), ("inv-two", "Two evidence")]:
+        promote_insight(text=text, investigation_id=iid, source_document_id="doc")
+        _complete(iid, api_env["events"])
+    client = _client()
+    selection = ["inv-one", "inv-two"]
+    preview = client.post(
+        "/research/artifact-composes/preview",
+        json={"investigation_ids": selection},
+    ).json()
+    draft = client.post(
+        "/research/artifact-composes",
+        json={
+            "investigation_ids": selection,
+            "selection_fingerprint": preview["selection_fingerprint"],
+        },
+    ).json()
+
+    response = client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/interrogations/preview",
+        json={
+            "prompt": "Compare the evidence.",
+            "selection_fingerprint": draft["selection_fingerprint"],
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["schema_version"] == 1
+    assert body["compose_id"] == draft["compose_id"]
+    assert body["selection_fingerprint"] == draft["selection_fingerprint"]
+    assert len(body["prompt_hash"]) == 64
+    assert body["provider_called"] is False
+    assert body["context_chars"] == len(body["context"])
+    assert body["context_chars"] <= body["max_context_chars"]
+    assert [r["investigation_id"] for r in body["member_receipts"]] == selection
+
+    assert client.post(
+        "/research/artifact-composes/cmp-000000000000000000000000/interrogations/preview",
+        json={"prompt": "Question?", "selection_fingerprint": draft["selection_fingerprint"]},
+    ).status_code == 404
+    assert client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/interrogations/preview",
+        json={"prompt": "Question?", "selection_fingerprint": "0" * 64},
+    ).status_code == 409
+    assert client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/interrogations/preview",
+        json={"prompt": "", "selection_fingerprint": draft["selection_fingerprint"]},
+    ).status_code == 422
+
+
+def test_compose_interrogation_preview_route_integrity_conflict(api_env):
+    for iid, text in [("inv-one", "One evidence"), ("inv-two", "Two evidence")]:
+        promote_insight(text=text, investigation_id=iid, source_document_id="doc")
+        _complete(iid, api_env["events"])
+    client = _client()
+    selection = ["inv-one", "inv-two"]
+    preview = client.post(
+        "/research/artifact-composes/preview",
+        json={"investigation_ids": selection},
+    ).json()
+    draft = client.post(
+        "/research/artifact-composes",
+        json={
+            "investigation_ids": selection,
+            "selection_fingerprint": preview["selection_fingerprint"],
+        },
+    ).json()
+    member_path = os.path.join(
+        api_env["arts"], "composes", draft["compose_id"], "members", "0.html"
+    )
+    with open(member_path, encoding="utf-8") as handle:
+        content = handle.read()
+    with open(member_path, "w", encoding="utf-8") as handle:
+        handle.write(content.replace('"investigation_id": "inv-one"', '"investigation_id": "inv-x"'))
+
+    response = client.post(
+        f"/research/artifact-composes/{draft['compose_id']}/interrogations/preview",
+        json={
+            "prompt": "Question?",
+            "selection_fingerprint": draft["selection_fingerprint"],
+        },
+    )
+    assert response.status_code == 409
 
 
 def test_compose_write_route_missing_invalid_kind_and_integrity_conflict(api_env):
