@@ -19,10 +19,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 
-const { startInvestigationMock, launchCollectionMock, navigateMock, recordSpawnMock } = vi.hoisted(
+const { startInvestigationMock, launchCollectionMock, launchManifestMock, navigateMock, recordSpawnMock } = vi.hoisted(
   () => ({
     startInvestigationMock: vi.fn(),
     launchCollectionMock: vi.fn(),
+    launchManifestMock: vi.fn(),
     navigateMock: vi.fn(),
     recordSpawnMock: vi.fn(),
   }),
@@ -30,7 +31,7 @@ const { startInvestigationMock, launchCollectionMock, navigateMock, recordSpawnM
 
 vi.mock("../../api/research", async (orig) => {
   const actual = await orig<typeof import("../../api/research")>();
-  return { ...actual, launchDerivedEvidenceCollection: launchCollectionMock };
+  return { ...actual, launchDerivedEvidenceCollection: launchCollectionMock, launchEvidenceManifest: launchManifestMock };
 });
 
 vi.mock("../../lib/api", async (orig) => {
@@ -78,6 +79,7 @@ afterEach(() => {
   navigateMock.mockReset();
   recordSpawnMock.mockReset();
   launchCollectionMock.mockReset();
+  launchManifestMock.mockReset();
 });
 
 function renderChase(props: {
@@ -106,6 +108,7 @@ function renderChase(props: {
     };
   }>;
   evidenceCollection?: { collectionId: string; etag: string };
+  evidenceManifest?: { manifestId: string; etag: string };
 }) {
   return render(
     <MemoryRouter>
@@ -327,6 +330,79 @@ describe("ChaseThread — honest no-key (M4)", () => {
       expect(screen.getByText(/Couldn.t follow this thread/)).toBeTruthy(),
     );
     // Did NOT transition to a launched child.
+    expect(screen.queryByText(/following the thread/)).toBeNull();
+  });
+});
+
+describe("ChaseThread — Cycle 71 manifest-authoritative launch", () => {
+  it("uses launchEvidenceManifest when evidenceManifest prop is present", async () => {
+    launchManifestMock.mockResolvedValue({
+      investigation_id: "inv-manifest", status: "started", start_event_id: "evt-manifest",
+    });
+    renderChase({
+      spawnContext: "What patterns exist across assets?",
+      parentInvestigationId: "inv-parent",
+      evidenceManifest: { manifestId: `dem_${"a".repeat(32)}`, etag: '"manifest-etag"' },
+    });
+    expect(launchManifestMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(launchManifestMock).toHaveBeenCalledTimes(1));
+    // startInvestigation is NOT called — manifest path is exclusive.
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    expect(launchCollectionMock).not.toHaveBeenCalled();
+    // If-Match etag is forwarded.
+    expect(launchManifestMock.mock.calls[0][1]).toBe('"manifest-etag"');
+    // Body sends only question + parent — no context, no sources, no provider.
+    expect(launchManifestMock.mock.calls[0][3]).toEqual({
+      question: "What patterns exist across assets?",
+      parent_investigation_id: "inv-parent",
+    });
+  });
+
+  it("sends no context, sources, or spawn_context in manifest launch", async () => {
+    launchManifestMock.mockResolvedValue({
+      investigation_id: "inv-manifest2", status: "started", start_event_id: "evt-m2",
+    });
+    renderChase({
+      spawnContext: "Cross-asset analysis question",
+      parentInvestigationId: "inv-parent",
+      evidenceManifest: { manifestId: `dem_${"b".repeat(32)}`, etag: '"etag2"' },
+    });
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(launchManifestMock).toHaveBeenCalledTimes(1));
+    const body = launchManifestMock.mock.calls[0][3];
+    // Per spec: "Accept no context, collection array, source array, provider, model, spend, asset, revision, or digest."
+    expect(body.context).toBeUndefined();
+    expect(body.collection_ids).toBeUndefined();
+    expect(body.sources).toBeUndefined();
+    expect(body.provider).toBeUndefined();
+    expect(body.model).toBeUndefined();
+    expect(body.spawn_context).toBeUndefined();
+  });
+
+  it("does not auto-launch on mount when manifest prop is present", () => {
+    renderChase({
+      spawnContext: "a passage",
+      parentInvestigationId: "inv-parent",
+      evidenceManifest: { manifestId: `dem_${"c".repeat(32)}`, etag: '"etag"' },
+    });
+    expect(launchManifestMock).not.toHaveBeenCalled();
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+  });
+
+  it("shows failure surface on manifest launch error", async () => {
+    launchManifestMock.mockImplementation(async () => {
+      throw new ApiError("manifest stale", 412, "ETag mismatch");
+    });
+    renderChase({
+      spawnContext: "a question",
+      parentInvestigationId: "inv-parent",
+      evidenceManifest: { manifestId: `dem_${"d".repeat(32)}`, etag: '"stale-etag"' },
+    });
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() =>
+      expect(screen.getByText(/Couldn.t follow this thread/)).toBeTruthy(),
+    );
     expect(screen.queryByText(/following the thread/)).toBeNull();
   });
 });

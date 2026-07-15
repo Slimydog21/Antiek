@@ -35,6 +35,11 @@ from substrate.research_artifact.evidence_collection_repository import (
     EvidenceCollectionRepository,
     EvidenceCollectionUnavailable,
 )
+from substrate.research_artifact.evidence_manifest_repository import (
+    EvidenceManifestConflict,
+    EvidenceManifestRepository,
+    EvidenceManifestUnavailable,
+)
 from substrate.research_artifact.merge_commit import (
     MergeCommitError,
     MergeCommitNotFound,
@@ -128,6 +133,16 @@ class EvidenceCollectionLaunchBody(BaseModel):
     research_tier: Literal["fast", "deep"] | None = None
 
 
+class EvidenceManifestCreateBody(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True, str_strip_whitespace=True)
+    label: str = Field(min_length=1, max_length=512)
+    collection_ids: tuple[str, ...] = Field(min_length=2, max_length=8)
+
+
+class EvidenceManifestLaunchBody(EvidenceCollectionLaunchBody):
+    pass
+
+
 class MergeCommitResponse(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     operation_id: str
@@ -148,16 +163,13 @@ def get_merge_draft_repository() -> MergeDraftRepository:
 merge_asset_router = APIRouter(
     prefix="/research/derived-assets/merge", tags=["derived-asset-merge"]
 )
-derived_asset_router = APIRouter(
-    prefix="/research/derived-assets", tags=["derived-assets"]
-)
+derived_asset_router = APIRouter(prefix="/research/derived-assets", tags=["derived-assets"])
 
 NO_STORE = {"Cache-Control": "private, no-store"}
 FRAME_HEADERS = {
     **NO_STORE,
     "Content-Security-Policy": (
-        "default-src 'none'; frame-ancestors 'self'; base-uri 'none'; "
-        "form-action 'none'; sandbox"
+        "default-src 'none'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; sandbox"
     ),
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -184,6 +196,89 @@ def _collection_error(exc: Exception) -> HTTPException:
     return HTTPException(409, "evidence collection integrity conflict", headers=NO_STORE)
 
 
+def _manifest_repository() -> EvidenceManifestRepository:
+    return EvidenceManifestRepository(db_path=default_db_path())
+
+
+def _manifest_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, EvidenceManifestUnavailable):
+        return HTTPException(404, "evidence manifest is unavailable", headers=NO_STORE)
+    return HTTPException(409, "evidence manifest integrity conflict", headers=NO_STORE)
+
+
+@derived_asset_router.post("/evidence-manifests", status_code=201)
+def create_evidence_manifest(
+    body: EvidenceManifestCreateBody,
+    request: Request,
+    owner_id: str = Depends(authenticated_multimedia_operator),
+) -> Response:
+    key = request.headers.get("Idempotency-Key")
+    if key is None:
+        raise HTTPException(422, "Idempotency-Key is required", headers=NO_STORE)
+    try:
+        result = _manifest_repository().create(
+            owner_user_id=owner_id, idempotency_key=key, **body.model_dump()
+        )
+    except (
+        EvidenceManifestUnavailable,
+        EvidenceManifestConflict,
+        EvidenceCollectionUnavailable,
+        EvidenceCollectionConflict,
+        DerivedAssetUnavailable,
+        DerivedAssetIntegrity,
+        DerivedAssetRetrievalIntegrity,
+        DerivedCitationConflict,
+    ) as exc:
+        raise _manifest_error(exc) from None
+    except ValueError:
+        raise HTTPException(422, "evidence manifest request is invalid", headers=NO_STORE) from None
+    return Response(
+        _canonical_response(result),
+        status_code=201,
+        media_type="application/json",
+        headers={**NO_STORE, "ETag": result["etag"]},
+    )
+
+
+@derived_asset_router.get("/evidence-manifests")
+async def list_evidence_manifests(request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "evidence manifest request is invalid", headers=NO_STORE)
+    try:
+        result = _manifest_repository().list(
+            owner_user_id=authenticated_multimedia_operator(request)
+        )
+    except EvidenceManifestConflict as exc:
+        raise _manifest_error(exc) from None
+    return Response(_canonical_response(result), media_type="application/json", headers=NO_STORE)
+
+
+@derived_asset_router.get("/evidence-manifests/{manifest_id}")
+async def read_evidence_manifest(manifest_id: str, request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "evidence manifest request is invalid", headers=NO_STORE)
+    try:
+        result = _manifest_repository().read(
+            owner_user_id=authenticated_multimedia_operator(request), manifest_id=manifest_id
+        )
+    except (
+        EvidenceManifestUnavailable,
+        EvidenceManifestConflict,
+        EvidenceCollectionUnavailable,
+        EvidenceCollectionConflict,
+        DerivedAssetUnavailable,
+        DerivedAssetIntegrity,
+        DerivedAssetRetrievalIntegrity,
+        DerivedCitationConflict,
+    ) as exc:
+        raise _manifest_error(exc) from None
+    return Response(
+        _canonical_response(result),
+        media_type="application/json",
+        headers={**NO_STORE, "ETag": result["etag"]},
+    )
+
+
 @derived_asset_router.post("/evidence-collections", status_code=201)
 def create_evidence_collection(
     body: EvidenceCollectionCreateBody,
@@ -197,15 +292,25 @@ def create_evidence_collection(
         result = _collection_repository().create(
             owner_user_id=owner_id, idempotency_key=key, **body.model_dump()
         )
-    except (EvidenceCollectionUnavailable, EvidenceCollectionConflict,
-            DerivedAssetUnavailable, DerivedAssetIntegrity,
-            DerivedAssetRetrievalIntegrity, DerivedCitationConflict) as exc:
+    except (
+        EvidenceCollectionUnavailable,
+        EvidenceCollectionConflict,
+        DerivedAssetUnavailable,
+        DerivedAssetIntegrity,
+        DerivedAssetRetrievalIntegrity,
+        DerivedCitationConflict,
+    ) as exc:
         raise _collection_error(exc) from None
     except ValueError:
-        raise HTTPException(422, "evidence collection request is invalid", headers=NO_STORE) \
-            from None
-    return Response(_canonical_response(result), status_code=201,
-                    media_type="application/json", headers={**NO_STORE, "ETag": result["etag"]})
+        raise HTTPException(
+            422, "evidence collection request is invalid", headers=NO_STORE
+        ) from None
+    return Response(
+        _canonical_response(result),
+        status_code=201,
+        media_type="application/json",
+        headers={**NO_STORE, "ETag": result["etag"]},
+    )
 
 
 @derived_asset_router.get("/evidence-collections")
@@ -217,7 +322,8 @@ async def list_evidence_collections(request: Request) -> Response:
     if set(request.query_params) - {"asset_id", "revision_id"}:
         raise HTTPException(422, "evidence collection request is invalid", headers=NO_STORE)
     result = _collection_repository().list(
-        owner_user_id=authenticated_multimedia_operator(request), asset_id=asset_id,
+        owner_user_id=authenticated_multimedia_operator(request),
+        asset_id=asset_id,
         revision_id=revision_id,
     )
     return Response(_canonical_response(result), media_type="application/json", headers=NO_STORE)
@@ -232,12 +338,20 @@ async def read_evidence_collection(collection_id: str, request: Request) -> Resp
             owner_user_id=authenticated_multimedia_operator(request),
             collection_id=collection_id,
         )
-    except (EvidenceCollectionUnavailable, EvidenceCollectionConflict,
-            DerivedAssetUnavailable, DerivedAssetIntegrity,
-            DerivedAssetRetrievalIntegrity, DerivedCitationConflict) as exc:
+    except (
+        EvidenceCollectionUnavailable,
+        EvidenceCollectionConflict,
+        DerivedAssetUnavailable,
+        DerivedAssetIntegrity,
+        DerivedAssetRetrievalIntegrity,
+        DerivedCitationConflict,
+    ) as exc:
         raise _collection_error(exc) from None
-    return Response(_canonical_response(result), media_type="application/json",
-                    headers={**NO_STORE, "ETag": result["etag"]})
+    return Response(
+        _canonical_response(result),
+        media_type="application/json",
+        headers={**NO_STORE, "ETag": result["etag"]},
+    )
 
 
 def _canonical_response(value: object) -> str:
@@ -252,8 +366,9 @@ async def discover_derived_assets(request: Request) -> Response:
         result = _library().discover(authenticated_multimedia_operator(request))
     except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
         raise _library_error(exc) from None
-    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
-                    headers=NO_STORE)
+    return Response(
+        json.dumps(result, separators=(",", ":")), media_type="application/json", headers=NO_STORE
+    )
 
 
 @derived_asset_router.get("/assets/{asset_id}/revisions")
@@ -264,8 +379,9 @@ async def derived_asset_history(asset_id: str, request: Request) -> Response:
         result = _library().history(authenticated_multimedia_operator(request), asset_id)
     except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
         raise _library_error(exc) from None
-    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
-                    headers=NO_STORE)
+    return Response(
+        json.dumps(result, separators=(",", ":")), media_type="application/json", headers=NO_STORE
+    )
 
 
 @derived_asset_router.get("/assets/{asset_id}/current/frame-preview")
@@ -294,9 +410,7 @@ async def exact_derived_asset_preview(
     return Response(content, media_type="text/html; charset=utf-8", headers=FRAME_HEADERS)
 
 
-def _reading_response(
-    *, owner_id: str, asset_id: str, revision_id: str | None = None
-) -> Response:
+def _reading_response(*, owner_id: str, asset_id: str, revision_id: str | None = None) -> Response:
     try:
         result = _library().reading(owner_id, asset_id, revision_id)
     except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
@@ -312,9 +426,7 @@ def _reading_response(
 async def current_derived_asset_reading(asset_id: str, request: Request) -> Response:
     if request.query_params or await request.body():
         raise HTTPException(422, "derived asset request is invalid", headers=NO_STORE)
-    return _reading_response(
-        owner_id=authenticated_multimedia_operator(request), asset_id=asset_id
-    )
+    return _reading_response(owner_id=authenticated_multimedia_operator(request), asset_id=asset_id)
 
 
 @derived_asset_router.get("/assets/{asset_id}/revisions/{revision_id}/reading")
@@ -331,7 +443,10 @@ async def exact_derived_asset_reading(
 
 
 def _search_response(
-    *, owner_id: str, asset_id: str, body: DerivedAssetSearchBody,
+    *,
+    owner_id: str,
+    asset_id: str,
+    body: DerivedAssetSearchBody,
     revision_id: str | None = None,
 ) -> Response:
     try:
@@ -345,17 +460,23 @@ def _search_response(
     except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
         raise _library_error(exc) from None
     except DerivedAssetRetrievalIntegrity:
-        raise HTTPException(409, "derived asset retrieval integrity conflict", headers=NO_STORE) \
-            from None
+        raise HTTPException(
+            409, "derived asset retrieval integrity conflict", headers=NO_STORE
+        ) from None
     except ValueError:
-        raise HTTPException(422, "derived asset retrieval request is invalid", headers=NO_STORE) \
-            from None
-    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
-                    headers=NO_STORE)
+        raise HTTPException(
+            422, "derived asset retrieval request is invalid", headers=NO_STORE
+        ) from None
+    return Response(
+        json.dumps(result, separators=(",", ":")), media_type="application/json", headers=NO_STORE
+    )
 
 
 def _companion_evidence_response(
-    *, owner_id: str, asset_id: str, body: DerivedCompanionEvidenceBody,
+    *,
+    owner_id: str,
+    asset_id: str,
+    body: DerivedCompanionEvidenceBody,
     revision_id: str | None = None,
 ) -> Response:
     try:
@@ -368,28 +489,33 @@ def _companion_evidence_response(
     except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
         raise _library_error(exc) from None
     except DerivedAssetRetrievalIntegrity:
-        raise HTTPException(409, "derived asset retrieval integrity conflict", headers=NO_STORE) \
-            from None
+        raise HTTPException(
+            409, "derived asset retrieval integrity conflict", headers=NO_STORE
+        ) from None
     except CompanionIdempotencyConflict:
         raise HTTPException(409, "companion idempotency conflict", headers=NO_STORE) from None
     except CompanionStaleRevision as exc:
         return Response(
-            json.dumps({"detail": "stale current revision", "current": exc.scope},
-                       separators=(",", ":")),
+            json.dumps(
+                {"detail": "stale current revision", "current": exc.scope}, separators=(",", ":")
+            ),
             status_code=409,
             media_type="application/json",
             headers=NO_STORE,
         )
     except ValueError:
-        raise HTTPException(422, "derived companion request is invalid", headers=NO_STORE) \
-            from None
+        raise HTTPException(422, "derived companion request is invalid", headers=NO_STORE) from None
     result["execution"] = _companion_execution(result["scope"])
-    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
-                    headers=NO_STORE)
+    return Response(
+        json.dumps(result, separators=(",", ":")), media_type="application/json", headers=NO_STORE
+    )
 
 
 def _companion_conversation_response(
-    *, owner_id: str, asset_id: str, revision_id: str | None = None,
+    *,
+    owner_id: str,
+    asset_id: str,
+    revision_id: str | None = None,
 ) -> Response:
     try:
         result = DerivedCompanionRepository(db_path=default_db_path()).conversation(
@@ -398,8 +524,9 @@ def _companion_conversation_response(
     except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
         raise _library_error(exc) from None
     result["execution"] = _companion_execution(result["scope"])
-    return Response(json.dumps(result, separators=(",", ":")), media_type="application/json",
-                    headers=NO_STORE)
+    return Response(
+        json.dumps(result, separators=(",", ":")), media_type="application/json", headers=NO_STORE
+    )
 
 
 def _companion_execution(scope: dict[str, Any]) -> dict[str, Any]:
@@ -450,9 +577,7 @@ async def read_current_companion(asset_id: str, request: Request) -> Response:
     )
 
 
-@derived_asset_router.post(
-    "/assets/{asset_id}/revisions/{revision_id}/companion/evidence"
-)
+@derived_asset_router.post("/assets/{asset_id}/revisions/{revision_id}/companion/evidence")
 def prepare_exact_companion_evidence(
     asset_id: str,
     revision_id: str,
@@ -465,13 +590,12 @@ def prepare_exact_companion_evidence(
 
 
 @derived_asset_router.get("/assets/{asset_id}/revisions/{revision_id}/companion")
-async def read_exact_companion(
-    asset_id: str, revision_id: str, request: Request
-) -> Response:
+async def read_exact_companion(asset_id: str, revision_id: str, request: Request) -> Response:
     if request.query_params or await request.body():
         raise HTTPException(422, "derived companion request is invalid", headers=NO_STORE)
     return _companion_conversation_response(
-        owner_id=authenticated_multimedia_operator(request), asset_id=asset_id,
+        owner_id=authenticated_multimedia_operator(request),
+        asset_id=asset_id,
         revision_id=revision_id,
     )
 
@@ -664,6 +788,8 @@ def _initialize_merge_schema() -> None:
 
 
 __all__ = [
-    "derived_asset_router", "get_merge_draft_repository", "merge_asset_router",
+    "derived_asset_router",
+    "get_merge_draft_repository",
+    "merge_asset_router",
     "register_merge_asset_routes",
 ]

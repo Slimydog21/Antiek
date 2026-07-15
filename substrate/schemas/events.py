@@ -763,7 +763,10 @@ class ActionType(str, Enum):  # noqa: UP042 - preserve established schema enum A
 # v35: investigation.start_requested gains an ordered derived_sources tuple
 #     for one cohesive launch from 2-6 citations in the same immutable
 #     revision. The empty default preserves historical and singleton events.
-EVENT_SCHEMA_VERSION: int = 35
+# v36: investigation.start_requested gains compact, first-class evidence
+#     manifest provenance. The null default keeps historical events valid and
+#     the validator preserves the singleton/same-revision source invariant.
+EVENT_SCHEMA_VERSION: int = 36
 
 # Deterministic code paths (graph ops, SQL, embedding math) are themselves
 # a "policy" but a stable code-defined one. LLM call events override this
@@ -2175,6 +2178,38 @@ class DerivedCitationSource(BaseModel):
     excerpt: str = Field(min_length=1, max_length=8192)
 
 
+class EvidenceManifestCollectionRef(BaseModel):
+    """Immutable collection binding carried by manifest-launched events."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    collection_id: str = Field(pattern=r"^dec_[0-9a-f]{32}$")
+    version: int = Field(ge=1)
+    collection_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    ordinal: int = Field(ge=0)
+
+
+class EvidenceManifestProvenance(BaseModel):
+    """Compact provenance; exact excerpts remain owned by collections."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    manifest_id: str = Field(pattern=r"^dem_[0-9a-f]{32}$")
+    version: int = Field(ge=1)
+    manifest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    collections: tuple[EvidenceManifestCollectionRef, ...] = Field(
+        min_length=2, max_length=8
+    )
+    collection_count: int = Field(ge=2, le=8)
+    total_passage_count: int = Field(ge=4, le=32)
+
+    @model_validator(mode="after")
+    def _ordered_and_counted(self) -> EvidenceManifestProvenance:
+        if self.collection_count != len(self.collections):
+            raise ValueError("evidence manifest collection count mismatch")
+        if [item.ordinal for item in self.collections] != list(range(len(self.collections))):
+            raise ValueError("evidence manifest collection order mismatch")
+        return self
+
+
 class InvestigationStartRequestedPayload(_PayloadBase):
     """Cold-question entry point. The orchestrator subscribes to this
     action_type and spawns a per-investigation coroutine that walks
@@ -2203,10 +2238,13 @@ class InvestigationStartRequestedPayload(_PayloadBase):
     spawn_context: str | None = None  # highlighted text from parent's synthesis
     derived_source: DerivedCitationSource | None = None
     derived_sources: tuple[DerivedCitationSource, ...] = ()
+    evidence_manifest: EvidenceManifestProvenance | None = None
 
     @model_validator(mode="after")
     def _valid_derived_sources(self) -> InvestigationStartRequestedPayload:
-        if self.derived_source is not None and self.derived_sources:
+        populated = sum((self.derived_source is not None, bool(self.derived_sources),
+                         self.evidence_manifest is not None))
+        if populated > 1:
             raise ValueError("derived source fields are mutually exclusive")
         if self.derived_sources:
             from substrate.research_artifact.derived_citation_source import (
