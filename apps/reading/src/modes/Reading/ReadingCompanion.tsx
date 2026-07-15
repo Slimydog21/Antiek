@@ -1,8 +1,16 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
+import { createResearchCompose, previewResearchCompose } from "../../api/research";
 import { useInvestigation } from "../../hooks/useInvestigation";
+import { useInvestigationList } from "../../hooks/useInvestigationList";
 import { deriveNotes } from "../ResearchWorkstation/NotesPanel";
 import Thinking from "../../shared/Thinking";
+import LemonButton from "../../components/lemon/LemonButton";
+import {
+  completedReadingChases,
+  reconcileChaseSelection,
+  toggleChaseSelection,
+} from "./chaseCollective";
 
 /**
  * ReadingCompanion — the Read glass-box (Read SPR-06 M2).
@@ -64,6 +72,85 @@ export default function ReadingCompanion({
   // Read/display only — subscribe to the book's reading thread for notes.
   const reading = useInvestigation(readingThreadId);
   const notes = useMemo(() => deriveNotes(reading.events), [reading.events]);
+  const { investigations } = useInvestigationList({ limit: 200 });
+  const completedChases = useMemo(
+    () => completedReadingChases(investigations, readingThreadId),
+    [investigations, readingThreadId],
+  );
+  const availableIds = useMemo(
+    () => completedChases.map((chase) => chase.investigationId),
+    [completedChases],
+  );
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedIdsRef = useRef(selectedIds);
+  selectedIdsRef.current = selectedIds;
+  const selectionTouched = useRef(false);
+  const [review, setReview] = useState<Awaited<ReturnType<typeof previewResearchCompose>> | null>(null);
+  const [composeBusy, setComposeBusy] = useState(false);
+  const [composeError, setComposeError] = useState<string | null>(null);
+
+  useEffect(() => {
+    selectionTouched.current = false;
+    setSelectedIds([]);
+    setReview(null);
+    setComposeError(null);
+  }, [readingThreadId]);
+
+  useEffect(() => {
+    setSelectedIds((current) =>
+      reconcileChaseSelection(availableIds, current, selectionTouched.current),
+    );
+  }, [availableIds]);
+
+  const toggleChase = (investigationId: string) => {
+    selectionTouched.current = true;
+    setReview(null);
+    setComposeError(null);
+    setSelectedIds((current) =>
+      toggleChaseSelection(availableIds, current, investigationId),
+    );
+  };
+
+  const reviewChases = async () => {
+    if (selectedIds.length < 2) return;
+    const requested = [...selectedIds];
+    setComposeBusy(true);
+    setComposeError(null);
+    try {
+      const response = await previewResearchCompose(requested);
+      if (
+        selectedIdsRef.current.length === requested.length &&
+        selectedIdsRef.current.every((id, index) => id === requested[index])
+      ) {
+        setReview(response);
+      }
+    } catch (error) {
+      setComposeError(error instanceof Error ? error.message : "Couldn’t review these chases.");
+    } finally {
+      setComposeBusy(false);
+    }
+  };
+
+  const createCollective = async () => {
+    if (!review) return;
+    const requested = [...selectedIds];
+    setComposeBusy(true);
+    setComposeError(null);
+    try {
+      const response = await createResearchCompose(requested, review.selection_fingerprint);
+      if (
+        selectedIdsRef.current.length === requested.length &&
+        selectedIdsRef.current.every((id, index) => id === requested[index])
+      ) {
+        setReview(response);
+      }
+    } catch (error) {
+      setReview(null);
+      setComposeError(error instanceof Error ? error.message : "The chases changed. Review them again.");
+    } finally {
+      setComposeBusy(false);
+    }
+  };
 
   // "Working" only when the thread is genuinely running (a distill / talk in
   // flight). A not_found thread (nothing has happened on this book yet) is
@@ -134,6 +221,63 @@ export default function ReadingCompanion({
           </ol>
         )}
       </div>
+
+      {completedChases.length > 0 && (
+        <section className="border-t border-rule px-4 py-4 dark:border-charcoal-1">
+          <fieldset>
+            <legend className="font-serif text-sm text-ink dark:text-bright">
+              Bring completed chases together
+            </legend>
+            <p className="mt-1 text-[11px] font-mono text-shadow-1 dark:text-moonlight">
+              Choose at least two to make one reading.
+            </p>
+            <div className="mt-3 space-y-2">
+              {completedChases.map((chase) => (
+                <label key={chase.investigationId} className="flex cursor-pointer items-start gap-2 text-sm font-serif text-ink dark:text-bright">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(chase.investigationId)}
+                    onChange={() => toggleChase(chase.investigationId)}
+                    disabled={composeBusy}
+                    className="mt-1"
+                  />
+                  <span>{chase.question}</span>
+                </label>
+              ))}
+            </div>
+          </fieldset>
+
+          <div className="mt-3" aria-live="polite">
+            {composeError && <p role="alert" className="mb-2 text-xs text-emperor">{composeError}</p>}
+            {!review && (
+              <LemonButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                disabled={selectedIds.length < 2 || composeBusy}
+                onClick={() => void reviewChases()}
+              >
+                {composeBusy ? "Reviewing…" : "Review selected chases"}
+              </LemonButton>
+            )}
+            {review && !review.view_url && (
+              <div className="space-y-2">
+                <p className="text-xs text-shadow-1 dark:text-moonlight">
+                  {review.members.length} sources ready in the order shown.
+                </p>
+                <LemonButton type="button" variant="primary" size="sm" disabled={composeBusy} onClick={() => void createCollective()}>
+                  {composeBusy ? "Creating…" : "Create collective reading"}
+                </LemonButton>
+              </div>
+            )}
+            {review?.view_url && (
+              <a className="text-sm font-semibold text-ink underline dark:text-bright" href={review.view_url} target="_blank" rel="noreferrer">
+                Open collective reading ↗
+              </a>
+            )}
+          </div>
+        </section>
+      )}
     </aside>
   );
 }
