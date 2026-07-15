@@ -727,7 +727,34 @@ export interface SectionResponse {
   title: string | null;
   prose_text: string | null;
   prose_provenance: Record<string, string[]> | null;
+  prose_provenance_validity?: ProseProvenanceValidity;
+  prose_provenance_status?: ProvenanceAggregateStatus;
   block_count: number;
+}
+
+export type ParagraphProvenanceStatus =
+  | "current"
+  | "stale"
+  | "unsupported"
+  | "ungrounded"
+  | "legacy_unverified";
+
+export type ProvenanceAggregateStatus =
+  | ParagraphProvenanceStatus
+  | "partial";
+
+export interface ProseProvenanceValidity {
+  schema_version: 1;
+  prose_sha256: string;
+  status: ProvenanceAggregateStatus;
+  paragraphs: Record<
+    string,
+    {
+      text_sha256: string;
+      status: ParagraphProvenanceStatus;
+      origin: "generated" | "manual" | "ai_assisted" | "legacy";
+    }
+  >;
 }
 
 export interface DeliverableDetailResponse {
@@ -1031,7 +1058,8 @@ export async function reorderBlock(req: {
 
 export interface UpdateSectionProseRequest {
   prose_text: string;
-  original_text?: string;
+  original_text: string;
+  mutation_origin?: "manual" | "ai_assisted";
   promote_to_graph?: boolean;
   cited_chunk_ids?: string[];
   investigation_id?: string;
@@ -1042,6 +1070,11 @@ export interface UpdateSectionProseResponse {
   section_id: string;
   claim_node_id: string | null;
   claim_event_id: string | null;
+  changed: boolean;
+  prose_text: string;
+  prose_provenance: Record<string, string[]> | null;
+  prose_provenance_validity: ProseProvenanceValidity;
+  prose_provenance_status: ProvenanceAggregateStatus;
 }
 
 export async function updateSectionProse(

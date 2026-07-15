@@ -584,10 +584,13 @@ def attach_block_to_section(
     )
 
 
-# Sentinel distinguishing "caller did not supply prose_provenance" (PRESERVE the
-# stored map — the prose-edit path) from "caller passed a value, including None"
-# (REPLACE it — the generation/regeneration path). See update_section_prose.
+# Sentinel distinguishing a prose edit from generation with a fresh map.
 _PRESERVE_PROVENANCE: Any = object()
+_NO_EXPECTED_PROSE: Any = object()
+
+
+class ProseConflictError(ValueError):
+    """The caller edited a prose version that is no longer current."""
 
 
 def update_section_prose(
@@ -596,35 +599,85 @@ def update_section_prose(
     section_id: str,
     prose_text: str,
     prose_provenance: Any = _PRESERVE_PROVENANCE,
-) -> None:
+    unsupported_paragraphs: set[int] | None = None,
+    expected_prose: Any = _NO_EXPECTED_PROSE,
+    mutation_origin: str = "manual",
+) -> dict[str, Any]:
     """Persist generated/edited prose for a section.
 
-    ``prose_provenance`` is a JSON map (paragraph_index → list of contributing
-    block_ids). It is PRESERVE-UNLESS-SUPPLIED: the generation path (which has
-    a fresh paragraph→blocks map) passes it and it is written; the prose-EDIT
-    path (``patch_section_prose``) does NOT supply it, and the existing
-    provenance is left intact rather than wiped. Passing ``prose_provenance``
-    explicitly (including ``None`` to clear it) REPLACES the stored map — the
-    inverse asymmetry: preserve by default, replace only when told to. This is
-    why a one-paragraph typo fix no longer destroys the whole section's
-    X-ray / citation map."""
+    Fresh generation supplies provenance and an exact validity document.
+    Prose-only edits preserve only unambiguous, byte-identical paragraphs and
+    invalidate every changed paragraph. ``expected_prose`` is an optional
+    compare-and-swap precondition; the HTTP edit path always supplies it."""
     _assert_write_locked(con)
+    from substrate.write.provenance_validity import (
+        edited_provenance,
+        generated_validity,
+        read_validity,
+    )
+
+    row = con.execute(
+        "SELECT s.prose_text, s.prose_provenance, v.validity_json "
+        "FROM deliverable_sections s LEFT JOIN "
+        "deliverable_section_provenance_validity v ON v.section_id = s.section_id "
+        "WHERE s.section_id = ?",
+        [section_id],
+    ).fetchone()
+    if row is None:
+        raise ValueError(f"section not found: {section_id}")
+    old_prose = row[0] or ""
+    if expected_prose is not _NO_EXPECTED_PROSE and old_prose != (expected_prose or ""):
+        raise ProseConflictError("section prose changed since the caller loaded it")
+    if prose_text == old_prose and prose_provenance is _PRESERVE_PROVENANCE:
+        validity = read_validity(old_prose, _decode_json_map(row[1]), row[2])
+        return {"changed": False, "prose_provenance": _decode_json_map(row[1]), "validity": validity}
+
     if prose_provenance is _PRESERVE_PROVENANCE:
-        # Prose-only edit: touch prose_text, leave the provenance column intact.
-        con.execute(
-            "UPDATE deliverable_sections "
-            "SET prose_text = ?, updated_at = CURRENT_TIMESTAMP "
-            "WHERE section_id = ?",
-            [prose_text, section_id],
+        old_provenance = _decode_json_map(row[1])
+        old_validity = read_validity(old_prose, old_provenance, row[2])
+        next_provenance, validity = edited_provenance(
+            old_prose=old_prose,
+            new_prose=prose_text,
+            old_provenance=old_provenance,
+            old_validity=old_validity,
+            origin="ai_assisted" if mutation_origin == "ai_assisted" else "manual",
         )
     else:
-        # Explicit provenance supplied (generation / regeneration): replace it.
-        con.execute(
-            "UPDATE deliverable_sections "
-            "SET prose_text = ?, prose_provenance = ?, updated_at = CURRENT_TIMESTAMP "
-            "WHERE section_id = ?",
-            [prose_text, _maybe_json(prose_provenance), section_id],
+        next_provenance = _decode_json_map(prose_provenance)
+        validity = generated_validity(
+            prose_text,
+            next_provenance or {},
+            unsupported_paragraphs=unsupported_paragraphs,
         )
+    con.execute(
+        "UPDATE deliverable_sections SET prose_text = ?, prose_provenance = ?, "
+        "updated_at = CURRENT_TIMESTAMP WHERE section_id = ?",
+        [prose_text, _maybe_json(next_provenance), section_id],
+    )
+    con.execute(
+        "INSERT INTO deliverable_section_provenance_validity "
+        "(section_id, validity_json, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT (section_id) DO UPDATE SET validity_json = EXCLUDED.validity_json, "
+        "updated_at = EXCLUDED.updated_at",
+        [section_id, _maybe_json(validity), datetime.now(UTC)],
+    )
+    return {"changed": True, "prose_provenance": next_provenance, "validity": validity}
+
+
+def _decode_json_map(raw: Any) -> dict[str, list[str]] | None:
+    if not raw:
+        return None
+    try:
+        value = json.loads(raw) if isinstance(raw, str) else raw
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(value, dict):
+        return None
+    return {
+        str(key): list(blocks)
+        for key, blocks in value.items()
+        if isinstance(blocks, list) and all(isinstance(block, str) for block in blocks)
+    }
 
 
 # ---------------------------------------------------------------------------

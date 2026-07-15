@@ -132,15 +132,19 @@ def resolve_deliverable_sources(
     renders a Sources section only when this is non-empty, so a
     fully-withheld deliverable looks exactly like a source-less one."""
     sec_rows = con.execute(
-        "SELECT prose_provenance FROM deliverable_sections "
-        "WHERE deliverable_id = ? ORDER BY section_index ASC",
+        "SELECT s.prose_text, s.prose_provenance, v.validity_json "
+        "FROM deliverable_sections s LEFT JOIN "
+        "deliverable_section_provenance_validity v ON v.section_id = s.section_id "
+        "WHERE s.deliverable_id = ? ORDER BY s.section_index ASC",
         [deliverable_id],
     ).fetchall()
 
     # Pass 1: collect block ids in first-appearance order, de-duplicated.
     ordered_block_ids: list[str] = []
     seen_blocks: set[str] = set()
-    for (prov_raw,) in sec_rows:
+    from substrate.write.provenance_validity import read_validity
+
+    for prose_text, prov_raw, validity_raw in sec_rows:
         if not prov_raw:
             continue
         try:
@@ -149,7 +153,11 @@ def resolve_deliverable_sources(
             continue
         if not isinstance(prov, dict):
             continue
+        validity = read_validity(prose_text, prov, validity_raw)
+        paragraph_validity = validity["paragraphs"]
         for key in sorted(prov, key=_paragraph_sort_key):
+            if paragraph_validity.get(key, {}).get("status") != "current":
+                continue
             blocks = prov.get(key)
             if not isinstance(blocks, list):
                 continue

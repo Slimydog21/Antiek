@@ -413,6 +413,7 @@ def test_export_json_carries_prose_provenance(client, seed):
     bundle = json.loads(r.json()["content"])
     section = next(s for s in bundle["sections"] if s["title"] == "S1")
     assert section["prose_provenance"] == {"0": [node]}  # carried, not stripped
+    assert section["prose_provenance_validity"]["status"] == "current"
 
 
 def test_export_json_null_provenance_is_none_not_fabricated(client, seed):
@@ -454,12 +455,8 @@ def test_export_json_no_misattribution_across_colliding_section_index(client, se
 # ── GPW SPR-05 — a prose EDIT preserves provenance instead of NULLing it ──
 
 
-def test_prose_edit_preserves_provenance(seed):
-    """update_section_prose is preserve-unless-supplied: an edit that passes
-    ONLY prose_text (as patch_section_prose does) must leave the section's
-    prose_provenance intact — a one-paragraph typo fix no longer wipes the
-    whole section's X-ray/citation map. Passing provenance explicitly still
-    replaces it (the generation/regeneration path)."""
+def test_prose_edit_invalidates_changed_paragraph_provenance(seed):
+    """A changed paragraph cannot retain a current source mapping."""
     import json
 
     from substrate.graph.ops import update_section_prose
@@ -469,7 +466,7 @@ def test_prose_edit_preserves_provenance(seed):
     # 1) Generation sets provenance.
     with connect_write(default_db_path(), purpose="test/seed-prov") as con:
         update_section_prose(
-            con, section_id=sec, prose_text="original prose",
+            con, section_id=sec, prose_text="kept paragraph\n\noriginal prose",
             prose_provenance={0: [node], 1: [node]},
         )
     row = _section_prose_row(seed["deliverable_id"])
@@ -477,10 +474,17 @@ def test_prose_edit_preserves_provenance(seed):
 
     # 2) EDIT path — prose_text only, NO prose_provenance. Provenance PRESERVED.
     with connect_write(default_db_path(), purpose="test/edit") as con:
-        update_section_prose(con, section_id=sec, prose_text="fixed a typo in the prose")
+        result = update_section_prose(
+            con,
+            section_id=sec,
+            prose_text="kept paragraph\n\nfixed a typo in the prose",
+            expected_prose="kept paragraph\n\noriginal prose",
+        )
     row = _section_prose_row(seed["deliverable_id"])
-    assert row[0] == "fixed a typo in the prose"           # text updated
-    assert json.loads(row[1]) == {"0": [node], "1": [node]}  # provenance INTACT (was NULLed before)
+    assert row[0].endswith("fixed a typo in the prose")
+    assert json.loads(row[1]) == {"0": [node]}
+    assert result["validity"]["paragraphs"]["0"]["status"] == "current"
+    assert result["validity"]["paragraphs"]["1"]["status"] == "stale"
 
     # 3) Explicit provenance still REPLACES (regeneration path).
     with connect_write(default_db_path(), purpose="test/regen") as con:
@@ -491,11 +495,7 @@ def test_prose_edit_preserves_provenance(seed):
     assert json.loads(row[1]) == {"0": [node]}             # replaced
 
 
-def test_patch_section_prose_endpoint_preserves_provenance(client, seed):
-    """End-to-end through the real PATCH endpoint: editing a section's prose
-    via the API must not wipe its provenance (the bug this sprint closes)."""
-    import json
-
+def test_patch_section_prose_endpoint_marks_changed_provenance_stale(client, seed):
     from substrate.graph.ops import update_section_prose
 
     sec, node = seed["section_id"], seed["node"]
@@ -505,9 +505,43 @@ def test_patch_section_prose_endpoint_preserves_provenance(client, seed):
         )
 
     r = client.patch(f"/sections/{sec}/prose",
-                     json={"prose_text": "operator fixed a typo"})
+                     json={"prose_text": "operator fixed a typo", "original_text": "original"})
     assert r.status_code == 202, r.text
 
     row = _section_prose_row(seed["deliverable_id"])
     assert row[0] == "operator fixed a typo"
-    assert json.loads(row[1]) == {"0": [node]}  # provenance survived the edit
+    assert row[1] is None
+    assert r.json()["prose_provenance_status"] == "stale"
+
+
+def test_patch_section_prose_rejects_stale_compare_and_swap(client, seed):
+    sec = seed["section_id"]
+    with connect_write(default_db_path(), purpose="test/seed-cas") as con:
+        from substrate.graph.ops import update_section_prose
+        update_section_prose(con, section_id=sec, prose_text="server text", prose_provenance={})
+    r = client.patch(
+        f"/sections/{sec}/prose",
+        json={"prose_text": "late edit", "original_text": "older text"},
+    )
+    assert r.status_code == 409
+    assert _section_prose_row(seed["deliverable_id"])[0] == "server text"
+
+
+def test_patch_section_prose_exact_noop_preserves_current_validity(client, seed):
+    sec, node = seed["section_id"], seed["node"]
+    with connect_write(default_db_path(), purpose="test/seed-noop") as con:
+        from substrate.graph.ops import update_section_prose
+        update_section_prose(
+            con,
+            section_id=sec,
+            prose_text="exact text",
+            prose_provenance={"0": [node]},
+        )
+    r = client.patch(
+        f"/sections/{sec}/prose",
+        json={"prose_text": "exact text", "original_text": "exact text"},
+    )
+    assert r.status_code == 202
+    assert r.json()["changed"] is False
+    assert r.json()["prose_provenance_status"] == "current"
+    assert r.json()["prose_provenance"] == {"0": [node]}

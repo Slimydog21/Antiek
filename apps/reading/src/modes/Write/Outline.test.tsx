@@ -319,6 +319,67 @@ describe("Outline — manual /write edit persistence (SPR-02)", () => {
     );
   });
 
+  it("replaces local X-ray authority with the server's stale validity response", async () => {
+    await mountWithDraft();
+    updateSectionProseMock.mockResolvedValue({
+      status: "saved",
+      section_id: "sec-1",
+      claim_node_id: null,
+      claim_event_id: null,
+      changed: true,
+      prose_text: "Operator-edited paragraph.",
+      prose_provenance: null,
+      prose_provenance_status: "stale",
+      prose_provenance_validity: {
+        schema_version: 1,
+        prose_sha256: "server",
+        status: "stale",
+        paragraphs: {
+          "0": { text_sha256: "paragraph", status: "stale", origin: "manual" },
+        },
+      },
+    });
+    await typeInEditor("Operator-edited paragraph. ");
+    await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalled(), { timeout: 3000 });
+    await userEvent.click(screen.getByRole("button", { name: /^X-ray$/i }));
+    expect(await screen.findByText(/edited since grounding/i)).toBeTruthy();
+    expect(screen.queryByText("Capital intensity rises with scale")).toBeTruthy();
+  });
+
+  it("serializes overlapping autosaves against the confirmed server baseline", async () => {
+    let resolveFirst!: (value: unknown) => void;
+    const firstResponse = new Promise((resolve) => { resolveFirst = resolve; });
+    updateSectionProseMock
+      .mockImplementationOnce(() => firstResponse)
+      .mockResolvedValueOnce({
+        status: "saved", section_id: "sec-1", claim_node_id: null, claim_event_id: null,
+        changed: true, prose_text: "second saved text", prose_provenance: null,
+        prose_provenance_status: "ungrounded",
+        prose_provenance_validity: {
+          schema_version: 1, prose_sha256: "second", status: "ungrounded", paragraphs: {},
+        },
+      });
+    await mountWithDraft();
+    await typeInEditor("First edit. ");
+    await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalledTimes(1), { timeout: 3000 });
+    await typeInEditor("Second edit. ");
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(updateSectionProseMock).toHaveBeenCalledTimes(1);
+    const firstText = updateSectionProseMock.mock.calls[0][1].prose_text;
+    resolveFirst({
+      status: "saved", section_id: "sec-1", claim_node_id: null, claim_event_id: null,
+      changed: true, prose_text: firstText, prose_provenance: null,
+      prose_provenance_status: "ungrounded",
+      prose_provenance_validity: {
+        schema_version: 1, prose_sha256: "first", status: "ungrounded", paragraphs: {},
+      },
+    });
+    await waitFor(() => expect(updateSectionProseMock).toHaveBeenCalledTimes(2));
+    expect(updateSectionProseMock.mock.calls[1][1]).toEqual(
+      expect.objectContaining({ original_text: firstText }),
+    );
+  });
+
   it("edit → reload re-fetch shows the edited prose (round-trip, reload direction)", async () => {
     await mountWithDraft();
     await typeInEditor("Reloaded edit body kept. ");

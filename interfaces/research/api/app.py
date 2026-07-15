@@ -542,6 +542,8 @@ class SectionResponse(BaseModel):
     title: str | None
     prose_text: str | None
     prose_provenance: dict[str, Any] | None
+    prose_provenance_validity: dict[str, Any]
+    prose_provenance_status: str
     block_count: int = 0
 
 
@@ -649,7 +651,8 @@ class UpdateSectionProseRequest(BaseModel):
     node + CLAIM_ASSERTED_BY_OPERATOR event."""
 
     prose_text: str = Field(..., min_length=1)
-    original_text: str | None = None  # what creative_writer produced
+    original_text: str
+    mutation_origin: Literal["manual", "ai_assisted"] = "manual"
     promote_to_graph: bool = False
     cited_chunk_ids: list[str] = Field(default_factory=list)
     investigation_id: str = Field(default="__operator__", min_length=1)
@@ -660,6 +663,11 @@ class UpdateSectionProseResponse(BaseModel):
     section_id: str
     claim_node_id: str | None = None
     claim_event_id: str | None = None
+    changed: bool
+    prose_text: str
+    prose_provenance: dict[str, list[str]] | None
+    prose_provenance_validity: dict[str, Any]
+    prose_provenance_status: str
 
 
 class ExportFormat(BaseModel):
@@ -2924,12 +2932,17 @@ def create_app(
             sec_rows = con.execute(
                 "SELECT s.section_id, s.deliverable_id, s.parent_section_id, "
                 "s.section_index, s.title, s.prose_text, s.prose_provenance, "
+                "v.validity_json, "
                 "(SELECT COUNT(*) FROM section_blocks sb WHERE sb.section_id = s.section_id) "
-                "FROM deliverable_sections s WHERE s.deliverable_id = ? "
+                "FROM deliverable_sections s LEFT JOIN "
+                "deliverable_section_provenance_validity v "
+                "ON v.section_id = s.section_id WHERE s.deliverable_id = ? "
                 "ORDER BY s.section_index ASC", [deliverable_id],
             ).fetchall()
         finally:
             con.close()
+        from substrate.write.provenance_validity import read_validity
+
         sections = []
         for r in sec_rows:
             prov = None
@@ -2938,11 +2951,14 @@ def create_app(
                     prov = _json.loads(r[6])
                 except (ValueError, TypeError):
                     prov = None
+            validity = read_validity(r[5], prov, r[7])
             sections.append(SectionResponse(
                 section_id=r[0], deliverable_id=r[1],
                 parent_section_id=r[2], section_index=r[3], title=r[4],
                 prose_text=r[5], prose_provenance=prov,
-                block_count=r[7] or 0,
+                prose_provenance_validity=validity,
+                prose_provenance_status=validity["status"],
+                block_count=r[8] or 0,
             ))
         return DeliverableDetailResponse(
             deliverable_id=head[0], title=head[1],
@@ -2954,6 +2970,7 @@ def create_app(
     async def post_section(req: CreateSectionRequest) -> SectionResponse:
         from runtime.db_lock import connect_write
         from substrate.graph.ops import insert_section
+        from substrate.write.provenance_validity import read_validity
 
         db = _resolve_db_path()
         with connect_write(db, purpose="sections/create") as con:
@@ -2977,7 +2994,9 @@ def create_app(
             section_id=sid, deliverable_id=req.deliverable_id,
             parent_section_id=req.parent_section_id,
             section_index=req.section_index, title=req.title,
-            prose_text=None, prose_provenance=None, block_count=0,
+            prose_text=None, prose_provenance=None,
+            prose_provenance_validity=read_validity(None, None, None),
+            prose_provenance_status="ungrounded", block_count=0,
         )
 
     @app.post("/sections/attach-block", status_code=202)
@@ -3136,7 +3155,7 @@ def create_app(
         spec §10.4 Option B)."""
         from runtime.db_lock import connect_write
         from substrate.event_log import emit_typed
-        from substrate.graph.ops import insert_node, update_section_prose
+        from substrate.graph.ops import ProseConflictError, insert_node, update_section_prose
         from substrate.schemas import ClaimAssertedByOperatorPayload
 
         db = _resolve_db_path()
@@ -3150,9 +3169,16 @@ def create_app(
                     status_code=404, detail="section not found",
                 )
             deliverable_id = row[0]
-            update_section_prose(
-                con, section_id=section_id, prose_text=req.prose_text,
-            )
+            try:
+                mutation = update_section_prose(
+                    con,
+                    section_id=section_id,
+                    prose_text=req.prose_text,
+                    expected_prose=req.original_text,
+                    mutation_origin=req.mutation_origin,
+                )
+            except ProseConflictError as exc:
+                raise HTTPException(status_code=409, detail=str(exc)) from exc
             claim_node_id: str | None = None
             if req.promote_to_graph:
                 # Use the section title + first line of the prose as
@@ -3201,9 +3227,19 @@ def create_app(
                 section_id=section_id,
                 claim_node_id=claim_node_id,
                 claim_event_id=claim_event_id,
+                changed=mutation["changed"],
+                prose_text=req.prose_text,
+                prose_provenance=mutation["prose_provenance"],
+                prose_provenance_validity=mutation["validity"],
+                prose_provenance_status=mutation["validity"]["status"],
             )
         return UpdateSectionProseResponse(
             status="saved", section_id=section_id,
+            changed=mutation["changed"],
+            prose_text=req.prose_text,
+            prose_provenance=mutation["prose_provenance"],
+            prose_provenance_validity=mutation["validity"],
+            prose_provenance_status=mutation["validity"]["status"],
         )
 
     @app.get("/deliverables/{deliverable_id}/export")
@@ -3259,9 +3295,10 @@ def create_app(
             # ``secs`` 3-tuple every other format branch unpacks is untouched.
             # NULL provenance stays None (never fabricated).
             json_secs = con.execute(
-                "SELECT section_index, title, prose_text, prose_provenance "
-                "FROM deliverable_sections WHERE deliverable_id = ? "
-                "ORDER BY section_index ASC", [deliverable_id],
+                "SELECT s.section_index, s.title, s.prose_text, s.prose_provenance, "
+                "v.validity_json FROM deliverable_sections s LEFT JOIN "
+                "deliverable_section_provenance_validity v ON v.section_id = s.section_id "
+                "WHERE s.deliverable_id = ? ORDER BY s.section_index ASC", [deliverable_id],
             ).fetchall()
             # GPW SPR-04 STRETCH: resolve the section provenance to the TITLES
             # of the documents that ground this deliverable, and render them as
@@ -3282,6 +3319,7 @@ def create_app(
                 return _json.loads(raw)
             except (ValueError, TypeError):
                 return None
+        from substrate.write.provenance_validity import read_validity as _read_validity
         title = head[0]
         kind = head[1]
         if format == "markdown":
@@ -3535,8 +3573,11 @@ def create_app(
                     # map would misattribute a sibling's provenance. The X-ray
                     # the substrate keeps, now carried into the artifact.
                     "prose_provenance": _decode_provenance(prov),
+                    "prose_provenance_validity": _read_validity(
+                        prose, _decode_provenance(prov), validity
+                    ),
                 }
-                for idx, sec_title, prose, prov in json_secs
+                for idx, sec_title, prose, prov, validity in json_secs
             ],
             # GPW SPR-04 STRETCH: the resolved, §9.0-gated source-document
             # TITLES grounding this deliverable (personal_reading / restricted

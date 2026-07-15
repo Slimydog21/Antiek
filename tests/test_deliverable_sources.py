@@ -33,7 +33,10 @@ from substrate.graph.ops import (  # noqa: E402
     insert_document,
     insert_edge,
     insert_node,
-    insert_section,
+    update_section_prose,
+)
+from substrate.graph.ops import (
+    insert_section as _insert_section,
 )
 from substrate.graph.schema import init_database_at_path  # noqa: E402
 from substrate.write.deliverable_sources import (  # noqa: E402
@@ -72,6 +75,26 @@ def _doc(con, *, document_id, title, content_class=None):
         con, document_id=document_id, source_tier=2, document_type="paper",
         title=title, content_class=content_class,
     )
+
+
+def insert_section(con, **kwargs):
+    """Seed a genuinely current generated section for source-resolution tests."""
+    provenance = kwargs.pop("prose_provenance", None)
+    if not provenance or not isinstance(provenance, dict):
+        return _insert_section(con, prose_provenance=provenance, **kwargs)
+    paragraph_count = max(int(key) for key in provenance) + 1
+    prose = kwargs.pop("prose_text", None) or "\n\n".join(
+        f"Grounded paragraph {index}." for index in range(paragraph_count)
+    )
+    section_id = _insert_section(con, prose_text=None, prose_provenance=None, **kwargs)
+    update_section_prose(
+        con,
+        section_id=section_id,
+        prose_text=prose,
+        prose_provenance=provenance,
+        mutation_origin="generated",
+    )
+    return section_id
 
 
 # ── unit: resolve_deliverable_sources ──────────────────────────────────

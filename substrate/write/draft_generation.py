@@ -356,11 +356,12 @@ def persist_section_draft(
     prov: dict[str, list[str]] = {
         str(idx): list(blocks) for idx, blocks in result.prose_provenance.items()
     }
-
     # 1) The table row (the durable prose + provenance) — SHIPPED writer.
     update_section_prose(
         con, section_id=section_id,
         prose_text=result.prose_text, prose_provenance=prov,
+        unsupported_paragraphs=set(report.unsupported_paragraphs),
+        mutation_origin="generated",
     )
 
     # 2) The audit event (the §9 link, append-only) — same locked context.

@@ -4,6 +4,7 @@ import userEvent from "@testing-library/user-event";
 
 import type { OutlineBlockView } from "./writeApi";
 import Xray, { splitParagraphs } from "./Xray";
+import type { ParagraphProvenanceStatus, ProseProvenanceValidity } from "../../lib/api";
 
 /**
  * Xray.test — the paragraph ↔ blocks provenance view (SPR-09 M3).
@@ -39,6 +40,20 @@ function block(over: Partial<OutlineBlockView> = {}): OutlineBlockView {
   };
 }
 
+function validity(...statuses: ParagraphProvenanceStatus[]): ProseProvenanceValidity {
+  return {
+    schema_version: 1,
+    prose_sha256: "test",
+    status: statuses.every((status) => status === "current") ? "current" : "partial",
+    paragraphs: Object.fromEntries(
+      statuses.map((status, index) => [
+        String(index),
+        { text_sha256: `p${index}`, status, origin: "generated" },
+      ]),
+    ),
+  };
+}
+
 afterEach(cleanup);
 
 describe("Xray — paragraph↔blocks over persisted provenance", () => {
@@ -51,6 +66,7 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
       <Xray
         proseText={`First para [b: ${NODE}].\n\nSecond para.`}
         proseProvenance={{ "0": [NODE] }}
+        proseValidity={validity("current", "ungrounded")}
         blocks={[block()]}
       />,
     );
@@ -64,6 +80,7 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
       <Xray
         proseText={`Para one [b: ${NODE}].\n\nPara two [b: ${NODE}].\n\nPara three [b: ${NODE}].`}
         proseProvenance={{ "0": [NODE], "1": [NODE], "2": [NODE] }}
+        proseValidity={validity("current", "current", "current")}
         blocks={[block()]}
       />,
     );
@@ -83,11 +100,12 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
       <Xray
         proseText={`Cited para [b: ${NODE}].\n\nAn orphan paragraph with no recorded blocks at all.`}
         proseProvenance={{ "0": [NODE] }}
+        proseValidity={validity("current", "unsupported")}
         blocks={[block()]}
       />,
     );
     await userEvent.click(screen.getByTestId("xray-paragraph-1").querySelector("button")!);
-    expect(await screen.findByText(/no blocks recorded.*unsupported/i)).toBeTruthy();
+    expect(await screen.findByText(/no support was established/i)).toBeTruthy();
   });
 
   it("regenerate gesture hands the host the affected paragraph's index (1, not 0)", async () => {
@@ -96,6 +114,7 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
       <Xray
         proseText={`P0 [b: ${NODE}].\n\nP1 [b: ${NODE}].`}
         proseProvenance={{ "0": [NODE], "1": [NODE] }}
+        proseValidity={validity("current", "current")}
         blocks={[block()]}
         onRegenerateParagraph={onRegen}
       />,
@@ -106,5 +125,19 @@ describe("Xray — paragraph↔blocks over persisted provenance", () => {
     // paragraph's section. We assert the index contract, not the regen scope.
     await waitFor(() => expect(onRegen).toHaveBeenCalledWith(1));
     expect(onRegen).not.toHaveBeenCalledWith(0);
+  });
+
+  it("never exposes stale paragraph mappings as current trace controls", async () => {
+    render(
+      <Xray
+        proseText="Edited paragraph."
+        proseProvenance={{ "0": [NODE] }}
+        proseValidity={validity("stale")}
+        blocks={[block()]}
+      />,
+    );
+    await userEvent.click(screen.getByTestId("xray-paragraph-0").querySelector("button")!);
+    expect(await screen.findByText(/edited since grounding/i)).toBeTruthy();
+    expect(screen.queryByText("Capital intensity rises with scale")).toBeNull();
   });
 });

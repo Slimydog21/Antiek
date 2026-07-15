@@ -226,6 +226,8 @@ export interface GenerationResult {
    * paragraph→blocks immediately; a reload reads the SAME map back from
    * GET /deliverables/{id}.prose_provenance. Empty unless status==generated. */
   prose_provenance?: Record<string, string[]>;
+  prose_provenance_validity?: import("../../lib/api").ProseProvenanceValidity;
+  prose_provenance_status?: import("../../lib/api").ProvenanceAggregateStatus;
 }
 
 /** Generate a section's prose from its attached blocks (SPR-06). The live
