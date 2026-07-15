@@ -70,6 +70,7 @@ export interface FullTextResponse {
   ad_eligible: boolean;
   canonical_url: string | null;
   license: string | null;
+  content_format?: "text" | "html";
 }
 
 export type CorpusStatus = "servable" | "gated" | "all";
@@ -93,9 +94,16 @@ export async function getBook(documentId: string): Promise<BookDetail> {
 /** Fetch the body the gate permits: full text for servable books, a
  * bounded snippet for gated books, nothing for taken-down books. */
 export async function getBookFullText(documentId: string): Promise<FullTextResponse> {
-  const resp = await apiFetch(
-    `${API_BASE}/books/${encodeURIComponent(documentId)}/full-text`,
+  let resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/owner-full-text`,
   );
+  // Local development and non-owner/public clients deliberately lack the
+  // private-read capability; retain the established narrow endpoint there.
+  if (resp.status === 403) {
+    resp = await apiFetch(
+      `${API_BASE}/books/${encodeURIComponent(documentId)}/full-text`,
+    );
+  }
   if (resp.status === 404) throw new Error("book_not_found");
   if (!resp.ok) throw new Error(`GET /books/{id}/full-text: HTTP ${resp.status}`);
   return (await resp.json()) as FullTextResponse;
@@ -260,12 +268,21 @@ export interface TalkTurn {
 }
 
 export interface AskBookResponse {
+  answer_id: string | null;
+  capture_status: "captured" | "unavailable";
   answer: string;
   citations: BookCitation[];
   /** False when the book had no extractable text to ground on (scanned-image
    * PDF / fully-withheld) — an honest no-context answer, never a hallucination. */
   grounded: boolean;
   context_chunk_count: number;
+}
+
+export interface BookAnswerJudgmentResponse {
+  answer_id: string;
+  judgment_id: string;
+  verdict: "good" | "bad";
+  note: string | null;
 }
 
 /** Ask one talk-to-book turn (Read SPR-08 M2). Answers CITE pages; a withheld
@@ -290,6 +307,25 @@ export async function askBook(
   if (resp.status === 503) throw new Error("Talk-to-book isn’t available right now.");
   if (!resp.ok) throw new Error(`POST /books/{id}/ask: HTTP ${resp.status}`);
   return (await resp.json()) as AskBookResponse;
+}
+
+export async function judgeBookAnswer(
+  documentId: string,
+  answerId: string,
+  verdict: "good" | "bad",
+): Promise<BookAnswerJudgmentResponse> {
+  const resp = await apiFetch(
+    `${API_BASE}/books/${encodeURIComponent(documentId)}/answers/${encodeURIComponent(answerId)}/judgment`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ verdict }),
+    },
+  );
+  if (resp.status === 404) throw new Error("book_answer_not_found");
+  if (resp.status === 409) throw new Error("book_answer_already_judged");
+  if (!resp.ok) throw new Error(`POST book answer judgment: HTTP ${resp.status}`);
+  return (await resp.json()) as BookAnswerJudgmentResponse;
 }
 
 // ── SPR-08 M4: meta-reading deliverable (PROPOSED boundary) ───────────

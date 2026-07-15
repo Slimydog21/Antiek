@@ -1,5 +1,5 @@
 import "./animations.css";
-import Werner from "../../Werner";
+import WernerAuthoredPose from "../WernerAuthoredPose";
 
 /**
  * Werner the penguin, sleeping — idle screen / empty state.
@@ -9,39 +9,45 @@ import Werner from "../../Werner";
  * routes with no current activity (no active investigation, no
  * outcomes graded, no notebooks).
  *
- * Core mark delegated to <Werner mood="empty" /> + --werner-* tokens
- * for any remaining accents. No more parallel geometry fork.
+ * Both animated layers use the same centrally mapped authored raster. The
+ * body and Z marks occupy disjoint vertical bands in that source, so clipping
+ * lets them keep independent motion without redrawing or duplicating chrome.
  */
-type Props = { size?: number; label?: string };
+type Props = { size?: number; label?: string; reduced?: boolean };
 
 export default function WernerSleeping({
   size = 96,
   label = "No activity",
+  reduced = false,
 }: Props) {
   return (
     <span
       role="img"
       aria-label={label}
       className="inline-block align-middle"
+      data-reduced={String(reduced)}
       style={{ width: size, height: size, position: "relative" }}
     >
-      {/* Core mark delegated; the curled pose is approximated by empty mood
-          at large size. The zZz chrome and breath class remain on the wrapper. */}
-      <Werner mood="empty" size={size} className="werner-sleep-body" />
-      {/* Three zZz letters drifting up + fading (pose chrome only). */}
-      <svg
-        viewBox="0 0 64 64"
-        width={size}
-        height={size}
-        style={{ position: "absolute", left: 0, top: 0, pointerEvents: "none" }}
-        aria-hidden="true"
-      >
-        <g fill="var(--werner-coat)" fontFamily="ui-monospace, monospace" fontWeight="700">
-          <text x="46" y="22" fontSize="10" className="werner-zzz">z</text>
-          <text x="42" y="28" fontSize="13" className="werner-zzz werner-zzz-2">z</text>
-          <text x="38" y="36" fontSize="16" className="werner-zzz werner-zzz-3">Z</text>
-        </g>
-      </svg>
+      {reduced ? (
+        <WernerAuthoredPose
+          pose="sleeping"
+          size={size}
+          className="werner-sleep-layer werner-sleep-still"
+        />
+      ) : (
+        <>
+          <WernerAuthoredPose
+            pose="sleeping"
+            size={size}
+            className="werner-sleep-layer werner-sleep-body"
+          />
+          <WernerAuthoredPose
+            pose="sleeping"
+            size={size}
+            className="werner-sleep-layer werner-sleep-zzz-layer"
+          />
+        </>
+      )}
     </span>
   );
 }
