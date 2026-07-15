@@ -97,6 +97,7 @@ from substrate.research_spend import (
     RunNotFound,
     ZeroCostState,
     ZeroReplayClass,
+    default_research_spend_db_path,
 )
 from substrate.research_spend.ledger import MAX_AUTHORITY_CENTS
 
@@ -143,11 +144,7 @@ def _db() -> str:
 
 def _spend_db() -> Path:
     """SQLite authority ledger kept beside, but never inside, DuckDB."""
-    configured = os.environ.get("ANTIEK_RESEARCH_SPEND_DB")
-    if configured:
-        return Path(configured).expanduser()
-    graph = Path(_db())
-    return graph.with_name(f"{graph.name}.research-spend.sqlite3")
+    return default_research_spend_db_path()
 
 
 @contextmanager

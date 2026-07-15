@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cycle 28: Investigation Activation Consumption</title></head>
+<body>
+<main>
+  <h1>Cycle 28: One-shot investigation activation consumption</h1>
+  <p><strong>Status:</strong> executable specification. <strong>Base:</strong> Cycle 27 head <code>53bf62336c46461403c23939231af7e6ed8de809</code>.</p>
+
+  <section id="outcome">
+    <h2>Outcome</h2>
+    <p>An authenticated owner may consume one unexpired <code>mia_</code> activation authorization exactly once. Consumption creates one immutable <code>mlr_</code> launch reservation that fixes the complete approved integer-cent band, deterministic spend-run and session identities, exact prepared and authorization integrity, and current server-owned routing, model, configuration, pricing, and workload authority.</p>
+    <p>The launch reservation commits before a separate research-spend run is replayably created or reopened and read back with the exact binding and ceiling. The spend ledger's mandatory <code>run_created</code> or <code>run_reopened</code> audit row records that authority bootstrap; it is not a research execution event. The resulting receipt may become <code>ready</code>, but this cycle does not start research, construct or call a provider, create a task or thread, emit a research execution event, write graph state, debit money, or schedule background work.</p>
+  </section>
+
+  <section id="values">
+    <h2>Five load-bearing values</h2>
+    <ol>
+      <li><strong>One-shot authority:</strong> existence of the unique launch-reservation row is consumption. The immutable Cycle 27 authorization is never backpatched, so dual mutable states cannot disagree.</li>
+      <li><strong>Complete-band honesty:</strong> reserved cents equal the authorization's complete approved ceiling, never its quote, a partial caller amount, or a synthetic provider hold.</li>
+      <li><strong>Commit before effect:</strong> launch reservation commit and exact spend-run verification precede every event, graph, provider, scheduler, task, thread, or network seam.</li>
+      <li><strong>Recoverable cross-database boundary:</strong> a committed reservation with a missing spend run is permanently consumed but setup-incomplete. Exact replay creates or reopens only the fixed run; it never mints a second launch.</li>
+      <li><strong>Owner privacy and exact replay:</strong> owner scope participates in every lookup and uniqueness boundary. Foreign and missing resources are indistinguishable; exact retries return the historical reservation even after authorization expiry.</li>
+    </ol>
+  </section>
+
+  <section id="domain">
+    <h2>Domain contract</h2>
+    <p><code>InvestigationLaunchReservation</code> contains: opaque <code>mlr_</code> identity; authorization and investigation identity; prepared and authorization integrity digests; exact source plan, intent, evidence, counts, route, tier, provider, model, dispatch, pricing, workload, quote, and approved-ceiling bindings; persisted consumption request digest; deterministic <code>spend_run_id</code> and <code>session_id</code>; reserved cents; reservation timestamp; state <code>launch_reserved</code>; and literal false/null execution authority fields. Canonical JSON and an integrity digest bind the complete record.</p>
+    <p>Request identity is <code>(owner_digest, authorization_id, idempotency_key)</code>. The first exact request returns <code>201</code>; replay returns the byte-equivalent historical reservation with <code>200</code>. Reusing a key for another authorization, or using another key after consumption, conflicts.</p>
+    <p>Launch, spend-run, and session identities are deterministic SHA-256 derivations over domain labels, owner digest, authorization ID, authorization integrity digest, and prepared integrity digest. They are generated before insert and verified on every read; replay-time request data cannot alter them.</p>
+  </section>
+
+  <section id="current-authority">
+    <h2>Current authority revalidation</h2>
+    <p>The server resolves a fresh quote outside the SQLite write transaction. First consumption requires the fresh quote's route policy, tier, provider, model, dispatch-config digest, pricing source and digest, workload digest, and quoted ceiling to exactly equal the authorization. Quote identity and timestamps may refresh, but the quote must itself pass integrity and freshness validation. Any semantic drift rejects consumption and requires a new authorization.</p>
+    <p>Under <code>BEGIN IMMEDIATE</code>, the ledger re-reads and fully validates the authorization and prepared investigation, proves the preflight rows are unchanged, captures one UTC reservation time, and rejects when <code>reserved_at &gt;= authorization.expires_at</code>. Existing exact reservations replay before current expiry or quote checks.</p>
+  </section>
+
+  <section id="storage">
+    <h2>Storage and migration</h2>
+    <p>Migrate the private research-plan SQLite ledger transactionally from schema v4 to v5. Add one immutable <code>multimedia_investigation_launch_reservations</code> table with explicit scalar bindings, canonical JSON, integrity digest, owner-scoped key uniqueness, owner-scoped authorization uniqueness, owner-scoped investigation uniqueness, globally unique deterministic spend-run and session identities, and foreign keys to the exact authorization and prepared investigation.</p>
+    <p>Reads decode the exact dataclass shape, require canonical JSON, recompute request, deterministic identity, manifest, and reservation integrity digests, compare every scalar column, and re-open the referenced authorization and prepared row. UPDATE and DELETE are outside the API and treated as tamper if observed.</p>
+  </section>
+
+  <section id="spend-bootstrap">
+    <h2>Spend-run bootstrap</h2>
+    <p>After reservation commit, the route derives one <code>RunBinding</code> exclusively from the stored reservation, using <code>launch_manifest_digest</code> as its plan digest, and calls <code>ResearchSpendLedger.create_or_reopen_run</code> with a deterministic command key and ceiling exactly equal to <code>reserved_cents</code>. It then reads the run and verifies the complete binding, hard-ceiling USD mode, exact ceiling, zero authorized spend, zero observed provider spend, zero holds, active status, and no breach.</p>
+    <p>The launch reservation is not a synthetic <code>research_spend_holds</code> row. Provider-operation holds remain the exclusive responsibility of <code>ResearchProviderGateway</code>. A missing or temporarily unavailable spend ledger returns a private value-free <code>503</code>; replay resumes setup for the same reservation. A conflicting or non-pristine existing run returns <code>409</code> and no execution authority.</p>
+  </section>
+
+  <section id="api">
+    <h2>Private API</h2>
+    <ul>
+      <li><code>POST /multimedia/investigations/{investigation_id}/activation-consumptions</code>: strict body with <code>authorization_id</code> and 16..128 ASCII idempotency key. Owner is derived only from authentication.</li>
+      <li><code>GET /multimedia/investigations/{investigation_id}/launch-reservation</code>: owner-private immutable receipt read. Readiness is derived by exact spend-run verification, not persisted as mutable plan-ledger state.</li>
+    </ul>
+    <p>Success and failure responses use <code>Cache-Control: private, no-store</code>. Owner digests, internal idempotency keys, and spend-ledger command keys are never returned. Missing and foreign resources return the same <code>404 investigation is unavailable</code>; validation is <code>422</code>; expiry, drift, replay mismatch, duplicate consumption, or integrity conflict is <code>409</code>; unavailable storage, resolver, or spend bootstrap is value-free <code>500</code>/<code>503</code>.</p>
+  </section>
+
+  <section id="acceptance">
+    <h2>Acceptance evidence</h2>
+    <ul>
+      <li>Domain tests prove first consumption, exact replay after expiry, changed-key conflict, owner isolation, complete-band equality, deterministic identities, inclusive expiry, semantic quote drift rejection, refreshed quote metadata acceptance, prepared/authorization drift rejection, transaction rollback, concurrent one-winner behavior, v4-to-v5 migration, canonical and scalar tamper detection, and exact historical reads.</li>
+      <li>Spend-bootstrap tests prove exact run binding and ceiling, replay after post-commit bootstrap failure, missing-run recovery, conflicting/non-pristine run refusal, and that no provider hold is created.</li>
+      <li>API tests prove private status/error taxonomy, strict inputs, owner privacy, response projection, and unavailable resolver/spend-ledger behavior.</li>
+      <li>Side-effect spies prove no provider construction/call, network access, event emission, graph write, debit, task/thread creation, scheduler call, or background launch occurs.</li>
+      <li>Focused and full multimedia tests, Ruff, compileall, HTML parsing, HardenX strict, independent review, and frontend typecheck/build are green before publication.</li>
+    </ul>
+  </section>
+
+  <section id="next">
+    <h2>Explicit non-goals and next boundary</h2>
+    <p>Cycle 28 stops at a verified ready receipt. Cycle 29 may add an idempotent launch executor that transitions the existing spend run through gateway-controlled per-operation holds and durable downstream receipts. It must prove recovery at every event, graph, task, and provider boundary. No execution behavior may be smuggled into Cycle 28.</p>
+  </section>
+</main>
+</body>
+</html>

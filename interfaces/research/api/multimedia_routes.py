@@ -84,6 +84,7 @@ from substrate.multimedia.ship_cost_snapshot import (
     build_multimedia_ship_cost_snapshot,
 )
 from substrate.multimedia.verified_playback import VerifiedPlaybackError
+from substrate.research_spend import ResearchSpendLedger, default_research_spend_db_path
 
 from .multimedia_hardening_routes import (
     MultimediaHardeningRuntime,
@@ -1000,6 +1001,7 @@ def register_multimedia_routes(app: FastAPI) -> None:
             intents=research_intent_runtime.ledger,
             owner_digest_resolver=_owner_digest,
             activation_quote_resolver=_production_activation_quote_resolver(),
+            spend_ledger=ResearchSpendLedger(default_research_spend_db_path()),
         )
         app.dependency_overrides[get_multimedia_research_plan_runtime] = lambda: (
             research_plan_runtime
