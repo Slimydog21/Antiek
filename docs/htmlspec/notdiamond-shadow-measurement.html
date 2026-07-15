@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>NotDiamond Shadow Measurement</title></head>
+<body><main>
+<h1>Measure NotDiamond before granting route influence</h1>
+<p><strong>Status:</strong> executable Cycle 14 correction to ANT-ND SPR-03. <strong>Parent:</strong> <code>/Users/slimydog/specs/antiek-notdiamond/index.html</code>.</p>
+<h2>Decision</h2>
+<p>The old sprint simultaneously required NotDiamond to beat Antiek's baseline before promotion and made it default-on as the first live attempt. That is contradictory. This slice permits only <code>disabled</code> and <code>shadow</code>; disabled is the default. Shadow asks NotDiamond for one recommendation, records attributable evidence on the existing dispatch event, and leaves provider order, fallback, authorization, and spend authority unchanged.</p>
+<h2>Scope</h2>
+<ul><li>Only explicit Deep Research roles are eligible.</li><li>Candidate identities come from the server-owned authoritative tier chain, including an exact per-call override.</li><li>The full assembled prompt is disclosed only when the operator explicitly sets both <code>ANTIEK_NOTDIAMOND_MODE=shadow</code> and <code>ANTIEK_NOTDIAMOND_ALLOW_PROMPT_DISCLOSURE=true</code>; mode alone is insufficient consent.</li><li>Unknown modes fail closed and remain observable as <code>invalid_mode</code>.</li><li>One daemonized selector slot and an outer deadline ensure a stuck SDK cannot delay authoritative dispatch beyond the configured budget or accumulate unbounded workers.</li><li>Timeout, unavailable SDK/key, malformed response, adapter errors, and off-set recommendations are bounded reason codes, never route failures.</li></ul>
+<h2>Attribution</h2>
+<p>The existing single dispatch emitter remains the only event writer. Shadow evidence is installed with restorable ContextVar tokens immediately before authoritative dispatch and reset in <code>finally</code>, including exceptions before event emission and nested dispatch. The scoped evidence repeats on every attempt in the fallback chain so the eventual outcome remains joinable. Every staged record has <code>nd_bypassed=true</code>; <code>shadow</code> means the recommendation was observed but deliberately not applied.</p>
+<h2>Acceptance</h2>
+<ul><li>Default configuration performs no NotDiamond network call.</li><li>Non-DRW calls perform no NotDiamond work and receive no synthetic attribution.</li><li>Shadow recommendation cannot reorder or replace any tier.</li><li>Exact recommendation, candidate membership, latency, tradeoff, and bounded bypass reason are recorded.</li><li>Provider exceptions cannot leak attribution into a later dispatch.</li><li>Existing fallback behavior and dispatch tests remain green.</li></ul>
+<h2>Non-goals</h2>
+<p>No enabled mode, route mutation, promotion verdict, custom-router training, cross-workflow routing, UI control, second event writer, or claim that NotDiamond improves quality or cost.</p>
+<section id="harness-hint" data-pattern="adversarial-verification"><p>Test the pure classifier first, then event integration and exception cleanup, then run the existing dispatch suite and inspect that provider order is byte-for-byte unchanged.</p></section>
+</main></body></html>

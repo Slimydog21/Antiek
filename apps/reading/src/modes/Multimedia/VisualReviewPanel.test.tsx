@@ -41,7 +41,13 @@ const record: MultimediaAssetRecord = {
   jobs: [],
   plan: {
     request: { topic: "Aircraft factories", target_minutes: 15, mode: "video", route_policy: "balanced" },
-    suggestions: [],
+    suggestions: [{
+      arc_id: "mechanism",
+      title: "Production mechanism",
+      teaches: "How fixed stations changed production flow",
+      evidence: [],
+      tradeoff: "Omits procurement history",
+    }],
     chosen_arc_ids: ["mechanism"],
     chapters: [{ chapter_id: "chapter-1", title: "The moving line", minutes: 15, purpose: "Explain production flow", arc_id: "mechanism", source_chunk_ids: ["chunk-1"], cuts: [] }],
     script_lines: [{ line_id: "chapter-1-line-0", sequence: 0, text: "Factories moved work through fixed stations.", kind: "factual", citations: [{ chunk_id: "chunk-1", document_id: "source-1", locator: null, quote_sha256: null }], unsourced_reason: null }],
