@@ -8,6 +8,12 @@ const includesNarrowIceHoleProof = scopedStoryIds.some((id) =>
 const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
   id.startsWith("brainstorm-fjord-skip--"),
 );
+const includesNarrowBrainstormAtmosphereProof = scopedStoryIds.some((id) =>
+  id.startsWith("shell-brainstorm-fjord-atmosphere-spr-38--"),
+);
+const includesNarrowHomeCampusProof = scopedStoryIds.some((id) =>
+  id.startsWith("home-alpine-knowledge-campus-spr-39--"),
+);
 
 /**
  * Lost-Pixel — visual regression for Antiek's Storybook.
@@ -20,6 +26,12 @@ const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
  *   npm run visualtest         # check current vs baseline
  *   npm run visualtest:update  # accept current as the new baseline
  *
+ * Canonical blocking plates are rendered by the visualtest workflow's pinned
+ * Ubuntu + Playwright Chromium environment. Local macOS captures are useful
+ * review evidence but must not replace canonical plates: system-font metrics
+ * and rasterization differ across operating systems even at identical viewport
+ * dimensions.
+ *
  * Known flaky story `workspace-demo--scene` (framer-motion spring
  * timing) is skipped via `shotsExcludeList` — the spring physics
  * lands at slightly different stages on each Chromium run. The skip
@@ -27,10 +39,19 @@ const includesNarrowFjordSkipProof = scopedStoryIds.some((id) =>
  * the spring should be replaced with a deterministic transition.
  */
 export const config: CustomProjectConfig = {
-  configureBrowser: ({ id }) =>
-    id === "loop-1-researchrouteinstrument--dark"
-      ? { colorScheme: "dark" }
-      : {},
+  configureBrowser: ({ id }) => ({
+    ...(id === "loop-1-researchrouteinstrument--dark"
+      ? { colorScheme: "dark" as const }
+      : {}),
+    // A still image cannot prove continuous animation. Capture the authentic
+    // Playing state under reduced motion so the canvas redraws only on
+    // discrete input; normal-motion loop behavior is covered by engine and
+    // cartridge tests instead of timing-dependent pixels.
+    ...(id ===
+    "shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-playing"
+      ? { reducedMotion: "reduce" as const }
+      : {}),
+  }),
   storybookShots: {
     storybookUrl: "./storybook-static",
     /**
@@ -51,7 +72,10 @@ export const config: CustomProjectConfig = {
      * splash.
      */
     breakpoints:
-      includesNarrowIceHoleProof || includesNarrowFjordSkipProof
+      includesNarrowIceHoleProof ||
+      includesNarrowFjordSkipProof ||
+      includesNarrowBrainstormAtmosphereProof ||
+      includesNarrowHomeCampusProof
         ? [1280, 1024, 768, 375]
         : [1280, 1024, 768],
   },
@@ -62,10 +86,18 @@ export const config: CustomProjectConfig = {
   // Normal legacy sweep remains advisory; an explicitly scoped story is a
   // blocking evidence gate and must surface its current/diff artifacts.
   failOnDifference: scopedStoryIds.length > 0,
-  // The scoped authored plate permits only microscopic Chromium raster jitter
-  // (roughly 6–10 pixels across the configured viewports). The legacy sweep
-  // retains its established 0.4% advisory ceiling.
-  threshold: scopedStoryIds.length > 0 ? 0.00001 : 0.004,
+  // The Home plate contains several rounded, composited edges over its authored
+  // image. Two consecutive captures on the same pinned Ubuntu/Chromium runner
+  // reproduced every semantic pixel but varied at 14–15 anti-aliased corner
+  // pixels (at 375/768px). Give only this plate a still-microscopic 0.006%
+  // raster allowance; every other scoped proof keeps the stricter 0.001%, and
+  // the legacy sweep retains its established 0.4% advisory ceiling.
+  threshold:
+    scopedStoryIds.length === 0
+      ? 0.004
+      : includesNarrowHomeCampusProof
+        ? 0.00006
+        : 0.00001,
   // Skip known-flaky stories at every breakpoint. The framer-motion
   // spring on workspace-demo produces sub-1% inter-run diffs that
   // aren't real regressions.

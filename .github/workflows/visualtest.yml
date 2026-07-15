@@ -166,6 +166,52 @@ jobs:
             exit 1
           fi
 
+      - name: Gate Brainstorm idea coast against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: shell-brainstorm-fjord-atmosphere-spr-38--html-authority-plate,shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-offer,shell-brainstorm-fjord-atmosphere-spr-38--fjord-skip-playing
+        run: |
+          for story in html-authority-plate fjord-skip-offer fjord-skip-playing; do
+            for width in 375 768 1024 1280; do
+              plate=".lostpixel/baseline/shell-brainstorm-fjord-atmosphere-spr-38--${story}__[w${width}px].png"
+              if [ ! -s "$plate" ]; then
+                echo "::error file=${plate}::Missing canonical Brainstorm idea-coast baseline"
+                exit 1
+              fi
+            done
+          done
+          npx lost-pixel
+          if [ "$(find .lostpixel/current -maxdepth 1 -type f -name 'shell-brainstorm-fjord-atmosphere-spr-38*' | wc -l | tr -d ' ')" != "12" ]; then
+            echo "::error::Expected 12 Brainstorm idea-coast captures"
+            exit 1
+          fi
+          if find .lostpixel/diff -type f -print -quit | grep -q .; then
+            echo "::error::Brainstorm idea coast differs from its canonical baselines"
+            exit 1
+          fi
+
+      - name: Gate Home alpine campus against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: home-alpine-knowledge-campus-spr-39--default,home-alpine-knowledge-campus-spr-39--image-unavailable,home-alpine-knowledge-campus-spr-39--keyboard-focus
+        run: |
+          for story in default image-unavailable keyboard-focus; do
+            for width in 375 768 1024 1280; do
+              plate=".lostpixel/baseline/home-alpine-knowledge-campus-spr-39--${story}__[w${width}px].png"
+              if [ ! -s "$plate" ]; then
+                echo "::error file=${plate}::Missing canonical Home alpine-campus baseline"
+                exit 1
+              fi
+            done
+          done
+          npx lost-pixel
+          if [ "$(find .lostpixel/current -maxdepth 1 -type f -name 'home-alpine-knowledge-campus-spr-39*' | wc -l | tr -d ' ')" != "12" ]; then
+            echo "::error::Expected 12 Home alpine-campus captures"
+            exit 1
+          fi
+          if find .lostpixel/diff -type f -print -quit | grep -q .; then
+            echo "::error::Home alpine campus differs from its canonical baselines"
+            exit 1
+          fi
+
       - name: Run Lost-Pixel against committed baselines (informational)
         # LostPixel 3.22 exits zero for differences in this repository's
         # generateOnly:false mode, so this legacy portfolio sweep is evidence,

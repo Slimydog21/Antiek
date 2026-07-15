@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
@@ -6,6 +7,7 @@ import {
   WORKFLOWS,
   WORKFLOW_ORDER,
 } from "../../shell/workflowTaxonomy";
+import campusEnvironment from "./home_alpine_knowledge_campus_v1.webp";
 
 /**
  * Home (SPR-12 M1) — the unified branded front door.
@@ -49,8 +51,38 @@ const DOOR_VERB: Record<(typeof WORKFLOW_ORDER)[number], string> = {
   speak: "Remember someone, and gather the voices who knew them.",
 };
 
+/** Desktop placement belongs to this authored Home composition—not to the
+ * product taxonomy. DOM order remains WORKFLOW_ORDER at every breakpoint. */
+const CAMPUS_REGION: Record<
+  (typeof WORKFLOW_ORDER)[number],
+  { landmark: string; placement: string; marker: string }
+> = {
+  research: {
+    landmark: "Observatory",
+    placement: "md:left-[8%] md:top-[26%] lg:top-[33%]",
+    marker: "01",
+  },
+  read: {
+    landmark: "Glacial archive",
+    placement: "md:right-[7%] md:top-[28%] lg:top-[34%]",
+    marker: "02",
+  },
+  write: {
+    landmark: "Scriptorium",
+    placement: "md:left-[11%] md:bottom-[10%]",
+    marker: "03",
+  },
+  speak: {
+    landmark: "Listening bowl",
+    placement: "md:right-[10%] md:bottom-[9%]",
+    marker: "04",
+  },
+};
+
 export function Home() {
   const navigate = useNavigate();
+  const [mapImageAvailable, setMapImageAvailable] = useState(true);
+  const [mapImageReady, setMapImageReady] = useState(false);
 
   return (
     // Landing-glass (SPR-03 M2): the Home front door is a LANDING surface, so
@@ -59,14 +91,17 @@ export function Home() {
     // brand statement legible (WCAG-AA owned by GlassSurface, not this body).
     // Was an opaque bg-ice-2 dark:bg-space-2 wall that occluded the scene.
     <GlassSurface className="h-full w-full overflow-y-auto">
-      <div className="mx-auto max-w-3xl px-6 py-14">
+      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-10">
+        <section className="relative">
         {/* Brand statement — what Antiek is, in its own voice. */}
-        <header className="mb-10 flex flex-col items-center text-center">
-          <Werner mood="idle" size={72} label="Antiek" />
-          <h1 className="mt-4 font-serif text-3xl font-semibold text-ink dark:text-bright">
+        <header className="mx-auto mb-6 flex max-w-3xl flex-col items-center text-center lg:absolute lg:left-1/2 lg:top-5 lg:z-20 lg:mb-0 lg:w-[62%] lg:-translate-x-1/2 lg:rounded-hog lg:border lg:border-glass lg:bg-ice-0/90 lg:px-5 lg:py-4 lg:shadow-z1 lg:backdrop-blur-sm dark:lg:bg-charcoal-2/90">
+          <p className="font-mono text-[11px] uppercase tracking-[0.18em] text-shadow-1 dark:text-moonlight">
+            Antiek · alpine knowledge campus
+          </p>
+          <h1 className="mt-2 font-serif text-3xl font-semibold text-ink dark:text-bright sm:text-4xl lg:text-3xl">
             One workspace for everything you read, research, and write.
           </h1>
-          <p className="mt-3 max-w-xl font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight">
+          <p className="mt-3 max-w-xl font-serif text-[15px] leading-relaxed text-shadow-1 dark:text-moonlight lg:mt-2 lg:text-[13.5px] lg:leading-5">
             Antiek keeps every book, note, and finding on one substrate, so a
             question you ask in research can pull from a book you read last
             month and land in a draft you are writing now. Pick where you want
@@ -74,38 +109,83 @@ export function Home() {
           </p>
         </header>
 
-        {/* Four equal doors. Each is one click into its surface. */}
+        {/* The image owns geography only. The four destinations below are real
+            HTML buttons in stable taxonomy order; their desktop positions are
+            presentation, never hit-test or routing authority. */}
         <nav
           aria-label="Workflows"
+          aria-describedby="home-campus-instructions"
           data-testid="home-workflow-cards"
-          className="grid grid-cols-1 gap-4 sm:grid-cols-2"
+          data-campus-map=""
+          data-campus-image-ready={mapImageReady ? "true" : "false"}
+          className="relative isolate overflow-hidden rounded-hog-lg border-edge border-sun bg-ice-3 shadow-z2 dark:bg-space-2 md:aspect-[1.56/1] lg:h-[calc(100vh-3rem)] lg:min-h-[600px] lg:max-h-[700px] lg:aspect-auto"
         >
+          {mapImageAvailable && (
+            <img
+              src={campusEnvironment}
+              alt=""
+              aria-hidden="true"
+              draggable={false}
+              decoding="async"
+              onLoad={() => setMapImageReady(true)}
+              onError={() => {
+                setMapImageReady(false);
+                setMapImageAvailable(false);
+              }}
+              className="pointer-events-none h-56 w-full object-cover object-center md:absolute md:inset-0 md:h-full"
+            />
+          )}
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute inset-0 bg-gradient-to-b from-space-2/10 via-transparent to-space-2/30"
+          />
+          <p id="home-campus-instructions" className="sr-only">
+            Four destinations share one campus. Move through the buttons in
+            order to open Research, Read, Write, or Speak.
+          </p>
+          <ol className="relative z-10 grid gap-3 p-4 md:absolute md:inset-0 md:block md:p-0">
           {WORKFLOW_ORDER.map((wf) => {
             const meta = WORKFLOWS[wf];
+            const region = CAMPUS_REGION[wf];
             return (
-              <button
-                key={wf}
-                type="button"
-                data-workflow={wf}
-                onClick={() => navigate(meta.defaultRoute)}
-                className={
-                  "group flex flex-col items-start rounded-hog border-edge border-sun " +
-                  "bg-ice-0 p-5 text-left shadow-z1 transition " +
-                  "hover:shadow-z2 hover:-translate-y-0.5 " +
-                  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun " +
-                  "dark:bg-charcoal-2"
-                }
-              >
-                <span className="font-serif text-lg font-semibold text-ink dark:text-bright">
-                  {meta.label}
-                </span>
-                <span className="mt-1 text-[13.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
-                  {DOOR_VERB[wf]}
-                </span>
-              </button>
+              <li key={wf} className={`md:absolute md:w-[31%] ${region.placement}`}>
+                <button
+                  type="button"
+                  data-workflow={wf}
+                  data-campus-region={region.landmark}
+                  onClick={() => navigate(meta.defaultRoute)}
+                  className={
+                    "group flex w-full items-start gap-3 rounded-hog border-edge border-sun " +
+                    "bg-ice-0/95 p-4 text-left shadow-z1 backdrop-blur-sm transition " +
+                    "hover:-translate-y-0.5 hover:shadow-z2 " +
+                    "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sun " +
+                    "dark:bg-charcoal-2/95"
+                  }
+                >
+                  <span
+                    aria-hidden="true"
+                    className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-sun bg-sun font-mono text-[11px] font-bold text-ink"
+                  >
+                    {region.marker}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block font-mono text-[10px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+                      {region.landmark}
+                    </span>
+                    <span className="mt-0.5 block font-serif text-lg font-semibold text-ink dark:text-bright">
+                      {meta.label}
+                    </span>
+                    <span className="mt-1 block text-[12.5px] leading-relaxed text-shadow-1 dark:text-moonlight">
+                      {DOOR_VERB[wf]}
+                    </span>
+                  </span>
+                </button>
+              </li>
             );
           })}
+          </ol>
         </nav>
+        </section>
 
         {/* Biographies — featured (SPR-11). A biography is a TEMPLATE that
             composes research, writing, and gathered voices over the one

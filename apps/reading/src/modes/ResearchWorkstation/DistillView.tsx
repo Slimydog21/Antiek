@@ -9,6 +9,7 @@ import type { DistilledNode } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Thinking from "../../shared/Thinking";
 import ArtifactOutlineShelf from "./ArtifactOutlineShelf";
+import EvidencePassport from "../../components/evidence/EvidencePassport";
 
 /**
  * DistillView — insights & open questions as first-class objects (SPR-03 M2),
@@ -285,7 +286,29 @@ function QuestionRow({ node, onChase }: { node: DistilledNode; onChase?: (q: Dis
  *  (SPR-04 wires the source's title via the named-source rendering.) */
 function Grounding({ node }: { node: DistilledNode }) {
   if (!node.source_document_id) {
-    return <span className="font-mono italic">no source on record</span>;
+    return (
+      <EvidencePassport
+        compact
+        sourceName="No source on record"
+        custody="unavailable"
+        precision="no-anchor"
+        className="w-full"
+      />
+    );
   }
-  return <span className="font-mono">grounded in a source</span>;
+  return (
+    <EvidencePassport
+      compact
+      sourceName={node.source_document_title}
+      custody={
+        node.source_document_servable === true
+          ? "source-identified"
+          : node.source_document_servable === false
+            ? "restricted"
+            : "rights-unconfirmed"
+      }
+      precision="document-only"
+      className="w-full"
+    />
+  );
 }

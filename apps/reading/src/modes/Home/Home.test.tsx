@@ -67,6 +67,52 @@ describe("Home (SPR-12 M1)", () => {
     // Four equal door cards.
     const cards = screen.getByTestId("home-workflow-cards");
     expect(cards.querySelectorAll("button").length).toBe(WORKFLOW_ORDER.length);
+    expect(cards.getAttribute("data-campus-map")).not.toBeNull();
+  });
+
+  it("keeps taxonomy order as DOM and keyboard order regardless of desktop placement", () => {
+    const { container } = mount();
+    const buttons = Array.from(
+      container.querySelectorAll<HTMLButtonElement>(
+        '[data-campus-map] button[data-workflow]',
+      ),
+    );
+    expect(buttons.map((button) => button.dataset.workflow)).toEqual([
+      ...WORKFLOW_ORDER,
+    ]);
+    expect(buttons.every((button) => button.tabIndex === 0)).toBe(true);
+    expect(buttons.map((button) => button.textContent)).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("Research"),
+        expect.stringContaining("Read"),
+        expect.stringContaining("Write"),
+        expect.stringContaining("Speak"),
+      ]),
+    );
+  });
+
+  it("treats the authored campus as decorative and keeps every door usable if it fails", () => {
+    const { container } = mount();
+    const image = container.querySelector<HTMLImageElement>(
+      '[data-campus-map] img',
+    );
+    expect(image).toBeTruthy();
+    expect(image!.alt).toBe("");
+    expect(image!.getAttribute("aria-hidden")).toBe("true");
+    expect(image!.className).toContain("pointer-events-none");
+
+    fireEvent.error(image!);
+    expect(container.querySelector('[data-campus-map] img')).toBeNull();
+    expect(
+      container.querySelectorAll('[data-campus-map] button[data-workflow]'),
+    ).toHaveLength(WORKFLOW_ORDER.length);
+
+    fireEvent.click(
+      container.querySelector<HTMLButtonElement>(
+        '[data-campus-map] button[data-workflow="research"]',
+      )!,
+    );
+    expect(screen.getByText(/RESEARCH SURFACE/)).toBeTruthy();
   });
 
   it("lands the front door as a LANDING-GLASS surface (SPR-03 M2 occlusion contract)", () => {

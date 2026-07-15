@@ -284,6 +284,10 @@ describe("MyResearch — compose light table", () => {
     expect(experiences.seen).toEqual([]);
     expect(previewComposeMock).toHaveBeenCalledWith(["inv-one", "inv-two"]);
     expect(await screen.findByText("a".repeat(64))).toBeTruthy();
+    expect(screen.getAllByText("One")).toHaveLength(2);
+    expect(screen.getByText("Research 1 of 2")).toBeTruthy();
+    expect(screen.queryByText("inv-one")).toBeNull();
+    expect(screen.getAllByText("Snapshot hash reviewed")).toHaveLength(2);
     await user.click(screen.getByRole("button", { name: "Create HTML draft" }));
     expect(createComposeMock).toHaveBeenCalledWith(["inv-one", "inv-two"], "fingerprint");
     expect(experiences.seen).toEqual(["research_draft_composed"]);
@@ -292,6 +296,7 @@ describe("MyResearch — compose light table", () => {
     await user.click(screen.getByRole("button", { name: "Start writing from these sources" }));
     expect(createWriteWorkspaceMock).toHaveBeenCalledWith("cmp-created");
     expect(await screen.findByText(/2 source artifacts stitched into 3 source blocks/)).toBeTruthy();
+    expect(screen.getByRole("list", { name: "Source spine carried into Write" })).toBeTruthy();
     expect(screen.getByText(/1 duplicates folded/)).toBeTruthy();
     expect((screen.getByRole("link", { name: /Open in Write/ }) as HTMLAnchorElement).getAttribute("href")).toBe("/write/dlv-write");
     expect(screen.getByRole("link", { name: /Open HTML draft/ })).toBeTruthy();

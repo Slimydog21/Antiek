@@ -15,6 +15,8 @@ import {
   type SearchResult,
 } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
+import EvidencePassport from "../../../components/evidence/EvidencePassport";
+import type { EvidencePassportView } from "../../../components/evidence/EvidencePassport";
 
 /**
  * FloatMenu — THE shared highlight → float-window interaction primitive
@@ -80,6 +82,9 @@ export interface FloatMenuProps {
   /** CK-5: apply the model's edited span. The host splices it into the
    *  section prose (its own selection state identifies the span to replace). */
   onApplyEdit?: (editedText: string) => void;
+  /** Optional host-owned source context. Presentation only: FloatMenu does not
+   * fetch, resolve, or infer custody/precision. */
+  evidencePassport?: EvidencePassportView;
 }
 
 /** Clamp the menu on-screen at a viewport edge (rigor #3). The menu sits above
@@ -128,6 +133,7 @@ export default function FloatMenu({
   rewriteActions,
   editContext,
   onApplyEdit,
+  evidencePassport,
 }: FloatMenuProps) {
   const [view, setView] = useState<FloatMenuView>({ kind: "menu" });
   const rootRef = useRef<HTMLDivElement>(null);
@@ -162,7 +168,7 @@ export default function FloatMenu({
   const pos = clampPosition(
     selection.rect,
     MENU_W,
-    MENU_H,
+    evidencePassport ? 116 : MENU_H,
     typeof window !== "undefined" ? window.innerWidth : 1024,
     typeof window !== "undefined" ? window.innerHeight : 768,
   );
@@ -171,8 +177,6 @@ export default function FloatMenu({
     <div
       ref={rootRef}
       data-floatmenu
-      role="menu"
-      aria-label="Highlight actions"
       style={{
         position: "fixed",
         top: pos.top,
@@ -189,6 +193,14 @@ export default function FloatMenu({
     >
       {view.kind === "menu" && (
         <div className="flex flex-col">
+          {evidencePassport ? (
+            <EvidencePassport
+              {...evidencePassport}
+              compact
+              className="border-b border-charcoal-2 text-ink"
+            />
+          ) : null}
+          <div role="menu" aria-label="Highlight actions">
           <div className="flex items-stretch divide-x divide-charcoal-2">
             <MenuButton label="Note" onClick={() => setView({ kind: "note" })} />
             <MenuButton label="Dialogue" onClick={() => setView({ kind: "dialogue" })} />
@@ -236,6 +248,7 @@ export default function FloatMenu({
               )}
             </div>
           )}
+          </div>
         </div>
       )}
 
@@ -696,4 +709,3 @@ function EditPanel({
     </Panel>
   );
 }
-
