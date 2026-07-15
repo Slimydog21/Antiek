@@ -94,6 +94,19 @@ def test_budget_operator_env_cap(
     assert body["cap_env"] == "ANTIEK_OPERATOR_BUDGET_USD"
 
 
+def test_budget_cap_drop_preserves_actual_spend(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    DaemonBudget(daily_cap_usd=5.0, per_investigation_cap_usd=5.0).reserve(4.0)
+    monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "3")
+
+    body = client.get("/settings/budget").json()
+
+    assert body["spent_usd"] == 4.0
+    assert body["remaining_usd"] == 0.0
+
+
 def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) -> None:
     # Current dispatch config uses 0.0 placeholder rates — must NOT invent $.
     r = client.post(

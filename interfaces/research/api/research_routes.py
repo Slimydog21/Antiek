@@ -31,15 +31,20 @@ class ResearchRouteCandidateResponse(BaseModel):
     rationale: str
     ready: bool
     readiness_label: str
-    projected_cost_usd: float | None = None
 
 
 class ResearchRouteBudgetResponse(BaseModel):
     authority: Literal["advisory"] = "advisory"
     daily_cap_usd: float | None
     spent_usd: float | None
-    projected_cost_usd: float | None = None
-    would_exceed_budget: bool | None = None
+    spent_status: Literal["known", "unknown"]
+    cap_source: str | None
+    notes: list[str]
+    projection_status: Literal["unavailable"] = "unavailable"
+    projection_note: str = (
+        "Trajectory cost is unavailable until measured recursive-investigation "
+        "telemetry supports an estimator."
+    )
 
 
 class ResearchRoutePreviewResponse(BaseModel):
@@ -82,8 +87,13 @@ def preview_research_routes(
         prompt_fingerprint=prompt_fingerprint(req.question),
         candidates=candidates,
         budget=ResearchRouteBudgetResponse(
-            daily_cap_usd=budget.daily_cap_usd,
+            # Settings may display the daemon's operational default. Research
+            # only transports a denominator when an operator/env cap supplied it.
+            daily_cap_usd=budget.daily_cap_usd if budget.cap_env is not None else None,
             spent_usd=budget.spent_usd,
+            spent_status="known" if budget.spent_status == "known" else "unknown",
+            cap_source=budget.cap_env,
+            notes=budget.notes,
         ),
     )
 

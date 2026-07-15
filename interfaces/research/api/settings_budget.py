@@ -369,8 +369,8 @@ def read_operator_budget() -> BudgetResponse:
     try:
         if _budget_path().is_file():
             bdg = DaemonBudget(daily_cap_usd=float(daily_cap))
-            remaining = float(bdg.remaining_today())
-            spent = max(0.0, float(daily_cap) - remaining)
+            spent = float(bdg.spent_today())
+            remaining = max(0.0, float(daily_cap) - spent)
             spent_status = "known"
             notes.append("spent sourced from continuous-daemon daily budget sidecar")
         else:

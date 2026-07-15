@@ -139,7 +139,14 @@ class DaemonBudget:
 
     def remaining_today(self, *, now: Optional[datetime] = None) -> float:
         snap = _read_snapshot(_utc_date_stamp(now), self.daily_cap_usd)
-        return max(0.0, snap.cap_usd - snap.spent_usd)
+        # The snapshot records the cap that applied when spend was written,
+        # but the current instance owns today's enforcement authority.  Spend
+        # survives a cap edit; a stale persisted cap must not.
+        return max(0.0, self.daily_cap_usd - snap.spent_usd)
+
+    def spent_today(self, *, now: Optional[datetime] = None) -> float:
+        """Return persisted spend without allowing the current cap to truncate it."""
+        return max(0.0, _read_snapshot(_utc_date_stamp(now), self.daily_cap_usd).spent_usd)
 
     def reserve(
         self,

@@ -28,8 +28,11 @@ describe("useResearchRoutePreview", () => {
           authority: "advisory",
           daily_cap_usd: null,
           spent_usd: null,
-          projected_cost_usd: null,
-          would_exceed_budget: null,
+          spent_status: "unknown",
+          cap_source: null,
+          notes: [],
+          projection_status: "unavailable",
+          projection_note: "Trajectory cost is unavailable.",
         },
       });
     const { result, rerender } = renderHook(

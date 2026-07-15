@@ -108,6 +108,29 @@ function renderStart() {
   );
 }
 
+function installReadyBudget(budget: Record<string, unknown>) {
+  routePreviewState.current = {
+    status: "ready",
+    error: null,
+    retry: vi.fn(),
+    preview: {
+      policy_version: "research-route.v1",
+      prompt_fingerprint: "prompt-proof",
+      candidates: [{
+        choice_id: "rr_fast",
+        tier: "fast",
+        configuration_fingerprint: "cfg-fast",
+        display_name: "Fast lens",
+        model_policy_label: "GLM-5.2 · thinking off",
+        rationale: "Exploratory work",
+        ready: true,
+        readiness_label: "Ready",
+      }],
+      budget,
+    },
+  };
+}
+
 beforeEach(() => {
   installMatchMedia(false);
   startInvestigationMock.mockReset();
@@ -239,7 +262,6 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
             rationale: "Exploratory work",
             ready: true,
             readiness_label: "Ready",
-            projected_cost_usd: null,
           },
           {
             choice_id: "rr_deep",
@@ -250,15 +272,17 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
             rationale: "Reasoning-heavy work",
             ready: true,
             readiness_label: "Ready",
-            projected_cost_usd: null,
           },
         ],
         budget: {
           authority: "advisory",
           daily_cap_usd: 5,
           spent_usd: null,
-          projected_cost_usd: null,
-          would_exceed_budget: null,
+          spent_status: "unknown",
+          cap_source: "ANTIEK_OPERATOR_BUDGET_USD",
+          notes: [],
+          projection_status: "unavailable",
+          projection_note: "Trajectory cost is unavailable until measured telemetry supports an estimator.",
         },
       },
     };
@@ -268,7 +292,7 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
       target: { value: "Compare these sources and resolve their disagreement." },
     });
     expect(screen.getByRole("radiogroup", { name: "Research route" })).toBeTruthy();
-    expect(screen.getByText(/spent unknown · \$5\.00 ceiling · projection unknown/i)).toBeTruthy();
+    expect(screen.getByText(/spend unknown · \$5\.00 operator ceiling · projection unavailable/i)).toBeTruthy();
     fireEvent.keyDown(screen.getByRole("radio", { name: /Deep lens/i }), { key: "ArrowLeft" });
     expect(screen.getByRole("radio", { name: /Fast lens/i }).getAttribute("aria-checked")).toBe("true");
     fireEvent.keyDown(screen.getByRole("radio", { name: /Fast lens/i }), { key: "End" });
@@ -285,6 +309,31 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
         route_configuration_fingerprint: "cfg-fast",
       }),
     ));
+  });
+
+  it.each([
+    ["configured and known", 8, 2, "known", "ANTIEK_OPERATOR_BUDGET_USD", true, /\$2\.00 spent · \$8\.00 operator ceiling/i],
+    ["configured and unknown", 8, null, "unknown", "ANTIEK_OPERATOR_BUDGET_USD", false, /spend unknown · \$8\.00 operator ceiling/i],
+    ["unconfigured and known", null, 2, "known", null, false, /\$2\.00 daemon-tracked · no operator ceiling/i],
+    ["unconfigured and unknown", null, null, "unknown", null, false, /spend unknown · no operator ceiling/i],
+  ])("renders truthful budget authority when %s", (_, cap, spent, spentStatus, capSource, hasMeter, copy) => {
+    installReadyBudget({
+      authority: "advisory",
+      daily_cap_usd: cap,
+      spent_usd: spent,
+      spent_status: spentStatus,
+      cap_source: capSource,
+      notes: [],
+      projection_status: "unavailable",
+      projection_note: "Trajectory cost is unavailable.",
+    });
+    renderStart();
+    fireEvent.change(screen.getByLabelText("Research question"), {
+      target: { value: "Compare these sources." },
+    });
+
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.queryByTestId("research-budget-meter") !== null).toBe(hasMeter);
   });
 
   it("offers the explicit recovery-chain fallback when preferred drivers are unavailable", async () => {
@@ -304,14 +353,16 @@ describe("StartResearch — the start-a-research entry (M1)", () => {
           rationale: "Reasoning-heavy work",
           ready: false,
           readiness_label: "Provider unavailable",
-          projected_cost_usd: null,
         }],
         budget: {
           authority: "advisory",
           daily_cap_usd: null,
           spent_usd: null,
-          projected_cost_usd: null,
-          would_exceed_budget: null,
+          spent_status: "unknown",
+          cap_source: null,
+          notes: ["No operator cap is configured; the daemon default is reference-only."],
+          projection_status: "unavailable",
+          projection_note: "Trajectory cost is unavailable until measured telemetry supports an estimator.",
         },
       },
     };

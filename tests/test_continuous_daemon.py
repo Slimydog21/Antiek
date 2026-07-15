@@ -271,6 +271,23 @@ def test_daemon_budget_persists_across_construction(isolated_env):
     assert b2.remaining_today() == pytest.approx(4.0)
 
 
+def test_daemon_budget_remaining_uses_current_cap_after_cap_change(isolated_env):
+    DaemonBudget(daily_cap_usd=5.0).reserve(1.0)
+
+    changed = DaemonBudget(daily_cap_usd=3.0)
+
+    assert changed.remaining_today() == pytest.approx(2.0)
+
+
+def test_daemon_budget_spend_is_not_truncated_when_cap_drops_below_spend(isolated_env):
+    DaemonBudget(daily_cap_usd=5.0, per_investigation_cap_usd=5.0).reserve(4.0)
+
+    changed = DaemonBudget(daily_cap_usd=3.0)
+
+    assert changed.spent_today() == pytest.approx(4.0)
+    assert changed.remaining_today() == pytest.approx(0.0)
+
+
 def test_daemon_budget_record_actual_adjusts_total(isolated_env):
     b = DaemonBudget(daily_cap_usd=5.0)
     b.reserve(2.0)

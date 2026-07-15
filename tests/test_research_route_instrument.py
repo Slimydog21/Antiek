@@ -6,12 +6,16 @@ import httpx
 import pytest
 
 from interfaces.research.api import EventBroadcaster, create_app
+from orchestration.continuous.budget import DaemonBudget
 from substrate.dispatch.research_route import route_choices
 from substrate.event_log import trajectory
 
 
 @pytest.fixture
 async def route_client(tmp_path, monkeypatch):
+    monkeypatch.setenv("ANTIEK_HOME", str(tmp_path))
+    monkeypatch.delenv("ANTIEK_OPERATOR_BUDGET_USD", raising=False)
+    monkeypatch.delenv("ANTIEK_DAEMON_HOURLY_BUDGET_USD", raising=False)
     monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
     monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "graph.duckdb"))
     app = create_app(
@@ -43,11 +47,50 @@ async def test_preview_is_closed_safe_and_cost_unknown(route_client):
     }
     assert all(row["ready"] for row in body["candidates"])
     assert body["budget"]["authority"] == "advisory"
-    assert body["budget"]["projected_cost_usd"] is None
-    assert body["budget"]["would_exceed_budget"] is None
+    assert body["budget"]["projection_status"] == "unavailable"
+    assert body["budget"]["projection_note"]
+    assert "projected_cost_usd" not in body["budget"]
+    assert "would_exceed_budget" not in body["budget"]
     serialized = response.text.lower()
     assert '"provider"' not in serialized
     assert "api_key" not in serialized
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("configured", "known_spend", "expected_cap", "expected_spend_status"),
+    [
+        (True, True, 8.0, "known"),
+        (True, False, 8.0, "unknown"),
+        (False, True, None, "known"),
+        (False, False, None, "unknown"),
+    ],
+)
+async def test_preview_budget_authority_matrix(
+    route_client,
+    monkeypatch,
+    configured,
+    known_spend,
+    expected_cap,
+    expected_spend_status,
+):
+    if configured:
+        monkeypatch.setenv("ANTIEK_OPERATOR_BUDGET_USD", "8")
+    if known_spend:
+        DaemonBudget(daily_cap_usd=5.0).reserve(1.25)
+
+    body = (await route_client.post(
+        "/research/routes/preview", json={"question": "Which authority applies here?"}
+    )).json()["budget"]
+
+    assert body["daily_cap_usd"] == expected_cap
+    assert body["spent_status"] == expected_spend_status
+    assert body["spent_usd"] == (1.25 if known_spend else None)
+    assert body["cap_source"] == (
+        "ANTIEK_OPERATOR_BUDGET_USD" if configured else None
+    )
+    if not configured:
+        assert any("daemon default cap $5.00/day as reference" in note for note in body["notes"])
 
 
 @pytest.mark.asyncio
