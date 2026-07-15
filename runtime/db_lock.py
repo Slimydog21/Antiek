@@ -326,7 +326,12 @@ def connect_write(
     except OSError:
         pass
 
-    con = duckdb.connect(db_path)
+    try:
+        con = duckdb.connect(db_path)
+    except Exception:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+        raise
     return LockedConnection(
         con,
         fd,

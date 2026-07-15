@@ -368,6 +368,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "deliverable_composition_members",
     "deliverable_section_provenance_validity",
     "write_event_outbox",
+    "event_consumer_receipts",
 )
 
 
@@ -1235,11 +1236,78 @@ CREATE INDEX IF NOT EXISTS idx_write_event_outbox_pending
     ON write_event_outbox(investigation_id, state, outbox_sequence);
 """
 
+ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
+CREATE TABLE IF NOT EXISTS event_consumer_receipts (
+    consumer_name TEXT NOT NULL,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    event_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,
+    event_sha256 TEXT NOT NULL,
+    status TEXT NOT NULL CHECK (status IN ('succeeded', 'quarantined')),
+    output_ref TEXT,
+    error_class TEXT,
+    error_digest TEXT,
+    attempt_count INTEGER NOT NULL CHECK (attempt_count >= 1),
+    processed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    CHECK (
+        (status = 'succeeded' AND output_ref IS NOT NULL
+            AND error_class IS NULL AND error_digest IS NULL)
+        OR
+        (status = 'quarantined' AND output_ref IS NULL
+            AND error_class IS NOT NULL AND error_digest IS NOT NULL)
+    ),
+    PRIMARY KEY (consumer_name, consumer_version, event_id)
+);
+CREATE INDEX IF NOT EXISTS idx_event_consumer_receipts_investigation
+    ON event_consumer_receipts(consumer_name, consumer_version, investigation_id);
+"""
+
 _V18_OUTBOX_COLUMNS = {
     "outbox_sequence", "event_id", "operation_id", "investigation_id",
     "aggregate_kind", "aggregate_id", "event_json", "event_sha256", "state",
     "attempt_count", "created_at", "delivered_at",
 }
+
+_V19_RECEIPT_COLUMNS = {
+    "consumer_name", "consumer_version", "investigation_id", "event_id",
+    "action_type", "event_sha256", "status", "output_ref", "error_class",
+    "error_digest", "attempt_count", "processed_at",
+}
+
+_V19_RECEIPT_REQUIRED_SHAPE = {
+    "consumer_name": ("VARCHAR", "NO", "PRI"),
+    "consumer_version": ("INTEGER", "NO", "PRI"),
+    "investigation_id": ("VARCHAR", "NO", None),
+    "event_id": ("VARCHAR", "NO", "PRI"),
+    "action_type": ("VARCHAR", "NO", None),
+    "event_sha256": ("VARCHAR", "NO", None),
+    "status": ("VARCHAR", "NO", None),
+    "output_ref": ("VARCHAR", "YES", None),
+    "error_class": ("VARCHAR", "YES", None),
+    "error_digest": ("VARCHAR", "YES", None),
+    "attempt_count": ("INTEGER", "NO", None),
+    "processed_at": ("TIMESTAMP", "NO", None),
+}
+
+
+def _v19_receipt_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3])
+        for row in con.execute("DESCRIBE event_consumer_receipts").fetchall()
+    }
+    if described != _V19_RECEIPT_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='event_consumer_receipts'"
+    ).fetchall()
+    primary_keys = [tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"]
+    checks = "\n".join(row[2] for row in constraints if row[0] == "CHECK")
+    return primary_keys == [("consumer_name", "consumer_version", "event_id")] and all(
+        marker in checks
+        for marker in ("'succeeded'", "'quarantined'", "attempt_count >= 1", "output_ref IS NOT NULL")
+    )
 
 
 def _repair_empty_partial_v18_outbox(con: LockedConnection) -> None:
@@ -1256,6 +1324,24 @@ def _repair_empty_partial_v18_outbox(con: LockedConnection) -> None:
     if count:
         raise RuntimeError("populated partial V18 outbox requires explicit recovery")
     con.execute("DROP TABLE write_event_outbox")
+
+
+def _repair_empty_partial_v19_receipts(con: LockedConnection) -> None:
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema='main' AND table_name='event_consumer_receipts'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if columns == _V19_RECEIPT_COLUMNS and _v19_receipt_shape_is_valid(con):
+        return
+    count = con.execute("SELECT COUNT(*) FROM event_consumer_receipts").fetchone()[0]
+    if count:
+        raise RuntimeError("populated partial V19 receipts require explicit recovery")
+    con.execute("DROP TABLE event_consumer_receipts")
 
 
 def init_database(con: LockedConnection) -> None:
@@ -1338,6 +1424,8 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V17_PROVENANCE_VALIDITY_SQL)
     _repair_empty_partial_v18_outbox(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V18_WRITE_EVENT_OUTBOX_SQL)
+    _repair_empty_partial_v19_receipts(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1395,7 +1483,10 @@ def _schema_is_present(db_path: str) -> bool:
             "table_name='write_event_outbox' AND column_name='event_sha256') "
             "AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
             "table_schema='main' AND table_name='write_event_outbox' "
-            "AND column_name='operation_id'))"
+            "AND column_name='operation_id')"
+            " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='event_consumer_receipts' "
+            "AND column_name='event_sha256'))"
         ).fetchone()
     except Exception:
         return False

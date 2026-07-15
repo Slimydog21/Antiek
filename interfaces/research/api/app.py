@@ -6593,7 +6593,48 @@ def create_app(
         except Exception as exc:
             print(f"Write event outbox recovery remains pending: {exc!r}", file=sys.stderr)
 
+    def _recover_knowledge_event_projector() -> None:
+        import threading
+        import time
+
+        db_path = _resolve_db_path()
+        app.state.knowledge_event_recovery = {
+            "status": "catching_up",
+            "catching_up": True,
+        }
+
+        def run_recovery() -> None:
+            from substrate.graph.knowledge_event_projector import recover
+
+            try:
+                while True:
+                    report = recover(db_path=db_path, candidate_limit=100, wall_time_s=0.5)
+                    app.state.knowledge_event_recovery = {
+                        "status": "catching_up" if report.catching_up else "current",
+                        **report.as_dict(),
+                    }
+                    if not report.catching_up:
+                        break
+                    time.sleep(0.05)
+            except Exception as exc:
+                app.state.knowledge_event_recovery = {
+                    "status": "error",
+                    "catching_up": True,
+                    "error_class": type(exc).__name__,
+                }
+                print(
+                    f"Knowledge event projection recovery remains pending: {exc!r}",
+                    file=sys.stderr,
+                )
+
+        threading.Thread(
+            target=run_recovery,
+            name="knowledge-event-recovery",
+            daemon=True,
+        ).start()
+
     app.router.on_startup.append(_recover_write_event_outbox)
+    app.router.on_startup.append(_recover_knowledge_event_projector)
     return app
 
 

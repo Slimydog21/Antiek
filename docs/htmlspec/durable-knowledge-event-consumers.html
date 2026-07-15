@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Antiek Cycle 45 - Durable Knowledge Event Consumers</title>
+</head>
+<body>
+  <main>
+    <h1>Durable knowledge event consumers</h1>
+    <p><strong>Status:</strong> executable Cycle 45 contract. <strong>Parent:</strong> Cycle 44 transactional Write event outbox. <strong>Goal:</strong> valuable notes and questions that reached the canonical event trajectory must not depend on one process-local callback to enter Antiek's reusable knowledge graph.</p>
+
+    <h2>Problem statement</h2>
+    <p><code>EventBroadcaster</code> is intentionally process-local and lossy. Its Python handlers run in background tasks, exceptions are diagnostic only, and events written by another process never reach it. The graph promotion funnel also uses a volatile queue. A one-shot historical backfill exists, but it has no durable per-event receipt, bounded startup contract, poison-event policy, or continuous recovery seam. Therefore a durable <code>note.emerged</code>, <code>question.identified</code>, or <code>marginalia.noted</code> event can remain absent from the graph after a crash.</p>
+
+    <h2>Claims and non-claims</h2>
+    <ul>
+      <li>This sprint guarantees durable at-least-once discovery and transactionally idempotent graph projection for the three knowledge-unit event types.</li>
+      <li>A successful receipt and its graph mutation commit in one DuckDB transaction.</li>
+      <li>A quarantined receipt proves that a specific immutable event was rejected and lets later events progress.</li>
+      <li>The broadcaster remains a low-latency wake-up and WebSocket surface, never delivery authority.</li>
+      <li>This sprint does not claim global exactly-once processing, durable WebSocket delivery, or exactly-once external model invocation.</li>
+      <li>This sprint does not replay the note-taker or cross-document linker. Their required contracts are specified below and remain blocked from side-effectful historical replay until deterministic effect identities exist.</li>
+    </ul>
+
+    <h2>Canonical source traversal</h2>
+    <p>Add a physical trajectory reader distinct from the existing chronological presentation reader. It reads an existing Parquet snapshot in stored row order, then its live JSONL tail in append order, and suppresses duplicate event IDs already represented by the snapshot. It never sorts by <code>emitted_at</code>. A complete malformed JSONL line fails visibly; an unterminated final line is treated as an incomplete append and does not permit a consumer boundary to pass it. Existing presentation APIs may retain chronological sorting.</p>
+    <p>Legacy Parquet order is accepted as the immutable order of that snapshot. Resealing must preserve snapshot order followed by tail order. Cycle 45 does not retrofit a fabricated monotonic sequence onto historical events.</p>
+
+    <h2>V19 graph schema</h2>
+    <pre><code>event_consumer_receipts(
+  consumer_name TEXT,
+  consumer_version INTEGER,
+  investigation_id TEXT,
+  event_id TEXT,
+  action_type TEXT,
+  event_sha256 TEXT,
+  status TEXT CHECK status IN ('succeeded', 'quarantined'),
+  output_ref TEXT,
+  error_class TEXT,
+  error_digest TEXT,
+  attempt_count INTEGER CHECK attempt_count &gt;= 1,
+  processed_at TIMESTAMP,
+  PRIMARY KEY (consumer_name, consumer_version, event_id)
+)</code></pre>
+    <p>The receipt stores no raw secret or unbounded exception. Re-observing one event ID with different canonical bytes is corruption and fails closed. Consumer version changes create a separate receipt namespace and deliberate rebuild.</p>
+
+    <h2>Knowledge graph projector v1</h2>
+    <ol>
+      <li>Discover investigations from regular, singly linked <code>.parquet</code> and <code>.jsonl</code> files only. Reject unsafe names and linked files.</li>
+      <li>Traverse canonical physical events and select only <code>note.emerged</code>, <code>question.identified</code>, and <code>marginalia.noted</code>.</li>
+      <li>Canonicalize and hash the complete event before consulting its receipt.</li>
+      <li>For an unseen valid event, begin one DuckDB transaction, call the established typed promotion function, insert a <code>succeeded</code> receipt with the returned node ID, and commit.</li>
+      <li>For a typed but unprojectable legacy event, insert a bounded <code>quarantined</code> receipt with error class and digest, then continue. Database, integrity, lock, and infrastructure failures are not poison and must abort without a receipt.</li>
+      <li>For an existing receipt, verify immutable identity and status. Never rerun the projection.</li>
+      <li>Bound each recovery scan and admission pass by candidate count and wall time. Once admitted, a projection transaction runs to completion rather than being interrupted between graph mutation and receipt. Return explicit scanned, succeeded, already-received, quarantined, remaining/catching-up, and error fields.</li>
+    </ol>
+
+    <h2>Lifecycle integration</h2>
+    <p>FastAPI startup launches best-effort recovery on a daemon worker so slow embedding or database handoff cannot delay API readiness. Recovery initializes a missing configured graph database when durable events exist. A manual recovery API remains available in substrate code and can drain all batches. Correctness comes from the durable trajectory and receipt, so process death before projection is recovered later. Startup errors are surfaced in app state rather than deleting or skipping source events.</p>
+
+    <h2>Failure semantics</h2>
+    <ul>
+      <li>Crash before graph mutation: no receipt; retry projects later.</li>
+      <li>Crash during the transaction: graph mutation and receipt both roll back.</li>
+      <li>Crash after commit: receipt suppresses duplicate work.</li>
+      <li>Content-addressed node deduplication never substitutes for a receipt; distinct source events retain distinct receipts even when they resolve to one node.</li>
+      <li>Malformed middle trajectory data blocks traversal and is an event-store integrity failure, not a consumer poison event.</li>
+      <li>A valid event with an invalid payload for this consumer may be quarantined. Its exact bytes remain in the source trajectory.</li>
+      <li>Receipt corruption, event-ID byte conflict, unsafe filesystem shape, or partial populated schema fails closed and requires explicit recovery.</li>
+    </ul>
+
+    <h2>Deferred consumer contracts</h2>
+    <h3>Note-taker v2</h3>
+    <p>Cadence is an immutable window of qualifying physical events, identified by consumer version, investigation, first event ID, and last event ID. Persist the exact request before dispatch. Persist the raw provider result before parsing. Completed windows replay stored results and use deterministic note and event identities. A crash during a provider call without provider idempotency becomes <code>uncertain</code>; it is never silently retried as exactly once.</p>
+    <h3>Cross-document linker v2</h3>
+    <p>Hydration of open and answered questions is pure and deterministic. Matching creates a deterministic effect key from the question event, answer note event, consumer version, and algorithm version. The output event is delivered through a durable deterministic event intent before the input receipt advances.</p>
+    <h3>Broadcaster</h3>
+    <p>Live broadcast may wake durable consumers but must not recursively execute recovered outputs on the same call stack. Recovered outputs enter canonical stream order and are consumed in a later pull iteration.</p>
+
+    <h2>Acceptance tests</h2>
+    <ul>
+      <li>Real child-process death before commit, during transaction, and after commit yields respectively one eventual graph projection and one successful receipt.</li>
+      <li>Two workers racing one event produce one receipt and no conflicting graph state.</li>
+      <li>Snapshot plus reopened tail projects in physical layer order; duplicate IDs across layers process once.</li>
+      <li>Equal or regressing timestamps do not reorder physical replay.</li>
+      <li>Two source events with identical text produce two receipts even if one content-addressed node is shared.</li>
+      <li>Valid poison payload is quarantined with bounded diagnostics and later valid candidates continue.</li>
+      <li>Malformed middle JSONL, linked event file, conflicting event bytes, and populated partial V19 schema fail closed.</li>
+      <li>A bounded batch reports catching up and a manual drain reaches zero unseen candidates.</li>
+      <li>Events emitted while no API process exists are projected after startup recovery.</li>
+      <li>Configured event disablement creates no source event and therefore no fabricated projection receipt.</li>
+      <li>Existing one-shot backfill behavior remains compatible or is redirected through the same projector without changing dry-run truthfulness.</li>
+    </ul>
+
+    <h2>Done bar</h2>
+    <p>The sprint is done only when schema migration/repair, physical traversal, transactional receipts, bounded and full recovery, startup integration, process-death tests, compatibility tests, independent adversarial review, and HardenX all pass. A green narrow unit test is not evidence for the restart guarantee.</p>
+  </main>
+</body>
+</html>

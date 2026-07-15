@@ -805,6 +805,7 @@ def promote_from_note_event(
     con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
+    emit_graph_events: bool = True,
 ) -> str | None:
     """Promote a single ``note.emerged`` event into an insight node.
 
@@ -831,6 +832,7 @@ def promote_from_note_event(
             "origin_note_id": payload.get("note_id"),
         },
         embedding_provider=embedding_provider,
+        emit_graph_events=emit_graph_events,
         con=con,
     )
 
@@ -841,6 +843,7 @@ def promote_from_question_event(
     con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
+    emit_graph_events: bool = True,
 ) -> str | None:
     """Promote a single ``question.identified`` event into a question
     node. Opt-in (see :func:`promote_from_note_event`)."""
@@ -860,6 +863,7 @@ def promote_from_question_event(
             "origin_question_id": payload.get("question_id"),
         },
         embedding_provider=embedding_provider,
+        emit_graph_events=emit_graph_events,
         con=con,
     )
 
@@ -870,6 +874,7 @@ def promote_from_marginalia_event(
     con: LockedConnection | None = None,
     enabled: bool = False,
     embedding_provider: Any = None,
+    emit_graph_events: bool = True,
 ) -> str | None:
     """Promote a single ``marginalia.noted`` event into a **user-authored**
     per-book insight node (Read SPR-07 M3).
@@ -926,6 +931,7 @@ def promote_from_marginalia_event(
             "excerpt": payload.get("excerpt"),
         },
         embedding_provider=embedding_provider,
+        emit_graph_events=emit_graph_events,
         con=con,
     )
 

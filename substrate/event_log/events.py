@@ -80,6 +80,7 @@ import fcntl
 import json
 import os
 import re
+import stat
 import sys
 import time
 import traceback
@@ -552,12 +553,14 @@ def seal_investigation(
         # Match eventful Write's database -> event-stream lock order. Holding
         # both locks makes the pending check and Parquet seal one exclusion
         # region with respect to every new transactional outbox intent.
-        with connect_write(db_path, purpose="event_log/seal") as con:
-            with investigation_event_lock(investigation_id, events_dir=events_dir):
-                _refuse_pending_write_events(con, investigation_id)
-                return _seal_investigation_unlocked(
-                    investigation_id, events_dir=events_dir, delete_jsonl=delete_jsonl
-                )
+        with (
+            connect_write(db_path, purpose="event_log/seal") as con,
+            investigation_event_lock(investigation_id, events_dir=events_dir),
+        ):
+            _refuse_pending_write_events(con, investigation_id)
+            return _seal_investigation_unlocked(
+                investigation_id, events_dir=events_dir, delete_jsonl=delete_jsonl
+            )
     with investigation_event_lock(investigation_id, events_dir=events_dir):
         return _seal_investigation_unlocked(
             investigation_id, events_dir=events_dir, delete_jsonl=delete_jsonl
@@ -590,6 +593,8 @@ def _seal_investigation_unlocked(
         if os.path.exists(pq):
             return pq  # already sealed
         return None
+    if _event_file_has_incomplete_tail(jl):
+        raise PhysicalTrajectoryError("cannot seal an incomplete JSONL append")
 
     try:
         import pyarrow as pa  # type: ignore[import-not-found]
@@ -604,7 +609,13 @@ def _seal_investigation_unlocked(
 
     # Reopened streams have an existing snapshot plus a live tail. Seal the
     # merged trajectory, not merely the tail, or resealing would erase history.
-    rows = trajectory(investigation_id, events_dir=events_dir)
+    rows = list(
+        iter_physical_events(
+            investigation_id,
+            events_dir=events_dir,
+            _lock_already_held=True,
+        )
+    )
     if not rows:
         return None
 
@@ -682,6 +693,152 @@ def trajectory(
     merged = [*by_id.values(), *without_id]
     merged.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
     return merged
+
+
+class PhysicalTrajectoryError(RuntimeError):
+    """The durable event trajectory cannot be traversed without guessing."""
+
+
+def _open_regular_event_file(path: str) -> int | None:
+    if not os.path.lexists(path):
+        return None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise PhysicalTrajectoryError(
+            f"event file must be regular and singly linked: {path}"
+        ) from exc
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        os.close(fd)
+        raise PhysicalTrajectoryError(f"event file must be regular and singly linked: {path}")
+    return fd
+
+
+def _event_file_has_incomplete_tail(path: str) -> bool:
+    fd = _open_regular_event_file(path)
+    if fd is None:
+        return False
+    try:
+        size = os.fstat(fd).st_size
+        if size == 0:
+            return False
+        os.lseek(fd, -1, os.SEEK_END)
+        return os.read(fd, 1) != b"\n"
+    finally:
+        os.close(fd)
+
+
+def _physical_identity(row: dict[str, Any]) -> str:
+    return json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str
+    )
+
+
+def iter_physical_events(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+    lock_timeout_s: float = 10.0,
+    _lock_already_held: bool = False,
+) -> Iterator[dict[str, Any]]:
+    """Yield snapshot rows then completed tail records in physical order.
+
+    Unlike :func:`trajectory`, this delivery-authority reader never sorts by a
+    presentation timestamp.  A final JSONL append without a newline is ignored
+    until it becomes complete; malformed completed records fail closed.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}", investigation_id):
+        raise ValueError("investigation_id is not safe for event storage")
+    root = events_dir or default_events_dir()
+    if os.path.lexists(root) and (os.path.islink(root) or not os.path.isdir(root)):
+        raise PhysicalTrajectoryError("event root must be a real directory")
+    lock = (
+        contextlib.nullcontext()
+        if _lock_already_held
+        else investigation_event_lock(
+            investigation_id, events_dir=root, timeout_s=lock_timeout_s
+        )
+    )
+    with lock:
+        pq = _parquet_path(investigation_id, events_dir=root)
+        jl = _jsonl_path(investigation_id, events_dir=root)
+        seen: dict[str, str] = {}
+        snapshot_fd = _open_regular_event_file(pq)
+        if snapshot_fd is not None:
+            try:
+                import pyarrow.parquet as pq_reader
+            except ImportError as exc:  # pragma: no cover - optional dependency
+                os.close(snapshot_fd)
+                raise PhysicalTrajectoryError("reading a snapshot requires pyarrow") from exc
+            try:
+                with os.fdopen(snapshot_fd, "rb") as snapshot:
+                    snapshot_fd = -1
+                    parquet = pq_reader.ParquetFile(snapshot)
+                    for batch in parquet.iter_batches(batch_size=128):
+                        for row in batch.to_pylist():
+                            if not isinstance(row, dict):
+                                raise PhysicalTrajectoryError(
+                                    "snapshot contains a non-object event"
+                                )
+                            if isinstance(row.get("payload"), str):
+                                with contextlib.suppress(TypeError, ValueError):
+                                    row["payload"] = json.loads(row["payload"])
+                            event_id = row.get("event_id")
+                            if not isinstance(event_id, str) or not event_id:
+                                raise PhysicalTrajectoryError(
+                                    "snapshot event is missing event_id"
+                                )
+                            identity = _physical_identity(row)
+                            prior = seen.get(event_id)
+                            if prior is not None:
+                                if prior != identity:
+                                    raise PhysicalTrajectoryError(
+                                        "snapshot contains conflicting event identities"
+                                    )
+                                continue
+                            seen[event_id] = identity
+                            yield row
+            except PhysicalTrajectoryError:
+                raise
+            except Exception as exc:
+                raise PhysicalTrajectoryError(f"unreadable event snapshot: {pq}") from exc
+            finally:
+                if snapshot_fd >= 0:
+                    os.close(snapshot_fd)
+
+        tail_fd = _open_regular_event_file(jl)
+        if tail_fd is None:
+            return
+        with os.fdopen(tail_fd, "rb") as stream:
+            for line_number, raw_line in enumerate(stream, start=1):
+                if not raw_line.endswith(b"\n"):
+                    return
+                try:
+                    row = json.loads(raw_line)
+                except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                    raise PhysicalTrajectoryError(
+                        f"malformed completed JSONL record at {jl}:{line_number}"
+                    ) from exc
+                if not isinstance(row, dict):
+                    raise PhysicalTrajectoryError(
+                        f"non-object JSONL record at {jl}:{line_number}"
+                    )
+                event_id = row.get("event_id")
+                if not isinstance(event_id, str) or not event_id:
+                    raise PhysicalTrajectoryError(
+                        f"event missing event_id at {jl}:{line_number}"
+                    )
+                identity = _physical_identity(row)
+                prior = seen.get(event_id)
+                if prior is not None:
+                    if prior != identity:
+                        raise PhysicalTrajectoryError(
+                            "event identity conflicts between snapshot and tail"
+                        )
+                    continue
+                seen[event_id] = identity
+                yield row
 
 
 def action_counts(
