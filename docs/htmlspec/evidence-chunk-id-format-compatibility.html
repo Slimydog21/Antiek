@@ -6,9 +6,10 @@
 <h2>Contract</h2>
 <ul>
 <li>Accept the legacy bracket prefix and the exact live Loop One heading.</li>
+<li>Loop One prefixes every retrieved-text line and the bridge accepts headings only at trusted record boundaries, so source text cannot inject citation authority.</li>
 <li>IDs are bounded structural tokens; whitespace, controls, empty IDs, malformed headings, and prose mentions are rejected.</li>
 <li>Duplicates preserve first occurrence. Unknown model citations remain rejected by the existing parser allowlist.</li>
-<li>No prompt, schema, orchestrator, dispatch, app registration, or citation-authority change.</li>
+<li>No schema, dispatch, app registration, or external citation-authority change.</li>
 </ul>
 <h2>Acceptance</h2>
 <pre>uv run --with pytest --with pytest-asyncio --with mypy python -m pytest tests/test_evidence_retriever_bridge.py tests/test_roles_evidence_retriever_extraction.py tests/test_loop_one_phase2_parallel.py -q

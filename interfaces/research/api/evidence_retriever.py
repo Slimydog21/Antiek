@@ -121,8 +121,14 @@ def _extract_chunk_ids_from_block(chunks_block: str) -> tuple[str, ...]:
     """
     out: list[str] = []
     seen: set[str] = set()
+    at_record_boundary = True
     for raw_line in chunks_block.splitlines():
         line = raw_line.strip()
+        if line == "---":
+            at_record_boundary = True
+            continue
+        if not at_record_boundary:
+            continue
         chunk_id = ""
         bracket = re.fullmatch(r"\[([^\]]+)\](?:\s.*)?", line)
         if bracket is not None:
@@ -136,6 +142,7 @@ def _extract_chunk_ids_from_block(chunks_block: str) -> tuple[str, ...]:
         if chunk_id and chunk_id not in seen:
             out.append(chunk_id)
             seen.add(chunk_id)
+        at_record_boundary = False
     return tuple(out)
 
 
