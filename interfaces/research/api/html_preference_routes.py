@@ -1,6 +1,6 @@
-"""HTTP surface for HTML-native view preference (registerable).
+"""HTTP surface for HTML-native view preference.
 
-Consumes ``prefer_html_view`` (#801). Does not convert PDFs or own app.py.
+Consumes ``prefer_html_view`` (#801). Does not convert PDFs.
 """
 
 from __future__ import annotations

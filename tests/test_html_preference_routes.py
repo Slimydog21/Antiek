@@ -69,3 +69,30 @@ def test_unavailable() -> None:
     )
     assert r.status_code == 200
     assert r.json()["mode"] == "unavailable"
+
+
+def test_route_is_mounted_in_production_app(monkeypatch) -> None:
+    """The client contract must be reachable from the real app factory."""
+    for name in (
+        "ANTIEK_OPERATOR_EMAIL",
+        "ANTIEK_OPERATOR_TOKEN",
+        "ANTIEK_SESSION_SECRET",
+    ):
+        monkeypatch.delenv(name, raising=False)
+
+    from interfaces.research.api.app import create_app
+
+    client = TestClient(
+        create_app(
+            register_wrestling=False,
+            register_providers=False,
+            cors_origins=[],
+        )
+    )
+    response = client.post(
+        "/assets/view-preference/decide",
+        json={"html_ready": True, "pdf_available": True},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["mode"] == "html"

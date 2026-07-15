@@ -1659,6 +1659,11 @@ def create_app(
     # the deny-by-default gate in substrate/books/serve.py.
     from .books import register_book_routes
     register_book_routes(app)
+    # HTML-first asset policy — expose the pure preference decision used by
+    # reading clients before they choose an available rendition. Conversion
+    # remains in the ingestion pipeline; this route never performs I/O.
+    from .html_preference_routes import register_html_preference_routes
+    register_html_preference_routes(app)
     # Mountain Shell SPR-02 — Krea image-generation proxy. Holds the
     # KREA_API_TOKEN server-side (the browser never sees it) and brokers
     # scene-art generation under a daily budget + rate limit + kill-switch
