@@ -145,6 +145,7 @@ export function SceneHotspots({
               height: r.h,
               pointerEvents: "auto",
               cursor: "pointer",
+              // Brand sun-yellow rim when hot (hover/focus/last-click) — living TV.
               border: isHot
                 ? "1px solid rgba(245, 223, 36, 0.55)"
                 : "1px solid transparent",
@@ -152,7 +153,14 @@ export function SceneHotspots({
               background: isHot
                 ? "rgba(245, 223, 36, 0.08)"
                 : "transparent",
-              transition: reducedMotion ? "none" : "background 160ms ease, border-color 160ms ease",
+              // Keyboard focus ring (sun) — visible without relying on browser default.
+              outline: "none",
+              boxShadow: isHot
+                ? "0 0 0 2px rgba(245, 223, 36, 0.35)"
+                : "none",
+              transition: reducedMotion
+                ? "none"
+                : "background 160ms ease, border-color 160ms ease, box-shadow 160ms ease",
               padding: 0,
             }}
           />
