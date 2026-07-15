@@ -1,12 +1,13 @@
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { createMemoryRouter, MemoryRouter, Route, RouterProvider, Routes } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import DerivedAssetReader from "./DerivedAssetReader";
 
-const mocks = vi.hoisted(() => ({ getReading: vi.fn(), open: vi.fn() }));
+const mocks = vi.hoisted(() => ({ getReading: vi.fn(), getCollection: vi.fn(), open: vi.fn() }));
 vi.mock("../../api/research", () => ({
   getDerivedAssetReading: (...args: unknown[]) => mocks.getReading(...args),
+  getDerivedEvidenceCollection: (...args: unknown[]) => mocks.getCollection(...args),
 }));
 vi.mock("../../workspace/WorkspaceStore", () => ({
   useWorkspace: (selector: (state: { open: typeof mocks.open }) => unknown) => selector({ open: mocks.open }),
@@ -35,6 +36,7 @@ function mount(path = `/read/derived/${assetId}`) {
   return render(<MemoryRouter initialEntries={[path]}><Routes>
     <Route path="/read/derived/:assetId" element={<DerivedAssetReader />} />
     <Route path="/read/derived/:assetId/revisions/:revisionId" element={<DerivedAssetReader />} />
+    <Route path="/read/derived/evidence/:collectionId" element={<DerivedAssetReader />} />
   </Routes></MemoryRouter>);
 }
 
@@ -78,5 +80,134 @@ describe("Cycle 57 derived HTML reader", () => {
     mount(`/read/derived/${assetId}/revisions/${revisionId}`);
     await waitFor(() => expect(screen.getByRole("alert").textContent).toContain("could not be verified"));
     expect(screen.queryByRole("heading", { name: "Turbofan" })).toBeNull();
+  });
+
+  it("opens a collection permalink on its exact historical HTML and navigates ordered evidence", async () => {
+    const collectionId = `dec_${"d".repeat(32)}`;
+    const source = { derived_asset_id: assetId, revision_id: revisionId,
+      content_sha256: hash, generation: 4, citation_id: `dchunk_${"e".repeat(64)}`,
+      chunk_ordinal: 0, chunk_text_sha256: "f".repeat(64), excerpt: "Bypass ratio matters." };
+    mocks.getCollection.mockResolvedValue({
+      collection_id: collectionId, label: "Engine evidence", derived_asset_id: assetId,
+      revision_id: revisionId, content_sha256: hash, generation: 4, version: 1,
+      member_count: 2, collection_sha256: "1".repeat(64), created_at: "now",
+      updated_at: "now", etag: '"etag"', is_current: false,
+      sources: [source, { ...source, citation_id: `dchunk_${"2".repeat(64)}`,
+        chunk_ordinal: 1, chunk_text_sha256: "3".repeat(64), excerpt: "Fuel burn falls." }],
+      locations: [
+        { citation_id: source.citation_id, chunk_ordinal: 0,
+          member_index: 0, section_anchor: "turbofan", section_path: "Engines / Turbofan" },
+        { citation_id: `dchunk_${"2".repeat(64)}`, chunk_ordinal: 1,
+          member_index: 0, section_anchor: "turbofan", section_path: "Engines / Efficiency" },
+      ],
+    });
+    mocks.getReading.mockResolvedValue({ ...model, is_current: false });
+    mount(`/read/derived/evidence/${collectionId}`);
+    expect(await screen.findByRole("heading", { name: "Engine evidence" })).toBeTruthy();
+    expect(mocks.getCollection).toHaveBeenCalledWith(collectionId);
+    expect(mocks.getReading).toHaveBeenCalledWith(assetId, revisionId);
+    const target = screen.getByRole("heading", { name: "Turbofan" });
+    target.scrollIntoView = vi.fn();
+    target.animate = vi.fn() as unknown as typeof target.animate;
+    fireEvent.click(screen.getByRole("button", { name: /1\. Engines \/ Turbofan/ }));
+    expect(target.scrollIntoView).toHaveBeenCalled();
+    expect(target.animate).toHaveBeenCalled();
+    expect(mocks.open).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Research collection" }));
+    expect(mocks.open).toHaveBeenCalledWith("ChaseThread", expect.objectContaining({
+      evidenceCollection: { collectionId, etag: '"etag"' },
+      parentInvestigationId: `read-${assetId}:${revisionId}`,
+    }), { mode: "floating", title: "Engine evidence" });
+  });
+
+  it("renders no HTML when collection and exact reading identities disagree", async () => {
+    const collectionId = `dec_${"4".repeat(32)}`;
+    const source = { derived_asset_id: assetId, revision_id: revisionId,
+      content_sha256: hash, generation: 4, citation_id: `dchunk_${"4".repeat(64)}`,
+      chunk_ordinal: 0, chunk_text_sha256: "5".repeat(64), excerpt: "Mismatch." };
+    mocks.getCollection.mockResolvedValue({ collection_id: collectionId,
+      derived_asset_id: assetId, revision_id: revisionId, content_sha256: hash,
+      generation: 4, member_count: 2, sources: [source, { ...source,
+        citation_id: `dchunk_${"6".repeat(64)}`, chunk_ordinal: 1 }],
+      locations: [
+        { citation_id: `dchunk_${"0".repeat(64)}`, chunk_ordinal: 0,
+          member_index: 0, section_anchor: "turbofan", section_path: "Mismatch" },
+        { citation_id: `dchunk_${"6".repeat(64)}`, chunk_ordinal: 1,
+          member_index: 0, section_anchor: "turbofan", section_path: "Second" },
+      ] });
+    mocks.getReading.mockResolvedValue(model);
+    mount(`/read/derived/evidence/${collectionId}`);
+    await waitFor(() => expect(screen.getByRole("alert").textContent).toContain(
+      "could not be verified",
+    ));
+    expect(screen.queryByRole("article")).toBeNull();
+  });
+
+  it("never commits an older collection after navigation to a newer permalink", async () => {
+    const oldId = `dec_${"5".repeat(32)}`;
+    const nextId = `dec_${"6".repeat(32)}`;
+    let resolveOld: (value: unknown) => void = () => undefined;
+    const oldRequest = new Promise((resolve) => { resolveOld = resolve; });
+    const source = { derived_asset_id: assetId, revision_id: revisionId,
+      content_sha256: hash, generation: 4, citation_id: `dchunk_${"7".repeat(64)}`,
+      chunk_ordinal: 0, chunk_text_sha256: "8".repeat(64), excerpt: "Newest passage." };
+    const nextCollection = { collection_id: nextId, label: "New collection",
+      derived_asset_id: assetId, revision_id: revisionId, content_sha256: hash,
+      generation: 4, member_count: 2, sources: [source, { ...source,
+        citation_id: `dchunk_${"9".repeat(64)}`, chunk_ordinal: 1 }],
+      locations: [
+        { citation_id: source.citation_id, chunk_ordinal: 0, member_index: 0,
+          section_anchor: "turbofan", section_path: "New / One" },
+        { citation_id: `dchunk_${"9".repeat(64)}`, chunk_ordinal: 1, member_index: 0,
+          section_anchor: "turbofan", section_path: "New / Two" },
+      ], etag: '"new"', is_current: false };
+    mocks.getCollection.mockImplementation((id: string) =>
+      id === oldId ? oldRequest : Promise.resolve(nextCollection));
+    mocks.getReading.mockResolvedValue({ ...model, is_current: false });
+    const router = createMemoryRouter([
+      { path: "/read/derived/evidence/:collectionId", element: <DerivedAssetReader /> },
+    ], { initialEntries: [`/read/derived/evidence/${oldId}`] });
+    render(<RouterProvider router={router} />);
+    await act(async () => { await router.navigate(`/read/derived/evidence/${nextId}`); });
+    expect(await screen.findByRole("heading", { name: "New collection" })).toBeTruthy();
+    await act(async () => { resolveOld({ ...nextCollection, collection_id: oldId,
+      label: "Old collection" }); await oldRequest; });
+    expect(screen.queryByRole("heading", { name: "Old collection" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "New collection" })).toBeTruthy();
+  });
+
+  it("never commits an older exact reading after a newer permalink has loaded", async () => {
+    const oldId = `dec_${"a".repeat(32)}`;
+    const nextId = `dec_${"b".repeat(32)}`;
+    let resolveOldReading: (value: unknown) => void = () => undefined;
+    const oldReading = new Promise((resolve) => { resolveOldReading = resolve; });
+    const source = { derived_asset_id: assetId, revision_id: revisionId,
+      content_sha256: hash, generation: 4, citation_id: `dchunk_${"a".repeat(64)}`,
+      chunk_ordinal: 0, chunk_text_sha256: "b".repeat(64), excerpt: "Exact passage." };
+    const collectionFor = (id: string, label: string) => ({ collection_id: id, label,
+      derived_asset_id: assetId, revision_id: revisionId, content_sha256: hash,
+      generation: 4, member_count: 2, sources: [source, { ...source,
+        citation_id: `dchunk_${"c".repeat(64)}`, chunk_ordinal: 1 }], locations: [
+        { citation_id: source.citation_id, chunk_ordinal: 0, member_index: 0,
+          section_anchor: "turbofan", section_path: "Exact / One" },
+        { citation_id: `dchunk_${"c".repeat(64)}`, chunk_ordinal: 1, member_index: 0,
+          section_anchor: "turbofan", section_path: "Exact / Two" },
+      ], etag: `"${id}"`, is_current: false });
+    mocks.getCollection.mockImplementation((id: string) => Promise.resolve(
+      collectionFor(id, id === oldId ? "Old reading" : "New reading"),
+    ));
+    mocks.getReading.mockImplementationOnce(() => oldReading)
+      .mockResolvedValueOnce({ ...model, title: "Newest HTML", is_current: false });
+    const router = createMemoryRouter([
+      { path: "/read/derived/evidence/:collectionId", element: <DerivedAssetReader /> },
+    ], { initialEntries: [`/read/derived/evidence/${oldId}`] });
+    render(<RouterProvider router={router} />);
+    await waitFor(() => expect(mocks.getReading).toHaveBeenCalledTimes(1));
+    await act(async () => { await router.navigate(`/read/derived/evidence/${nextId}`); });
+    expect(await screen.findByRole("heading", { name: "Newest HTML" })).toBeTruthy();
+    await act(async () => { resolveOldReading({ ...model, title: "Stale HTML" });
+      await oldReading; });
+    expect(screen.queryByRole("heading", { name: "Stale HTML" })).toBeNull();
+    expect(screen.getByRole("heading", { name: "Newest HTML" })).toBeTruthy();
   });
 });

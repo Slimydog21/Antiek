@@ -255,6 +255,7 @@ export default function DerivedRevisionCompanion({
         setCollections((current) => [saved, ...current.filter(
           (item) => item.collection_id !== saved.collection_id,
         )]);
+        saveKey.current = null;
       }
     } catch {
       if (generation === requestGeneration.current) {
@@ -315,7 +316,7 @@ export default function DerivedRevisionCompanion({
         <h3 className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">Saved evidence</h3>
         <ol className="space-y-2">{collections.map((collection) => <li key={collection.collection_id} className="flex items-center justify-between gap-2">
           <div className="min-w-0"><p className="truncate font-serif text-xs text-ink dark:text-bright">{collection.label}</p><p className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">{collection.member_count} passages · generation {collection.generation}</p></div>
-          <button type="button" onClick={() => void researchCollection(collection)} className="shrink-0 font-mono text-[10px] text-link underline">Research</button>
+          <div className="flex shrink-0 items-center gap-2"><a href={`/read/derived/evidence/${encodeURIComponent(collection.collection_id)}`} className="font-mono text-[10px] text-link underline">Open</a><button type="button" onClick={() => void researchCollection(collection)} className="font-mono text-[10px] text-link underline">Research</button></div>
         </li>)}</ol>
       </section> : null}
       {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until a route has verified idempotency, pricing, and spend recovery.</p></div> : null}

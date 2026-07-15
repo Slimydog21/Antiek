@@ -10,6 +10,7 @@ from runtime.db_lock import connect_write
 from services.html_projection.canonical_merge import POLICY, VERSION
 from substrate.graph.schema import init_database_at_path
 from substrate.research_artifact.derived_citation_source import DerivedCitationConflict
+from substrate.research_artifact.derived_asset_retrieval import DerivedAssetRetrievalIntegrity
 from substrate.research_artifact.derived_html_index import (
     CHUNKER_POLICY,
     CHUNKER_VERSION,
@@ -95,6 +96,12 @@ def test_create_replay_list_read_owner_scope_and_tamper(tmp_path: Path) -> None:
     assert [source["excerpt"] for source in created["sources"]] == [
         source.excerpt for source in sources
     ]
+    assert [(location["citation_id"], location["chunk_ordinal"],
+             location["section_anchor"])
+            for location in created["locations"]] == [
+        (sources[0].citation_id, 0, "one"),
+        (sources[1].citation_id, 1, "two"),
+    ]
     assert repository.create(
         owner_user_id="owner-a", idempotency_key="save-1",
         label="Key passages", sources=sources,
@@ -125,6 +132,26 @@ def test_schema_has_collection_tables(tmp_path: Path) -> None:
         tables = {row[0] for row in con.execute("SHOW TABLES").fetchall()}
     assert {"derived_evidence_collections", "derived_evidence_collection_members",
             "derived_evidence_collection_operations"} <= tables
+
+
+def test_read_rejects_tampered_verified_location(tmp_path: Path) -> None:
+    path = str(tmp_path / "graph.duckdb")
+    init_database_at_path(path)
+    repository = EvidenceCollectionRepository(db_path=path)
+    created = repository.create(
+        owner_user_id="owner-a", idempotency_key="save-location",
+        label="Location proof", sources=_seed(path),
+    )
+    with connect_write(path, purpose="evidence-location-tamper") as con:
+        con.execute(
+            "UPDATE derived_asset_revision_chunks SET section_anchor='forged' "
+            "WHERE derived_asset_id=? AND revision_id=? AND chunk_ordinal=0",
+            [created["derived_asset_id"], created["revision_id"]],
+        )
+    with pytest.raises(DerivedAssetRetrievalIntegrity):
+        repository.read(
+            owner_user_id="owner-a", collection_id=created["collection_id"]
+        )
 
 
 def test_launch_lease_redelivers_same_persisted_event_without_duplicate_append(

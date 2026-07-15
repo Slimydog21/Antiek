@@ -286,6 +286,29 @@ class EvidenceCollectionRepository:
         verify_derived_citation_sources_on_connection(
             con=con, owner_user_id=owner_user_id, sources=sources
         )
+        location_rows = con.execute(
+            "SELECT citation_id,chunk_ordinal,member_index,section_anchor,section_path FROM "
+            "derived_asset_revision_chunks WHERE derived_asset_id=? AND revision_id=? "
+            "AND revision_content_sha256=?",
+            [row[2], row[3], row[4]],
+        ).fetchall()
+        locations_by_citation = {
+            str(item[0]): {
+                "citation_id": str(item[0]), "chunk_ordinal": int(item[1]),
+                "member_index": int(item[2]), "section_anchor": str(item[3]),
+                "section_path": str(item[4]),
+            }
+            for item in location_rows
+        }
+        try:
+            locations = [locations_by_citation[source.citation_id] for source in sources]
+        except KeyError as exc:
+            raise EvidenceCollectionConflict(
+                "collection location integrity conflict"
+            ) from exc
+        if any(location["chunk_ordinal"] != source.chunk_ordinal
+               for source, location in zip(sources, locations, strict=True)):
+            raise EvidenceCollectionConflict("collection location integrity conflict")
         if (row[7] != len(sources)
                 or row[8] != _sha(_canonical(self._digest_envelope(sources)))):
             raise EvidenceCollectionConflict("collection digest integrity conflict")
@@ -295,7 +318,7 @@ class EvidenceCollectionRepository:
         ).fetchone()
         result = self._summary(row)
         result.update({"sources": [source.model_dump(mode="json") for source in sources],
-                       "is_current": current == (row[3],)})
+                       "locations": locations, "is_current": current == (row[3],)})
         return result
 
     @staticmethod
