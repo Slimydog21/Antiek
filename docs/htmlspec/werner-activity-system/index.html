@@ -244,6 +244,7 @@
           ><span class="tag green">SPR-08 implemented</span
           ><span class="tag green">SPR-09 implemented</span
           ><span class="tag green">SPR-10 implemented</span
+          ><span class="tag green">SPR-11 implemented</span
           ><span class="tag yellow">Owner: Antiek design goal</span
           ><span class="tag blue">HTML-native</span
           ><span class="tag">Updated 2026-07-14</span>
@@ -547,6 +548,19 @@
               ><span class="tag">Depends on SPR-06</span>
             </div></a
           >
+          <a class="card" href="sprint-11-motion-proof-sheet.html"
+            ><span class="id">SPR-11</span
+            ><strong>Deterministic motion proof sheet</strong
+            ><span
+              >Freeze every reaction at its start, semantic beat, settle, and
+              reduced-motion still so visual review captures meaning rather than
+              timing luck.</span
+            >
+            <div class="footer">
+              <span class="tag green">Implemented</span
+              ><span class="tag">Depends on SPR-10</span>
+            </div></a
+          >
         </div>
         <h3>Freshness-gated next candidates</h3>
         <table>
@@ -685,17 +699,17 @@
         class="block"
         id="harness-hint-run"
         data-harness-default-pattern="adversarial-verification"
-        data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07,SPR-08,SPR-09,SPR-10"
+        data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06,SPR-07,SPR-08,SPR-09,SPR-10,SPR-11"
       >
         <h2>Execution harness hint</h2>
         <p>
-          All ten sprints are file-coupled and run inline. Verification must be
-          heterogeneous and try to prove behavioral drift: route determinism,
+          All eleven sprints are file-coupled and run inline. Verification must
+          be heterogeneous and try to prove behavioral drift: route determinism,
           transition cleanup, exactly-one-instrument mounting, custom-cursor
           visibility, edge-only product reactions, fixed-step input cardinality,
           focus leakage, responsive pointer drift, reduced-motion stillness,
-          opt-in lazy boundaries, renderer mutation, HTML authority, and illicit
-          position or product capability.
+          opt-in lazy boundaries, renderer mutation, deterministic motion proof,
+          HTML authority, and illicit position or product capability.
         </p>
       </section>
 
