@@ -30,6 +30,7 @@ def _ready(tmp_path: Path, *, mode: str = "video", route: str = "balanced"):
             mode=mode,
             route_policy=route,
             sources=("Grounded evidence for every chapter.",),
+            selected_arc_ids=("history",),
         ),
         owner_id="owner-1",
     )

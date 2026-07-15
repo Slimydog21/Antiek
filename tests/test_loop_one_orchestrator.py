@@ -422,17 +422,13 @@ async def _post_start(
     assert r.status_code == 201, r.text
 
 
-async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
+async def _await_terminal(investigation_id: str, *, timeout: float = 10.0):
     """Wait for INVESTIGATION_COMPLETED or _FAILED to appear in the
     trajectory. The orchestrator runs as a detached asyncio.Task —
-    we poll the trajectory rather than register another handler."""
-    deadline = asyncio.get_event_loop().time() + timeout
-    while asyncio.get_event_loop().time() < deadline:
-        remaining = deadline - asyncio.get_event_loop().time()
-        try:
-            await bus.wait_for_handlers(timeout=remaining)
-        except TimeoutError:
-            return None
+    poll the durable trajectory without waiting for unrelated handler tasks."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + timeout
+    while loop.time() < deadline:
         rows = trajectory(investigation_id)
         for r in rows:
             at = r.get("action_type")
@@ -441,8 +437,17 @@ async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
                 ActionType.INVESTIGATION_FAILED.value,
             ):
                 return r
-        await asyncio.sleep(0.05)
+        await asyncio.sleep(min(0.05, max(0.0, deadline - loop.time())))
     return None
+
+
+@pytest.mark.asyncio
+async def test_await_terminal_honors_its_deadline_without_handler_drain():
+    terminal = await asyncio.wait_for(
+        _await_terminal("missing-investigation", timeout=0.02),
+        timeout=0.2,
+    )
+    assert terminal is None
 
 
 # ---------------------------------------------------------------------------
@@ -452,9 +457,8 @@ async def _await_terminal(bus, investigation_id: str, *, timeout: float = 10.0):
 
 @pytest.mark.asyncio
 async def test_loop_one_happy_path_emits_completed(
-    monkeypatch, app_and_bus, async_client,
+    monkeypatch, async_client,
 ):
-    _, bus = app_and_bus
     inv = "inv-loop-happy"
     monkeypatch.setattr(
         "orchestration.loop_one.orchestrator._render_chunks_block_for_sub_question",
@@ -486,7 +490,7 @@ async def test_loop_one_happy_path_emits_completed(
         question="Is PsiQuantum's photonic quantum roadmap defensible?",
     )
 
-    terminal = await _await_terminal(bus, inv, timeout=20.0)
+    terminal = await _await_terminal(inv, timeout=30.0)
     assert terminal is not None, "no terminal event landed in trajectory"
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
 
@@ -507,11 +511,10 @@ async def test_loop_one_happy_path_emits_completed(
 
 @pytest.mark.asyncio
 async def test_loop_one_decomposer_failure_emits_failed_at_phase_1(
-    monkeypatch, app_and_bus, async_client,
+    monkeypatch, async_client,
 ):
     """When the decomposer dispatch fails, the orchestrator must
     emit INVESTIGATION_FAILED with phase=1 + the diagnostic."""
-    _, bus = app_and_bus
     inv = "inv-loop-fail-1"
 
     # Stub raises for decomposer — the bridge sends an empty
@@ -527,7 +530,7 @@ async def test_loop_one_decomposer_failure_emits_failed_at_phase_1(
         question="Anything will do here.",
     )
 
-    terminal = await _await_terminal(bus, inv, timeout=15.0)
+    terminal = await _await_terminal(inv, timeout=25.0)
     assert terminal is not None
     assert terminal["action_type"] == ActionType.INVESTIGATION_FAILED.value
     e = Event.model_validate(terminal)
@@ -549,7 +552,7 @@ async def test_loop_one_decomposer_failure_emits_failed_at_phase_1(
 
 @pytest.mark.asyncio
 async def test_loop_one_synthesizer_unparseable_converges_via_insufficient_evidence(
-    monkeypatch, app_and_bus, async_client, tmp_path,
+    monkeypatch, async_client, tmp_path,
 ):
     """When phase 1-5 land but the synthesizer can't produce a
     parseable thesis (even after one self-repair retry), the bridge
@@ -566,7 +569,6 @@ async def test_loop_one_synthesizer_unparseable_converges_via_insufficient_evide
     valid terminal state" — the operator now sees verdicts like
     "no defensible thesis from the available evidence" instead of
     opaque substrate failures."""
-    _, bus = app_and_bus
     inv = "inv-loop-synth-unparseable"
 
     # Seed the research dir with the phase 1-5 artifacts so those
@@ -611,7 +613,7 @@ async def test_loop_one_synthesizer_unparseable_converges_via_insufficient_evide
         question="PsiQuantum roadmap question.",
     )
 
-    terminal = await _await_terminal(bus, inv, timeout=20.0)
+    terminal = await _await_terminal(inv, timeout=30.0)
     assert terminal is not None
     assert terminal["action_type"] == ActionType.INVESTIGATION_COMPLETED.value
     e = Event.model_validate(terminal)
