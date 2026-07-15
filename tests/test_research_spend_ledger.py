@@ -31,6 +31,7 @@ from substrate.research_spend import (
 )
 from substrate.research_spend.ledger import (
     _DDL,
+    _MIGRATIONS,
     APPLICATION_ID,
     MAX_ACTUAL_CENTS,
     SCHEMA_VERSION,
@@ -613,7 +614,9 @@ def test_other_process_crashes_after_commit_are_exactly_replayable(
         )
 
 
-@pytest.mark.parametrize("statement_index", range(1, len(_DDL) + 1))
+@pytest.mark.parametrize(
+    "statement_index", range(1, len(_DDL) + len(_MIGRATIONS[2]) + len(_MIGRATIONS[3]) + 1)
+)
 def test_schema_migration_failure_rolls_back_atomically(
     tmp_path: Path, statement_index: int
 ) -> None:
