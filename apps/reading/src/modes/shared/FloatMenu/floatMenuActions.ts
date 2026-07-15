@@ -97,6 +97,9 @@ export async function saveFloatMenuNote(
     // Provenance chain: the chunk the selection lands in (null when the host
     // resolved none — honest, never invented).
     chunk_id: selection.provenance.chunkId ?? null,
+    derived_revision_id: selection.provenance.derivedRevisionId ?? null,
+    derived_content_sha256: selection.provenance.derivedContentSha256 ?? null,
+    derived_generation: selection.provenance.derivedGeneration ?? null,
   };
   const emitted = await postTypedEvent({
     investigation_id: investigationId,

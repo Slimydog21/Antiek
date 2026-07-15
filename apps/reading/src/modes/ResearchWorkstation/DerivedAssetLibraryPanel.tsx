@@ -1,5 +1,6 @@
-import { RefreshCw } from "lucide-react";
+import { BookOpen, RefreshCw } from "lucide-react";
 import { useRef, useState } from "react";
+import { Link } from "react-router-dom";
 
 import {
   discoverDerivedAssets,
@@ -154,7 +155,7 @@ export default function DerivedAssetLibraryPanel({ disabled, onPendingChange }: 
     <div className="flex items-center justify-between"><h3 id="derived-library-heading" className="font-mono text-[11px] font-semibold uppercase">Derived assets</h3><button type="button" title="Refresh derived assets" aria-label="Refresh derived assets" disabled={frozen} onClick={() => void loadDiscovery()}><RefreshCw size={14} /></button></div>
     <fieldset disabled={frozen} className="mt-2 space-y-2">
       <label className="block font-mono text-[10px]">Asset<select aria-label="Derived asset" value={assetId} onChange={(event) => void chooseAsset(event.target.value)}><option value="">Choose derived asset</option>{discovery?.assets.map((asset) => <option key={asset.derived_asset_id} value={asset.derived_asset_id}>{asset.title} · {asset.asset_kind} · {asset.revision_count} revisions</option>)}</select></label>
-      {history && <><label className="block font-mono text-[10px]">Historical revision<select aria-label="Historical derived asset revision" value={selectedRevisionId} onChange={(event) => chooseRevision(event.target.value)}><option value="">Choose exact revision</option>{history.revisions.filter((revision) => !revision.is_current).map((revision) => <option key={revision.revision_id} value={revision.revision_id}>{revision.operation_kind} · {revision.revision_id}</option>)}</select></label>
+      {history && <><div className="flex items-center gap-3"><Link className="inline-flex items-center gap-1 text-xs underline" to={`/read/derived/${encodeURIComponent(history.derived_asset_id)}`}><BookOpen size={14} />Read current</Link>{selected && <Link className="text-xs underline" to={`/read/derived/${encodeURIComponent(history.derived_asset_id)}/revisions/${encodeURIComponent(selected.revision_id)}`}>Read exact revision</Link>}</div><label className="block font-mono text-[10px]">Historical revision<select aria-label="Historical derived asset revision" value={selectedRevisionId} onChange={(event) => chooseRevision(event.target.value)}><option value="">Choose exact revision</option>{history.revisions.filter((revision) => !revision.is_current).map((revision) => <option key={revision.revision_id} value={revision.revision_id}>{revision.operation_kind} · {revision.revision_id}</option>)}</select></label>
       <div className="grid gap-2 sm:grid-cols-2" aria-label="Derived asset revision comparison"><iframe title="Current derived asset HTML" sandbox="" src={derivedAssetPreviewUrl(history.current.preview_url)} className="h-64 w-full border" />{selected && <iframe title="Historical derived asset HTML" sandbox="" src={derivedAssetPreviewUrl(selected.preview_url)} className="h-64 w-full border" />}</div>
       {selected && <button type="button" onClick={() => void restore()}>Restore as new revision</button>}</>}
     </fieldset>

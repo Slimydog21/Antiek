@@ -3699,6 +3699,28 @@ class MarginaliaNotedPayload(_PayloadBase):
     # selection over a cited claim resolves a chunk; a free-prose selection may
     # not). Null is honest "no chunk resolved", never invented.
     chunk_id: str | None = None
+    # Immutable grounding for canonical derived HTML. All three are absent on
+    # ordinary documents and present together on the derived-asset reader.
+    derived_revision_id: str | None = Field(
+        default=None, pattern=r"^rev_[0-9a-f]{32}$"
+    )
+    derived_content_sha256: str | None = Field(
+        default=None, pattern=r"^[0-9a-f]{64}$"
+    )
+    derived_generation: int | None = Field(default=None, ge=1)
+
+    @model_validator(mode="after")
+    def derived_grounding_is_complete(self) -> MarginaliaNotedPayload:
+        values = (
+            self.derived_revision_id,
+            self.derived_content_sha256,
+            self.derived_generation,
+        )
+        if any(value is not None for value in values) and not all(
+            value is not None for value in values
+        ):
+            raise ValueError("derived revision grounding must be complete")
+        return self
 
 
 # ── Block-canvas position persistence — DRW "organism" view (SPR-03) ──

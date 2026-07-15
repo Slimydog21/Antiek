@@ -176,6 +176,42 @@ async def exact_derived_asset_preview(
     return Response(content, media_type="text/html; charset=utf-8", headers=FRAME_HEADERS)
 
 
+def _reading_response(
+    *, owner_id: str, asset_id: str, revision_id: str | None = None
+) -> Response:
+    try:
+        result = _library().reading(owner_id, asset_id, revision_id)
+    except (DerivedAssetUnavailable, DerivedAssetIntegrity) as exc:
+        raise _library_error(exc) from None
+    return Response(
+        json.dumps(result, separators=(",", ":")),
+        media_type="application/json",
+        headers=NO_STORE,
+    )
+
+
+@derived_asset_router.get("/assets/{asset_id}/reading")
+async def current_derived_asset_reading(asset_id: str, request: Request) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "derived asset request is invalid", headers=NO_STORE)
+    return _reading_response(
+        owner_id=authenticated_multimedia_operator(request), asset_id=asset_id
+    )
+
+
+@derived_asset_router.get("/assets/{asset_id}/revisions/{revision_id}/reading")
+async def exact_derived_asset_reading(
+    asset_id: str, revision_id: str, request: Request
+) -> Response:
+    if request.query_params or await request.body():
+        raise HTTPException(422, "derived asset request is invalid", headers=NO_STORE)
+    return _reading_response(
+        owner_id=authenticated_multimedia_operator(request),
+        asset_id=asset_id,
+        revision_id=revision_id,
+    )
+
+
 @merge_asset_router.post("/drafts", response_model=DraftResponse, status_code=201)
 def create_merge_draft(
     body: CreateMergeDraftBody,

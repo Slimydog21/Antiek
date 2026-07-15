@@ -365,6 +365,20 @@ export interface DerivedAssetHistoryResponse extends DerivedAssetSummary {
   revisions: DerivedAssetRevision[];
 }
 
+export interface DerivedAssetReadingResponse {
+  derived_asset_id: string;
+  title: string;
+  asset_kind: "document" | "analysis" | "synthesis" | "composite";
+  revision_id: string;
+  content_sha256: string;
+  generation: number;
+  member_count: number;
+  is_current: boolean;
+  canonical_html: string;
+  stable_reader_path: string;
+  exact_reader_path: string;
+}
+
 /** Owner-scoped verified current twin-note revisions. */
 export function listTwinNotes(): Promise<TwinNoteListResponse> {
   return get("/research/twin-notes");
@@ -417,6 +431,16 @@ export function discoverDerivedAssets(): Promise<DerivedAssetDiscoveryResponse> 
 
 export function getDerivedAssetHistory(assetId: string): Promise<DerivedAssetHistoryResponse> {
   return get(`/research/derived-assets/assets/${encodeURIComponent(assetId)}/revisions`);
+}
+
+export function getDerivedAssetReading(
+  assetId: string,
+  revisionId?: string,
+): Promise<DerivedAssetReadingResponse> {
+  const asset = encodeURIComponent(assetId);
+  return get(revisionId
+    ? `/research/derived-assets/assets/${asset}/revisions/${encodeURIComponent(revisionId)}/reading`
+    : `/research/derived-assets/assets/${asset}/reading`);
 }
 
 export function restoreDerivedAsset(

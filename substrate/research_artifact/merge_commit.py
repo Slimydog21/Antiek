@@ -141,6 +141,19 @@ def _apply_review(
             "INSERT INTO derived_assets (derived_asset_id,title,asset_kind,owner_user_id) VALUES (?,?,?,?)",
             [asset_id, row[4], row[5], command["owner_user_id"]],
         )
+        con.execute(
+            "INSERT INTO documents (document_id,source_uri,title,source_tier,document_type,"
+            "raw_text,metadata,owner_user_id) VALUES (?,?,?,?,?,NULL,?,?)",
+            [
+                asset_id,
+                f"antiek://derived-assets/{asset_id}",
+                row[4],
+                1,
+                "derived_html",
+                _json({"body_authority": "derived_asset_revisions", "derived_asset_id": asset_id}),
+                command["owner_user_id"],
+            ],
+        )
         generation, parent = 1, None
     else:
         if (

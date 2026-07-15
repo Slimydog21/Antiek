@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 
 import DerivedAssetLibraryPanel, { derivedAssetPreviewUrl } from "./DerivedAssetLibraryPanel";
 
@@ -37,6 +38,13 @@ const history = {
   }, oldRevision],
 };
 
+function mount(props: { disabled?: boolean; onPendingChange?: (pending: boolean) => void } = {}) {
+  return render(<MemoryRouter><DerivedAssetLibraryPanel
+    disabled={props.disabled ?? false}
+    onPendingChange={props.onPendingChange ?? vi.fn()}
+  /></MemoryRouter>);
+}
+
 describe("Cycle 56 derived asset library", () => {
   afterEach(cleanup);
   beforeEach(() => {
@@ -63,7 +71,7 @@ describe("Cycle 56 derived asset library", () => {
       }),
     );
     const pending = vi.fn();
-    render(<DerivedAssetLibraryPanel disabled={false} onPendingChange={pending} />);
+    mount({ onPendingChange: pending });
     fireEvent.click(screen.getByText("Browse derived assets"));
     await screen.findByRole("option", { name: /Flight analysis/ });
     fireEvent.change(screen.getByLabelText("Derived asset"), { target: { value: assetId } });
@@ -95,7 +103,7 @@ describe("Cycle 56 derived asset library", () => {
     mocks.history
       .mockReturnValueOnce(new Promise((resolve) => { settleFirst = resolve; }))
       .mockResolvedValueOnce({ ...history, derived_asset_id: secondAsset, title: "Second" });
-    render(<DerivedAssetLibraryPanel disabled={false} onPendingChange={vi.fn()} />);
+    mount();
     fireEvent.click(screen.getByText("Browse derived assets"));
     await screen.findByRole("option", { name: /Flight analysis/ });
     const select = screen.getByLabelText("Derived asset");
@@ -115,7 +123,7 @@ describe("Cycle 56 derived asset library", () => {
   });
 
   it("invalidates history and restore authority before a failing refresh", async () => {
-    render(<DerivedAssetLibraryPanel disabled={false} onPendingChange={vi.fn()} />);
+    mount();
     fireEvent.click(screen.getByText("Browse derived assets"));
     await screen.findByRole("option", { name: /Flight analysis/ });
     fireEvent.change(screen.getByLabelText("Derived asset"), { target: { value: assetId } });
