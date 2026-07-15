@@ -10,8 +10,8 @@ import type {
   FloatMenuSelection,
   SelectionProvenance,
 } from "../shared/FloatMenu/useFloatMenuSelection";
-import ChaseThread from "../ResearchWorkstation/ChaseThread";
 import ReadingColumn from "../../components/reader/ReadingColumn";
+import { useWindows } from "../../workspace/windowsStore";
 import AdBorder from "./AdBorder";
 import type { AdFillView } from "./AdBorder";
 import ArxivFrame from "./ArxivFrame";
@@ -167,11 +167,6 @@ export default function BookReader() {
   // is ONE in-book highlight primitive, consistent with the Research surface.
   const articleRef = useRef<HTMLElement>(null);
 
-  // `chasing` is the passage currently being chased (mounts ChaseThread inline
-  // beside the reading column, text + voice). The way home is free: closing the
-  // chase restores reading, and usePosition has held the page the whole time.
-  const [chasing, setChasing] = useState<string | null>(null);
-
   // §9.0 servability of the open book — the in-book selection's servability.
   // The reader renders only gate-served body (verified: getBookFullText returns
   // full_text:null for a gated/taken-down book), so `book.servable_full_text`
@@ -194,18 +189,31 @@ export default function BookReader() {
     minLength: 8,
   });
 
-  // Deep-research → the EXISTING in-book chase (ChaseThread mounts inline
-  // beside the reading column, the same path the old "Go deeper" affordance
-  // used). §9.0: `safeSpawnText` is null when the selection crosses a withheld
-  // region — refuse rather than spawn on a withheld body (the chokepoint already
-  // refuses, so this is null only for a non-servable book; we never chase it).
+  // Deep-research opens a purpose-built workspace window. It does not launch
+  // research: spend authority remains the explicit Follow this gesture inside
+  // ChaseThread. Each raw highlight gets an independent window so questions can
+  // remain beside the source; the shell's existing eight-window bound applies.
   const onDeepResearch = useCallback(
     (safeSpawnText: string | null, _sel: FloatMenuSelection) => {
       if (safeSpawnText === null) return;
       window.getSelection()?.removeAllRanges(); // collapse so the menu closes
-      setChasing(safeSpawnText);
+      const narrow = window.innerWidth < 1024;
+      useWindows.getState().open(
+        "readingChase",
+        {
+          spawnContext: safeSpawnText,
+          parentInvestigationId: readingThreadId,
+          documentTitle: book?.title ?? "Untitled book",
+          pageNumber: pages[pageIndex]?.pageNumber ?? pageIndex + 1,
+        },
+        {
+          title: `Deep research · page ${pages[pageIndex]?.pageNumber ?? pageIndex + 1}`,
+          mode: narrow ? "full" : "floating",
+          ...(narrow ? {} : { rect: { x: Math.max(48, window.innerWidth - 560), y: 72, width: 500, height: 620 } }),
+        },
+      );
     },
-    [],
+    [book?.title, pageIndex, pages, readingThreadId],
   );
 
   // Turning the page (or jumping via TOC) collapses a stale selection — the
@@ -335,11 +343,10 @@ export default function BookReader() {
           (substrate/graph/insight_question.promote_from_marginalia_event; the
           /events/typed endpoint promotes on emit, backfill is the safety net).
           §9: source_kind "user" is carried onto the node — never conflated with
-          a model-emerged insight. Deep-research routes to ChaseThread (below).
-          Hidden while a chase owns the column. §9.0: the outbound chokepoint
-          refuses Search/Deep-research over a non-servable book. */}
-      {!chasing && (
-        <FloatMenu
+          a model-emerged insight. Deep-research opens the window-native host
+          around the existing ChaseThread. §9.0: the outbound chokepoint refuses
+          Search/Deep-research over a non-servable book. */}
+      <FloatMenu
           selection={selection}
           investigationId={readingThreadId}
           onDeepResearch={onDeepResearch}
@@ -352,8 +359,7 @@ export default function BookReader() {
             // up to an exact passage anchor.
             precision: representativeChunkId ? "exact-passage" : "anchor-pending",
           }}
-        />
-      )}
+      />
 
       {/* Reading column */}
       <main className="flex-1 overflow-y-auto">
@@ -510,51 +516,11 @@ export default function BookReader() {
         </div>
       </main>
 
-      {/* The Read glass-box (M2) + the inline rabbit-hole answer (M3) share
-          the right column. While a passage is being chased, the column IS the
-          inline chase — the answer lands right beside the reading column,
-          text or voice (ChaseThread carries VoiceChaseButton). Otherwise it is
-          the reading companion. Closing the chase returns to the companion;
-          the page never moved (usePosition), so reading resumes where it was —
-          a reversible seam, not a one-way trip. */}
-      {chasing ? (
-        <aside
-          className="w-80 flex-shrink-0 border-l border-rule dark:border-charcoal-1 overflow-y-auto bg-ice-1 dark:bg-charcoal-2 hidden lg:flex lg:flex-col"
-          aria-label="Following this passage"
-        >
-          <div className="flex items-center justify-between px-3 py-2 border-b border-rule dark:border-charcoal-1">
-            <span className="text-[11px] font-mono uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-              Following a passage
-            </span>
-            <button
-              type="button"
-              onClick={() => setChasing(null)}
-              className="text-[12px] font-mono text-ink dark:text-bright hover:underline"
-              title="Close and return to reading where you left off"
-            >
-              ← back to the book
-            </button>
-          </div>
-          <div className="flex-1 min-h-0">
-            {/* Reuse SPR-04's chase verbatim: one launch path, the reserved-id
-                discipline, the live thinking stream, honest no-key via
-                AIActionFailure, and voice via VoiceChaseButton — all inherited.
-                The passage is the seed; the book's reading thread is the
-                parent. §9.0: the reader only ever rendered gate-served text,
-                so a highlight can only carry what the gate already permitted. */}
-            <ChaseThread
-              spawnContext={chasing}
-              parentInvestigationId={readingThreadId}
-            />
-          </div>
-        </aside>
-      ) : (
-        <ReadingCompanion
-          documentId={documentId}
-          title={book.title}
-          readingThreadId={readingThreadId}
-        />
-      )}
+      <ReadingCompanion
+        documentId={documentId}
+        title={book.title}
+        readingThreadId={readingThreadId}
+      />
 
       {/* M2 — the floating bookmark: a book-level MULTI-TURN talk-to-book
           conversation that persists across page navigation (session state, the

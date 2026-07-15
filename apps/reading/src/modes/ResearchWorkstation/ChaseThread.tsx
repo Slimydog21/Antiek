@@ -62,12 +62,15 @@ type Props = {
    * absent ⇒ mint a fresh child. The panel never renders it.
    */
   reservedChildId?: string | null;
+  /** Window-native hosts close their exact frame after route promotion. */
+  onOpenInMain?: (childId: string) => void;
 };
 
 export default function ChaseThread({
   spawnContext,
   parentInvestigationId,
   reservedChildId,
+  onOpenInMain,
 }: Props) {
   const [question, setQuestion] = useState(spawnContext);
   const [busy, setBusy] = useState(false);
@@ -123,7 +126,11 @@ export default function ChaseThread({
     return (
       <LaunchedThread
         childId={launchedId}
-        onOpenInMain={() => navigate(`/inv/${launchedId}`)}
+        onOpenInMain={() => {
+          navigate(`/inv/${launchedId}`);
+          onOpenInMain?.(launchedId);
+        }}
+        closeWorkspacePanel={!onOpenInMain}
       />
     );
   }
@@ -193,9 +200,11 @@ export default function ChaseThread({
 function LaunchedThread({
   childId,
   onOpenInMain,
+  closeWorkspacePanel,
 }: {
   childId: string;
   onOpenInMain: () => void;
+  closeWorkspacePanel: boolean;
 }) {
   const inv = useInvestigation(childId);
   const getState = useWorkspace.getState;
@@ -208,13 +217,15 @@ function LaunchedThread({
           onClick={() => {
             onOpenInMain();
             // Close THIS chase panel after navigating away.
-            const ws = getState();
-            const me = Object.values(ws.panels).find(
-              (p) =>
-                p.kind === "ChaseThread" &&
-                (p.props as { parentInvestigationId?: string }).parentInvestigationId,
-            );
-            if (me) getState().close(me.id);
+            if (closeWorkspacePanel) {
+              const ws = getState();
+              const me = Object.values(ws.panels).find(
+                (p) =>
+                  p.kind === "ChaseThread" &&
+                  (p.props as { parentInvestigationId?: string }).parentInvestigationId,
+              );
+              if (me) getState().close(me.id);
+            }
           }}
           className="text-ink dark:text-bright hover:underline shrink-0 ml-2"
         >

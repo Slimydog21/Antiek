@@ -6,6 +6,7 @@ import type { BookDetail, FullTextResponse } from "../../api/books";
 import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
+import { useWindows } from "../../workspace/windowsStore";
 
 const {
   getBookMock,
@@ -259,6 +260,7 @@ async function renderReader() {
 
 describe("BookReader", () => {
   beforeEach(() => {
+    useWindows.getState().reset();
     window.sessionStorage.clear();
     getBookMock.mockReset();
     getFullTextMock.mockReset();
@@ -405,7 +407,7 @@ describe("BookReader", () => {
     expect(env.payload.note_text).toBe("a thought while reading");
   });
 
-  it("Deep-research in-book routes to the SAME ChaseThread, seeded with the passage, with a way home (generalized rabbit-hole, M2/M3)", async () => {
+  it("opens Deep-research in an independent window while preserving the reader and companion", async () => {
     getBookMock.mockResolvedValue(makeDetail());
     getFullTextMock.mockResolvedValue(makeBody());
     await renderReader();
@@ -415,15 +417,20 @@ describe("BookReader", () => {
     const menu = await screen.findByRole("menu", { name: /Highlight actions/ });
     fireEvent.click(within(menu).getByRole("menuitem", { name: "Deep-research" }));
 
-    // The inline chase mounts beside the reading column (the SAME ChaseThread
-    // the old "Go deeper" affordance used — now one of four float-menu actions).
-    const chasePanel = await screen.findByRole("complementary", { name: /Following this passage/ });
-    const lifted = within(chasePanel).getAllByText(/The opening of the book\./);
-    expect(lifted.length).toBeGreaterThanOrEqual(1);
-    const back = screen.getByRole("button", { name: /back to the book/ });
-    fireEvent.click(back);
-    // Reversible: back to the companion, position held by usePosition.
+    const state = useWindows.getState();
+    expect(state.order).toHaveLength(1);
+    const chase = state.windows[state.order[0]];
+    expect(chase.kind).toBe("readingChase");
+    expect(chase.payload).toMatchObject({
+      spawnContext: "The opening of the book.",
+      parentInvestigationId: "read-doc-1",
+      documentTitle: "A Servable Book",
+      pageNumber: 1,
+    });
+    // Opening is arrangement only; spend/start authority remains Follow this.
+    expect(startInvestigationMock).not.toHaveBeenCalled();
     expect(screen.getByRole("complementary", { name: /Reading companion/ })).toBeTruthy();
+    expect(screen.getByText("The opening of the book.")).toBeTruthy();
   });
 
   it("a taken-down (restricted) book renders no body — nothing to read, highlight, or chase (servable-corpus honesty, §9.0)", async () => {
