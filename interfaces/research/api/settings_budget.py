@@ -134,9 +134,9 @@ class ModelDecisionCandidateResponse(BaseModel):
     provider: str
     model: str
     ready: bool
-    eligible: bool
-    quality_score: float
-    quality_basis: Literal["measured", "static_prior"]
+    operationally_eligible: bool
+    quality_score: float | None
+    quality_basis: Literal["measured", "absent"]
     benchmark_samples: int | None
     estimated_usd_low: float | None
     estimated_usd_high: float | None
@@ -147,8 +147,15 @@ class ModelDecisionResponse(BaseModel):
     authority: Literal["advisory"] = "advisory"
     task: DecisionTask
     recommended_tier: str | None
+    recommendation_status: Literal[
+        "measured",
+        "insufficient_measured_evidence",
+        "no_operationally_eligible_candidate",
+    ]
     benchmark_status: BenchmarkStatus
     benchmark_generated_at: str | None
+    benchmark_measured_candidates: int
+    benchmark_operational_candidates: int
     candidates: list[ModelDecisionCandidateResponse]
     notes: list[str] = Field(default_factory=list)
 
@@ -396,7 +403,7 @@ def _read_benchmark_report(
 ) -> tuple[BenchmarkReport | None, list[str]]:
     raw_path = os.environ.get(_BENCHMARK_REPORT_ENV, "").strip()
     if not raw_path:
-        return None, ["Antiek-bench report is not configured; quality uses labeled static priors"]
+        return None, ["Antiek-bench report is not configured; no measured evidence available"]
     path = Path(raw_path)
     if not path.is_absolute() or not path.is_file() or path.is_symlink():
         return None, ["Antiek-bench report is unavailable or not a regular absolute file"]
@@ -513,6 +520,17 @@ def build_model_decision(
 
     result = rank_model_candidates(req.task, tuple(candidates))
     used_measurement = any(row.quality_basis == "measured" for row in result.ranked)
+    measured_candidates = sum(
+        row.quality_basis == "measured" and row.operationally_eligible
+        for row in result.ranked
+    )
+    operational_candidates = sum(row.operationally_eligible for row in result.ranked)
+    if result.recommended_tier is not None:
+        recommendation_status = "measured"
+    elif operational_candidates == 0:
+        recommendation_status = "no_operationally_eligible_candidate"
+    else:
+        recommendation_status = "insufficient_measured_evidence"
     if report is not None and not used_measurement:
         notes.append("Antiek-bench has no matching measurement for this task and route set")
     if not ready_ids:
@@ -522,10 +540,13 @@ def build_model_decision(
     return ModelDecisionResponse(
         task=req.task,
         recommended_tier=result.recommended_tier,
+        recommendation_status=recommendation_status,
         benchmark_status="measured" if used_measurement else "unavailable",
         benchmark_generated_at=(
             report.generated_at.isoformat() if report is not None and used_measurement else None
         ),
+        benchmark_measured_candidates=measured_candidates,
+        benchmark_operational_candidates=operational_candidates,
         candidates=[
             ModelDecisionCandidateResponse(
                 rank=row.rank,
@@ -533,7 +554,7 @@ def build_model_decision(
                 provider=row.candidate.provider,
                 model=row.candidate.model,
                 ready=row.candidate.ready,
-                eligible=row.eligible,
+                operationally_eligible=row.operationally_eligible,
                 quality_score=row.quality_score,
                 quality_basis=row.quality_basis,
                 benchmark_samples=row.candidate.benchmark_samples,

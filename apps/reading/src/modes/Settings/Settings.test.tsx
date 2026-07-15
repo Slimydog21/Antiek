@@ -38,23 +38,37 @@ vi.mock("../../api/settings", () => ({
   fetchModelDecision: vi.fn(async () => ({
     authority: "advisory",
     task: "deep_research",
-    recommended_tier: "pro",
+    recommended_tier: "synthesis",
     benchmark_status: "measured",
-    benchmark_generated_at: "2026-07-13T00:00:00Z",
+    benchmark_generated_at: "2026-07-07T00:00:00Z",
     notes: ["server-owned evidence"],
     candidates: [
       {
         rank: 1,
-        tier: "pro",
+        tier: "synthesis",
         provider: "zai",
         model: "glm-5.2",
         ready: true,
-        eligible: true,
+        operationally_eligible: true,
         quality_score: 0.91,
         quality_basis: "measured",
         benchmark_samples: 40,
-        estimated_usd_low: 0.01,
-        estimated_usd_high: 0.02,
+        estimated_usd_low: 0.012,
+        estimated_usd_high: 0.019,
+        would_exceed_budget: false,
+      },
+      {
+        rank: 2,
+        tier: "pro",
+        provider: "deepseek",
+        model: "deepseek-v4-pro",
+        ready: true,
+        operationally_eligible: true,
+        quality_score: 0.82,
+        quality_basis: "measured",
+        benchmark_samples: 35,
+        estimated_usd_low: 0.008,
+        estimated_usd_high: 0.013,
         would_exceed_budget: false,
       },
     ],
@@ -105,16 +119,15 @@ describe("Settings SPR-01", () => {
     });
   });
 
-  it("compares server-owned model candidates in the decision tree tab", async () => {
+  it("compares server-owned model candidates in the evidence tab", async () => {
     const user = userEvent.setup();
     render(<Settings />);
     await user.click(screen.getByRole("tab", { name: "Decision tree" }));
     await user.click(screen.getByRole("button", { name: "Compare models" }));
-    expect(await screen.findByText(/Recommended tier:/)).toBeTruthy();
-    expect(screen.getByText("pro", { selector: "strong" })).toBeTruthy();
-    expect(screen.getByText("glm-5.2")).toBeTruthy();
-    expect(screen.getByText("Measured evidence")).toBeTruthy();
-    expect(screen.getByText("n=40")).toBeTruthy();
+    expect(await screen.findByText(/Measured pick:/)).toBeTruthy();
+    expect(screen.getByText("synthesis", { selector: "strong" })).toBeTruthy();
+    expect(screen.getByText(/2\/2 routes measured/i)).toBeTruthy();
+    expect(screen.getByText(/n=40/i)).toBeTruthy();
   });
 
   it("links tabs to panels and supports arrow-key navigation", async () => {
