@@ -17,8 +17,8 @@ import {
   type EmoteKind,
   type StageHost,
   type WernerStageController,
-  WernerRig,
-} from "../werner";
+  WernerRig,,
+  emitWernerExperience} from "../werner";
 import "../werner/waddle.css";
 
 /**
@@ -506,6 +506,7 @@ export function PenguinMascot() {
 
   // ── Double-click: open the project (the unified project home). ──
   const openProject = useCallback(() => {
+    emitWernerExperience("highlight");
     navigate("/home");
   }, [navigate]);
 
