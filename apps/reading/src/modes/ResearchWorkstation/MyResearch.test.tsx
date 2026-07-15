@@ -22,10 +22,10 @@ import { MemoryRouter } from "react-router-dom";
 import { StrictMode } from "react";
 
 import type { InvestigationSummary } from "../../lib/api";
-import type { ComposeWriteWorkspace, ResearchCompose } from "../../api/research";
+import type { ComposeInterrogationPreview, ComposeWriteWorkspace, ResearchCompose } from "../../api/research";
 import { WERNER_EXPERIENCE_EVENT } from "../../werner/reactionBus";
 
-const { listState, budgetState, authState, navigateMock, previewComposeMock, createComposeMock, createWriteWorkspaceMock } = vi.hoisted(() => ({
+const { listState, budgetState, authState, navigateMock, previewComposeMock, createComposeMock, createWriteWorkspaceMock, previewInterrogationMock } = vi.hoisted(() => ({
   listState: {
     current: {
       investigations: [] as InvestigationSummary[],
@@ -46,6 +46,7 @@ const { listState, budgetState, authState, navigateMock, previewComposeMock, cre
   previewComposeMock: vi.fn(),
   createComposeMock: vi.fn(),
   createWriteWorkspaceMock: vi.fn(),
+  previewInterrogationMock: vi.fn(),
 }));
 
 vi.mock("../../hooks/useInvestigationList", () => ({
@@ -67,6 +68,7 @@ vi.mock("../../api/research", async (orig) => {
     previewResearchCompose: previewComposeMock,
     createResearchCompose: createComposeMock,
     createComposeWriteWorkspace: createWriteWorkspaceMock,
+    previewComposeInterrogation: previewInterrogationMock,
   };
 });
 
@@ -134,6 +136,7 @@ beforeEach(() => {
   previewComposeMock.mockReset();
   createComposeMock.mockReset();
   createWriteWorkspaceMock.mockReset();
+  previewInterrogationMock.mockReset();
 });
 afterEach(() => cleanup());
 
@@ -248,6 +251,86 @@ describe("MyResearch — honest no-key state + use-gate (M4)", () => {
 });
 
 describe("MyResearch — compose light table", () => {
+  it("discards an interrogation receipt when the question changes in flight", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", status: "completed" }),
+      inv({ investigation_id: "inv-two", status: "completed" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "f".repeat(64),
+      members: [], identical_content: [], view_url: null, reused: false,
+    });
+    createComposeMock.mockResolvedValue({
+      compose_id: "cmp-created", selection_fingerprint: "f".repeat(64), members: [],
+      identical_content: [], view_url: "/research/artifact-composes/cmp-created/view", reused: false,
+    });
+    let resolvePreview!: (value: ComposeInterrogationPreview) => void;
+    previewInterrogationMock.mockReturnValue(new Promise((resolve) => { resolvePreview = resolve; }));
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    await user.click(await screen.findByRole("button", { name: "Create HTML draft" }));
+    const prompt = screen.getByPlaceholderText(/Where do these researches agree/);
+    await user.type(prompt, "Original question");
+    await user.click(screen.getByRole("button", { name: "Review question" }));
+    await user.clear(prompt);
+    await user.type(prompt, "Changed question");
+    await act(async () => resolvePreview({
+      schema_version: 1, compose_id: "cmp-created", selection_fingerprint: "f".repeat(64),
+      prompt_hash: "p".repeat(64), context: "old", prompt_chars: 17,
+      context_chars: 3, max_prompt_chars: 4000, max_context_chars: 48000,
+      truncated_fields: 0, omitted_fields: 0, omitted_chars: 0, provider_called: false,
+      member_receipts: [],
+    }));
+    expect(screen.queryByTestId("collective-interrogation-receipt")).toBeNull();
+  });
+
+  it("reviews a collective question against the immutable draft without running an answer", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-one", question: "One", status: "completed" }),
+      inv({ investigation_id: "inv-two", question: "Two", status: "completed" }),
+    ];
+    previewComposeMock.mockResolvedValue({
+      compose_id: "cmp-preview", selection_fingerprint: "f".repeat(64),
+      members: [], identical_content: [], view_url: null, reused: false,
+    });
+    createComposeMock.mockResolvedValue({
+      compose_id: "cmp-created", selection_fingerprint: "f".repeat(64),
+      members: [], identical_content: [],
+      view_url: "/research/artifact-composes/cmp-created/view", reused: false,
+    });
+    previewInterrogationMock.mockResolvedValue({
+      schema_version: 1, compose_id: "cmp-created", selection_fingerprint: "f".repeat(64),
+      prompt_hash: "p".repeat(64), context: "bounded packet", prompt_chars: 28,
+      context_chars: 1234, max_prompt_chars: 4000, max_context_chars: 48000,
+      truncated_fields: 1, omitted_fields: 2, omitted_chars: 90, provider_called: false,
+      member_receipts: [
+        { index: 0, investigation_id: "inv-one", content_hash: "a".repeat(64), included_chars: 600, omitted_chars: 80, truncated_fields: 1, omitted_fields: 1 },
+        { index: 1, investigation_id: "inv-two", content_hash: "b".repeat(64), included_chars: 634, omitted_chars: 10, truncated_fields: 0, omitted_fields: 1 },
+      ],
+    });
+    const { default: userEventModule } = await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    await user.click(screen.getAllByRole("checkbox")[0]);
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "Review sources" }));
+    await user.click(await screen.findByRole("button", { name: "Create HTML draft" }));
+    const prompt = screen.getByPlaceholderText(/Where do these researches agree/);
+    await user.type(prompt, "What holds across both sources?");
+    expect(previewInterrogationMock).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Review question" }));
+    expect(previewInterrogationMock).toHaveBeenCalledWith(
+      "cmp-created", "What holds across both sources?", "f".repeat(64),
+    );
+    expect(await screen.findByText(/2 source folios bound/)).toBeTruthy();
+    expect(screen.getByText(/No answer has run/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /Approve|Ask now/ })).toBeNull();
+  });
+
   it("selects only completed research and creates after exact-hash review", async () => {
     const experiences = captureWernerExperiences();
     listState.current.investigations = [
