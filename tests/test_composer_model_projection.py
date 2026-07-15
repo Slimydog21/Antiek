@@ -221,11 +221,11 @@ def test_unexpected_projector_error_is_not_silently_downgraded() -> None:
 
 
 # ---------------------------------------------------------------------------
-# I4 — quality basis carried (measured vs static_prior)
+# I4 — quality basis carried (measured vs absent)
 # ---------------------------------------------------------------------------
 
 
-def test_quality_basis_carried_measured_vs_static_prior() -> None:
+def test_quality_basis_carried_measured_vs_absent() -> None:
     res = resolve_composer_projection(
         task="deep_research",
         candidates=_candidates(),
@@ -236,7 +236,8 @@ def test_quality_basis_carried_measured_vs_static_prior() -> None:
     pro = next(v for v in res.ranked_candidates if v.model == "gpt-pro")
     flash = next(v for v in res.ranked_candidates if v.model == "gpt-flash")
     assert pro.quality_basis == "measured"  # bench + samples present
-    assert flash.quality_basis == "static_prior"  # bench/samples None
+    assert flash.quality_basis == "absent"  # bench/samples None
+    assert flash.quality_score is None
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +289,10 @@ def test_ranked_list_preserves_rank_and_fields() -> None:
     ranks = [v.rank for v in res.ranked_candidates]
     assert ranks == sorted(ranks)  # monotonic
     assert all(isinstance(v, ComposerCandidateView) for v in res.ranked_candidates)
-    assert all(isinstance(v.quality_score, float) for v in res.ranked_candidates)
+    assert all(
+        isinstance(v.quality_score, float) if v.quality_basis == "measured" else v.quality_score is None
+        for v in res.ranked_candidates
+    )
 
 
 def test_remaining_is_cap_minus_spent() -> None:

@@ -235,7 +235,7 @@ def test_prompt_cost_estimate_pricing_placeholder_is_null(client: TestClient) ->
     assert any("placeholder" in n.lower() or "0.0" in n for n in body["notes"])
 
 
-def test_model_decision_uses_server_inventory_and_honest_static_basis(
+def test_model_decision_uses_server_inventory_and_honest_absent_basis(
     client: TestClient,
 ) -> None:
     response = client.post(
@@ -246,10 +246,12 @@ def test_model_decision_uses_server_inventory_and_honest_static_basis(
     body = response.json()
     assert body["authority"] == "advisory"
     assert body["recommended_tier"] is None
+    assert body["recommendation_status"] == "no_operationally_eligible_candidate"
     assert body["benchmark_status"] == "unavailable"
     assert body["candidates"]
-    assert all(row["eligible"] is False for row in body["candidates"])
-    assert all(row["quality_basis"] == "static_prior" for row in body["candidates"])
+    assert all(row["operationally_eligible"] is False for row in body["candidates"])
+    assert all(row["quality_basis"] == "absent" for row in body["candidates"])
+    assert all(row["quality_score"] is None for row in body["candidates"])
     assert all(row["estimated_usd_high"] is None for row in body["candidates"])
 
 
@@ -276,6 +278,8 @@ def test_model_decision_prefers_valid_server_owned_benchmark(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Single measured route: measured evidence shown but no recommendation
+    (needs ≥2 eligible measured)."""
     report = tmp_path / "bench.json"
     generated_at = datetime.now(UTC).isoformat()
     report.write_text(
@@ -302,9 +306,11 @@ def test_model_decision_prefers_valid_server_owned_benchmark(
     assert response.status_code == 200
     body = response.json()
     assert body["benchmark_status"] == "measured"
+    assert body["recommendation_status"] == "no_operationally_eligible_candidate"
     assert datetime.fromisoformat(body["benchmark_generated_at"]) == datetime.fromisoformat(
         generated_at
     )
+    # Single measured route → no recommendation
     assert body["recommended_tier"] is None
     assert body["candidates"][0]["quality_basis"] == "measured"
     assert body["candidates"][0]["benchmark_samples"] == 40
@@ -321,7 +327,7 @@ def test_model_decision_uses_first_registered_fallback_route(
     assert candidate["provider"] == "deepseek"
     assert candidate["model"] == "deepseek-v4-pro"
     assert candidate["estimated_usd_high"] is None
-    assert candidate["eligible"] is False
+    assert candidate["operationally_eligible"] is False
 
 
 def test_model_decision_prices_the_selected_fallback_route(
@@ -366,8 +372,9 @@ def test_model_decision_prices_the_selected_fallback_route(
     assert candidate["provider"] == "fallback"
     assert candidate["model"] == "fallback-model"
     assert candidate["estimated_usd_high"] == pytest.approx(0.0036)
-    assert candidate["eligible"] is True
-    assert body["recommended_tier"] == "pro"
+    assert candidate["operationally_eligible"] is True
+    # No benchmark → no recommendation (≥2 eligible measured required)
+    assert body["recommended_tier"] is None
 
 
 def test_model_decision_bounds_cyclic_fallback_config(
@@ -414,8 +421,98 @@ def test_model_decision_does_not_label_nonmatching_report_as_measured(
     body = client.post("/settings/model-decision", json={"task": "writing"}).json()
     assert body["benchmark_status"] == "unavailable"
     assert body["benchmark_generated_at"] is None
-    assert all(row["quality_basis"] == "static_prior" for row in body["candidates"])
+    assert all(row["quality_basis"] == "absent" for row in body["candidates"])
     assert any("no matching measurement" in note for note in body["notes"])
+
+
+def test_model_decision_two_measured_routes_produce_recommendation(
+    client: TestClient,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With ≥2 eligible measured routes, the higher score wins."""
+    import interfaces.research.api.settings_budget as sb
+
+    # Inject real pricing so candidates can be eligible (would_exceed_budget=False)
+    fake: dict[str, Any] = {
+        "tiers": {
+            "flash": {
+                "provider": "zai",
+                "model": "glm-5.2",
+                "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 2.0},
+            },
+            "pro": {
+                "provider": "zai",
+                "model": "glm-5.2",
+                "pricing": {"input_per_mtok": 2.0, "output_per_mtok": 3.0},
+            },
+            "synthesis": {
+                "provider": "zai_reasoning",
+                "model": "glm-5.2-thinking",
+                "pricing": {"input_per_mtok": 3.0, "output_per_mtok": 5.0},
+            },
+            "verify": {
+                "provider": "zai",
+                "model": "glm-5.2",
+                "pricing": {"input_per_mtok": 1.0, "output_per_mtok": 2.0},
+            },
+        }
+    }
+    monkeypatch.setattr(sb, "_load_dispatch_config", lambda: fake)
+    monkeypatch.setattr(
+        sb,
+        "read_operator_budget",
+        lambda: sb.BudgetResponse(
+            daily_cap_usd=5.0,
+            spent_usd=1.0,
+            remaining_usd=4.0,
+            spent_status="known",
+            cap_env=None,
+            notes=[],
+        ),
+    )
+
+    report = tmp_path / "bench-two.json"
+    generated_at = datetime.now(UTC).isoformat()
+    report.write_text(
+        json.dumps(
+            {
+                "schema_version": "antiek.model-bench.v1",
+                "generated_at": generated_at,
+                "measurements": [
+                    {
+                        "task": "general",
+                        "tier": "pro",
+                        "provider": "zai",
+                        "model": "glm-5.2",
+                        "score": 0.80,
+                        "samples": 30,
+                    },
+                    {
+                        "task": "general",
+                        "tier": "flash",
+                        "provider": "zai",
+                        "model": "glm-5.2",
+                        "score": 0.95,
+                        "samples": 25,
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ANTIEK_BENCH_REPORT_PATH", str(report))
+    body = client.post("/settings/model-decision", json={"task": "general"}).json()
+    assert body["benchmark_status"] == "measured"
+    assert body["recommended_tier"] is not None
+    assert body["recommendation_status"] == "measured"
+    assert body["benchmark_measured_candidates"] == 2
+    assert body["benchmark_operational_candidates"] >= 2
+    measured = [c for c in body["candidates"] if c["quality_basis"] == "measured"]
+    assert len(measured) >= 2
+    # flash has score 0.95 > pro 0.80
+    flash = next(c for c in body["candidates"] if c["tier"] == "flash")
+    assert flash["quality_score"] == 0.95
 
 
 def test_model_decision_rejects_client_supplied_inventory(client: TestClient) -> None:

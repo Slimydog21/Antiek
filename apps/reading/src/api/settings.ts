@@ -61,9 +61,9 @@ export interface ModelDecisionCandidate {
   provider: string;
   model: string;
   ready: boolean;
-  eligible: boolean;
-  quality_score: number;
-  quality_basis: "measured" | "static_prior";
+  operationally_eligible: boolean;
+  quality_score: number | null;
+  quality_basis: "measured" | "absent";
   benchmark_samples: number | null;
   estimated_usd_low: number | null;
   estimated_usd_high: number | null;
@@ -74,8 +74,14 @@ export interface ModelDecisionResponse {
   authority: "advisory";
   task: ModelDecisionTask;
   recommended_tier: string | null;
+  recommendation_status?:
+    | "measured"
+    | "insufficient_measured_evidence"
+    | "no_operationally_eligible_candidate";
   benchmark_status: "measured" | "unavailable";
   benchmark_generated_at: string | null;
+  benchmark_measured_candidates?: number;
+  benchmark_operational_candidates?: number;
   candidates: ModelDecisionCandidate[];
   notes: string[];
 }

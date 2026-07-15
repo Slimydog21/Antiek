@@ -44,7 +44,7 @@ export interface ComposerProjectionRequest {
   seam_id?: string;
 }
 
-export type QualityBasis = "measured" | "static_prior";
+export type QualityBasis = "measured" | "absent";
 export type PricingStatus = "known" | "unknown";
 export type ProjectionDisposition =
   "hold_eligible" | "zero_cost_receipt" | "ineligible";
@@ -54,7 +54,7 @@ export interface ComposerCandidateView {
   tier: string;
   provider: string;
   model: string;
-  quality_score: number;
+  quality_score: number | null;
   quality_basis: QualityBasis;
   eligible: boolean;
   pricing_status: PricingStatus;
