@@ -86,6 +86,18 @@ function renderChase(props: {
     derivedChunkOrdinal?: number;
     derivedChunkTextSha256?: string;
   };
+  sourceSelections?: Array<{
+    text: string;
+    provenance: {
+      documentId: string;
+      derivedRevisionId: string;
+      derivedContentSha256: string;
+      derivedGeneration: number;
+      derivedCitationId: string;
+      derivedChunkOrdinal: number;
+      derivedChunkTextSha256: string;
+    };
+  }>;
 }) {
   return render(
     <MemoryRouter>
@@ -171,6 +183,39 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
       chunk_text_sha256: "e".repeat(64),
       excerpt: "A selected canonical passage",
     });
+  });
+
+  it("launches one ordered investigation from several exact passages", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-curated", status: "in_progress", start_event_id: "e4",
+    });
+    const passages = ["First exact passage", "Second exact passage"];
+    const spawnContext = passages.map(
+      (text, index) => `[Evidence ${index + 1} of 2]\n${text}`,
+    ).join("\n\n");
+    const sourceSelections = passages.map((text, index) => ({
+      text,
+      provenance: {
+        documentId: `ast_${"a".repeat(32)}`,
+        derivedRevisionId: `rev_${"b".repeat(32)}`,
+        derivedContentSha256: "c".repeat(64),
+        derivedGeneration: 7,
+        derivedCitationId: `dchunk_${String(index + 1).repeat(64)}`,
+        derivedChunkOrdinal: index,
+        derivedChunkTextSha256: String(index + 3).repeat(64),
+      },
+    }));
+    renderChase({
+      spawnContext, parentInvestigationId: "read-asset", sourceSelections,
+    });
+    expect(startInvestigationMock).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
+    const arg = startInvestigationMock.mock.calls[0][0];
+    expect(arg.context).toBe(spawnContext);
+    expect(arg.derived_source).toBeUndefined();
+    expect(arg.derived_sources.map((source: { excerpt: string }) => source.excerpt))
+      .toEqual(passages);
   });
 
   it("does not downgrade a malformed citation into an unverified launch", async () => {

@@ -288,6 +288,7 @@ class InvestigationStartRequest(BaseModel):
     parent_investigation_id: str | None = None
     spawn_context: str | None = None
     derived_source: DerivedCitationSource | None = None
+    derived_sources: tuple[DerivedCitationSource, ...] = Field(default=(), max_length=6)
     # SPR-01 M3: curated fast/deep research tier from the research entry.
     # CLOSED set; recorded on the start event so the chosen tier is
     # queryable. "fast" → MiMo V2.5 Pro, "deep" → DeepSeek V4 Pro (the
@@ -2229,7 +2230,41 @@ def create_app(
             InvestigationStartRequestedPayload,
         )
 
-        if req.derived_source is not None:
+        if req.derived_source is not None and req.derived_sources:
+            raise HTTPException(422, "derived_source and derived_sources are mutually exclusive")
+        if req.derived_sources:
+            from substrate.research_artifact.derived_asset_library import (
+                DerivedAssetIntegrity,
+                DerivedAssetUnavailable,
+            )
+            from substrate.research_artifact.derived_asset_retrieval import (
+                DerivedAssetRetrievalIntegrity,
+            )
+            from substrate.research_artifact.derived_citation_source import (
+                DerivedCitationConflict,
+                canonical_derived_sources_context,
+                verify_derived_citation_sources,
+            )
+
+            owner_user_id = getattr(request.state, "user_id", None) or "__operator__"
+            try:
+                canonical_context = canonical_derived_sources_context(req.derived_sources)
+                if (req.context != canonical_context
+                        or (req.spawn_context is not None
+                            and req.spawn_context != canonical_context)):
+                    raise HTTPException(
+                        409, "derived citation set does not match research context"
+                    )
+                verify_derived_citation_sources(
+                    db_path=default_db_path(), owner_user_id=owner_user_id,
+                    sources=req.derived_sources,
+                )
+            except DerivedAssetUnavailable:
+                raise HTTPException(404, "derived citations are unavailable") from None
+            except (DerivedAssetIntegrity, DerivedAssetRetrievalIntegrity,
+                    DerivedCitationConflict):
+                raise HTTPException(409, "derived citation set integrity conflict") from None
+        elif req.derived_source is not None:
             from substrate.research_artifact.derived_asset_library import (
                 DerivedAssetIntegrity,
                 DerivedAssetUnavailable,
@@ -2275,6 +2310,7 @@ def create_app(
                     parent_investigation_id=req.parent_investigation_id,
                     spawn_context=req.spawn_context,
                     derived_source=req.derived_source,
+                    derived_sources=req.derived_sources,
                     # SPR-01 M3: record the chosen research tier on the
                     # start event (queryable after the fact). The payload
                     # field is the same CLOSED set.

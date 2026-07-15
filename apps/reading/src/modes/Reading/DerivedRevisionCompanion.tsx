@@ -17,6 +17,7 @@ interface Props {
   model: DerivedAssetReadingResponse;
   articleRef: RefObject<HTMLElement>;
   onFollowCitation: (citation: DerivedCompanionCitation) => void;
+  onResearchCitations?: (citations: DerivedCompanionCitation[]) => void;
 }
 
 type PersistedTurn = Awaited<ReturnType<typeof getDerivedCompanionConversation>>["turns"][number];
@@ -49,12 +50,15 @@ function GroundedAnswer({
 }
 
 export function EvidenceBriefing({
-  briefing, showCitation, onFollowCitation,
+  briefing, showCitation, onFollowCitation, selected, onToggleCitation,
 }: {
   briefing: DerivedEvidenceBriefing;
   showCitation: (anchor: string) => void;
   onFollowCitation: (citation: DerivedCompanionCitation) => void;
+  selected: DerivedCompanionCitation[];
+  onToggleCitation: (citation: DerivedCompanionCitation, briefingId: string) => void;
 }) {
+  const selectedIds = new Set(selected.map((citation) => citation.citation_id));
   return <section aria-label="Evidence briefing">
     <div className="mb-3 flex items-baseline justify-between gap-2 border-b border-rule pb-2 dark:border-charcoal-1">
       <h3 className="font-serif text-sm font-semibold text-ink dark:text-bright">Evidence briefing</h3>
@@ -66,7 +70,13 @@ export function EvidenceBriefing({
         <blockquote className="font-serif text-sm leading-relaxed text-ink dark:text-bright">{citation.text}</blockquote>
         <div className="mt-1 flex items-center justify-between gap-2">
           <button type="button" onClick={() => showCitation(citation.section_anchor)} className="text-left font-mono text-[10px] text-link underline">Open section</button>
-          <button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button>
+          <div className="flex items-center gap-3">
+            <label className="inline-flex items-center gap-1 font-mono text-[10px] text-ink-mute dark:text-moonlight">
+              <input type="checkbox" checked={selectedIds.has(citation.citation_id)} disabled={!selectedIds.has(citation.citation_id) && selected.length >= 6} onChange={() => onToggleCitation(citation, briefing.artifact_sha256)} />
+              {selectedIds.has(citation.citation_id) ? `${selected.findIndex((item) => item.citation_id === citation.citation_id) + 1} selected` : "Select"}
+            </label>
+            <button type="button" onClick={() => onFollowCitation(citation)} className="inline-flex shrink-0 items-center gap-1 font-mono text-[10px] text-link underline"><Telescope size={12} /> Follow this</button>
+          </div>
         </div>
       </li>)}</ol>
     </section>)}</div>
@@ -87,7 +97,7 @@ function clientTurnId(): string {
 }
 
 export default function DerivedRevisionCompanion({
-  model, articleRef, onFollowCitation,
+  model, articleRef, onFollowCitation, onResearchCitations = () => undefined,
 }: Props) {
   const activeClientId = useRef<string | null>(null);
   const requestGeneration = useRef(0);
@@ -97,6 +107,8 @@ export default function DerivedRevisionCompanion({
   const [execution, setExecution] = useState<DerivedCompanionExecutionProjection | null>(null);
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<DerivedCompanionCitation[]>([]);
+  const selectedBriefingId = useRef<string | null>(null);
 
   useEffect(() => {
     const generation = ++requestGeneration.current;
@@ -106,6 +118,8 @@ export default function DerivedRevisionCompanion({
     setError(null);
     setTurns([]);
     setExecution(null);
+    setSelected([]);
+    selectedBriefingId.current = null;
     void getDerivedCompanionConversation(model).then((conversation) => {
       if (generation !== requestGeneration.current) return;
       if (conversation.scope.revision_id !== model.revision_id
@@ -139,6 +153,8 @@ export default function DerivedRevisionCompanion({
         throw new Error("companion identity conflict");
       }
       setResult(next);
+      setSelected([]);
+      selectedBriefingId.current = null;
       setExecution(next.execution);
       setTurns((current) => [...current.filter(
         (turn) => turn.client_turn_id !== next.client_turn_id,
@@ -172,6 +188,18 @@ export default function DerivedRevisionCompanion({
     );
   }
 
+  function toggleCitation(citation: DerivedCompanionCitation, briefingId: string) {
+    if (selectedBriefingId.current !== briefingId) {
+      selectedBriefingId.current = briefingId;
+      setSelected([citation]);
+      return;
+    }
+    setSelected((current) => selectedBriefingId.current === briefingId
+      && current.some((item) => item.citation_id === citation.citation_id)
+      ? current.filter((item) => item.citation_id !== citation.citation_id)
+      : current.length < 6 ? [...current, citation] : current);
+  }
+
   return <aside className="hidden w-80 flex-shrink-0 overflow-y-auto border-l border-rule bg-ice-1 dark:border-charcoal-1 dark:bg-charcoal-2 lg:flex lg:flex-col" aria-label="Derived revision companion">
     <header className="border-b border-rule px-4 pb-3 pt-4 dark:border-charcoal-1">
       <div className="flex items-center justify-between gap-2">
@@ -186,6 +214,8 @@ export default function DerivedRevisionCompanion({
         setQuestion(event.target.value);
         activeClientId.current = null;
         setResult(null);
+        setSelected([]);
+        selectedBriefingId.current = null;
       }} rows={4} maxLength={8000} placeholder="What does this revision say about..." className="w-full resize-y border border-rule bg-white p-2 font-serif text-sm text-ink outline-none focus:border-ink dark:border-charcoal-1 dark:bg-charcoal-3 dark:text-bright" />
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">
@@ -201,12 +231,16 @@ export default function DerivedRevisionCompanion({
       {!result && turns.length === 0 ? <div className="flex gap-2 text-sm text-ink-mute dark:text-moonlight"><BookOpenText className="mt-0.5 shrink-0" size={16} /><p className="font-serif leading-relaxed">Antiek will retrieve passages from the exact revision on screen. Model execution remains unavailable until a route has verified idempotency, pricing, and spend recovery.</p></div> : null}
       {result?.state === "insufficient_evidence" ? <p className="font-serif text-sm leading-relaxed text-ink-mute dark:text-moonlight">No matching evidence was found in this revision. No model was called.</p> : null}
       {result?.answer ? <GroundedAnswer answer={result.answer} citations={result.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
-      {result?.briefing ? <EvidenceBriefing briefing={result.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
+      {result?.briefing ? <EvidenceBriefing briefing={result.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} selected={selected} onToggleCitation={toggleCitation} /> : null}
       {!result && turns.length > 0 ? <ol className="space-y-4" aria-label="Saved revision evidence">{turns.map((turn) => <li key={turn.client_turn_id}>
         <p className="mb-2 font-serif text-sm font-semibold text-ink dark:text-bright">{turn.question}</p>
         {turn.answer ? <GroundedAnswer answer={turn.answer} citations={turn.evidence_pack.citations} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
-        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : turn.briefing ? <EvidenceBriefing briefing={turn.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} /> : null}
+        {turn.state === "insufficient_evidence" ? <p className="font-serif text-sm text-ink-mute dark:text-moonlight">No matching evidence was found. No model was called.</p> : turn.briefing ? <EvidenceBriefing briefing={turn.briefing} showCitation={showCitation} onFollowCitation={onFollowCitation} selected={selected} onToggleCitation={toggleCitation} /> : null}
       </li>)}</ol> : null}
     </div>
+    <footer className="flex items-center justify-between gap-2 border-t border-rule p-3 dark:border-charcoal-1">
+      <span aria-live="polite" className="font-mono text-[10px] text-shadow-1 dark:text-moonlight">{selected.length}/6 passages</span>
+      <LemonButton type="button" size="sm" disabled={selected.length < 2} onClick={() => onResearchCitations(selected)}>Research passages</LemonButton>
+    </footer>
   </aside>;
 }
