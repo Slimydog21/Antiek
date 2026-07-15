@@ -68,6 +68,13 @@ class VerifiedRevision:
         return {"revision_id": self.revision_id, "asset_id": self.asset_id, "note_count": self.note_count,
                 "source_count": self.source_count}
 
+@dataclass(frozen=True)
+class VerifiedTwinComposition:
+    composition_id: str
+    ordered_members_sha256: str
+    html_sha256: str
+    members: list[VerifiedRevision]
+
 
 class TwinNoteServingService:
     """Read operations never initialize, repair, touch files, or acquire a writer."""
@@ -79,12 +86,12 @@ class TwinNoteServingService:
         _identity(revision_id, "tnr-")
         rows = con.execute(
             "SELECT revision_id,account_id,asset_id,supersedes_revision_id,compressor_version,renderer_version,"
-            "membership_sha256,body_json,body_sha256,html_bytes,html_sha256,relative_path,note_count,source_event_count "
+            "membership_sha256,body_json,body_sha256,html_bytes,html_sha256,relative_path,note_count,source_event_count,created_at "
             "FROM twin_note_revisions WHERE account_id=? AND revision_id=?", [account_id, revision_id]).fetchall()
         if len(rows) != 1:
             raise TwinNoteUnavailable
         (rid, owner, asset_id, predecessor, compressor, renderer, membership, body_json, body_sha,
-         blob, html_sha, relative, note_count, source_count) = rows[0]
+         blob, html_sha, relative, note_count, source_count, created_at) = rows[0]
         try:
             if owner != account_id or compressor != COMPRESSOR_VERSION or renderer != RENDERER_VERSION:
                 raise TwinNoteIntegrityError
@@ -139,6 +146,10 @@ class TwinNoteServingService:
                 "supersedes_revision_id": predecessor, "membership_sha256": membership,
                 "compressor_version": COMPRESSOR_VERSION, "renderer_version": RENDERER_VERSION})
             if rid != "tnr-" + _sha(revision_identity)[:32]:
+                raise TwinNoteIntegrityError
+            expected_created = (datetime(2000,1,1,tzinfo=UTC)
+                + timedelta(seconds=int(_sha(rid)[:8],16))).replace(tzinfo=None)
+            if created_at != expected_created:
                 raise TwinNoteIntegrityError
             expected_body = ResearchArtifactBody(investigation_id=rid,
                 problem_question=f"Compressed twin notes for {asset_id}", insights=[], open_questions=[],
@@ -236,7 +247,11 @@ class TwinNoteServingService:
 
     def revision(self, account_id: str, revision_id: str) -> VerifiedRevision:
         with connect_read(self.db_path) as con:
-            return self._verified_exact(con, account_id, revision_id)
+            return self.revision_on(con, account_id, revision_id)
+
+    def revision_on(self, con: Any, account_id: str, revision_id: str) -> VerifiedRevision:
+        """Run the complete V21 verifier on an existing transaction snapshot."""
+        return self._verified_exact(con, account_id, revision_id)
 
     def _history(self, con: Any, account_id: str, asset_id: str) -> list[VerifiedRevision]:
         chain = self._verify_chain(con, account_id, asset_id)
@@ -345,5 +360,37 @@ class TwinNoteServingService:
             except Exception as exc:
                 raise TwinNoteIntegrityError from exc
 
+    def verified_composition(self, account_id: str, composition_id: str) -> VerifiedTwinComposition:
+        # Reuse the complete V22 verifier first, then return the same exact V21
+        # members from the authoritative ledger (never HTML parsing).
+        with connect_read(self.db_path) as con:
+            return self.verified_composition_on(con, account_id, composition_id)
 
-__all__ = ["TwinNoteInputError", "TwinNoteIntegrityError", "TwinNoteServingService", "TwinNoteUnavailable", "VerifiedRevision"]
+    def verified_composition_on(self, con: Any, account_id: str, composition_id: str) -> VerifiedTwinComposition:
+        """Run the complete V22 and nested V21 verifier on one connection."""
+        _identity(composition_id, "tnc-")
+        head = con.execute("SELECT composition_version,ordered_members_sha256,html_bytes,html_sha256,member_count,created_at FROM twin_note_compositions "
+                "WHERE account_id=? AND composition_id=?", [account_id,composition_id]).fetchone()
+        rows = con.execute("SELECT member_ordinal,revision_id,asset_id,body_sha256,html_sha256 FROM twin_note_composition_members WHERE composition_id=? "
+                "ORDER BY member_ordinal", [composition_id]).fetchall()
+        if head is None: raise TwinNoteUnavailable
+        version, ordered_sha, blob, html_sha, count, created = head
+        try:
+            if version != 1 or count != len(rows) or not 2 <= count <= 20 or [r[0] for r in rows] != list(range(count)):
+                raise TwinNoteIntegrityError
+            cache: dict[tuple[str,str],dict[str,VerifiedRevision]] = {}
+            members = [self._verified_exact(con,account_id,row[1],cache) for row in rows]
+            ledger = [list(row) for row in rows]
+            expected_created = (datetime(2000, 1, 1, tzinfo=UTC) + timedelta(seconds=int(_sha(composition_id)[:8], 16))).replace(tzinfo=None)
+            rendered = self._composition_html(composition_id, members, ledger)
+            if (any((m.asset_id,m.body_sha256,m.html_sha256) != tuple(row[2:]) for m,row in zip(members,rows,strict=True))
+                    or _sha(_canonical(ledger)) != ordered_sha
+                    or "tnc-" + _sha(_canonical([account_id,1,ordered_sha]))[:32] != composition_id
+                    or created != expected_created or bytes(blob) != rendered or _sha(rendered) != html_sha):
+                raise TwinNoteIntegrityError
+        except TwinNoteIntegrityError: raise
+        except Exception as exc: raise TwinNoteIntegrityError from exc
+        return VerifiedTwinComposition(composition_id,ordered_sha,html_sha,members)
+
+
+__all__ = ["TwinNoteInputError", "TwinNoteIntegrityError", "TwinNoteServingService", "TwinNoteUnavailable", "VerifiedRevision", "VerifiedTwinComposition"]

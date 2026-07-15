@@ -116,3 +116,16 @@ def test_authentication_is_required_when_real_auth_is_enabled(authenticated_acco
     anonymous = TestClient(clients["__operator__"].app)
     response = anonymous.get("/research/twin-notes")
     assert response.status_code == 401
+    assert response.headers["cache-control"] == "private, no-store"
+    assert "__operator__" not in response.text
+
+def test_twin_note_import_422_and_401_are_private_and_value_free(authenticated_accounts):
+    clients,_,_=authenticated_accounts
+    bad=clients["__operator__"].post("/write/deliverables/from-twin-note",
+        json={"source":{"kind":"revision","id":"leaked-value"},"idempotency_key":"short"})
+    assert bad.status_code==422 and bad.headers["cache-control"]=="private, no-store"
+    assert bad.json()=={"detail":"twin-note import request is invalid"} and "leaked-value" not in bad.text
+    anonymous=TestClient(clients["__operator__"].app)
+    unauth=anonymous.post("/write/deliverables/from-twin-note",json={})
+    assert unauth.status_code==401 and unauth.headers["cache-control"]=="private, no-store"
+    assert "__operator__" not in unauth.text and "a@example.test" not in unauth.text

@@ -41,6 +41,9 @@ from typing import Any, Literal
 
 import duckdb
 from fastapi import APIRouter, HTTPException, Query, Request, Response
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi.routing import APIRoute
 from pydantic import BaseModel, Field
 
 from roles.creative_writer.prompt import AdjacentSection
@@ -66,6 +69,25 @@ from substrate.write.provenance import resolve_provenance
 from substrate.write.trace import resolve_trace_target
 
 write_router = APIRouter(prefix="/write", tags=["write"])
+_TWIN_NOTE_PRIVATE = {"Cache-Control":"private, no-store"}
+
+class _TwinNoteImportRoute(APIRoute):
+    def get_route_handler(self):
+        handler = super().get_route_handler()
+        async def private_handler(request: Request) -> Response:
+            try:
+                response = await handler(request)
+            except RequestValidationError:
+                return JSONResponse(status_code=422,
+                    content={"detail":"twin-note import request is invalid"},headers=_TWIN_NOTE_PRIVATE)
+            except HTTPException as exc:
+                exc.headers = {**(exc.headers or {}), **_TWIN_NOTE_PRIVATE}
+                raise
+            response.headers.update(_TWIN_NOTE_PRIVATE)
+            return response
+        return private_handler
+
+twin_note_import_router = APIRouter(route_class=_TwinNoteImportRoute)
 
 
 # ---------------------------------------------------------------------------
@@ -738,6 +760,57 @@ class FromCompositionResponse(BaseModel):
     replayed: bool
     members: list[CompositionDraftMemberResponse]
     insufficient_evidence_members: list[str]
+
+class TwinNoteSourceRequest(BaseModel):
+    kind: Literal["revision", "composition"]
+    id: str = Field(..., pattern=r"^tn[rc]-[0-9a-f]{32}$")
+
+class FromTwinNoteRequest(BaseModel):
+    source: TwinNoteSourceRequest
+    idempotency_key: str = Field(..., min_length=16, max_length=128)
+    title: str = Field(..., min_length=1, max_length=300)
+    deliverable_kind: Literal["research_memo","book_chapter","biography_section","investor_brief","general_essay"] = "research_memo"
+
+class FromTwinNoteResponse(BaseModel):
+    deliverable_id: str
+    source_kind: str
+    source_id: str
+    analysis_section_id: str
+    source_section_ids: list[str]
+    review_state: Literal["source_scaffold"] = "source_scaffold"
+    generated: Literal[False] = False
+    replayed: bool
+
+@twin_note_import_router.post("/deliverables/from-twin-note",status_code=201,response_model=FromTwinNoteResponse)
+def create_draft_from_twin_note(body: FromTwinNoteRequest, request: Request,
+                                response: Response) -> FromTwinNoteResponse:
+    from substrate.twin_note_taker.serving import (TwinNoteIntegrityError,
+        TwinNoteServingService,TwinNoteUnavailable)
+    from substrate.write.twin_note_draft import create_twin_note_draft
+    owner=getattr(request.state,"user_id",None)
+    if not owner: raise HTTPException(401,"authentication required")
+    service=TwinNoteServingService(db_path=_db())
+    try:
+        with _write("write/create_twin_note_draft") as con:
+            con.execute("BEGIN TRANSACTION")
+            if body.source.kind == "revision":
+                revision=service.revision_on(con,owner,body.source.id); revisions=[revision]; digest=revision.body_sha256
+            else:
+                composition=service.verified_composition_on(con,owner,body.source.id)
+                revisions=composition.members; digest=composition.ordered_members_sha256
+            result=create_twin_note_draft(con,owner_user_id=owner,source_kind=body.source.kind,
+                source_id=body.source.id,source_digest=digest,revisions=revisions,title=body.title,
+                deliverable_kind=body.deliverable_kind,idempotency_key=body.idempotency_key,
+                transaction_owner=False)
+            con.execute("COMMIT")
+    except TwinNoteUnavailable:
+        raise HTTPException(404,"twin-note source is unavailable",headers={"Cache-Control":"private, no-store"}) from None
+    except (TwinNoteIntegrityError,ValueError):
+        raise HTTPException(409,"twin-note import conflict",headers={"Cache-Control":"private, no-store"}) from None
+    response.headers["Cache-Control"]="private, no-store"
+    return FromTwinNoteResponse(**result.__dict__)
+
+write_router.include_router(twin_note_import_router)
 
 
 @write_router.post(

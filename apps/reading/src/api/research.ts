@@ -219,6 +219,14 @@ export interface TwinNoteCompositionResponse {
   url: string;
   members: Array<TwinNoteRevision & { member_ordinal: number }>;
 }
+export interface TwinNotePreviewResponse {
+  asset_id: string; expected_predecessor: string | null; preview_digest: string;
+  members: Array<{member_ordinal:number; investigation_id:string; window_id:string}>;
+  note_count:number; source_count:number;
+}
+export interface TwinNoteApplyResponse extends TwinNoteRevision {
+  supersedes_revision_id:string|null; replayed:boolean; url:string;
+}
 
 /** Owner-scoped verified current twin-note revisions. */
 export function listTwinNotes(): Promise<TwinNoteListResponse> {
@@ -233,6 +241,15 @@ export function getTwinNoteHistory(assetId: string): Promise<TwinNoteHistoryResp
 /** Create or replay a composition from exact revisions in semantic order. */
 export function composeTwinNotes(revisionIds: string[]): Promise<TwinNoteCompositionResponse> {
   return post("/research/twin-notes/compositions", { revision_ids: revisionIds });
+}
+export function previewTwinNoteRevision(asset_id:string, window_ids:string[]):Promise<TwinNotePreviewResponse> {
+  return post("/research/twin-notes/revision-previews", {asset_id,window_ids});
+}
+export function applyTwinNoteRevision(request:{asset_id:string;window_ids:string[];expected_predecessor:string|null;preview_digest:string;idempotency_key:string}):Promise<TwinNoteApplyResponse> {
+  return post("/research/twin-notes/revisions",request);
+}
+export function createTwinNoteWriteDraft(request:{source:{kind:"revision"|"composition";id:string};idempotency_key:string;title:string;deliverable_kind:string}):Promise<{deliverable_id:string;replayed:boolean}> {
+  return post("/write/deliverables/from-twin-note",request);
 }
 
 export function twinNoteRevisionUrl(revisionId: string): string {
