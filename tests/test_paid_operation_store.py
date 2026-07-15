@@ -204,7 +204,7 @@ def test_forbidden_patch_escalation_fails(tmp_path: Path) -> None:
         )
 
 
-def test_spr01_rejects_every_future_transition(tmp_path: Path) -> None:
+def test_spr02_only_opens_consent_issued_to_queued_transition(tmp_path: Path) -> None:
     store = _store(tmp_path)
     created = store.create_or_replay(
         _subject(), "op-1", "collective_interrogation_v1", collective_payload()
@@ -212,22 +212,31 @@ def test_spr01_rejects_every_future_transition(tmp_path: Path) -> None:
     issued = store.compare_and_swap(
         _subject(), "op-1", created.version, ["intent_created"], "consent_issued", _consent_patch()
     )
-    for target in ("queued", "running", "complete", "failed", "budget_halted", "timed_out", "failed_reconcile"):
+    queued = store.compare_and_swap(
+        _subject(),
+        "op-1",
+        issued.version,
+        ["consent_issued"],
+        "queued",
+        {"updated_at_ms": 1_200, "consent_claimed_at_ms": 1_200},
+    )
+    assert queued.state == "queued"
+    for target in ("running", "complete", "failed", "budget_halted", "timed_out", "failed_reconcile"):
         with pytest.raises(OperationStateError, match="invalid transition"):
             store.compare_and_swap(
                 _subject(),
                 "op-1",
-                issued.version,
+                queued.version,
                 ["consent_issued"],
                 target,
-                {"updated_at_ms": 1_200},
+                {"updated_at_ms": 1_300},
             )
     with pytest.raises(OperationStateError, match="invalid transition"):
         store.compare_and_swap(
             _subject(),
             "op-1",
-            issued.version,
-            ["consent_issued", "queued"],
+            queued.version,
+            ["queued"],
             "complete",
             {"updated_at_ms": 1_300, "lease_generation": 1},
         )

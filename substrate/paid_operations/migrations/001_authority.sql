@@ -54,3 +54,18 @@ CREATE TABLE IF NOT EXISTS paid_operations (
 
 CREATE INDEX IF NOT EXISTS idx_paid_operations_owner_created
     ON paid_operations(account_id, owner_user_id, created_at_ms);
+
+CREATE TABLE IF NOT EXISTS paid_operation_queue (
+    account_id TEXT NOT NULL,
+    owner_user_id TEXT NOT NULL,
+    operation_id TEXT NOT NULL,
+    operation_kind TEXT NOT NULL,
+    intent_hash TEXT NOT NULL,
+    canonical_options_json BLOB NOT NULL CHECK (length(canonical_options_json) <= 1048576),
+    enqueued_at_ms INTEGER NOT NULL CHECK (typeof(enqueued_at_ms) = 'integer' AND enqueued_at_ms >= 0),
+    queue_state TEXT NOT NULL CHECK (queue_state IN ('queued')),
+    PRIMARY KEY (account_id, owner_user_id, operation_id),
+    FOREIGN KEY (account_id, owner_user_id, operation_id)
+        REFERENCES paid_operations(account_id, owner_user_id, operation_id)
+        ON DELETE RESTRICT
+);

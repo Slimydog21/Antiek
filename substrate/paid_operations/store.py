@@ -17,7 +17,7 @@ _MIGRATION = Path(__file__).with_name("migrations") / "001_authority.sql"
 _MAX_SQLITE_INT = 9_223_372_036_854_775_807
 _MAX_TEXT_BYTES = 4096
 _HASH_RE = re.compile(r"^[a-f0-9]{64}$")
-_IDENTIFIER_RE = re.compile(r"^[a-z0-9][a-z0-9._:-]{0,191}$")
+_IDENTIFIER_RE = re.compile(r"^[a-z0-9_][a-z0-9._:-]{0,191}$")
 
 _STATES = frozenset(
     {
@@ -34,6 +34,7 @@ _STATES = frozenset(
 )
 _TRANSITIONS = {
     "intent_created": frozenset({"consent_issued"}),
+    "consent_issued": frozenset({"queued"}),
 }
 _PATCH_COLUMNS = frozenset({"updated_at_ms"})
 _FUTURE_AUTHORITY_PATCH_COLUMNS = frozenset(
@@ -61,6 +62,12 @@ _TRANSITION_PATCH_COLUMNS = {
             "consent_key_id",
             "consent_issued_at_ms",
             "consent_expires_at_ms",
+        }
+    ),
+    ("consent_issued", "queued"): frozenset(
+        {
+            "updated_at_ms",
+            "consent_claimed_at_ms",
         }
     ),
 }
@@ -92,6 +99,16 @@ _SNAPSHOT_COLUMNS = (
     "result_checkpoint_hash",
     "settled_cents",
 )
+_QUEUE_COLUMNS = (
+    "operation_id",
+    "owner_user_id",
+    "account_id",
+    "operation_kind",
+    "intent_hash",
+    "canonical_options_json",
+    "enqueued_at_ms",
+    "queue_state",
+)
 
 
 class OperationConflict(RuntimeError):
@@ -100,6 +117,10 @@ class OperationConflict(RuntimeError):
 
 class OperationStateError(RuntimeError):
     """Durable paid-operation state is malformed or violates the frozen graph."""
+
+
+class PaidOperationCorruptionError(OperationStateError):
+    """Startup validation found impossible paid-operation authority state."""
 
 
 @dataclass(frozen=True)
@@ -138,6 +159,18 @@ class OperationSnapshot:
     settled_cents: int | None = None
 
 
+@dataclass(frozen=True)
+class QueueSnapshot:
+    operation_id: str
+    owner_user_id: str
+    account_id: str
+    operation_kind: str
+    intent_hash: str
+    canonical_options_json: str
+    enqueued_at_ms: int
+    queue_state: str
+
+
 class PaidOperationStore:
     """One injected-path SQLite WAL authority store."""
 
@@ -149,6 +182,7 @@ class PaidOperationStore:
             path.parent.mkdir(parents=True, exist_ok=True)
         self._db_path = path
         self._ensure_schema()
+        self.validate_startup()
 
     def create_or_replay(
         self,
@@ -283,6 +317,147 @@ class PaidOperationStore:
                     con.execute("ROLLBACK")
                 raise
 
+    def claim_and_enqueue(
+        self,
+        subject: Subject,
+        operation_id: str,
+        *,
+        token_hash: str,
+        now_ms: int,
+        canonical_options_json: bytes,
+    ) -> tuple[OperationSnapshot, QueueSnapshot]:
+        _hash("token_hash", token_hash)
+        _required_int("now_ms", now_ms)
+        if len(canonical_options_json) > MAX_CANONICAL_INTENT_BYTES:
+            raise ValueError("canonical options exceed durable limit")
+        with self._connect() as con:
+            con.execute("BEGIN IMMEDIATE")
+            try:
+                before = self._get_owned_in_tx(con, subject, operation_id)
+                if before is None:
+                    raise OperationConflict("paid operation is unavailable")
+                _validate_snapshot(before)
+                if before.state == "queued":
+                    queue = self._get_queue_in_tx(con, subject, operation_id)
+                    if queue is None:
+                        raise PaidOperationCorruptionError("queued operation is missing queue row")
+                    if queue.canonical_options_json != canonical_options_json.decode("utf-8"):
+                        raise OperationConflict("consent is not claimable")
+                    con.execute("COMMIT")
+                    return before, queue
+                if before.state != "consent_issued":
+                    raise OperationConflict("consent is not claimable")
+                if before.consent_token_hash is None or not _constant_time_equal(
+                    before.consent_token_hash, token_hash
+                ):
+                    raise OperationConflict("consent is not claimable")
+                if before.consent_expires_at_ms is None or now_ms >= before.consent_expires_at_ms:
+                    raise OperationConflict("consent is not claimable")
+                if before.consent_claimed_at_ms is not None:
+                    raise PaidOperationCorruptionError("claimed consent is missing queue row")
+                con.execute(
+                    "INSERT INTO paid_operation_queue ("
+                    "account_id, owner_user_id, operation_id, operation_kind, intent_hash, "
+                    "canonical_options_json, enqueued_at_ms, queue_state"
+                    ") VALUES (?, ?, ?, ?, ?, ?, ?, 'queued')",
+                    (
+                        before.account_id,
+                        before.owner_user_id,
+                        before.operation_id,
+                        before.kind,
+                        before.intent_hash,
+                        canonical_options_json,
+                        now_ms,
+                    ),
+                )
+                cur = con.execute(
+                    "UPDATE paid_operations SET state = 'queued', version = version + 1, "
+                    "updated_at_ms = ?, consent_claimed_at_ms = ? "
+                    "WHERE operation_id = ? AND owner_user_id = ? AND account_id = ? "
+                    "AND version = ? AND state = 'consent_issued'",
+                    (
+                        now_ms,
+                        now_ms,
+                        before.operation_id,
+                        before.owner_user_id,
+                        before.account_id,
+                        before.version,
+                    ),
+                )
+                if cur.rowcount != 1:
+                    raise OperationConflict("paid operation CAS precondition failed")
+                snapshot = self._get_owned_in_tx(con, subject, operation_id)
+                queue = self._get_queue_in_tx(con, subject, operation_id)
+                if snapshot is None or queue is None:  # pragma: no cover - writes just succeeded.
+                    raise PaidOperationCorruptionError("claim did not persist atomically")
+                _validate_snapshot(snapshot)
+                _validate_queue(queue, snapshot)
+                con.execute("COMMIT")
+                return snapshot, queue
+            except Exception:
+                if con.in_transaction:
+                    con.execute("ROLLBACK")
+                raise
+
+    def get_queue(self, subject: Subject, operation_id: str) -> QueueSnapshot | None:
+        with self._connect() as con:
+            snapshot = self._get_owned_in_tx(con, subject, operation_id)
+            queue = self._get_queue_in_tx(con, subject, operation_id)
+            if snapshot is not None:
+                _validate_snapshot(snapshot)
+            if queue is not None:
+                if snapshot is None:
+                    raise PaidOperationCorruptionError("queue row is missing authority")
+                _validate_queue(queue, snapshot)
+            return queue
+
+    def validate_startup(self) -> None:
+        with self._connect() as con:
+            con.execute("BEGIN")
+            try:
+                snapshots = [
+                    _snapshot(row)
+                    for row in con.execute(
+                        f"SELECT {', '.join(_SNAPSHOT_COLUMNS)} FROM paid_operations"
+                    )
+                ]
+                queues = [
+                    _queue(row)
+                    for row in con.execute(
+                        f"SELECT {', '.join(_QUEUE_COLUMNS)} FROM paid_operation_queue"
+                    )
+                ]
+                con.execute("COMMIT")
+            except Exception:
+                if con.in_transaction:
+                    con.execute("ROLLBACK")
+                raise
+        by_key = {(s.account_id, s.owner_user_id, s.operation_id): s for s in snapshots}
+        if len(by_key) != len(snapshots):
+            raise PaidOperationCorruptionError("duplicate authority identity")
+        queues_by_key: dict[tuple[str, str, str], QueueSnapshot] = {}
+        for queue in queues:
+            key = (queue.account_id, queue.owner_user_id, queue.operation_id)
+            if key in queues_by_key:
+                raise PaidOperationCorruptionError("duplicate queue identity")
+            queues_by_key[key] = queue
+        for key, queue in queues_by_key.items():
+            snapshot = by_key.get(key)
+            if snapshot is None:
+                raise PaidOperationCorruptionError("queue row is missing authority")
+            _validate_queue(queue, snapshot)
+        for key, snapshot in by_key.items():
+            _validate_snapshot(snapshot)
+            maybe_queue = queues_by_key.get(key)
+            if snapshot.state == "consent_issued":
+                if maybe_queue is not None:
+                    raise PaidOperationCorruptionError("unclaimed consent has queue row")
+                if snapshot.consent_claimed_at_ms is not None:
+                    raise PaidOperationCorruptionError("claimed consent is missing queue row")
+            elif snapshot.state != "intent_created":
+                if maybe_queue is None:
+                    raise PaidOperationCorruptionError("post-consent operation is missing queue row")
+
     def _ensure_schema(self) -> None:
         with self._connect() as con:
             con.executescript(_MIGRATION.read_text(encoding="utf-8"))
@@ -311,6 +486,19 @@ class PaidOperationStore:
         ).fetchone()
         return None if row is None else _snapshot(row)
 
+    def _get_queue_in_tx(
+        self,
+        con: sqlite3.Connection,
+        subject: Subject,
+        operation_id: str,
+    ) -> QueueSnapshot | None:
+        row = con.execute(
+            f"SELECT {', '.join(_QUEUE_COLUMNS)} FROM paid_operation_queue "
+            "WHERE operation_id = ? AND owner_user_id = ? AND account_id = ?",
+            (operation_id, subject.owner_user_id, subject.account_id),
+        ).fetchone()
+        return None if row is None else _queue(row)
+
 
 def _raise_not_found() -> OperationSnapshot:
     raise OperationConflict("paid operation is unavailable")
@@ -328,6 +516,89 @@ def _snapshot(row: sqlite3.Row | tuple[Any, ...]) -> OperationSnapshot:
     elif len(canonical.encode("utf-8")) > MAX_CANONICAL_INTENT_BYTES:
         raise OperationStateError("canonical intent bytes exceed durable limit")
     return OperationSnapshot(**values)
+
+
+def _queue(row: sqlite3.Row | tuple[Any, ...]) -> QueueSnapshot:
+    values = dict(zip(_QUEUE_COLUMNS, row, strict=True))
+    options = values["canonical_options_json"]
+    if isinstance(options, bytes):
+        if len(options) > MAX_CANONICAL_INTENT_BYTES:
+            raise PaidOperationCorruptionError("canonical options bytes exceed durable limit")
+        values["canonical_options_json"] = options.decode("utf-8")
+    elif not isinstance(options, str):
+        raise PaidOperationCorruptionError("canonical options bytes are malformed")
+    elif len(options.encode("utf-8")) > MAX_CANONICAL_INTENT_BYTES:
+        raise PaidOperationCorruptionError("canonical options bytes exceed durable limit")
+    return QueueSnapshot(**values)
+
+
+def _validate_queue(queue: QueueSnapshot, snapshot: OperationSnapshot) -> None:
+    if queue.queue_state != "queued":
+        raise PaidOperationCorruptionError("queue row has invalid state")
+    for name, value in (
+        ("operation_id", queue.operation_id),
+        ("owner_user_id", queue.owner_user_id),
+        ("account_id", queue.account_id),
+        ("operation_kind", queue.operation_kind),
+    ):
+        _identifier(name, value)
+    _hash("intent_hash", queue.intent_hash)
+    _required_int("enqueued_at_ms", queue.enqueued_at_ms)
+    if (
+        queue.operation_id != snapshot.operation_id
+        or queue.owner_user_id != snapshot.owner_user_id
+        or queue.account_id != snapshot.account_id
+        or queue.operation_kind != snapshot.kind
+        or queue.intent_hash != snapshot.intent_hash
+    ):
+        raise PaidOperationCorruptionError("queue row conflicts with authority")
+    if queue.enqueued_at_ms < snapshot.created_at_ms:
+        raise PaidOperationCorruptionError("queue predates authority")
+    try:
+        decoded = json.loads(queue.canonical_options_json)
+    except json.JSONDecodeError as exc:
+        raise PaidOperationCorruptionError("canonical options JSON is malformed") from exc
+    if not isinstance(decoded, dict):
+        raise PaidOperationCorruptionError("canonical options JSON is not an object")
+    try:
+        _validate_queue_option_value(decoded, path="$")
+        canonical = json.dumps(
+            decoded,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+    except (TypeError, ValueError) as exc:
+        raise PaidOperationCorruptionError("canonical options JSON is unstable") from exc
+    if canonical != queue.canonical_options_json:
+        raise PaidOperationCorruptionError("canonical options bytes are noncanonical")
+
+
+def _validate_queue_option_value(value: Any, *, path: str) -> None:
+    if value is None or isinstance(value, float):
+        raise ValueError(f"{path} has unstable value")
+    if isinstance(value, bool):
+        return
+    if isinstance(value, int):
+        if value < 0:
+            raise ValueError(f"{path} integer out of range")
+        return
+    if isinstance(value, str):
+        if not value or unicodedata.normalize("NFC", value) != value:
+            raise ValueError(f"{path} string is noncanonical")
+        return
+    if isinstance(value, list):
+        for index, item in enumerate(value):
+            _validate_queue_option_value(item, path=f"{path}[{index}]")
+        return
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if not isinstance(key, str) or not key or unicodedata.normalize("NFC", key) != key:
+                raise ValueError(f"{path} key is noncanonical")
+            _validate_queue_option_value(item, path=f"{path}.{key}")
+        return
+    raise ValueError(f"{path} has unsupported value")
 
 
 def _validate_snapshot(snapshot: OperationSnapshot) -> None:
@@ -477,6 +748,17 @@ def _validate_patch(
             raise ValueError("consent_issued_at_ms must not predate creation")
         if patch["consent_expires_at_ms"] <= patch["consent_issued_at_ms"]:
             raise ValueError("consent_expires_at_ms must follow consent_issued_at_ms")
+    if to_state == "queued":
+        if patch.get("consent_claimed_at_ms") is None:
+            raise ValueError("consent_claimed_at_ms is required for queueing")
+        if before.consent_issued_at_ms is not None and patch["consent_claimed_at_ms"] < before.consent_issued_at_ms:
+            raise ValueError("consent_claimed_at_ms must not predate issuance")
+
+
+def _constant_time_equal(left: str, right: str) -> bool:
+    import hmac
+
+    return hmac.compare_digest(left.encode("ascii"), right.encode("ascii"))
 
 
 def _required_int(name: str, value: object) -> int:
@@ -545,6 +827,8 @@ __all__ = [
     "OperationConflict",
     "OperationSnapshot",
     "OperationStateError",
+    "PaidOperationCorruptionError",
     "PaidOperationStore",
+    "QueueSnapshot",
     "Subject",
 ]
