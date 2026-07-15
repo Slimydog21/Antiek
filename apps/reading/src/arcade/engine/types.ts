@@ -55,4 +55,6 @@ export interface Cartridge {
   /** Optional snapshot for pure-logic tests / determinism harness. */
   getScore?(): number;
   isGameOver?(): boolean;
+  /** Concise nonvisual equivalent of the current game state. */
+  getAccessibleStatus?(): string;
 }

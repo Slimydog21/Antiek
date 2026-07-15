@@ -120,6 +120,29 @@ jobs:
             exit 1
           fi
 
+      - name: Gate Werner Library ice hole against its canonical baselines
+        env:
+          LOSTPIXEL_STORY_ID: read-werner-ice-hole--offer,read-werner-ice-hole--playing
+        run: |
+          for story in offer playing; do
+            for width in 375 768 1024 1280; do
+              plate=".lostpixel/baseline/read-werner-ice-hole--${story}__[w${width}px].png"
+              if [ ! -s "$plate" ]; then
+                echo "::error file=${plate}::Missing canonical Library ice-hole baseline"
+                exit 1
+              fi
+            done
+          done
+          npx lost-pixel
+          if [ "$(find .lostpixel/current -maxdepth 1 -type f -name 'read-werner-ice-hole*' | wc -l | tr -d ' ')" != "8" ]; then
+            echo "::error::Expected 8 Library ice-hole captures"
+            exit 1
+          fi
+          if find .lostpixel/diff -type f -print -quit | grep -q .; then
+            echo "::error::Library ice hole differs from its canonical baselines"
+            exit 1
+          fi
+
       - name: Run Lost-Pixel against committed baselines (informational)
         # LostPixel 3.22 exits zero for differences in this repository's
         # generateOnly:false mode, so this legacy portfolio sweep is evidence,

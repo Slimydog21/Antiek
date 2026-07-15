@@ -156,6 +156,7 @@ describe("Library", () => {
       expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
     );
     expect(listBooksMock).toHaveBeenCalledWith("servable");
+    expect(screen.getByText("Visit the ice hole")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-pd");
   });

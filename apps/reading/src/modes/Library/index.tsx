@@ -12,6 +12,7 @@ import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
 import { documentsByTheme } from "./documentsByTheme";
 import type { FeedOrdering } from "./documentsByTheme";
+import WernerIceHole from "./WernerIceHole";
 
 /**
  * Library — the home of the Read workflow (Read SPR-02; re-homed as the Read
@@ -216,6 +217,8 @@ export default function Library() {
               preview-only. {subtitle}.
             </p>
           </header>
+
+          <WernerIceHole />
 
           <div
             role="tablist"

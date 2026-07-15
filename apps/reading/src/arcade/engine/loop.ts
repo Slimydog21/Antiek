@@ -47,6 +47,8 @@ export interface CreateLoopOptions {
   headless?: boolean;
   /** Reduced motion: still allow opt-in static frame, no continuous sim. */
   reducedMotion?: boolean;
+  /** Published only when the cartridge's concise status changes. */
+  onAccessibleStatusChange?: (status: string) => void;
 }
 
 export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
@@ -62,6 +64,13 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
     pointerReleased: false,
     keysDown: new Set(),
     keysPressed: new Set(),
+  };
+  let lastAccessibleStatus: string | null = null;
+  const publishAccessibleStatus = () => {
+    const status = options.cartridge.getAccessibleStatus?.();
+    if (status === undefined || status === lastAccessibleStatus) return;
+    lastAccessibleStatus = status;
+    options.onAccessibleStatusChange?.(status);
   };
 
   const tick = (ms: number) => {
@@ -101,6 +110,7 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
       const c2d = options.getCtx2d();
       if (c2d) options.cartridge.render(c2d, options.ctx);
     }
+    publishAccessibleStatus();
     // Clear edge flags after consume by mutating through getInput producer;
     // producers rebuild pressed sets each sample — see ArcadeMount.
     frameId = host.requestFrame(tick);
@@ -118,8 +128,10 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
         if (c2d && !options.headless) {
           options.cartridge.render(c2d, options.ctx);
         }
+        publishAccessibleStatus();
         return;
       }
+      publishAccessibleStatus();
       frameId = host.requestFrame(tick);
     },
     stop() {
@@ -135,6 +147,7 @@ export function createArcadeLoop(options: CreateLoopOptions): ArcadeLoop {
         const c2d = options.getCtx2d();
         if (c2d) options.cartridge.render(c2d, options.ctx);
       }
+      publishAccessibleStatus();
     },
     isRunning: () => running,
   };

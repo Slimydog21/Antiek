@@ -41,6 +41,7 @@ export default function ResearchWaitArcadeGame() {
         height={300}
         redrawToken={backdropReady ? 1 : 0}
         testId="research-wait-arcade-canvas"
+        instructions="Focus Paperclip Zombies. Press Space or Enter to start. Move the pointer to aim and click to fire. Press Q or Escape to exit."
       />
     </div>
   );
