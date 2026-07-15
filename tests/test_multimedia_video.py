@@ -71,6 +71,22 @@ def test_scene_manifest_has_learning_intent_labels_and_source_span():
     assert all(scene.source_purpose for scene in scenes)
 
 
+def test_legacy_citation_presence_cannot_enter_new_video_production():
+    plan, audio = _plan_and_audio()
+    legacy = plan.model_copy(update={"grounding_contract": "citation_presence_v1"})
+
+    with pytest.raises(ValueError, match="exact_extract_v2"):
+        build_video_scenes(legacy, audio)
+
+
+def test_unsourced_factual_lines_cannot_enter_new_video_production():
+    plan, audio = _plan_and_audio()
+    unsourced = plan.model_copy(update={"unsourced_line_ids": ("forged-unsourced",)})
+
+    with pytest.raises(ValueError, match="unsourced factual"):
+        build_video_scenes(unsourced, audio)
+
+
 def test_generated_scene_prompt_cannot_claim_archival_truth():
     with pytest.raises(ValidationError, match="archival truth"):
         VideoScene(
