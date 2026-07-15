@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from substrate.multimedia.hardening import evaluate_multimedia_asset
 from substrate.multimedia.production_registration import (
     MultimediaProductionRegistrationError,
     MultimediaProductionRegistrationRequest,
@@ -54,7 +55,11 @@ def _store(tmp_path: Path, *, mode: str = "video") -> tuple[MultimediaAssetStore
 
 def test_registration_attaches_exact_verified_metadata_and_replays(tmp_path: Path) -> None:
     store, asset_id = _store(tmp_path)
-    store.approve_dry_run(asset_id, owner_id="owner-1")
+    ready = store.approve_dry_run(asset_id, owner_id="owner-1")
+    stale_report = evaluate_multimedia_asset(ready.asset)
+    store.save(
+        ready.model_copy(update={"hardening_report": stale_report}), owner_id="owner-1"
+    )
     request = MultimediaProductionRegistrationRequest(expected_revision_id="rev-1")
 
     first = register_multimedia_production(
@@ -64,11 +69,18 @@ def test_registration_attaches_exact_verified_metadata_and_replays(tmp_path: Pat
     assert first.production_link.receipt_sha256 == "c" * 64
     assert first.production_link.owner_identity_digest == first.asset.owner_user_id
     assert first.summary().production_ready is True
+    assert first.hardening_report is None
+
+    current_report = evaluate_multimedia_asset(first.asset)
+    store.save(
+        first.model_copy(update={"hardening_report": current_report}), owner_id="owner-1"
+    )
 
     replay = register_multimedia_production(
         asset_id, request, owner_id="owner-1", store=store, playback=FakePlayback()  # type: ignore[arg-type]
     )
     assert replay.production_link == first.production_link
+    assert replay.hardening_report == current_report
 
 
 def test_registration_rejects_foreign_stale_unready_and_audio_assets(tmp_path: Path) -> None:
