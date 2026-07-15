@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
-from runtime.db_lock import FlockWriteCoordinator, WriteContext
+from runtime.db_lock import FlockWriteCoordinator, WriteContext, connect_read
 from substrate.contracts.multimedia import GeneratedFile
 
 from .audio_assembly import ChapterAudio
@@ -317,6 +317,28 @@ def get_narration_run(
     *, db_path: str, run_id: str, signing_key: bytes
 ) -> NarrationRunReceipt:
     return _require_run(db_path, run_id, signing_key)
+
+
+def list_narration_runs(
+    *, db_path: str, asset_id: str, revision_id: str, signing_key: bytes
+) -> tuple[NarrationRunReceipt, ...]:
+    """Read and MAC-verify every persisted run for one exact parent revision."""
+    _identifier("asset_id", asset_id)
+    _identifier("revision_id", revision_id)
+    if not isinstance(signing_key, bytes) or len(signing_key) < 32:
+        raise ValueError("signing_key must contain at least 32 bytes")
+    if not Path(db_path).is_file():
+        return ()
+    try:
+        with connect_read(db_path) as connection:
+            rows = connection.execute(
+                "SELECT * FROM multimedia_narration_runs "
+                "WHERE asset_id=? AND revision_id=? ORDER BY run_id",
+                [asset_id, revision_id],
+            ).fetchall()
+    except Exception as exc:
+        raise NarrationRunError("narration run set is unavailable") from exc
+    return tuple(_receipt(tuple(row), signing_key) for row in rows)
 
 
 def _produce_aggregate(
@@ -624,6 +646,7 @@ __all__ = [
     "PreparedNarrationRun",
     "authorize_narration_run",
     "get_narration_run",
+    "list_narration_runs",
     "narration_child_revision",
     "prepare_narration_run",
     "produce_narration_run",

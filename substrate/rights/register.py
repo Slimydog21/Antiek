@@ -97,8 +97,8 @@ def resolve_or_create_ip_holder(con: LockedConnection, display_name: str) -> str
     _require_locked(con)
     for holder in ip_holders.list_all(con):
         if holder.display_name == display_name:
-            return holder.ip_holder_id
-    return ip_holders.create_pre_onboarded(con, display_name=display_name)
+            return str(holder.ip_holder_id)
+    return str(ip_holders.create_pre_onboarded(con, display_name=display_name))
 
 
 def register_source_document(
@@ -149,10 +149,12 @@ def register_source_document(
     """
     _require_locked(con)
 
-    exists = con.execute(
-        "SELECT 1 FROM documents WHERE document_id = ? LIMIT 1", [document_id]
+    stored = con.execute(
+        "SELECT content_class, ip_holder_id FROM documents "
+        "WHERE document_id = ? LIMIT 1",
+        [document_id],
     ).fetchone()
-    if exists is None:
+    if stored is None:
         raise ValueError(
             f"{document_id} has no documents row — insert the document before "
             "registering its rights (acquisition inserts, then registers)."
@@ -180,14 +182,18 @@ def register_source_document(
     if resolved_ip is None and rights_holder_name:
         resolved_ip = resolve_or_create_ip_holder(con, rights_holder_name)
 
-    update_document_gate_columns(
-        con,
-        document_id,
-        content_class=resolved_class,
-        set_content_class=True,
-        ip_holder_id=resolved_ip,
-        set_ip_holder_id=resolved_ip is not None,
-    )
+    stored_class, stored_ip = stored
+    set_content_class = stored_class != resolved_class
+    set_ip_holder_id = resolved_ip is not None and stored_ip != resolved_ip
+    if set_content_class or set_ip_holder_id:
+        update_document_gate_columns(
+            con,
+            document_id,
+            content_class=resolved_class,
+            set_content_class=set_content_class,
+            ip_holder_id=resolved_ip,
+            set_ip_holder_id=set_ip_holder_id,
+        )
 
     if run_self_check:
         # Generalize the arxiv/store.py precedent: a promotion the SPR-02 serve

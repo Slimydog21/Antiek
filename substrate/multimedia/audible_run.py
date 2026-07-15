@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Literal, cast
 
@@ -14,7 +14,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from substrate.contracts.multimedia import ScriptLine, ScriptLineKind, SourceCitation
 
 from .audio_assembly import AudioExperience, assemble_audio_experience
-from .planner import MultimediaPlan
+from .planner import (
+    CanonicalEvidenceChunk,
+    MultimediaPlan,
+    verify_canonical_evidence_bytes,
+)
 from .tts import TTSProvider
 
 
@@ -266,8 +270,15 @@ class AudibleRunBundle:
     artifact: AudibleRunArtifact
 
 
-def prepare_audible_run_plan(plan: MultimediaPlan) -> MultimediaPlan:
+def prepare_audible_run_plan(
+    plan: MultimediaPlan,
+    *,
+    canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
+) -> MultimediaPlan:
     """Insert spoken navigation and citation-preserving retention beats."""
+    if plan.grounding_contract != "exact_extract_v2":
+        raise ValueError("audible run mode requires exact_extract_v2 grounding")
+    verify_canonical_evidence_bytes(plan, canonical_chunks)
     source_lines = tuple(
         line for line in plan.script_lines if line.kind == "factual" and line.citations
     )
@@ -321,6 +332,7 @@ def prepare_audible_run_plan(plan: MultimediaPlan) -> MultimediaPlan:
     if len({line.line_id for line in transformed}) != len(transformed):
         raise ValueError("audible run transform produced duplicate line ids")
     values = plan.model_dump(mode="python")
+    values["grounding_contract"] = "audible_transform_v1"
     values["script_lines"] = tuple(transformed)
     values["unsourced_line_ids"] = tuple(
         line.line_id for line in transformed if line.kind == "factual" and not line.citations
@@ -336,8 +348,9 @@ def assemble_audible_run(
     revision_id: str,
     voice: str = "narrator",
     speed: float = 1.0,
+    canonical_chunks: Mapping[str, CanonicalEvidenceChunk] | None = None,
 ) -> AudibleRunBundle:
-    run_plan = prepare_audible_run_plan(plan)
+    run_plan = prepare_audible_run_plan(plan, canonical_chunks=canonical_chunks)
     experience = assemble_audio_experience(
         run_plan,
         tts,
@@ -420,17 +433,21 @@ def compile_audible_run_manifest(
             raise ValueError("audio span source authority drifted from the script")
     markers: list[RetentionMarker] = []
     for span in transcript_spans:
-        if span.marker_kind in {"remember", "recap"}:
-            kind = cast(Literal["remember", "recap"], span.marker_kind)
-            markers.append(
-                RetentionMarker(
-                    line_id=span.line_id,
-                    chapter_id=span.chapter_id,
-                    kind=kind,
-                    at_seconds=span.start_offset_seconds,
-                    source_chunk_ids=span.source_chunk_ids,
-                )
+        if span.marker_kind == "remember":
+            retention_kind: Literal["remember", "recap"] = "remember"
+        elif span.marker_kind == "recap":
+            retention_kind = "recap"
+        else:
+            continue
+        markers.append(
+            RetentionMarker(
+                line_id=span.line_id,
+                chapter_id=span.chapter_id,
+                kind=retention_kind,
+                at_seconds=span.start_offset_seconds,
+                source_chunk_ids=span.source_chunk_ids,
             )
+        )
     learned = tuple(
         LearnedClaimCard(
             line_id=span.line_id,
