@@ -53,6 +53,7 @@ function knownWorkflowForPathname(pathname: string): Workflow | null {
 export function activityIdForPathname(pathname: string): ActivityId {
   const workflow = knownWorkflowForPathname(pathname);
   if (workflow === "write") return "writing-nib";
+  if (workflow === "speak") return "speaking-resonance";
   return workflow === "research" || workflow === "read"
     ? "research-lens"
     : "ice-fishing";
