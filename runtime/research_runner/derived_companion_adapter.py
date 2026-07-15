@@ -18,6 +18,7 @@ from .provider_qualification import ProviderQualification
 _SHA256 = re.compile(r"[0-9a-f]{64}")
 _RESPONSE_ID = re.compile(r"[A-Za-z0-9._:-]{1,512}")
 _ResponseT = TypeVar("_ResponseT", contravariant=True)
+_AdapterT = TypeVar("_AdapterT", bound="CompanionAnswerAdapter[Any]")
 
 
 class CompanionAdapterError(RuntimeError):
@@ -122,12 +123,12 @@ class CompanionAdapterRegistry:
         return len(self._adapters)
 
 
-def select_qualified_companion_adapter[AdapterT: CompanionAnswerAdapter[Any]](
+def select_qualified_companion_adapter(  # noqa: UP047 -- runtime supports Python 3.11
     route: CompanionAdapterRoute,
     qualifications: tuple[ProviderQualification, ...],
     registry: CompanionAdapterRegistry,
-    adapter: AdapterT,
-) -> AdapterT:
+    adapter: _AdapterT,
+) -> _AdapterT:
     """Require one exact fully-qualified record and one exact registered adapter."""
     matching = [item for item in qualifications if item.route_key == route.route_key]
     if len(matching) > 1:
