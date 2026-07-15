@@ -42,6 +42,8 @@ import ResearchPanel from "./ResearchPanel";
 import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
+import { useWernerResearchReactions } from "./useWernerResearchReactions";
+import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 
 interface PlanState {
   rootNodeId: string;
@@ -68,6 +70,7 @@ function Workspace() {
   const [problem, setProblem] = useState("");
   const [plan, setPlan] = useState<PlanState | null>(null);
   const [sessionId, setSessionId] = useState<string | null>(routeSessionId ?? null);
+  const [sessionGeneration, setSessionGeneration] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -118,7 +121,12 @@ function Workspace() {
       track("deep_research_cascade_launched", {
         session_id: r.session_id,
       });
+      notifyResearchStarted(r.session_id);
       setSessionId(r.session_id);
+      // Session IDs are deterministic per plan. A successful relaunch can
+      // therefore reuse the same ID after its prior monitor stopped polling;
+      // generation forces a fresh polling + reaction episode in that case.
+      setSessionGeneration((generation) => generation + 1);
     });
 
   return (
@@ -137,7 +145,13 @@ function Workspace() {
           onLaunch={handleLaunch}
         />
       )}
-      {sessionId && <Monitor sessionId={sessionId} busy={busy} />}
+      {sessionId && (
+        <Monitor
+          key={`${sessionId}:${sessionGeneration}`}
+          sessionId={sessionId}
+          busy={busy}
+        />
+      )}
     </div>
   );
 }
@@ -171,6 +185,13 @@ function ComposeBar({
 
 function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
   const session = useResearchSession(sessionId);
+  useWernerResearchReactions({
+    sessionId,
+    loading: session.loading,
+    allTerminal: session.allTerminal,
+    error: session.error,
+    researchStates: session.researches.map((research) => research.state),
+  });
   const [steering, setSteering] = useState<string | null>(null);
   // SPR-03: the "organism" canvas branch. When set to a completed
   // investigation id, the monitor swaps the live-card grid for the
@@ -190,6 +211,7 @@ function Monitor({ sessionId, busy }: { sessionId: string; busy: boolean }) {
     try {
       await steerResearch(sessionId, iid, kind, payload);
     } catch {
+      emitWernerExperience("deep_research_error");
       // The next poll reflects the authoritative state; a failed steer is
       // surfaced by the research not changing — no optimistic lie.
     } finally {

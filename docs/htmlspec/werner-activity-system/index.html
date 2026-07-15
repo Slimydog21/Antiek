@@ -14,13 +14,13 @@
   <p class="eyebrow">Master spec · WERNER-ACT</p>
   <h1>Werner Station Activity System</h1>
   <p class="tagline">Make Werner a fixed, living character whose current activity turns the cursor into an instrument—without giving any activity permission to move him.</p>
-  <div class="meta"><span class="tag green">SPR-01 implemented</span><span class="tag green">SPR-02 implemented</span><span class="tag green">SPR-03 implemented</span><span class="tag green">SPR-04 implemented</span><span class="tag green">SPR-05 implemented</span><span class="tag yellow">Owner: Antiek design goal</span><span class="tag blue">HTML-native</span><span class="tag">Generated 2026-07-13</span></div>
+  <div class="meta"><span class="tag green">SPR-01 implemented</span><span class="tag green">SPR-02 implemented</span><span class="tag green">SPR-03 implemented</span><span class="tag green">SPR-04 implemented</span><span class="tag green">SPR-05 implemented</span><span class="tag green">SPR-06 implemented</span><span class="tag yellow">Owner: Antiek design goal</span><span class="tag blue">HTML-native</span><span class="tag">Generated 2026-07-13</span></div>
 </header>
 
 <section class="block" id="spec-lineage" data-spec-depth="0" data-parent-spec="">
   <h2>Spec lineage</h2><p class="lede">Focused root spec derived from the operator's Antiek branding/UI goal and the ratified fixed-station design.</p>
   <p>Parent product canon: <a href="../werner-fixed-station/DESIGN.md">Werner fixed-station decision</a>. Child specs hatch only when switching, a new activity, or the arcade host has a freshness-verified unowned seam.</p>
-  <ul class="child-specs"><li>No child specs yet; dirty campaign work already owns the first arcade, hotspot, reaction-bus, and session-image implementations.</li></ul>
+  <ul class="child-specs"><li><a href="sprint-06-product-reaction-bus.html">SPR-06 product reaction bus</a> is the first child spec; dirty campaign work separately owns the first arcade, hotspot, and session-image implementations.</li></ul>
 </section>
 
 <section class="block"><h2>Goal</h2>
@@ -70,10 +70,11 @@ toggles ambient class       mounts active instrument
     <a class="card" href="sprint-03-writing-nib.html"><span class="id">SPR-03</span><strong>Route-derived writing nib</strong><span>Turn the cursor into a brass HTML drafting instrument on Write and Create while Werner remains at home.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-02</span></div></a>
     <a class="card" href="sprint-04-speaking-resonance.html"><span class="id">SPR-04</span><strong>Route-derived speaking resonance</strong><span>Turn the cursor into an inert brass listening microphone on Speak while Werner remains at home.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-03</span></div></a>
     <a class="card" href="sprint-05-instrument-atlas.html"><span class="id">SPR-05</span><strong>Cross-workflow instrument atlas</strong><span>Expose the complete four-instrument grammar in one selectable HTML review surface and prove route-transition cleanup in one mounted shell.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on SPR-04</span></div></a>
+    <a class="card" href="sprint-06-product-reaction-bus.html"><span class="id">SPR-06</span><strong>Product reaction bus</strong><span>Translate real selection, research, failure, and pointer-idle edges into the existing single Werner stage without granting product surfaces mascot authority.</span><div class="footer"><span class="tag green">Implemented</span><span class="tag">Depends on stage spine</span></div></a>
   </div>
   <h3>Freshness-gated next candidates</h3><table><thead><tr><th>Candidate</th><th>Start only when</th><th>Current collision</th></tr></thead><tbody>
     <tr><td>Explicit temporary activity override</td><td>SPR-02 route policy is merged and a real user need defeats deterministic route selection.</td><td>Do not create another settings store before that need exists.</td></tr>
-    <tr><td>Additional page instruments</td><td>SPR-03 is reviewed and each next instrument has one page job with no overlap with product reaction events.</td><td>Shared checkout already has <code>reactionBus</code> and <code>shellExperienceSignals</code>.</td></tr>
+    <tr><td>Additional page instruments</td><td>Each next instrument has one page job with no overlap with the implemented product-reaction event vocabulary.</td><td>Keep visual instrument selection separate from reaction choreography.</td></tr>
     <tr><td>Arcade wait host</td><td>The existing dirty cartridges/host are committed or handed off, then independently reviewed.</td><td><code>apps/reading/src/arcade/</code> is active shared work.</td></tr>
     <tr><td>ChatGPT Image activity sessions</td><td>A canonical Werner reference and asset provenance contract are selected.</td><td>Dirty checkout already contains four generated session PNGs and <code>sessionAssets.ts</code>.</td></tr>
   </tbody></table>
@@ -88,8 +89,8 @@ toggles ambient class       mounts active instrument
   <tr><td>Use the generated observatory PNG as the interactive UI</td><td>Rejected. Its apparent text and graph are pixels, not selectable HTML, accessible controls, or product evidence.</td><td>Never for core work; it remains design evidence and may inform decomposed assets.</td></tr>
 </tbody></table></section>
 
-<section class="block" id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05">
-  <h2>Execution harness hint</h2><p>All five sprints are file-coupled and run inline. Verification must be heterogeneous and try to prove behavioral drift: route determinism, transition cleanup, exactly-one-instrument mounting, custom-cursor visibility, idle/active semantics, reduced-motion stillness, HTML authority, and illicit position or product capability.</p>
+<section class="block" id="harness-hint-run" data-harness-default-pattern="adversarial-verification" data-harness-inline-only-sprints="SPR-01,SPR-02,SPR-03,SPR-04,SPR-05,SPR-06">
+  <h2>Execution harness hint</h2><p>All six sprints are file-coupled and run inline. Verification must be heterogeneous and try to prove behavioral drift: route determinism, transition cleanup, exactly-one-instrument mounting, custom-cursor visibility, edge-only product reactions, reduced-motion stillness, HTML authority, and illicit position or product capability.</p>
 </section>
 
 <section class="block"><h2>Open questions</h2><ul><li>Does a later workflow require a temporary operator override of route-derived activity? Default assumption: no persistent override until real use proves route policy insufficient.</li><li>Which generated Werner session image becomes canonical? Default assumption: none until visual QA and provenance pass.</li><li>Should games replace the station activity or open an isolated modal/cabinet? Default assumption: cabinet host; Werner remains singular and visible only when the game composition warrants it.</li></ul></section>

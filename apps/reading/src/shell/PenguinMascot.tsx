@@ -8,7 +8,9 @@ import {
   createWernerStage,
   EmoteView,
   installChoreography,
+  installReactionBus,
   installTargetChoreography,
+  notifyPointerIdleEdge,
   useMouseFollow,
   useStationActivity,
   wernerIceFishingCursor,
@@ -343,6 +345,49 @@ export function PenguinMascot() {
     };
   }, [reduceMotion, follow, activeActivity]);
 
+  // Product-experience idle is independent of the selected station activity:
+  // the lens, nib, and resonance modes can all let Werner fall asleep. This
+  // loop reads the existing pointer seam and emits only the active→idle edge;
+  // it owns no position or cursor writes and does not run under reduced motion.
+  useEffect(() => {
+    if (reduceMotion || typeof window === "undefined") return;
+    const canReactToIdle = (reading: ReturnType<typeof follow.read>) =>
+      !dragStart.current &&
+      !roamPaused.current &&
+      !returningHome.current &&
+      !reading.tabHidden;
+    // Pointer history is the edge authority. Drag/excursion/visibility are
+    // eligibility gates only: reopening one while an already-idle pointer is
+    // unchanged must never impersonate a fresh active→idle transition.
+    let wasPointerIdle = follow.read().pointerIdle;
+    let raf = 0;
+    const tick = () => {
+      const reading = follow.read();
+      notifyPointerIdleEdge(
+        wasPointerIdle,
+        reading.pointerIdle,
+        canReactToIdle(reading),
+      );
+      wasPointerIdle = reading.pointerIdle;
+      raf = window.requestAnimationFrame(tick);
+    };
+    // Browsers pause rAF in hidden tabs. Re-baseline on each visibility edge
+    // so time elapsed while asleep cannot surface as an active→idle edge on
+    // the first frame after the tab returns.
+    const onVisibilityChange = () => {
+      wasPointerIdle = follow.read().pointerIdle;
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    // Baseline from reality. No movement history reads idle, but that is a
+    // level, not an active→idle edge, and must not animate on mount or after a
+    // reduced-motion preference flip clears pointer history.
+    raf = window.requestAnimationFrame(tick);
+    return () => {
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+      window.cancelAnimationFrame(raf);
+    };
+  }, [reduceMotion, follow]);
+
   // ── SPR-05/10: the WernerStage controller + SPR-10 choreography listener. ──
   // Created ONCE (empty deps). Its StageHost reuses this component's stroll /
   // position machinery via the refs above — no second position. The
@@ -416,9 +461,11 @@ export function PenguinMascot() {
     // hotkey, via the shared event) and any opt-in `data-werner-target` button.
     const teardownChoreo = installChoreography(stage);
     const teardownTarget = installTargetChoreography(stage);
+    const teardownReactions = installReactionBus(stage);
     return () => {
       teardownChoreo();
       teardownTarget();
+      teardownReactions();
       stage.dispose();
       stageRef.current = null;
       if (returnTimer.current !== null) {
@@ -572,6 +619,7 @@ export function PenguinMascot() {
       ref={buttonRef}
       type="button"
       data-testid="penguin-mascot"
+      data-werner-emote={emote ?? "none"}
       aria-label="Project — click to float the project tree, double-click to open"
       title="Project · click to float · double-click to open · drag to move"
       onPointerDown={onPointerDown}
