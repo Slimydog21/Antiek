@@ -165,9 +165,8 @@ def _budget_snapshot(budget: object) -> BudgetSnapshot:
             or validated.remaining_usd is None
         ):
             raise ValueError("known budget spend requires cap, spent, and remaining values")
-        expected = max(
-            Decimal(0),
-            Decimal(str(validated.daily_cap_usd)) - Decimal(str(validated.spent_usd)),
+        expected = Decimal(str(validated.daily_cap_usd)) - Decimal(
+            str(validated.spent_usd)
         )
         if Decimal(str(validated.remaining_usd)) != expected:
             raise ValueError("budget remaining conflicts with cap and spend")
