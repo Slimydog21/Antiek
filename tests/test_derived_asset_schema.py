@@ -19,6 +19,8 @@ TABLES = {
     "derived_asset_revisions",
     "derived_asset_revision_members",
     "derived_asset_current_revisions",
+    "derived_asset_merge_operations",
+    "derived_asset_merge_outbox",
 }
 H1 = hashlib.sha256(b"one").hexdigest()
 H2 = hashlib.sha256(b"two").hexdigest()
@@ -101,12 +103,16 @@ def test_fresh_and_reopen_initialization(db_path: str) -> None:
     with connect_write(db_path, purpose="derived-asset-schema-reopen") as con:
         assert con.execute("SELECT count(*) FROM derived_asset_revisions").fetchone() == (1,)
         assert con.execute("SELECT count(*) FROM derived_asset_revision_members").fetchone() == (1,)
-        assert con.execute("SELECT generation FROM derived_asset_current_revisions").fetchone() == (1,)
+        assert con.execute("SELECT generation FROM derived_asset_current_revisions").fetchone() == (
+            1,
+        )
 
 
 def test_existing_pre_v16_database_is_upgraded(db_path: str) -> None:
     with connect_write(db_path, purpose="derived-asset-pre-v16-fixture") as con:
         for table in (
+            "derived_asset_merge_outbox",
+            "derived_asset_merge_operations",
             "derived_asset_current_revisions",
             "derived_asset_revision_members",
             "derived_asset_revisions",
@@ -119,6 +125,53 @@ def test_existing_pre_v16_database_is_upgraded(db_path: str) -> None:
 
     with connect_write(db_path, purpose="derived-asset-upgrade-proof") as con:
         assert set(list_tables(con)) >= TABLES
+
+
+def test_partial_v18_install_recreates_missing_outbox(db_path: str) -> None:
+    with connect_write(db_path, purpose="derived-asset-partial-v18-fixture") as con:
+        con.execute("DROP TABLE derived_asset_merge_outbox")
+        assert "derived_asset_merge_operations" in set(list_tables(con))
+        assert "derived_asset_merge_outbox" not in set(list_tables(con))
+    graph_schema._INITIALIZED_PATHS.discard(db_path)
+
+    init_database_at_path(db_path)
+
+    with connect_write(db_path, purpose="derived-asset-partial-v18-proof") as con:
+        assert set(list_tables(con)) >= TABLES
+
+
+def test_empty_global_key_v18_is_rebuilt_owner_scoped(db_path: str) -> None:
+    with connect_write(db_path, purpose="derived-asset-legacy-v18-empty") as con:
+        con.execute("DROP TABLE derived_asset_merge_outbox")
+        con.execute("DROP TABLE derived_asset_merge_operations")
+        con.execute("CREATE TABLE derived_asset_merge_operations (operation_id TEXT PRIMARY KEY)")
+        con.execute("CREATE TABLE derived_asset_merge_outbox (operation_id TEXT)")
+    graph_schema._INITIALIZED_PATHS.discard(db_path)
+
+    init_database_at_path(db_path)
+
+    with connect_write(db_path, purpose="derived-asset-legacy-v18-empty-proof") as con:
+        columns = {
+            str(row[0])
+            for row in con.execute(
+                "SELECT column_name FROM information_schema.columns "
+                "WHERE table_name='derived_asset_merge_outbox'"
+            ).fetchall()
+        }
+        assert "owner_user_id" in columns
+
+
+def test_populated_global_key_v18_fails_closed(db_path: str) -> None:
+    with connect_write(db_path, purpose="derived-asset-legacy-v18-populated") as con:
+        con.execute("DROP TABLE derived_asset_merge_outbox")
+        con.execute("DROP TABLE derived_asset_merge_operations")
+        con.execute("CREATE TABLE derived_asset_merge_operations (operation_id TEXT PRIMARY KEY)")
+        con.execute("CREATE TABLE derived_asset_merge_outbox (operation_id TEXT)")
+        con.execute("INSERT INTO derived_asset_merge_operations VALUES ('op_legacy')")
+    graph_schema._INITIALIZED_PATHS.discard(db_path)
+
+    with pytest.raises(RuntimeError, match="legacy V18 merge ledger is populated"):
+        init_database_at_path(db_path)
 
 
 def test_canonical_html_hash_and_byte_count_must_match(db_path: str) -> None:
@@ -286,6 +339,6 @@ def test_current_pointer_is_one_row_per_asset_and_cas_ready(db_path: str) -> Non
             [BODY_HASH],
         ).fetchall()
         assert stale == []
-        assert con.execute(
-            "SELECT generation FROM derived_asset_current_revisions"
-        ).fetchone() == (2,)
+        assert con.execute("SELECT generation FROM derived_asset_current_revisions").fetchone() == (
+            2,
+        )
