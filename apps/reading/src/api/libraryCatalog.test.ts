@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { act, renderHook, waitFor } from "@testing-library/react";
 
 vi.mock("../lib/api", () => ({
   API_BASE: "",
@@ -13,7 +14,7 @@ import {
   parseBookSummary,
   parseLibraryPage,
 } from "./libraryCatalog";
-import { fetchLibraryPage } from "../components/library/useLibrary";
+import { fetchLibraryPage, useLibrary } from "../components/library/useLibrary";
 
 const mockFetch = apiFetch as unknown as ReturnType<typeof vi.fn>;
 
@@ -71,6 +72,8 @@ describe("parse honesty", () => {
 
   it("rejects missing required fields without inventing", () => {
     expect(() => parseBookSummary({ title: "x" })).toThrow(/document_id/);
+    const { author: _author, ...withoutAuthor } = work;
+    expect(() => parseBookSummary(withoutAuthor)).toThrow(/author/);
     expect(() =>
       parseLibraryPage({ works: [work], total: -1, page: 1, page_size: 20 }),
     ).toThrow(/total/);
@@ -82,7 +85,23 @@ describe("parse honesty", () => {
     );
     expect(() =>
       parseLibraryPage({ works: [work], total: 0, page: 1, page_size: 20 }),
-    ).toThrow(/works length/);
+    ).toThrow(/pagination metadata/);
+  });
+
+  it("rejects contradictory rights and takedown claims", () => {
+    expect(() =>
+      parseBookSummary({
+        ...work,
+        servability: "gated_metadata_only",
+        servable_full_text: true,
+      }),
+    ).toThrow(/servable_full_text contradicts/);
+    expect(() =>
+      parseBookSummary({ ...work, servability: "taken_down" }),
+    ).toThrow(/taken_down contradicts/);
+    expect(() => parseBookSummary({ ...work, taken_down: true })).toThrow(
+      /taken_down contradicts/,
+    );
   });
 
   it("formatServability honesty", () => {
@@ -97,7 +116,14 @@ describe("parse honesty", () => {
       ),
     ).toMatch(/gated/i);
     expect(
-      formatServability(parseBookSummary({ ...work, taken_down: true })),
+      formatServability(
+        parseBookSummary({
+          ...work,
+          servability: "taken_down",
+          servable_full_text: false,
+          taken_down: true,
+        }),
+      ),
     ).toMatch(/taken down/i);
   });
 });
@@ -153,6 +179,35 @@ describe("fetchLibraryCatalog", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("rejects incomplete, out-of-range, or mismatched pagination", async () => {
+    for (const payload of [
+      { works: [], total: 100, page: 1, page_size: 20 },
+      { works: [], total: 1, page: 2, page_size: 20 },
+      { works: [work], total: 1, page: 2, page_size: 20 },
+    ]) {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => payload,
+      } as Response);
+      await expect(fetchLibraryCatalog()).rejects.toThrow(/page|pagination/);
+    }
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        works: [work],
+        total: 1,
+        page: 1,
+        page_size: 20,
+      }),
+    } as Response);
+    await expect(fetchLibraryCatalog({ page_size: 10 })).rejects.toThrow(
+      /does not match request/,
+    );
+  });
+
   it("rejects body leakage on 200", async () => {
     mockFetch.mockResolvedValue({
       ok: true,
@@ -170,6 +225,43 @@ describe("fetchLibraryCatalog", () => {
 });
 
 describe("production Library browse integration", () => {
+  it("clears stale works while a superseding query is loading", async () => {
+    const response = (title: string) =>
+      ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+          works: [{ ...work, title }],
+          total: 1,
+          page: 1,
+          page_size: 20,
+        }),
+      }) as Response;
+    mockFetch.mockResolvedValueOnce(response("First result"));
+    let resolveSecond!: (response: Response) => void;
+    const second = new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    });
+    mockFetch.mockReturnValueOnce(second);
+
+    const { result, rerender } = renderHook(
+      ({ search }) =>
+        useLibrary({ filter: "all", search, page: 1, pageSize: 20 }),
+      { initialProps: { search: "first" } },
+    );
+    await waitFor(() => expect(result.current.works).toHaveLength(1));
+
+    rerender({ search: "second" });
+    expect(result.current.loading).toBe(true);
+    expect(result.current.works).toEqual([]);
+    expect(result.current.total).toBe(0);
+
+    await act(async () => resolveSecond(response("Second result")));
+    await waitFor(() =>
+      expect(result.current.works[0]?.title).toBe("Second result"),
+    );
+  });
+
   it("routes the existing LibraryView hook through the fail-closed parser", async () => {
     mockFetch.mockResolvedValue({
       ok: true,

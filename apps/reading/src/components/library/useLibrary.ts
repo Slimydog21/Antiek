@@ -86,6 +86,10 @@ export function useLibrary(args: UseLibraryArgs): UseLibraryResult {
   useEffect(() => {
     const token = ++reqRef.current;
     setLoading(true);
+    // Never render results or rights claims from the previous query beneath a
+    // newly selected filter/search/page while its request is in flight.
+    setWorks([]);
+    setTotal(0);
     setError(null);
     setRouteAbsent(false);
     fetchLibraryPage({ filter, search, page, pageSize })

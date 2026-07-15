@@ -57,6 +57,12 @@ const SERVABILITY_VALUES = new Set<Servability>([
   "gated_metadata_only",
   "taken_down",
 ]);
+const FULL_TEXT_SERVABLE = new Set<Servability>([
+  "public_domain",
+  "platform_authored",
+  "publisher_opted_in",
+  "source_declared_open",
+]);
 
 export class LibraryCatalogHttpError extends Error {
   readonly status: number;
@@ -104,7 +110,7 @@ function assertNoBodyKeys(
 }
 
 function requireNullableString(value: unknown, path: string): string | null {
-  if (value === null || value === undefined) return null;
+  if (value === null) return null;
   if (typeof value !== "string") {
     throw new Error(
       `library catalog response rejected: ${path} must be string or null`,
@@ -157,11 +163,22 @@ export function parseBookSummary(raw: unknown, path = "work"): BookSummary {
       `library catalog response rejected: ${path}.servability is invalid`,
     );
   }
+  const servability = o.servability as Servability;
+  if (o.taken_down !== (servability === "taken_down")) {
+    throw new Error(
+      `library catalog response rejected: ${path}.taken_down contradicts servability`,
+    );
+  }
+  if (o.servable_full_text !== FULL_TEXT_SERVABLE.has(servability)) {
+    throw new Error(
+      `library catalog response rejected: ${path}.servable_full_text contradicts servability`,
+    );
+  }
   return {
     document_id: o.document_id,
     title: requireNullableString(o.title, `${path}.title`),
     author: requireNullableString(o.author, `${path}.author`),
-    servability: o.servability as Servability,
+    servability,
     servable_full_text: o.servable_full_text,
     page_count: pageCount,
     cover_uri: requireNullableString(o.cover_uri, `${path}.cover_uri`),
@@ -189,9 +206,19 @@ export function parseLibraryPage(body: unknown): LibraryPage {
       "library catalog response rejected: page_size must be in 1..200",
     );
   }
-  if (o.works.length > pageSize || o.works.length > total) {
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  if (page > lastPage) {
     throw new Error(
-      "library catalog response rejected: works length exceeds page_size or total",
+      "library catalog response rejected: page exceeds the final page",
+    );
+  }
+  const expectedWorks = Math.min(
+    pageSize,
+    Math.max(0, total - (page - 1) * pageSize),
+  );
+  if (o.works.length !== expectedWorks) {
+    throw new Error(
+      "library catalog response rejected: works length contradicts pagination metadata",
     );
   }
   return {
@@ -232,7 +259,15 @@ export async function fetchLibraryCatalog(
     method: "GET",
   });
   const raw = await readOkBody(res);
-  return parseLibraryPage(raw);
+  const page = parseLibraryPage(raw);
+  const expectedPage = req.page ?? 1;
+  const expectedPageSize = req.page_size ?? 20;
+  if (page.page !== expectedPage || page.page_size !== expectedPageSize) {
+    throw new Error(
+      "library catalog response rejected: returned pagination does not match request",
+    );
+  }
+  return page;
 }
 
 export function formatServability(summary: BookSummary): string {
