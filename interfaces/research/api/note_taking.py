@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 
 # Direct import — interfaces/research/api/ depends on substrate + roles.
 _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -40,13 +41,15 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from roles.note_taker import (  # noqa: E402
+    DurableNoteTakerReplay,
     NOTE_TAKER_SYSTEM_PROMPT,
     parse_notes_response,
 )
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
 from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import emit_typed, iter_physical_events, trajectory  # noqa: E402
+from substrate.graph import default_db_path  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     ActionType,
     Event,
@@ -83,10 +86,45 @@ def _resolve_threshold() -> int:
     if not raw:
         return DEFAULT_THRESHOLD
     try:
-        v = int(raw)
-        return max(1, v)
+        value = int(raw)
+        return max(1, value)
     except ValueError:
         return DEFAULT_THRESHOLD
+
+
+def _default_replay_service(
+    *, db_path: str | None = None, events_dir: str | None = None,
+    threshold: int | None = None,
+) -> DurableNoteTakerReplay:
+    def durable_dispatch(request: dict, *, idempotency_key: str):
+        del idempotency_key
+        return dispatch(
+            request["prompt"], "note_taker",
+            investigation_id=request["investigation_id"],
+            parent_event_id=request["source_event_ids"][-1],
+        )
+
+    return DurableNoteTakerReplay(
+        durable_dispatch, db_path=db_path or default_db_path(),
+        events_dir=events_dir, threshold=threshold or _resolve_threshold(),
+    )
+
+
+def start_replay_recovery(*, db_path: str | None = None, events_dir: str | None = None) -> threading.Thread:
+    """Catch up every physical stream on a daemon so startup stays prompt."""
+    service = _default_replay_service(db_path=db_path, events_dir=events_dir)
+
+    def recover() -> None:
+        from substrate.graph.knowledge_event_projector import discover_investigations
+        for investigation_id in discover_investigations(service.events_dir):
+            try:
+                service.catch_up(investigation_id)
+            except Exception as exc:
+                print(f"Note-taker replay recovery remains pending for {investigation_id}: {exc!r}", file=sys.stderr)
+
+    thread = threading.Thread(target=recover, name="note-taker-replay-recovery", daemon=True)
+    thread.start()
+    return thread
 
 
 # ---------------------------------------------------------------------------
@@ -145,17 +183,19 @@ def make_note_taker_handler(
     broadcaster: EventBroadcaster,
     *,
     threshold: int | None = None,
+    db_path: str | None = None,
+    events_dir: str | None = None,
+    replay_service: DurableNoteTakerReplay | None = None,
 ):
-    """Build the async handler closed over a broadcaster. Maintains a
-    per-investigation event counter and triggers a synthesis pass
-    every ``threshold`` qualifying events. Same handler is registered
-    against all three SUBSCRIBED_ACTION_TYPES."""
+    """Build the public async bridge over the durable replay service."""
 
     resolved_threshold = threshold if threshold is not None else _resolve_threshold()
-    counters: dict[str, int] = {}
+
+    service = replay_service or _default_replay_service(
+        db_path=db_path, events_dir=events_dir, threshold=resolved_threshold,
+    )
 
     async def handle_subscribed_event(event: Event) -> None:
-        counter_key = event.investigation_id
         # Skip note-taker's OWN emitted events to avoid feedback loops.
         # (Our note.emerged events aren't in SUBSCRIBED_ACTION_TYPES so
         # this is defense-in-depth; helps if someone later adds note
@@ -166,13 +206,21 @@ def make_note_taker_handler(
         ):
             return
 
-        counters[counter_key] = counters.get(counter_key, 0) + 1
-        if counters[counter_key] < resolved_threshold:
+        try:
+            delivered = service.catch_up(event.investigation_id)
+        except Exception:
+            # Durable evidence records ambiguity; the event bus remains best-effort.
             return
-
-        # Threshold crossed — reset and run synthesis.
-        counters[counter_key] = 0
-        await _run_note_synthesis(event, broadcaster=broadcaster)
+        if not delivered:
+            return
+        delivered_ids = set(delivered)
+        for row in iter_physical_events(event.investigation_id, events_dir=service.events_dir):
+            if row.get("event_id") not in delivered_ids:
+                continue
+            try:
+                await broadcaster.broadcast(Event.model_validate(row))
+            except Exception:  # broadcast follows durable delivery and is best-effort
+                pass
 
     return handle_subscribed_event
 

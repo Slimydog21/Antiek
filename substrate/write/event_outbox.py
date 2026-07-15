@@ -265,6 +265,57 @@ def dispatch_pending(
     return delivered
 
 
+def dispatch_aggregate_pending(
+    con: LockedConnection,
+    investigation_id: str,
+    *,
+    aggregate_kind: str,
+    aggregate_id: str,
+    events_dir: str | None = None,
+    checkpoint: Callable[[str, str], None] | None = None,
+) -> list[str]:
+    """Deliver only one aggregate's pending events under its stream lock."""
+    if _events_disabled():
+        return []
+    root = events_dir or default_events_dir()
+    delivered: list[str] = []
+    with investigation_event_lock(investigation_id, events_dir=root):
+        rows = con.execute(
+            "SELECT event_id, event_json, event_sha256 FROM write_event_outbox "
+            "WHERE investigation_id=? AND aggregate_kind=? AND aggregate_id=? "
+            "AND state='pending' ORDER BY outbox_sequence",
+            [investigation_id, aggregate_kind, aggregate_id],
+        ).fetchall()
+        path = Path(root) / f"{investigation_id}.jsonl"
+        existing = _existing_jsonl_events(path)
+        for event_id, encoded, digest in rows:
+            if hashlib.sha256(encoded.encode()).hexdigest() != digest:
+                raise EventOutboxError("stored outbox digest does not match event bytes")
+            prior = existing.get(event_id)
+            if prior is not None and prior != encoded:
+                raise EventOutboxError("event identity conflicts with durable trajectory bytes")
+            if prior is None:
+                if checkpoint:
+                    checkpoint("before_append", event_id)
+                _append_durable(path, encoded)
+                existing[event_id] = encoded
+                if checkpoint:
+                    checkpoint("after_append", event_id)
+            if checkpoint:
+                checkpoint("before_receipt", event_id)
+            changed = con.execute(
+                "UPDATE write_event_outbox SET state='delivered', "
+                "attempt_count=attempt_count+1, delivered_at=CURRENT_TIMESTAMP "
+                "WHERE event_id=? AND state='pending' AND aggregate_kind=? "
+                "AND aggregate_id=? RETURNING event_id",
+                [event_id, aggregate_kind, aggregate_id],
+            ).fetchone()
+            if changed is None:
+                raise EventOutboxError("outbox delivery state changed unexpectedly")
+            delivered.append(event_id)
+    return delivered
+
+
 def dispatch_pending_best_effort(
     con: LockedConnection,
     investigation_id: str,

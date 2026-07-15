@@ -6633,8 +6633,13 @@ def create_app(
             daemon=True,
         ).start()
 
+    def _recover_note_taker_replay() -> None:
+        from .note_taking import start_replay_recovery
+        start_replay_recovery(db_path=_resolve_db_path())
+
     app.router.on_startup.append(_recover_write_event_outbox)
     app.router.on_startup.append(_recover_knowledge_event_projector)
+    app.router.on_startup.append(_recover_note_taker_replay)
     return app
 
 

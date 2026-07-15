@@ -369,6 +369,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "deliverable_section_provenance_validity",
     "write_event_outbox",
     "event_consumer_receipts",
+    "note_taker_windows",
 )
 
 
@@ -1263,6 +1264,124 @@ CREATE INDEX IF NOT EXISTS idx_event_consumer_receipts_investigation
     ON event_consumer_receipts(consumer_name, consumer_version, investigation_id);
 """
 
+ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL = """
+CREATE TABLE IF NOT EXISTS note_taker_windows (
+    window_id TEXT PRIMARY KEY,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    threshold INTEGER NOT NULL CHECK (threshold > 0),
+    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+    first_event_id TEXT NOT NULL,
+    last_event_id TEXT NOT NULL,
+    source_event_ids_json TEXT NOT NULL,
+    source_digest TEXT NOT NULL,
+    request_json TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL,
+    provider_idempotency_key TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN ('prepared','calling','result_stored','materialized','completed','uncertain')),
+    raw_result TEXT,
+    raw_result_sha256 TEXT,
+    provider TEXT,
+    model TEXT,
+    policy_id TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    uncertainty_reason TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (consumer_version, investigation_id, threshold, ordinal),
+    UNIQUE (consumer_version, investigation_id, source_digest)
+);
+CREATE INDEX IF NOT EXISTS idx_note_taker_windows_recovery
+    ON note_taker_windows(investigation_id, consumer_version, state, ordinal);
+"""
+
+_V20_NOTE_TAKER_COLUMNS = {
+    "window_id", "consumer_version", "investigation_id", "threshold", "ordinal",
+    "first_event_id", "last_event_id", "source_event_ids_json", "source_digest",
+    "request_json", "request_sha256", "provider_idempotency_key", "state",
+    "raw_result", "raw_result_sha256", "provider", "model", "policy_id",
+    "attempt_count", "uncertainty_reason", "created_at", "updated_at",
+}
+
+_V20_NOTE_TAKER_REQUIRED_SHAPE = {
+    "window_id": ("VARCHAR", "NO", "PRI", None),
+    "consumer_version": ("INTEGER", "NO", "UNI", None),
+    "investigation_id": ("VARCHAR", "NO", "UNI", None),
+    "threshold": ("INTEGER", "NO", "UNI", None),
+    "ordinal": ("INTEGER", "NO", "UNI", None),
+    "first_event_id": ("VARCHAR", "NO", None, None),
+    "last_event_id": ("VARCHAR", "NO", None, None),
+    "source_event_ids_json": ("VARCHAR", "NO", None, None),
+    "source_digest": ("VARCHAR", "NO", "UNI", None),
+    "request_json": ("VARCHAR", "NO", None, None),
+    "request_sha256": ("VARCHAR", "NO", None, None),
+    "provider_idempotency_key": ("VARCHAR", "NO", None, None),
+    "state": ("VARCHAR", "NO", None, None),
+    "raw_result": ("VARCHAR", "YES", None, None),
+    "raw_result_sha256": ("VARCHAR", "YES", None, None),
+    "provider": ("VARCHAR", "YES", None, None),
+    "model": ("VARCHAR", "YES", None, None),
+    "policy_id": ("VARCHAR", "YES", None, None),
+    "attempt_count": ("INTEGER", "NO", None, "0"),
+    "uncertainty_reason": ("VARCHAR", "YES", None, None),
+    "created_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+    "updated_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+}
+
+_V20_NOTE_TAKER_KEY_CHECK_CONSTRAINTS = {
+    ("PRIMARY KEY", ("window_id",), "PRIMARY KEY(window_id)"),
+    ("CHECK", ("threshold",), "CHECK((threshold > 0))"),
+    ("CHECK", ("ordinal",), "CHECK((ordinal >= 0))"),
+    ("CHECK", ("state",), "CHECK((state IN ('prepared', 'calling', 'result_stored', 'materialized', 'completed', 'uncertain')))"),
+    ("CHECK", ("attempt_count",), "CHECK((attempt_count >= 0))"),
+    ("UNIQUE", ("consumer_version", "investigation_id", "threshold", "ordinal"),
+     "UNIQUE(consumer_version, investigation_id, threshold, ordinal)"),
+    ("UNIQUE", ("consumer_version", "investigation_id", "source_digest"),
+     "UNIQUE(consumer_version, investigation_id, source_digest)"),
+}
+
+
+def _v20_note_taker_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE note_taker_windows").fetchall()
+    }
+    if described != _V20_NOTE_TAKER_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='note_taker_windows'"
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2]) for row in constraints
+        if row[0] in ("PRIMARY KEY", "UNIQUE", "CHECK")
+    }
+    indexes = con.execute(
+        "SELECT index_name, sql FROM duckdb_indexes() WHERE schema_name='main' "
+        "AND table_name='note_taker_windows'"
+    ).fetchall()
+    return key_checks == _V20_NOTE_TAKER_KEY_CHECK_CONSTRAINTS and indexes == [(
+        "idx_note_taker_windows_recovery",
+        "CREATE INDEX idx_note_taker_windows_recovery ON note_taker_windows(investigation_id, consumer_version, state, ordinal);",
+    )]
+
+
+def _repair_empty_partial_v20_note_taker(con: LockedConnection) -> None:
+    columns = {
+        row[0] for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='note_taker_windows'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if columns == _V20_NOTE_TAKER_COLUMNS and _v20_note_taker_shape_is_valid(con):
+        return
+    count = con.execute("SELECT COUNT(*) FROM note_taker_windows").fetchone()[0]
+    if count:
+        raise RuntimeError("populated partial V20 note-taker windows require explicit recovery")
+    con.execute("DROP TABLE note_taker_windows")
+
 _V18_OUTBOX_COLUMNS = {
     "outbox_sequence", "event_id", "operation_id", "investigation_id",
     "aggregate_kind", "aggregate_id", "event_json", "event_sha256", "state",
@@ -1426,6 +1545,8 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V18_WRITE_EVENT_OUTBOX_SQL)
     _repair_empty_partial_v19_receipts(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
+    _repair_empty_partial_v20_note_taker(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1486,7 +1607,10 @@ def _schema_is_present(db_path: str) -> bool:
             "AND column_name='operation_id')"
             " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
             "table_schema='main' AND table_name='event_consumer_receipts' "
-            "AND column_name='event_sha256'))"
+            "AND column_name='event_sha256')"
+            " AND EXISTS (SELECT 1 FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='note_taker_windows' "
+            "AND column_name='request_sha256'))"
         ).fetchone()
     except Exception:
         return False
