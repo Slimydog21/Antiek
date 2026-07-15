@@ -87,6 +87,7 @@ import {
 } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
 import { useFloatMenuSelection } from "./useFloatMenuSelection";
+import type { EvidencePassportView } from "../../../components/evidence/EvidencePassport";
 
 // ── jsdom selection helper ──────────────────────────────────────────────────
 
@@ -151,6 +152,7 @@ function Host({
   onRewrite,
   editContext,
   onApplyEdit,
+  evidencePassport,
 }: {
   onDeepResearch?: (t: string | null, s: FloatMenuSelection) => void;
   hybridEnabled?: boolean;
@@ -162,6 +164,7 @@ function Host({
   /** CK-5: the Write edit-context + apply callback (mode-gated). */
   editContext?: { deliverableId: string; sectionId: string };
   onApplyEdit?: (editedText: string) => void;
+  evidencePassport?: EvidencePassportView;
 }) {
   const scopeRef = useRef<HTMLDivElement>(null);
   const selection = useFloatMenuSelection({
@@ -181,6 +184,7 @@ function Host({
         rewriteActions={onRewrite ? { onRewrite } : undefined}
         editContext={editContext}
         onApplyEdit={onApplyEdit}
+        evidencePassport={evidencePassport}
       />
     </div>
   );
@@ -216,7 +220,24 @@ describe("FloatMenu — open on selection (M1)", () => {
     expect(screen.getByRole("menuitem", { name: "Search" })).toBeTruthy();
     expect(screen.getByRole("menuitem", { name: "Deep-research" })).toBeTruthy();
     // Positioned (fixed) from the raw rect.
-    expect((menu as HTMLElement).style.position).toBe("fixed");
+    expect((menu.closest("[data-floatmenu]") as HTMLElement).style.position).toBe("fixed");
+  });
+
+  it("shows host-owned evidence without rounding an unresolved anchor up", () => {
+    render(
+      <Host
+        evidencePassport={{
+          sourceName: "A named book",
+          locator: "Page 12",
+          custody: "source-identified",
+          precision: "anchor-pending",
+        }}
+      />,
+    );
+    selectTextIn(screen.getByTestId("scope"), "the selected passage");
+    expect(screen.getByText("A named book")).toBeTruthy();
+    expect(screen.getByText("Exact passage anchor pending")).toBeTruthy();
+    expect(screen.queryByText("Exact passage anchored")).toBeNull();
   });
 
   it("dismisses cleanly when the selection empties / collapses (no crash)", () => {
@@ -232,10 +253,10 @@ describe("FloatMenu — open on selection (M1)", () => {
     render(<Host />);
     const scope = screen.getByTestId("scope");
     selectTextIn(scope, "the selected passage", { top: 200, left: 100, width: 80, height: 18 });
-    const first = screen.getByRole("menu") as HTMLElement;
+    const first = screen.getByRole("menu").closest("[data-floatmenu]") as HTMLElement;
     const firstTop = first.style.top;
     selectTextIn(scope, "the selected passage text", { top: 400, left: 100, width: 120, height: 18 });
-    const second = screen.getByRole("menu") as HTMLElement;
+    const second = screen.getByRole("menu").closest("[data-floatmenu]") as HTMLElement;
     expect(second.style.top).not.toBe(firstTop); // moved to the new rect
   });
 
@@ -279,7 +300,7 @@ describe("FloatMenu — open on selection (M1)", () => {
     const scope = screen.getByTestId("scope");
     // A selection far past the right edge — the menu must clamp inside.
     selectTextIn(scope, "edge text", { top: 50, left: 2000, width: 80, height: 18 });
-    const menu = screen.getByRole("menu") as HTMLElement;
+    const menu = screen.getByRole("menu").closest("[data-floatmenu]") as HTMLElement;
     const left = parseFloat(menu.style.left);
     expect(left).toBeGreaterThanOrEqual(0);
     expect(left).toBeLessThanOrEqual(window.innerWidth); // never off-screen

@@ -51,6 +51,15 @@ const STORIES: string[] = [
   // matter; a typoed id renders the "No Preview" placeholder which
   // has zero violations and produces a vacuous PASS.
   "design-primitives-showcase--showcase",
+  // ESP-01 — every evidence custody/precision state. These stories make
+  // authority gaps visible, so an inaccessible state would be a trust defect.
+  "evidence-source-passport-esp-01--anchor-pending",
+  "evidence-source-passport-esp-01--exact-passage",
+  "evidence-source-passport-esp-01--hash-reviewed",
+  "evidence-source-passport-esp-01--restricted",
+  "evidence-source-passport-esp-01--rights-unconfirmed",
+  "evidence-source-passport-esp-01--unavailable",
+  "evidence-source-passport-esp-01--compose-spine",
   "lemon-button--grid",
   "lemon-button--with-icons",
   "lemon-button--disabled",

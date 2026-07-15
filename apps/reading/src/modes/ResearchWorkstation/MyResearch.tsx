@@ -53,6 +53,7 @@ import type { InvestigationSummary } from "../../lib/api";
 import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
+import EvidencePassport from "../../components/evidence/EvidencePassport";
 import SuggestedResearch from "./SuggestedResearch";
 import { notifyResearchDraftComposed } from "../../werner/shellExperienceSignals";
 
@@ -72,6 +73,12 @@ interface PlainStatus {
   colour: "sun" | "aurora" | "muted" | "danger";
   /** Whether this research is still consuming concurrency (a "running" one). */
   running: boolean;
+}
+
+interface ComposeSourceLabel {
+  investigationId: string;
+  sourceName: string;
+  locator: string;
 }
 
 function plainStatus(status: InvestigationSummary["status"]): PlainStatus {
@@ -238,6 +245,14 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
     () => new Set(investigations.filter((item) => item.status === "completed").map((item) => item.investigation_id)),
     [investigations],
   );
+  const selectedSources = useMemo<ComposeSourceLabel[]>(() => {
+    const byId = new Map(investigations.map((item) => [item.investigation_id, item]));
+    return selected.map((investigationId, index) => ({
+      investigationId,
+      sourceName: byId.get(investigationId)?.question?.trim() || "Untitled research",
+      locator: `Research ${index + 1} of ${selected.length}`,
+    }));
+  }, [investigations, selected]);
   useEffect(() => {
     setSelected((current) => current.filter((id) => eligible.has(id)));
   }, [eligible]);
@@ -420,6 +435,7 @@ export default function MyResearch({ embedded = false }: { embedded?: boolean } 
         {selected.length > 0 && (
           <ComposeTray
             selectedCount={selected.length}
+            sources={selectedSources}
             preview={composePreview}
             busy={composing}
             error={composeError}
@@ -609,8 +625,9 @@ function ResearchRow({
   );
 }
 
-function ComposeTray({ selectedCount, preview, busy, error, writeWorkspace, writeError, openingWrite, onPreview, onCreate, onOpenWrite, onClear }: {
+function ComposeTray({ selectedCount, sources, preview, busy, error, writeWorkspace, writeError, openingWrite, onPreview, onCreate, onOpenWrite, onClear }: {
   selectedCount: number;
+  sources: ComposeSourceLabel[];
   preview: ResearchCompose | null;
   busy: boolean;
   error: string | null;
@@ -622,6 +639,7 @@ function ComposeTray({ selectedCount, preview, busy, error, writeWorkspace, writ
   onOpenWrite: () => void;
   onClear: () => void;
 }) {
+  const sourceById = new Map(sources.map((source) => [source.investigationId, source]));
   return (
     <aside className="sticky bottom-4 z-20 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-[4px_4px_0_0_var(--color-ink)] dark:border-bright dark:bg-charcoal-2" aria-label="Compose research draft">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -639,7 +657,23 @@ function ComposeTray({ selectedCount, preview, busy, error, writeWorkspace, writ
         {preview && !preview.view_url && (
           <div className="mt-4 border-t border-rule pt-3 dark:border-charcoal-1">
             <ol className="space-y-2">
-              {preview.members.map((member) => <li key={member.investigation_id} className="font-mono text-[11px]"><span className="text-ink dark:text-bright">{member.investigation_id}</span><span className="ml-2 break-all text-shadow-1">{member.content_hash}</span></li>)}
+              {preview.members.map((member, index) => {
+                const source = sourceById.get(member.investigation_id);
+                return (
+                  <li key={member.investigation_id}>
+                    <EvidencePassport
+                      sourceName={source?.sourceName || "Untitled research"}
+                      locator={source?.locator || `Research ${index + 1} of ${preview.members.length}`}
+                      custody="hash-reviewed"
+                      precision="artifact-snapshot"
+                    />
+                    <details className="ml-4 mt-1 text-[10px] text-shadow-1 dark:text-moonlight">
+                      <summary className="cursor-pointer font-mono">Technical hash details</summary>
+                      <code className="mt-1 block break-all">{member.content_hash}</code>
+                    </details>
+                  </li>
+                );
+              })}
             </ol>
             {preview.identical_content.length > 0 && <p className="mt-3 text-xs text-emperor">{preview.identical_content.length} pair{preview.identical_content.length === 1 ? " has" : "s have"} identical canonical content. The draft will flag them for review.</p>}
             <div className="mt-3 flex justify-end"><LemonButton variant="primary" size="sm" onClick={onCreate} disabled={busy}>{busy ? "Creating…" : "Create HTML draft"}</LemonButton></div>
@@ -663,6 +697,19 @@ function ComposeTray({ selectedCount, preview, busy, error, writeWorkspace, writ
                 <p className="text-xs text-shadow-1 dark:text-moonlight">
                   {writeWorkspace.snapshot_occurrence_count} snapshot occurrences · {writeWorkspace.duplicate_count} duplicates folded · {writeWorkspace.kind_conflict_count} kind conflicts · {writeWorkspace.dangling_count} unavailable sources
                 </p>
+                <ol className="mt-3 space-y-2" aria-label="Source spine carried into Write">
+                  {sources.map((source) => (
+                    <li key={source.investigationId}>
+                      <EvidencePassport
+                        compact
+                        sourceName={source.sourceName}
+                        locator={source.locator}
+                        custody="hash-reviewed"
+                        precision="artifact-snapshot"
+                      />
+                    </li>
+                  ))}
+                </ol>
                 <a className="mt-1 inline-block text-sm font-semibold text-ink underline dark:text-bright" href={writeWorkspace.write_url}>Open in Write →</a>
               </div>
             )}

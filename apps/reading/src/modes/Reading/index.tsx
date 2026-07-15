@@ -343,6 +343,15 @@ export default function BookReader() {
           selection={selection}
           investigationId={readingThreadId}
           onDeepResearch={onDeepResearch}
+          evidencePassport={{
+            sourceName: book.title ?? "Untitled book",
+            locator: page ? `Page ${page.pageNumber}` : null,
+            custody: book.servable_full_text ? "source-identified" : "restricted",
+            // The books API exposes no chunk id for the linear body. Keep the
+            // missing precision visible instead of rounding document identity
+            // up to an exact passage anchor.
+            precision: representativeChunkId ? "exact-passage" : "anchor-pending",
+          }}
         />
       )}
 

@@ -69,6 +69,12 @@ class DistilledNodeOut(BaseModel):
     text: str
     confidence: str | None = None
     source_document_id: str | None = None
+    # Safe display context for the source passport. Identity remains the
+    # source_document_id; title is never used for joins or challenge authority.
+    source_document_title: str | None = None
+    # Rights-aware display fact. None means the document/rights context could
+    # not be resolved; consumers must not round that up to servable.
+    source_document_servable: bool | None = None
     refinement_count: int = 0
     escalated: bool = False
     reserved_child_investigation_id: str | None = None
@@ -106,11 +112,59 @@ async def get_distillation(investigation_id: str) -> DistillationOut:
     the graph. Empty lists are a valid result (no notes yet / no provider) —
     the surface renders the honest no-result state, not canned content."""
     view = distillation_for(investigation_id, db_path=_db())
+    contexts = _document_contexts(
+        {
+            node.source_document_id
+            for node in (*view.insights, *view.questions)
+            if node.source_document_id
+        }
+    )
     return DistillationOut(
         investigation_id=investigation_id,
-        insights=[DistilledNodeOut(**vars(n)) for n in view.insights],
-        questions=[DistilledNodeOut(**vars(n)) for n in view.questions],
+        insights=[
+            DistilledNodeOut(**{
+                **vars(n),
+                "source_document_title": contexts.get(n.source_document_id, (None, None))[0],
+                "source_document_servable": contexts.get(n.source_document_id, (None, None))[1],
+            })
+            for n in view.insights
+        ],
+        questions=[
+            DistilledNodeOut(**{
+                **vars(n),
+                "source_document_title": contexts.get(n.source_document_id, (None, None))[0],
+                "source_document_servable": contexts.get(n.source_document_id, (None, None))[1],
+            })
+            for n in view.questions
+        ],
     )
+
+
+def _document_contexts(
+    document_ids: set[str],
+) -> dict[str, tuple[str | None, bool]]:
+    """Resolve safe title + deny-by-default servability in one batched read."""
+    if not document_ids:
+        return {}
+    ordered = sorted(document_ids)
+    placeholders = ", ".join("?" for _ in ordered)
+    con = connect_read(_db())
+    try:
+        rows = con.execute(
+            f"SELECT document_id, title, content_class FROM documents WHERE document_id IN ({placeholders})",
+            ordered,
+        ).fetchall()
+    finally:
+        con.close()
+    from substrate.books.servability import is_servable_full_text, servability_of
+
+    return {
+        str(document_id): (
+            str(title) if title is not None and str(title).strip() else None,
+            is_servable_full_text(servability_of(content_class)),
+        )
+        for document_id, title, content_class in rows
+    }
 
 
 # ---------------------------------------------------------------------------

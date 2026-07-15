@@ -56,16 +56,16 @@ def env(monkeypatch):
     return {"client": TestClient(app), "db": db, "events": events, "mp": monkeypatch}
 
 
-def _seed(env, *, insights=(), questions=()):
+def _seed(env, *, insights=(), questions=(), source_document_id="doc-1"):
     """Promote some insight/question nodes for inv-1, as a research would."""
     ids = {"insights": [], "questions": []}
     for t in insights:
         ids["insights"].append(promote_insight(
             text=t, investigation_id="inv-1", confidence="moderate",
-            source_document_id="doc-1"))
+            source_document_id=source_document_id))
     for t in questions:
         ids["questions"].append(promote_question(
-            text=t, investigation_id="inv-1", source_document_id="doc-1"))
+            text=t, investigation_id="inv-1", source_document_id=source_document_id))
     return ids
 
 
@@ -75,6 +75,11 @@ def _seed(env, *, insights=(), questions=()):
 
 
 def test_get_distillation_returns_graph_nodes(env):
+    env["mp"].setattr(
+        dr,
+        "_document_contexts",
+        lambda ids: {"doc-1": ("Scaling systems field notes", True)},
+    )
     _seed(env, insights=["GPUs gate scale."], questions=["What is the moat?"])
     r = env["client"].get("/research/inv-1/distill")
     assert r.status_code == 200, r.text
@@ -82,6 +87,51 @@ def test_get_distillation_returns_graph_nodes(env):
     assert [n["text"] for n in body["insights"]] == ["GPUs gate scale."]
     assert [n["text"] for n in body["questions"]] == ["What is the moat?"]
     assert body["insights"][0]["source_document_id"] == "doc-1"
+    assert body["insights"][0]["source_document_title"] == "Scaling systems field notes"
+    assert body["questions"][0]["source_document_title"] == "Scaling systems field notes"
+    assert body["insights"][0]["source_document_servable"] is True
+
+
+def test_document_contexts_batch_and_apply_deny_by_default_rights(monkeypatch):
+    class _Rows:
+        def fetchall(self):
+            return [
+                ("doc-a", "Named source", "public_domain"),
+                ("doc-b", "  ", "restricted_pending_opt_in"),
+                ("doc-c", None, None),
+            ]
+
+    class _Connection:
+        closed = False
+
+        def execute(self, sql, params):
+            assert "IN (?, ?, ?)" in sql
+            assert params == ["doc-a", "doc-b", "doc-c"]
+            return _Rows()
+
+        def close(self):
+            self.closed = True
+
+    con = _Connection()
+    monkeypatch.setattr(dr, "connect_read", lambda _path: con)
+    assert dr._document_contexts({"doc-c", "doc-a", "doc-b"}) == {
+        "doc-a": ("Named source", True),
+        "doc-b": (None, False),
+        "doc-c": (None, False),
+    }
+    assert con.closed is True
+
+
+def test_get_distillation_missing_source_title_is_honest(env):
+    _seed(
+        env,
+        insights=["The source row is not available."],
+        source_document_id="doc-missing",
+    )
+    r = env["client"].get("/research/inv-1/distill")
+    assert r.status_code == 200, r.text
+    assert r.json()["insights"][0]["source_document_title"] is None
+    assert r.json()["insights"][0]["source_document_servable"] is None
 
 
 def test_get_distillation_empty_is_honest(env):

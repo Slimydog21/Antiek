@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-15T04:50:15.298Z
-**Stories audited:** 58
+**Run:** 2026-07-15T06:23:58.313Z
+**Stories audited:** 65
 **Load errors:** 0
 **Serious / critical violations:** 0
 
@@ -12,6 +12,13 @@
 | Story | Status | Violations | Top impact | Worst rule |
 |---|---|---|---|---|
 | `design-primitives-showcase--showcase` | ✓ audited | 0 | — | — |
+| `evidence-source-passport-esp-01--anchor-pending` | ✓ audited | 0 | — | — |
+| `evidence-source-passport-esp-01--exact-passage` | ✓ audited | 0 | — | — |
+| `evidence-source-passport-esp-01--hash-reviewed` | ✓ audited | 0 | — | — |
+| `evidence-source-passport-esp-01--restricted` | ✓ audited | 0 | — | — |
+| `evidence-source-passport-esp-01--rights-unconfirmed` | ✓ audited | 0 | — | — |
+| `evidence-source-passport-esp-01--unavailable` | ✓ audited | 0 | — | — |
+| `evidence-source-passport-esp-01--compose-spine` | ✓ audited | 0 | — | — |
 | `lemon-button--grid` | ✓ audited | 0 | — | — |
 | `lemon-button--with-icons` | ✓ audited | 0 | — | — |
 | `lemon-button--disabled` | ✓ audited | 0 | — | — |

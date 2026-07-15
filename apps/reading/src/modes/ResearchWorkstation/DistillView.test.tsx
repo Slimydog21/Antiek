@@ -41,7 +41,7 @@ afterEach(() => {
 });
 
 function insight(node_id: string, text: string, extra: Partial<DistilledNode> = {}): DistilledNode {
-  return { node_id, kind: "insight", text, confidence: "high", source_document_id: "doc-1", refinement_count: 0, escalated: false, reserved_child_investigation_id: null, ...extra };
+  return { node_id, kind: "insight", text, confidence: "high", source_document_id: "doc-1", source_document_servable: true, refinement_count: 0, escalated: false, reserved_child_investigation_id: null, ...extra };
 }
 function question(node_id: string, text: string, extra: Partial<DistilledNode> = {}): DistilledNode {
   return { node_id, kind: "question", text, confidence: null, source_document_id: "doc-1", refinement_count: 0, escalated: false, reserved_child_investigation_id: null, ...extra };
@@ -59,9 +59,24 @@ describe("DistillView — first-class insights + questions (M2)", () => {
     expect(screen.getByText("Insights")).toBeTruthy();
     expect(screen.getByText("Open questions")).toBeTruthy();
     expect(screen.getByText("What is the moat?")).toBeTruthy();
-    // grounding shown in human terms, never a raw id label.
-    expect(screen.getByText("grounded in a source")).toBeTruthy();
+    // A known source remains identified even when its safe display title is
+    // unavailable; the raw id never becomes a user-facing label.
+    expect(screen.getByText("Source name unavailable")).toBeTruthy();
+    expect(screen.getByText("Source identified")).toBeTruthy();
+    expect(screen.getByText("Document-level source")).toBeTruthy();
     expect(screen.queryByText("doc-1")).toBeNull();
+  });
+
+  it("keeps a grounded but non-servable source visibly restricted", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "Licensed evidence.", { source_document_title: "Licensed report", source_document_servable: false })],
+      questions: [],
+    });
+    render(<DistillView investigationId="inv-1" />);
+    await waitFor(() => expect(screen.getByText("Licensed evidence.")).toBeTruthy());
+    expect(screen.getByText("Source restricted")).toBeTruthy();
+    expect(screen.queryByText("Source identified")).toBeNull();
   });
 });
 

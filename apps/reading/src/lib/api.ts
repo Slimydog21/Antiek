@@ -1189,6 +1189,9 @@ export interface DistilledNode {
   confidence?: string | null;
   /** The source that grounds it (a document handle); null when ungrounded. */
   source_document_id?: string | null;
+  /** Safe human display context resolved in one server-side batch. */
+  source_document_title?: string | null;
+  source_document_servable?: boolean | null;
   /** How many times this note has changed (a living-note signal). */
   refinement_count: number;
   /** A question whose challenge needs new research (escalation seam). */
