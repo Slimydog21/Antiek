@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.app import create_app
 from substrate.auth import mint_session_cookie
 from substrate.twin_note_taker.compression import DurableTwinNoteCompression
-from tests.test_twin_note_serving import served
+from tests.test_twin_note_serving import served  # noqa: F401
 
 
 @pytest.fixture
@@ -41,6 +43,46 @@ def test_foreign_missing_no_oracle(client, served):
     missing = client.get("/research/twin-notes/revisions/tnr-" + "0" * 32)
     assert missing.status_code == 404 and missing.json() == {"detail": "twin-note resource is unavailable"}
     assert "sha" not in missing.text and "path" not in missing.text
+
+
+def test_merge_projection_route_is_id_only_owner_derived_and_strict(client, served, monkeypatch):
+    from interfaces.research.api import twin_note_routes
+
+    _db, _service, first, _second = served
+    seen = []
+    projection_id = "hproj-" + "a" * 64
+    result_projection_id = "hproj-" + "b" * 64
+
+    class FakeBridge:
+        def create(self, **kwargs):
+            seen.append(kwargs)
+            return SimpleNamespace(response=lambda: {
+                "projection_id": result_projection_id,
+                "source_projection_id": projection_id,
+                "twin_source": {"kind": "revision", "id": first.revision_id},
+                "member_count": 1,
+                "hosted_html_sha256": "c" * 64,
+                "merge_draft_input": {"projection_ids": [projection_id, result_projection_id]},
+            })
+
+    monkeypatch.setattr(twin_note_routes, "_merge_bridge", FakeBridge)
+    payload = {
+        "source_projection_id": projection_id,
+        "source": {"kind": "revision", "id": first.revision_id},
+        "selected_notes": [{"revision_id": first.revision_id, "note_ordinal": 0}],
+        "idempotency_key": "route-key-0000001",
+    }
+    response = client.post("/research/twin-notes/merge-projections", json=payload)
+    assert response.status_code == 201
+    assert response.json()["merge_draft_input"]["projection_ids"] == [
+        projection_id, result_projection_id
+    ]
+    assert seen[0]["owner_user_id"] == "__operator__"
+    rejected = client.post(
+        "/research/twin-notes/merge-projections", json=payload | {"owner_user_id": "foreign"}
+    )
+    assert rejected.status_code == 422
+    assert rejected.json() == {"detail": "twin-note request is invalid"}
 
 
 @pytest.fixture

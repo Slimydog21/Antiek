@@ -238,9 +238,7 @@ class MergeDraftRepository:
             }
             if item.status != "ready" or entry != expected:
                 raise MergeDraftError("projection drifted before review")
-            if not self._document_owned(
-                con, document_id=item.source_document_id, owner_user_id=owner_user_id
-            ):
+            if not self._projection_owned(con, item=item, owner_user_id=owner_user_id):
                 raise MergeDraftError("projection drifted before review")
             projections.append(item)
         canonical = canonicalize_members(tuple(self._load_member(item) for item in projections))
@@ -301,9 +299,7 @@ class MergeDraftRepository:
                     raise MergeDraftError("projection is not ready") from exc
                 if item.status != "ready":
                     raise MergeDraftError("projection is not ready")
-                if not self._document_owned(
-                    con, document_id=item.source_document_id, owner_user_id=owner_user_id
-                ):
+                if not self._projection_owned(con, item=item, owner_user_id=owner_user_id):
                     raise MergeDraftError("projection is not ready")
                 result.append(item)
         return tuple(result)
@@ -336,6 +332,7 @@ class MergeDraftRepository:
         if (
             candidate.is_symlink()
             or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
             or not resolved.is_relative_to(root)
         ):
             raise MergeDraftError("projection object is unsafe")
@@ -345,10 +342,11 @@ class MergeDraftRepository:
             descriptor = os.open(resolved, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
             try:
                 current = os.fstat(descriptor)
-                if not stat.S_ISREG(current.st_mode) or (current.st_dev, current.st_ino) != (
+                if (not stat.S_ISREG(current.st_mode) or current.st_nlink != 1
+                        or (current.st_dev, current.st_ino) != (
                     metadata.st_dev,
                     metadata.st_ino,
-                ):
+                )):
                     raise MergeDraftError("projection object changed during load")
                 chunks: list[bytes] = []
                 remaining = MAX_STORED_HTML_BYTES + 1
@@ -424,6 +422,33 @@ class MergeDraftRepository:
             [document_id, owner_user_id],
         ).fetchone()
         return bool(row == (1,))
+
+    def _projection_owned(
+        self, con: Any, *, item: HtmlProjectionContract, owner_user_id: str
+    ) -> bool:
+        if self._document_owned(
+            con, document_id=item.source_document_id, owner_user_id=owner_user_id
+        ):
+            return True
+        prefix = "twin-note-merge-bridge:"
+        if not item.source_document_id.startswith(prefix):
+            return False
+        bridge_id = item.source_document_id.removeprefix(prefix)
+        # The current read connection remains authoritative for ordinary documents.
+        # Bridge ownership additionally requires a complete immutable receipt reopen.
+        from substrate.twin_note_taker.merge_bridge import (
+            MergeBridgeIntegrity,
+            MergeBridgeUnavailable,
+            TwinNoteMergeBridge,
+        )
+
+        try:
+            result = TwinNoteMergeBridge(
+                db_path=self._db_path, publication_root=self._projection_root
+            ).reopen(owner_user_id=owner_user_id, bridge_id=bridge_id, con=con)
+        except (MergeBridgeIntegrity, MergeBridgeUnavailable):
+            return False
+        return result.projection_id == item.projection_id
 
 
 def _canonical_json(value: Any) -> str:
