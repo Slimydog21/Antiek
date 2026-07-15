@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 57 - Derived Asset First-Class Reading</title>
+  <style>
+    :root{--paper:#fffdf7;--ink:#151515;--lemon:#f9bd2b;--blue:#1d4aff;--red:#a32020;--muted:#626262}
+    *{box-sizing:border-box}body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 system-ui,sans-serif}
+    main{max-width:1100px;margin:auto;padding:32px}header,section{border:2px solid var(--ink);padding:20px;margin:0 0 18px}
+    header{background:var(--lemon)}h1,h2,h3{margin:0 0 10px;letter-spacing:0}code{background:#fff;border:1px solid;padding:1px 4px}
+    .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}.card{border:2px solid var(--blue);padding:14px}
+    .must{border-left:8px solid var(--blue)}.reject{border-left:8px solid var(--red)}small{color:var(--muted)}
+  </style>
+</head>
+<body><main>
+  <header><h1>Cycle 57: Derived Asset First-Class Reading</h1><p>Open committed canonical HTML in Antiek's reading workflow without flattening it, copying its authority, or losing exact revision provenance.</p></header>
+  <section id="spec-lineage" data-spec-depth="0" data-parent-spec="derived-asset-library-and-restore.html">
+    <h2>Spec lineage</h2><p>Parent: <a href="derived-asset-library-and-restore.html">Cycle 56 derived asset library and restore</a></p><ul class="child-specs"></ul>
+  </section>
+  <section class="must"><h2>Outcome</h2><p>An authenticated owner can open a stable current-reader URL or an immutable revision URL, select real rendered HTML, send that selection into Antiek's shared note and deep-research actions, and see the exact asset/revision/hash/generation identity that grounds those actions.</p></section>
+  <section><h2>Identity model</h2><div class="grid">
+    <div class="card"><h3>Stable context</h3><p><code>derived_asset_id</code> is the long-lived reading and companion context. Revision changes do not strand the operator's conversation.</p></div>
+    <div class="card"><h3>Immutable grounding</h3><p>Every read response names <code>revision_id</code> and <code>content_sha256</code>. Selection actions carry that tuple as provenance metadata.</p></div>
+    <div class="card"><h3>One byte authority</h3><p><code>derived_asset_revisions.canonical_html</code> remains the only canonical body. No copy is written to <code>documents.raw_text</code>, book storage, browser persistence, or a projection cache.</p></div>
+    <div class="card"><h3>Current resolution</h3><p>The stable route resolves and verifies the current pointer on each load. An exact revision route never follows the pointer and clearly identifies historical content.</p></div>
+  </div></section>
+  <section><h2>Read API</h2><ul>
+    <li><code>GET /research/derived-assets/assets/{asset_id}/reading</code> returns the verified current title, kind, revision tuple, generation, member count, canonical HTML, and stable/exact reader paths.</li>
+    <li><code>GET /research/derived-assets/assets/{asset_id}/revisions/{revision_id}/reading</code> returns the same model for an immutable revision and reports whether it is current.</li>
+    <li>Both endpoints are authenticated, owner-derived, parameter-free, body-free, bounded by the Cycle 56 complete-chain verifier, JSON encoded, and <code>private, no-store</code>.</li>
+    <li>Foreign and missing assets/revisions are indistinguishable. Integrity failures are typed conflicts and never return partial HTML.</li>
+  </ul></section>
+  <section><h2>Reader contract</h2><ol>
+    <li><code>/read/derived/:assetId</code> resolves the current verified model; <code>/read/derived/:assetId/revisions/:revisionId</code> resolves immutable history.</li>
+    <li>The canonical fragment is rendered as selectable semantic HTML inside the reader scope. The server's closed sanitizer policy is the admission authority; the client never sanitizes into different bytes or trusts caller HTML.</li>
+    <li>The header shows title, asset kind, current/historical state, generation, and a short exact revision/hash identity. Historical reading offers a return-to-current command.</li>
+    <li>The shared FloatMenu is reused. Its provenance resolver binds stable asset ID plus exact revision/hash/generation metadata and refuses actions until a verified model exists.</li>
+    <li>The existing reading companion follows the stable asset context. A current-head refresh replaces the rendered model atomically and collapses stale browser selections.</li>
+  </ol></section>
+  <section><h2>Graph boundary</h2><p>This cycle establishes a typed read/provenance bridge, not a fake book or mutable graph-body projection. Search chunks and durable graph document registration require deterministic HTML section chunking plus revision-aware citation semantics; until that child spec lands, the reader may launch selection-grounded research but must not claim whole-document graph indexing.</p></section>
+  <section><h2>Acceptance harness</h2><ul>
+    <li>Current and exact endpoints return only owner-visible, fully verified canonical models and reject query strings and GET bodies.</li>
+    <li>Current revise/restore resolution changes the exact tuple; immutable URLs continue to return their original tuple and bytes.</li>
+    <li>Corrupt bytes, hashes, manifests, members, policy, acknowledgement, lineage, pointer, or generation fail closed.</li>
+    <li>The UI renders nested canonical HTML as selectable DOM, not escaped text or an iframe, and never calls book/full-text APIs.</li>
+    <li>FloatMenu receives stable and immutable provenance; stale loads cannot overwrite a newer asset/revision request.</li>
+    <li>Library entry opens the stable reader. Historical entries open immutable reader URLs. Frontend tests, TypeScript, production build, backend tests, hostile review, and HardenX pass.</li>
+  </ul></section>
+  <section class="reject"><h2>Rejected alternatives</h2><ul>
+    <li>Registering a derived asset as a book: invokes unrelated rights, marketplace, ad, pagination, and plain-text contracts.</li>
+    <li>Copying HTML into <code>documents.raw_text</code>: creates a mutable second body authority and destroys HTML structure.</li>
+    <li>Iframe-only reading: blocks native selection, annotation anchoring, and shared reader interactions.</li>
+    <li>Revision ID as the only conversation identity: strands companion history after every revise or restore.</li>
+    <li>Stable asset ID without revision provenance: lets later content silently reinterpret old selections and citations.</li>
+    <li>Client-supplied owner, HTML, title, revision, hash, or generation: expands authority and creates cross-account or stale-content paths.</li>
+  </ul></section>
+  <section><h2>Deferred child specs</h2><ul>
+    <li>Revision-aware deterministic HTML section chunking and graph document projection.</li>
+    <li>Durable DOM-range highlight anchors with re-anchoring across derived revisions.</li>
+    <li>Whole-document companion retrieval over verified current or explicitly pinned revision context.</li>
+  </ul></section>
+  <section><h2>Five-values rigor</h2><p><strong>Honesty:</strong> the UI names exact persisted identity and does not claim indexing that is absent. <strong>Fairness:</strong> ownership is server-derived and foreign equals missing. <strong>Rigor:</strong> stable context and immutable grounding are separate typed fields. <strong>Diligence:</strong> every read reuses complete-chain verification. <strong>Defensibility:</strong> one byte authority and immutable deep links preserve auditability.</p></section>
+  <section id="harness-hint-run" data-pattern="adversarial-verification" data-scope="cycle57-derived-asset-reading" data-done-bar="backend+frontend+typecheck+build+hostile-review+hardenx"><h2>Harness hint</h2><p>Implement verified service model, owner-only routes, typed client, dedicated reader, and library links in dependency order; then refute ownership, integrity, stale-response, rendering, and provenance claims.</p></section>
+</main></body></html>

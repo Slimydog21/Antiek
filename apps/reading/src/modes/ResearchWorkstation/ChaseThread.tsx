@@ -11,6 +11,7 @@ import { CelebrateBurst, useCelebrate } from "../../shared/delight";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
 import ThinkingStream from "./ThinkingStream";
 import VoiceChaseButton from "./VoiceChaseButton";
+import type { SelectionProvenance } from "../shared/FloatMenu/useFloatMenuSelection";
 
 /**
  * ChaseThread — follow a highlighted passage into a child research, in one
@@ -62,12 +63,15 @@ type Props = {
    * absent ⇒ mint a fresh child. The panel never renders it.
    */
   reservedChildId?: string | null;
+  /** Exact source identity for revisioned derived HTML selections. */
+  sourceProvenance?: SelectionProvenance;
 };
 
 export default function ChaseThread({
   spawnContext,
   parentInvestigationId,
   reservedChildId,
+  sourceProvenance,
 }: Props) {
   const [question, setQuestion] = useState(spawnContext);
   const [busy, setBusy] = useState(false);
@@ -92,9 +96,23 @@ export default function ChaseThread({
     setBusy(true);
     setError(null);
     try {
+      const derivedSource = /^ast_[0-9a-f]{32}$/.test(sourceProvenance?.documentId ?? "")
+        && /^rev_[0-9a-f]{32}$/.test(sourceProvenance?.derivedRevisionId ?? "")
+        && /^[0-9a-f]{64}$/.test(sourceProvenance?.derivedContentSha256 ?? "")
+        && Number.isInteger(sourceProvenance?.derivedGeneration)
+        && (sourceProvenance?.derivedGeneration ?? 0) >= 1
+        ? {
+            derived_asset_id: sourceProvenance?.documentId,
+            revision_id: sourceProvenance?.derivedRevisionId,
+            content_sha256: sourceProvenance?.derivedContentSha256,
+            generation: sourceProvenance?.derivedGeneration,
+          }
+        : null;
       const resp = await startInvestigation({
         question: q,
-        context: spawnContext,
+        context: derivedSource
+          ? `${spawnContext}\n\nAntiek source identity: ${JSON.stringify(derivedSource)}`
+          : spawnContext,
         parent_investigation_id: parentInvestigationId,
         spawn_context: spawnContext,
         // Consume the reserved escalation id when the passage carries one;

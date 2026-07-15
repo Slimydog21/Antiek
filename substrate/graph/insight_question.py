@@ -48,6 +48,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from collections.abc import Callable, Sequence
 from contextlib import suppress
@@ -914,6 +915,26 @@ def promote_from_marginalia_event(
     # (honest null), and that is recorded — never invented.
     document_id = event.get("document_id") or payload.get("document_id")
     chunk_id = payload.get("chunk_id")
+    derived_revision_id = payload.get("derived_revision_id")
+    derived_content_sha256 = payload.get("derived_content_sha256")
+    derived_generation = payload.get("derived_generation")
+    derived_grounding = (
+        {
+            "derived_revision_id": derived_revision_id,
+            "derived_content_sha256": derived_content_sha256,
+            "derived_generation": derived_generation,
+        }
+        if (
+            isinstance(derived_revision_id, str)
+            and re.fullmatch(r"rev_[0-9a-f]{32}", derived_revision_id)
+            and isinstance(derived_content_sha256, str)
+            and re.fullmatch(r"[0-9a-f]{64}", derived_content_sha256)
+            and isinstance(derived_generation, int)
+            and not isinstance(derived_generation, bool)
+            and derived_generation >= 1
+        )
+        else {}
+    )
     return promote_insight(
         text=text.strip(),
         investigation_id=investigation_id,
@@ -929,6 +950,7 @@ def promote_from_marginalia_event(
             # The highlighted span the note hangs off (the reader's own words),
             # kept for the surface; the node label is the authored note_text.
             "excerpt": payload.get("excerpt"),
+            **derived_grounding,
         },
         embedding_provider=embedding_provider,
         emit_graph_events=emit_graph_events,

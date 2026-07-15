@@ -156,7 +156,14 @@ function Host({
   hybridEnabled?: boolean;
   investigationId?: string;
   testId?: string;
-  provenance?: { servable?: boolean; chunkId?: string | null; documentId?: string | null };
+  provenance?: {
+    servable?: boolean;
+    chunkId?: string | null;
+    documentId?: string | null;
+    derivedRevisionId?: string | null;
+    derivedContentSha256?: string | null;
+    derivedGeneration?: number | null;
+  };
   /** SPR-09 M4: when given, the Write rewrite actions are passed (mode-gated). */
   onRewrite?: (intent: { kind: string; safeText: string | null }, s: FloatMenuSelection) => void;
   /** CK-5: the Write edit-context + apply callback (mode-gated). */
@@ -329,21 +336,39 @@ describe("NOTE persists with a user-sourced label + provenance (M2)", () => {
     const selection: FloatMenuSelection = {
       text: "a passage worth noting",
       rect: { top: 0, left: 0, width: 10, height: 10 },
-      provenance: { documentId: "doc-9", chunkId: "chunk-7" },
+      provenance: {
+        documentId: `ast_${"a".repeat(32)}`,
+        chunkId: null,
+        derivedRevisionId: `rev_${"b".repeat(32)}`,
+        derivedContentSha256: "c".repeat(64),
+        derivedGeneration: 7,
+      },
     };
     await saveFloatMenuNote({ investigationId: "inv-1", selection, noteText: "my note" });
     expect(postTypedEventMock).toHaveBeenCalledTimes(1);
     const envelope = postTypedEventMock.mock.calls[0][0] as {
       investigation_id: string;
       document_id?: string;
-      payload: { action_type: string; source_kind: string; note_text: string; excerpt: string; chunk_id: string | null };
+      payload: {
+        action_type: string;
+        source_kind: string;
+        note_text: string;
+        excerpt: string;
+        chunk_id: string | null;
+        derived_revision_id: string;
+        derived_content_sha256: string;
+        derived_generation: number;
+      };
     };
     // user-sourced label (§9 — never a model label on a user note).
     expect(envelope.payload.action_type).toBe("marginalia.noted");
     expect(envelope.payload.source_kind).toBe("user");
     // provenance chain claim→chunk→document.
-    expect(envelope.payload.chunk_id).toBe("chunk-7");
-    expect(envelope.document_id).toBe("doc-9");
+    expect(envelope.payload.chunk_id).toBeNull();
+    expect(envelope.document_id).toBe(`ast_${"a".repeat(32)}`);
+    expect(envelope.payload.derived_revision_id).toBe(`rev_${"b".repeat(32)}`);
+    expect(envelope.payload.derived_content_sha256).toBe("c".repeat(64));
+    expect(envelope.payload.derived_generation).toBe(7);
     expect(envelope.payload.excerpt).toBe("a passage worth noting"); // the user's own selection
     expect(envelope.payload.note_text).toBe("my note");
   });

@@ -73,7 +73,8 @@ def graph_env(monkeypatch):
 
 
 def _marginalia_event(*, note_text, note_id="mn-1", excerpt="provenance is the moat",
-                      document_id="book-1", chunk_id=None, event_id="ev-mn-1"):
+                      document_id="book-1", chunk_id=None, event_id="ev-mn-1",
+                      derived_grounding=None):
     """A marginalia.noted event row as the promotion path receives it (the
     on-disk dict shape: action_type + payload + envelope fields)."""
     return {
@@ -88,6 +89,7 @@ def _marginalia_event(*, note_text, note_id="mn-1", excerpt="provenance is the m
             "excerpt": excerpt,
             "source_kind": "user",
             "chunk_id": chunk_id,
+            **(derived_grounding or {}),
         },
     }
 
@@ -119,6 +121,38 @@ def test_marginalia_promotes_to_user_sourced_insight_node(graph_env):
         assert meta["excerpt"] == "provenance is the moat"
     finally:
         con.close()
+
+
+def test_marginalia_promotion_preserves_complete_derived_revision_grounding(graph_env):
+    grounding = {
+        "derived_revision_id": "rev_" + "a" * 32,
+        "derived_content_sha256": "b" * 64,
+        "derived_generation": 7,
+    }
+    nid = promote_from_marginalia_event(
+        _marginalia_event(note_text="This is grounded.", derived_grounding=grounding),
+        enabled=True,
+    )
+    with connect_read(graph_env["db_path"]) as con:
+        row = con.execute("SELECT metadata FROM nodes WHERE node_id=?", [nid]).fetchone()
+    assert row is not None
+    metadata = json.loads(row[0])
+    assert {key: metadata[key] for key in grounding} == grounding
+
+
+def test_marginalia_promotion_drops_incomplete_derived_grounding(graph_env):
+    nid = promote_from_marginalia_event(
+        _marginalia_event(
+            note_text="Do not invent provenance.",
+            derived_grounding={"derived_revision_id": "rev_" + "a" * 32},
+        ),
+        enabled=True,
+    )
+    with connect_read(graph_env["db_path"]) as con:
+        row = con.execute("SELECT metadata FROM nodes WHERE node_id=?", [nid]).fetchone()
+    assert row is not None
+    metadata = json.loads(row[0])
+    assert "derived_revision_id" not in metadata
 
 
 def test_marginalia_is_opt_in(graph_env):

@@ -99,6 +99,43 @@ class DerivedAssetLibrary:
                 raise DerivedAssetUnavailable
             return revision.canonical_html.encode("utf-8")
 
+    def reading(
+        self, owner_user_id: str, asset_id: str, revision_id: str | None = None
+    ) -> dict[str, Any]:
+        """Return one verified canonical HTML revision as a first-class read model."""
+        with connect_read(self.db_path) as con:
+            row = self._asset_row(con, owner_user_id, asset_id)
+            summary = self._verified_asset(
+                con, owner_user_id, row, include_history=False
+            )
+            current_id, current_hash, generation = str(row[3]), str(row[4]), row[5]
+            revisions = self._verify_chain(con, asset_id, current_id, current_hash)
+            selected_id = revision_id or current_id
+            selected = next(
+                (item for item in revisions if item.revision_id == selected_id), None
+            )
+            if selected is None:
+                raise DerivedAssetUnavailable
+            if not isinstance(generation, int) or generation != len(revisions):
+                raise DerivedAssetIntegrity
+            selected_generation = len(revisions) - revisions.index(selected)
+            exact_path = (
+                f"/read/derived/{asset_id}/revisions/{selected.revision_id}"
+            )
+            return {
+                "derived_asset_id": asset_id,
+                "title": summary["title"],
+                "asset_kind": summary["asset_kind"],
+                "revision_id": selected.revision_id,
+                "content_sha256": selected.content_sha256,
+                "generation": selected_generation,
+                "member_count": selected.member_count,
+                "is_current": selected.revision_id == current_id,
+                "canonical_html": selected.canonical_html,
+                "stable_reader_path": f"/read/derived/{asset_id}",
+                "exact_reader_path": exact_path,
+            }
+
     def _asset_row(self, con: Any, owner_user_id: str, asset_id: str) -> tuple[Any, ...]:
         owned = con.execute(
             "SELECT EXISTS (SELECT 1 FROM derived_assets WHERE owner_user_id=? "

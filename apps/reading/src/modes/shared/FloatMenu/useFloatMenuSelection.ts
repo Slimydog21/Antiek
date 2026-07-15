@@ -59,6 +59,9 @@ export interface SelectionProvenance {
    * host could not resolve a chunk (e.g. a free-prose synthesis selection);
    * `true`/`false` ⇒ resolved-and-servable / resolved-and-withheld. */
   servable?: boolean;
+  derivedRevisionId?: string | null;
+  derivedContentSha256?: string | null;
+  derivedGeneration?: number | null;
 }
 
 /** What the host hands {@link FloatMenu}: the live selection's text + raw rect

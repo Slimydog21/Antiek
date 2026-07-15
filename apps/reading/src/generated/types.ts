@@ -2495,6 +2495,9 @@ export interface MarginaliaNotedPayload {
   excerpt: string;
   source_kind?: "user";
   chunk_id?: string | null;
+  derived_revision_id?: string | null;
+  derived_content_sha256?: string | null;
+  derived_generation?: number | null;
 }
 
 /**

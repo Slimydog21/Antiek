@@ -312,6 +312,44 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         assert preview.headers["x-content-type-options"] == "nosniff"
         assert preview.headers["referrer-policy"] == "no-referrer"
 
+    current_reading_path = f"/research/derived-assets/assets/{asset_id}/reading"
+    exact_reading_path = (
+        f"/research/derived-assets/assets/{asset_id}/revisions/{first_revision}/reading"
+    )
+    current_reading = client.get(current_reading_path)
+    exact_reading = client.get(exact_reading_path)
+    assert current_reading.status_code == exact_reading.status_code == 200
+    assert current_reading.headers["cache-control"] == "private, no-store"
+    assert current_reading.json() == {
+        "derived_asset_id": asset_id,
+        "title": "Draft",
+        "asset_kind": "analysis",
+        "revision_id": restored["revision_id"],
+        "content_sha256": restored["content_sha256"],
+        "generation": 3,
+        "member_count": 1,
+        "is_current": True,
+        "canonical_html": current_preview.text,
+        "stable_reader_path": f"/read/derived/{asset_id}",
+        "exact_reader_path": f"/read/derived/{asset_id}/revisions/{restored['revision_id']}",
+    }
+    assert exact_reading.json()["revision_id"] == first_revision
+    assert exact_reading.json()["is_current"] is False
+    assert exact_reading.json()["generation"] == 1
+    assert exact_reading.json()["canonical_html"] == exact_preview.text
+    assert client.get(current_reading_path + "?revision=forged").status_code == 422
+    assert client.request("GET", current_reading_path, content=b"forged").status_code == 422
+    with duckdb.connect(db_path, read_only=True) as con:
+        projection = con.execute(
+            "SELECT document_type,raw_text,owner_user_id,metadata FROM documents "
+            "WHERE document_id=?", [asset_id]
+        ).fetchone()
+    assert projection is not None
+    assert projection[:3] == ("derived_html", None, "owner-a")
+    assert json.loads(projection[3]) == {
+        "body_authority": "derived_asset_revisions", "derived_asset_id": asset_id
+    }
+
     assert client.get(
         "/research/derived-assets", headers={"x-owner": "owner-b"}
     ).json()["assets"] == []
@@ -319,6 +357,8 @@ def test_derived_asset_library_history_exact_previews_and_owner_scope(
         f"/research/derived-assets/assets/{asset_id}/revisions",
         asset["current"]["preview_url"],
         body["revisions"][2]["preview_url"],
+        current_reading_path,
+        exact_reading_path,
     ):
         assert client.get(path, headers={"x-owner": "owner-b"}).status_code == 404
 

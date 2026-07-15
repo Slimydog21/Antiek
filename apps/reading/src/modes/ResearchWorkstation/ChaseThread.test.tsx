@@ -77,6 +77,12 @@ function renderChase(props: {
   spawnContext: string;
   parentInvestigationId: string;
   reservedChildId?: string | null;
+  sourceProvenance?: {
+    documentId: string;
+    derivedRevisionId: string;
+    derivedContentSha256: string;
+    derivedGeneration: number;
+  };
 }) {
   return render(
     <MemoryRouter>
@@ -128,6 +134,28 @@ describe("ChaseThread — reserved-id reuse (M2)", () => {
     // No reserved id ⇒ no investigation_id ⇒ substrate mints fresh.
     expect(arg.investigation_id).toBeUndefined();
     expect(arg.parent_investigation_id).toBe("inv-parent");
+  });
+
+  it("persists exact derived HTML provenance in child research context", async () => {
+    startInvestigationMock.mockResolvedValue({
+      investigation_id: "inv-derived", status: "in_progress", start_event_id: "e3",
+    });
+    renderChase({
+      spawnContext: "A selected canonical passage",
+      parentInvestigationId: "read-asset",
+      sourceProvenance: {
+        documentId: `ast_${"a".repeat(32)}`,
+        derivedRevisionId: `rev_${"b".repeat(32)}`,
+        derivedContentSha256: "c".repeat(64),
+        derivedGeneration: 7,
+      },
+    });
+    fireEvent.click(screen.getByText("Follow this"));
+    await waitFor(() => expect(startInvestigationMock).toHaveBeenCalledTimes(1));
+    const arg = startInvestigationMock.mock.calls[0][0];
+    expect(arg.spawn_context).toBe("A selected canonical passage");
+    expect(arg.context).toContain(`"revision_id":"rev_${"b".repeat(32)}"`);
+    expect(arg.context).toContain(`"generation":7`);
   });
 });
 
