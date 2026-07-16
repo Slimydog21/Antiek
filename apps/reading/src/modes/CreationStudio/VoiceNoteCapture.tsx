@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { track } from "../../lib/analytics";
 import { ingestVoiceNote } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 type RecordingState = "idle" | "recording" | "transcribing" | "ingested";
 
@@ -27,7 +28,10 @@ export function VoiceNoteCapture() {
       setLastDocId(r.document_id);
       setState("ingested");
       setTranscript("");
+      // Living-TV: user-sourced voice note into the graph — noted beat.
+      emitWernerExperience("note_saved");
     } catch {
+      emitWernerExperience("fail");
       setState("idle");
     }
   }
