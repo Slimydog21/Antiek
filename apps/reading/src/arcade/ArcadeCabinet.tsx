@@ -10,7 +10,8 @@ import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { emitWernerExperience } from "../werner/reactionBus";
 // Session brand PNGs — UI-consumed cabinet key art + chrome marks.
 // Inventory: brand/werner/sessionAssets.ts (alpha integrity gated).
-import iceFishingArt from "../brand/werner/poses/session/werner_ice_fishing_session_v1.png";
+// Cursor-bait invent — ice fishing cabinet card (align LGH + wait-arcade).
+import iceFishingArt from "../brand/werner/poses/session/werner_ice_fishing_cursor_bait_session_v1.webp";
 import zombiesArt from "../brand/werner/poses/session/werner_zombies_session_v1.png";
 import thinkingArt from "../brand/werner/poses/session/werner_thinking_session_v1.png";
 import celebrateArt from "../brand/werner/poses/session/werner_celebrate_session_v1.png";
