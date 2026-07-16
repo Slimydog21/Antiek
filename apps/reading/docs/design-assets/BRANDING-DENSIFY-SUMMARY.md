@@ -61,8 +61,12 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Home doors PRODUCT_ACTIVATE | `c67016794` | `emoteForProductDoor` before navigate |
 | Library open highlight | `df7069737` | shelf open/openAtPage → curious glance |
 | Speak thinking brand | `a5c8b6f44` | `speak-home-werner-brand` session mood |
+| Speak create | `7462661ae` | piece_started happy craft beat |
+| Research absorb | `639ae47b0` | highlight on corpus attach |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
+
+**Honest residuals still open:** pure Flipbook sole UI NO-GO; curious v2 candidate alpha-honest but not product-mapped (reactions are CSS/SVG); invent `living_tv_imagine_v1` superseded by promoted refedit v2; CF Pages external-pending often; operator merge.
 
 ## Living-TV product-door emotes (choreography)
 
