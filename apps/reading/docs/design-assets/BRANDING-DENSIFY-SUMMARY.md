@@ -95,6 +95,8 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Arcade cabinet product-id | `be7a29660` | cards stamp `data-product-id=arcade` + PRODUCT_ACTIVATE |
 | Accrual/Chase/trust living-TV beats | `ea49628ac` | invent + DR spawn/error + notify/delete beats |
 | TwinNotes living-TV invent | (local tip) | recursive note-taker companion invent strip |
+| DistillView living-TV beats | (local tip) | complete/fail/chase deep_research edges |
+| MyResearch SessionBrandChrome | (local tip) | standalone monitor invent + launch DR start |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 

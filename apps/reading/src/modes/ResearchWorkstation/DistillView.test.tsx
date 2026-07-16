@@ -29,6 +29,7 @@ vi.mock("../../lib/api", async (orig) => {
 
 import DistillView from "./DistillView";
 import { ApiError } from "../../lib/api";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner";
 
 // Reset mocks in afterEach (after cleanup), not beforeEach — see the note in
 // NotesPanel.test.tsx: a reset between a prior test's caught-rejection
@@ -38,6 +39,48 @@ afterEach(() => {
   cleanup();
   getDistillationMock.mockReset();
   challengeNoteMock.mockReset();
+});
+
+describe("DistillView — living-TV product beats", () => {
+  it("emits deep_research_complete when a finished distill has product", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "GPUs gate scale.")],
+      questions: [],
+    });
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.experience) seen.push(d.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<DistillView investigationId="inv-1" running={false} />);
+    await waitFor(() => expect(seen).toContain("deep_research_complete"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+  });
+
+  it("emits deep_research_start when chasing an open question", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [],
+      questions: [question("q1", "What is the moat?")],
+    });
+    const onChase = vi.fn();
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent).detail;
+      if (d?.experience) seen.push(d.experience);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(
+      <DistillView investigationId="inv-1" running={false} onChase={onChase} />,
+    );
+    await waitFor(() => expect(screen.getByText("chase this")).toBeTruthy());
+    fireEvent.click(screen.getByText("chase this"));
+    expect(onChase).toHaveBeenCalled();
+    expect(seen).toContain("deep_research_start");
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+  });
 });
 
 function insight(node_id: string, text: string, extra: Partial<DistilledNode> = {}): DistilledNode {
