@@ -1,7 +1,11 @@
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, fireEvent } from "@testing-library/react";
 
-import { LoadingGameHost, waitHostBrandArt } from "./LoadingGameHost";
+import {
+  LoadingGameHost,
+  waitHostBrandArt,
+  waitHostOfferBlurb,
+} from "./LoadingGameHost";
 
 beforeAll(() => {
   Object.defineProperty(window, "matchMedia", {
@@ -71,6 +75,12 @@ describe("LoadingGameHost mount contract", () => {
       /werner_ice_fishing_session_v1/,
     );
     expect(waitHostBrandArt("zombies")).toMatch(/werner_zombies_session_v1/);
+  });
+
+  it("offer blurbs name Club Penguin ice/clam and BO1 zombies egg", () => {
+    expect(waitHostOfferBlurb("zombies")).toMatch(/Paperclip Zombies/i);
+    expect(waitHostOfferBlurb("ice-fishing")).toMatch(/ice fishing/i);
+    expect(waitHostOfferBlurb("clam-catcher")).toMatch(/clams/i);
   });
 
   it("primary control remains clickable while host is visible", () => {

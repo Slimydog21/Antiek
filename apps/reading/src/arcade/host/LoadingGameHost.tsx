@@ -34,6 +34,23 @@ export function waitHostBrandArt(game: WaitGameKind): string {
   }
 }
 
+/**
+ * Living-TV offer blurb — Club Penguin–style ice/clam vs BO1 zombies egg.
+ * Pure copy helper so wait UX stays honest about opt-in easter eggs.
+ */
+export function waitHostOfferBlurb(game: WaitGameKind): string {
+  switch (game) {
+    case "zombies":
+      return "Easter egg: Paperclip Zombies (arcade-wave wait mode). Optional — never blocks research.";
+    case "ice-fishing":
+      return "Club Penguin–style ice fishing while you wait. Optional — never blocks research.";
+    case "clam-catcher":
+      return "Catch clams on the ice shelf. Optional — never blocks research.";
+    default:
+      return "Optional — never blocks research";
+  }
+}
+
 export interface LoadingGameHostProps {
   /** Parent-driven: work still in flight. */
   waiting: boolean;
@@ -196,8 +213,11 @@ export function LoadingGameHost({
           >
             Play {cartridge.meta.title}
           </button>
-          <span style={{ fontSize: 11, opacity: 0.7 }}>
-            Optional — never blocks research
+          <span
+            data-testid="game-offer-blurb"
+            style={{ fontSize: 11, opacity: 0.7, lineHeight: 1.35 }}
+          >
+            {waitHostOfferBlurb(game)}
           </span>
         </div>
       )}
