@@ -1,0 +1,261 @@
+from __future__ import annotations
+
+import pytest
+from fastapi import FastAPI, Request
+from fastapi.testclient import TestClient
+
+from interfaces.research.api.distillation_reconciliation_routes import (
+    DistillationReconciliationRuntime,
+    distillation_reconciliation_router,
+    get_distillation_reconciliation_runtime,
+)
+from runtime.research_runner.provider_gateway import canonical_digest
+from substrate.distillation_dispatch import DistillationDispatchJournal
+from substrate.research_spend import (
+    FallbackChainManifest,
+    FallbackRouteManifest,
+    PaidHoldIntent,
+    ResearchSpendLedger,
+    RunBinding,
+)
+
+
+def _seed(tmp_path, *, owner_id: str = "owner-1") -> DistillationReconciliationRuntime:
+    command_db = str(tmp_path / "graph.duckdb")
+    spend_db = tmp_path / "spend.sqlite3"
+    binding = RunBinding("run-1", owner_id, "session-1", "plan-1", 1)
+    ledger = ResearchSpendLedger(spend_db)
+    ledger.ensure_schema()
+    ledger.create_or_reopen_run("create-run", binding, 200)
+    intent = PaidHoldIntent(
+        reservation_key="reservation-1",
+        seam_id="wrestling.distillation.synthesizer",
+        provider="provider-1",
+        model="model-1",
+        operation="synthesize",
+        operation_digest="operation-digest",
+        projection_digest="projection-digest",
+        rate_snapshot="rates-v1",
+        provider_idempotency_key="provider-key-1",
+        route_authority_digest="authority-digest",
+    )
+    route = FallbackRouteManifest(
+        fallback_index=0,
+        seam_id=intent.seam_id,
+        provider=intent.provider,
+        model=intent.model,
+        operation=intent.operation,
+        operation_digest=intent.operation_digest,
+        projection_digest=intent.projection_digest,
+        rate_snapshot=intent.rate_snapshot,
+        projected_max_cents=80,
+        reservation_key=intent.reservation_key,
+        provider_idempotency_key=intent.provider_idempotency_key,
+        route_authority_digest=intent.route_authority_digest,
+    )
+    manifest = FallbackChainManifest(
+        chain_id="chain-1",
+        logical_operation_id="evt-request",
+        operation_digest=intent.operation_digest,
+        routes=(route,),
+    )
+    ledger.register_fallback_manifest("register-chain", binding, manifest)
+    ledger.issue_fallback_approval(
+        "approve-chain",
+        binding,
+        manifest.chain_id,
+        expected_manifest_sha256=canonical_digest(manifest),
+        expected_ceiling_cents=200,
+    )
+    hold = ledger.reserve_paid("reserve-hold", binding, intent, 80)
+
+    journal = DistillationDispatchJournal(command_db)
+    journal.reserve(
+        "evt-request",
+        {"schema": "test.v1", "prompt_sha256": "a" * 64},
+        investigation_id="inv-1",
+        document_id="doc-1",
+    )
+    journal.authorize_sending(
+        "evt-request",
+        spend_run_id=binding.run_id,
+        fallback_chain_id=manifest.chain_id,
+        manifest_sha256=canonical_digest(manifest),
+        fallback_index=0,
+        hold_id=hold.hold_id,
+    )
+    journal.mark_ambiguous("evt-request", hold_id=hold.hold_id)
+    return DistillationReconciliationRuntime(command_db, spend_db)
+
+
+def _app(runtime: DistillationReconciliationRuntime, *, owner_id: str, method: str) -> FastAPI:
+    app = FastAPI()
+
+    @app.middleware("http")
+    async def identity(request: Request, call_next):
+        request.state.user_id = owner_id
+        request.state.auth_method = method
+        return await call_next(request)
+
+    app.include_router(distillation_reconciliation_router)
+    app.dependency_overrides[get_distillation_reconciliation_runtime] = lambda: runtime
+    return app
+
+
+def test_owner_reads_redacted_non_executable_reserved_hold(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    before_events = ledger.events("run-1")
+    before_command = DistillationDispatchJournal(runtime.command_db_path).load(
+        "evt-request"
+    )
+
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="antiek_session_cookie")
+    ).get("/research/distillation/commands/evt-request/reconciliation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["command_state"] == "ambiguous"
+    assert body["next_action"] == "release_proven_unsent"
+    assert body["action_executable"] is False
+    assert body["held_cents"] == 80
+    assert body["holds"] == [
+        {
+            "fallback_index": 0,
+            "hold_id": body["current_hold_id"],
+            "provider": "provider-1",
+            "model": "model-1",
+            "state": "reserved",
+            "projected_max_cents": 80,
+            "actual_cents": None,
+            "is_current": True,
+            "evidence_requirement": "ledger_proven_unsent",
+        }
+    ]
+    serialized = response.text
+    for forbidden in (
+        "provider-key-1",
+        "reservation-1",
+        "authority-digest",
+        "projection-digest",
+        "prompt_sha256",
+    ):
+        assert forbidden not in serialized
+    assert ledger.events("run-1") == before_events
+    assert DistillationDispatchJournal(runtime.command_db_path).load(
+        "evt-request"
+    ) == before_command
+
+
+def test_unauthenticated_local_mode_is_rejected(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="unauthenticated_local")
+    ).get("/research/distillation/commands/evt-request/reconciliation")
+    assert response.status_code == 401
+    assert response.json() == {"detail": "authentication required"}
+
+
+def test_foreign_owner_and_missing_command_are_indistinguishable(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    client = TestClient(
+        _app(runtime, owner_id="owner-2", method="cloudflare_access_email")
+    )
+    foreign = client.get("/research/distillation/commands/evt-request/reconciliation")
+    missing = client.get("/research/distillation/commands/missing/reconciliation")
+    assert foreign.status_code == missing.status_code == 404
+    assert foreign.json() == missing.json() == {"detail": "command unavailable"}
+
+
+def test_substituted_command_hold_returns_value_free_conflict(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    import duckdb
+
+    with duckdb.connect(runtime.command_db_path) as connection:
+        connection.execute(
+            "UPDATE distillation_dispatch_commands SET hold_id='substituted' "
+            "WHERE request_event_id='evt-request'"
+        )
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="bearer_token")
+    ).get("/research/distillation/commands/evt-request/reconciliation")
+    assert response.status_code == 409
+    assert response.json() == {"detail": "reconciliation evidence conflicts"}
+
+
+@pytest.mark.parametrize(
+    ("target_state", "expected_action", "expected_requirement", "expected_actual"),
+    [
+        ("dispatch_possible", "provider_lookup_required", "authoritative_provider_lookup", None),
+        ("unknown", "provider_lookup_required", "authoritative_provider_lookup", None),
+        ("released", "none", "terminal_no_action", None),
+        ("settled", "none", "terminal_no_action", 60),
+    ],
+)
+def test_view_derives_guidance_from_authoritative_hold_state(
+    tmp_path,
+    target_state: str,
+    expected_action: str,
+    expected_requirement: str,
+    expected_actual: int | None,
+) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    hold_id = command.hold_id
+    if target_state == "dispatch_possible":
+        ledger.mark_dispatch_possible("mark-send", hold_id)
+    elif target_state == "unknown":
+        ledger.mark_dispatch_possible("mark-send", hold_id)
+        ledger.mark_unknown("mark-unknown", hold_id, {"timeout": True})
+    elif target_state == "released":
+        ledger.release("release", hold_id, {"provider_not_sent": True})
+    else:
+        ledger.mark_dispatch_possible("mark-send", hold_id)
+        ledger.settle("settle", hold_id, 60, {"provider_receipt": "receipt"})
+
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="bearer_token")
+    ).get("/research/distillation/commands/evt-request/reconciliation")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["next_action"] == expected_action
+    assert body["action_executable"] is False
+    assert body["holds"][0]["state"] == target_state
+    assert body["holds"][0]["evidence_requirement"] == expected_requirement
+    assert body["holds"][0]["actual_cents"] == expected_actual
+
+
+def test_openapi_declares_read_only_reconciliation_contract(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    schema = _app(runtime, owner_id="owner-1", method="bearer_token").openapi()
+    operation = schema["paths"][
+        "/research/distillation/commands/{request_event_id}/reconciliation"
+    ]
+    assert set(operation) == {"get"}
+    response_schema = operation["get"]["responses"]["200"]["content"][
+        "application/json"
+    ]["schema"]
+    assert response_schema["$ref"].endswith("DistillationReconciliationResponse")
+
+
+def test_canonical_app_mounts_reconciliation_route() -> None:
+    from interfaces.research.api.app import create_app
+
+    def mounted_paths(routes) -> set[str]:
+        paths: set[str] = set()
+        for route in routes:
+            path = getattr(route, "path", None)
+            if isinstance(path, str):
+                paths.add(path)
+            original_router = getattr(route, "original_router", None)
+            if original_router is not None:
+                paths.update(mounted_paths(original_router.routes))
+        return paths
+
+    assert "/research/distillation/commands/{request_event_id}/reconciliation" in (
+        mounted_paths(create_app().routes)
+    )

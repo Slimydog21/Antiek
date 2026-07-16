@@ -5,6 +5,7 @@ from .journal import (
     CommandSnapshot,
     CommandState,
     DistillationDispatchJournal,
+    HoldCorrelation,
     InvalidCommandTransition,
 )
 
@@ -13,5 +14,6 @@ __all__ = [
     "CommandSnapshot",
     "CommandState",
     "DistillationDispatchJournal",
+    "HoldCorrelation",
     "InvalidCommandTransition",
 ]
