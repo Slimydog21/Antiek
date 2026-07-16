@@ -132,6 +132,13 @@ const STORIES: string[] = [
   "multimedia-production-bay--safe-failure",
   "multimedia-production-bay--night",
   "multimedia-production-bay--narrow",
+  // Outcomes Verdict Chamber — neutral choices and deterministic archive states.
+  "outcomes-verdict-chamber--empty",
+  "outcomes-verdict-chamber--loading",
+  "outcomes-verdict-chamber--populated",
+  "outcomes-verdict-chamber--safe-failure",
+  "outcomes-verdict-chamber--night",
+  "outcomes-verdict-chamber--narrow",
 ];
 
 type AxeViolation = {
@@ -183,11 +190,13 @@ async function main() {
       story === "modes-substrate-atlas--narrow" ||
       story === "modes-igloo-directory--narrow" ||
       story === "modes-expedition-cost-planner--narrow" ||
-      story === "multimedia-production-bay--narrow";
+      story === "multimedia-production-bay--narrow" ||
+      story === "outcomes-verdict-chamber--narrow";
     const dark =
       story === "modes-igloo-directory--night" ||
       story === "modes-expedition-cost-planner--night" ||
-      story === "multimedia-production-bay--night";
+      story === "multimedia-production-bay--night" ||
+      story === "outcomes-verdict-chamber--night";
     const ctx = await browser.newContext({
       viewport: narrow
         ? { width: 375, height: 667 }
@@ -209,7 +218,9 @@ async function main() {
             ? ".substrate-atlas"
             : story.startsWith("multimedia-production-bay")
               ? ".multimedia-production-bay"
-              : ".igloo-directory";
+              : story.startsWith("outcomes-verdict-chamber")
+                ? ".outcomes-verdict-chamber"
+                : ".igloo-directory";
         const overflow = await page.evaluate(
           (selector) => ({
             clientWidth: document.documentElement.clientWidth,

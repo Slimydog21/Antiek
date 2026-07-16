@@ -1,31 +1,13 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import verdictChamberEnvironment from "../../brand/werner/outcomes/outcomes_verdict_chamber_environment_v1.webp";
+import { LemonButton, LemonTextarea } from "../../components/lemon";
 import { apiFetch } from "../../lib/api";
 import { PanelHost } from "../../workspace/PanelHost";
+import "./outcomes-verdict-chamber.css";
 
-/**
- * Outcomes surface (master-spec §13.8 + Phase 8 input).
- *
- * Operator-graded outcomes for synthesis pages. Per master-spec:
- *
- *   "Outcomes are first-class signals; without them, accept/reject
- *    verdicts on candidate skill patches degrade into vibes."
- *
- * Flow:
- *   1. Operator opens a synthesis page (via /inv/:id or Mode A).
- *   2. Decides whether thesis was validated, falsified, or remains
- *      indeterminate. Records each outcome with a one-line note.
- *   3. The compounding gate (Phase 8) reads these via
- *      ``middleware.backtest.db.load_outcomes_for_synthesis`` and
- *      decides accept/reject for candidate skill patches.
- *
- * The UI is intentionally narrow — three columns (validated /
- * falsified / indeterminate), one button per outcome — so the
- * operator can grade quickly. No dropdowns, no modal.
- */
-
-interface OutcomeRow {
+export interface OutcomeRow {
   outcome_id: string;
   observer: string;
   observed_at: string;
@@ -35,247 +17,344 @@ interface OutcomeRow {
   notes: string | null;
 }
 
-type OutcomeKind = "validated" | "falsified" | "indeterminate";
+export type OutcomeKind = "validated" | "falsified" | "indeterminate";
 
-export default function Outcomes() {
-  const { synthesisId } = useParams<{ synthesisId: string }>();
+export interface OutcomeDraft {
+  synthesis_id: string;
+  observer: "__operator__";
+  thesis_outcomes: { kind: "validated"; note: string }[];
+  falsification_outcomes: { kind: "falsified"; note: string }[];
+  execution_risk_outcomes: { kind: "indeterminate"; note: string }[];
+  notes: string | null;
+}
+
+export interface OutcomesProps {
+  synthesisIdOverride?: string | null;
+  loadOutcomes?: (synthesisId: string) => Promise<OutcomeRow[]>;
+  recordOutcome?: (draft: OutcomeDraft) => Promise<void>;
+  executionEnabled?: boolean;
+}
+
+async function loadOutcomesFromApi(synthesisId: string): Promise<OutcomeRow[]> {
+  const resp = await apiFetch(`/outcomes/${encodeURIComponent(synthesisId)}`);
+  if (!resp.ok) throw new Error(`GET /outcomes failed: HTTP ${resp.status}`);
+  const data = (await resp.json()) as { outcomes?: OutcomeRow[] };
+  return data.outcomes ?? [];
+}
+
+async function recordOutcomeToApi(draft: OutcomeDraft): Promise<void> {
+  const resp = await apiFetch("/outcomes", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(draft),
+  });
+  if (!resp.ok) throw new Error(`POST /outcomes failed: HTTP ${resp.status}`);
+}
+
+const CHOICES: Array<{
+  kind: OutcomeKind;
+  label: string;
+  description: string;
+}> = [
+  {
+    kind: "validated",
+    label: "Validated",
+    description: "The synthesis survived the evidence you reviewed.",
+  },
+  {
+    kind: "falsified",
+    label: "Falsified",
+    description: "The evidence overturned a load-bearing claim.",
+  },
+  {
+    kind: "indeterminate",
+    label: "Indeterminate",
+    description: "The available evidence cannot settle the claim yet.",
+  },
+];
+
+export default function Outcomes({
+  synthesisIdOverride,
+  loadOutcomes = loadOutcomesFromApi,
+  recordOutcome = recordOutcomeToApi,
+  executionEnabled = true,
+}: OutcomesProps = {}) {
+  const { synthesisId: routeSynthesisId } = useParams<{
+    synthesisId: string;
+  }>();
+  const synthesisId =
+    synthesisIdOverride === undefined
+      ? routeSynthesisId
+      : (synthesisIdOverride ?? undefined);
   const [outcomes, setOutcomes] = useState<OutcomeRow[]>([]);
-  const [loading, setLoading] = useState<boolean>(true);
+  const [loading, setLoading] = useState(Boolean(synthesisId));
   const [error, setError] = useState<string | null>(null);
-  const [draftNote, setDraftNote] = useState<string>("");
-  const [submitting, setSubmitting] = useState<boolean>(false);
+  const [draftNote, setDraftNote] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const loadSequence = useRef(0);
+  const activeSynthesis = useRef(synthesisId);
+  activeSynthesis.current = synthesisId;
 
   const reload = useCallback(async () => {
-    if (!synthesisId) return;
+    const sequence = ++loadSequence.current;
+    if (!synthesisId) {
+      setLoading(false);
+      setOutcomes([]);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      const resp = await apiFetch(`/outcomes/${encodeURIComponent(synthesisId)}`);
-      if (!resp.ok) {
-        throw new Error(`GET /outcomes failed: HTTP ${resp.status}`);
-      }
-      const data = await resp.json();
-      setOutcomes(data.outcomes ?? []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const loaded = await loadOutcomes(synthesisId);
+      if (
+        sequence !== loadSequence.current ||
+        activeSynthesis.current !== synthesisId
+      )
+        return;
+      setOutcomes(loaded);
+    } catch (caught: unknown) {
+      if (
+        sequence !== loadSequence.current ||
+        activeSynthesis.current !== synthesisId
+      )
+        return;
+      setOutcomes([]);
+      setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
-      setLoading(false);
+      if (
+        sequence === loadSequence.current &&
+        activeSynthesis.current === synthesisId
+      )
+        setLoading(false);
     }
-  }, [synthesisId]);
+  }, [loadOutcomes, synthesisId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  const submit = async (kind: OutcomeKind) => {
-    if (!synthesisId || submitting) return;
+  async function submit(kind: OutcomeKind) {
+    if (!executionEnabled || !synthesisId || submitting) return;
+    const note = draftNote.trim() || `Graded ${kind}.`;
+    const draft: OutcomeDraft = {
+      synthesis_id: synthesisId,
+      observer: "__operator__",
+      thesis_outcomes:
+        kind === "validated" ? [{ kind: "validated", note }] : [],
+      falsification_outcomes:
+        kind === "falsified" ? [{ kind: "falsified", note }] : [],
+      execution_risk_outcomes:
+        kind === "indeterminate" ? [{ kind: "indeterminate", note }] : [],
+      notes: draftNote || null,
+    };
     setSubmitting(true);
+    setError(null);
     try {
-      const note = draftNote.trim() || `Graded ${kind}.`;
-      const body = {
-        synthesis_id: synthesisId,
-        observer: "__operator__",
-        thesis_outcomes:
-          kind === "validated" ? [{ kind: "validated", note }] : [],
-        falsification_outcomes:
-          kind === "falsified" ? [{ kind: "falsified", note }] : [],
-        execution_risk_outcomes:
-          kind === "indeterminate" ? [{ kind: "indeterminate", note }] : [],
-        notes: draftNote || null,
-      };
-      const resp = await apiFetch("/outcomes", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!resp.ok) {
-        throw new Error(`POST /outcomes failed: HTTP ${resp.status}`);
+      await recordOutcome(draft);
+      if (activeSynthesis.current === synthesisId) {
+        setDraftNote("");
+        await reload();
       }
-      setDraftNote("");
-      await reload();
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch (caught: unknown) {
+      if (activeSynthesis.current === synthesisId)
+        setError(caught instanceof Error ? caught.message : String(caught));
     } finally {
       setSubmitting(false);
     }
-  };
+  }
 
-  const counts = useMemo(() => {
-    return {
+  const counts = useMemo(
+    () => ({
       validated: outcomes.reduce(
-        (n, o) => n + o.thesis_outcomes.length,
+        (sum, row) => sum + row.thesis_outcomes.length,
         0,
       ),
       falsified: outcomes.reduce(
-        (n, o) => n + o.falsification_outcomes.length,
+        (sum, row) => sum + row.falsification_outcomes.length,
         0,
       ),
       indeterminate: outcomes.reduce(
-        (n, o) => n + o.execution_risk_outcomes.length,
+        (sum, row) => sum + row.execution_risk_outcomes.length,
         0,
       ),
-    };
-  }, [outcomes]);
+    }),
+    [outcomes],
+  );
 
-  // S10 row 10.13 — Outcomes/:id wraps the grading surface in
-  // PanelHost. The spec called for "left = sources, right = trace"
-  // but the page's actual data is a single-form grading view —
-  // there's no separate sources or trace dataset available here.
-  // We wrap with NO starters so the operator can open ProjectTree
-  // / AISidecar / etc. via shortcuts but the main grading flow
-  // stays a single column. A future cycle that surfaces backtest
-  // sources + replay trace inline can add the corresponding
-  // PanelKinds + starters.
   return (
     <PanelHost>
-      <main className="h-full overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-8">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Outcomes
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Grade the synthesis page below. Outcomes feed the
-              Phase 8 skill-growth gate (compounding/skill_growth/gate.py).
-              Per master-spec §13.8: 'without operator-graded outcomes,
-              accept/reject verdicts on candidate skill patches degrade
-              into vibes.'
+      <main className="outcomes-verdict-chamber">
+        <img
+          src={verdictChamberEnvironment}
+          alt=""
+          aria-hidden="true"
+          draggable={false}
+          className="outcomes-verdict-chamber__environment"
+        />
+        <span className="outcomes-verdict-chamber__veil" aria-hidden="true" />
+
+        <div className="outcomes-verdict-chamber__content">
+          <header className="outcomes-verdict-chamber__hero">
+            <p className="outcomes-verdict-chamber__eyebrow">
+              Operator observation
             </p>
-            <p className="text-xs font-mono text-shadow-1 dark:text-moonlight flex items-center gap-2 flex-wrap">
-              <span>synthesis_id = {synthesisId ?? "—"}</span>
+            <h1>Verdict chamber</h1>
+            <p className="outcomes-verdict-chamber__lede">
+              Record what the synthesis earned from the evidence. This
+              observation becomes reviewable feedback; it does not rewrite the
+              synthesis or make an automatic decision.
+            </p>
+            <div className="outcomes-verdict-chamber__identity">
+              <span>Synthesis</span>
+              <code>{synthesisId ?? "No synthesis selected"}</code>
               {synthesisId && (
-                <Link
-                  to={`/backtest/${encodeURIComponent(synthesisId)}`}
-                  className="text-ink dark:text-bright hover:underline"
-                >
-                  open backtest report →
+                <Link to={`/backtest/${encodeURIComponent(synthesisId)}`}>
+                  Open backtest report
                 </Link>
               )}
-            </p>
+            </div>
           </header>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p className="outcomes-verdict-chamber__error" role="alert">
               {error}
             </p>
           )}
+          {!synthesisId && (
+            <p className="outcomes-verdict-chamber__error" role="alert">
+              No synthesis is selected. Open this chamber from a synthesis
+              outcome record.
+            </p>
+          )}
 
-          <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-4">
-            <h2 className="text-base font-serif text-ink dark:text-bright">Grade now</h2>
-            <textarea
+          <section
+            className="outcomes-verdict-chamber__panel"
+            aria-labelledby="outcomes-grade-heading"
+          >
+            <div className="outcomes-verdict-chamber__section-heading">
+              <div>
+                <p className="outcomes-verdict-chamber__eyebrow">
+                  Pending observation
+                </p>
+                <h2 id="outcomes-grade-heading">
+                  What did the evidence establish?
+                </h2>
+              </div>
+              <span className="outcomes-verdict-chamber__status">
+                One operator judgment
+              </span>
+            </div>
+            <LemonTextarea
               value={draftNote}
-              onChange={(e) => setDraftNote(e.target.value)}
-              placeholder="One-line rationale (optional but useful for future review)"
-              className="w-full text-sm font-serif text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2 resize-y"
-              rows={2}
-              disabled={submitting}
+              onChange={(event) => setDraftNote(event.target.value)}
+              placeholder="Brief rationale for future review"
+              aria-label="Outcome rationale"
+              minRows={2}
+              maxRows={5}
+              disabled={submitting || !executionEnabled}
             />
-            <div className="grid grid-cols-3 gap-2">
-              <GradeButton
-                label="Validated"
-                onClick={() => submit("validated")}
-                disabled={submitting}
-                accent="bg-emerald-700 hover:bg-emerald-600"
-              />
-              <GradeButton
-                label="Falsified"
-                onClick={() => submit("falsified")}
-                disabled={submitting}
-                accent="bg-rose-700 hover:bg-rose-600"
-              />
-              <GradeButton
-                label="Indeterminate"
-                onClick={() => submit("indeterminate")}
-                disabled={submitting}
-                accent="bg-shadow-2 hover:bg-shadow-1"
-              />
+            <div className="outcomes-verdict-chamber__choices">
+              {CHOICES.map((choice) => (
+                <article
+                  key={choice.kind}
+                  className="outcomes-verdict-chamber__choice"
+                >
+                  <h3>{choice.label}</h3>
+                  <p>{choice.description}</p>
+                  <LemonButton
+                    type="button"
+                    variant="secondary"
+                    className="outcomes-verdict-chamber__choice-action"
+                    disabled={
+                      !executionEnabled || !synthesisId || submitting || loading
+                    }
+                    onClick={() => void submit(choice.kind)}
+                  >
+                    {submitting
+                      ? "Recording…"
+                      : `Record ${choice.label.toLowerCase()}`}
+                  </LemonButton>
+                </article>
+              ))}
             </div>
           </section>
 
-          <section className="grid grid-cols-3 gap-4">
-            <CountCard label="Validated" count={counts.validated} accent="text-emerald-700" />
-            <CountCard label="Falsified" count={counts.falsified} accent="text-rose-700" />
-            <CountCard label="Indeterminate" count={counts.indeterminate} accent="text-ink dark:text-bright" />
+          <section
+            className="outcomes-verdict-chamber__counts"
+            aria-label="Recorded outcome counts"
+          >
+            {CHOICES.map((choice) => (
+              <div
+                key={choice.kind}
+                className="outcomes-verdict-chamber__count"
+              >
+                <strong>{counts[choice.kind]}</strong>
+                <span>{choice.label}</span>
+              </div>
+            ))}
           </section>
 
-          <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-            <h2 className="text-base font-serif text-ink dark:text-bright">History</h2>
+          <section
+            className="outcomes-verdict-chamber__panel"
+            aria-labelledby="outcomes-history-heading"
+          >
+            <div className="outcomes-verdict-chamber__section-heading">
+              <div>
+                <p className="outcomes-verdict-chamber__eyebrow">Audit trail</p>
+                <h2 id="outcomes-history-heading">Recorded observations</h2>
+              </div>
+            </div>
             {loading ? (
-              <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+              <p className="outcomes-verdict-chamber__quiet" role="status">
+                Loading recorded observations…
+              </p>
             ) : outcomes.length === 0 ? (
-              <p className="text-sm text-shadow-1 dark:text-moonlight italic">
-                No outcomes recorded yet for this synthesis.
+              <p className="outcomes-verdict-chamber__quiet">
+                No outcomes have been recorded for this synthesis.
               </p>
             ) : (
-              <ul className="divide-y divide-rule dark:divide-charcoal-1">
-                {outcomes.map((o) => (
-                  <li key={o.outcome_id} className="py-2 space-y-1">
-                    <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-                      {o.observed_at} · {o.observer}
+              <ol className="outcomes-verdict-chamber__history">
+                {outcomes.map((row) => (
+                  <li key={row.outcome_id}>
+                    <p className="outcomes-verdict-chamber__meta">
+                      {row.observed_at} · {row.observer}
                     </p>
-                    {o.thesis_outcomes.map((t, i) => (
-                      <p key={`t-${i}`} className="text-sm text-emerald-700">
-                        validated — {t.note}
+                    {row.thesis_outcomes.map((item, index) => (
+                      <p
+                        key={`validated-${index}`}
+                        data-recorded-kind="validated"
+                      >
+                        <strong>Validated</strong> — {item.note}
                       </p>
                     ))}
-                    {o.falsification_outcomes.map((f, i) => (
-                      <p key={`f-${i}`} className="text-sm text-rose-700">
-                        falsified — {f.note}
+                    {row.falsification_outcomes.map((item, index) => (
+                      <p
+                        key={`falsified-${index}`}
+                        data-recorded-kind="falsified"
+                      >
+                        <strong>Falsified</strong> — {item.note}
                       </p>
                     ))}
-                    {o.execution_risk_outcomes.map((e, i) => (
-                      <p key={`e-${i}`} className="text-sm text-ink dark:text-bright">
-                        indeterminate — {e.note}
+                    {row.execution_risk_outcomes.map((item, index) => (
+                      <p
+                        key={`indeterminate-${index}`}
+                        data-recorded-kind="indeterminate"
+                      >
+                        <strong>Indeterminate</strong> — {item.note}
                       </p>
                     ))}
-                    {o.notes && (
-                      <p className="text-xs text-shadow-1 dark:text-moonlight italic">
-                        Note: {o.notes}
+                    {row.notes && (
+                      <p className="outcomes-verdict-chamber__note">
+                        Rationale: {row.notes}
                       </p>
                     )}
                   </li>
                 ))}
-              </ul>
+              </ol>
             )}
           </section>
         </div>
       </main>
     </PanelHost>
-  );
-}
-
-function GradeButton({
-  label,
-  onClick,
-  disabled,
-  accent,
-}: {
-  label: string;
-  onClick: () => void;
-  disabled: boolean;
-  accent: string;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={`px-3 py-2 rounded-md text-white text-sm font-medium transition-colors disabled:opacity-50 ${accent}`}
-    >
-      {label}
-    </button>
-  );
-}
-
-function CountCard({
-  label,
-  count,
-  accent,
-}: { label: string; count: number; accent: string }) {
-  return (
-    <div className="border border-rule dark:border-charcoal-1 rounded-md px-4 py-3 text-center">
-      <p className={`text-2xl font-serif ${accent}`}>{count}</p>
-      <p className="text-xs font-mono text-shadow-1 dark:text-moonlight uppercase">{label}</p>
-    </div>
   );
 }
