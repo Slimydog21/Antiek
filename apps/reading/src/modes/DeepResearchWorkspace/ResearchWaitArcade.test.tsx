@@ -310,7 +310,7 @@ describe("ResearchWaitArcade", () => {
     ).toBe(true);
     expect(
       images.some((image) =>
-        (image.getAttribute("src") ?? "").includes("werner_zombies_session_v1"),
+        (image.getAttribute("src") ?? "").includes("werner_paperclip_zombies_arcade_session_v1"),
       ),
     ).toBe(true);
     expect(

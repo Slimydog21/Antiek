@@ -63,7 +63,7 @@ describe("LoadingGameHost mount contract", () => {
     const art = screen.getByTestId(
       "loading-game-living-tv-brand",
     ) as HTMLImageElement;
-    expect(art.getAttribute("src") ?? "").toMatch(/werner_zombies_session_v1/);
+    expect(art.getAttribute("src") ?? "").toMatch(/werner_paperclip_zombies_arcade_session_v1/);
     expect(art.getAttribute("data-wait-game")).toBe("zombies");
   });
 
@@ -74,7 +74,7 @@ describe("LoadingGameHost mount contract", () => {
     expect(waitHostBrandArt("ice-fishing")).toMatch(
       /werner_igloo_ice_arcade_cursor_session_v1/,
     );
-    expect(waitHostBrandArt("zombies")).toMatch(/werner_zombies_session_v1/);
+    expect(waitHostBrandArt("zombies")).toMatch(/werner_paperclip_zombies_arcade_session_v1/);
     // Default invent is CRT living-TV (penguin as asynchronous TV show).
     expect(
       waitHostBrandArt("unknown" as Parameters<typeof waitHostBrandArt>[0]),

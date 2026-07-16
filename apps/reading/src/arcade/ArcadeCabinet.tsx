@@ -12,7 +12,7 @@ import { emitWernerExperience } from "../werner/reactionBus";
 // Inventory: brand/werner/sessionAssets.ts (alpha integrity gated).
 // Igloo ice-arcade invent — CRT + cursor-bait cabinet card (align LGH + wait-arcade).
 import iceFishingArt from "../brand/werner/poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp";
-import zombiesArt from "../brand/werner/poses/session/werner_zombies_session_v1.png";
+import zombiesArt from "../brand/werner/poses/session/werner_paperclip_zombies_arcade_session_v1.webp";
 import thinkingArt from "../brand/werner/poses/session/werner_thinking_session_v1.png";
 import celebrateArt from "../brand/werner/poses/session/werner_celebrate_session_v1.png";
 // Clam Catcher: session Imagine refedit promoted via cut_session_fringe (2026-07-16).

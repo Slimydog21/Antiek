@@ -9,7 +9,7 @@ import {
 import livingTvArt from "../../brand/werner/poses/session/werner_crt_igloo_cursor_tv_session_v1.webp";
 // Igloo ice-arcade invent — CRT + cursor-bait ice fishing wait strip.
 import iceFishingArt from "../../brand/werner/poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp";
-import zombiesArt from "../../brand/werner/poses/session/werner_zombies_session_v1.png";
+import zombiesArt from "../../brand/werner/poses/session/werner_paperclip_zombies_arcade_session_v1.webp";
 import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_session_v1.png";
 import { wernerArcade } from "../../werner/iceFishingFlags";
 import { emitWernerExperience } from "../../werner/reactionBus";
