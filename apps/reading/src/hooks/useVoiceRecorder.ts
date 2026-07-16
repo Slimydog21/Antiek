@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { notifyVoiceRecordingStarted } from "../werner/shellExperienceSignals";
+
 /**
  * useVoiceRecorder (Read SPR-06) — minimal MediaRecorder wrapper that
  * yields an audio Blob. Mic-permission-denied is surfaced as an error,
@@ -18,7 +20,16 @@ export interface UseVoiceRecorder {
   reset: () => void;
 }
 
-export function useVoiceRecorder(): UseVoiceRecorder {
+export interface VoiceRecorderOptions {
+  /** Semantic success callback; injected in tests, Werner-backed by default. */
+  onRecordingStarted?: () => void;
+}
+
+export function useVoiceRecorder(
+  options: VoiceRecorderOptions = {},
+): UseVoiceRecorder {
+  const onRecordingStarted =
+    options.onRecordingStarted ?? notifyVoiceRecordingStarted;
   const [state, setState] = useState<RecorderState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [blob, setBlob] = useState<Blob | null>(null);
@@ -59,6 +70,12 @@ export function useVoiceRecorder(): UseVoiceRecorder {
       };
       rec.start();
       setState("recording");
+      try {
+        onRecordingStarted();
+      } catch {
+        // Product choreography is observational: it must never tear down a
+        // recorder that has already crossed the successful start boundary.
+      }
     } catch (e: unknown) {
       if (!mountedRef.current || attempt !== startAttemptRef.current) return;
       stopTracks();
@@ -72,7 +89,7 @@ export function useVoiceRecorder(): UseVoiceRecorder {
         setError(e instanceof Error ? e.message : String(e));
       }
     }
-  }, [stopTracks]);
+  }, [onRecordingStarted, stopTracks]);
 
   const stop = useCallback(() => {
     if (recorderRef.current && recorderRef.current.state !== "inactive") {

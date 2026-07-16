@@ -6,6 +6,7 @@ import {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
+  notifyVoiceRecordingStarted,
 } from "./shellExperienceSignals";
 import {
   WERNER_EXPERIENCE_EVENT,
@@ -59,6 +60,13 @@ describe("Werner shell experience edges", () => {
     const capture = captureExperiences();
     notifyShellFailure();
     expect(capture.seen).toEqual(["fail"]);
+    capture.teardown();
+  });
+
+  it("maps a proven recording start to one listening experience", () => {
+    const capture = captureExperiences();
+    notifyVoiceRecordingStarted();
+    expect(capture.seen).toEqual(["voice_recording_started"]);
     capture.teardown();
   });
 
