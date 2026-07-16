@@ -10,6 +10,7 @@ import {
   recoverMultimediaLocal,
 } from "../../api/multimedia";
 import type { MultimediaAssetRecord, MultimediaLocalPreparedSet } from "../../api/multimedia";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner";
 import { LocalProductionPanel } from "./LocalProductionPanel";
 
 vi.mock("../../api/multimedia", () => ({
@@ -78,6 +79,23 @@ describe("LocalProductionPanel", () => {
     fireEvent.click(produce);
     await screen.findByText("Verified playback ready");
     expect(onRegistered).toHaveBeenCalledOnce();
+  });
+
+  it("emits living-TV beats for prepare, attest, and produce", async () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<LocalProductionPanel record={record} onRegistered={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Prepare local chapters" }));
+    await waitFor(() => expect(seen).toContain("highlight"));
+    fireEvent.click(await screen.findByRole("button", { name: "Attest source card" }));
+    await waitFor(() => expect(seen).toContain("note_saved"));
+    fireEvent.click(await screen.findByRole("button", { name: "Produce locally · $0" }));
+    await waitFor(() => expect(seen).toContain("piece_started"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
   });
 
   it("replaces production with the explicit recovery command", async () => {

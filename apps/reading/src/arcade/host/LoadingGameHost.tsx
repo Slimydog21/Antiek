@@ -7,8 +7,8 @@ import {
 } from "../cartridgeFactory";
 // CRT igloo + cursor invent — Flipbook-feel default living-TV wait strip.
 import livingTvArt from "../../brand/werner/poses/session/werner_crt_igloo_cursor_tv_session_v1.webp";
-// Cursor-bait invent — ice fishing wait strip (penguin + cursor bait metaphor).
-import iceFishingArt from "../../brand/werner/poses/session/werner_ice_fishing_cursor_bait_session_v1.webp";
+// Igloo ice-arcade invent — CRT + cursor-bait ice fishing wait strip.
+import iceFishingArt from "../../brand/werner/poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp";
 import zombiesArt from "../../brand/werner/poses/session/werner_zombies_session_v1.png";
 import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_session_v1.png";
 import { wernerArcade } from "../../werner/iceFishingFlags";

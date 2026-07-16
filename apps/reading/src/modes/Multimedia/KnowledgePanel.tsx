@@ -12,6 +12,8 @@ import type {
   MultimediaTwinDocument,
 } from "../../api/multimedia";
 import { LemonButton, LemonTag } from "../../components/lemon";
+import knowledgeTwinInvent from "../../brand/werner/poses/session/werner_knowledge_twin_cursor_session_v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 type Props = {
   asset: MultimediaAssetRecord;
@@ -161,9 +163,12 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       });
       setModelAcknowledged(false);
       setError(null);
+      // Living-TV: recursive twin note-taker completed — happy craft beat.
+      emitWernerExperience("deep_research_complete");
     } catch (cause) {
       await inspect();
       setError(errorMessage(cause));
+      emitWernerExperience("fail");
     } finally {
       setPending(null);
       onMutationBusyChange?.(false);
@@ -196,9 +201,12 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       setModelAcknowledged(false);
       setDuplicateRiskAcknowledged(false);
       setError(null);
+      // Living-TV: twin recovery restored the note-taker substrate.
+      emitWernerExperience("deep_research_complete");
     } catch (cause) {
       await inspect();
       setError(errorMessage(cause));
+      emitWernerExperience("fail");
     } finally {
       setPending(null);
       onMutationBusyChange?.(false);
@@ -229,6 +237,8 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       }
       setViewer(document);
       setError(null);
+      // Living-TV: operator opened the HTML twin — curious glance.
+      emitWernerExperience("highlight");
     } catch (cause) {
       if (
         requestEpoch !== readEpoch.current ||
@@ -238,6 +248,7 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
       }
       setViewer(null);
       setError(errorMessage(cause));
+      emitWernerExperience("fail");
     } finally {
       if (
         requestEpoch === readEpoch.current &&
@@ -271,6 +282,16 @@ export function KnowledgePanel({ asset, onAssetUpdated, onMutationBusyChange }: 
           {pending === "inspect" ? "Checking" : STATE_LABELS[state]}
         </LemonTag>
       </div>
+
+      <img
+        src={knowledgeTwinInvent}
+        alt=""
+        aria-hidden="true"
+        data-testid="multimedia-knowledge-living-tv-art"
+        className="mt-3 h-16 w-full max-w-md rounded-md object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
 
       {!ready && (
         <p className="mt-3 text-[12px] text-shadow-1 dark:text-moonlight">

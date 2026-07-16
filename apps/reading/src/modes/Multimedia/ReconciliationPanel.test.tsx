@@ -8,6 +8,7 @@ import {
   getNarrationRunReconciliation,
 } from "../../api/multimedia";
 import type { AssetReconciliationLinks, ChapterTtsReconciliation } from "../../api/multimedia";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner";
 import { ReconciliationPanel } from "./ReconciliationPanel";
 
 vi.mock("../../api/multimedia", () => ({
@@ -76,6 +77,27 @@ describe("ReconciliationPanel", () => {
       expect(executeChapterTtsReconciliation).toHaveBeenCalledWith("mmexec-1", "release_seal"),
     );
     expect(screen.queryByText("Release stale seal")).toBeNull();
+  });
+
+  it("emits note_saved living-TV beat on successful reconciliation action", async () => {
+    vi.mocked(getAssetReconciliationLinks).mockResolvedValue(links);
+    vi.mocked(getChapterTtsReconciliation).mockResolvedValue(chapter);
+    vi.mocked(executeChapterTtsReconciliation).mockResolvedValue({
+      ...chapter,
+      attempt_status: "received",
+      next_action: "resume_narration",
+      parent_resume_eligible: true,
+    });
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<ReconciliationPanel assetId="asset-1" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Release stale seal" }));
+    await waitFor(() => expect(seen).toContain("note_saved"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
   });
 
   it("opens a linked parent run without accepting a caller-entered run id", async () => {

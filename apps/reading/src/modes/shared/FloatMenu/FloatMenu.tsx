@@ -15,6 +15,7 @@ import {
   type SearchResult,
 } from "./floatMenuActions";
 import type { FloatMenuSelection } from "./useFloatMenuSelection";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 
 /**
  * FloatMenu — THE shared highlight → float-window interaction primitive
@@ -200,7 +201,10 @@ export default function FloatMenu({
                 // ChaseThread + startInvestigation). §9.0: hand the host the
                 // guarded outbound text (null ⇒ withheld) so a withheld body
                 // never becomes a child investigation's spawn_context.
-                onDeepResearch(outboundText(selection), selection);
+                const safeText = outboundText(selection);
+                // Living-TV: only beat when spawn text is actually launchable.
+                if (safeText) emitWernerExperience("deep_research_start");
+                onDeepResearch(safeText, selection);
               }}
             />
           </div>

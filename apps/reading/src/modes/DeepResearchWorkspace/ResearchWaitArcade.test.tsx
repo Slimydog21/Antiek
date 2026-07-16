@@ -304,7 +304,7 @@ describe("ResearchWaitArcade", () => {
     expect(
       images.some((image) =>
         (image.getAttribute("src") ?? "").includes(
-          "werner_ice_fishing_cursor_bait_session_v1",
+          "werner_igloo_ice_arcade_cursor_session_v1",
         ),
       ),
     ).toBe(true);
@@ -333,7 +333,7 @@ describe("ResearchWaitArcade", () => {
     });
     expect(receivedSceneArt).toHaveBeenCalledTimes(1);
     expect(receivedSceneArt.mock.calls[0]?.[0]).toContain(
-      "werner_ice_fishing_cursor_bait_session_v1",
+      "werner_igloo_ice_arcade_cursor_session_v1",
     );
   });
 });

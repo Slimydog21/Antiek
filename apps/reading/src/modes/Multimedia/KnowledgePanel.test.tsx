@@ -13,6 +13,7 @@ import {
   getMultimediaKnowledgeTwin,
   recoverMultimediaKnowledgeFinalization,
 } from "../../api/multimedia";
+import { WERNER_EXPERIENCE_EVENT } from "../../werner";
 import { KnowledgePanel, retainCurrentMultimediaSelection } from "./KnowledgePanel";
 
 vi.mock("../../api/multimedia", async (importOriginal) => {
@@ -102,6 +103,12 @@ describe("KnowledgePanel", () => {
     expect(finalize).not.toHaveBeenCalled();
   });
 
+  it("product-maps knowledge twin invent on the living-TV strip", () => {
+    render(<KnowledgePanel asset={asset("rev-1", "script_ready")} onAssetUpdated={vi.fn()} />);
+    const art = screen.getByTestId("multimedia-knowledge-living-tv-art");
+    expect(art.getAttribute("src") ?? "").toMatch(/werner_knowledge_twin_cursor_session_v1/);
+  });
+
   it("requires explicit model acknowledgement before initial finalization", async () => {
     getStatus.mockResolvedValue(status("not_started"));
     const linkedAsset = { ...asset(), knowledge_link: LINK };
@@ -122,6 +129,64 @@ describe("KnowledgePanel", () => {
     expect(updated).toHaveBeenCalledWith(linkedAsset);
     expect((await screen.findByTestId("multimedia-knowledge-evidence")).textContent).toContain("twin-1");
     expect(screen.getByTestId("multimedia-knowledge-evidence").textContent).toContain("2");
+  });
+
+  it("emits deep_research_complete living-TV beat when knowledge twin finalizes", async () => {
+    getStatus.mockResolvedValue(status("not_started"));
+    finalize.mockResolvedValue({
+      asset: { ...asset(), knowledge_link: LINK },
+      knowledge_link: LINK,
+    });
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /approve one note-model call/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Create knowledge twin" }));
+    await waitFor(() => expect(seen).toContain("deep_research_complete"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+  });
+
+  it("emits highlight living-TV beat when HTML twin opens", async () => {
+    getStatus.mockResolvedValue(status("completed", false, LINK));
+    getTwin.mockResolvedValue({
+      asset_id: "asset-1",
+      revision_id: "rev-1",
+      source_document_id: "doc-1",
+      twin_document_id: "twin-1",
+      title: "Twin notes: Aircraft economics",
+      html: "<!doctype html><html><body><h1>Twin</h1></body></html>",
+      html_sha256: "b".repeat(64),
+    });
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open twin" }));
+    await waitFor(() => expect(seen).toContain("highlight"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+  });
+
+  it("emits fail living-TV beat when twin finalization errors", async () => {
+    getStatus.mockResolvedValue(status("not_started"));
+    finalize.mockRejectedValue(new Error("multimedia_knowledge_runtime_unavailable"));
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener(WERNER_EXPERIENCE_EVENT, onExp);
+    render(<KnowledgePanel asset={asset()} onAssetUpdated={vi.fn()} />);
+    fireEvent.click(await screen.findByRole("checkbox", { name: /approve one note-model call/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Create knowledge twin" }));
+    await waitFor(() => expect(seen).toContain("fail"));
+    window.removeEventListener(WERNER_EXPERIENCE_EVENT, onExp);
   });
 
   it("does not offer recovery for a fresh in-progress claim", async () => {

@@ -15,6 +15,7 @@ import type {
   MultimediaLocalCapability,
 } from "../../api/multimedia";
 import { LemonButton } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { ActiveListeningPlayer } from "./ActiveListeningPlayer";
 
 type Pending = "capability" | "prepare" | "produce" | "recover" | "playback" | null;
@@ -74,11 +75,20 @@ export function LocalAudiblePanel({
         if (version !== requestVersion.current) return;
         setPending("playback");
         const media = await getMultimediaLocalAudiblePlayback(assetId, revisionId);
-        if (version === requestVersion.current) setPlayback(media);
+        if (version === requestVersion.current) {
+          setPlayback(media);
+          // Living-TV: local audible ready — happy craft beat.
+          emitWernerExperience("piece_started");
+        }
+      } else if (kind === "prepare") {
+        emitWernerExperience("highlight");
+      } else if (kind === "recover") {
+        emitWernerExperience("note_saved");
       }
     } catch {
       if (version === requestVersion.current) {
         setError("Local audible authority changed. Refresh the current revision.");
+        emitWernerExperience("fail");
       }
     } finally {
       if (version === requestVersion.current) setPending(null);

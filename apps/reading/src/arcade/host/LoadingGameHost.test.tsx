@@ -72,7 +72,7 @@ describe("LoadingGameHost mount contract", () => {
       /werner_clam_catcher_session_v1/,
     );
     expect(waitHostBrandArt("ice-fishing")).toMatch(
-      /werner_ice_fishing_cursor_bait_session_v1/,
+      /werner_igloo_ice_arcade_cursor_session_v1/,
     );
     expect(waitHostBrandArt("zombies")).toMatch(/werner_zombies_session_v1/);
     // Default invent is CRT living-TV (penguin as asynchronous TV show).
