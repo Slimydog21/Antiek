@@ -20,6 +20,7 @@
 import { type ChangeEvent, useMemo } from "react";
 import {
   type ComposerCandidateView,
+  type ComposerFallbackRouteProjection,
   type ComposerModelProjection,
 } from "../api/composerProjection";
 
@@ -107,6 +108,38 @@ function exceedLabel(projection: ComposerModelProjection): {
     return { text: "within the ceiling (server re-validates)", tone: "ok" };
   }
   return { text: "budget or projection unmeasurable", tone: "unknown" };
+}
+
+function fallbackProjectionLabel(
+  projection: ComposerFallbackRouteProjection,
+): string {
+  if (projection.disposition === "ineligible") {
+    return projection.ineligibility?.replaceAll("_", " ") ?? "ineligible";
+  }
+  if (projection.disposition === "zero_cost_receipt") return "zero-cost route";
+  return (
+    formatReservationCents(projection.reservation_cents) ?? "cost unavailable"
+  );
+}
+
+function executionLabel(value: string): string {
+  return value.replace(/^blocked_/, "blocked: ").replaceAll("_", " ");
+}
+
+function fallbackExposureLabel(projection: ComposerModelProjection): string {
+  const plan = projection.fallback_plan;
+  if (plan == null || plan.maximum_chain_exposure_cents == null) {
+    return "execution blocked";
+  }
+  const exposure = formatReservationCents(plan.maximum_chain_exposure_cents);
+  if (exposure == null) return "exposure unavailable";
+  const budget =
+    plan.would_exceed_budget === true
+      ? "over budget"
+      : plan.would_exceed_budget === false
+        ? "within budget"
+        : "budget unknown";
+  return `${exposure} peak · ${budget}`;
 }
 
 export default function ModelDecisionBar({
@@ -289,6 +322,55 @@ export default function ModelDecisionBar({
           </span>
         )}
       </div>
+
+      {projection.fallback_plan && (
+        <div
+          data-testid="fallback-plan"
+          className="border-t border-border pt-2"
+          aria-label="fallback plan"
+        >
+          <div className="mb-1 flex items-baseline justify-between gap-3">
+            <span className="text-[11px] uppercase tracking-[0.14em] text-shadow-1 dark:text-moonlight">
+              fallback plan
+            </span>
+            <span
+              data-testid="fallback-plan-exposure"
+              className={`font-mono text-xs ${
+                projection.fallback_plan.would_exceed_budget === true
+                  ? "text-danger"
+                  : "text-ink dark:text-bright"
+              }`}
+            >
+              {fallbackExposureLabel(projection)}
+            </span>
+          </div>
+          <ol className="divide-y divide-border">
+            {projection.fallback_plan.routes.map((route) => (
+              <li
+                key={JSON.stringify([route.provider, route.model])}
+                data-testid={`fallback-route-${route.fallback_index}`}
+                className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 py-2 text-xs"
+              >
+                <span className="min-w-0 text-ink dark:text-bright">
+                  <span className="mr-2 font-mono text-shadow-1 dark:text-moonlight">
+                    {route.fallback_index === 0
+                      ? "Primary"
+                      : `Fallback ${route.fallback_index}`}
+                  </span>
+                  {route.provider}/{route.model}
+                </span>
+                <span className="font-mono text-ink dark:text-bright">
+                  {fallbackProjectionLabel(route.projection)}
+                </span>
+                <span className="col-span-2 mt-0.5 text-[11px] text-shadow-1 dark:text-moonlight">
+                  {route.registered ? "registered" : "not registered"} ·{" "}
+                  {executionLabel(route.execution_status)}
+                </span>
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
 
       {projection.notes.length > 0 && (
         <ul

@@ -61,6 +61,7 @@ function baseProjection(
     notes: [
       "authority=advisory_explanatory — server re-validates at execution",
     ],
+    fallback_plan: null,
     ...overrides,
   };
 }
@@ -296,6 +297,140 @@ describe("ModelDecisionBar", () => {
     expect(select.options[0].disabled).toBe(true);
     fireEvent.change(select, { target: { value: "0" } });
     expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("renders the ordered blocked fallback plan without fabricating zero cost", () => {
+    render(
+      <ModelDecisionBar
+        projection={baseProjection({
+          fallback_plan: {
+            authority: "advisory_fallback_plan",
+            tier: "pro",
+            status: "blocked",
+            maximum_chain_exposure_cents: null,
+            would_exceed_budget: null,
+            routes: [
+              {
+                fallback_index: 0,
+                provider: "primary",
+                model: "model-a",
+                registered: true,
+                projection: {
+                  maximum_cost_usd: "0",
+                  reservation_cents: 0,
+                  disposition: "ineligible",
+                  ineligibility: "unknown_pricing",
+                  rate_snapshot: "unverified-v1",
+                },
+                hard_ceiling_eligible: false,
+                execution_status: "blocked_selection_authority",
+              },
+              {
+                fallback_index: 1,
+                provider: "fallback",
+                model: "model-b",
+                registered: false,
+                projection: {
+                  maximum_cost_usd: "0",
+                  reservation_cents: 0,
+                  disposition: "ineligible",
+                  ineligibility: "unknown_pricing",
+                  rate_snapshot: "unverified-v1",
+                },
+                hard_ceiling_eligible: false,
+                execution_status: "blocked_selection_authority",
+              },
+            ],
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("fallback-plan-exposure").textContent).toBe(
+      "execution blocked",
+    );
+    expect(screen.getByTestId("fallback-route-0").textContent).toContain(
+      "Primary",
+    );
+    expect(screen.getByTestId("fallback-route-1").textContent).toContain(
+      "Fallback 1",
+    );
+    expect(screen.getByTestId("fallback-route-1").textContent).toContain(
+      "not registered",
+    );
+    expect(screen.getByTestId("fallback-plan").textContent).not.toContain(
+      "$0.00",
+    );
+  });
+
+  it("renders peak exposure rather than summing route reservations", () => {
+    const routes = [20, 10].map((reservation_cents, fallback_index) => ({
+      fallback_index,
+      provider: `provider-${fallback_index}`,
+      model: `model-${fallback_index}`,
+      registered: true,
+      projection: {
+        maximum_cost_usd: String(reservation_cents / 100),
+        reservation_cents,
+        disposition: "hold_eligible" as const,
+        ineligibility: null,
+        rate_snapshot: "rates-v1",
+      },
+      hard_ceiling_eligible: true,
+      execution_status: "executable",
+    }));
+    render(
+      <ModelDecisionBar
+        projection={baseProjection({
+          fallback_plan: {
+            authority: "advisory_fallback_plan",
+            tier: "pro",
+            status: "executable",
+            maximum_chain_exposure_cents: 20,
+            would_exceed_budget: false,
+            routes,
+          },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("fallback-plan-exposure").textContent).toBe(
+      "$0.20 peak · within budget",
+    );
+    expect(
+      screen.getByTestId("fallback-plan-exposure").textContent,
+    ).not.toContain("0.30");
+  });
+
+  it("surfaces an executable chain that exceeds the remaining budget", () => {
+    const projection = baseProjection({
+      fallback_plan: {
+        authority: "advisory_fallback_plan",
+        tier: "pro",
+        status: "executable",
+        maximum_chain_exposure_cents: 20,
+        would_exceed_budget: true,
+        routes: [
+          {
+            fallback_index: 0,
+            provider: "provider",
+            model: "model",
+            registered: true,
+            projection: {
+              maximum_cost_usd: "0.2",
+              reservation_cents: 20,
+              disposition: "hold_eligible",
+              ineligibility: null,
+              rate_snapshot: "rates-v1",
+            },
+            hard_ceiling_eligible: true,
+            execution_status: "executable",
+          },
+        ],
+      },
+    });
+    render(<ModelDecisionBar projection={projection} />);
+    expect(screen.getByTestId("fallback-plan-exposure").textContent).toBe(
+      "$0.20 peak · over budget",
+    );
   });
 
   it("renders loading state", () => {
