@@ -14,7 +14,7 @@ import type { ArcadeGameKind } from "../../arcade/cartridgeFactory";
 // Igloo ice-arcade invent — CRT TV + cursor-bait ice fishing wait card.
 import iceFishingArt from "../../brand/werner/poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp";
 import paperclipArt from "../../brand/werner/poses/session/werner_paperclip_zombies_arcade_session_v1.webp";
-import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_session_v1.png";
+import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_cursor_session_v1.webp";
 import { acquireStationInstrumentSuspension } from "../../werner/stationInstrumentSuspension";
 import {
   RESEARCH_WAIT_ARCADE_OFFER_AFTER_MS,

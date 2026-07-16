@@ -316,7 +316,7 @@ describe("ResearchWaitArcade", () => {
     expect(
       images.some((image) =>
         (image.getAttribute("src") ?? "").includes(
-          "werner_clam_catcher_session_v1",
+          "werner_clam_catcher_cursor_session_v1",
         ),
       ),
     ).toBe(true);

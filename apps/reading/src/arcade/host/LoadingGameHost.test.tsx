@@ -69,7 +69,7 @@ describe("LoadingGameHost mount contract", () => {
 
   it("maps clam-catcher and ice-fishing wait-host brand art keys", () => {
     expect(waitHostBrandArt("clam-catcher")).toMatch(
-      /werner_clam_catcher_session_v1/,
+      /werner_clam_catcher_cursor_session_v1/,
     );
     expect(waitHostBrandArt("ice-fishing")).toMatch(
       /werner_igloo_ice_arcade_cursor_session_v1/,

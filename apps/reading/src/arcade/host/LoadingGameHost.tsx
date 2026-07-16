@@ -10,7 +10,7 @@ import livingTvArt from "../../brand/werner/poses/session/werner_crt_igloo_curso
 // Igloo ice-arcade invent — CRT + cursor-bait ice fishing wait strip.
 import iceFishingArt from "../../brand/werner/poses/session/werner_igloo_ice_arcade_cursor_session_v1.webp";
 import zombiesArt from "../../brand/werner/poses/session/werner_paperclip_zombies_arcade_session_v1.webp";
-import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_session_v1.png";
+import clamCatcherArt from "../../brand/werner/poses/session/werner_clam_catcher_cursor_session_v1.webp";
 import { wernerArcade } from "../../werner/iceFishingFlags";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
