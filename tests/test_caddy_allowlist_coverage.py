@@ -116,3 +116,25 @@ def test_drift_guard_is_not_vacuous() -> None:
     # regression reddens here instead of hiding the real gap.
     assert len(_registered_prefixes()) >= 40
     assert len(_allowlist_prefixes()) >= 40
+
+
+def test_browser_navigation_never_swallows_auth_callbacks() -> None:
+    """Email links navigate with ``Accept: text/html``.
+
+    The SPA matcher must exclude the complete auth control plane so Caddy sends
+    `/auth/callback` to FastAPI, where the token is verified and the session
+    cookie is minted. This is intentionally source-shaped: it guards the Caddy
+    matcher that caused the live failure, not a direct FastAPI test that bypasses
+    the production proxy.
+    """
+    with open(_CADDY, encoding="utf-8") as fh:
+        caddy = fh.read()
+
+    matcher = re.search(r"@spa_browser_nav\s*\{(?P<body>.*?)\n\s*\}", caddy, re.DOTALL)
+    assert matcher is not None, "@spa_browser_nav must remain an explicit matcher block"
+    body = matcher.group("body")
+    assert "header Accept *text/html*" in body
+    assert "not path /auth/*" in body, (
+        "browser-shaped /auth/callback requests would receive SPA index.html "
+        "instead of reaching FastAPI"
+    )
