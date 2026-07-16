@@ -13,6 +13,7 @@ import { useState } from "react";
 
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import cascadePlanArt from "../../brand/werner/poses/session/werner_cascade_plan_session_v1.webp";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import LemonButton from "../../components/lemon/LemonButton";
 import type { PlanNode, PlanTree } from "../../api/research";
 
@@ -55,14 +56,27 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
           </div>
         </div>
         <div className="flex shrink-0 gap-2">
-          <LemonButton size="sm" variant="secondary" disabled={busy} onClick={onApprove}>
+          <LemonButton
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => {
+              // Living-TV: plan approve is a noted honesty beat.
+              emitWernerExperience("note_saved");
+              onApprove();
+            }}
+          >
             {tree.approval.state === "approved" ? "Re-approve" : "Approve"}
           </LemonButton>
           <LemonButton
             size="sm"
             variant="primary"
             disabled={busy || !launchable}
-            onClick={onLaunch}
+            onClick={() => {
+              // Living-TV: cascade launch is a deep-research start.
+              emitWernerExperience("deep_research_start");
+              onLaunch();
+            }}
             title={launchable ? `Launch ${leafCount} researches` : "Approve the plan to launch"}
           >
             Launch {leafCount}
