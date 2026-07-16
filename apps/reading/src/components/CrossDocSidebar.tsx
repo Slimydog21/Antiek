@@ -127,7 +127,11 @@ function CrossDocCard({
       <div className="text-[10px] font-mono text-shadow-1 dark:text-moonlight pt-0.5 flex items-center gap-1.5">
         <span>bridged by:</span>
         <button
-          onClick={() => onCiteJump?.(p.answer_note_id)}
+          onClick={() => {
+            // Living-TV: cross-doc bridge jump — curious glance.
+            emitWernerExperience("highlight");
+            onCiteJump?.(p.answer_note_id);
+          }}
           className="text-ink-soft dark:text-starlight bg-ice-3 dark:bg-charcoal-1 hover:bg-ice-4 dark:bg-charcoal-1 px-1.5 py-0.5 rounded transition-colors"
           title={`jump to note ${p.answer_note_id}`}
         >
