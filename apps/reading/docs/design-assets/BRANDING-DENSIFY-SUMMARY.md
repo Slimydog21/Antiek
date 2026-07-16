@@ -221,3 +221,6 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 float research merge | `65dd7c8e3` | TwinNotes float-merge product invent |
 | Imagine invent polish v2 collective merge | `9a5d3d37d` | SubAgentProposal + FloatMenu invent |
 | Imagine invent polish v2 book marketplace port | `9a5d3d37d` | HouseSlot invent |
+| Imagine invent polish v2 arxiv/substack dens | (next tip) | Sources product invent |
+| Imagine invent polish v2 html book float | (next tip) | ReadingCompanion invent |
+| Imagine invent polish v2 knowledge twin cursor | (next tip) | KnowledgePanel invent |
