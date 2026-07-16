@@ -631,16 +631,28 @@ def test_app_startup_does_not_create_missing_db_and_retries_recovery(
 
 
 def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Path) -> None:
+    import runtime.db_lock as db_lock_module
+
     calls = 0
+    call_times: list[float] = []
+    db_path = str(tmp_path / "worker.duckdb")
+    handoff_checks = 0
+
+    def handoff_requested(_db_path: str) -> bool:
+        nonlocal handoff_checks
+        handoff_checks += 1
+        return handoff_checks == 2
 
     def fake_recover(**_: object) -> projector.RecoveryReport:
         nonlocal calls
         calls += 1
+        call_times.append(time.monotonic())
         time.sleep(0.15)
         return projector.RecoveryReport(catching_up=calls == 1, remaining=None)
 
     monkeypatch.setattr(projector, "recover", fake_recover)
-    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", str(tmp_path / "worker.duckdb"))
+    monkeypatch.setattr(db_lock_module, "write_handoff_requested", handoff_requested)
+    monkeypatch.setenv("ANTIEK_DUCKDB_PATH", db_path)
     app = create_app(register_wrestling=False, register_providers=False, cors_origins=[])
     started = time.monotonic()
     with TestClient(app):
@@ -650,6 +662,7 @@ def test_app_startup_worker_continues_catch_up_batches(monkeypatch, tmp_path: Pa
             assert time.monotonic() < deadline
             time.sleep(0.01)
     assert calls == 2
+    assert call_times[1] - call_times[0] >= 0.6
     assert app.state.knowledge_event_recovery["status"] == "current"
 
 

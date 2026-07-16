@@ -47,6 +47,9 @@ import contextlib
 import errno
 import fcntl
 import os
+import secrets
+import stat
+import threading
 import time
 from collections.abc import Iterable, Sequence
 from typing import Any, Protocol, runtime_checkable
@@ -63,6 +66,86 @@ _WRITE_LOG_PURPOSE = "_write_log_internal"
 
 def _lock_path_for(db_path: str) -> str:
     return db_path + ".write.lock"
+
+
+def _waiter_dir_for(db_path: str) -> str:
+    return db_path + ".write.waiters"
+
+
+def _ensure_waiter_dir(db_path: str) -> str:
+    waiter_dir = _waiter_dir_for(db_path)
+    os.makedirs(waiter_dir, mode=0o700, exist_ok=True)
+    metadata = os.lstat(waiter_dir)
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or stat.S_IMODE(metadata.st_mode) & 0o077
+    ):
+        raise OSError("write-waiter directory must be owner-only and non-symlinked")
+    return waiter_dir
+
+
+def _register_write_waiter(db_path: str) -> tuple[int, str]:
+    waiter_dir = _ensure_waiter_dir(db_path)
+    path = os.path.join(
+        waiter_dir,
+        f"{os.getpid()}-{threading.get_ident()}-{secrets.token_hex(8)}",
+    )
+    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+    fcntl.flock(fd, fcntl.LOCK_EX)
+    return fd, path
+
+
+def _unregister_write_waiter(waiter: tuple[int, str] | None) -> None:
+    if waiter is None:
+        return
+    fd, path = waiter
+    with contextlib.suppress(FileNotFoundError):
+        os.unlink(path)
+    with contextlib.suppress(OSError):
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    with contextlib.suppress(OSError):
+        os.close(fd)
+
+
+def write_handoff_requested(db_path: str) -> bool:
+    """Return whether any live writer is waiting; prune abandoned tokens."""
+    try:
+        waiter_dir = _ensure_waiter_dir(db_path)
+    except FileNotFoundError:
+        return False
+    dir_fd = os.open(waiter_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    live_waiter = False
+    try:
+        entries = list(os.scandir(dir_fd))
+        for entry in entries:
+            try:
+                fd = os.open(
+                    entry.name,
+                    os.O_WRONLY | os.O_NONBLOCK | os.O_NOFOLLOW,
+                    dir_fd=dir_fd,
+                )
+            except OSError:
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(entry.name, dir_fd=dir_fd)
+                continue
+            try:
+                if not stat.S_ISREG(os.fstat(fd).st_mode):
+                    with contextlib.suppress(FileNotFoundError):
+                        os.unlink(entry.name, dir_fd=dir_fd)
+                    continue
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    live_waiter = True
+                    continue
+                with contextlib.suppress(FileNotFoundError):
+                    os.unlink(entry.name, dir_fd=dir_fd)
+            finally:
+                os.close(fd)
+    finally:
+        os.close(dir_fd)
+    return live_waiter
 
 
 class WriteLockTimeout(RuntimeError):
@@ -260,6 +343,7 @@ def connect_write(
     fd = os.open(lock_path, os.O_CREAT | os.O_WRONLY, 0o600)
     deadline = time.monotonic() + timeout_s
     acquire_start = time.monotonic()
+    waiter: tuple[int, str] | None = None
     try:
         while True:
             try:
@@ -268,11 +352,17 @@ def connect_write(
             except OSError as e:
                 if e.errno not in (errno.EWOULDBLOCK, errno.EAGAIN):
                     raise
+                # The lock holder cannot see flock waiters directly. Each
+                # contender owns a separately flocked token so peers cannot
+                # erase its request and dead-process tokens can be pruned.
+                if waiter is None:
+                    waiter = _register_write_waiter(db_path)
                 if time.monotonic() >= deadline:
                     # Record the failed-acquire in write_log so timeout events
                     # are observable. Log AFTER closing the fd so we don't
                     # contend with the lock-holder.
                     os.close(fd)
+                    _unregister_write_waiter(waiter)
                     elapsed = time.monotonic() - acquire_start
                     _log_write_event(
                         db_path,
@@ -294,11 +384,14 @@ def connect_write(
     except WriteLockTimeout:
         raise
     except Exception:
+        _unregister_write_waiter(waiter)
         try:
             os.close(fd)
         except OSError:
             pass
         raise
+
+    _unregister_write_waiter(waiter)
 
     # Stamp pid + purpose + ISO timestamp for ops debugging — best-effort.
     try:

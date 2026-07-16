@@ -6565,6 +6565,7 @@ def create_app(
         }
 
         def run_recovery() -> None:
+            from runtime.db_lock import write_handoff_requested
             from substrate.event_log import PhysicalTrajectoryError
             from substrate.graph.knowledge_event_projector import (
                 EventConsumerCorruption,
@@ -6575,6 +6576,12 @@ def create_app(
             transient_failures = 0
             while not stop_recovery.is_set():
                 try:
+                    # A signalled foreground/deploy writer owns admission.
+                    # Do not enter another recovery transaction until every
+                    # live waiter has either acquired or withdrawn its token.
+                    if write_handoff_requested(db_path):
+                        stop_recovery.wait(0.05)
+                        continue
                     report = recover(
                         db_path=db_path,
                         candidate_limit=100,
@@ -6593,7 +6600,14 @@ def create_app(
                         if stop_recovery.wait(0.5):
                             break
                         continue
-                    stop_recovery.wait(0.05)
+                    # A production-sized DuckDB can make even a bounded page
+                    # expensive. Yield longer only when another process has
+                    # actually reported contention; uncontended catch-up keeps
+                    # its existing throughput.
+                    if write_handoff_requested(db_path):
+                        stop_recovery.wait(0.5)
+                    else:
+                        stop_recovery.wait(0.05)
                 except (
                     EventConsumerCorruption,
                     PhysicalTrajectoryError,
