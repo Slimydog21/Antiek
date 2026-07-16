@@ -1,4 +1,5 @@
 import { LemonTag } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * The zero-buyer house state (Read SPR-05 M3). v1 ships with no ad
@@ -44,7 +45,11 @@ export default function HouseSlot({ promo, onOpen }: HouseSlotProps) {
   return (
     <button
       type="button"
-      onClick={() => onOpen?.(promo.documentId)}
+      onClick={() => {
+        // Living-TV: next-read house promo is a curious highlight glance.
+        emitWernerExperience("highlight");
+        onOpen?.(promo.documentId);
+      }}
       className="flex items-center gap-3 w-full text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-sun rounded-md px-2 py-1"
       aria-label={`Next read from the library: ${promo.title}`}
     >
