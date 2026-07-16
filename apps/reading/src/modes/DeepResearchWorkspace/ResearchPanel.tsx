@@ -19,6 +19,7 @@ import {
   type ResearchStatus,
   type SteerKind,
 } from "../../api/research";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 const STATE_LABEL: Record<ResearchRunState, string> = {
   pending: "queued",
@@ -56,6 +57,14 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
   const isPaused = research.state === "paused";
   const isRunning = research.state === "running" || research.state === "stopping";
 
+  function steer(kind: SteerKind, payload?: Record<string, unknown>) {
+    // Living-TV: steer edges map to product experiences.
+    if (kind === "stop") emitWernerExperience("fail");
+    else if (kind === "deepen" || kind === "redirect") emitWernerExperience("deep_research_start");
+    else emitWernerExperience("highlight");
+    onSteer(kind, payload);
+  }
+
   return (
     <section
       className="flex flex-col gap-2 rounded-md border-2 border-sun bg-ice-0 p-3 dark:bg-charcoal-2"
@@ -91,17 +100,17 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
         <div className="flex flex-wrap gap-1.5">
           {isPaused ? (
             <LemonButton size="sm" variant="secondary" disabled={busy}
-              onClick={() => onSteer("resume")}>Resume</LemonButton>
+              onClick={() => steer("resume")}>Resume</LemonButton>
           ) : (
             <LemonButton size="sm" variant="secondary" disabled={busy || !isRunning}
-              onClick={() => onSteer("pause")}>Pause</LemonButton>
+              onClick={() => steer("pause")}>Pause</LemonButton>
           )}
           <LemonButton size="sm" variant="danger" disabled={busy}
-            onClick={() => onSteer("stop")}>Stop</LemonButton>
+            onClick={() => steer("stop")}>Stop</LemonButton>
           <LemonButton size="sm" variant="tertiary" disabled={busy}
             onClick={() => setRedirectOpen((v) => !v)}>Redirect</LemonButton>
           <LemonButton size="sm" variant="tertiary" disabled={busy}
-            onClick={() => onSteer("deepen", { extra_budget_usd: 0.25 })}>Deepen</LemonButton>
+            onClick={() => steer("deepen", { extra_budget_usd: 0.25 })}>Deepen</LemonButton>
         </div>
       )}
 
@@ -112,7 +121,7 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
             e.preventDefault();
             const q = redirectText.trim();
             if (!q) return;
-            onSteer("redirect", { sub_question: q });
+            steer("redirect", { sub_question: q });
             setRedirectText("");
             setRedirectOpen(false);
           }}
