@@ -127,6 +127,12 @@ describe("Library", () => {
     expect(surface, "the full-page Library must render through GlassSurface").toBeTruthy();
     // Session brand mark is UI-consumed on the Read door (not inventory-only).
     expect(screen.getByTestId("library-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "library-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
 
     cleanup();

@@ -8,6 +8,7 @@ import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import GlassSurface from "../../shell/GlassSurface";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import BookCard from "./BookCard";
 import CorpusSearch from "./CorpusSearch";
@@ -227,6 +228,15 @@ export default function Library() {
                 </button>
               </div>
             </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="library-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               A licensed shelf of what can be aggregated — public-domain works,
               Antiek originals, and publisher-opted-in titles you can read in
