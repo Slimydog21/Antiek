@@ -195,7 +195,7 @@ export function Home() {
             alt=""
             aria-hidden="true"
             data-testid="home-arcade-igloo-art"
-            className="h-28 w-full object-cover object-center"
+            className="h-28 w-full object-cover object-center antiek-living-tv-invent"
             loading="lazy"
             decoding="async"
           />

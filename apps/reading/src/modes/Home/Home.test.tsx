@@ -229,6 +229,7 @@ describe("Home (SPR-12 M1)", () => {
     expect(igloo.getAttribute("src") ?? "").toMatch(
       /werner_igloo_minigame_trio_session_v1/,
     );
+    expect(igloo.className).toMatch(/antiek-living-tv-invent/);
     fireEvent.click(screen.getByTestId("home-arcade-cta"));
     expect(screen.getByText(/ARCADE SURFACE/)).toBeTruthy();
     expect(seen).toContain("highlight");
