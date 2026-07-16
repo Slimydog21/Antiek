@@ -28,7 +28,7 @@ from substrate.twin_note_taker import (
 
 State = Literal["pending_authorization", "failed", "ready"]
 Verdict = Literal["unknown", "partial", "universal"]
-SCHEMA_VERSION = "twin-recursion-ledger-v2"
+SCHEMA_VERSION = "twin-recursion-ledger-v3"
 
 
 class FailureCode(StrEnum):
@@ -114,14 +114,26 @@ def _digest(kind: str, *parts: str) -> str:
     return f"{kind}_" + _sha(_canonical_json([kind, *parts]))
 
 
-def _asset_json(asset: AssetContent) -> str:
-    return _canonical_json(asdict(asset))
+def _asset_commitment_json(asset: AssetContent) -> str:
+    return _canonical_json({
+        "asset_id": asset.asset_id,
+        "title": asset.title,
+        "content_class": asset.content_class,
+        "source_event_ids": list(asset.source_event_ids),
+        "content_hash": _sha(asset.content_text),
+        "content_length": len(asset.content_text),
+        "source_hash": source_asset_receipt_hash(asset),
+    })
 
 
-def _asset_from_json(value: str) -> AssetContent:
+def _asset_commitment(value: str) -> dict[str, object]:
     data = json.loads(value)
-    data["source_event_ids"] = tuple(data["source_event_ids"])
-    return AssetContent(**data)
+    if _canonical_json(data) != value or set(data) != {
+        "asset_id", "title", "content_class", "source_event_ids",
+        "content_hash", "content_length", "source_hash",
+    }:
+        raise TwinIntegrityError("source commitment is not canonical")
+    return data
 
 
 def _required_str(value: dict[str, object], key: str) -> str:
@@ -219,7 +231,7 @@ TABLES = {
         schema_digest TEXT NOT NULL)""",
     "twin_sources": """CREATE TABLE twin_sources (
         account_id TEXT NOT NULL, asset_id TEXT NOT NULL, source_hash TEXT NOT NULL,
-        content_hash TEXT NOT NULL, asset_json TEXT NOT NULL, parent_binding_id TEXT,
+        content_hash TEXT NOT NULL, asset_commitment_json TEXT NOT NULL, parent_binding_id TEXT,
         state TEXT NOT NULL, job_id TEXT, failure_code TEXT,
         PRIMARY KEY(account_id,asset_id,source_hash),
         CHECK(state IN ('pending_authorization','failed','ready')),
@@ -249,7 +261,7 @@ TABLES = {
 TRIGGERS = {
     "twin_meta_immutable": "CREATE TRIGGER twin_meta_immutable BEFORE UPDATE ON twin_ledger_meta BEGIN SELECT RAISE(ABORT,'immutable ledger metadata'); END",
     "twin_meta_no_delete": "CREATE TRIGGER twin_meta_no_delete BEFORE DELETE ON twin_ledger_meta BEGIN SELECT RAISE(ABORT,'immutable ledger metadata'); END",
-    "twin_source_identity_immutable": """CREATE TRIGGER twin_source_identity_immutable BEFORE UPDATE OF account_id,asset_id,source_hash,content_hash,asset_json,parent_binding_id,job_id ON twin_sources BEGIN SELECT RAISE(ABORT,'immutable source revision'); END""",
+    "twin_source_identity_immutable": """CREATE TRIGGER twin_source_identity_immutable BEFORE UPDATE OF account_id,asset_id,source_hash,content_hash,asset_commitment_json,parent_binding_id,job_id ON twin_sources BEGIN SELECT RAISE(ABORT,'immutable source revision'); END""",
     "twin_source_no_delete": "CREATE TRIGGER twin_source_no_delete BEFORE DELETE ON twin_sources BEGIN SELECT RAISE(ABORT,'immutable source revision'); END",
     "twin_source_transition": """CREATE TRIGGER twin_source_transition BEFORE UPDATE OF state,failure_code ON twin_sources WHEN NOT ((OLD.state='pending_authorization' AND NEW.state IN ('failed','ready')) OR (OLD.state='failed' AND NEW.state='pending_authorization')) BEGIN SELECT RAISE(ABORT,'invalid twin state transition'); END""",
     "twin_binding_immutable": "CREATE TRIGGER twin_binding_immutable BEFORE UPDATE ON twin_bindings BEGIN SELECT RAISE(ABORT,'immutable twin binding'); END",
@@ -330,7 +342,7 @@ class TwinRecursionLedger:
     def register_source(self, revision: SourceRevision) -> TwinSnapshot:
         if type(revision) is not SourceRevision:
             raise ValueError("revision must be an exact SourceRevision")
-        asset_json = _asset_json(revision.asset)
+        asset_commitment_json = _asset_commitment_json(revision.asset)
         job_id = _digest("job", revision.account_id, revision.asset.asset_id, revision.source_hash)
         con = self._connect()
         try:
@@ -340,11 +352,12 @@ class TwinRecursionLedger:
             if row is None:
                 con.execute("INSERT INTO twin_sources VALUES(?,?,?,?,?,NULL,'pending_authorization',?,NULL)",
                             (revision.account_id, revision.asset.asset_id, revision.source_hash,
-                             revision.content_hash, asset_json, job_id))
+                             revision.content_hash, asset_commitment_json, job_id))
                 self._append_event(con, account_id=revision.account_id, asset_id=revision.asset.asset_id,
                                    source_hash=revision.source_hash, event_type="source_registered",
                                    data={"job_id": job_id})
-            elif row["asset_json"] != asset_json or row["parent_binding_id"] is not None:
+            elif (row["asset_commitment_json"] != asset_commitment_json or
+                  row["parent_binding_id"] is not None):
                 raise TwinConflictError("source revision identity already has different exact bytes")
             con.commit()
         except Exception:
@@ -408,11 +421,11 @@ class TwinRecursionLedger:
             binding = con.execute("SELECT * FROM twin_bindings WHERE binding_id=?", (binding_id,)).fetchone()
             if binding is None:
                 raise TwinConflictError("parent binding does not exist")
-            parent = con.execute("SELECT asset_json FROM twin_sources WHERE account_id=? AND asset_id=? AND source_hash=?",
+            parent = con.execute("SELECT asset_commitment_json FROM twin_sources WHERE account_id=? AND asset_id=? AND source_hash=?",
                                  (binding["account_id"], binding["asset_id"], binding["source_hash"])).fetchone()
-            parent_asset = _asset_from_json(parent["asset_json"])
+            parent_commitment = _asset_commitment(parent["asset_commitment_json"])
             twin_event = "evt-twin-" + _sha(binding_id)[:32]
-            asset = AssetContent(binding["twin_id"], f"Twin notes: {parent_asset.title}",
+            asset = AssetContent(binding["twin_id"], f"Twin notes: {parent_commitment['title']}",
                                  binding["body_json"], "twin", (twin_event,))
             revision = SourceRevision(binding["account_id"], asset)
             row = con.execute("SELECT * FROM twin_sources WHERE account_id=? AND asset_id=? AND source_hash=?",
@@ -420,11 +433,12 @@ class TwinRecursionLedger:
             if row is None:
                 con.execute("INSERT INTO twin_sources VALUES(?,?,?,?,?,?,'ready',NULL,NULL)",
                             (revision.account_id, asset.asset_id, revision.source_hash,
-                             revision.content_hash, _asset_json(asset), binding_id))
+                             revision.content_hash, _asset_commitment_json(asset), binding_id))
                 self._append_event(con, account_id=revision.account_id, asset_id=asset.asset_id,
                                    source_hash=revision.source_hash, event_type="twin_registered",
                                    data={"parent_binding_id": binding_id})
-            elif row["asset_json"] != _asset_json(asset) or row["parent_binding_id"] != binding_id:
+            elif (row["asset_commitment_json"] != _asset_commitment_json(asset) or
+                  row["parent_binding_id"] != binding_id):
                 raise TwinConflictError("twin registration conflicts with canonical binding")
             con.commit()
         except Exception:
@@ -485,7 +499,7 @@ class TwinRecursionLedger:
                           (revision.account_id, revision.asset.asset_id, revision.source_hash)).fetchone()
         if row is None:
             raise TwinConflictError("source revision is not registered")
-        if row["asset_json"] != _asset_json(revision.asset):
+        if row["asset_commitment_json"] != _asset_commitment_json(revision.asset):
             raise TwinConflictError("source revision exact bytes do not match registration")
         return cast(sqlite3.Row, row)
 
@@ -551,9 +565,14 @@ class TwinRecursionLedger:
                 previous = expected
                 expected_sequence += 1
             for source in con.execute("SELECT * FROM twin_sources"):
-                asset = _asset_from_json(source["asset_json"])
-                revision = SourceRevision(source["account_id"], asset)
-                if source["asset_id"] != asset.asset_id or source["source_hash"] != revision.source_hash or source["content_hash"] != revision.content_hash:
+                commitment = _asset_commitment(source["asset_commitment_json"])
+                if (source["asset_id"] != commitment["asset_id"] or
+                        source["source_hash"] != commitment["source_hash"] or
+                        source["content_hash"] != commitment["content_hash"] or
+                        type(commitment["content_length"]) is not int or
+                        not 24 <= int(commitment["content_length"]) <= 200_000 or
+                        type(commitment["source_event_ids"]) is not list or
+                        not commitment["source_event_ids"]):
                     raise TwinIntegrityError("source revision identity mismatch")
                 binding = con.execute("SELECT * FROM twin_bindings WHERE account_id=? AND asset_id=? AND source_hash=?",
                                       (source["account_id"], source["asset_id"], source["source_hash"])).fetchone()
@@ -567,13 +586,13 @@ class TwinRecursionLedger:
                     parent = con.execute("SELECT * FROM twin_bindings WHERE binding_id=?", (source["parent_binding_id"],)).fetchone()
                     if parent is None or source["account_id"] != parent["account_id"] or source["asset_id"] != parent["twin_id"] or source["state"] != "ready" or binding is not None:
                         raise TwinIntegrityError("derived twin linkage mismatch")
-                    parent_source = con.execute("SELECT asset_json FROM twin_sources WHERE account_id=? AND asset_id=? AND source_hash=?",
+                    parent_source = con.execute("SELECT asset_commitment_json FROM twin_sources WHERE account_id=? AND asset_id=? AND source_hash=?",
                                                 (parent["account_id"], parent["asset_id"], parent["source_hash"])).fetchone()
-                    parent_asset = _asset_from_json(parent_source["asset_json"])
+                    parent_commitment = _asset_commitment(parent_source["asset_commitment_json"])
                     twin_event = "evt-twin-" + _sha(parent["binding_id"])[:32]
-                    expected_asset = AssetContent(parent["twin_id"], f"Twin notes: {parent_asset.title}",
+                    expected_asset = AssetContent(parent["twin_id"], f"Twin notes: {parent_commitment['title']}",
                                                   parent["body_json"], "twin", (twin_event,))
-                    if source["asset_json"] != _asset_json(expected_asset):
+                    if source["asset_commitment_json"] != _asset_commitment_json(expected_asset):
                         raise TwinIntegrityError("derived twin bytes mismatch")
                     continue
                 expected_job = _digest("job", source["account_id"], source["asset_id"], source["source_hash"])
@@ -598,11 +617,17 @@ class TwinRecursionLedger:
                             receipt.model_id != binding["model_id"] or
                             receipt.source_content_hash != source["content_hash"] or
                             receipt.source_asset_hash != source["source_hash"] or
-                            receipt.source_event_ids != asset.source_event_ids or
+                            list(receipt.source_event_ids) != commitment["source_event_ids"] or
                             receipt.proposal_payload_hash != binding["proposal_hash"]):
                         raise TwinIntegrityError("receipt binding mismatch")
-                    if (proposal_receipt_hash(asset, proposal) != binding["proposal_hash"] or
-                            _canonical_json(_expected_body(asset, proposal).model_dump(mode="json")) != binding["body_json"]):
+                    completion_asset = AssetContent(
+                        str(commitment["asset_id"]), str(commitment["title"]),
+                        "x" * int(commitment["content_length"]),
+                        str(commitment["content_class"]),
+                        tuple(commitment["source_event_ids"]),  # type: ignore[arg-type]
+                    )
+                    if (proposal_receipt_hash(completion_asset, proposal) != binding["proposal_hash"] or
+                            _canonical_json(_expected_body(completion_asset, proposal).model_dump(mode="json")) != binding["body_json"]):
                         raise TwinIntegrityError("proposal and canonical body disagree")
                     if (_canonical_json(completion_value) != binding["completion_json"] or
                             _sha(binding["completion_json"]) != binding["completion_digest"] or

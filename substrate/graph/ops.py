@@ -194,9 +194,17 @@ def insert_document(
         ``document.loaded`` handling idempotent.
     """
     _assert_write_locked(con)
+    # Runtime-local to keep graph module initialization independent from the
+    # signed twin materializer, which itself uses graph canonicalization.
+    from substrate.twin_recursion.source_registration import (
+        build_twin_source_envelope,
+        stamp_existing_document,
+    )
+
     if not 1 <= source_tier <= 5:
         raise ValueError(f"source_tier must be 1..5, got {source_tier}")
     if on_conflict == "ignore" and _exists(con, "documents", "document_id", document_id):
+        stamp_existing_document(con, document_id)
         return document_id
 
     # Deny-by-default: a third-party document_type with no explicit content_class
@@ -208,16 +216,25 @@ def insert_document(
     if defaulted_to_personal_reading:
         content_class = PERSONAL_READING_CONTENT_CLASS
 
+    twin_source_envelope = build_twin_source_envelope(
+        document_id=document_id,
+        title=title,
+        raw_text=raw_text,
+        document_type=document_type,
+        owner_user_id=owner_user_id,
+    ).to_json()
+
     con.execute(
         "INSERT INTO documents "
         "(document_id, source_uri, title, author, published_at, "
         " source_tier, document_type, investigation_id, raw_text, metadata, "
-        " content_class, ip_holder_id, owner_user_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " content_class, ip_holder_id, owner_user_id, twin_source_envelope) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         [
             document_id, source_uri, title, author, published_at,
             int(source_tier), document_type, investigation_id, raw_text,
             _maybe_json(metadata), content_class, ip_holder_id, owner_user_id,
+            twin_source_envelope,
         ],
     )
 
@@ -295,6 +312,22 @@ def update_document_gate_columns(
         touched_indexed.append("ip_holder_id")
     if null_raw_text:
         sets.append("raw_text = NULL")
+        from substrate.twin_recursion.source_registration import build_twin_source_envelope
+
+        source = con.execute(
+            "SELECT title,document_type,owner_user_id FROM documents WHERE document_id=?",
+            [document_id],
+        ).fetchone()
+        if source is not None:
+            envelope = build_twin_source_envelope(
+                document_id=document_id,
+                title=None if source[0] is None else str(source[0]),
+                raw_text=None,
+                document_type=str(source[1]),
+                owner_user_id=str(source[2]),
+            ).to_json()
+            sets.append("twin_source_envelope = ?")
+            params.append(envelope)
     if not sets:
         return
     params.append(document_id)

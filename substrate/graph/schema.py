@@ -1347,6 +1347,14 @@ _V17_OUTBOX_COLUMNS = {
 }
 
 
+# V20 — one same-row declaration for every canonical document's recursive
+# twin obligation. Existing rows remain NULL until the locked backfill derives
+# declarations from their stored bytes; the completeness verifier rejects NULL.
+ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL = """
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS twin_source_envelope TEXT;
+"""
+
+
 ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL = """
 CREATE TABLE IF NOT EXISTS event_consumer_events (
     consumer_name TEXT NOT NULL,
@@ -1723,6 +1731,10 @@ def init_database(con: LockedConnection) -> None:
     _repair_empty_partial_v19_receipts(con)
     _repair_empty_partial_v19_frontiers(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V20_TWIN_SOURCE_ENVELOPE_SQL)
+    from substrate.twin_recursion.source_registration import backfill_twin_source_envelopes
+
+    backfill_twin_source_envelopes(con)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1760,6 +1772,9 @@ def _schema_is_present(db_path: str) -> bool:
             "SELECT (EXISTS (SELECT 1 FROM information_schema.columns "
             "WHERE table_schema='main' AND table_name='nodes' "
             "AND column_name='owner_user_id') AND EXISTS (SELECT 1 FROM "
+            "information_schema.columns WHERE table_schema='main' AND "
+            "table_name='documents' AND column_name='twin_source_envelope') AND "
+            "NOT EXISTS (SELECT 1 FROM documents WHERE twin_source_envelope IS NULL) AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
             "AND table_name='multimedia_twin_runs') AND EXISTS (SELECT 1 FROM "
             "information_schema.tables WHERE table_schema='main' "
