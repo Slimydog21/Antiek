@@ -454,43 +454,47 @@
     # The API startup path is deliberately read-only, so deploying code alone
     # does not apply newly-added DuckDB tables or columns. The initializer is
     # idempotent and uses the same writer coordination as request DML.
-    - name: stop antiek for graph schema migration
-      ansible.builtin.systemd:
-        name: antiek.service
-        state: stopped
-      tags: [code]
+    - name: migrate and verify graph schema before restarting into new code
+      block:
+        - name: initialize graph schema
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_install_dir }}/.venv/bin/python"
+              - -m
+              - substrate.graph.schema
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_install_dir }}"
+          become_user: "{{ antiek_user }}"
+          changed_when: false
 
-    - name: initialize graph schema
-      ansible.builtin.command:
-        argv:
-          - "{{ antiek_install_dir }}/.venv/bin/python"
-          - -m
-          - substrate.graph.schema
-          - --db-path
-          - "{{ antiek_state_dir }}/antiek.duckdb"
-        chdir: "{{ antiek_install_dir }}"
-      become_user: "{{ antiek_user }}"
-      changed_when: false
-      tags: [code]
+        - name: verify crash-recoverable write outbox schema
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_install_dir }}/.venv/bin/python"
+              - tools/verify_write_event_outbox_schema.py
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_install_dir }}"
+          become_user: "{{ antiek_user }}"
+          changed_when: false
 
-    - name: verify crash-recoverable write outbox schema
-      ansible.builtin.command:
-        argv:
-          - "{{ antiek_install_dir }}/.venv/bin/python"
-          - tools/verify_write_event_outbox_schema.py
-          - --db-path
-          - "{{ antiek_state_dir }}/antiek.duckdb"
-        chdir: "{{ antiek_install_dir }}"
-      become_user: "{{ antiek_user }}"
-      changed_when: false
-      tags: [code]
+        - name: verify durable event consumer schema
+          ansible.builtin.command:
+            argv:
+              - "{{ antiek_install_dir }}/.venv/bin/python"
+              - tools/verify_event_consumer_schema.py
+              - --db-path
+              - "{{ antiek_state_dir }}/antiek.duckdb"
+            chdir: "{{ antiek_install_dir }}"
+          become_user: "{{ antiek_user }}"
+          changed_when: false
 
-    # Keep --tags code self-contained: a successful schema migration must not
-    # leave the API stopped merely because the later restart tag was omitted.
-    - name: start antiek after graph schema migration
-      ansible.builtin.systemd:
-        name: antiek.service
-        state: started
+        - name: restart antiek into verified schema and new code
+          ansible.builtin.systemd:
+            name: antiek.service
+            state: restarted
+
       tags: [code]
 
     - name: restart antiek
@@ -526,6 +530,22 @@
       retries: 3
       delay: 2
       until: live_write_outbox_schema.rc == 0
+      changed_when: false
+      tags: [verify]
+
+    - name: verify durable event consumer schema on live service
+      ansible.builtin.command:
+        argv:
+          - "{{ antiek_install_dir }}/.venv/bin/python"
+          - tools/verify_event_consumer_schema.py
+          - --db-path
+          - "{{ antiek_state_dir }}/antiek.duckdb"
+        chdir: "{{ antiek_install_dir }}"
+      become_user: "{{ antiek_user }}"
+      register: live_event_consumer_schema
+      retries: 3
+      delay: 2
+      until: live_event_consumer_schema.rc == 0
       changed_when: false
       tags: [verify]
 

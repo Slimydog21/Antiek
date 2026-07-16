@@ -6547,6 +6547,111 @@ def create_app(
     from interfaces.research.api.supersession_routes import supersession_router
     app.include_router(supersession_router)
 
+    def _recover_knowledge_event_projector() -> None:
+        import threading
+
+        # Recovery is a startup reader/consumer, not a migration owner. Route
+        # handlers retain their legacy lazy-init seam for now; this worker must
+        # wait for deployment to provide the complete schema.
+        from substrate.graph import default_db_path
+
+        db_path = default_db_path()
+        stop_recovery = threading.Event()
+        app.state.knowledge_event_recovery_stop = stop_recovery
+        app.state.knowledge_event_recovery = {
+            "status": "catching_up",
+            "catching_up": True,
+        }
+
+        def run_recovery() -> None:
+            from substrate.event_log import PhysicalTrajectoryError
+            from substrate.graph.knowledge_event_projector import (
+                EventConsumerCorruption,
+                recover,
+            )
+            from substrate.graph.schema import SchemaCorruptionError
+
+            transient_failures = 0
+            while not stop_recovery.is_set():
+                try:
+                    report = recover(
+                        db_path=db_path,
+                        candidate_limit=100,
+                        wall_time_s=0.5,
+                        should_stop=stop_recovery.is_set,
+                    )
+                    transient_failures = 0
+                    app.state.knowledge_event_recovery = {
+                        "status": "catching_up" if report.catching_up else "current",
+                        **report.as_dict(),
+                    }
+                    if not report.catching_up:
+                        # Other processes may append after startup. The durable
+                        # consumer remains a low-frequency poller so delivery
+                        # does not depend on an in-process broadcaster wake-up.
+                        if stop_recovery.wait(0.5):
+                            break
+                        continue
+                    stop_recovery.wait(0.05)
+                except (
+                    EventConsumerCorruption,
+                    PhysicalTrajectoryError,
+                    SchemaCorruptionError,
+                ) as exc:
+                    app.state.knowledge_event_recovery = {
+                        "status": "error",
+                        "catching_up": True,
+                        "terminal": True,
+                        "error_class": type(exc).__name__,
+                    }
+                    print(
+                        f"Knowledge event projection recovery stopped: {exc!r}",
+                        file=sys.stderr,
+                    )
+                    break
+                except Exception as exc:
+                    transient_failures += 1
+                    delay = min(0.05 * (2 ** (transient_failures - 1)), 0.5)
+                    app.state.knowledge_event_recovery = {
+                        "status": "retrying",
+                        "catching_up": True,
+                        "terminal": False,
+                        "error_class": type(exc).__name__,
+                        "retry_count": transient_failures,
+                        "retry_in_s": delay,
+                    }
+                    if stop_recovery.wait(delay):
+                        break
+
+        worker = threading.Thread(
+            target=run_recovery,
+            name="knowledge-event-recovery",
+            daemon=True,
+        )
+        app.state.knowledge_event_recovery_worker = worker
+        worker.start()
+
+    def _stop_knowledge_event_projector() -> None:
+        stop = getattr(app.state, "knowledge_event_recovery_stop", None)
+        worker = getattr(app.state, "knowledge_event_recovery_worker", None)
+        if stop is not None:
+            stop.set()
+        if worker is not None:
+            # Providers are outside our cancellation boundary. Give an active
+            # graph transaction a bounded grace period; DuckDB commits it
+            # atomically or rolls it back when systemd terminates the process.
+            # Recovery re-checks the stop signal after every provider call, so
+            # a blocked provider cannot begin a new mutation after shutdown.
+            worker.join(timeout=1.0)
+            if worker.is_alive():
+                app.state.knowledge_event_recovery = {
+                    "status": "stopping",
+                    "catching_up": True,
+                    "worker_alive": True,
+                }
+
+    app.router.on_startup.append(_recover_knowledge_event_projector)
+    app.router.on_shutdown.append(_stop_knowledge_event_projector)
     return app
 
 
