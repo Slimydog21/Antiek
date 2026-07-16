@@ -14,6 +14,7 @@ import { ProductsLauncher } from "./ProductsLauncher";
 import IglooMark from "../brand/werner/marks/IglooMark";
 import { KeyChip } from "../components/hotkeys/KeyChip";
 import {
+import { emitWernerExperience } from "../werner/reactionBus";
   bindingForProduct,
   emitProductActivate,
   BUILTIN_BINDINGS,
@@ -342,7 +343,7 @@ export function NavRail({ orientation = "bottom" }: NavRailProps = {}) {
       icon={<I d={UTIL_ICONS.search} size={15} />}
       label="Search"
       title="Search · ⌘K"
-      onClick={openSearch}
+      onClick={() => { emitWernerExperience("highlight"); openSearch(); }}
       variant="utility"
       orientation={orientation}
       // SPR-07 M3 — Search opens the command palette, whose canonical binding

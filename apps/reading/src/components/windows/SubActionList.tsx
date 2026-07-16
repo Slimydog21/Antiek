@@ -8,6 +8,7 @@ import {
 } from "../../shell/workflowTaxonomy";
 import { useWindows } from "../../workspace/windowsStore";
 import { useInWindow } from "./windowHostContext";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * SubActionList — the sub-action window PAGE (SPR-04 M1, the windows-default
@@ -120,7 +121,7 @@ export default function SubActionList({ workflow, __windowId }: SubActionListPro
                     type="button"
                     data-subaction-id={m.id}
                     disabled={!enabled}
-                    onClick={() => onRow(m)}
+                    onClick={() => { emitWernerExperience("highlight"); onRow(m); }}
                     title={m.blurb}
                     className={
                       "w-full text-left px-2.5 py-1.5 rounded flex items-center gap-2 " +
