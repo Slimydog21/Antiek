@@ -52,6 +52,18 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 - Full-bleed scene art (not alpha character mark) on ThoughtPartnerPanel
 - CTA emits Werner `highlight` living-TV beat
 
+## Living-TV densify wave (2026-07-16 continuation)
+
+| Delta | Tip | Behavior |
+|---|---|---|
+| Living-TV invent v2 → LGH strip | `8017e9d7a` | `werner_living_tv_session_v1.webp` on wait host; highlight on opt-in |
+| `piece_started` product experience | `505adcc1f` | Write create → happy craft emote |
+| Home doors PRODUCT_ACTIVATE | `c67016794` | `emoteForProductDoor` before navigate |
+| Library open highlight | `df7069737` | shelf open/openAtPage → curious glance |
+| Speak thinking brand | `a5c8b6f44` | `speak-home-werner-brand` session mood |
+
+PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
+
 ## Living-TV product-door emotes (choreography)
 
 | Product id | Emote |

@@ -70,6 +70,23 @@ describe("SpeakIndex — the warm door", () => {
     expect(createPersonMock).toHaveBeenCalledWith("my grandmother");
   });
 
+  it("emits living-TV piece_started when a remembrance project is created", async () => {
+    createPersonMock.mockResolvedValue("proj-abc");
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    mount();
+    const input = await screen.findByLabelText(/who do you want to remember/i);
+    fireEvent.change(input, { target: { value: "my grandmother" } });
+    fireEvent.click(screen.getByRole("button", { name: /start their story/i }));
+    await waitFor(() => expect(screen.getByText("PROJECT PAGE")).toBeTruthy());
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("piece_started");
+  });
+
   it("shows an honest failure (no fake landing) when create fails", async () => {
     createPersonMock.mockRejectedValue(new Error("no provider"));
     mount();

@@ -14,6 +14,7 @@ import {
 import PublicLane from "../Speak/lanes/PublicLane";
 import YoursLane from "../Speak/lanes/YoursLane";
 import AIActionFailure from "../../shared/AIActionFailure";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Speak home — the warm one-door entry (Product Depth SPR-08 M1).
@@ -104,6 +105,8 @@ export default function SpeakIndex() {
     try {
       const id = await createPerson(name);
       track("speak_project_created");
+      // Living-TV: starting a remembrance is a happy craft beat.
+      emitWernerExperience("piece_started");
       navigate(`/speak/${id}`);
     } catch {
       setCreateFailed(true);
