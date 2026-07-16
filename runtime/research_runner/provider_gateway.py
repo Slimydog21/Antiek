@@ -19,6 +19,7 @@ from typing import Any, Generic, Protocol, TypeVar
 from substrate.research_spend import (
     FallbackChainManifest,
     FallbackRouteManifest,
+    FallbackSpendApproval,
     IdempotencyConflict,
     InvalidTransition,
     PaidHoldIntent,
@@ -188,6 +189,24 @@ class PaidFallbackRoute(Generic[T]):  # noqa: UP046 - Antiek supports Python 3.1
 
 
 @dataclass(frozen=True)
+class PaidFallbackPreparation:
+    chain_id: str
+    manifest_sha256: str
+    ceiling_cents: int
+    currency: str
+    maximum_chain_exposure_cents: int
+
+
+@dataclass(frozen=True)
+class _FallbackPlan:
+    manifest: FallbackChainManifest
+    projections: tuple[CostProjection, ...]
+    route_intents: tuple[PaidHoldIntent, ...]
+    chain_identity: object
+    authorities: tuple[PaidRouteAuthorityIdentity, ...]
+
+
+@dataclass(frozen=True)
 class PaidFallbackAttempt:
     fallback_index: int
     provider: str
@@ -321,8 +340,123 @@ class ResearchProviderGateway:
         logical_operation_id: str,
         operation: object,
         routes: tuple[PaidFallbackRoute[T], ...],
+        approval_id: str | None = None,
     ) -> PaidFallbackResult[T]:
-        """Dispatch ordered routes; only authoritative release advances."""
+        """Dispatch an exactly approved ordered chain; no implicit authority exists."""
+        plan = self._fallback_plan(
+            binding, logical_operation_id=logical_operation_id, operation=operation,
+            routes=routes,
+        )
+        self.ledger.register_fallback_manifest(
+            deterministic_key("research-fallback-manifest-command", plan.manifest.chain_id),
+            binding,
+            plan.manifest,
+        )
+        if approval_id is None:
+            raise DispatchIneligible("exact durable fallback approval is required")
+        self.ledger.require_fallback_approval(approval_id, binding, plan.manifest)
+
+        projections = plan.projections
+        route_intents = plan.route_intents
+        chain_identity = plan.chain_identity
+        authorities = plan.authorities
+        manifest = plan.manifest
+
+        attempts: list[PaidFallbackAttempt] = []
+        requested_provider = authorities[0].provider_id
+        requested_model = authorities[0].model
+        for index, (route, projection, authority, route_intent) in enumerate(
+            zip(routes, projections, authorities, route_intents, strict=True)
+        ):
+            try:
+                result = self._dispatch_paid_projected(
+                    binding,
+                    logical_operation_id=f"{logical_operation_id}:fallback:{index}",
+                    projection_request=route.projection_request,
+                    projection=projection,
+                    operation=operation,
+                    identity_payload=chain_identity,
+                    reservation_identity=(binding.run_id, logical_operation_id, f"fallback:{index}"),
+                    provider_route_identity=canonical_digest(authority),
+                    precomputed_intent=route_intent,
+                    fallback_approval=(approval_id, binding, manifest),
+                    adapter=route.adapter,
+                )
+            except ProviderOutcomeUnknown as exc:
+                raise PaidFallbackOutcomeUnknown(
+                    exc.hold_id, fallback_index=index, provider=route.adapter.provider,
+                    model=route.adapter.model, completed_attempts=tuple(attempts),
+                ) from exc
+            attempt = PaidFallbackAttempt(
+                fallback_index=index, provider=route.adapter.provider,
+                model=route.adapter.model, hold=result.hold, recovered=result.recovered,
+            )
+            attempts.append(attempt)
+            if result.hold.state is PaidHoldState.SETTLED:
+                return PaidFallbackResult(
+                    outcome=PaidFallbackOutcome.SETTLED,
+                    requested_provider=requested_provider, requested_model=requested_model,
+                    actual_provider=route.adapter.provider, actual_model=route.adapter.model,
+                    fallback_index=index, attempts=tuple(attempts), run=result.run,
+                    value=result.value, value_available=not result.recovered,
+                )
+            if result.hold.state is not PaidHoldState.RELEASED:
+                raise RuntimeError("paid fallback attempt ended in a non-terminal state")
+        return PaidFallbackResult(
+            outcome=PaidFallbackOutcome.EXHAUSTED,
+            requested_provider=requested_provider, requested_model=requested_model,
+            actual_provider=None, actual_model=None, fallback_index=None,
+            attempts=tuple(attempts), run=self.ledger.balance(binding.run_id),
+        )
+
+    def prepare_paid_fallbacks(
+        self,
+        binding: RunBinding,
+        *,
+        logical_operation_id: str,
+        operation: object,
+        routes: tuple[PaidFallbackRoute[T], ...],
+    ) -> PaidFallbackPreparation:
+        """Persist an immutable plan without reserving or contacting a provider."""
+        plan = self._fallback_plan(
+            binding, logical_operation_id=logical_operation_id, operation=operation,
+            routes=routes,
+        )
+        self.ledger.register_fallback_manifest(
+            deterministic_key("research-fallback-manifest-command", plan.manifest.chain_id),
+            binding, plan.manifest,
+        )
+        run = self.ledger.balance(binding.run_id)
+        return PaidFallbackPreparation(
+            chain_id=plan.manifest.chain_id,
+            manifest_sha256=canonical_digest(plan.manifest),
+            ceiling_cents=run.ceiling_cents,
+            currency=binding.currency,
+            maximum_chain_exposure_cents=max(
+                route.projected_max_cents for route in plan.manifest.routes
+            ),
+        )
+
+    def approve_paid_fallbacks(
+        self,
+        command_key: str,
+        binding: RunBinding,
+        preparation: PaidFallbackPreparation,
+    ) -> FallbackSpendApproval:
+        return self.ledger.issue_fallback_approval(
+            command_key, binding, preparation.chain_id,
+            expected_manifest_sha256=preparation.manifest_sha256,
+            expected_ceiling_cents=preparation.ceiling_cents,
+        )
+
+    def _fallback_plan(
+        self,
+        binding: RunBinding,
+        *,
+        logical_operation_id: str,
+        operation: object,
+        routes: tuple[PaidFallbackRoute[T], ...],
+    ) -> _FallbackPlan:
         if not 1 <= len(routes) <= 16:
             raise DispatchIneligible("paid fallback chain must contain 1 to 16 routes")
         if not logical_operation_id:
@@ -430,76 +564,12 @@ class ResearchProviderGateway:
             operation_digest=operation_digest,
             routes=tuple(route_manifests),
         )
-        self.ledger.register_fallback_manifest(
-            deterministic_key("research-fallback-manifest-command", chain_id),
-            binding,
-            manifest,
-        )
-
-        attempts: list[PaidFallbackAttempt] = []
-        requested_provider = authorities[0].provider_id
-        requested_model = authorities[0].model
-        for index, (route, projection, authority, route_intent) in enumerate(
-            zip(routes, projections, authorities, route_intents, strict=True)
-        ):
-            try:
-                result = self._dispatch_paid_projected(
-                    binding,
-                    logical_operation_id=f"{logical_operation_id}:fallback:{index}",
-                    projection_request=route.projection_request,
-                    projection=projection,
-                    operation=operation,
-                    identity_payload=chain_identity,
-                    reservation_identity=(
-                        binding.run_id,
-                        logical_operation_id,
-                        f"fallback:{index}",
-                    ),
-                    provider_route_identity=canonical_digest(authority),
-                    precomputed_intent=route_intent,
-                    adapter=route.adapter,
-                )
-            except ProviderOutcomeUnknown as exc:
-                raise PaidFallbackOutcomeUnknown(
-                    exc.hold_id,
-                    fallback_index=index,
-                    provider=route.adapter.provider,
-                    model=route.adapter.model,
-                    completed_attempts=tuple(attempts),
-                ) from exc
-            attempt = PaidFallbackAttempt(
-                fallback_index=index,
-                provider=route.adapter.provider,
-                model=route.adapter.model,
-                hold=result.hold,
-                recovered=result.recovered,
-            )
-            attempts.append(attempt)
-            if result.hold.state is PaidHoldState.SETTLED:
-                return PaidFallbackResult(
-                    outcome=PaidFallbackOutcome.SETTLED,
-                    requested_provider=requested_provider,
-                    requested_model=requested_model,
-                    actual_provider=route.adapter.provider,
-                    actual_model=route.adapter.model,
-                    fallback_index=index,
-                    attempts=tuple(attempts),
-                    run=result.run,
-                    value=result.value,
-                    value_available=not result.recovered,
-                )
-            if result.hold.state is not PaidHoldState.RELEASED:
-                raise RuntimeError("paid fallback attempt ended in a non-terminal state")
-
-        return PaidFallbackResult(
-            outcome=PaidFallbackOutcome.EXHAUSTED,
-            requested_provider=requested_provider,
-            requested_model=requested_model,
-            actual_provider=None,
-            actual_model=None,
-            fallback_index=None,
-            attempts=tuple(attempts),
-            run=self.ledger.balance(binding.run_id),
+        return _FallbackPlan(
+            manifest=manifest,
+            projections=tuple(projections),
+            route_intents=tuple(route_intents),
+            chain_identity=chain_identity,
+            authorities=tuple(authorities),
         )
 
     def _dispatch_paid_projected(
@@ -514,6 +584,7 @@ class ResearchProviderGateway:
         reservation_identity: tuple[str, ...] | None = None,
         provider_route_identity: str | None = None,
         precomputed_intent: PaidHoldIntent | None = None,
+        fallback_approval: tuple[str, RunBinding, FallbackChainManifest] | None = None,
         adapter: HardCeilingProviderAdapter[T],
     ) -> ProviderDispatchResult[T]:
         self._require_eligible(projection, projection_request, adapter)
@@ -548,13 +619,21 @@ class ResearchProviderGateway:
         intent = precomputed_intent or derived_intent
         if precomputed_intent is not None and precomputed_intent != derived_intent:
             raise RuntimeError("precomputed fallback route identity drifted before dispatch")
-        hold = self.ledger.reserve_paid(
-            deterministic_key("research-reserve-command", reservation_key),
-            binding,
-            intent,
-            projection.reservation_cents,
-        )
         with self.ledger.dispatch_guard(reservation_key) as database_identity:
+            # Approval is revalidated inside the same process/database guard
+            # immediately before reservation. Later-route recovery therefore
+            # cannot race a changed or revoked authority boundary.
+            if fallback_approval is not None:
+                approval_id, approval_binding, approval_manifest = fallback_approval
+                self.ledger.require_fallback_approval(
+                    approval_id, approval_binding, approval_manifest
+                )
+            hold = self.ledger.reserve_paid(
+                deterministic_key("research-reserve-command", reservation_key),
+                binding,
+                intent,
+                projection.reservation_cents,
+            )
             hold = self.ledger.hold(hold.hold_id)
             if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
                 return ProviderDispatchResult(

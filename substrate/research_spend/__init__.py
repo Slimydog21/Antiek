@@ -2,6 +2,7 @@
 
 from .ledger import (
     BindingConflict,
+    DispatchApprovalRequired,
     FallbackChainHistory,
     FallbackChainHistoryPage,
     FallbackChainManifest,
@@ -10,6 +11,7 @@ from .ledger import (
     FallbackRouteHistory,
     FallbackRouteManifest,
     FallbackRouteState,
+    FallbackSpendApproval,
     IdempotencyConflict,
     InvalidTransition,
     LedgerIntegrityError,
@@ -33,10 +35,12 @@ from .ledger import (
 
 __all__ = [
     "BindingConflict",
+    "DispatchApprovalRequired",
     "FallbackChainHistory",
     "FallbackChainHistoryPage",
     "FallbackChainManifest",
     "FallbackChainOutcome",
+    "FallbackSpendApproval",
     "FallbackHistoryCursor",
     "FallbackRouteHistory",
     "FallbackRouteManifest",
