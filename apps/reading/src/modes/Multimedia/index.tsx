@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
+import productionBayEnvironment from "../../brand/werner/multimedia/multimedia_production_bay_environment_v1.webp";
+import "./multimedia-production-bay.css";
+
 import {
   approveMultimediaDryRun,
   authorizeMultimediaNarration,
@@ -198,7 +201,17 @@ function distributeMinutes(total: number): number[] {
   });
 }
 
-export default function Multimedia() {
+export interface MultimediaProps {
+  /** Injectable list transport for deterministic whole-surface review. */
+  loadAssets?: typeof listMultimediaAssets;
+  /** Keeps review fixtures inert while production retains its existing authority. */
+  executionEnabled?: boolean;
+}
+
+export default function Multimedia({
+  loadAssets = listMultimediaAssets,
+  executionEnabled = true,
+}: MultimediaProps = {}) {
   const openRequestId = useRef(0);
   const evidenceRequestId = useRef(0);
   const productionRequestId = useRef(0);
@@ -295,7 +308,7 @@ export default function Multimedia() {
   useEffect(() => {
     let cancelled = false;
     setPendingCommand("list");
-    listMultimediaAssets()
+    loadAssets()
       .then((result) => {
         if (cancelled) return;
         setAssets(result.assets);
@@ -311,7 +324,7 @@ export default function Multimedia() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [loadAssets]);
 
   useEffect(() => {
     let cancelled = false;
@@ -443,7 +456,7 @@ export default function Multimedia() {
   }
 
   async function refreshAssetList() {
-    const result = await listMultimediaAssets();
+    const result = await loadAssets();
     setAssets(result.assets);
   }
 
@@ -833,10 +846,20 @@ export default function Multimedia() {
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-ice-0 dark:bg-charcoal-2">
-      <main className="min-h-0 flex-1 overflow-y-auto">
-        <div className="mx-auto grid max-w-7xl grid-cols-1 gap-4 px-5 py-5 xl:grid-cols-[360px_minmax(0,1fr)_320px]">
-          <section className="space-y-4 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-2">
+    <div className="multimedia-production-bay flex h-full min-h-0 flex-col">
+      <img
+        src={productionBayEnvironment}
+        alt=""
+        aria-hidden="true"
+        className="multimedia-production-bay__environment"
+      />
+      <span
+        className="multimedia-production-bay__veil"
+        aria-hidden="true"
+      />
+      <main className="multimedia-production-bay__main min-h-0 flex-1 overflow-y-auto">
+        <div className="multimedia-production-bay__grid mx-auto grid max-w-7xl grid-cols-1 gap-4 px-5 py-5 xl:grid-cols-[360px_minmax(0,1fr)_320px]">
+          <section className="multimedia-production-bay__panel space-y-4 rounded-md border border-rule p-4">
             <header>
               <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">
                 Multimedia
@@ -982,13 +1005,13 @@ export default function Multimedia() {
                   {estimatedCost}
                 </p>
               </div>
-              <LemonButton type="button" variant="primary" onClick={generatePlan} disabled={pendingCommand !== null || knowledgeMutationPending}>
+              <LemonButton type="button" variant="primary" onClick={generatePlan} disabled={!executionEnabled || pendingCommand !== null || knowledgeMutationPending}>
                 {pendingCommand === "create" ? "Creating..." : "Review plan"}
               </LemonButton>
             </div>
           </section>
 
-          <section className="min-w-0 space-y-4 rounded-md border border-rule bg-ice-1 p-4 dark:border-charcoal-1 dark:bg-charcoal-2">
+          <section className="multimedia-production-bay__panel min-w-0 space-y-4 rounded-md border border-rule p-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <p className="font-mono text-[11px] uppercase text-shadow-2 dark:text-moonlight">Plan review</p>
@@ -1398,7 +1421,7 @@ export default function Multimedia() {
             )}
           </section>
 
-          <aside className="space-y-4">
+          <aside className="multimedia-production-bay__tools min-w-0 space-y-4">
             <ReconciliationPanel assetId={selectedRecord?.asset.asset_id ?? null} />
             <StatusPanel
               state={renderState}

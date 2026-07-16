@@ -126,6 +126,12 @@ const STORIES: string[] = [
   "loop-1-notebookeditor--with-sample-content",
   // Workspace demo
   "workspace-demo--scene",
+  // Multimedia Production Bay — visual shell, deterministic states, and narrow bound.
+  "multimedia-production-bay--ready-empty",
+  "multimedia-production-bay--loading",
+  "multimedia-production-bay--safe-failure",
+  "multimedia-production-bay--night",
+  "multimedia-production-bay--narrow",
 ];
 
 type AxeViolation = {
@@ -176,10 +182,12 @@ async function main() {
     const narrow =
       story === "modes-substrate-atlas--narrow" ||
       story === "modes-igloo-directory--narrow" ||
-      story === "modes-expedition-cost-planner--narrow";
+      story === "modes-expedition-cost-planner--narrow" ||
+      story === "multimedia-production-bay--narrow";
     const dark =
       story === "modes-igloo-directory--night" ||
-      story === "modes-expedition-cost-planner--night";
+      story === "modes-expedition-cost-planner--night" ||
+      story === "multimedia-production-bay--night";
     const ctx = await browser.newContext({
       viewport: narrow
         ? { width: 375, height: 667 }
@@ -199,7 +207,9 @@ async function main() {
           ? ".expedition-planner"
           : story.startsWith("modes-substrate-atlas")
             ? ".substrate-atlas"
-            : ".igloo-directory";
+            : story.startsWith("multimedia-production-bay")
+              ? ".multimedia-production-bay"
+              : ".igloo-directory";
         const overflow = await page.evaluate(
           (selector) => ({
             clientWidth: document.documentElement.clientWidth,

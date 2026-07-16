@@ -1,0 +1,98 @@
+/* Authored atmosphere only. HTML retains every control and capability. */
+.multimedia-production-bay {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+  min-height: 100dvh;
+  overflow-x: clip;
+  background: var(--page);
+  color: var(--ink);
+}
+
+.multimedia-production-bay__environment,
+.multimedia-production-bay__veil {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+.multimedia-production-bay__environment {
+  z-index: -3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 40%;
+}
+
+.multimedia-production-bay__veil {
+  z-index: -2;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--page) 78%, transparent),
+    color-mix(in srgb, var(--page) 92%, transparent) 72%,
+    var(--page)
+  );
+}
+
+.multimedia-production-bay__main {
+  position: relative;
+  z-index: 0;
+}
+
+.multimedia-production-bay__panel,
+.multimedia-production-bay__tools > section {
+  border-color: var(--glass-border);
+  background: var(--glass-bg);
+  box-shadow: var(--shadow-z1);
+  backdrop-filter: blur(18px);
+}
+
+@media (prefers-color-scheme: dark) {
+  .multimedia-production-bay__environment {
+    filter: brightness(0.44) saturate(0.78);
+  }
+
+  .multimedia-production-bay__veil {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--page) 68%, transparent),
+      color-mix(in srgb, var(--page) 88%, transparent) 70%,
+      var(--page)
+    );
+  }
+}
+
+@media (max-width: 1279px) {
+  .multimedia-production-bay__tools {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 767px) {
+  .multimedia-production-bay__grid {
+    padding: 0.75rem;
+  }
+
+  .multimedia-production-bay__tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .multimedia-production-bay__panel,
+  .multimedia-production-bay__tools,
+  .multimedia-production-bay__tools > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .multimedia-production-bay *,
+  .multimedia-production-bay *::before,
+  .multimedia-production-bay *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
+  }
+}

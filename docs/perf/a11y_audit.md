@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-16T10:53:21.936Z
-**Stories audited:** 65
+**Run:** 2026-07-16T11:26:27.343Z
+**Stories audited:** 70
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -75,3 +75,8 @@
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |
+| `multimedia-production-bay--ready-empty` | 0 | — | — |
+| `multimedia-production-bay--loading` | 0 | — | — |
+| `multimedia-production-bay--safe-failure` | 0 | — | — |
+| `multimedia-production-bay--night` | 0 | — | — |
+| `multimedia-production-bay--narrow` | 0 | — | — |
