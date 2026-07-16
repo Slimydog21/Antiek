@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Antiek — Payout Signal House</title></head>
+<body><main>
+  <h1>Payout Signal House</h1>
+  <p>Status: execution contract for <code>/payouts</code>.</p>
+  <section><h2>Truth contract</h2><ul>
+    <li>The surface is read-only and shows at most 500 newest matching substrate rows.</li>
+    <li>Transferred contributes to provider-accepted totals only when a nonblank provider identifier is present; even then it does not prove settlement, recipient receipt, or external reconciliation.</li>
+    <li>Amounts on escrow, platform, failed, and pending rows are recorded decision amounts, not paid totals.</li>
+    <li>Summary values describe the returned query window, not all payout history.</li>
+    <li>The current endpoint catches database exceptions and returns an empty list, so an empty response cannot prove the ledger is healthy.</li>
+    <li>Raw provider exception notes are not rendered because they are untyped and may contain sensitive transport detail.</li>
+  </ul></section>
+  <section><h2>Interaction contract</h2><ul>
+    <li>Filters apply explicitly, with an exact recipient match and encoded query parameters.</li>
+    <li>Loading never becomes zero; malformed responses enter a safe unavailable state.</li>
+    <li>Stale responses cannot overwrite newer queries.</li>
+    <li>Unknown future statuses and transferred rows without provider identifiers render as unverified without inheriting accepted semantics.</li>
+    <li>Invalid times and unbounded identifiers degrade to bounded labels.</li>
+  </ul></section>
+  <section><h2>Product gap</h2><p>A future substrate sprint should stop collapsing read failures to empty, expose a typed availability envelope and cursor/page metadata, and replace raw provider exception notes with typed failure codes plus protected diagnostics references.</p></section>
+  <section><h2>Visual and verification contract</h2><p>ChatGPT Image provides a decorative Antarctic signal house; controls and audit claims remain responsive semantic HTML. Required evidence: focused tests, deterministic a11y-audit stories, typecheck, production build, full Storybook build, hardenx, independent model review, axe-core, LostPixel, Strix, and Cloudflare.</p></section>
+</main></body>
+</html>
