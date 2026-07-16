@@ -129,6 +129,33 @@ describe("Biography landing (SPR-11 M1)", () => {
     // Did not advance to the onboarding (no "started" headline).
     expect(screen.queryByTestId("biography-surfaces")).toBeNull();
   });
+
+  it("reuses the confirmed research folder when composition retry succeeds", async () => {
+    createBiographyMock
+      .mockRejectedValueOnce(new Error("composition unavailable"))
+      .mockResolvedValueOnce({
+        investigationId: "inv-bio-1",
+        deliverableId: "dlv-bio-1",
+        projectId: "proj-bio-1",
+      });
+    mount();
+    fireEvent.change(screen.getByLabelText(/whose biography/i), {
+      target: { value: "Maria" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /start a biography/i }));
+
+    expect(await screen.findByText(/research folder is safe/i)).toBeTruthy();
+    expect((screen.getByLabelText(/whose biography/i) as HTMLInputElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: /finish setup/i }));
+
+    await screen.findByTestId("biography-surfaces");
+    expect(startInvestigationMock).toHaveBeenCalledTimes(1);
+    expect(createBiographyMock).toHaveBeenCalledTimes(2);
+    expect(createBiographyMock).toHaveBeenLastCalledWith({
+      investigationId: "inv-bio-1",
+      subjectName: "Maria",
+    });
+  });
 });
 
 describe("Biography onboarding + invite-to-talk (SPR-11 M3)", () => {
@@ -159,6 +186,8 @@ describe("Biography onboarding + invite-to-talk (SPR-11 M3)", () => {
     expect(
       await screen.findByText(/interview\.antiek\.ai\/interview-abc/),
     ).toBeTruthy();
+    expect(screen.getByText(/if they choose to use it/i)).toBeTruthy();
+    expect(screen.queryByText(/invite sent/i)).toBeNull();
   });
 
   it("opening the Speak surface lands on THIS biography's project", async () => {

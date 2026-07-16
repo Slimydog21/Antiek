@@ -1,0 +1,91 @@
+.biography-memory-archive {
+  position: relative;
+  isolation: isolate;
+  min-height: 100%;
+}
+
+.biography-memory-archive::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: url(../../brand/werner/biography/biography_memory_archive_environment_v1.webp)
+    center / cover no-repeat;
+}
+
+.biography-memory-archive::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(244, 247, 250, 0.96), rgba(244, 247, 250, 0.84) 50%, rgba(244, 247, 250, 0.94));
+}
+
+.biography-memory-archive__content {
+  position: relative;
+  z-index: 1;
+  min-height: 100%;
+}
+
+.biography-memory-archive button:focus-visible,
+.biography-memory-archive input:focus-visible,
+.biography-memory-archive a:focus-visible {
+  outline: 3px solid #f5df24;
+  outline-offset: 3px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .biography-memory-archive::after {
+    background: linear-gradient(90deg, rgba(13, 16, 25, 0.96), rgba(13, 16, 25, 0.86) 50%, rgba(13, 16, 25, 0.95));
+  }
+}
+
+.biography-memory-archive--night .biography-memory-archive::after,
+.biography-memory-archive--night.biography-memory-archive::after {
+  background: linear-gradient(90deg, rgba(13, 16, 25, 0.96), rgba(13, 16, 25, 0.86) 50%, rgba(13, 16, 25, 0.95));
+}
+
+.biography-memory-archive--night .biography-memory-archive {
+  background: #0d1019;
+}
+
+.biography-memory-archive--night .biography-memory-archive :is(h1, h2),
+.biography-memory-archive--night .biography-memory-archive [role="status"] {
+  color: #f4f7fa;
+}
+
+.biography-memory-archive--night .biography-memory-archive :is(header, li, section) p {
+  color: #c8ced9;
+}
+
+.biography-memory-archive--night .biography-memory-archive :is(form, li, [data-testid="biography-surfaces"] > div) {
+  border-color: #343b49;
+  background: #1a1f2b;
+}
+
+@media (max-width: 640px) {
+  .biography-memory-archive__content {
+    padding: 1.5rem 1rem 3rem;
+  }
+
+  .biography-memory-archive header,
+  .biography-memory-archive form,
+  .biography-memory-archive section,
+  .biography-memory-archive code {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .biography-memory-archive [data-testid^="biography-open-"] {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .biography-memory-archive * {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+  }
+}
