@@ -219,5 +219,5 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 model decision tree | `cd2e143d4` | ModelDecisionBar product invent strip |
 | Imagine invent polish v2 midnight oil swarm | `65dd7c8e3` | MidnightOilPanel product invent |
 | Imagine invent polish v2 float research merge | `65dd7c8e3` | TwinNotes float-merge product invent |
-| Imagine invent polish v2 collective merge | (next tip) | SubAgentProposal + FloatMenu invent |
-| Imagine invent polish v2 book marketplace port | (next tip) | HouseSlot invent |
+| Imagine invent polish v2 collective merge | `9a5d3d37d` | SubAgentProposal + FloatMenu invent |
+| Imagine invent polish v2 book marketplace port | `9a5d3d37d` | HouseSlot invent |
