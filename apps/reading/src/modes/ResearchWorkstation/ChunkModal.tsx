@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { getChunk } from "../../lib/api";
 import type { ChunkResponse } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Modal showing the actual text of a chunk cited by a claim.
