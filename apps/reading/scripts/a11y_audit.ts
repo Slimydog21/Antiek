@@ -91,6 +91,11 @@ const STORIES: string[] = [
   // SPR-06 — the restructured shell (bottom nav) + the bottom rail itself.
   "navigation-appshell--empty",
   "shell-navrail-spr-04--bottom-rail",
+  // Model Observatory — production surface and responsive bounds.
+  "settings-model-observatory--production",
+  "settings-model-observatory--wide",
+  "settings-model-observatory--tablet",
+  "settings-model-observatory--mobile",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",

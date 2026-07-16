@@ -23,6 +23,8 @@ import {
 } from "../../api/settings";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
+import observatoryEnvironment from "../../brand/werner/settings/model_observatory_environment_v1.webp";
+import "./model-observatory.css";
 
 /**
  * Operator Settings — model inventory + budget + prompt projection (SPR-01).
@@ -43,15 +45,15 @@ export default function Settings() {
     window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   const [models, setModels] = useState<ModelRow[] | null>(null);
-  const [modelsError, setModelsError] = useState<string | null>(null);
+  const [modelsError, setModelsError] = useState(false);
   const [budget, setBudget] = useState<BudgetResponse | null>(null);
-  const [budgetError, setBudgetError] = useState<string | null>(null);
+  const [budgetError, setBudgetError] = useState(false);
   const [inputChars, setInputChars] = useState(2000);
   const [outTokens, setOutTokens] = useState(500);
   const [estimate, setEstimate] = useState<PromptCostEstimateResponse | null>(
     null,
   );
-  const [estimateError, setEstimateError] = useState<string | null>(null);
+  const [estimateError, setEstimateError] = useState(false);
   const [estimating, setEstimating] = useState(false);
   const [activeTab, setActiveTab] = useState<"overview" | "decision">("overview");
 
@@ -76,16 +78,16 @@ export default function Settings() {
       try {
         const m = await fetchSettingsModels();
         if (!cancelled) setModels(m.models);
-      } catch (e) {
+      } catch {
         if (!cancelled)
-          setModelsError(e instanceof Error ? e.message : String(e));
+          setModelsError(true);
       }
       try {
         const b = await fetchSettingsBudget();
         if (!cancelled) setBudget(b);
-      } catch (e) {
+      } catch {
         if (!cancelled)
-          setBudgetError(e instanceof Error ? e.message : String(e));
+          setBudgetError(true);
       }
     })();
     return () => {
@@ -110,7 +112,7 @@ export default function Settings() {
 
   async function onEstimate() {
     setEstimating(true);
-    setEstimateError(null);
+    setEstimateError(false);
     try {
       const res = await estimatePromptCost({
         tier: "pro",
@@ -118,16 +120,24 @@ export default function Settings() {
         expected_output_tokens: outTokens,
       });
       setEstimate(res);
-    } catch (e) {
-      setEstimateError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setEstimateError(true);
     } finally {
       setEstimating(false);
     }
   }
 
   return (
-    <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
-      <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
+    <div className="model-observatory-frame">
+      <img
+        src={observatoryEnvironment}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className="model-observatory-environment"
+      />
+      <div className="model-observatory-veil" aria-hidden="true" />
+      <div className="model-observatory-content">
         <header>
           <h1 className="text-2xl font-serif text-ink dark:text-bright">
             Operator settings
@@ -197,7 +207,7 @@ export default function Settings() {
           <div className="p-4 space-y-3">
             {modelsError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
-                {modelsError}
+                Providers are unavailable right now. Try again shortly.
               </p>
             )}
             {models === null && !modelsError && (
@@ -261,7 +271,7 @@ export default function Settings() {
           <div className="p-4 space-y-3">
             {budgetError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
-                {budgetError}
+                Budget data is unavailable right now. Try again shortly.
               </p>
             )}
             {budget && (
@@ -307,7 +317,9 @@ export default function Settings() {
                   role="progressbar"
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-valuenow={spendPct ?? 0}
+                  {...(spendPct == null
+                    ? { "aria-valuetext": "Budget usage unknown" }
+                    : { "aria-valuenow": Math.round(spendPct) })}
                   aria-label="Budget usage"
                 >
                   {spendPct != null ? (
@@ -379,7 +391,7 @@ export default function Settings() {
             </button>
             {estimateError && (
               <p className="text-sm text-red-700 dark:text-red-300 font-mono">
-                {estimateError}
+                Cost projection is unavailable right now. Try again shortly.
               </p>
             )}
             {estimate && (
@@ -481,14 +493,14 @@ function DecisionTreePanel({
 }) {
   const [task, setTask] = useState<ModelDecisionTask>("deep_research");
   const [decision, setDecision] = useState<ModelDecisionResponse | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState(false);
   const [loading, setLoading] = useState(false);
   const requestVersion = useRef(0);
 
   function invalidateDecision() {
     requestVersion.current += 1;
     setDecision(null);
-    setError(null);
+    setError(false);
     setLoading(false);
   }
 
@@ -496,7 +508,7 @@ function DecisionTreePanel({
     const version = requestVersion.current + 1;
     requestVersion.current = version;
     setLoading(true);
-    setError(null);
+    setError(false);
     try {
       const response = await fetchModelDecision({
         task,
@@ -504,9 +516,9 @@ function DecisionTreePanel({
         expected_output_tokens: outputTokens,
       });
       if (requestVersion.current === version) setDecision(response);
-    } catch (caught) {
+    } catch {
       if (requestVersion.current === version) {
-        setError(caught instanceof Error ? caught.message : String(caught));
+        setError(true);
       }
     } finally {
       if (requestVersion.current === version) setLoading(false);
@@ -545,7 +557,7 @@ function DecisionTreePanel({
       <LemonButton type="button" variant="primary" size="md" disabled={loading} onClick={() => void compare()}>
         {loading ? "Comparing..." : "Compare models"}
       </LemonButton>
-      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">{error}</p>}
+      {error && <p role="alert" className="text-sm text-red-700 dark:text-red-300">Model comparison is unavailable right now. Try again shortly.</p>}
       {decision && (
         <div className="space-y-4">
           <div className="flex flex-wrap items-baseline justify-between gap-3 border-b border-ink/15 pb-3 dark:border-bright/15">
@@ -598,8 +610,8 @@ function PasskeySettings() {
   async function refreshPasskeys() {
     try {
       setPasskeys(await listPasskeys());
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Couldn't load passkeys.");
+    } catch {
+      setMessage("Passkeys are unavailable right now. Try again shortly.");
     }
   }
 
@@ -618,7 +630,7 @@ function PasskeySettings() {
       await refreshPasskeys();
     } catch (error) {
       if (!(error instanceof DOMException && error.name === "NotAllowedError")) {
-        setMessage(error instanceof Error ? error.message : "Couldn't add that passkey.");
+        setMessage("That passkey could not be added. Try again or use email recovery.");
       }
     } finally {
       setWorking(false);
@@ -633,8 +645,8 @@ function PasskeySettings() {
       await removePasskey(passkey.id);
       setMessage("Passkey forgotten.");
       await refreshPasskeys();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Couldn't remove that passkey.");
+    } catch {
+      setMessage("That passkey could not be forgotten. Try again shortly.");
     } finally {
       setWorking(false);
     }

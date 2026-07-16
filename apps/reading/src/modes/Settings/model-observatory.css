@@ -1,0 +1,64 @@
+.model-observatory-frame {
+  position: relative;
+  height: 100%;
+  overflow: auto;
+  isolation: isolate;
+  background: var(--ice-2, #f4f7fa);
+}
+
+.model-observatory-environment,
+.model-observatory-veil {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  min-height: 100%;
+  pointer-events: none;
+}
+
+.model-observatory-environment {
+  z-index: -2;
+  height: 100%;
+  object-fit: cover;
+  object-position: 50% 18%;
+  opacity: .3;
+  filter: saturate(.78) contrast(.92);
+}
+
+.model-observatory-veil {
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(244,247,250,.8), rgba(244,247,250,.96) 42%, #f4f7fa 78%),
+    radial-gradient(circle at 50% 5%, transparent 0 18rem, rgba(244,247,250,.8) 42rem);
+}
+
+.model-observatory-content {
+  max-width: 48rem;
+  margin-inline: auto;
+  padding: 2rem 1.5rem 5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  .model-observatory-frame { background: var(--space-2, #0d1019); }
+  .model-observatory-environment { opacity: .24; filter: saturate(.72) brightness(.7); }
+  .model-observatory-veil {
+    background:
+      linear-gradient(180deg, rgba(13,16,25,.76), rgba(13,16,25,.94) 42%, #0d1019 78%),
+      radial-gradient(circle at 50% 5%, transparent 0 18rem, rgba(13,16,25,.82) 42rem);
+  }
+}
+
+@media (max-width: 480px) {
+  .model-observatory-content { padding: 1.25rem 1rem 4rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .model-observatory-frame *, .model-observatory-frame *::before, .model-observatory-frame *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
