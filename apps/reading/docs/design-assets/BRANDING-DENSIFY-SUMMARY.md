@@ -282,3 +282,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | sessionLivingTv.css densify comment crosslinks | `735822246` | Flipbook note + densify-pack.sh pointers in invent reframe CSS |
 | npm test:branding-densify | `58deb43f4` | package.json alias to branding-densify-pack.sh |
 | invent reframe CSS contract densify test | `2d3bb46b0` | sessionLivingTv CSS reduced-motion + NO-GO honesty densify |
+| densify-pack script header densify | `TBD` | pin 28/248 expectation + npm run test:branding-densify invoke |

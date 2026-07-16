@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 # Branding densify pack — invent reframe + living-TV + arcade + product invent doors.
-# Exit non-zero on any failure. Run from apps/reading or repo root.
+# Expectation (tip d325ec7bf): 28 files / 248 tests. Exit non-zero on any failure.
+# Invoke: npm run test:branding-densify   (from apps/reading)
+#         or bash scripts/branding-densify-pack.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
