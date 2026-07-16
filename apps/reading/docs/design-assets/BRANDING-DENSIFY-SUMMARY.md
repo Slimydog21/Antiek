@@ -242,3 +242,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2b midnight oil swarm | `b8c26e9f0` | MidnightOilPanel invent refresh |
 | Imagine invent polish v2b knowledge twin | `92bf08ed8` | KnowledgePanel invent refresh |
 | Imagine invent polish v2b float research merge | `76e7bd181` | TwinNotesPanel invent refresh |
+| Imagine invent polish v2b paperclip zombies | (next tip) | wait-arcade/cabinet/LGH zombies invent refresh |

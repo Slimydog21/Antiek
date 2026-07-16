@@ -43,3 +43,4 @@ Candidates retained as `*_session_candidate_v1.webp` beside refedits.
 | werner_midnight_oil_swarm_refedit_v2b.jpg | **PROMOTED** → poses/session/werner_midnight_oil_swarm_session_v1.webp |
 | werner_knowledge_twin_cursor_refedit_v2b.jpg | **PROMOTED** → poses/session/werner_knowledge_twin_cursor_session_v1.webp |
 | werner_float_research_merge_refedit_v2b.jpg | **PROMOTED** → poses/session/werner_float_research_merge_session_v1.webp |
+| werner_paperclip_zombies_arcade_refedit_v2b.jpg | **PROMOTED** → poses/session/werner_paperclip_zombies_arcade_session_v1.webp |
