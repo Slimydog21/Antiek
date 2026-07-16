@@ -529,7 +529,7 @@ class ResearchSpendLedger:
             self._failure_injector(name)
 
     @contextlib.contextmanager
-    def dispatch_guard(self, reservation_key: str) -> Generator[None]:
+    def dispatch_guard(self, reservation_key: str) -> Generator[tuple[int, int]]:
         """Serialize one provider boundary across threads and local processes.
 
         SQLite is local authority in this substrate, so a sibling lock file has
@@ -537,18 +537,31 @@ class ResearchSpendLedger:
         a successor can then reconcile the durable dispatch marker.
         """
         _required_text("reservation_key", reservation_key)
-        database = Path(self._db_path).expanduser().resolve(strict=True)
-        identity = os.stat(database)
+        database = Path(self._db_path).expanduser()
         lock_root = Path("/tmp/antiek-research-dispatch-locks")
         lock_root.mkdir(mode=0o700, parents=True, exist_ok=True)
-        lock_name = _sha256(f"{identity.st_dev}:{identity.st_ino}:{reservation_key}")
-        lock_path = lock_root / f"{lock_name}.lock"
-        with lock_path.open("a+b") as lock_file:
-            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
-            try:
-                yield
-            finally:
-                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+        while True:
+            initial = os.stat(database.resolve(strict=True))
+            identity = (initial.st_dev, initial.st_ino)
+            lock_name = _sha256(f"{identity[0]}:{identity[1]}:{reservation_key}")
+            lock_path = lock_root / f"{lock_name}.lock"
+            with lock_path.open("a+b") as lock_file:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+                current = os.stat(database.resolve(strict=True))
+                if (current.st_dev, current.st_ino) != identity:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                    continue
+                try:
+                    yield identity
+                finally:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+                return
+
+    def assert_dispatch_identity(self, identity: tuple[int, int]) -> None:
+        """Refuse provider I/O if the guarded database pathname was replaced."""
+        current = os.stat(Path(self._db_path).expanduser().resolve(strict=True))
+        if (current.st_dev, current.st_ino) != identity:
+            raise LedgerIntegrityError("research spend database changed during dispatch")
 
     def _connect(self, *, initialize: bool = False) -> sqlite3.Connection:
         if initialize:

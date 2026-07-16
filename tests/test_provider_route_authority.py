@@ -37,10 +37,12 @@ class FakeHardCeilingAdapter:
             frozenset({BillingUnit.INPUT_TOKEN, BillingUnit.OUTPUT_TOKEN}),
         )
 
-    def send_once(self, operation: object, *, provider_idempotency_key: str):
+    def send_once(
+        self, operation: object, *, provider_idempotency_key: str, authorized_endpoint: str
+    ):
         raise AssertionError("authority resolution must not send")
 
-    def reconcile(self, *, provider_idempotency_key: str):
+    def reconcile(self, *, provider_idempotency_key: str, authorized_endpoint: str):
         raise AssertionError("authority resolution must not reconcile")
 
 

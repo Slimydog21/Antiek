@@ -138,10 +138,16 @@ class HardCeilingProviderAdapter(Protocol[T]):
     capabilities: ProviderCapabilities
 
     def send_once(
-        self, operation: object, *, provider_idempotency_key: str
+        self,
+        operation: object,
+        *,
+        provider_idempotency_key: str,
+        authorized_endpoint: str,
     ) -> ProviderSuccess[T]: ...
 
-    def reconcile(self, *, provider_idempotency_key: str) -> ProviderReconciliation: ...
+    def reconcile(
+        self, *, provider_idempotency_key: str, authorized_endpoint: str
+    ) -> ProviderReconciliation: ...
 
 
 @dataclass(frozen=True)
@@ -483,28 +489,36 @@ class ResearchProviderGateway:
             intent,
             projection.reservation_cents,
         )
-        with self.ledger.dispatch_guard(reservation_key):
+        with self.ledger.dispatch_guard(reservation_key) as database_identity:
             hold = self.ledger.hold(hold.hold_id)
+            if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
+                return ProviderDispatchResult(
+                    hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
+                )
+            authorized_endpoint = adapter.endpoint
             if provider_route_identity is not None:
-                self._revalidate_route_authority(
+                authority = self._revalidate_route_authority(
                     projection_request,
                     projection,
                     adapter,
                     expected_digest=provider_route_identity,
                 )
+                authorized_endpoint = authority.endpoint
             if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
-                return self._reconcile(hold, adapter)
-            if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
-                return ProviderDispatchResult(
-                    hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
+                self.ledger.assert_dispatch_identity(database_identity)
+                return self._reconcile(
+                    hold, adapter, authorized_endpoint=authorized_endpoint
                 )
 
             hold = self.ledger.mark_dispatch_possible(
                 deterministic_key("research-send-command", hold.hold_id), hold.hold_id
             )
             try:
+                self.ledger.assert_dispatch_identity(database_identity)
                 success = adapter.send_once(
-                    operation, provider_idempotency_key=provider_key
+                    operation,
+                    provider_idempotency_key=provider_key,
+                    authorized_endpoint=authorized_endpoint,
                 )
             except ProviderNotSent as exc:
                 self._release_or_converge(
@@ -551,18 +565,24 @@ class ResearchProviderGateway:
             raise DispatchIneligible("recovery adapter does not match persisted route")
         if not adapter.capabilities.hard_ceiling_eligible:
             raise DispatchIneligible("recovery adapter lacks hard-ceiling capabilities")
-        with self.ledger.dispatch_guard(hold.intent.reservation_key):
+        with self.ledger.dispatch_guard(hold.intent.reservation_key) as database_identity:
             hold = self.ledger.hold(hold_id)
+            if hold.state in (PaidHoldState.SETTLED, PaidHoldState.RELEASED):
+                return ProviderDispatchResult(
+                    hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
+                )
+            authorized_endpoint = adapter.endpoint
             if hold.intent.route_authority_digest is not None:
                 if projection_request is None:
                     raise DispatchIneligible("recovery requires exact paid route authority")
                 projection = self._projector(projection_request)
-                self._revalidate_route_authority(
+                authority = self._revalidate_route_authority(
                     projection_request,
                     projection,
                     adapter,
                     expected_digest=hold.intent.route_authority_digest,
                 )
+                authorized_endpoint = authority.endpoint
             if hold.state is PaidHoldState.RESERVED:
                 self.ledger.release(
                     deterministic_key("research-restart-unsent", hold.hold_id),
@@ -575,7 +595,10 @@ class ResearchProviderGateway:
                     recovered=True,
                 )
             if hold.state in (PaidHoldState.DISPATCH_POSSIBLE, PaidHoldState.UNKNOWN):
-                return self._reconcile(hold, adapter)
+                self.ledger.assert_dispatch_identity(database_identity)
+                return self._reconcile(
+                    hold, adapter, authorized_endpoint=authorized_endpoint
+                )
             return ProviderDispatchResult(
                 hold=hold, run=self.ledger.balance(hold.run_id), recovered=True
             )
@@ -587,7 +610,7 @@ class ResearchProviderGateway:
         adapter: HardCeilingProviderAdapter[Any],
         *,
         expected_digest: str,
-    ) -> None:
+    ) -> PaidRouteAuthorityIdentity:
         if self._fallback_route_authorizer is None:
             raise DispatchIneligible("paid fallback route authority is not configured")
         authority = self._fallback_route_authorizer(request, adapter)
@@ -600,6 +623,7 @@ class ResearchProviderGateway:
         ) != (projection.rate_snapshot, projection.currency, projection.rates):
             raise DispatchIneligible("route authority differs from exact projected rates")
         self._require_eligible(projection, request, adapter)
+        return authority
 
     def prepare_zero_cost(
         self,
@@ -662,11 +686,16 @@ class ResearchProviderGateway:
         )
 
     def _reconcile(
-        self, hold: PaidHoldSnapshot, adapter: HardCeilingProviderAdapter[T]
+        self,
+        hold: PaidHoldSnapshot,
+        adapter: HardCeilingProviderAdapter[T],
+        *,
+        authorized_endpoint: str,
     ) -> ProviderDispatchResult[T]:
         try:
             result = adapter.reconcile(
-                provider_idempotency_key=hold.intent.provider_idempotency_key
+                provider_idempotency_key=hold.intent.provider_idempotency_key,
+                authorized_endpoint=authorized_endpoint,
             )
         except Exception as exc:
             self._retain_unknown(hold, {"reconciliation_error": type(exc).__name__})

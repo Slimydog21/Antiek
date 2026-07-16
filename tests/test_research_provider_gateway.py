@@ -129,13 +129,19 @@ class FakeAdapter:
             actual_cents=80,
         )
 
-    def send_once(self, operation: object, *, provider_idempotency_key: str):
+    def send_once(
+        self, operation: object, *, provider_idempotency_key: str, authorized_endpoint: str
+    ):
+        assert authorized_endpoint == self.endpoint
         self.send_calls.append(provider_idempotency_key)
         if isinstance(self.send_result, BaseException):
             raise self.send_result
         return self.send_result
 
-    def reconcile(self, *, provider_idempotency_key: str) -> ProviderReconciliation:
+    def reconcile(
+        self, *, provider_idempotency_key: str, authorized_endpoint: str
+    ) -> ProviderReconciliation:
+        assert authorized_endpoint == self.endpoint
         self.reconcile_calls.append(provider_idempotency_key)
         return self.reconciliation
 
@@ -387,6 +393,7 @@ def test_definite_not_sent_releases_without_blind_retry(tmp_path: Path) -> None:
 
 
 def _fallback_route(adapter: FakeAdapter) -> PaidFallbackRoute[str]:
+    adapter.endpoint = f"https://{adapter.provider}.example/v1"
     return PaidFallbackRoute(
         CostProjectionRequest(
             seam_id="test.paid",
@@ -456,20 +463,23 @@ def test_changed_endpoint_authority_conflicts_with_existing_lineage(tmp_path: Pa
     )
     gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
     adapter = FakeAdapter()
+    route = _fallback_route(adapter)
+    adapter.endpoint = endpoint[0]
     gateway.dispatch_paid_fallbacks(
         _binding(),
         logical_operation_id="op",
         operation={"prompt": "bounded"},
-        routes=(_fallback_route(adapter),),
+        routes=(route,),
     )
     endpoint[0] = "https://replacement.example/v1"
+    adapter.endpoint = endpoint[0]
 
     with pytest.raises(IdempotencyConflict):
         gateway.dispatch_paid_fallbacks(
             _binding(),
             logical_operation_id="op",
             operation={"prompt": "bounded"},
-            routes=(_fallback_route(adapter),),
+            routes=(route,),
         )
 
 
@@ -507,7 +517,14 @@ def test_concurrent_replay_cannot_reconcile_before_sender_finishes(tmp_path: Pat
     allow_send = threading.Event()
 
     class SlowAdapter(FakeAdapter):
-        def send_once(self, operation: object, *, provider_idempotency_key: str):
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
+            assert authorized_endpoint == self.endpoint
             self.send_calls.append(provider_idempotency_key)
             send_started.set()
             assert allow_send.wait(timeout=5)
@@ -577,22 +594,25 @@ def test_fallback_recovery_requires_unchanged_live_authority(tmp_path: Path) -> 
     gateway.create_or_reopen_run(_binding(), ceiling_cents=200)
     adapter = FakeAdapter()
     adapter.send_result = TimeoutError("lost response")
+    route = _fallback_route(adapter)
+    adapter.endpoint = endpoint[0]
     with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
         gateway.dispatch_paid_fallbacks(
             _binding(),
             logical_operation_id="op",
             operation={"prompt": "bounded"},
-            routes=(_fallback_route(adapter),),
+            routes=(route,),
         )
 
     with pytest.raises(DispatchIneligible, match="requires exact"):
         gateway.recover_paid(unknown.value.hold_id, adapter)
     endpoint[0] = "https://replacement.example/v1"
+    adapter.endpoint = endpoint[0]
     with pytest.raises(DispatchIneligible, match="authority changed"):
         gateway.recover_paid(
             unknown.value.hold_id,
             adapter,
-            projection_request=_fallback_route(adapter).projection_request,
+            projection_request=route.projection_request,
         )
     assert adapter.reconcile_calls == []
 
@@ -837,7 +857,14 @@ def test_concurrent_same_plan_has_one_provider_acceptance_per_route(tmp_path: Pa
     gateway = _gateway(tmp_path)
 
     class RejectedAdapter(FakeAdapter):
-        def send_once(self, operation: object, *, provider_idempotency_key: str):
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
+            assert authorized_endpoint == self.endpoint
             self.send_calls.append(provider_idempotency_key)
             raise ProviderNotSent("not accepted", evidence={"accepted": False})
 
@@ -849,7 +876,14 @@ def test_concurrent_same_plan_has_one_provider_acceptance_per_route(tmp_path: Pa
             self.reused_response_count = 0
             self._lock = threading.Lock()
 
-        def send_once(self, operation: object, *, provider_idempotency_key: str):
+        def send_once(
+            self,
+            operation: object,
+            *,
+            provider_idempotency_key: str,
+            authorized_endpoint: str,
+        ):
+            assert authorized_endpoint == self.endpoint
             self.send_calls.append(provider_idempotency_key)
             with self._lock:
                 if provider_idempotency_key in self.accepted_keys:
