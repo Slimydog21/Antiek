@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "../lib/api";
 import { WernerThinking } from "../brand/werner/animated";
 import { useReplyMode } from "../hooks/useReplyMode";
+import { emitWernerExperience } from "../werner/reactionBus";
 import SpokenReply from "./SpokenReply";
 import ContextPicker from "./ai/ContextPicker";
 import {
@@ -194,6 +195,7 @@ export default function AISidecar() {
           shape: "CHALLENGE",
           text: `Thought-partner unavailable (HTTP ${resp.status}).`,
         });
+        emitWernerExperience("fail");
         return;
       }
       const data = await resp.json();
@@ -207,6 +209,8 @@ export default function AISidecar() {
         shape: data.shape ?? "SYNTHESIS",
         text: prose,
       });
+      // Living-TV: thought-partner answered — noted beat (async TV show).
+      emitWernerExperience("note_saved");
       if (actions.length > 0) {
         // Pass AiActionContext so each dispatched action emits a typed
         // ``ai.action.applied`` event to the substrate event log per
@@ -233,6 +237,7 @@ export default function AISidecar() {
         shape: "CHALLENGE",
         text: e instanceof Error ? e.message : String(e),
       });
+      emitWernerExperience("fail");
     } finally {
       setPending(false);
     }
