@@ -6,6 +6,7 @@ import {
   type HardCeilingSnapshot,
 } from "../../api/research";
 import LemonButton from "../../components/lemon/LemonButton";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 function usd(cents: number): string {
   return `$${(cents / 100).toFixed(2)}`;
@@ -31,8 +32,11 @@ export default function HardCeilingEvidence({
       const response = await reconcileSessionSpend(sessionId);
       setCurrent(response.hard_ceiling);
       setMessage(response.message);
+      // Living-TV: ceiling reconcile — noted.
+      emitWernerExperience("note_saved");
     } catch {
       setMessage("Provider status could not be refreshed. The existing holds remain unchanged.");
+      emitWernerExperience("fail");
     } finally {
       setChecking(false);
     }

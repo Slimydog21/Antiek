@@ -25,6 +25,7 @@ import GlassSurface from "../../shell/GlassSurface";
 import AIActionFailure from "../../shared/AIActionFailure";
 import Invites from "./Invites";
 import SpeakSettings from "./SpeakSettings";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Speak project page (Product Depth SPR-08 M2 + M4).
@@ -150,8 +151,10 @@ export default function Speak() {
       await inviteByEmail(projectId, email);
       track("speak_invite_sent", { project_id: projectId });
       await reload();
+      emitWernerExperience("note_saved");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     }
   }, [projectId, reload]);
 
@@ -161,8 +164,10 @@ export default function Speak() {
     try {
       const points = await whatEveryoneAgreesOn(projectId);
       setAgree({ phase: "ready", points });
+      emitWernerExperience("highlight");
     } catch {
       setAgree({ phase: "failed" });
+      emitWernerExperience("fail");
     }
   }, [projectId]);
 
@@ -176,8 +181,10 @@ export default function Speak() {
         will_be_public: project?.willBePublic ?? false,
       });
       setDraft({ phase: "ready", draft: d });
+      emitWernerExperience("piece_started");
     } catch {
       setDraft({ phase: "failed" });
+      emitWernerExperience("fail");
     }
   }, [projectId, project?.willBePublic]);
 
