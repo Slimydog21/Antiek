@@ -205,4 +205,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Living-TV ambient episode continuity | `a713819a0` | quiet beat continues last product episode |
 | FloatMenu collective invent product-map | `8100985a9` | float research windows invent strip |
 | Flipbook invent reframe CSS | `036391eb0` | soft living imagery motion; reduced-motion safe |
-| TwinNotes/MidnightOil/Bench/Companion reframe densify | (craft160) | invent reframe class on residual invent strips |
+| TwinNotes/MidnightOil/Bench/Companion reframe densify | `893e483fa` | invent reframe class on residual invent strips |
