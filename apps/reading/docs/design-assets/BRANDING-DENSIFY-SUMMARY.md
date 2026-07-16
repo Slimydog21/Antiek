@@ -111,6 +111,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | CRT igloo cursor-TV invent | `0b101bd91` | Flipbook-feel CRT+igloo+cursor invent inventory |
 | Xray regenerate piece_started | `9e66cdca5` | write rewrite craft living-TV beat |
 | CRT igloo invent LGH default | `9e66cdca5` | Flipbook-feel default wait-host invent strip |
+| SubAgentProposal accept/reject | `169ba0606` | write sub-agent spin living-TV beats |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
