@@ -237,4 +237,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2b html book float | `7dcb2f843` | ReadingCompanion invent refresh on green tip |
 | Imagine invent polish v2b arxiv dens | `97a62053c` | Sources invent refresh on green tip |
 | Imagine invent polish v2b collective merge | `7e591b002` | SubAgentProposal + FloatMenu invent refresh |
-| Imagine invent polish v2b book marketplace | (next tip) | HouseSlot invent refresh |
+| Imagine invent polish v2b book marketplace | `47dfbeba3` | HouseSlot invent refresh |
