@@ -40,6 +40,12 @@ _HEX64 = r"^[0-9a-f]{64}$"
 _MAX_CANONICAL_DOCUMENT_BYTES = 10_500_000
 _MAX_CANONICAL_DOCUMENT_NESTING = 32
 _MAX_CANONICAL_CONTAINER_ITEMS = 100_000
+PRIVATE_CYCLE_35_CONTRACT_SHA256_V1 = (
+    "09885cb78fdc7f54198c90240c61c7901a2f7e87c590a12543f2bf827b344711"
+)
+OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1 = (
+    "7d4551f30ec2a25c60ad114a9cfa67df6ae279de5dab2559e83a7bcea080e339"
+)
 
 
 def _canonical_json(value: object) -> bytes:
@@ -147,11 +153,11 @@ _EXACT_SCHEMAS = MappingProxyType(
                 "capability_id:str,required,pattern=^ppcap4_[0-9a-f]{24}$",
                 "purpose:Literal[midnight_oil_owner_private_paid_research_v4],required",
                 "owner_path_discriminator:str,required,pattern=^opspd1_[0-9a-f]{64}$",
-                "provider_id:str,required,length=1..128",
-                "model_id:str,required,length=1..256",
+                "provider_id:str,required,pattern=^[A-Za-z0-9._-]{1,128}$",
+                "model_id:str,required,pattern=^[A-Za-z0-9._:/-]{1,256}$",
                 "route_key:str,required,length=3..385,equals=provider_id/model_id",
                 "api_mode:Literal[responses_no_store|messages_no_store],required",
-                "processing_region:str,required,length=1..64",
+                "processing_region:str,required,pattern=^[A-Za-z0-9._-]{1,64}$",
                 "output_schema:Literal[midnight-oil.gather-output/v1|midnight-oil.planner-output/v1|midnight-oil.synthesizer-output/v1|midnight-oil.verifier-output/v1],required",
                 "router_role:Literal[gatherer|planner|synthesizer|verifier],required",
                 "account_scope_blind_id:bytes,required,length=32,canonical=lowercase_hex",
@@ -300,7 +306,8 @@ _PURE_CONTRACTS = MappingProxyType(
     {
         "policy_v4": {
             "fields": (
-                "schema_version:Literal[4]=4", "policy_id:Literal[antiek-owner-private-provider-output-v4]",
+                "schema_version:Literal[4]=4", "contract_revision:Literal[2]=2",
+                "predecessor_policy_v4_sha256:hex64", "policy_id:Literal[antiek-owner-private-provider-output-v4]",
                 "predecessor_kind:Literal[policy_v3_nonconferring_evidence]", "predecessor_policy_v3_sha256:hex64",
                 "content_class:Literal[personal_reading]", "certified_operation:Literal[quarantined_cycle_35_fixture_eligibility_only]",
                 "source_adapter_contract_sha256:hex64", "source_adapter_implementation_sha256:hex64",
@@ -582,7 +589,8 @@ _PURE_CONTRACT_SHA256S = MappingProxyType(
 PRIVATE_CYCLE_35_CONTRACT_SHA256 = _digest(
     _CONTRACT_DOMAIN,
     {
-        "schema_version": 1,
+        "schema_version": 2,
+        "predecessor_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256_V1,
         "canonical_json": "utf8_sorted_keys_compact_allow_nan_false",
         "domains": dict(_CONTRACT_DOMAINS),
         "contract_sha256s": dict(_PURE_CONTRACT_SHA256S),
@@ -598,6 +606,8 @@ PRIVATE_CYCLE_35_CONTRACT_SHA256 = _digest(
 
 _POLICY_V4_MATERIAL = MappingProxyType({
     "schema_version": 4,
+    "contract_revision": 2,
+    "predecessor_policy_v4_sha256": OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1,
     "policy_id": "antiek-owner-private-provider-output-v4",
     "predecessor_kind": "policy_v3_nonconferring_evidence",
     "predecessor_policy_v3_sha256": OWNER_PRIVATE_OUTPUT_POLICY_V3_SHA256,
@@ -684,6 +694,8 @@ class _Closed(BaseModel):
 
 class OwnerPrivateOutputPolicyV4(_Closed):
     schema_version: Literal[4] = 4
+    contract_revision: Literal[2] = 2
+    predecessor_policy_v4_sha256: str = Field(pattern=_HEX64)
     policy_id: Literal["antiek-owner-private-provider-output-v4"] = (
         "antiek-owner-private-provider-output-v4"
     )
@@ -779,7 +791,9 @@ def build_owner_private_output_policy_v4() -> OwnerPrivateOutputPolicyV4:
 
 __all__ = [
     "OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256",
+    "OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256_V1",
     "PRIVATE_CYCLE_35_CONTRACT_SHA256",
+    "PRIVATE_CYCLE_35_CONTRACT_SHA256_V1",
     "OwnerPrivateOutputPolicyV4",
     "build_owner_private_output_policy_v4",
     "owner_private_output_policy_v4_sha256",

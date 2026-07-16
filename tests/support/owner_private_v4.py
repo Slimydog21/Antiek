@@ -1,0 +1,105 @@
+"""Test-only builders and signing custody for the Cycle-35 V4/V7 chain."""
+
+from __future__ import annotations
+
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+)
+
+from substrate.midnight_oil.private_output_policy_v4 import (
+    OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256,
+    PRIVATE_CYCLE_35_CONTRACT_SHA256,
+)
+from substrate.midnight_oil.private_provider_capability_v4 import (
+    _SIGNATURE_V4_DOMAIN,
+    PrivateProviderProcessingCapabilityV4,
+    private_provider_capability_v4_sha256,
+)
+
+V4_KEY_ID = "private-capability-v4-fixture-issuer"
+V4_PRIVATE = bytes(value ^ 0xA7 for value in range(32))
+OWNER_PATH_DISCRIMINATOR = "opspd1_" + "1" * 64
+ACCOUNT_SCOPE_BLIND_ID = bytes(range(32))
+PROJECT_SCOPE_BLIND_ID = bytes(reversed(range(32)))
+
+
+def public_key(private_key: bytes = V4_PRIVATE) -> bytes:
+    return Ed25519PrivateKey.from_private_bytes(private_key).public_key().public_bytes_raw()
+
+
+def capability_v4(
+    *,
+    role: str = "gatherer",
+    owner_path_discriminator: str = OWNER_PATH_DISCRIMINATOR,
+    key_id: str = V4_KEY_ID,
+    signing_key: bytes = V4_PRIVATE,
+    issued_at_ms: int = 2_000,
+    not_before_ms: int = 2_001,
+    expires_at_ms: int = 90_000,
+) -> PrivateProviderProcessingCapabilityV4:
+    output_schemas = {
+        "gatherer": "midnight-oil.gather-output/v1",
+        "planner": "midnight-oil.planner-output/v1",
+        "synthesizer": "midnight-oil.synthesizer-output/v1",
+        "verifier": "midnight-oil.verifier-output/v1",
+    }
+    material: dict[str, object] = {
+        "schema_version": 4,
+        "purpose": "midnight_oil_owner_private_paid_research_v4",
+        "owner_path_discriminator": owner_path_discriminator,
+        "provider_id": "openai",
+        "model_id": "gpt-5.6",
+        "route_key": "openai/gpt-5.6",
+        "api_mode": "responses_no_store",
+        "processing_region": "us",
+        "output_schema": output_schemas[role],
+        "router_role": role,
+        "account_scope_blind_id": ACCOUNT_SCOPE_BLIND_ID,
+        "project_scope_blind_id": PROJECT_SCOPE_BLIND_ID,
+        "output_policy_v4_sha256": OWNER_PRIVATE_OUTPUT_POLICY_V4_SHA256,
+        "cycle_35_contract_sha256": PRIVATE_CYCLE_35_CONTRACT_SHA256,
+        "revocation_registry_id": "antiek-private-provider-revocations-v1",
+        "revocation_trusted_floor_sha256": "f" * 64,
+        "approved_max_cents": 2_500,
+        "max_private_input_bytes": 32_000,
+        "max_output_bytes": 1_000_000,
+        "issued_at_ms": issued_at_ms,
+        "not_before_ms": not_before_ms,
+        "expires_at_ms": expires_at_ms,
+        "key_id": key_id,
+        "issuer_role": "private_provider_capability_issuer",
+        "key_purpose": "owner_private_provider_capability_v4",
+        "signature_scheme": "ed25519",
+        "synthetic_fixture_eligibility_only": True,
+        "live_migration_verified": False,
+        "user_accounting_effect": False,
+        "transport_reachable": False,
+        "confers_execution_authority": False,
+        "confers_checkpoint_authority": False,
+        "confers_sink_authority": False,
+        "confers_transition_authority": False,
+        "production_consumer_enabled": False,
+    }
+    digest = private_provider_capability_v4_sha256(material)
+    signature = Ed25519PrivateKey.from_private_bytes(signing_key).sign(
+        _SIGNATURE_V4_DOMAIN + bytes.fromhex(digest)
+    )
+    return PrivateProviderProcessingCapabilityV4.model_validate(
+        {
+            **material,
+            "capability_id": "ppcap4_" + digest[:24],
+            "capability_sha256": digest,
+            "signature_ed25519": signature.hex(),
+        }
+    )
+
+
+__all__ = [
+    "ACCOUNT_SCOPE_BLIND_ID",
+    "OWNER_PATH_DISCRIMINATOR",
+    "PROJECT_SCOPE_BLIND_ID",
+    "V4_KEY_ID",
+    "V4_PRIVATE",
+    "capability_v4",
+    "public_key",
+]
