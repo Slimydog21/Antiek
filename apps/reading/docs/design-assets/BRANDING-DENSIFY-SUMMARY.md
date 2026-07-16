@@ -108,7 +108,9 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | InvestigationSidebar brand | `bc4032924` | thinking mark + nav highlight |
 | VoiceToDraft note_saved | `d1a9aacb8` | user-sourced voice draft living-TV |
 | ConnectResearch link/spawn | `d16f53357` | highlight + deep_research_start/error |
-| CRT igloo cursor-TV invent | (local) | Flipbook-feel CRT+igloo+cursor invent inventory |
+| CRT igloo cursor-TV invent | `0b101bd91` | Flipbook-feel CRT+igloo+cursor invent inventory |
+| Xray regenerate piece_started | `9e66cdca5` | write rewrite craft living-TV beat |
+| CRT igloo invent LGH default | `9e66cdca5` | Flipbook-feel default wait-host invent strip |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
