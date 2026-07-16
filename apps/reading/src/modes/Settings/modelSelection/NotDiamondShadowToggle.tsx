@@ -10,6 +10,7 @@
 
 import { useState } from "react";
 
+import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   defaultNotDiamondState,
   modeLabel,
@@ -40,6 +41,8 @@ export function NotDiamondShadowToggle({
   const authority = controlled ? "advisory_or_less" : internal.authority;
 
   const setMode = (next: NotDiamondMode) => {
+    // Living-TV: advisor mode change is a noted honesty beat (never live authority).
+    emitWernerExperience(next === "disabled" ? "highlight" : "note_saved");
     if (onModeChange) onModeChange(next);
     if (!controlled) {
       setInternal((s) => setNotDiamondMode(s, next));
