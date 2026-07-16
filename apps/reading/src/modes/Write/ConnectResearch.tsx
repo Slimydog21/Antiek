@@ -5,6 +5,7 @@ import {
   startInvestigation,
   type InvestigationSummary,
 } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * ConnectResearch — the M1 connect step (Write SPR-09).
@@ -70,6 +71,8 @@ export default function ConnectResearch({
 
   async function connectExisting(p: InvestigationSummary) {
     if (disabled) return;
+    // Living-TV: linking a piece to research is a curious highlight glance.
+    emitWernerExperience("highlight");
     onConnect({
       investigationId: p.investigation_id,
       label: p.question?.trim() || "a research project",
@@ -80,6 +83,8 @@ export default function ConnectResearch({
     if (disabled || spawning) return;
     setSpawning(true);
     setError(null);
+    // Living-TV: auto-spawn backing folder is a deep-research start.
+    emitWernerExperience("deep_research_start");
     try {
       // Auto-spawn the backing research folder. The piece title seeds the
       // question so the folder is legible, not "Untitled". This is the bridge,
@@ -93,6 +98,7 @@ export default function ConnectResearch({
         label: "a new research folder",
       });
     } catch (e) {
+      emitWernerExperience("deep_research_error");
       setError(
         e instanceof Error
           ? `Couldn't start a research folder: ${e.message}`
