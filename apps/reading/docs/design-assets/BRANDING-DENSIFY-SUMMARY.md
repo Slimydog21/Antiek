@@ -100,7 +100,8 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | NotesPanel + ThinkingStream beats | `d71580cf5` | challenge + status-transition living-TV |
 | SuggestedResearch chase beats | `e746c1588` | flywheel Chase this → deep_research_start |
 | MasterMdViewer invent + complete | `992f51e0f` | answer surface invent + deep_research_complete |
-| Cursor-bait invent inventory | `b50b145f3` / `bfbdf4acb` | ice-fishing cursor-bait jpg+webp (not product-mapped) |
+| Cursor-bait invent inventory | `b50b145f3` / `bfbdf4acb` | ice-fishing cursor-bait jpg+webp invent |
+| Cursor-bait → LGH ice-fishing | (local tip) | wait-host ice-fishing strip uses cursor-bait session webp |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
