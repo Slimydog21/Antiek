@@ -379,6 +379,37 @@ async def test_cancelled_waiter_releases_lock_after_blocked_acquire(tmp_path) ->
     assert entered.is_set()
 
 
+def test_proven_unsent_completion_never_uses_sending_state(tmp_path) -> None:
+    journal = DistillationDispatchJournal(str(tmp_path / "graph.duckdb"))
+    journal.reserve(
+        "evt-request",
+        {"prompt": "bound"},
+        investigation_id="inv-1",
+        document_id="doc-1",
+    )
+
+    completed = journal.mark_proven_unsent_completed(
+        "evt-request",
+        _payload(),
+        policy_id="wrestling-fallback/memory-integrity",
+    )
+    assert completed.state is CommandState.COMPLETED
+
+    journal.reserve(
+        "evt-sending",
+        {"prompt": "bound"},
+        investigation_id="inv-1",
+        document_id="doc-1",
+    )
+    journal.mark_sending("evt-sending")
+    with pytest.raises(InvalidCommandTransition, match="only reserved"):
+        journal.mark_proven_unsent_completed(
+            "evt-sending",
+            _payload(request_event_id="evt-sending"),
+            policy_id="wrestling-fallback/memory-integrity",
+        )
+
+
 @pytest.mark.asyncio
 async def test_malformed_completed_event_tail_fails_closed_on_replay(
     tmp_path, monkeypatch

@@ -246,6 +246,43 @@ class DistillationDispatchJournal:
                 raise InvalidCommandTransition("only sending can complete")
             return self._load(connection, request_event_id)
 
+    def mark_proven_unsent_completed(
+        self,
+        request_event_id: str,
+        payload: DistillationDeliveredPayload,
+        *,
+        policy_id: str,
+    ) -> CommandSnapshot:
+        """Persist a local result atomically; no committed sending state exists."""
+        _required("policy_id", policy_id)
+        if not policy_id.startswith("wrestling-fallback/"):
+            raise ValueError("proven-unsent policy must be a wrestling fallback")
+        if payload.request_event_id != request_event_id:
+            raise BindingConflict("delivery payload request identity changed")
+        payload_json = _canonical(payload.model_dump(mode="json"))
+        now = _now()
+        with connect_write(
+            self.db_path, purpose="distillation-dispatch-complete-proven-unsent"
+        ) as connection:
+            updated = connection.execute(
+                "UPDATE distillation_dispatch_commands SET state='completed',"
+                "delivery_payload_json=?,delivery_payload_sha256=?,policy_id=?,"
+                "sending_at=?,completed_at=?,updated_at=? "
+                "WHERE request_event_id=? AND state='reserved' RETURNING request_event_id",
+                [
+                    payload_json,
+                    _sha256(payload_json),
+                    policy_id,
+                    now,
+                    now,
+                    now,
+                    request_event_id,
+                ],
+            ).fetchone()
+            if updated is None:
+                raise InvalidCommandTransition("only reserved can complete proven-unsent")
+            return self._load(connection, request_event_id)
+
     def mark_delivered(self, request_event_id: str) -> CommandSnapshot:
         return self._transition(request_event_id, CommandState.COMPLETED, CommandState.DELIVERED)
 
