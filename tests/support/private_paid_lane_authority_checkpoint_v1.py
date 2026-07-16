@@ -820,6 +820,13 @@ def _fixture_migration_lifecycle_issuer_main(
     expected_target_store_id: str,
     expected_semantic_source_sha256: str,
     expected_contract_sha256: str,
+    recovery_fault_boundary: Literal[
+        "after_target_commit",
+        "after_rename",
+        "after_parent_fsync",
+        "after_reread",
+    ]
+    | None,
 ) -> None:
     private_key = Ed25519PrivateKey.generate()
     public_key = private_key.public_key().public_bytes_raw()
@@ -846,6 +853,20 @@ def _fixture_migration_lifecycle_issuer_main(
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     process_watch = select.kqueue()
     active_store_revoked = False
+    pending_recovery_fault = recovery_fault_boundary
+
+    def inject_recovery_fault(
+        boundary: Literal[
+            "after_target_commit",
+            "after_rename",
+            "after_parent_fsync",
+            "after_reread",
+        ],
+    ) -> None:
+        nonlocal pending_recovery_fault
+        if pending_recovery_fault == boundary:
+            pending_recovery_fault = None
+            raise RuntimeError(f"injected issuer recovery fault: {boundary}")
 
     def supervisor_exited() -> bool:
         nonlocal active_store_revoked, pending_recovery_peer_revoked, recovery_peer_exited
@@ -899,34 +920,37 @@ def _fixture_migration_lifecycle_issuer_main(
             recovery_copy_completion is not None
             and durable == recovery_copy_completion.copied_state
         ):
-            durable = _confirm_signed_migration_lifecycle_state_durable(
-                parent_fd=session_parent_fd,
-                expected_state=recovery_copy_completion.copied_state,
-                verification_key=verification_key,
-            )
-            if target_lease is None:
-                target_lease = _issuer_acquire_target_lease(session_target_fd)
-            compatible = _issuer_compatible_root_record(session_root_fd, durable.lifecycle_phase)
-            corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
-            observed_sha256 = _issuer_observed_copy(
-                target_fd=session_target_fd,
-                target_lease=target_lease,
-                corpus=corpus,
-                provider_capability_verification_keys=provider_capability_verification_keys,
-                provider_revocation_verification_keys=provider_revocation_verification_keys,
-                source_head_verification_keys=source_head_verification_keys,
-                provider_revocation_floor_pins=provider_revocation_floor_pins,
-                source_floor_pins=source_floor_pins,
-                expected_target_store_id=durable.target_store_id,
-                expected_semantic_source_sha256=expected_semantic_source_sha256,
-                expected_contract_sha256=expected_contract_sha256,
-            )
-            if observed_sha256 != durable.copy_audit_sha256:
-                raise ValueError("issuer recovery copied replay target")
-            committed = durable
-            _issuer_release_target_lease(target_lease)
-            target_lease = None
-            return recovery_copy_completion
+            with _issuer_transition_lock(session_root_fd):
+                durable = _confirm_signed_migration_lifecycle_state_durable(
+                    parent_fd=session_parent_fd,
+                    expected_state=recovery_copy_completion.copied_state,
+                    verification_key=verification_key,
+                )
+                if target_lease is None:
+                    target_lease = _issuer_acquire_target_lease(session_target_fd)
+                compatible = _issuer_compatible_root_record(
+                    session_root_fd, durable.lifecycle_phase
+                )
+                corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), compatible)
+                observed_sha256 = _issuer_observed_copy(
+                    target_fd=session_target_fd,
+                    target_lease=target_lease,
+                    corpus=corpus,
+                    provider_capability_verification_keys=(provider_capability_verification_keys),
+                    provider_revocation_verification_keys=(provider_revocation_verification_keys),
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_target_store_id=durable.target_store_id,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+                if observed_sha256 != durable.copy_audit_sha256:
+                    raise ValueError("issuer recovery copied replay target")
+                committed = durable
+                _issuer_release_target_lease(target_lease)
+                target_lease = None
+                return recovery_copy_completion
         if (
             recovery_copy_completion is not None
             and durable != recovery_copy_completion.prepared_state
@@ -965,6 +989,7 @@ def _fixture_migration_lifecycle_issuer_main(
                 )
                 target_lease.execute("COMMIT")
                 copy_completed = True
+                inject_recovery_fault("after_target_commit")
                 target_lease.execute("BEGIN IMMEDIATE")
                 confirmed, confirmed_copied = _reconcile_copy_prepared_target_v1(
                     target_lease,
@@ -1036,6 +1061,7 @@ def _fixture_migration_lifecycle_issuer_main(
                 state=copied_state,
                 verification_key=verification_key,
                 expected_prior_state_sha256=prepared.state_sha256,
+                _fault_hook=inject_recovery_fault,
             )
             reread = _read_signed_migration_lifecycle_state(
                 parent_fd=session_parent_fd,
@@ -2067,7 +2093,7 @@ class FixtureMigrationRecoverySessionV1:
                 or (_exact_admission is not None and admission != _exact_admission)
             ):
                 raise ValueError("fixture recovery session admission correlation")
-            connection.settimeout(0.5)
+            connection.settimeout(5.0)
         except Exception:
             connection.close()
             for duplicate in duplicates:
@@ -2281,7 +2307,22 @@ class FixtureMigrationLifecycleIssuerV1:
         expected_target_store_id: str,
         expected_semantic_source_sha256: str,
         expected_contract_sha256: str,
+        recovery_fault_boundary: Literal[
+            "after_target_commit",
+            "after_rename",
+            "after_parent_fsync",
+            "after_reread",
+        ]
+        | None = None,
     ) -> FixtureMigrationLifecycleIssuerV1:
+        if recovery_fault_boundary not in {
+            None,
+            "after_target_commit",
+            "after_rename",
+            "after_parent_fsync",
+            "after_reread",
+        }:
+            raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")
         supervisor_receive, supervisor_send = context.Pipe(duplex=False)
         supervisor_process = context.Process(
@@ -2333,6 +2374,7 @@ class FixtureMigrationLifecycleIssuerV1:
                     expected_target_store_id,
                     expected_semantic_source_sha256,
                     expected_contract_sha256,
+                    recovery_fault_boundary,
                 ),
                 daemon=True,
             )

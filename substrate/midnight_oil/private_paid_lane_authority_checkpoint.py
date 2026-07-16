@@ -20,7 +20,7 @@ import sqlite3
 import stat
 import struct
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from contextlib import AbstractContextManager, closing, suppress
 from pathlib import Path
 from types import MappingProxyType
@@ -3942,6 +3942,8 @@ def _persist_signed_migration_lifecycle_state(
     state: SignedMigrationLifecycleStateV1,
     verification_key: VerificationKeyV1,
     expected_prior_state_sha256: str | None,
+    _fault_hook: Callable[[Literal["after_rename", "after_parent_fsync", "after_reread"]], None]
+    | None = None,
 ) -> SignedMigrationLifecycleStateV1:
     parent_identity = _migration_lifecycle_parent_identity(parent_fd)
     if (
@@ -4016,7 +4018,11 @@ def _persist_signed_migration_lifecycle_state(
             dst_dir_fd=locked_parent_fd,
         )
         temporary_basename = None
+        if _fault_hook is not None:
+            _fault_hook("after_rename")
         os.fsync(locked_parent_fd)
+        if _fault_hook is not None:
+            _fault_hook("after_parent_fsync")
         persisted = _read_signed_migration_lifecycle_state(
             parent_fd=locked_parent_fd,
             target_basename=state.target_basename,
@@ -4024,6 +4030,8 @@ def _persist_signed_migration_lifecycle_state(
         )
         if persisted != state:
             raise ValueError("migration lifecycle persistence mismatch")
+        if _fault_hook is not None:
+            _fault_hook("after_reread")
         return persisted
     finally:
         if temporary_basename is not None:

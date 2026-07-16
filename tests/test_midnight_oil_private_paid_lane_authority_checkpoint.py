@@ -24,7 +24,7 @@ import weakref
 from array import array
 from contextlib import suppress
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import pytest
 from cryptography.exceptions import InvalidSignature
@@ -380,7 +380,7 @@ def _attempt_child_recovery_session_death(
         if death_source == "recovery_preadmission_fork":
             connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
-                connection.settimeout(2.0)
+                connection.settimeout(5.0)
                 connection.connect(socket_path)
                 assert struct.unpack("i", connection.getsockopt(0, 2, 4))[0] == issuer_pid
                 request = _canonical_json(
@@ -421,7 +421,7 @@ def _attempt_child_recovery_session_death(
                 assert os.waitstatus_to_exitcode(inherited_status) == 0
                 retry = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
                 try:
-                    retry.settimeout(2.0)
+                    retry.settimeout(5.0)
                     retry.connect(socket_path)
                     assert retry.sendmsg(
                         [frame],
@@ -534,6 +534,13 @@ def _attempt_child_recovery_copy(
     parent_fd: int,
     target_fd: int,
     result_fd: int,
+    recovery_fault_boundary: Literal[
+        "after_target_commit",
+        "after_rename",
+        "after_parent_fsync",
+        "after_reread",
+    ]
+    | None,
 ) -> None:
     try:
         session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
@@ -547,27 +554,91 @@ def _attempt_child_recovery_copy(
             authority_pins=pins,
         )
         try:
-            admission = session.admission
-            dropped_request = _canonical_json(
-                {
-                    "command": "session_recover_copy_prepared_epoch0",
-                    "admission_sha256": admission.admission_sha256,
-                    "handle_nonce": admission.handle_nonce,
-                    "expected_prepared_state_sha256": prepared.state_sha256,
-                }
-            )
-            session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
-            session._close_local()
-            session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
-                socket_path=socket_path,
-                expected_issuer_pid=issuer_pid,
-                recovery_ticket=ticket,
-                admission=admission,
-                verification_key=verification_key,
-                root_fd=root_fd,
-                parent_fd=parent_fd,
-                target_fd=target_fd,
-            )
+            if recovery_fault_boundary is None:
+                admission = session.admission
+                dropped_request = _canonical_json(
+                    {
+                        "command": "session_recover_copy_prepared_epoch0",
+                        "admission_sha256": admission.admission_sha256,
+                        "handle_nonce": admission.handle_nonce,
+                        "expected_prepared_state_sha256": prepared.state_sha256,
+                    }
+                )
+                session._connection.sendall(
+                    support_checkpoint._issuer_session_frame(dropped_request)
+                )
+                session._close_local()
+                session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+                    socket_path=socket_path,
+                    expected_issuer_pid=issuer_pid,
+                    recovery_ticket=ticket,
+                    admission=admission,
+                    verification_key=verification_key,
+                    root_fd=root_fd,
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                )
+            else:
+                admission = session.admission
+                forbidden_fault_request = _canonical_json(
+                    {
+                        "command": "session_recover_copy_prepared_epoch0",
+                        "admission_sha256": admission.admission_sha256,
+                        "handle_nonce": admission.handle_nonce,
+                        "expected_prepared_state_sha256": prepared.state_sha256,
+                        "fault_boundary": recovery_fault_boundary,
+                    }
+                )
+                session._connection.sendall(
+                    support_checkpoint._issuer_session_frame(forbidden_fault_request)
+                )
+                assert support_checkpoint._issuer_session_receive_frame(session._connection) == b"E"
+                session._close_local()
+                session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+                    socket_path=socket_path,
+                    expected_issuer_pid=issuer_pid,
+                    recovery_ticket=ticket,
+                    admission=admission,
+                    verification_key=verification_key,
+                    root_fd=root_fd,
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                )
+                with pytest.raises(ValueError, match="recovery copy rejected"):
+                    session.recover_copy_prepared_epoch0(
+                        expected_prepared_state_sha256=prepared.state_sha256
+                    )
+                intermediate = checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=prepared.target_basename,
+                    verification_key=verification_key,
+                )
+                assert intermediate.lifecycle_phase == (
+                    "copy_prepared"
+                    if recovery_fault_boundary == "after_target_commit"
+                    else "copied_epoch0"
+                )
+                competing = sqlite3.connect(
+                    support_checkpoint._issuer_fd_path(target_fd),
+                    isolation_level=None,
+                    timeout=0.05,
+                )
+                try:
+                    with pytest.raises(sqlite3.OperationalError, match="locked"):
+                        competing.execute("BEGIN IMMEDIATE")
+                finally:
+                    competing.close()
+                session._close_local()
+                session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+                    socket_path=socket_path,
+                    expected_issuer_pid=issuer_pid,
+                    recovery_ticket=ticket,
+                    admission=admission,
+                    verification_key=verification_key,
+                    root_fd=root_fd,
+                    parent_fd=parent_fd,
+                    target_fd=target_fd,
+                )
             completion = session.recover_copy_prepared_epoch0(
                 expected_prepared_state_sha256=prepared.state_sha256
             )
@@ -579,6 +650,26 @@ def _attempt_child_recovery_copy(
             assert completion.prepared_state == prepared
             assert completion.copied_state.lifecycle_phase == "copied_epoch0"
             assert completion.copy_audit.source_manifest_sha256 == pins.source_manifest_sha256
+            assert (
+                checkpoint_module._confirm_signed_migration_lifecycle_state_durable(
+                    parent_fd=parent_fd,
+                    expected_state=completion.copied_state,
+                    verification_key=verification_key,
+                )
+                == completion.copied_state
+            )
+            competing = sqlite3.connect(
+                support_checkpoint._issuer_fd_path(target_fd),
+                isolation_level=None,
+                timeout=0.1,
+            )
+            try:
+                competing.execute("BEGIN IMMEDIATE")
+                competing.execute("ROLLBACK")
+            finally:
+                competing.close()
+            parent_path = support_checkpoint._issuer_fd_path(parent_fd)
+            assert not tuple(parent_path.glob(f".{prepared.target_basename}.*.tmp"))
         finally:
             session.close()
         with pytest.raises(ValueError):
@@ -2682,8 +2773,26 @@ class TestMigrationPrerequisites:
             os.close(shared_parent_fd)
         assert not orphan.exists()
 
+    @pytest.mark.parametrize(
+        "recovery_fault_boundary",
+        (
+            None,
+            "after_target_commit",
+            "after_rename",
+            "after_parent_fsync",
+            "after_reread",
+        ),
+    )
     def test_isolated_issuer_reserves_replays_and_commits_only_durable_state(
-        self, tmp_path: Path
+        self,
+        tmp_path: Path,
+        recovery_fault_boundary: Literal[
+            "after_target_commit",
+            "after_rename",
+            "after_parent_fsync",
+            "after_reread",
+        ]
+        | None,
     ) -> None:
         target = tmp_path / "paid-lane.sqlite3"
         _initialize_schema_only_copy_target(target)
@@ -2715,6 +2824,7 @@ class TestMigrationPrerequisites:
             expected_target_store_id=STORE_ID,
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            recovery_fault_boundary=recovery_fault_boundary,
         )
         try:
             parent_info = os.fstat(parent_fd)
@@ -3087,6 +3197,7 @@ class TestMigrationPrerequisites:
                         parent_fd,
                         target_fd,
                         result_write,
+                        recovery_fault_boundary,
                     )
                     os._exit(0)
                 os.close(result_write)
@@ -3401,7 +3512,7 @@ class TestMigrationPrerequisites:
             release_read = -1
             os.close(result_write)
             result_write = -1
-            assert select.select([ready_read], [], [], 5)[0] == [ready_read]
+            assert select.select([ready_read], [], [], 15)[0] == [ready_read]
             assert os.read(ready_read, 1) == b"R"
             if death_source in {"recovery_fork", "recovery_preadmission_fork"}:
                 os.write(release_write, b"G")
