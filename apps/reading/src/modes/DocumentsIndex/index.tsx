@@ -3,7 +3,9 @@ import { useNavigate } from "react-router-dom";
 
 import LemonTable from "../../components/lemon/LemonTable";
 import LemonTag from "../../components/lemon/LemonTag";
+import archiveAtlas from "../../brand/werner/documents/evidence_archive_atlas_v1.webp";
 import { apiFetch } from "../../lib/api";
+import "./evidence-archive-atlas.css";
 
 /**
  * Documents listing UI (master-spec §4.1).
@@ -27,6 +29,26 @@ interface DocumentRow {
 
 const TIER_FILTERS = ["all", 1, 2, 3, 4, 5] as const;
 type TierFilter = (typeof TIER_FILTERS)[number];
+
+export type EvidenceArchivePhase = "Surveying" | "Charted" | "Empty range" | "Needs attention";
+
+export function EvidenceArchiveAtlasFrame({ phase, visualFixture = false, children }: { phase: EvidenceArchivePhase; visualFixture?: boolean; children: React.ReactNode }) {
+  return (
+    <div className={`evidence-archive-atlas ${visualFixture ? "evidence-archive-atlas--fixture" : ""}`}>
+      <img src={archiveAtlas} alt="" aria-hidden="true" draggable={false} decoding="async" data-testid="evidence-archive-atlas-art" />
+      <div className="evidence-archive-atlas__veil" aria-hidden="true" />
+      <header className="evidence-archive-atlas__masthead">
+        <div>
+          <p className="evidence-archive-atlas__eyebrow">Antiek · evidence archive atlas</p>
+          <h1>Survey what the substrate holds</h1>
+          <p>Chart the evidence already filed in Antiek, then open any record in its authoritative reader.</p>
+        </div>
+        <div className="evidence-archive-atlas__phase"><span aria-hidden="true" /><strong>{phase}</strong></div>
+      </header>
+      <div className="evidence-archive-atlas__workspace">{children}</div>
+    </div>
+  );
+}
 
 export default function DocumentsIndex() {
   const navigate = useNavigate();
@@ -54,8 +76,8 @@ export default function DocumentsIndex() {
       }
       const data = await resp.json();
       setRows(data.documents ?? []);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setError("The archive could not be charted. Try again.");
     } finally {
       setLoading(false);
     }
@@ -76,22 +98,10 @@ export default function DocumentsIndex() {
   }, [rows]);
 
   return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-4xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Documents
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Substrate-attached documents (PDFs + web sources +
-              transcripts). Tier reflects source quality per master-
-              spec §9.5: Tier 1 peer-reviewed primary, Tier 5
-              anonymous.
-            </p>
-          </header>
+    <EvidenceArchiveAtlasFrame phase={error ? "Needs attention" : loading ? "Surveying" : rows.length ? "Charted" : "Empty range"}>
+        <div className="evidence-archive-atlas__console space-y-6">
 
-          <section className="grid grid-cols-5 gap-2">
+          <section className="evidence-archive-atlas__tiers grid grid-cols-5 gap-2" aria-label="Documents by source tier" aria-describedby="evidence-archive-tier-caption">
             {[1, 2, 3, 4, 5].map((t) => (
               <div
                 key={t}
@@ -107,45 +117,50 @@ export default function DocumentsIndex() {
             ))}
           </section>
 
-          <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
+          <p id="evidence-archive-tier-caption" className="evidence-archive-atlas__tier-caption">Tier 1 is peer-reviewed primary evidence; Tier 5 is anonymous material. The archive preserves that source-quality distinction.</p>
+
+          <section className="evidence-archive-atlas__filters border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3" aria-label="Archive filters">
             <div className="flex items-center gap-2 flex-wrap">
               {TIER_FILTERS.map((t) => (
                 <button
                   key={String(t)}
                   type="button"
                   onClick={() => setTierFilter(t)}
-                  className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors ${
+                  aria-pressed={tierFilter === t}
+                  className={`px-2.5 py-1 rounded-md text-xs font-mono transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-aurora focus-visible:ring-offset-2 ${
                     tierFilter === t
                       ? "bg-ink text-white"
-                      : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4 dark:bg-charcoal-1"
+                      : "bg-ice-3 dark:bg-charcoal-1 text-ink dark:text-bright hover:bg-ice-4 dark:hover:bg-charcoal-2"
                   }`}
                 >
                   {t === "all" ? "all" : `tier ${t}`}
                 </button>
               ))}
             </div>
-            <input
-              type="text"
-              value={investigationFilter}
-              onChange={(e) => setInvestigationFilter(e.target.value)}
-              placeholder="filter by investigation_id"
-              className="w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-            />
+            <label className="block text-xs font-medium text-ink dark:text-bright">Investigation id
+              <input
+                type="text"
+                value={investigationFilter}
+                onChange={(e) => setInvestigationFilter(e.target.value)}
+                placeholder="filter by investigation_id"
+                className="mt-1.5 w-full text-xs font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
+              />
+            </label>
           </section>
 
           {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
+            <p role="alert" className="text-sm text-emperor border border-emperor/30 bg-emperor/10 px-3 py-2 rounded">
               {error}
             </p>
           )}
 
           {loading && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">Loading…</p>
+            <p role="status" className="text-sm text-shadow-1 dark:text-moonlight italic">Charting the archive…</p>
           )}
 
           {!loading && rows.length === 0 && !error && (
-            <p className="text-sm text-shadow-1 dark:text-moonlight italic">
-              No documents match this filter.
+            <p role="status" className="text-sm text-shadow-1 dark:text-moonlight italic">
+              {tierFilter === "all" && !investigationFilter.trim() ? "Nothing is filed yet. Bring sources into range first." : "No documents match this filter."}
             </p>
           )}
 
@@ -216,7 +231,6 @@ export default function DocumentsIndex() {
             />
           )}
         </div>
-      </main>
-    </div>
+    </EvidenceArchiveAtlasFrame>
   );
 }
