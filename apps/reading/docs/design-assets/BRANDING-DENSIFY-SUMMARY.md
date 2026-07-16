@@ -260,3 +260,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2c paperclip zombies | `902c9b737` | wait-arcade/cabinet/LGH zombies invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c igloo ice arcade cursor | `998714b15` | cabinet/LGH/wait ice invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c clam catcher cursor | `627500ab0` | cabinet/LGH/wait clam invent refresh on FULL GREEN tip |
+| Imagine invent polish v2c CRT igloo cursor TV | `TBD` | LoadingGameHost default living-TV invent refresh on FULL GREEN tip |
