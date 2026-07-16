@@ -253,4 +253,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2b residual living-TV session | `5d3e361e6` | SessionBrandChrome residual invent refresh |
 | Imagine invent polish v2b residual cascade plan | `5d3e361e6` | PlanEditor invent refresh |
 | Arcade + wait-arcade invent reframe densify | `7731dd063` | stamp antiek-living-tv-invent on cabinet cards + wait cartridges; densify 27/242 |
-| Wait-arcade invent reframe densify test | `TBD` | ResearchWaitArcade cartridge invent class densify; FULL GREEN prior tip 74112b6bf |
+| Wait-arcade invent reframe densify test | `d1c0aeead` | ResearchWaitArcade cartridge invent class densify; FULL GREEN prior tip 74112b6bf |
