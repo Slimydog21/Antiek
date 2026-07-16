@@ -5,6 +5,11 @@ from .canonical_publication import (
     CanonicalTwinPublicationResult,
     publish_canonical_twin,
 )
+from .canonical_reader import (
+    CanonicalTwinReader,
+    CanonicalTwinReaderNotFound,
+    CanonicalTwinReaderView,
+)
 from .ledger import (
     CanonicalTwinPublication,
     FailureCode,
@@ -29,7 +34,8 @@ from .source_registration import (
 
 __all__ = [
     "CanonicalTwinPublication", "CanonicalTwinPublicationError",
-    "CanonicalTwinPublicationResult", "FailureCode", "SourceRevision",
+    "CanonicalTwinPublicationResult", "CanonicalTwinReader",
+    "CanonicalTwinReaderNotFound", "CanonicalTwinReaderView", "FailureCode", "SourceRevision",
     "TwinConflictError", "TwinIntegrityError", "TwinLedgerError",
     "TwinRecursionLedger", "TwinSnapshot", "UniversalityReport",
     "TwinSourceCoverage", "TwinSourceEnvelope", "TwinSourceEnvelopeError",

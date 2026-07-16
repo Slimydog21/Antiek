@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # ruff: noqa: F811 - imported fixture names are intentionally injected by pytest.
+import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 
@@ -16,9 +17,11 @@ from substrate.twin_recursion import (
     SourceRevision,
     TwinRecursionLedger,
     TwinSourceEnvelope,
+    build_twin_source_envelope,
     project_twin_sources,
     publish_canonical_twin,
 )
+from substrate.twin_recursion.canonical_publication import LEGACY_PUBLICATION_SCHEMA
 from substrate.twin_recursion.segmentation_ledger import TwinSegmentationLedger
 
 
@@ -65,11 +68,12 @@ def test_publication_is_one_html_document_one_advisory_chunk_and_no_claims(
             "SELECT document_id,text,embedding FROM chunks WHERE chunk_id=?",
             [first.chunk_id],
         ).fetchone()
-        assert document[1].startswith("<!doctype html>")
+        assert "<!doctype" not in document[1].lower()
         assert document[3:5] == ("personal_reading", "acct")
         metadata = json.loads(document[2])
         assert metadata["binding_id"] == snapshot.binding_id
         assert metadata["authority"] == "advisory_twin_v1"
+        assert metadata["content_sanitized"] is True
         envelope = TwinSourceEnvelope.from_json(document[5])
         assert envelope.status == "requires_binding"
         assert envelope.reason == "canonical_twin_is_derived"
@@ -142,6 +146,50 @@ def test_exact_replay_rejects_graph_row_substitution(completed_parent) -> None:
         )
         with pytest.raises(CanonicalTwinPublicationError, match="substitution"):
             publish_canonical_twin(graph, ledger, binding_id=snapshot.binding_id)
+    finally:
+        graph.close()
+
+
+def test_exact_legacy_v1_publication_migrates_to_sanitized_v2(completed_parent) -> None:
+    ledger, snapshot, tmp_path = _ready_parent(completed_parent)
+    graph = _graph(tmp_path / "legacy-v1-graph.duckdb")
+    try:
+        result = publish_canonical_twin(graph, ledger, binding_id=snapshot.binding_id)
+        with ledger.canonical_publication(snapshot.binding_id) as publication:
+            legacy_metadata = json.dumps(
+                {
+                    "authority": "advisory_twin_v1",
+                    "binding_id": publication.binding_id,
+                    "body_hash": publication.body_hash,
+                    "chunk_id": result.chunk_id,
+                    "chunk_sha256": hashlib.sha256(publication.chunk_text.encode()).hexdigest(),
+                    "completion_digest": publication.completion_digest,
+                    "schema": LEGACY_PUBLICATION_SCHEMA,
+                    "source_asset_id": publication.source_asset_id,
+                    "source_hash": publication.source_hash,
+                },
+                sort_keys=True,
+                separators=(",", ":"),
+            )
+            legacy_envelope = build_twin_source_envelope(
+                document_id=publication.twin_id,
+                title=publication.title,
+                raw_text=publication.rendered_html,
+                document_type="canonical_twin",
+                owner_user_id=publication.account_id,
+            ).to_json()
+            graph.execute(
+                "UPDATE documents SET raw_text=?,metadata=?,twin_source_envelope=? "
+                "WHERE document_id=?",
+                [publication.rendered_html, legacy_metadata, legacy_envelope, result.document_id],
+            )
+        assert publish_canonical_twin(graph, ledger, binding_id=snapshot.binding_id) == result
+        migrated = graph.execute(
+            "SELECT raw_text,metadata FROM documents WHERE document_id=?", [result.document_id]
+        ).fetchone()
+        assert "<!doctype" not in migrated[0].lower()
+        assert json.loads(migrated[1])["schema"].endswith(".v2")
+        assert json.loads(migrated[1])["content_sanitized"] is True
     finally:
         graph.close()
 

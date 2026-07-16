@@ -398,10 +398,31 @@ class TwinRecursionLedger:
         self.path = str(path)
         self._before_commit = before_commit
         self._timeout = timeout
+        self._read_only = False
         self._initialize()
 
+    @classmethod
+    def open_read_only(cls, path: str | Path, *, timeout: float = 30.0) -> TwinRecursionLedger:
+        """Open and verify an existing ledger without schema or WAL writes."""
+        resolved = Path(path).expanduser().resolve()
+        if not resolved.is_file():
+            raise FileNotFoundError(resolved)
+        ledger = cls.__new__(cls)
+        ledger.path = str(resolved)
+        ledger._before_commit = None
+        ledger._timeout = timeout
+        ledger._read_only = True
+        with ledger._connect() as con:
+            ledger._verify_schema(con)
+        return ledger
+
     def _connect(self) -> sqlite3.Connection:
-        con = sqlite3.connect(self.path, timeout=self._timeout, isolation_level=None)
+        target = (
+            f"{Path(self.path).resolve().as_uri()}?mode=ro" if self._read_only else self.path
+        )
+        con = sqlite3.connect(
+            target, timeout=self._timeout, isolation_level=None, uri=self._read_only
+        )
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys=ON")
         con.execute(f"PRAGMA busy_timeout={max(0, int(self._timeout * 1000))}")

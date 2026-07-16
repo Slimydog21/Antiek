@@ -8,6 +8,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
 from runtime.db_lock import LockedConnection
+from substrate.books.html_sanitizer import is_trusted_sanitized, sanitize_book_html
 from substrate.twin_note_taker import MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, AssetContent
 
 from .ledger import SourceRevision, TwinLedgerError, TwinRecursionLedger
@@ -365,13 +366,16 @@ def _verify_canonical_twin_publication(
                 "chunk_id",
                 "chunk_sha256",
                 "completion_digest",
+                "content_sanitized",
+                "content_sanitizer_version",
                 "schema",
                 "source_asset_id",
                 "source_hash",
             }
             or _canonical_json(metadata) != str(row[1])
-            or metadata["schema"] != "antiek.canonical-twin-publication.v1"
+            or metadata["schema"] != "antiek.canonical-twin-publication.v2"
             or metadata["authority"] != "advisory_twin_v1"
+            or not is_trusted_sanitized(metadata)
         ):
             return False
         chunks = con.execute(
@@ -395,7 +399,7 @@ def _verify_canonical_twin_publication(
             if (
                 publication.account_id != envelope.account_id
                 or publication.twin_id != envelope.document_id
-                or publication.rendered_html != str(row[0])
+                or sanitize_book_html(publication.rendered_html) != str(row[0])
                 or publication.body_hash != metadata["body_hash"]
                 or publication.completion_digest != metadata["completion_digest"]
                 or publication.source_asset_id != metadata["source_asset_id"]
