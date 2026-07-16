@@ -86,6 +86,24 @@ def test_checked_in_provider_registry_is_closed_and_refuses_all_candidates() -> 
     )
 
 
+def test_direct_qualification_requires_every_evidence_dimension() -> None:
+    qualification = _qualification()
+    incomplete = ProviderQualification(
+        provider=qualification.provider,
+        model=qualification.model,
+        operation=qualification.operation,
+        checked_at=qualification.checked_at,
+        verdict=qualification.verdict,
+        evidence={
+            key: value
+            for key, value in qualification.evidence.items()
+            if key not in {"pinned_pricing", "stable_provider_evidence"}
+        },
+    )
+
+    assert not incomplete.fully_qualified
+
+
 def test_paid_catalog_capability_claim_requires_exact_fully_passing_route() -> None:
     entry = _catalog_entry()
     with pytest.raises(ValueError, match="without fully passing"):

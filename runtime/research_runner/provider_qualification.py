@@ -57,8 +57,17 @@ class ProviderQualification:
 
     @property
     def fully_qualified(self) -> bool:
-        return self.verdict is QualificationVerdict.QUALIFIED and all(
-            item.status is EvidenceStatus.PASS for item in self.evidence.values()
+        # The JSON parser enforces the complete shape, but direct construction
+        # is also a supported server-side seam. Without the exact key check,
+        # ``all`` over partial (or empty) evidence is vacuously true and can
+        # mint paid authority without pinned pricing or stable-provider proof.
+        return (
+            self.verdict is QualificationVerdict.QUALIFIED
+            and set(self.evidence) == _REQUIRED_DIMENSIONS
+            and all(
+                item.status is EvidenceStatus.PASS
+                for item in self.evidence.values()
+            )
         )
 
 

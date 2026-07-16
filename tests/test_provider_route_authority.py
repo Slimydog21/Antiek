@@ -158,6 +158,34 @@ def test_catalog_capability_claim_must_also_pass_for_execution() -> None:
     assert result.execution_status is RouteExecutionStatus.BLOCKED_IDEMPOTENCY_UNPROVEN
 
 
+def test_partial_qualification_cannot_mint_execution_authority() -> None:
+    identity = _identity()
+    qualification = _qualification()
+    partial = ProviderQualification(
+        provider=qualification.provider,
+        model=qualification.model,
+        operation=qualification.operation,
+        checked_at=qualification.checked_at,
+        verdict=qualification.verdict,
+        evidence={
+            key: value
+            for key, value in qualification.evidence.items()
+            if key not in {"pinned_pricing", "stable_provider_evidence"}
+        },
+    )
+    adapter = FakeHardCeilingAdapter()
+    resolver = ProviderRouteAuthorityResolver(
+        (RouteAuthorityCatalogEntry(identity, _cost(), partial),),
+        adapter_lookup=lambda _provider_id: adapter,
+    )
+    resolver.register_adapter(identity, adapter.provider, adapter)
+
+    authority = resolver.resolve(identity, provider_id=adapter.provider)
+
+    assert authority.execution_status is RouteExecutionStatus.BLOCKED_QUALIFICATION
+    assert not authority.hard_ceiling_eligible
+
+
 def test_missing_replaced_or_wrong_route_adapter_fails_closed() -> None:
     identity = _identity()
     entry = RouteAuthorityCatalogEntry(identity, _cost(), _qualification())
