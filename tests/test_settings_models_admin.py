@@ -14,6 +14,7 @@ import json
 import logging
 import traceback
 from collections.abc import Iterator
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import httpx
@@ -288,6 +289,34 @@ def test_ciphertext_substitution_revokes_route_and_cannot_reveal_other_key(
     with pytest.raises(ProviderError) as exc_info:
         get_provider("user-my-deepseek")._resolve_api_key()  # noqa: SLF001
     assert other_secret not in str(exc_info.value)
+
+
+def test_concurrent_creates_preserve_registry_and_credential_artifact(
+    client: TestClient,
+    env: Path,
+) -> None:
+    def create(index: int) -> int:
+        response = client.post(
+            "/settings/models/user",
+            json={
+                **_ADD_BODY,
+                "display_name": f"Concurrent Model {index}",
+                "api_key": f"sk-concurrent-{index:02d}-abcdefghijklmnopqrstuvwxyz",
+            },
+        )
+        return response.status_code
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        statuses = list(pool.map(create, range(16)))
+
+    assert statuses == [201] * 16
+    registry = json.loads((env / "settings" / "user_models.json").read_text())
+    artifact = json.loads((env / "byok" / "credentials.enc").read_text())
+    assert len(registry) == 16
+    assert len(artifact) == 16
+    inventory = client.get("/settings/models/user").json()
+    assert inventory["count"] == 16
+    assert all(row["route_eligible"] is True for row in inventory["models"])
 
 
 @pytest.mark.parametrize(

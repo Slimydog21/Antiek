@@ -79,10 +79,15 @@ the explicit follow-up that grants these registered providers route authority.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
 import re
+import threading
+import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
@@ -108,6 +113,8 @@ _ENV_HOME = "ANTIEK_HOME"
 
 _PIPELINE_KIND = "model_provider"
 _ID_PREFIX = "user-"
+_REGISTRY_LOCK = threading.RLock()
+_PRIVATE_FILE_MODE = 0o600
 
 ProviderKind = Literal["openai_compat", "anthropic"]
 _PROVIDER_KINDS: tuple[str, ...] = ("openai_compat", "anthropic")
@@ -154,7 +161,22 @@ def _registry_path() -> Path:
     return base / "settings" / "user_models.json"
 
 
-def _load_registry() -> dict[str, UserModelRecord]:
+@contextmanager
+def _registry_guard(*, exclusive: bool) -> Iterator[None]:
+    path = _registry_path()
+    lock_path = Path(f"{path}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    with _REGISTRY_LOCK:
+        fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, _PRIVATE_FILE_MODE)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+            yield
+        finally:
+            fcntl.flock(fd, fcntl.LOCK_UN)
+            os.close(fd)
+
+
+def _load_registry_unlocked() -> dict[str, UserModelRecord]:
     """Lenient read, mirroring ``store._read_artifact``: a missing or
     corrupt file yields an empty registry rather than a crashed boot."""
     path = _registry_path()
@@ -183,11 +205,33 @@ def _load_registry() -> dict[str, UserModelRecord]:
     return out
 
 
-def _write_registry(registry: dict[str, UserModelRecord]) -> None:
+def _load_registry() -> dict[str, UserModelRecord]:
+    with _registry_guard(exclusive=False):
+        return _load_registry_unlocked()
+
+
+def _write_registry_unlocked(registry: dict[str, UserModelRecord]) -> None:
     path = _registry_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     data = {rid: rec.model_dump() for rid, rec in registry.items()}
-    path.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    fd = os.open(
+        str(temporary),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        _PRIVATE_FILE_MODE,
+    )
+    try:
+        payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
+        with os.fdopen(fd, "wb", closefd=False) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        os.chmod(path, _PRIVATE_FILE_MODE)
+    finally:
+        os.close(fd)
+        with suppress(FileNotFoundError):
+            temporary.unlink()
 
 
 def _record_fingerprint(record: UserModelRecord) -> str:
@@ -678,50 +722,57 @@ async def post_user_model(request: Request) -> UserModelRow:
     spec = _parse_create(payload)
 
     record_id = _slug_id(spec.display_name)
-    registry = _load_registry()
-    if record_id in registry:
-        raise HTTPException(
-            status_code=409,
-            detail=f"user model {record_id!r} already exists; "
-            "delete it first or pick another display name",
+    with _registry_guard(exclusive=True):
+        registry = _load_registry_unlocked()
+        if record_id in registry:
+            raise HTTPException(
+                status_code=409,
+                detail=f"user model {record_id!r} already exists; "
+                "delete it first or pick another display name",
+            )
+
+        # Encrypt-at-rest FIRST, then persist the non-secret record in the
+        # same registry transaction. A crash between the two orphans only
+        # unreachable ciphertext, never a record with a dangling key.
+        cred_ref = store_credential(
+            record_id,
+            spec.api_key,
+            pipeline_kind=_PIPELINE_KIND,
         )
+        credential = _credential_metadata().get(cred_ref)
+        if credential is None:
+            raise HTTPException(status_code=500, detail="credential persistence failed")
+        record = UserModelRecord(
+            id=record_id,
+            provider_kind=spec.provider_kind,
+            model_id=spec.model_id,
+            display_name=spec.display_name,
+            base_url=spec.base_url,
+            cred_ref=cred_ref,
+            cred_fingerprint=credential.artifact_fingerprint,
+            enabled=True,
+        )
+        registry[record_id] = record
+        _write_registry_unlocked(registry)
 
-    # Encrypt-at-rest FIRST (byok SecretBox), then persist the non-secret
-    # record referencing the ciphertext. A crash between the two orphans
-    # only unreachable ciphertext, never a record with a dangling key.
-    cred_ref = store_credential(record_id, spec.api_key, pipeline_kind=_PIPELINE_KIND)
-    credential = _credential_metadata().get(cred_ref)
-    if credential is None:
-        raise HTTPException(status_code=500, detail="credential persistence failed")
-    record = UserModelRecord(
-        id=record_id,
-        provider_kind=spec.provider_kind,
-        model_id=spec.model_id,
-        display_name=spec.display_name,
-        base_url=spec.base_url,
-        cred_ref=cred_ref,
-        cred_fingerprint=credential.artifact_fingerprint,
-        enabled=True,
-    )
-    registry[record_id] = record
-    _write_registry(registry)
+        # Registration and app-local authority update remain inside the same
+        # transaction, so a concurrent delete cannot resurrect a stale seam.
+        adapter = _make_provider(record)
+        register_provider(adapter)
+        seam = _seam_names(request.app)
+        seam.add(record_id)
+        fingerprints = _registration_fingerprints(request.app)
+        fingerprints[record_id] = _record_fingerprint(record)
 
-    # Real registration, immediately — same seam as the default bootstrap.
-    adapter = _make_provider(record)
-    register_provider(adapter)
-    seam = _seam_names(request.app)
-    seam.add(record_id)
-    _registration_fingerprints(request.app)[record_id] = _record_fingerprint(record)
-
-    metadata = _credential_metadata()
-    present = {record.cred_ref} if _credential_matches_record(record, metadata) else set()
-    return _row(
-        record,
-        app=request.app,
-        present=present,
-        seam=seam,
-        fingerprints=_registration_fingerprints(request.app),
-    )
+        metadata = _credential_metadata()
+        present = {record.cred_ref} if _credential_matches_record(record, metadata) else set()
+        return _row(
+            record,
+            app=request.app,
+            present=present,
+            seam=seam,
+            fingerprints=fingerprints,
+        )
 
 
 @user_models_router.post("/resolve", response_model=UserModelRouteResponse)
@@ -746,13 +797,14 @@ async def resolve_user_model_route(request: Request) -> UserModelRouteResponse:
 
 @user_models_router.delete("/{user_model_id}", response_model=UserModelDeleteResponse)
 def delete_user_model(user_model_id: str, request: Request) -> UserModelDeleteResponse:
-    registry = _load_registry()
-    if user_model_id not in registry:
-        raise HTTPException(status_code=404, detail="unknown user model id")
-    del registry[user_model_id]
-    _write_registry(registry)
-    _seam_names(request.app).discard(user_model_id)
-    _registration_fingerprints(request.app).pop(user_model_id, None)
+    with _registry_guard(exclusive=True):
+        registry = _load_registry_unlocked()
+        if user_model_id not in registry:
+            raise HTTPException(status_code=404, detail="unknown user model id")
+        del registry[user_model_id]
+        _write_registry_unlocked(registry)
+        _seam_names(request.app).discard(user_model_id)
+        _registration_fingerprints(request.app).pop(user_model_id, None)
     return UserModelDeleteResponse(
         removed=user_model_id,
         notes=[

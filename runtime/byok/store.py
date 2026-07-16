@@ -58,10 +58,14 @@ without ever touching the key.
 
 from __future__ import annotations
 
+import fcntl
 import hashlib
 import json
 import os
+import threading
 import uuid
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -76,6 +80,7 @@ _KEY_SIZE = nacl.secret.SecretBox.KEY_SIZE  # 32
 _KEY_FILE_MODE = 0o600
 _BOUND_CREDENTIAL_VERSION = 2
 _BINDING_PERSON = b"antiek-byok-v2"
+_STORE_LOCK = threading.RLock()
 
 _ENV_ARTIFACT = "ANTIEK_BYOK_ARTIFACT"
 _ENV_KEY_FILE = "ANTIEK_BYOK_KEY_FILE"
@@ -185,10 +190,40 @@ def _read_artifact(artifact_path: str) -> dict:
         return {}
 
 
+@contextmanager
+def _artifact_lock(artifact_path: str, *, exclusive: bool) -> Iterator[None]:
+    lock_path = Path(f"{artifact_path}.lock")
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, _KEY_FILE_MODE)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH)
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def _write_artifact(artifact_path: str, data: dict) -> None:
     p = Path(artifact_path)
     p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(json.dumps(data, indent=2, sort_keys=True), encoding="utf-8")
+    temporary = p.with_name(f".{p.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
+    fd = os.open(
+        str(temporary),
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL,
+        _KEY_FILE_MODE,
+    )
+    try:
+        payload = json.dumps(data, indent=2, sort_keys=True).encode("utf-8")
+        with os.fdopen(fd, "wb", closefd=False) as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, p)
+        os.chmod(p, _KEY_FILE_MODE)
+    finally:
+        os.close(fd)
+        with suppress(FileNotFoundError):
+            temporary.unlink()
 
 
 def store_credential(
@@ -223,15 +258,16 @@ def store_credential(
     )
     sealed = box.encrypt(secret.encode("utf-8"))
 
-    data = _read_artifact(artifact)
-    data[cred_id] = {
-        "cred_id": cred_id,
-        "account_handle": handle,
-        "pipeline_kind": pipeline_kind,
-        "binding_version": _BOUND_CREDENTIAL_VERSION,
-        "ciphertext_hex": bytes(sealed).hex(),
-    }
-    _write_artifact(artifact, data)
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=True):
+        data = _read_artifact(artifact)
+        data[cred_id] = {
+            "cred_id": cred_id,
+            "account_handle": handle,
+            "pipeline_kind": pipeline_kind,
+            "binding_version": _BOUND_CREDENTIAL_VERSION,
+            "ciphertext_hex": bytes(sealed).hex(),
+        }
+        _write_artifact(artifact, data)
     return cred_id
 
 
@@ -249,7 +285,8 @@ def load_credential(
     NEVER logged / emitted by this function — it is handed back wrapped.
     """
     artifact = artifact_path or _default_artifact_path()
-    data = _read_artifact(artifact)
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
+        data = _read_artifact(artifact)
     rec = data.get(cred_id)
     if not isinstance(rec, dict) or rec.get("cred_id") != cred_id:
         raise KeyError(f"unknown cred_id: {cred_id}")
@@ -293,7 +330,8 @@ def list_credentials(
     """List the NON-SECRET metadata for every stored credential. Never decrypts,
     never touches the key — safe to call from a config/listing surface."""
     artifact = artifact_path or _default_artifact_path()
-    data = _read_artifact(artifact)
+    with _STORE_LOCK, _artifact_lock(artifact, exclusive=False):
+        data = _read_artifact(artifact)
     out: list[CredentialMetadata] = []
     for cred_id, rec in data.items():
         if (

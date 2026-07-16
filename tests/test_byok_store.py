@@ -11,6 +11,7 @@ import json
 import os
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -155,3 +156,33 @@ def test_legacy_unbound_credential_remains_readable_for_non_routing_consumers():
         )
         assert loaded.reveal() == _SECRET
         assert list_credentials(artifact_path=str(artifact))[0].binding_version == 1
+
+
+def test_concurrent_stores_preserve_every_ciphertext_and_valid_json():
+    with tempfile.TemporaryDirectory() as tmp:
+        artifact = Path(tmp) / "credentials.enc"
+
+        def store(index: int) -> tuple[str, str]:
+            secret = f"secret-{index}"
+            return (
+                store_credential(
+                    f"account-{index}",
+                    secret,
+                    pipeline_kind="user_model_provider",
+                    artifact_path=str(artifact),
+                    key_bytes=_TEST_KEY,
+                ),
+                secret,
+            )
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            stored = list(pool.map(store, range(24)))
+
+        assert len(json.loads(artifact.read_text(encoding="utf-8"))) == 24
+        assert len(list_credentials(artifact_path=str(artifact))) == 24
+        for cred_id, secret in stored:
+            assert load_credential(
+                cred_id,
+                artifact_path=str(artifact),
+                key_bytes=_TEST_KEY,
+            ).reveal() == secret
