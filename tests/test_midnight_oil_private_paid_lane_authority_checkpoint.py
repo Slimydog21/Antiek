@@ -6019,6 +6019,21 @@ class TestMigrationPrerequisites:
                         issuer.prepare_cutover_intent_v2(
                             expected_copied_state=copied,
                         )
+                elif recovery_fault_boundary is None:
+                    lost_response = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                    try:
+                        lost_response.connect(issuer._socket_path)
+                        lost_response.sendall(
+                            _canonical_json(
+                                {
+                                    "command": "prepare_cutover_intent_v2",
+                                    "expected_copied_state_sha256": copied.state_sha256,
+                                }
+                            )
+                        )
+                        lost_response.shutdown(socket.SHUT_WR)
+                    finally:
+                        lost_response.close()
                 intent = issuer.prepare_cutover_intent_v2(
                     expected_copied_state=copied,
                 )
