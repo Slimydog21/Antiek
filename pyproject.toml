@@ -68,7 +68,7 @@ dependencies = [
   "jsonschema>=4.0",
   # 2.8 is the newest line compatible with the repository's declared
   # cryptography==48 constraint. 3.x requires cryptography>=49.
-  "webauthn>=2.8,<3",
+  "webauthn>=2.8,<4",
 ]
 
 [project.optional-dependencies]
