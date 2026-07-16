@@ -39,6 +39,13 @@ from substrate.midnight_oil.private_provider_capability_v4 import (
     private_provider_capability_v4_sha256,
     verify_private_provider_capability_v4,
 )
+from substrate.midnight_oil.private_provider_envelope_v4 import (
+    _ENVELOPE_V4_DOMAIN,
+    PreparedOwnerPrivateEnvelopeV4,
+    build_prepared_owner_private_envelope_v4,
+    prepared_owner_private_envelope_v4_sha256,
+    verify_prepared_owner_private_envelope_v4,
+)
 from substrate.midnight_oil.private_provider_receipt_v7 import (
     _RECEIPT_V7_DOMAIN,
     OwnerPrivatePublicationSourceReceiptV7,
@@ -63,10 +70,205 @@ from tests.support.owner_private_v4 import (
     V4_PRIVATE,
     capability_v4,
     core_v4,
+    envelope_v4,
     public_key,
     receipt_v7,
     source_pair,
 )
+
+
+def test_envelope_v4_binds_exact_core_route_limits_and_ordered_receipts() -> None:
+    cap = capability_v4()
+    core = core_v4(pair_count=2, capability=cap)
+    receipts = tuple(receipt_v7(core=core, capability=cap, ordinal=ordinal) for ordinal in (1, 2))
+    envelope = build_prepared_owner_private_envelope_v4(
+        request_core=core,
+        receipts=receipts,
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+    )
+    assert _ENVELOPE_V4_DOMAIN == (b"antiek.midnight-oil.owner-private-prepared-envelope.v4\x00")
+    assert envelope.envelope_sha256 == prepared_owner_private_envelope_v4_sha256(envelope)
+    assert envelope.envelope_id == "openv4_" + envelope.envelope_sha256[:24]
+    assert tuple(member.receipt_id for member in envelope.receipt_v7_roster) == tuple(
+        receipt.receipt_id for receipt in receipts
+    )
+    assert envelope.route_key == core.route_key
+    assert envelope.provider_request_sha256 == core.provider_request_sha256
+    assert envelope.provider_scoped_idempotency_sha256 == core.provider_scoped_idempotency_sha256
+    assert envelope.projected_max_cents == core.projected_max_cents
+    assert envelope.max_output_bytes == core.max_output_bytes
+    verify_prepared_owner_private_envelope_v4(
+        envelope,
+        receipts=receipts,
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+    )
+    assert "redacted=True" in repr(envelope)
+    for field in (
+        "live_migration_verified",
+        "user_accounting_effect",
+        "transport_reachable",
+        "confers_execution_authority",
+        "confers_checkpoint_authority",
+        "confers_sink_authority",
+        "confers_transition_authority",
+        "production_consumer_enabled",
+    ):
+        assert getattr(envelope, field) is False
+
+
+def test_envelope_v4_planner_has_exact_empty_roster() -> None:
+    cap = capability_v4(role="planner")
+    core = core_v4(role="planner", capability=cap)
+    envelope = build_prepared_owner_private_envelope_v4(
+        request_core=core,
+        receipts=(),
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+    )
+    assert envelope.receipt_v7_roster == ()
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "request_core_v4_sha256",
+        "output_policy_v4_sha256",
+        "capability_v4_sha256",
+        "provider_request_sha256",
+        "provider_scoped_idempotency_sha256",
+    ),
+)
+def test_envelope_v4_direct_digest_substitution_rejects(field: str) -> None:
+    raw = envelope_v4().model_dump(mode="python")
+    raw[field] = "0" * 64
+    with pytest.raises((ValidationError, ValueError)):
+        PreparedOwnerPrivateEnvelopeV4.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("route_key", "openai/forged"),
+        ("provider_id", "forged"),
+        ("model_id", "forged"),
+        ("processing_region", "eu"),
+        ("provider_request_bytes_count", 1),
+        ("projected_max_cents", 1),
+        ("max_output_bytes", 1),
+    ),
+)
+def test_envelope_v4_route_request_and_limit_substitution_rejects(
+    field: str, value: object
+) -> None:
+    raw = envelope_v4().model_dump(mode="python")
+    raw[field] = value
+    with pytest.raises((ValidationError, ValueError)):
+        PreparedOwnerPrivateEnvelopeV4.model_validate(raw)
+
+
+def test_envelope_v4_receipt_reorder_omission_and_foreign_roster_reject() -> None:
+    cap = capability_v4()
+    core = core_v4(pair_count=2, capability=cap)
+    receipts = tuple(receipt_v7(core=core, capability=cap, ordinal=ordinal) for ordinal in (1, 2))
+    with pytest.raises(ValueError, match="unavailable"):
+        build_prepared_owner_private_envelope_v4(
+            request_core=core,
+            receipts=tuple(reversed(receipts)),
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+        )
+    with pytest.raises(ValueError, match="unavailable"):
+        build_prepared_owner_private_envelope_v4(
+            request_core=core,
+            receipts=receipts[:1],
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+        )
+    envelope = envelope_v4(core=core, capability=cap)
+    foreign_cap = capability_v4(owner_path_discriminator="opspd1_" + "9" * 64)
+    foreign_core = core_v4(capability=foreign_cap)
+    foreign_receipt = receipt_v7(core=foreign_core, capability=foreign_cap)
+    with pytest.raises(ValueError, match="unavailable"):
+        verify_prepared_owner_private_envelope_v4(
+            envelope,
+            receipts=(foreign_receipt, receipts[1]),
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+        )
+
+
+def test_envelope_v4_rehash_cannot_promote_authority_or_skip_full_receipt_join() -> None:
+    envelope = envelope_v4()
+    raw = envelope.model_dump(mode="python")
+    raw["transport_reachable"] = True
+    material = {
+        key: value for key, value in raw.items() if key not in {"envelope_id", "envelope_sha256"}
+    }
+    digest = prepared_owner_private_envelope_v4_sha256(material)
+    raw.update(envelope_id="openv4_" + digest[:24], envelope_sha256=digest)
+    with pytest.raises(ValidationError):
+        PreparedOwnerPrivateEnvelopeV4.model_validate(raw)
+
+    with pytest.raises(ValueError, match="unavailable"):
+        verify_prepared_owner_private_envelope_v4(
+            envelope,
+            receipts=(),
+            capability=capability_v4(),
+            capability_verification_keys={V4_KEY_ID: public_key()},
+        )
+
+
+@pytest.mark.parametrize("receipts", (tuple(source_pair() for _ in range(9)), [source_pair()] * 9))
+def test_envelope_v4_rejects_oversized_receipt_collection_before_copy(
+    receipts: object,
+) -> None:
+    cap = capability_v4()
+    core = core_v4(capability=cap)
+    with pytest.raises(ValueError, match="unavailable"):
+        build_prepared_owner_private_envelope_v4(
+            request_core=core,
+            receipts=receipts,  # type: ignore[arg-type]
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+        )
+
+
+def test_envelope_v4_rejects_generator_and_collection_subclass_without_iteration() -> None:
+    cap = capability_v4()
+    core = core_v4(capability=cap)
+    iterated = False
+
+    def hostile_generator() -> Iterator[OwnerPrivatePublicationSourceReceiptV7]:
+        nonlocal iterated
+        iterated = True
+        yield receipt_v7(core=core, capability=cap)
+
+    class ReceiptList(list[OwnerPrivatePublicationSourceReceiptV7]):
+        pass
+
+    generator = hostile_generator()
+    for receipts in (generator, ReceiptList([receipt_v7(core=core, capability=cap)])):
+        with pytest.raises(ValueError, match="unavailable"):
+            build_prepared_owner_private_envelope_v4(
+                request_core=core,
+                receipts=receipts,  # type: ignore[arg-type]
+                capability=cap,
+                capability_verification_keys={V4_KEY_ID: public_key()},
+            )
+    assert iterated is False
+
+
+def test_envelope_v4_digest_rejects_json_mapping_alias() -> None:
+    envelope = envelope_v4()
+    python_mapping = envelope.model_dump(mode="python")
+    assert prepared_owner_private_envelope_v4_sha256(python_mapping) == (envelope.envelope_sha256)
+    json_document = envelope.model_dump_json()
+    json_mapping = json.loads(json_document)
+    assert PreparedOwnerPrivateEnvelopeV4.model_validate_json(json_document) == envelope
+    with pytest.raises(ValueError, match="material is unavailable"):
+        prepared_owner_private_envelope_v4_sha256(json_mapping)
 
 
 def _capability_v4_document(
@@ -242,9 +444,7 @@ def test_cycle_35_manifest_mutation_propagates_to_root_and_policy_identity() -> 
     schema["fields"] = (*schema["fields"], "forged_optional_authority:bool=False")
     capability["closed_schema"] = schema
     changed["capability_v4"] = capability
-    changed_subhash = _digest(
-        _CONTRACT_DOMAIN + b"capability_v4\x00", changed["capability_v4"]
-    )
+    changed_subhash = _digest(_CONTRACT_DOMAIN + b"capability_v4\x00", changed["capability_v4"])
     assert changed_subhash != _PURE_CONTRACT_SHA256S["capability_v4"]
     changed_hashes = dict(_PURE_CONTRACT_SHA256S)
     changed_hashes["capability_v4"] = changed_subhash
@@ -292,12 +492,8 @@ def test_outcome_matrix_matches_checkpoint_graph_and_mutates_root_identity() -> 
     assert "returned->settled|private_rejected_paid|paid_unknown" in graph
 
     changed = copy.deepcopy(dict(outcome))
-    changed["transition_matrix"]["returned"]["proven_no_network"] = (
-        "forged_new_transition"
-    )
-    changed_subhash = _digest(
-        _CONTRACT_DOMAIN + b"transport_outcome_v1\x00", changed
-    )
+    changed["transition_matrix"]["returned"]["proven_no_network"] = "forged_new_transition"
+    changed_subhash = _digest(_CONTRACT_DOMAIN + b"transport_outcome_v1\x00", changed)
     assert changed_subhash != _PURE_CONTRACT_SHA256S["transport_outcome_v1"]
     changed_hashes = dict(_PURE_CONTRACT_SHA256S)
     changed_hashes["transport_outcome_v1"] = changed_subhash
@@ -342,8 +538,8 @@ def test_cycle_35_wire_parser_requires_exact_canonical_json_and_no_duplicates() 
         b'{"n":NaN}',
         b'{ "a":1}',
         b'{"z":1,"a":2}',
-        b'\xff',
-        b'',
+        b"\xff",
+        b"",
         b"[" * 33 + b"0" + b"]" * 33,
         b"[" + b",".join([b"0"] * 100_001) + b"]",
         b"[0]" + b" " * 10_500_000,
@@ -364,16 +560,12 @@ def test_policy_material_mapping_is_immutable_and_digest_is_recomputed() -> None
 
 def test_capability_v4_golden_identity_signature_domains_and_quarantine() -> None:
     capability = capability_v4()
-    assert _CAPABILITY_V4_DOMAIN == (
-        b"antiek.midnight-oil.private-provider-capability.v4\x00"
-    )
+    assert _CAPABILITY_V4_DOMAIN == (b"antiek.midnight-oil.private-provider-capability.v4\x00")
     assert _SIGNATURE_V4_DOMAIN == (
         b"antiek.midnight-oil.private-provider-capability-signature.v4\x00"
     )
     assert capability.capability_id == "ppcap4_" + capability.capability_sha256[:24]
-    assert capability.capability_sha256 == private_provider_capability_v4_sha256(
-        capability
-    )
+    assert capability.capability_sha256 == private_provider_capability_v4_sha256(capability)
     assert capability.capability_sha256 == (
         "55014baf39f88b2f6df6dcde873dc534c5bcac77c4379dca059935d72a0c320b"
     )
@@ -381,13 +573,9 @@ def test_capability_v4_golden_identity_signature_domains_and_quarantine() -> Non
         "793d38f3c604228598bb38614b4c4fc32c2edb4518a85739556e96bbe90d5ffe"
         "933e1afc7adcf2e6397a42e4f1907960f6838e9beeafbd34a002a7a861cf2b03"
     )
-    verify_private_provider_capability_v4(
-        capability, verification_keys={V4_KEY_ID: public_key()}
-    )
+    verify_private_provider_capability_v4(capability, verification_keys={V4_KEY_ID: public_key()})
     assert "redacted=True" in repr(capability)
-    assert capability.account_scope_blind_id.hex() == "".join(
-        f"{value:02x}" for value in range(32)
-    )
+    assert capability.account_scope_blind_id.hex() == "".join(f"{value:02x}" for value in range(32))
     for field in (
         "live_migration_verified",
         "user_accounting_effect",
@@ -511,9 +699,7 @@ def test_capability_v4_wrong_key_domain_signature_and_exact_type_reject() -> Non
             verify_private_provider_capability_v4(capability, verification_keys=keys)
     forged = capability.model_copy(update={"signature_ed25519": "0" * 128})
     with pytest.raises(ValueError, match="unavailable"):
-        verify_private_provider_capability_v4(
-            forged, verification_keys={V4_KEY_ID: public_key()}
-        )
+        verify_private_provider_capability_v4(forged, verification_keys={V4_KEY_ID: public_key()})
 
 
 def test_capability_v4_hostile_key_mapping_failure_is_indistinguishable() -> None:
@@ -534,9 +720,7 @@ def test_capability_v4_hostile_key_mapping_failure_is_indistinguishable() -> Non
 
     capability = capability_v4()
     for operation in (
-        lambda: verify_private_provider_capability_v4(
-            capability, verification_keys=HostileKeys()
-        ),
+        lambda: verify_private_provider_capability_v4(capability, verification_keys=HostileKeys()),
         lambda: parse_private_provider_capability_v4_document(
             _capability_v4_document(capability), verification_keys=HostileKeys()
         ),
@@ -561,9 +745,7 @@ def test_capability_v4_role_schema_is_exact(role: str) -> None:
     ("issued", "not_before", "expires"),
     ((2_002, 2_001, 90_000), (2_000, 2_001, 2_001), (-1, 0, 1)),
 )
-def test_capability_v4_time_order_rejects(
-    issued: int, not_before: int, expires: int
-) -> None:
+def test_capability_v4_time_order_rejects(issued: int, not_before: int, expires: int) -> None:
     with pytest.raises((ValidationError, ValueError)):
         capability_v4(
             issued_at_ms=issued,
@@ -583,9 +765,7 @@ def test_capability_v4_wire_parser_is_canonical_signed_and_duplicate_safe() -> N
     for invalid in (
         duplicate,
         b" " + document,
-        document.replace(
-            capability.signature_ed25519.encode("ascii"), b"0" * 128, 1
-        ),
+        document.replace(capability.signature_ed25519.encode("ascii"), b"0" * 128, 1),
     ):
         with pytest.raises(ValueError, match="unavailable"):
             parse_private_provider_capability_v4_document(
@@ -606,9 +786,7 @@ def test_capability_v4_wire_parser_is_canonical_signed_and_duplicate_safe() -> N
         ("processing_region", "ús"),
     ),
 )
-def test_capability_v4_route_identity_requires_canonical_ascii(
-    field: str, value: str
-) -> None:
+def test_capability_v4_route_identity_requires_canonical_ascii(field: str, value: str) -> None:
     raw = capability_v4().model_dump(mode="python")
     raw[field] = value
     if field == "provider_id":
@@ -628,9 +806,7 @@ def test_core_v4_identity_domains_request_commitment_and_quarantine() -> None:
     assert core.provider_scoped_idempotency_sha256 == (
         "e704b0d31d3b3dc0dab0bb7a3a6625de3ab14a73cc5966a31c065f14b5d5ad94"
     )
-    assert _REQUEST_CORE_V4_DOMAIN == (
-        b"antiek.midnight-oil.owner-private-request-core.v4\x00"
-    )
+    assert _REQUEST_CORE_V4_DOMAIN == (b"antiek.midnight-oil.owner-private-request-core.v4\x00")
     assert _PRIVATE_INPUT_COMMITMENT_V4_DOMAIN.endswith(b"commitment.v4\x00")
     assert _IDEMPOTENCY_V4_DOMAIN.endswith(b"idempotency.v4\x00")
     assert core.request_core_id == "oprc4_" + core.request_core_sha256[:24]
@@ -639,9 +815,7 @@ def test_core_v4_identity_domains_request_commitment_and_quarantine() -> None:
     assert core.private_input_commitment_sha256 == private_input_commitment_v4_sha256(
         core.source_receipt_pairs
     )
-    assert core.provider_scoped_idempotency_sha256 == (
-        provider_scoped_idempotency_v4_sha256(core)
-    )
+    assert core.provider_scoped_idempotency_sha256 == (provider_scoped_idempotency_v4_sha256(core))
     assert "redacted=True" in repr(core)
     for field in (
         "live_migration_verified",
@@ -660,9 +834,7 @@ def test_core_v4_identity_domains_request_commitment_and_quarantine() -> None:
 def test_core_v4_source_cardinality_boundaries(role: str, count: int) -> None:
     core = core_v4(role=role, pair_count=count)
     assert len(core.source_receipt_pairs) == count
-    assert tuple(pair.ordinal for pair in core.source_receipt_pairs) == tuple(
-        range(1, count + 1)
-    )
+    assert tuple(pair.ordinal for pair in core.source_receipt_pairs) == tuple(range(1, count + 1))
 
 
 @pytest.mark.parametrize(
@@ -704,9 +876,11 @@ def test_core_v4_identity_substitution_rejects(field: str) -> None:
     raw = core_v4().model_dump(mode="python")
     original = raw[field]
     if isinstance(original, bytes):
-        raw[field] = original + b"x" if field == "provider_request_bytes" else bytes(
-            [original[0] ^ 1]
-        ) + original[1:]
+        raw[field] = (
+            original + b"x"
+            if field == "provider_request_bytes"
+            else bytes([original[0] ^ 1]) + original[1:]
+        )
     elif isinstance(original, int):
         raw[field] = original + 1
     else:
@@ -758,6 +932,8 @@ def test_core_v4_coordinated_rehash_remains_nonconferring_without_signed_join(
             capability=cap,
             capability_verification_keys={V4_KEY_ID: public_key()},
         )
+
+
 @pytest.mark.parametrize(
     ("role", "count"),
     (("planner", 1), ("gatherer", 0), ("gatherer", 9)),
@@ -1019,9 +1195,7 @@ def test_receipt_v7_planner_has_no_source_receipt() -> None:
         ("request_core_v4_sha256", "7" * 64),
     ),
 )
-def test_receipt_v7_coordinated_rehash_rejects_signed_core_join(
-    field: str, value: object
-) -> None:
+def test_receipt_v7_coordinated_rehash_rejects_signed_core_join(field: str, value: object) -> None:
     cap = capability_v4()
     core = core_v4(capability=cap)
     raw = receipt_v7(core=core, capability=cap).model_dump(mode="python")
@@ -1047,9 +1221,7 @@ def test_coordinated_core_receipt_source_rehash_remains_explicit_unverified_clai
     core_raw["source_head_sha256"] = "9" * 64
     core_raw["source_epoch"] = 99
     core_raw["opaque_source_bundle_id"] = "fabricated-but-syntactic-bundle"
-    core_raw["provider_scoped_idempotency_sha256"] = (
-        provider_scoped_idempotency_v4_sha256(core_raw)
-    )
+    core_raw["provider_scoped_idempotency_sha256"] = provider_scoped_idempotency_v4_sha256(core_raw)
     core_digest = owner_private_request_core_v4_sha256(core_raw)
     core_raw["request_core_sha256"] = core_digest
     core_raw["request_core_id"] = "oprc4_" + core_digest[:24]

@@ -18,6 +18,10 @@ from substrate.midnight_oil.private_provider_capability_v4 import (
     PrivateProviderProcessingCapabilityV4,
     private_provider_capability_v4_sha256,
 )
+from substrate.midnight_oil.private_provider_envelope_v4 import (
+    PreparedOwnerPrivateEnvelopeV4,
+    build_prepared_owner_private_envelope_v4,
+)
 from substrate.midnight_oil.private_provider_receipt_v7 import (
     OwnerPrivatePublicationSourceReceiptV7,
     build_owner_private_source_receipt_v7,
@@ -173,6 +177,25 @@ def receipt_v7(
     )
 
 
+def envelope_v4(
+    *,
+    core: PreparedOwnerPrivateRequestCoreV4 | None = None,
+    capability: PrivateProviderProcessingCapabilityV4 | None = None,
+) -> PreparedOwnerPrivateEnvelopeV4:
+    cap = capability or capability_v4()
+    request_core = core or core_v4(capability=cap)
+    receipts = tuple(
+        receipt_v7(core=request_core, capability=cap, ordinal=ordinal)
+        for ordinal in range(1, len(request_core.source_receipt_pairs) + 1)
+    )
+    return build_prepared_owner_private_envelope_v4(
+        request_core=request_core,
+        receipts=receipts,
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+    )
+
+
 __all__ = [
     "ACCOUNT_SCOPE_BLIND_ID",
     "OWNER_PATH_DISCRIMINATOR",
@@ -181,6 +204,7 @@ __all__ = [
     "V4_PRIVATE",
     "capability_v4",
     "core_v4",
+    "envelope_v4",
     "public_key",
     "receipt_v7",
     "source_pair",
