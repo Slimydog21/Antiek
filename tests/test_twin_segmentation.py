@@ -61,6 +61,18 @@ def test_long_line_uses_bounded_hard_fallback_without_loss():
     verify_segmentation_manifest(manifest, account_id="acct", asset=asset)
 
 
+def test_tiny_tail_is_rebalanced_into_materializable_segments():
+    asset = AssetContent(
+        "tail", "Tail", "x" * (TARGET_SEGMENT_CHARS * 2 + 1), "book", ("evt-tail",)
+    )
+    manifest = build_segmentation_manifest(account_id="acct", asset=asset)
+    assert all(
+        len(asset.content_text[item.start_char : item.end_char].strip()) >= 24
+        for item in manifest.segments
+    )
+    assert manifest.segments[-1].length >= 24
+
+
 def test_manifest_is_hash_only_and_exact_source_drift_fails(asset):
     manifest = build_segmentation_manifest(account_id="acct", asset=asset)
     encoded = manifest.to_json()
@@ -82,8 +94,8 @@ def test_only_oversized_sources_can_enter_segmentation():
 def test_registry_is_atomic_restart_safe_hash_only_and_parent_stays_pending(tmp_path, asset):
     path = tmp_path / "segments.sqlite"
     manifest = build_segmentation_manifest(account_id="acct", asset=asset)
-    first = TwinSegmentationLedger(path).register(manifest)
-    second = TwinSegmentationLedger(path).register(manifest)
+    first = TwinSegmentationLedger(path).register(manifest, account_id="acct", asset=asset)
+    second = TwinSegmentationLedger(path).register(manifest, account_id="acct", asset=asset)
     assert first == second
     assert first.segment_count == first.pending_segments == len(manifest.segments)
     assert first.aggregate_state == "pending" and not first.parent_ready
@@ -103,7 +115,12 @@ def test_concurrent_exact_registration_converges(tmp_path, asset):
     TwinSegmentationLedger(path)
     with ThreadPoolExecutor(max_workers=4) as pool:
         snapshots = list(
-            pool.map(lambda _index: TwinSegmentationLedger(path).register(manifest), range(8))
+            pool.map(
+                lambda _index: TwinSegmentationLedger(path).register(
+                    manifest, account_id="acct", asset=asset
+                ),
+                range(8),
+            )
         )
     assert all(snapshot == snapshots[0] for snapshot in snapshots)
 
@@ -112,10 +129,10 @@ def test_manifest_substitution_and_schema_or_obligation_corruption_fail_closed(t
     path = tmp_path / "segments.sqlite"
     manifest = build_segmentation_manifest(account_id="acct", asset=asset)
     ledger = TwinSegmentationLedger(path)
-    ledger.register(manifest)
+    ledger.register(manifest, account_id="acct", asset=asset)
     changed = replace(manifest, aggregate_obligation_id="aggregate_" + "0" * 64)
-    with pytest.raises(TwinSegmentationIntegrityError, match="substitution"):
-        ledger.register(changed)
+    with pytest.raises(TwinSegmentationError, match="conflict"):
+        ledger.register(changed, account_id="acct", asset=asset)
 
     with sqlite3.connect(path) as con:
         con.execute("DROP TRIGGER segmentation_obligation_no_update")
@@ -139,7 +156,7 @@ def test_integrity_rejects_manifest_identity_substitution(tmp_path, asset):
     path = tmp_path / "segments.sqlite"
     manifest = build_segmentation_manifest(account_id="acct", asset=asset)
     ledger = TwinSegmentationLedger(path)
-    ledger.register(manifest)
+    ledger.register(manifest, account_id="acct", asset=asset)
     raw = json.loads(manifest.to_json())
     raw["account_id"] = "other"
     forged = json.dumps(raw, sort_keys=True, separators=(",", ":"))
@@ -150,5 +167,5 @@ def test_integrity_rejects_manifest_identity_substitution(tmp_path, asset):
             (forged, __import__("hashlib").sha256(forged.encode()).hexdigest()),
         )
         con.execute(TRIGGERS["segmentation_manifest_no_update"])
-    with pytest.raises(TwinSegmentationIntegrityError, match="identity"):
+    with pytest.raises(TwinSegmentationIntegrityError, match="invalid"):
         ledger.verify_integrity()

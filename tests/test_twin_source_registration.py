@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import inspect
 import json
+import sqlite3
 
 import duckdb
 import pytest
@@ -18,6 +19,7 @@ from substrate.twin_recursion import (
     project_twin_sources,
     verify_twin_source_envelopes,
 )
+from substrate.twin_recursion.segmentation_ledger import TwinSegmentationLedger
 
 
 @pytest.fixture
@@ -31,8 +33,13 @@ def graph(tmp_path):
         con.close()
 
 
-def _insert_body(graph, *, document_id: str = "doc-1", owner: str = "acct",
-                 body: str = "Substantive canonical information body for recursive notes."):
+def _insert_body(
+    graph,
+    *,
+    document_id: str = "doc-1",
+    owner: str = "acct",
+    body: str = "Substantive canonical information body for recursive notes.",
+):
     insert_document(
         graph,
         document_id=document_id,
@@ -71,8 +78,12 @@ def test_document_and_declaration_share_one_insert_and_rollback(graph):
 
 def test_metadata_only_is_explicit_and_not_fabricated_as_eligible(graph):
     insert_document(
-        graph, document_id="metadata", source_tier=3,
-        document_type="web_article", title="Metadata only", owner_user_id="acct",
+        graph,
+        document_id="metadata",
+        source_tier=3,
+        document_type="web_article",
+        title="Metadata only",
+        owner_user_id="acct",
     )
     envelope = verify_twin_source_envelopes(graph)[0]
     assert envelope.status == "metadata_only"
@@ -89,26 +100,44 @@ def test_short_nonempty_body_requires_enrichment_not_metadata_exclusion(graph):
 
 def test_legacy_multimedia_twin_requires_real_binding_and_never_recurses(graph, tmp_path):
     insert_document(
-        graph, document_id="legacy-twin", source_tier=1,
-        document_type="multimedia_twin", title="Twin notes",
+        graph,
+        document_id="legacy-twin",
+        source_tier=1,
+        document_type="multimedia_twin",
+        title="Twin notes",
         raw_text="A legacy twin body that must not recursively request another twin.",
         owner_user_id="acct",
     )
     envelope = verify_twin_source_envelopes(graph)[0]
     assert envelope.status == "requires_binding" and envelope.source_hash is None
     report = project_twin_sources(
-        graph, TwinRecursionLedger(tmp_path / "twins.sqlite"), account_id="acct"
+        graph,
+        TwinRecursionLedger(tmp_path / "twins.sqlite"),
+        TwinSegmentationLedger(tmp_path / "segments.sqlite"),
+        account_id="acct",
     )
     assert report.requires_binding == 1 and report.registered == 0
     assert report.verdict == "partial"
 
 
-def test_oversized_body_requires_segmentation_instead_of_truncation(graph):
-    _insert_body(graph, body="x" * (MAX_CONTENT_CHARS + 1))
+def test_oversized_body_projects_durable_segments_without_false_completion(graph, tmp_path):
+    body = "x" * (MAX_CONTENT_CHARS + 1)
+    _insert_body(graph, body=body)
     envelope = verify_twin_source_envelopes(graph)[0]
     assert envelope.status == "requires_segmentation"
     assert envelope.reason == "body_exceeds_materializer_limit"
     assert envelope.source_hash is None
+    segments = TwinSegmentationLedger(tmp_path / "segments.sqlite")
+    report = project_twin_sources(
+        graph, TwinRecursionLedger(tmp_path / "twins.sqlite"), segments, account_id="acct"
+    )
+    assert report.segmentation_registered == 1 and report.verdict == "partial"
+    with sqlite3.connect(tmp_path / "segments.sqlite") as con:
+        parent_hash = con.execute(
+            "SELECT parent_source_hash FROM segmentation_manifests"
+        ).fetchone()[0]
+    snapshot = segments.get("acct", "doc-1", parent_hash)
+    assert snapshot.pending_segments >= 2 and not snapshot.parent_ready
 
 
 def test_direct_sql_bypass_is_detected_and_locked_backfill_is_idempotent(graph):
@@ -184,13 +213,17 @@ def test_takedown_purges_body_without_leaving_envelope_copy(graph):
 
 def test_document_drift_and_canonical_looking_substitution_fail_closed(graph):
     _insert_body(graph)
-    graph.execute("UPDATE documents SET title='Changed after declaration' WHERE document_id='doc-1'")
+    graph.execute(
+        "UPDATE documents SET title='Changed after declaration' WHERE document_id='doc-1'"
+    )
     with pytest.raises(TwinSourceEnvelopeError, match="conflicts"):
         verify_twin_source_envelopes(graph)
     graph.execute("UPDATE documents SET title='Canonical title' WHERE document_id='doc-1'")
-    raw = json.loads(graph.execute(
-        "SELECT twin_source_envelope FROM documents WHERE document_id='doc-1'"
-    ).fetchone()[0])
+    raw = json.loads(
+        graph.execute(
+            "SELECT twin_source_envelope FROM documents WHERE document_id='doc-1'"
+        ).fetchone()[0]
+    )
     raw["account_id"] = "other"
     graph.execute(
         "UPDATE documents SET twin_source_envelope=? WHERE document_id='doc-1'",
@@ -200,17 +233,31 @@ def test_document_drift_and_canonical_looking_substitution_fail_closed(graph):
         verify_twin_source_envelopes(graph)
 
 
-def test_projector_is_account_scoped_restart_safe_and_reports_real_completion(
-        graph, tmp_path):
+def test_projector_is_account_scoped_restart_safe_and_reports_real_completion(graph, tmp_path):
     _insert_body(graph, document_id="a", owner="acct")
     _insert_body(graph, document_id="b", owner="other")
     insert_document(
-        graph, document_id="meta", source_tier=2, document_type="paper",
-        title="Metadata", owner_user_id="acct",
+        graph,
+        document_id="meta",
+        source_tier=2,
+        document_type="paper",
+        title="Metadata",
+        owner_user_id="acct",
     )
     ledger_path = tmp_path / "twins.sqlite"
-    first = project_twin_sources(graph, TwinRecursionLedger(ledger_path), account_id="acct")
-    second = project_twin_sources(graph, TwinRecursionLedger(ledger_path), account_id="acct")
+    segment_path = tmp_path / "segments.sqlite"
+    first = project_twin_sources(
+        graph,
+        TwinRecursionLedger(ledger_path),
+        TwinSegmentationLedger(segment_path),
+        account_id="acct",
+    )
+    second = project_twin_sources(
+        graph,
+        TwinRecursionLedger(ledger_path),
+        TwinSegmentationLedger(segment_path),
+        account_id="acct",
+    )
     assert first == second
     assert first.documents == 2 and first.eligible == 1 and first.metadata_only == 1
     assert first.registered == 1 and first.verdict == "partial"
@@ -222,11 +269,12 @@ def test_projector_is_account_scoped_restart_safe_and_reports_real_completion(
 def test_foreign_tenant_corruption_does_not_block_scoped_projection(graph, tmp_path):
     _insert_body(graph, document_id="owned", owner="acct")
     _insert_body(graph, document_id="foreign", owner="other")
-    graph.execute(
-        "UPDATE documents SET twin_source_envelope='{}' WHERE document_id='foreign'"
-    )
+    graph.execute("UPDATE documents SET twin_source_envelope='{}' WHERE document_id='foreign'")
     report = project_twin_sources(
-        graph, TwinRecursionLedger(tmp_path / "twins.sqlite"), account_id="acct"
+        graph,
+        TwinRecursionLedger(tmp_path / "twins.sqlite"),
+        TwinSegmentationLedger(tmp_path / "segments.sqlite"),
+        account_id="acct",
     )
     assert report.eligible == 1 and report.registered == 1
     with pytest.raises(TwinSourceEnvelopeError):

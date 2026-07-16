@@ -8,9 +8,12 @@ import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
 
+from substrate.twin_note_taker import AssetContent
+
 from .segmentation import (
     TwinSegmentationError,
     TwinSegmentationManifest,
+    verify_segmentation_manifest,
 )
 
 SCHEMA_VERSION = "twin-segmentation-ledger-v1"
@@ -136,8 +139,12 @@ class TwinSegmentationLedger:
             if actual.get(name) != _normalize_sql(statement):
                 raise TwinSegmentationIntegrityError(f"segmentation schema object changed: {name}")
 
-    def register(self, manifest: TwinSegmentationManifest) -> SegmentationSnapshot:
+    def register(
+        self, manifest: TwinSegmentationManifest, *, account_id: str, asset: AssetContent
+    ) -> SegmentationSnapshot:
+        verify_segmentation_manifest(manifest, account_id=account_id, asset=asset)
         manifest_json = manifest.to_json()
+        TwinSegmentationManifest.from_json(manifest_json)
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
