@@ -82,8 +82,10 @@ class _StubSynthesizer:
     def __init__(self, text: str, *, raise_on_call: bool = False):
         self._text = text
         self._raise = raise_on_call
+        self.prompts: list[str] = []
 
     def call(self, *, model, prompt, max_tokens, temperature) -> RawProviderResponse:
+        self.prompts.append(prompt)
         if self._raise:
             raise ProviderError("stub failure", provider=self.name, model=model, latency_ms=0)
         return RawProviderResponse(
@@ -240,6 +242,171 @@ async def test_distillation_request_emits_delivered_with_structured_claims(
     assert event.parent_event_id == p.request_event_id
     assert event.role == "synthesizer"
     assert event.document_id == doc
+
+
+@pytest.mark.asyncio
+async def test_later_wrestling_prompt_receives_only_causal_same_investigation_memory(
+    monkeypatch, app_and_bus, async_client
+):
+    _, bus = app_and_bus
+    provider = _StubSynthesizer(
+        '{"rendered_text": "ok", "claims": [{"text": "supported", '
+        '"confidence": "moderate"}]}'
+    )
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _wrestling_config("stub-synthesis"))
+
+    async def post_memory(investigation_id: str, payload: dict[str, Any]) -> None:
+        response = await async_client.post(
+            "/events/typed",
+            json={
+                "investigation_id": investigation_id,
+                "document_id": "doc-memory",
+                "payload": payload,
+                "role": "note_taker",
+            },
+        )
+        assert response.status_code == 201, response.text
+
+    await post_memory("inv-memory", {
+        "action_type": "note.emerged",
+        "note_id": "note-memory",
+        "note_text": "Earlier insight to challenge, not source evidence.",
+        "source_event_ids": ["source-event"],
+        "confidence": "moderate",
+        "node_id": None,
+    })
+    await post_memory("inv-memory", {
+        "action_type": "question.identified",
+        "question_id": "question-memory",
+        "question_text": "Which mechanism remains unresolved?",
+        "anchor_region_id": None,
+    })
+    await post_memory("inv-foreign", {
+        "action_type": "note.emerged",
+        "note_id": "note-foreign",
+        "note_text": "FOREIGN MEMORY MUST NOT APPEAR",
+        "source_event_ids": ["foreign-source"],
+        "confidence": "high",
+        "node_id": None,
+    })
+    await _post_region(
+        async_client, investigation_id="inv-memory", document_id="doc-memory",
+        region_id="region-memory", text_excerpt="Current authoritative source text.",
+    )
+    await _post_distillation_request(
+        async_client, investigation_id="inv-memory", document_id="doc-memory",
+        region_id="region-memory", user_prompt="What follows from this source?",
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    assert len(provider.prompts) == 1
+    prompt = provider.prompts[0]
+    assert "Earlier insight to challenge, not source evidence." in prompt
+    assert "Which mechanism remains unresolved?" in prompt
+    assert "FOREIGN MEMORY MUST NOT APPEAR" not in prompt
+    assert prompt.index("## working_memory:") < prompt.index("## session:")
+    assert prompt.index("Current authoritative source text.") < prompt.index(
+        "What follows from this source?"
+    )
+    packs = [
+        Event.model_validate(row)
+        for row in trajectory("inv-memory")
+        if row["action_type"] == "context_pack.assembled"
+    ]
+    memory_layers = [
+        layer for layer in packs[-1].payload.layers if layer.kind == "working_memory"
+    ]
+    assert len(memory_layers) == 1
+    assert memory_layers[0].source.startswith("investigation-memory:sha256:")
+    assert memory_layers[0].source.endswith(":items=2")
+
+
+@pytest.mark.asyncio
+async def test_corrupt_working_memory_fails_visible_before_provider_dispatch(
+    monkeypatch, app_and_bus, async_client
+):
+    _, bus = app_and_bus
+    provider = _StubSynthesizer(
+        '{"rendered_text": "must not run", "claims": []}'
+    )
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _wrestling_config("stub-synthesis"))
+    duplicate = {
+        "action_type": "note.emerged",
+        "note_id": "duplicate-note",
+        "note_text": "same identity cannot be folded twice",
+        "source_event_ids": ["source-event"],
+        "confidence": "unknown",
+        "node_id": None,
+    }
+    for _ in range(2):
+        response = await async_client.post(
+            "/events/typed",
+            json={
+                "investigation_id": "inv-corrupt-memory",
+                "document_id": "doc-memory",
+                "payload": duplicate,
+                "role": "note_taker",
+            },
+        )
+        assert response.status_code == 201, response.text
+    await _post_region(
+        async_client, investigation_id="inv-corrupt-memory", document_id="doc-memory",
+        region_id="region-memory", text_excerpt="Current source.",
+    )
+    await _post_distillation_request(
+        async_client, investigation_id="inv-corrupt-memory", document_id="doc-memory",
+        region_id="region-memory", user_prompt="Question?",
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    assert provider.prompts == []
+    delivered = [
+        Event.model_validate(row)
+        for row in trajectory("inv-corrupt-memory")
+        if row["action_type"] == "distillation.delivered"
+    ]
+    assert len(delivered) == 1
+    assert delivered[0].policy_id == "wrestling-fallback/memory-integrity"
+    assert "No synthesizer call was made" in delivered[0].payload.rendered_text
+
+
+@pytest.mark.asyncio
+async def test_physical_trajectory_corruption_prevents_provider_dispatch(
+    monkeypatch, app_and_bus, async_client
+):
+    from substrate.event_log import PhysicalTrajectoryError
+
+    _, bus = app_and_bus
+    provider = _StubSynthesizer('{"rendered_text": "must not run", "claims": []}')
+    register_provider(provider)
+    _patch_dispatch_config(monkeypatch, _wrestling_config("stub-synthesis"))
+
+    def corrupt_physical_reader(*args, **kwargs):
+        raise PhysicalTrajectoryError("conflicting duplicate event_id")
+
+    monkeypatch.setattr(
+        "interfaces.research.api.wrestling.iter_physical_events",
+        corrupt_physical_reader,
+    )
+    await _post_distillation_request(
+        async_client,
+        investigation_id="inv-physical-corruption",
+        document_id="doc-memory",
+        region_id=None,
+        user_prompt="Question?",
+    )
+    await bus.wait_for_handlers(timeout=5.0)
+
+    assert provider.prompts == []
+    delivered = [
+        Event.model_validate(row)
+        for row in trajectory("inv-physical-corruption")
+        if row["action_type"] == "distillation.delivered"
+    ]
+    assert len(delivered) == 1
+    assert delivered[0].policy_id == "wrestling-fallback/memory-integrity"
 
 
 # ---------------------------------------------------------------------------

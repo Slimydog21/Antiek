@@ -140,6 +140,31 @@ def test_layers_render_in_canonical_order_regardless_of_input_order():
     assert pack.text.index("graph_evidence") < pack.text.index("session")
 
 
+def test_working_memory_renders_before_and_yields_budget_to_current_session():
+    layers = [
+        _layer("param_version_stamp", "v", "V" * 20),
+        _layer("phase_metadata", "p", "P" * 20),
+        _layer("graph_evidence", "g", "G" * 200),
+        _layer("working_memory", "memory", "M" * 200),
+        _layer("session", "current", "S" * 200),
+    ]
+    full = assemble_context_pack(
+        role="connector", investigation_id="inv-working-order",
+        layers=reversed(layers), target_tokens=10_000, counter=CharCounter(),
+    )
+    assert full.text.index("graph_evidence") < full.text.index("working_memory")
+    assert full.text.index("working_memory") < full.text.index("session")
+
+    tight = assemble_context_pack(
+        role="connector", investigation_id="inv-working-priority",
+        layers=layers, target_tokens=400, counter=CharCounter(),
+    )
+    kinds = [layer.kind for layer in tight.layers]
+    assert "session" in kinds
+    assert "working_memory" in kinds
+    assert "graph_evidence" not in kinds
+
+
 # ---------------------------------------------------------------------------
 # 2. Smart truncation
 # ---------------------------------------------------------------------------
@@ -298,7 +323,7 @@ def test_context_pack_assembled_event_lands_with_correct_payload():
     assert p.actual_tokens == pack.actual_tokens
     assert p.budget_overrun is False
     assert p.truncation_strategy_applied is None
-    assert {l.kind for l in p.layers} == {"param_version_stamp", "session"}
+    assert {layer.kind for layer in p.layers} == {"param_version_stamp", "session"}
     # pack.event_id matches the event written.
     assert event.event_id == pack.event_id
 
@@ -318,7 +343,7 @@ def test_event_records_strategy_when_truncated():
     assert event.payload.budget_overrun is True
     assert event.payload.truncation_strategy_applied == "smart"
     # The event's layers list reports POST-truncation token counts.
-    total_from_event = sum(l.tokens for l in event.payload.layers)
+    total_from_event = sum(layer.tokens for layer in event.payload.layers)
     assert total_from_event == pack.actual_tokens
 
 
@@ -389,10 +414,7 @@ def _imports_in_module(module_dir: pathlib.Path) -> list[tuple[pathlib.Path, str
                     base = parts[:-1]  # drop the file name
                     up = node.level
                     # Going UP `up` levels from the current package.
-                    if up <= len(base):
-                        ancestor = base[: len(base) - up + 1]
-                    else:
-                        ancestor = ()
+                    ancestor = base[: len(base) - up + 1] if up <= len(base) else ()
                     module = ".".join((*ancestor, module)) if module else ".".join(ancestor)
                 pairs.append((f, module))
     return pairs

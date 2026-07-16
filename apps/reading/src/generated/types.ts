@@ -202,7 +202,7 @@ export type ProvenanceSourceKind = "user" | "ai" | "system";
  * ``ContextPackAssembledPayload.layers``.
  */
 export interface ContextLayer {
-  kind: "session" | "long_term_skill" | "reuse" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
+  kind: "session" | "working_memory" | "long_term_skill" | "reuse" | "graph_evidence" | "style_guide" | "phase_metadata" | "param_version_stamp";
   source: string;
   tokens: number;
 }
