@@ -246,6 +246,32 @@ export function stepIceFishing(
   return next;
 }
 
+/**
+ * Living-TV beat for ice fishing (Club Penguin wait game).
+ * start → highlight; score up while playing → piece_started; gameover → fail.
+ */
+export type IceFishingWernerBeat =
+  | "highlight"
+  | "piece_started"
+  | "fail"
+  | null;
+
+export function iceFishingWernerBeat(
+  prev: Pick<IceFishingState, "phase" | "score" | "lives">,
+  next: Pick<IceFishingState, "phase" | "score" | "lives">,
+): IceFishingWernerBeat {
+  if (prev.phase === "ready" && next.phase === "playing") return "highlight";
+  if (prev.phase === "playing" && next.phase === "gameover") return "fail";
+  if (
+    prev.phase === "playing" &&
+    next.phase === "playing" &&
+    next.score > prev.score
+  ) {
+    return "piece_started";
+  }
+  return null;
+}
+
 export function iceFishingOverlapsHook(
   state: IceFishingState,
   fish: Fish,

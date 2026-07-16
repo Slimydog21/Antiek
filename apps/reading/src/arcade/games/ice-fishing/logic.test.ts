@@ -4,6 +4,7 @@ import { createSeededRng } from "../../engine/rng";
 import {
   createIceFishingState,
   iceFishingOverlapsHook,
+  iceFishingWernerBeat,
   startRound,
   stepIceFishing,
   type IceFishingState,
@@ -166,6 +167,27 @@ describe("ice fishing pure logic", () => {
     );
     expect(state.lives).toBe(1);
     expect(state.score).toBe(0);
+  });
+
+  it("iceFishingWernerBeat maps start, catch, and gameover living-TV edges", () => {
+    expect(
+      iceFishingWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "playing", score: 0, lives: 3 },
+      ),
+    ).toBe("highlight");
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 0, lives: 3 },
+        { phase: "playing", score: 3, lives: 3 },
+      ),
+    ).toBe("piece_started");
+    expect(
+      iceFishingWernerBeat(
+        { phase: "playing", score: 3, lives: 1 },
+        { phase: "gameover", score: 3, lives: 0 },
+      ),
+    ).toBe("fail");
   });
 
   it("preserves configured lives across game-over restart", () => {

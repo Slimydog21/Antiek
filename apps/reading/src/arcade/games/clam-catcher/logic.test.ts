@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { createSeededRng } from "../../engine/rng";
 import {
+  clamCatcherWernerBeat,
   CLAM_CATCHER_TUNING,
   createClamCatcherState,
   startClamCatcher,
@@ -26,6 +27,27 @@ function run(seed: number): ClamCatcherState {
 }
 
 describe("Clam Catcher rules", () => {
+  it("clamCatcherWernerBeat maps start, catch, and gameover living-TV edges", () => {
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "ready", score: 0, lives: 3 },
+        { phase: "playing", score: 0, lives: 3 },
+      ),
+    ).toBe("highlight");
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 0, lives: 3 },
+        { phase: "playing", score: 4, lives: 3 },
+      ),
+    ).toBe("piece_started");
+    expect(
+      clamCatcherWernerBeat(
+        { phase: "playing", score: 4, lives: 1 },
+        { phase: "gameover", score: 4, lives: 0 },
+      ),
+    ).toBe("fail");
+  });
+
   it("is deterministic for a seed and scripted input", () => {
     expect(run(17)).toEqual(run(17));
     expect(run(17)).not.toEqual(run(18));

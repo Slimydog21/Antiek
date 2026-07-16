@@ -99,8 +99,8 @@ DRW glass-box densify: ComposeBar CRT invent + PlanEditor cascade invent strip;
 cascade create → `piece_started`; plan approve → `highlight`; launch →
 `notifyResearchStarted` / deep_research_start.
 CostMeter → `fail` at cap / `highlight` near warn; BlockDetail chase →
-`deep_research_start`. Paperclip Zombies wait egg → start `highlight`,
-wave clear `piece_started`, gameover `fail`.
+`deep_research_start`. Wait arcade living-TV beats (all three games):
+start `highlight`, progress/score/wave `piece_started`, gameover `fail`.
 
 ## Ambient living-TV heartbeat (2026-07-16)
 

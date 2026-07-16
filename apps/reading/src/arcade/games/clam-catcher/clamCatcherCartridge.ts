@@ -1,5 +1,7 @@
 import type { Cartridge, GameContext, InputState } from "../../engine/types";
+import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
+  clamCatcherWernerBeat,
   createClamCatcherState,
   stepClamCatcher,
   type ClamCatcherState,
@@ -12,10 +14,14 @@ import {
 
 export function createClamCatcherCartridge(options?: {
   visualKit?: ClamCatcherVisualKit;
+  onWernerBeat?: (
+    beat: NonNullable<ReturnType<typeof clamCatcherWernerBeat>>,
+  ) => void;
 }): Cartridge {
   let state: ClamCatcherState | null = null;
   let terminalReported = false;
   const visualKit = options?.visualKit ?? createClamCatcherVisualKit();
+  const onWernerBeat = options?.onWernerBeat ?? emitWernerExperience;
 
   return {
     id: "clam-catcher",
@@ -34,6 +40,11 @@ export function createClamCatcherCartridge(options?: {
       const left = input.keysDown.has("ArrowLeft");
       const right = input.keysDown.has("ArrowRight");
       const horizontal = left === right ? 0 : left ? -1 : 1;
+      const prev = {
+        phase: state.phase,
+        score: state.score,
+        lives: state.lives,
+      };
       state = stepClamCatcher(
         state,
         dtSec,
@@ -49,6 +60,8 @@ export function createClamCatcherCartridge(options?: {
         },
         ctx.rng,
       );
+      const beat = clamCatcherWernerBeat(prev, state);
+      if (beat) onWernerBeat(beat);
       if (state.phase === "gameover" && !terminalReported) {
         ctx.saveBestScore(state.score);
         terminalReported = true;

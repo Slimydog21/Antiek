@@ -164,6 +164,32 @@ export function stepClamCatcher(
   };
 }
 
+/**
+ * Living-TV beat for Clam Catcher (Club Penguin wait game).
+ * start → highlight; score up while playing → piece_started; gameover → fail.
+ */
+export type ClamCatcherWernerBeat =
+  | "highlight"
+  | "piece_started"
+  | "fail"
+  | null;
+
+export function clamCatcherWernerBeat(
+  prev: Pick<ClamCatcherState, "phase" | "score" | "lives">,
+  next: Pick<ClamCatcherState, "phase" | "score" | "lives">,
+): ClamCatcherWernerBeat {
+  if (prev.phase === "ready" && next.phase === "playing") return "highlight";
+  if (prev.phase === "playing" && next.phase === "gameover") return "fail";
+  if (
+    prev.phase === "playing" &&
+    next.phase === "playing" &&
+    next.score > prev.score
+  ) {
+    return "piece_started";
+  }
+  return null;
+}
+
 function spawnEntity(
   state: ClamCatcherState,
   rng: () => number,
