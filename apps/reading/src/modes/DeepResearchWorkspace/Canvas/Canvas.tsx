@@ -60,6 +60,8 @@ export interface CanvasProps {
   /** Click-to-detail seam for SPR-04 (anchors the float-menu in block detail).
    *  Optional. */
   onOpenDetail?: (node: DistilledNode) => void;
+  /** Opens the exact source document in the host's canonical reader. */
+  onCiteSource?: (node: DistilledNode) => void;
 }
 
 type LoadState =
@@ -72,7 +74,7 @@ type LoadState =
       positions: Map<string, BlockPosition>;
     };
 
-export default function Canvas({ investigationId, onOpenDetail }: CanvasProps) {
+export default function Canvas({ investigationId, onOpenDetail, onCiteSource }: CanvasProps) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
 
   const load = useCallback(async () => {
@@ -131,6 +133,7 @@ export default function Canvas({ investigationId, onOpenDetail }: CanvasProps) {
       questions={state.questions}
       initialPositions={state.positions}
       onOpenDetail={onOpenDetail}
+      onCiteSource={onCiteSource}
     />
   );
 }
@@ -141,12 +144,14 @@ function LoadedCanvas({
   questions,
   initialPositions,
   onOpenDetail,
+  onCiteSource,
 }: {
   investigationId: string;
   insights: DistilledNode[];
   questions: DistilledNode[];
   initialPositions: Map<string, BlockPosition>;
   onOpenDetail?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode) => void;
 }) {
   const nodes = useMemo(() => [...insights, ...questions], [insights, questions]);
   // Position state seeds from the replayed events, then tracks live drags.
@@ -207,6 +212,7 @@ function LoadedCanvas({
               pos={p}
               investigationId={investigationId}
               onOpenDetail={onOpenDetail}
+              onCiteSource={onCiteSource}
               onCommit={(next) =>
                 setPositions((prev) => {
                   const m = new Map(prev);
@@ -236,12 +242,14 @@ function DraggableBlock({
   pos,
   investigationId,
   onOpenDetail,
+  onCiteSource,
   onCommit,
 }: {
   node: DistilledNode;
   pos: BlockPosition;
   investigationId: string;
   onOpenDetail?: (node: DistilledNode) => void;
+  onCiteSource?: (node: DistilledNode) => void;
   onCommit: (next: BlockPosition) => void;
 }) {
   // Live drag state lives in refs (no re-render churn mid-drag) + a local
@@ -335,7 +343,11 @@ function DraggableBlock({
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      <BlockCard node={node} onOpenDetail={onOpenDetail} />
+      <BlockCard
+        node={node}
+        onOpenDetail={onOpenDetail}
+        onCiteSource={onCiteSource}
+      />
     </div>
   );
 }

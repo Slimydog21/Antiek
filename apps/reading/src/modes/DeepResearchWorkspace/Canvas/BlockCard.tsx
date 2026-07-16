@@ -18,7 +18,7 @@
  *
  * Provenance (§9, acceptance criterion): every block surfaces a source
  * affordance. When the node carries a `source_document_id` we render a
- * "cite source" button (mirroring ClaimCardBlock's "Inspect"); when it does
+ * "read source" button (mirroring ClaimCardBlock's "Inspect"); when it does
  * not, we say "no source on record" honestly rather than hide the chain.
  * A raw document id is NEVER rendered as a label (copy-lint discipline).
  *
@@ -35,7 +35,7 @@ export interface BlockCardProps {
   /** Click-to-detail seam for SPR-04. Optional — when absent the card is
    *  inert (renders, but opens nothing). */
   onOpenDetail?: (node: DistilledNode) => void;
-  /** Cite-source / inspect-provenance affordance. Optional — when absent we
+  /** Read-source / inspect-provenance affordance. Optional — when absent we
    *  still show the source's *presence* (or absence) honestly, just without a
    *  click target. */
   onCiteSource?: (node: DistilledNode) => void;
@@ -66,7 +66,7 @@ function styleFor(kind: string) {
 
 export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCardProps) {
   const s = styleFor(node.kind);
-  const hasSource = Boolean(node.source_document_id);
+  const hasSource = Boolean(node.source_document_id?.trim());
   const clickable = Boolean(onOpenDetail);
 
   return (
@@ -120,7 +120,7 @@ export default function BlockCard({ node, onOpenDetail, onCiteSource }: BlockCar
               onClick={() => onCiteSource(node)}
               className="font-mono underline decoration-dotted underline-offset-2 hover:text-ink dark:hover:text-bright"
             >
-              cite source
+              read source
             </button>
           ) : (
             <span className="font-mono">grounded in a source</span>
