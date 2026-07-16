@@ -36,3 +36,21 @@ Modal/Krea remain available for scenery enrichment under cost discipline.
 
 James Hawkins / PostHog: every visual and interaction element must be load-bearing.
 No inventory-only PNGs in the product path. No auto-launched games over primary work.
+
+## Densify wave (2026-07-16) — product experiences
+
+| Trigger | Experience / event | Emote |
+|---|---|---|
+| Product door (scenery / Home cards) | PRODUCT_ACTIVATE / emoteForProductDoor | per-door map |
+| Library open book | highlight | curious |
+| Write create piece | piece_started | happy |
+| Speak create project | piece_started | happy |
+| LoadingGameHost opt-in play | highlight | curious |
+| Thought partner open sidecar | highlight | curious |
+| Cabinet play | highlight | curious |
+| Deep research lifecycle | deep_research_* | thinking/happy/dizzy |
+| FloatMenu confirmed note | note_saved | noted |
+| Budget over | fail | dizzy |
+
+Cursor model: ice bait instrument (not chase). Station re-home on drag.
+
