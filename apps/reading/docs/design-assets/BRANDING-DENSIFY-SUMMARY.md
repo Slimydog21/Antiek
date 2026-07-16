@@ -92,10 +92,9 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Zombies living-TV beats | `c1980850f` | start/wave/gameover Werner experiences |
 | Ice + Clam living-TV beats | `f2a9073af` | Club Penguin wait games living-TV contract |
 | Cascade plan invent | `f2d5855ec` | PlanEditor cascade invent webp |
-| Arcade cabinet product-id | (local tip) | cards stamp `data-product-id=arcade` + PRODUCT_ACTIVATE |
-| AccrualView invent + refuse fail | (local tip) | living-TV strip + fail beat on gated payout refuse |
-| ChaseSlideOver DR beats | (local tip) | spawn → deep_research_start; error → deep_research_error |
-| Operator notify / Privacy delete beats | (local tip) | note_saved / fail / highlight on trust ops |
+| Arcade cabinet product-id | `be7a29660` | cards stamp `data-product-id=arcade` + PRODUCT_ACTIVATE |
+| Accrual/Chase/trust living-TV beats | `ea49628ac` | invent + DR spawn/error + notify/delete beats |
+| TwinNotes living-TV invent | (local tip) | recursive note-taker companion invent strip |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 

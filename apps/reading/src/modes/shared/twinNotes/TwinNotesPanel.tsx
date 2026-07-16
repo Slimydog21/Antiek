@@ -11,6 +11,7 @@
 import { useEffect, useState } from "react";
 
 import thinkingArt from "../../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { emitWernerExperience } from "../../../werner/reactionBus";
 import { fetchTwinForAsset } from "./fetchTwin";
 import type { TwinDocument } from "./twinDocument";
@@ -90,25 +91,37 @@ export function TwinNotesPanel({
       className="flex max-h-[50vh] flex-col overflow-hidden rounded-lg border border-rule bg-ice-1/95 shadow-md dark:border-charcoal-1 dark:bg-charcoal-2/95"
       aria-label="Twin notes"
     >
-      <header className="flex items-center justify-between gap-2 border-b border-rule px-3 py-2 dark:border-charcoal-1">
-        <div className="flex min-w-0 items-center gap-2">
-          {/* Session thinking mark — twin notes are the recursive note-taker
-              companion; densify so invent is not inventory-only. */}
-          <img
-            src={thinkingArt}
-            alt=""
-            aria-hidden="true"
-            data-testid="twin-notes-werner-brand"
-            className="h-7 w-7 shrink-0 object-contain"
-          />
-          <div className="truncate font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
-            Twin notes · {doc.authority}
-            {isDemo ? " · demo fixture" : isLive ? " · live" : ""}
+      <header className="space-y-2 border-b border-rule px-3 py-2 dark:border-charcoal-1">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex min-w-0 items-center gap-2">
+            {/* Session thinking mark — twin notes are the recursive note-taker
+                companion; densify so invent is not inventory-only. */}
+            <img
+              src={thinkingArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="twin-notes-werner-brand"
+              className="h-7 w-7 shrink-0 object-contain"
+            />
+            <div className="truncate font-mono text-[10px] uppercase tracking-wide text-shadow-1 dark:text-moonlight">
+              Twin notes · {doc.authority}
+              {isDemo ? " · demo fixture" : isLive ? " · live" : ""}
+            </div>
+          </div>
+          <div className="shrink-0 font-mono text-[10px] text-shadow-1 dark:text-moonlight">
+            isTwin={String(doc.isTwin)} · {doc.status}
           </div>
         </div>
-        <div className="shrink-0 font-mono text-[10px] text-shadow-1 dark:text-moonlight">
-          isTwin={String(doc.isTwin)} · {doc.status}
-        </div>
+        {/* Living-TV invent strip — recursive note-taker is a product door. */}
+        <img
+          src={livingTvArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="twin-notes-living-tv-art"
+          className="h-10 w-full max-w-xs rounded object-cover object-center"
+          loading="lazy"
+          decoding="async"
+        />
       </header>
       <div className="min-h-0 flex-1 overflow-auto p-3 space-y-3">
         <section>
