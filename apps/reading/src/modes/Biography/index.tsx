@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import Werner from "../../brand/Werner";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { LemonButton } from "../../components/lemon";
 import { startInvestigation } from "../../lib/api";
 import {
@@ -103,6 +104,15 @@ export default function Biography() {
               </p>
             </div>
           </div>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="biography-living-tv-art"
+            className="h-16 w-full max-w-md rounded-md object-cover object-center"
+            loading="lazy"
+            decoding="async"
+          />
         </header>
 
         {/* The steps — what "start a biography" actually sets up. Three
