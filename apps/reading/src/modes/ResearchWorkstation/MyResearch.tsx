@@ -35,7 +35,7 @@
  * semaphore, and the surface says exactly that.
  */
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { getBudgetDefaults, type BudgetDefaults } from "../../api/research";
@@ -46,10 +46,14 @@ import AIActionFailure from "../../shared/AIActionFailure";
 import LemonButton from "../../components/lemon/LemonButton";
 import { LemonTag } from "../../components/lemon/LemonTag";
 import SuggestedResearch from "./SuggestedResearch";
+import chartRoomEnvironment from "../../brand/werner/investigations/investigation_chart_room_v1.webp";
 
 // CSS-only tree connectors for the lineage board — pseudo-elements draw
 // the trunk and branches; no SVG, no JS, no generated art.
 import "./research-lineage-board.css";
+
+// The Chart Room environment frame — decorative art + legibility veil.
+import "./investigation-chart-room.css";
 
 // ── Status → plain language (SPR-02 narration vocabulary) ─────────────────
 //
@@ -95,6 +99,58 @@ function assertNever(x: never): never {
   // rather than silently mislabelling. Returns a safe muted fallback shape
   // only to satisfy the never-return at runtime (unreachable in practice).
   throw new Error(`unhandled investigation status: ${String(x)}`);
+}
+
+// ── Chart Room frame — decorative environment for standalone MyResearch ──
+//
+// A `div`-based presentational frame that wraps the standalone monitor in a
+// polar cartographic room with a legibility veil. The image is decorative:
+// empty-alt, aria-hidden, lazy-loaded, async-decoded, non-draggable, and
+// pointer-inert. It
+// supplies atmosphere only; every title, cost, status, link, and launch
+// control remains live HTML.
+//
+// Embedded MyResearch (<MyResearch embedded />) does NOT use this frame —
+// it renders the existing log section unchanged.
+
+export function ChartRoomFrame({
+  fixture = false,
+  children,
+}: {
+  /** When true, hides the real image and uses a deterministic CSS gradient
+   *  background for Storybook fixtures (no asset I/O dependency). */
+  fixture?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      data-testid="chart-room-frame"
+      className={`investigation-chart-room${fixture ? " investigation-chart-room--fixture" : ""}`}
+    >
+      <img
+        src={chartRoomEnvironment}
+        alt=""
+        aria-hidden="true"
+        loading="lazy"
+        decoding="async"
+        draggable={false}
+        data-testid="investigation-chart-room-art"
+      />
+      <div className="investigation-chart-room__veil" aria-hidden="true" />
+      <header className="investigation-chart-room__masthead">
+        <p className="investigation-chart-room__eyebrow">
+          Antiek · investigation chart room
+        </p>
+        <h1>My research</h1>
+        <p>
+          Every research you have running and finished, in one place. Each
+          shows what it is doing in plain language; open any one for the full
+          view.
+        </p>
+      </header>
+      <div className="investigation-chart-room__content">{children}</div>
+    </div>
+  );
 }
 
 // ── Lineage forest. Every research appears exactly once, at its real depth.
@@ -196,6 +252,7 @@ function aggregate(items: InvestigationSummary[]): Aggregate {
  * renders exactly as before: full page, header, launch bar, suggested lane.
  * The row → /inv/{id} navigation contract is identical in both.
  */
+
 export default function MyResearch({
   embedded = false,
 }: { embedded?: boolean } = {}) {
@@ -237,39 +294,20 @@ export default function MyResearch({
   const runningActive = cap === null ? agg.running : Math.min(agg.running, cap);
   const queued = cap === null ? 0 : Math.max(0, agg.running - cap);
 
-  // SPR-05 M3 — when embedded in the home, shed the full-screen page chrome
-  // (the home owns the scroll + background) and read as a log section.
-  const outerClass = embedded
-    ? "w-full"
-    : "flex h-full flex-col overflow-y-auto bg-ice-0 dark:bg-charcoal-2";
-  const innerClass = embedded
-    ? "w-full space-y-6"
-    : "mx-auto w-full max-w-5xl space-y-6 px-8 py-10";
-
-  return (
-    <div className={outerClass}>
-      <div className={innerClass}>
+  // ── Content shared between standalone and embedded modes. ─────────────
+  //    Extracted so the frame wrapper doesn't duplicate JSX.
+  const content = (
+    <>
+      {/* Concurrency bar + refresh. In standalone mode the header lives
+          inside the Chart Room frame's masthead, so the bar + refresh are
+          rendered as content below it. In embedded mode they sit inside the
+          existing compact header. */}
+      {embedded && (
         <header className="space-y-2">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <h1
-                className={
-                  embedded
-                    ? "text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight"
-                    : "text-2xl font-serif text-ink dark:text-bright"
-                }
-              >
-                {embedded ? "Your research" : "My research"}
-              </h1>
-              {!embedded && (
-                <p className="max-w-2xl text-sm leading-relaxed text-shadow-1 dark:text-moonlight">
-                  Every research you have running and finished, in one place.
-                  Each shows what it is doing in plain language; open any one
-                  for the full view. Launch several at once and watch them here
-                  together.
-                </p>
-              )}
-            </div>
+            <h1 className="text-[11px] font-mono uppercase tracking-wider text-shadow-1 dark:text-moonlight">
+              Your research
+            </h1>
             <button
               type="button"
               onClick={refetch}
@@ -288,56 +326,94 @@ export default function MyResearch({
             cap={cap}
           />
         </header>
+      )}
 
-        {/* Launch affordances. Disabled with a clear reason when no research
-            can run (no provider keys). Both route to the start surface — one
-            composer, no second entry point (M1 consolidation).
-            SPR-05 M3: SUPPRESSED when embedded in the home — the composer
-            sitting directly above the log IS the entry, so a second "Start a
-            research" button here would be exactly the duplicate door the
-            consolidation removes. */}
-        {!embedded && (
-          <LaunchBar
-            disabled={auth.status !== "authenticated"}
-            onStartOne={() => navigate("/")}
-            onLaunchSeveral={() => navigate("/")}
+      {!embedded && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <ConcurrencyBar
+            running={runningActive}
+            queued={queued}
+            done={agg.done}
+            attention={agg.attention}
+            costUsd={agg.costUsd}
+            cap={cap}
           />
-        )}
+          <button
+            type="button"
+            onClick={refetch}
+            aria-label="Refresh"
+            className="shrink-0 text-shadow-1 transition-colors hover:text-ink dark:text-moonlight dark:hover:text-bright"
+          >
+            ⟳
+          </button>
+        </div>
+      )}
 
-        {/* SPR-09: the compounding flywheel, surfaced. A calm "what to chase
-            next" lane sourced from the §7 daemon's existing scored gaps — an
-            offer, never a nag (§2.6 curiosity-gated). Read-only to render;
-            chasing one launches through the same capped path. */}
-        <SuggestedResearch
-          variant="lane"
-          canLaunch={auth.status === "authenticated"}
+      {/* Launch affordances. Disabled with a clear reason when no research
+          can run (no provider keys). Both route to the start surface — one
+          composer, no second entry point (M1 consolidation).
+          SPR-05 M3: SUPPRESSED when embedded in the home — the composer
+          sitting directly above the log IS the entry, so a second "Start a
+          research" button here would be exactly the duplicate door the
+          consolidation removes. */}
+      {!embedded && (
+        <LaunchBar
+          disabled={auth.status !== "authenticated"}
+          onStartOne={() => navigate("/")}
+          onLaunchSeveral={() => navigate("/")}
         />
+      )}
 
-        {error && <ListError error={error} onRetry={refetch} />}
+      {/* SPR-09: the compounding flywheel, surfaced. A calm "what to chase
+          next" lane sourced from the §7 daemon's existing scored gaps — an
+          offer, never a nag (§2.6 curiosity-gated). Read-only to render;
+          chasing one launches through the same capped path. */}
+      <SuggestedResearch
+        variant="lane"
+        canLaunch={auth.status === "authenticated"}
+      />
 
-        {/* No-key / nothing-yet honest state. The common production reason a
-            research list is empty is that no model provider is configured, so
-            we reuse the shared AIActionFailure no-reason branch which says
-            exactly that — never a hopeful spinner. */}
-        {!loading && !error && investigations.length === 0 && (
-          <div className="rounded-md border border-rule px-4 py-8 dark:border-charcoal-1">
-            <AIActionFailure
-              title="No research yet"
-              onRetry={() => navigate("/")}
-              retryLabel="Start a research"
-            />
-          </div>
-        )}
+      {error && <ListError onRetry={refetch} />}
 
-        {loading && investigations.length === 0 && (
-          <p className="text-sm italic text-shadow-1 dark:text-moonlight">
-            Loading…
-          </p>
-        )}
+      {/* No-key / nothing-yet honest state. The common production reason a
+          research list is empty is that no model provider is configured, so
+          we reuse the shared AIActionFailure no-reason branch which says
+          exactly that — never a hopeful spinner. */}
+      {!loading && !error && investigations.length === 0 && (
+        <div className="rounded-md border border-rule px-4 py-8 dark:border-charcoal-1">
+          <AIActionFailure
+            title="No research yet"
+            onRetry={() => navigate("/")}
+            retryLabel="Start a research"
+          />
+        </div>
+      )}
 
-        <ResearchLineageBoard investigations={investigations} />
+      {loading && investigations.length === 0 && (
+        <p className="text-sm italic text-shadow-1 dark:text-moonlight">
+          Loading…
+        </p>
+      )}
+
+      <ResearchLineageBoard investigations={investigations} />
+    </>
+  );
+
+  // ── Standalone: the Chart Room frame wraps the monitor. ──────────────
+  //    Embedded: the existing log section, visually and behaviourally
+  //    unchanged.
+  if (embedded) {
+    return (
+      <div className="w-full">
+        <div className="w-full space-y-6">{content}</div>
       </div>
-    </div>
+    );
+  }
+
+  return (
+    <ChartRoomFrame>
+      <div className="space-y-6">{content}</div>
+    </ChartRoomFrame>
   );
 }
 
@@ -613,12 +689,11 @@ function ResearchRow({
   );
 }
 
-function ListError({ error, onRetry }: { error: string; onRetry: () => void }) {
+function ListError({ onRetry }: { onRetry: () => void }) {
   return (
     <div className="rounded-md border border-rule px-4 py-6 dark:border-charcoal-1">
       <AIActionFailure
         title="Couldn’t load your research"
-        reason={error}
         onRetry={onRetry}
       />
     </div>
