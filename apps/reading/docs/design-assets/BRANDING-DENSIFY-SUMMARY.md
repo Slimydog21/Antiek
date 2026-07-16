@@ -173,3 +173,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | WorkspaceWindow living-TV | `4d7f159b9` | float toggle highlight; close note_saved |
 | TrajectoryReplay/CrossDocSidebar living-TV | `6973f10ba` | replay start DR; cite/restart highlight |
 | ClaimCard living-TV challenge | `b5978f103` | challenge DR start; fail on error |
+| ContextPicker living-TV compose | `7f45f1aec` | compose note_saved; fail on error |
