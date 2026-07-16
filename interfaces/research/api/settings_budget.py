@@ -31,6 +31,7 @@ from orchestration.continuous.budget import (
     DaemonBudget,
     _budget_path,
 )
+from runtime.research_runner.provider_route_authority import RouteExecutionStatus
 from substrate.dispatch.advisory_decision import (
     DecisionCandidate,
     DecisionTask,
@@ -59,6 +60,8 @@ class ModelRow(BaseModel):
     route_eligible: bool = False
     pricing_status: Literal["known", "unknown"] = "unknown"
     hard_ceiling_eligible: bool = False
+    execution_status: RouteExecutionStatus = RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING
+    rate_snapshot: str | None = None
     notes: str | None = None
 
 
@@ -664,6 +667,22 @@ def get_settings_models(request: Request) -> ModelsResponse:
                 ),
                 route_eligible=(
                     user_authority[pid].route_eligible if pid in user_authority else is_ready
+                ),
+                pricing_status=(
+                    user_authority[pid].pricing_status if pid in user_authority else "unknown"
+                ),
+                hard_ceiling_eligible=(
+                    user_authority[pid].hard_ceiling_eligible
+                    if pid in user_authority
+                    else False
+                ),
+                execution_status=(
+                    user_authority[pid].execution_status
+                    if pid in user_authority
+                    else RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING
+                ),
+                rate_snapshot=(
+                    user_authority[pid].rate_snapshot if pid in user_authority else None
                 ),
                 notes=notes,
             )
