@@ -4,13 +4,23 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, Protocol
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from runtime.research_runner.protocol import CostProjectionRequest
+from runtime.research_runner.provider_gateway import (
+    DispatchIneligible,
+    FallbackRouteAuthorizer,
+    HardCeilingProviderAdapter,
+    Projector,
+    ProviderOutcomeUnknown,
+    ResearchProviderGateway,
+)
 from substrate.distillation_dispatch import DistillationDispatchJournal
 from substrate.graph import default_db_path
 from substrate.research_spend import (
@@ -31,10 +41,38 @@ _AUTHENTICATED_METHODS = frozenset(
         "bearer_token",
     }
 )
+
+
+@dataclass(frozen=True)
+class DistillationProviderReconciliationAuthority:
+    """Server-composed provider authority; none of these values cross the API."""
+
+    adapter: HardCeilingProviderAdapter[Any]
+    projection_request: CostProjectionRequest
+    approval_id: str
+    projector: Projector
+    route_authorizer: FallbackRouteAuthorizer
+
+
+class DistillationProviderAuthorityResolver(Protocol):
+    def __call__(
+        self,
+        *,
+        operator_id: str,
+        request_event_id: str,
+        spend_run_id: str,
+        fallback_chain_id: str,
+        manifest_sha256: str,
+        fallback_index: int,
+        hold_id: str,
+    ) -> DistillationProviderReconciliationAuthority: ...
+
+
 @dataclass(frozen=True)
 class DistillationReconciliationRuntime:
     command_db_path: str
     spend_db_path: Path
+    provider_authority_resolver: DistillationProviderAuthorityResolver | None = None
 
 
 class DistillationHoldEvidenceResponse(BaseModel):
@@ -85,18 +123,33 @@ class ReleaseProvenUnsentRequest(BaseModel):
     expected_command_state: Literal["ambiguous"]
     expected_spend_run_id: str = Field(min_length=1, max_length=512)
     expected_fallback_chain_id: str = Field(min_length=1, max_length=512)
-    expected_manifest_sha256: str = Field(
-        min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$"
-    )
+    expected_manifest_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
     expected_fallback_index: int = Field(ge=0, le=15)
     expected_hold_id: str = Field(min_length=1, max_length=512)
     expected_hold_state: Literal["reserved"]
 
 
-def get_distillation_reconciliation_runtime() -> DistillationReconciliationRuntime:
+class CheckProviderOutcomeRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    expected_command_state: Literal["ambiguous"]
+    expected_spend_run_id: str = Field(min_length=1, max_length=512)
+    expected_fallback_chain_id: str = Field(min_length=1, max_length=512)
+    expected_manifest_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-f]{64}$")
+    expected_fallback_index: int = Field(ge=0, le=15)
+    expected_hold_id: str = Field(min_length=1, max_length=512)
+    expected_hold_state: Literal["dispatch_possible", "unknown"]
+
+
+def get_distillation_reconciliation_runtime(request: Request) -> DistillationReconciliationRuntime:
     return DistillationReconciliationRuntime(
         command_db_path=default_db_path(),
         spend_db_path=default_research_spend_db_path(),
+        provider_authority_resolver=getattr(
+            request.app.state,
+            "distillation_provider_authority_resolver",
+            None,
+        ),
     )
 
 
@@ -130,16 +183,12 @@ distillation_reconciliation_router = APIRouter(
 def get_distillation_reconciliation(
     request_event_id: str,
     operator_id: str = Depends(authenticated_distillation_operator),
-    runtime: DistillationReconciliationRuntime = Depends(
-        get_distillation_reconciliation_runtime
-    ),
+    runtime: DistillationReconciliationRuntime = Depends(get_distillation_reconciliation_runtime),
 ) -> DistillationReconciliationResponse:
     if not request_event_id or len(request_event_id.encode("utf-8")) > 512:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="command unavailable")
     try:
-        command_journal = DistillationDispatchJournal.open_read_only(
-            runtime.command_db_path
-        )
+        command_journal = DistillationDispatchJournal.open_read_only(runtime.command_db_path)
         command = command_journal.load_read_only(request_event_id)
     except (KeyError, RuntimeError, ValueError) as exc:
         raise HTTPException(
@@ -155,9 +204,7 @@ def get_distillation_reconciliation(
     if owner_probe.binding.owner_id != operator_id:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="command unavailable")
     try:
-        command, correlations = command_journal.reconciliation_snapshot(
-            request_event_id
-        )
+        command, correlations = command_journal.reconciliation_snapshot(request_event_id)
         if (
             command.spend_run_id is None
             or command.fallback_chain_id is None
@@ -239,16 +286,12 @@ def release_proven_unsent_hold(
     request_event_id: str,
     expected: ReleaseProvenUnsentRequest,
     operator_id: str = Depends(authenticated_distillation_operator),
-    runtime: DistillationReconciliationRuntime = Depends(
-        get_distillation_reconciliation_runtime
-    ),
+    runtime: DistillationReconciliationRuntime = Depends(get_distillation_reconciliation_runtime),
 ) -> DistillationReconciliationResponse:
     journal = DistillationDispatchJournal(runtime.command_db_path)
     try:
         with journal.execution_guard(request_event_id):
-            current = get_distillation_reconciliation(
-                request_event_id, operator_id, runtime
-            )
+            current = get_distillation_reconciliation(request_event_id, operator_id, runtime)
             if (
                 current.command_state != expected.expected_command_state
                 or current.spend_run_id != expected.expected_spend_run_id
@@ -264,9 +307,7 @@ def release_proven_unsent_hold(
                 PaidHoldState.RELEASED.value,
             ):
                 raise LedgerIntegrityError("operator reconciliation hold changed")
-            command_key = _release_command_key(
-                operator_id, request_event_id, expected
-            )
+            command_key = _release_command_key(operator_id, request_event_id, expected)
             ResearchSpendLedger(runtime.spend_db_path).release_reserved_fallback_hold(
                 command_key,
                 owner_id=operator_id,
@@ -277,9 +318,7 @@ def release_proven_unsent_hold(
                 fallback_index=expected.expected_fallback_index,
                 hold_id=expected.expected_hold_id,
             )
-            return get_distillation_reconciliation(
-                request_event_id, operator_id, runtime
-            )
+            return get_distillation_reconciliation(request_event_id, operator_id, runtime)
     except RunNotFound as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="command unavailable"
@@ -299,6 +338,96 @@ def release_proven_unsent_hold(
         ) from exc
 
 
+@distillation_reconciliation_router.post(
+    "/commands/{request_event_id}/reconciliation/actions/check-provider",
+    response_model=DistillationReconciliationResponse,
+)
+def check_provider_outcome(
+    request_event_id: str,
+    expected: CheckProviderOutcomeRequest,
+    operator_id: str = Depends(authenticated_distillation_operator),
+    runtime: DistillationReconciliationRuntime = Depends(get_distillation_reconciliation_runtime),
+) -> DistillationReconciliationResponse:
+    journal = DistillationDispatchJournal(runtime.command_db_path)
+    try:
+        with journal.execution_guard(request_event_id):
+            current = get_distillation_reconciliation(request_event_id, operator_id, runtime)
+            if not _matches_provider_terms(current, expected):
+                raise LedgerIntegrityError("operator reconciliation terms changed")
+            current_hold = current.holds[-1]
+            if current_hold.state not in (
+                expected.expected_hold_state,
+                PaidHoldState.RELEASED.value,
+                PaidHoldState.SETTLED.value,
+            ):
+                raise LedgerIntegrityError("operator reconciliation hold changed")
+            if current_hold.state in (
+                PaidHoldState.RELEASED.value,
+                PaidHoldState.SETTLED.value,
+            ):
+                return current
+            resolver = runtime.provider_authority_resolver
+            if resolver is None:
+                raise LedgerIntegrityError("provider authority is unavailable")
+            authority = resolver(
+                operator_id=operator_id,
+                request_event_id=request_event_id,
+                spend_run_id=expected.expected_spend_run_id,
+                fallback_chain_id=expected.expected_fallback_chain_id,
+                manifest_sha256=expected.expected_manifest_sha256,
+                fallback_index=expected.expected_fallback_index,
+                hold_id=expected.expected_hold_id,
+            )
+            gateway = ResearchProviderGateway(
+                ResearchSpendLedger(runtime.spend_db_path),
+                projector=authority.projector,
+                fallback_route_authorizer=authority.route_authorizer,
+            )
+            with suppress(ProviderOutcomeUnknown):
+                gateway.reconcile_paid_only(
+                    expected.expected_hold_id,
+                    authority.adapter,
+                    owner_id=operator_id,
+                    chain_id=expected.expected_fallback_chain_id,
+                    fallback_index=expected.expected_fallback_index,
+                    approval_id=authority.approval_id,
+                    projection_request=authority.projection_request,
+                )
+            return get_distillation_reconciliation(request_event_id, operator_id, runtime)
+    except RunNotFound as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="command unavailable"
+        ) from exc
+    except (
+        DispatchIneligible,
+        IdempotencyConflict,
+        IndexError,
+        InvalidTransition,
+        KeyError,
+        LedgerIntegrityError,
+        RuntimeError,
+        ValueError,
+    ) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="reconciliation action conflicts",
+        ) from exc
+
+
+def _matches_provider_terms(
+    current: DistillationReconciliationResponse,
+    expected: CheckProviderOutcomeRequest,
+) -> bool:
+    return (
+        current.command_state == expected.expected_command_state
+        and current.spend_run_id == expected.expected_spend_run_id
+        and current.fallback_chain_id == expected.expected_fallback_chain_id
+        and current.manifest_sha256 == expected.expected_manifest_sha256
+        and current.current_fallback_index == expected.expected_fallback_index
+        and current.current_hold_id == expected.expected_hold_id
+    )
+
+
 def _release_command_key(
     operator_id: str,
     request_event_id: str,
@@ -314,9 +443,7 @@ def _release_command_key(
         separators=(",", ":"),
         sort_keys=True,
     )
-    return "distillation-reserved-release:" + hashlib.sha256(
-        canonical.encode("utf-8")
-    ).hexdigest()
+    return "distillation-reserved-release:" + hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _evidence_requirement(
@@ -344,6 +471,8 @@ def _next_action(
 
 
 __all__ = [
+    "CheckProviderOutcomeRequest",
+    "DistillationProviderReconciliationAuthority",
     "DistillationReconciliationRuntime",
     "DistillationReconciliationResponse",
     "authenticated_distillation_operator",

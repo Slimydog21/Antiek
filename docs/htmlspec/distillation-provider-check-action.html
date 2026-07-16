@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Distillation Provider Check Action</title>
+</head>
+<body>
+  <main>
+    <h1>Distillation Provider Check Action</h1>
+    <p><strong>Status:</strong> Cycle 97 implementation contract.</p>
+
+    <section>
+      <h2>Purpose</h2>
+      <p>Resolve an ambiguous paid distillation hold through one authoritative provider lookup without restoring dispatch, accepting client evidence, or advancing a fallback chain.</p>
+    </section>
+
+    <section>
+      <h2>Trust boundary</h2>
+      <ol>
+        <li>The authenticated owner submits only exact optimistic-concurrency terms copied from the reconciliation view.</li>
+        <li>Provider, model, endpoint, credentials, approval, projection, route authority, evidence, status, and cents are server-owned and absent from the request schema.</li>
+        <li>A server resolver composes the adapter and immutable authorities. Production fails closed when no resolver is configured.</li>
+        <li>The route rebuilds the Cycle 96 gateway over the canonical runtime spend database; alternate ledgers cannot be injected by a resolver.</li>
+        <li>The gateway re-proves owner, run, manifest, route, hold, approval, projection digest, route authority, database identity, and reservation lock before lookup.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>State machine</h2>
+      <ul>
+        <li><code>charged</code> settles exact provider cents.</li>
+        <li><code>not_found</code> releases the hold.</li>
+        <li><code>unknown</code>, malformed evidence, lookup failure, and authority drift retain the full hold.</li>
+        <li>Terminal replay is read-only and performs no provider lookup.</li>
+        <li>No path calls <code>send_once</code> or advances to another fallback.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>HTTP contract</h2>
+      <p><code>POST /research/distillation/commands/{request_event_id}/reconciliation/actions/check-provider</code></p>
+      <p>Foreign and missing resources are opaque 404s. Stale terms, unavailable authority, invalid transitions, and authority conflicts are value-free 409s. Unknown provider outcome returns the refreshed authoritative view with the hold intact.</p>
+    </section>
+
+    <section>
+      <h2>Acceptance criteria</h2>
+      <ol>
+        <li>Charged, not-found, unknown, terminal replay, stale terms, foreign owner, absent resolver, and forbidden request fields have executable tests.</li>
+        <li>Each nonterminal action performs exactly one resolver call and at most one provider reconciliation call.</li>
+        <li>Tests prove zero provider sends and no release when authority is absent or client terms are invalid.</li>
+        <li>Ruff, focused pytest, compilation, diff hygiene, independent review, and HardenX pass before transport.</li>
+      </ol>
+    </section>
+  </main>
+</body>
+</html>
