@@ -38,6 +38,7 @@ from runtime.research_runner.provider_gateway import (
 from substrate.research_spend import (
     IdempotencyConflict,
     InvalidTransition,
+    PaidHoldSnapshot,
     PaidHoldState,
     ResearchSpendLedger,
     RunBinding,
@@ -432,6 +433,7 @@ def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> Non
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
     routes = (_fallback_route(primary), _fallback_route(fallback))
     approval_id = _approve_fallbacks(gateway, routes)
+    observed: list[tuple[int, str]] = []
 
     result = gateway.dispatch_paid_fallbacks(
         _binding(),
@@ -439,6 +441,7 @@ def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> Non
         operation={"prompt": "bounded"},
         routes=routes,
         approval_id=approval_id,
+        on_hold_authorized=lambda index, hold: observed.append((index, hold.hold_id)),
     )
 
     assert result.outcome is PaidFallbackOutcome.SETTLED
@@ -449,6 +452,7 @@ def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> Non
         "test-provider",
     )
     assert len(result.attempts) == 1
+    assert observed == [(0, result.attempts[0].hold.hold_id)]
     assert len(primary.send_calls) == 1
     assert fallback.send_calls == []
     assert len(gateway.ledger.events("run-1")) == 4
@@ -729,6 +733,7 @@ def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Pat
     )
     routes = (_fallback_route(primary), _fallback_route(fallback))
     approval_id = _approve_fallbacks(gateway, routes)
+    observed: list[tuple[int, str]] = []
 
     result = gateway.dispatch_paid_fallbacks(
         _binding(),
@@ -736,6 +741,7 @@ def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Pat
         operation={"prompt": "bounded"},
         routes=routes,
         approval_id=approval_id,
+        on_hold_authorized=lambda index, hold: observed.append((index, hold.hold_id)),
     )
 
     assert result.outcome is PaidFallbackOutcome.SETTLED
@@ -745,6 +751,7 @@ def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Pat
     assert result.actual_provider == "fallback-provider"
     assert [attempt.hold.projected_max_cents for attempt in result.attempts] == [100, 60]
     first, second = result.attempts
+    assert observed == [(0, first.hold.hold_id), (1, second.hold.hold_id)]
     assert first.hold.hold_id != second.hold.hold_id
     assert first.hold.intent.provider_idempotency_key != (
         second.hold.intent.provider_idempotency_key
@@ -762,6 +769,12 @@ def test_ambiguous_primary_halts_before_fallback_send(tmp_path: Path) -> None:
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
     routes = (_fallback_route(primary), _fallback_route(fallback))
     approval_id = _approve_fallbacks(gateway, routes)
+    observed: list[str] = []
+
+    def observe(fallback_index: int, hold: PaidHoldSnapshot) -> None:
+        assert fallback_index == 0
+        assert primary.send_calls == []
+        observed.append(hold.hold_id)
 
     with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
         gateway.dispatch_paid_fallbacks(
@@ -770,11 +783,32 @@ def test_ambiguous_primary_halts_before_fallback_send(tmp_path: Path) -> None:
             operation={"prompt": "bounded"},
             routes=routes,
             approval_id=approval_id,
+            on_hold_authorized=observe,
         )
     assert unknown.value.fallback_index == 0
     assert unknown.value.completed_attempts == ()
     assert fallback.send_calls == []
     assert gateway.ledger.balance("run-1").held_cents == 100
+    assert observed == [unknown.value.hold_id]
+
+    observed.clear()
+
+    def observe_before_reconcile(fallback_index: int, hold: PaidHoldSnapshot) -> None:
+        assert fallback_index == 0
+        assert primary.reconcile_calls == []
+        observed.append(hold.hold_id)
+
+    recovered = gateway.dispatch_paid_fallbacks(
+        _binding(),
+        logical_operation_id="op",
+        operation={"prompt": "bounded"},
+        routes=routes,
+        approval_id=approval_id,
+        on_hold_authorized=observe_before_reconcile,
+    )
+    assert recovered.outcome is PaidFallbackOutcome.SETTLED
+    assert observed == [unknown.value.hold_id]
+    assert len(primary.reconcile_calls) == 1
 
 
 def test_fallback_preflight_refuses_every_route_before_ledger_mutation(

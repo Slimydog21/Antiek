@@ -9,6 +9,7 @@ from runtime.research_runner.distillation_execution import (
     ApprovedDistillationTicket,
     DistillationApprovalRequirement,
     DistillationProviderValue,
+    DistillationSpendCorrelation,
     DistillationSpendGateway,
 )
 from runtime.research_runner.protocol import (
@@ -24,6 +25,7 @@ from runtime.research_runner.provider_gateway import (
     PaidFallbackRoute,
     PaidRouteAuthorityIdentity,
     ProviderCapabilities,
+    ProviderNotSent,
     ProviderReconciliation,
     ProviderSuccess,
     ReconciliationStatus,
@@ -75,15 +77,18 @@ class Adapter:
 
     def __init__(self) -> None:
         self.send_calls: list[str] = []
-
-    def send_once(self, operation, *, provider_idempotency_key, authorized_endpoint):
-        assert authorized_endpoint == self.endpoint
-        self.send_calls.append(provider_idempotency_key)
-        return ProviderSuccess(
+        self.send_result: object = ProviderSuccess(
             DistillationProviderValue("answer", 7),
             actual_cents=72,
             evidence={"provider_receipt": "receipt-1"},
         )
+
+    def send_once(self, operation, *, provider_idempotency_key, authorized_endpoint):
+        assert authorized_endpoint == self.endpoint
+        self.send_calls.append(provider_idempotency_key)
+        if isinstance(self.send_result, BaseException):
+            raise self.send_result
+        return self.send_result
 
     def reconcile(self, *, provider_idempotency_key, authorized_endpoint):
         return ProviderReconciliation(
@@ -155,9 +160,23 @@ def test_exact_approval_yields_ticket_hold_before_send_and_settlement(tmp_path) 
 
     ticket = authority.prepare("evt-request", "bounded prompt")
     assert isinstance(ticket, ApprovedDistillationTicket)
-    result = authority.execute(ticket)
+    correlations: list[DistillationSpendCorrelation] = []
+
+    def authorize_send(correlation: DistillationSpendCorrelation) -> None:
+        assert [
+            event.event_kind
+            for event in authority.gateway.ledger.events("distill-run")
+        ] == ["run_created", "hold_reserved"]
+        assert adapter.send_calls == []
+        correlations.append(correlation)
+
+    result = authority.execute(ticket, authorize_send)
 
     assert result.value.text == "answer"
+    assert len(correlations) == 1
+    assert correlations[0].run_id == ticket.run_id == "distill-run"
+    assert correlations[0].chain_id == ticket.preparation.chain_id
+    assert correlations[0].manifest_sha256 == ticket.preparation.manifest_sha256
     assert len(adapter.send_calls) == 1
     balance = authority.gateway.ledger.balance("distill-run")
     assert (balance.authorized_spent_cents, balance.held_cents) == (72, 0)
@@ -167,6 +186,101 @@ def test_exact_approval_yields_ticket_hold_before_send_and_settlement(tmp_path) 
         "dispatch_possible",
         "hold_settled",
     ]
+
+
+def test_execute_rejects_substituted_ticket_preparation_before_hold(tmp_path) -> None:
+    authority, adapter = _authority(tmp_path)
+    requirement = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(requirement, DistillationApprovalRequirement)
+    preparation = authority.gateway.prepare_paid_fallbacks(
+        _binding(),
+        logical_operation_id="evt-request",
+        operation=authority._operation("evt-request", "bounded prompt"),
+        routes=authority.routes,
+    )
+    authority.gateway.approve_paid_fallbacks(
+        "operator-approval-command", _binding(), preparation
+    )
+    ticket = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(ticket, ApprovedDistillationTicket)
+    substituted = replace(
+        ticket,
+        preparation=replace(ticket.preparation, chain_id="substituted-chain"),
+    )
+
+    with pytest.raises(ValueError, match="fallback authority changed"):
+        authority.execute(substituted, lambda correlation: None)
+
+    assert adapter.send_calls == []
+    assert authority.gateway.ledger.balance("distill-run").held_cents == 0
+
+
+def test_authorization_observer_failure_prevents_provider_send(tmp_path) -> None:
+    authority, adapter = _authority(tmp_path)
+    requirement = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(requirement, DistillationApprovalRequirement)
+    authority.gateway.approve_paid_fallbacks(
+        "operator-approval-command",
+        _binding(),
+        authority.gateway.prepare_paid_fallbacks(
+            _binding(),
+            logical_operation_id="evt-request",
+            operation=authority._operation("evt-request", "bounded prompt"),
+            routes=authority.routes,
+        ),
+    )
+    ticket = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(ticket, ApprovedDistillationTicket)
+
+    def refuse(_: DistillationSpendCorrelation) -> None:
+        raise RuntimeError("journal unavailable")
+
+    with pytest.raises(RuntimeError, match="journal unavailable"):
+        authority.execute(ticket, refuse)
+
+    assert adapter.send_calls == []
+    hold = next(
+        item
+        for item in authority.gateway.ledger.recovery_work("distill-run")
+        if item.kind == "paid"
+    )
+    assert hold.state == "reserved"
+
+
+def test_authoritatively_unsent_chain_returns_truthful_local_result(tmp_path) -> None:
+    adapter = Adapter()
+    adapter.send_result = ProviderNotSent(
+        "provider refused before acceptance", evidence={"accepted": False}
+    )
+    authority, _ = _authority(tmp_path, adapter=adapter)
+    requirement = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(requirement, DistillationApprovalRequirement)
+    authority.gateway.approve_paid_fallbacks(
+        "operator-approval-command",
+        _binding(),
+        authority.gateway.prepare_paid_fallbacks(
+            _binding(),
+            logical_operation_id="evt-request",
+            operation=authority._operation("evt-request", "bounded prompt"),
+            routes=authority.routes,
+        ),
+    )
+    ticket = authority.prepare("evt-request", "bounded prompt")
+    assert isinstance(ticket, ApprovedDistillationTicket)
+    correlations: list[DistillationSpendCorrelation] = []
+
+    result = authority.execute(ticket, correlations.append)
+
+    assert (result.provider, result.model, result.value.output_tokens) == (
+        "antiek",
+        "known-unsent",
+        0,
+    )
+    assert "no provider output was generated" in result.value.text
+    assert len(correlations) == 1
+    assert len(adapter.send_calls) == 1
+    balance = authority.gateway.ledger.balance("distill-run")
+    assert (balance.authorized_spent_cents, balance.held_cents) == (0, 0)
 
 
 def test_changed_prompt_cannot_reuse_manifest_or_approval(tmp_path) -> None:

@@ -19,8 +19,13 @@ from runtime.research_runner.distillation_execution import (
     DistillationApprovalRequirement,
     DistillationExecutionResult,
     DistillationProviderValue,
+    DistillationSpendCorrelation,
 )
-from runtime.research_runner.provider_gateway import PaidFallbackPreparation
+from runtime.research_runner.provider_gateway import (
+    DispatchIneligible,
+    PaidFallbackPreparation,
+    ProviderOutcomeUnknown,
+)
 from substrate.distillation_dispatch import (
     BindingConflict,
     CommandState,
@@ -97,6 +102,154 @@ def test_exact_reservation_reopens_and_changed_binding_conflicts(tmp_path) -> No
             "evt-request", _binding("changed"),
             investigation_id="inv-1", document_id="doc-1",
         )
+
+
+def test_authorized_sending_correlation_is_exact_idempotent_and_immutable(tmp_path) -> None:
+    db = str(tmp_path / "graph.duckdb")
+    journal = DistillationDispatchJournal(db)
+    journal.reserve("evt-request", _binding(), investigation_id="inv-1", document_id=None)
+    expected = {
+        "spend_run_id": "run-1",
+        "fallback_chain_id": "chain-1",
+        "manifest_sha256": "a" * 64,
+        "fallback_index": 0,
+        "hold_id": "hold-1",
+    }
+
+    first = journal.authorize_sending("evt-request", **expected)
+    assert first.state is CommandState.SENDING
+    assert (
+        first.spend_run_id,
+        first.fallback_chain_id,
+        first.manifest_sha256,
+        first.fallback_index,
+        first.hold_id,
+    ) == tuple(expected.values())
+    assert journal.authorize_sending("evt-request", **expected) == first
+
+    for field in expected:
+        changed = dict(expected)
+        changed[field] = (
+            "b" * 64
+            if field == "manifest_sha256"
+            else 2
+            if field == "fallback_index"
+            else f"changed-{field}"
+        )
+        with pytest.raises(BindingConflict, match="changed"):
+            journal.authorize_sending("evt-request", **changed)
+    assert journal.load("evt-request") == first
+
+
+def test_ambiguous_transition_requires_the_authorized_hold(tmp_path) -> None:
+    journal = DistillationDispatchJournal(str(tmp_path / "graph.duckdb"))
+    journal.reserve("evt-request", _binding(), investigation_id="inv-1", document_id=None)
+    journal.authorize_sending(
+        "evt-request",
+        spend_run_id="run-1",
+        fallback_chain_id="chain-1",
+        manifest_sha256="a" * 64,
+        fallback_index=0,
+        hold_id="hold-1",
+    )
+
+    with pytest.raises(BindingConflict, match="authorized hold"):
+        journal.mark_ambiguous("evt-request", hold_id="substituted-hold")
+    assert journal.load("evt-request").state is CommandState.SENDING
+    assert journal.mark_ambiguous(
+        "evt-request", hold_id="hold-1"
+    ).state is CommandState.AMBIGUOUS
+
+
+def test_correlation_conflict_rolls_back_command_transition(tmp_path) -> None:
+    db = str(tmp_path / "graph.duckdb")
+    journal = DistillationDispatchJournal(db)
+    journal.reserve("evt-request", _binding(), investigation_id="inv-1", document_id=None)
+    import duckdb
+
+    with duckdb.connect(db) as connection:
+        connection.execute(
+            "INSERT INTO distillation_dispatch_hold_correlations "
+            "(request_event_id,fallback_index,hold_id,created_at) VALUES (?,?,?,?)",
+            ["evt-request", 0, "conflicting-hold", "2026-07-16T00:00:00Z"],
+        )
+
+    with pytest.raises(BindingConflict, match="hold identity changed"):
+        journal.authorize_sending(
+            "evt-request",
+            spend_run_id="run-1",
+            fallback_chain_id="chain-1",
+            manifest_sha256="a" * 64,
+            fallback_index=0,
+            hold_id="hold-1",
+        )
+    snapshot = journal.load("evt-request")
+    assert snapshot.state is CommandState.RESERVED
+    assert snapshot.hold_id is None
+
+
+def test_fallback_hold_lineage_advances_one_route_and_retains_history(tmp_path) -> None:
+    db = str(tmp_path / "graph.duckdb")
+    journal = DistillationDispatchJournal(db)
+    journal.reserve("evt-request", _binding(), investigation_id="inv-1", document_id=None)
+    base = {
+        "spend_run_id": "run-1",
+        "fallback_chain_id": "chain-1",
+        "manifest_sha256": "a" * 64,
+    }
+    journal.authorize_sending(
+        "evt-request", **base, fallback_index=0, hold_id="hold-0"
+    )
+    advanced = journal.authorize_sending(
+        "evt-request", **base, fallback_index=1, hold_id="hold-1"
+    )
+    assert (advanced.fallback_index, advanced.hold_id) == (1, "hold-1")
+    assert journal.authorize_sending(
+        "evt-request", **base, fallback_index=0, hold_id="hold-0"
+    ) == advanced
+    with pytest.raises(BindingConflict, match="historical hold changed"):
+        journal.authorize_sending(
+            "evt-request", **base, fallback_index=0, hold_id="substituted-hold"
+        )
+    with pytest.raises(BindingConflict, match="lineage changed"):
+        journal.authorize_sending(
+            "evt-request", **base, fallback_index=3, hold_id="hold-3"
+        )
+
+    import duckdb
+
+    with duckdb.connect(db) as connection:
+        assert connection.execute(
+            "SELECT fallback_index,hold_id FROM distillation_dispatch_hold_correlations "
+            "WHERE request_event_id='evt-request' ORDER BY fallback_index"
+        ).fetchall() == [(0, "hold-0"), (1, "hold-1")]
+
+
+def test_existing_database_migrates_nullable_correlation_columns(tmp_path) -> None:
+    db = str(tmp_path / "graph.duckdb")
+    journal = DistillationDispatchJournal(db)
+    journal.reserve("evt-request", _binding(), investigation_id="inv-1", document_id=None)
+    import duckdb
+
+    with duckdb.connect(db) as connection:
+        for column in (
+            "spend_run_id",
+            "fallback_chain_id",
+            "manifest_sha256",
+            "fallback_index",
+            "hold_id",
+        ):
+            connection.execute(f"ALTER TABLE distillation_dispatch_commands DROP COLUMN {column}")
+
+    migrated = DistillationDispatchJournal(db).load("evt-request")
+    assert migrated.state is CommandState.RESERVED
+    assert (
+        migrated.spend_run_id,
+        migrated.fallback_chain_id,
+        migrated.manifest_sha256,
+        migrated.fallback_index,
+        migrated.hold_id,
+    ) == (None, None, None, None, None)
 
 
 def test_sending_recovery_becomes_permanently_ambiguous(tmp_path) -> None:
@@ -208,7 +361,13 @@ with j.execution_guard('evt-request'):
         assert journal.mark_ambiguous("evt-request").state is CommandState.AMBIGUOUS
 
 
-def _patch_handler_dependencies(monkeypatch, calls: list[str], *, crash: bool = False):
+def _patch_handler_dependencies(
+    monkeypatch,
+    calls: list[str],
+    *,
+    crash: bool = False,
+    recover_ineligible: bool = False,
+):
     monkeypatch.setattr(wrestling, "_resolve_region_text", lambda *args, **kwargs: "source")
     monkeypatch.setattr(wrestling, "build_working_memory_layer", lambda *args, **kwargs: None)
     monkeypatch.setattr(
@@ -218,7 +377,12 @@ def _patch_handler_dependencies(monkeypatch, calls: list[str], *, crash: bool = 
     )
 
     class Authority:
+        prepare_calls = 0
+
         def prepare(self, request_event_id, prompt):
+            self.prepare_calls += 1
+            if recover_ineligible and self.prepare_calls > 1:
+                raise DispatchIneligible("capability changed")
             return ApprovedDistillationTicket(
                 request_event_id=request_event_id,
                 prompt=prompt,
@@ -230,9 +394,21 @@ def _patch_handler_dependencies(monkeypatch, calls: list[str], *, crash: bool = 
                     maximum_chain_exposure_cents=100,
                 ),
                 approval_id="approval",
+                run_id="run",
             )
 
-        def execute(self, ticket):
+        def execute(self, ticket, authorize_send):
+            authorize_send(
+                DistillationSpendCorrelation(
+                    ticket.run_id,
+                    ticket.preparation.chain_id,
+                    ticket.preparation.manifest_sha256,
+                    0,
+                    "hold",
+                )
+            )
+            if crash and calls:
+                raise ProviderOutcomeUnknown("hold", "recovered result unavailable")
             calls.append("called")
             if crash:
                 raise RuntimeError("process died after transport")
@@ -304,12 +480,45 @@ async def test_crash_after_transport_is_ambiguous_and_never_redispatched(
         event.event_id
     )
     assert snapshot.state is CommandState.AMBIGUOUS
+    assert (
+        snapshot.spend_run_id,
+        snapshot.fallback_chain_id,
+        snapshot.manifest_sha256,
+        snapshot.fallback_index,
+        snapshot.hold_id,
+    ) == ("run", "chain", "a" * 64, 0, "hold")
     delivered = [
         row for row in wrestling.trajectory("inv-1")
         if row["action_type"] == "distillation.delivered"
     ]
     assert len(delivered) == 1
     assert delivered[0]["policy_id"] == "wrestling-fallback/ambiguous"
+
+
+@pytest.mark.asyncio
+async def test_correlated_recovery_capability_drift_becomes_ambiguous(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    calls: list[str] = []
+    _patch_handler_dependencies(
+        monkeypatch, calls, crash=True, recover_ineligible=True
+    )
+    handler = wrestling.make_distillation_handler(
+        _Broadcaster(), db_path=str(tmp_path / "graph.duckdb")
+    )
+    event = _request_event()
+
+    with pytest.raises(RuntimeError, match="process died"):
+        await handler(event)
+    await handler(event)
+
+    snapshot = DistillationDispatchJournal(str(tmp_path / "graph.duckdb")).load(
+        event.event_id
+    )
+    assert snapshot.state is CommandState.AMBIGUOUS
+    assert snapshot.hold_id == "hold"
+    assert calls == ["called"]
 
 
 @pytest.mark.asyncio
@@ -614,9 +823,19 @@ async def test_prepared_request_waits_reserved_then_executes_after_exact_approva
                     "chain-1", "a" * 64, 100, "USD", 80
                 ),
                 approval_id="approval-1",
+                run_id="run-1",
             )
 
-        def execute(self, ticket):
+        def execute(self, ticket, authorize_send):
+            authorize_send(
+                DistillationSpendCorrelation(
+                    ticket.run_id,
+                    ticket.preparation.chain_id,
+                    ticket.preparation.manifest_sha256,
+                    0,
+                    "hold-1",
+                )
+            )
             calls.append(ticket.approval_id)
             return DistillationExecutionResult(
                 DistillationProviderValue(

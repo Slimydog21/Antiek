@@ -39,6 +39,7 @@ from runtime.research_runner.distillation_execution import (  # noqa: E402
     ApprovedDistillationTicket,
     DistillationExecutionResult,
     DistillationProviderValue,
+    DistillationSpendCorrelation,
 )
 from runtime.research_runner.provider_gateway import (  # noqa: E402
     PaidFallbackPreparation,
@@ -158,9 +159,19 @@ class _TestExecutionAuthority:
                 maximum_chain_exposure_cents=1,
             ),
             approval_id="test-approval",
+            run_id="test-run",
         )
 
-    def execute(self, ticket: ApprovedDistillationTicket):
+    def execute(self, ticket: ApprovedDistillationTicket, authorize_send):
+        authorize_send(
+            DistillationSpendCorrelation(
+                ticket.run_id,
+                ticket.preparation.chain_id,
+                ticket.preparation.manifest_sha256,
+                0,
+                "test-hold",
+            )
+        )
         try:
             result = dispatch(
                 ticket.prompt,
