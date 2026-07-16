@@ -266,6 +266,8 @@ def _signed_cutover_intent_v2(
         "prior_v1_state_sha256": prior.state_sha256,
         "target_store_id": prior.target_store_id,
         "target_basename": prior.target_basename,
+        "target_parent_device": prior.target_parent_dev,
+        "target_parent_inode": prior.target_parent_ino,
         "target_device": prior.target_dev,
         "target_inode": prior.target_ino,
         "root_id": prior.root_id,
@@ -3324,6 +3326,22 @@ class TestCutoverLifecycleV2:
             verification_key,
             expected_issuer_generation_nonce="ab" * 32,
         )
+        v1_document = checkpoint_module._migration_lifecycle_state_document(prior)
+        v2_document = checkpoint_module._cutover_lifecycle_state_document_v2(intent)
+        assert checkpoint_module._parse_lifecycle_journal_document_v2(
+            v1_document, verification_key
+        ) == prior
+        assert checkpoint_module._parse_lifecycle_journal_document_v2(
+            v2_document, verification_key
+        ) == intent
+        with pytest.raises(ValueError, match="schema version"):
+            checkpoint_module._parse_lifecycle_journal_document_v2(
+                _canonical_json({"schema_version": 3}), verification_key
+            )
+        with pytest.raises(ValueError, match="not canonical"):
+            checkpoint_module._parse_cutover_lifecycle_state_document_v2(
+                v2_document + b" ", verification_key
+            )
         assert intent.sequence == 5
         assert intent.previous_state_sha256 == prior.state_sha256
         assert intent.prior_v1_state_sha256 == prior.state_sha256
@@ -3401,6 +3419,117 @@ class TestCutoverLifecycleV2:
             state = successor
         assert state.phase == "barrier_released"
         assert state.sequence == 11
+
+    @pytest.mark.parametrize(
+        "fault_boundary", ("after_rename", "after_parent_fsync", "after_reread")
+    )
+    def test_single_sidecar_dispatches_and_v2_transition_replays_durably(
+        self, tmp_path: Path, fault_boundary: str
+    ) -> None:
+        target = tmp_path / "paid-lane.sqlite3"
+        target.write_bytes(b"cycle-34f-target")
+        target.chmod(0o600)
+        target_info = target.stat()
+        parent_info = tmp_path.stat()
+        private_key = Ed25519PrivateKey.generate()
+        freeze_nonce = "33" * 32
+        prior = _signed_lifecycle_state(
+            private_key,
+            target_parent_dev=parent_info.st_dev,
+            target_parent_ino=parent_info.st_ino,
+            target_dev=target_info.st_dev,
+            target_ino=target_info.st_ino,
+            barrier_id=checkpoint_module._migration_barrier_id(freeze_nonce),
+            freeze_nonce=freeze_nonce,
+            source_manifest_sha256="44" * 32,
+            copy_audit_sha256="55" * 32,
+            lifecycle_phase="copied_epoch0",
+            phase_version=4,
+            issuer_sequence=4,
+            witness_sha256="66" * 32,
+        )
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id=prior.issuer_key_id,
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        sidecar = tmp_path / checkpoint_module._migration_lifecycle_state_basename(
+            target.name
+        )
+        sidecar.write_bytes(checkpoint_module._migration_lifecycle_state_document(prior))
+        sidecar.chmod(0o600)
+        intent = _signed_cutover_intent_v2(private_key, prior)
+        assert checkpoint_module._read_signed_lifecycle_journal_v2(
+            parent_fd=(read_fd := os.open(tmp_path, os.O_RDONLY)),
+            target_basename=target.name,
+            verification_key=verification_key,
+        ) == prior
+        os.close(read_fd)
+        sidecar.write_bytes(checkpoint_module._cutover_lifecycle_state_document_v2(intent))
+        successor = self._successor(
+            private_key,
+            intent,
+            phase="marker_committed_in_target",
+            marker_sha256="10" * 32,
+            marker_committed_at_ms=2,
+        )
+        parent_fd = os.open(tmp_path, os.O_RDONLY)
+        try:
+            fcntl.flock(parent_fd, fcntl.LOCK_EX)
+            with pytest.raises(RuntimeError, match=fault_boundary):
+                checkpoint_module._persist_signed_cutover_lifecycle_state_v2(
+                    parent_fd=parent_fd,
+                    locked_parent_fd=parent_fd,
+                    state=successor,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=intent.state_sha256,
+                    expected_issuer_generation_nonce=intent.issuer_generation_nonce,
+                    _fault_hook=lambda boundary: (
+                        (_ for _ in ()).throw(RuntimeError(fault_boundary))
+                        if boundary == fault_boundary
+                        else None
+                    ),
+                )
+            assert checkpoint_module._persist_signed_cutover_lifecycle_state_v2(
+                parent_fd=parent_fd,
+                locked_parent_fd=parent_fd,
+                state=successor,
+                verification_key=verification_key,
+                expected_prior_state_sha256=intent.state_sha256,
+                expected_issuer_generation_nonce=intent.issuer_generation_nonce,
+            ) == successor
+            assert sidecar.read_bytes() == checkpoint_module._cutover_lifecycle_state_document_v2(
+                successor
+            )
+            assert not checkpoint_module._migration_lifecycle_temporary_basenames(
+                parent_fd, target.name
+            )
+            target_after = target.stat()
+            assert target_after.st_ino == target_info.st_ino
+            assert target_after.st_nlink == 1
+            assert target_after.st_mode & 0o777 == 0o600
+            with pytest.raises(ValueError, match="compare-and-swap mismatch"):
+                checkpoint_module._persist_signed_cutover_lifecycle_state_v2(
+                    parent_fd=parent_fd,
+                    locked_parent_fd=parent_fd,
+                    state=self._successor(
+                        private_key,
+                        successor,
+                        phase="external_pin_installed",
+                        pin_sha256="20" * 32,
+                    ),
+                    verification_key=verification_key,
+                    expected_prior_state_sha256="ff" * 32,
+                    expected_issuer_generation_nonce=intent.issuer_generation_nonce,
+                )
+            with pytest.raises(ValueError):
+                checkpoint_module._read_signed_migration_lifecycle_state(
+                    parent_fd=parent_fd,
+                    target_basename=target.name,
+                    verification_key=verification_key,
+                )
+        finally:
+            fcntl.flock(parent_fd, fcntl.LOCK_UN)
+            os.close(parent_fd)
 
     def test_certified_34e_copied_vector_survives_v2_code(self, tmp_path: Path) -> None:
         fixture_path = (

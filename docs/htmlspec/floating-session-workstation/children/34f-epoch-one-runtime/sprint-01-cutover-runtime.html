@@ -23,7 +23,8 @@
 </tbody></table><p>Reuse and sharpen the existing durable <code>QuarantinedSyntheticExternalPinStoreV1</code>, its exclusive locking, atomic JSON writes, secure root, <code>install_once</code>, and <code>mark_ready</code>. Do not invent a process-local substitute.</p><p>Both same-process and restart abort entry points acquire that identical journal/root lock and reread the signed journal immediately before rename/delete. They proceed only when it is the exact terminal V1 state; any V2 state, unknown successor, stale handle, or failed reread denies deletion. Two-order deterministic races cover intent versus same-process abort and intent versus restart abort: abort-first reaches authenticated terminal abort with no V2; intent-first preserves the target and permits only forward recovery.</p></section>
 <section><h2>Literal V2 closure</h2><pre>SignedCutoverLifecycleStateV2:
   schema_version=2; phase; sequence (5..11); prior_v1_state_sha256
-  target_store_id; target_basename; target_device; target_inode
+  target_store_id; target_basename; target_parent_device; target_parent_inode
+  target_device; target_inode
   root_id; root_manifest_sha256; barrier_id; freeze_nonce
   source_manifest_sha256; copy_audit_sha256
   predecessor_semantic_sha256; predecessor_contract_sha256
