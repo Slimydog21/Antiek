@@ -7,11 +7,7 @@ const locallyStartedResearchExpiryTimers = new Map<
   ReturnType<typeof setTimeout>
 >();
 
-export type ResearchReactionPhase =
-  | "idle"
-  | "running"
-  | "complete"
-  | "error";
+export type ResearchReactionPhase = "idle" | "running" | "complete" | "error";
 
 export function notifyPointerIdleEdge(
   wasPointerIdle: boolean,
@@ -46,6 +42,11 @@ export function notifyThoughtPartnerReplyReceived(): void {
   emitWernerExperience("thought_partner_reply_received");
 }
 
+/** A current, servable cited source is committed as readable modal content. */
+export function notifyEvidenceSourceOpened(): void {
+  emitWernerExperience("evidence_source_opened");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);
@@ -68,7 +69,9 @@ export function notifyResearchStarted(sessionId: string): void {
  * a safety net for interrupted navigation: a historical reopen must not inherit
  * a launch animation merely because the original monitor never mounted.
  */
-export function consumeLocallyStartedResearchSession(sessionId: string): boolean {
+export function consumeLocallyStartedResearchSession(
+  sessionId: string,
+): boolean {
   const startedAt = locallyStartedResearchSessions.get(sessionId);
   locallyStartedResearchSessions.delete(sessionId);
   const expiryTimer = locallyStartedResearchExpiryTimers.get(sessionId);

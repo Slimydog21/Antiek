@@ -9,11 +9,9 @@ import {
   notifyVoiceRecordingStarted,
   notifyVoicePlaybackStarted,
   notifyThoughtPartnerReplyReceived,
+  notifyEvidenceSourceOpened,
 } from "./shellExperienceSignals";
-import {
-  WERNER_EXPERIENCE_EVENT,
-  type ProductExperience,
-} from "./reactionBus";
+import { WERNER_EXPERIENCE_EVENT, type ProductExperience } from "./reactionBus";
 
 function captureExperiences(): {
   seen: ProductExperience[];
@@ -86,12 +84,23 @@ describe("Werner shell experience edges", () => {
     capture.teardown();
   });
 
+  it("maps readable cited evidence to one curious experience", () => {
+    const capture = captureExperiences();
+    notifyEvidenceSourceOpened();
+    expect(capture.seen).toEqual(["evidence_source_opened"]);
+    capture.teardown();
+  });
+
   it("emits research start only from the successful launch boundary", () => {
     const capture = captureExperiences();
     notifyResearchStarted("session-signal-test");
     expect(capture.seen).toEqual(["deep_research_start"]);
-    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(true);
-    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(false);
+    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(
+      true,
+    );
+    expect(consumeLocallyStartedResearchSession("session-signal-test")).toBe(
+      false,
+    );
     capture.teardown();
   });
 
