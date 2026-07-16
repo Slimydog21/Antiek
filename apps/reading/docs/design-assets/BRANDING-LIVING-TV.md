@@ -81,6 +81,23 @@ UI-consumed invent strips (not inventory-only):
 - Brainstorm empty — thinking + living-TV invent; launch → `deep_research_start`
 - Midnight Oil panel — dedicated midnight-oil invent webp (late-night desk swarm)
 - Operator / Privacy dashboards — thinking + living-TV invent
+- Residual doors via `SessionBrandChrome` — Trust, Billing, Pricing, Map,
+  Stats, Replay, Federation, Loop3, Payouts, SkillRules, Interviews, Multimedia
+
+## SessionBrandChrome (densify hard-to-vary)
+
+`src/brand/SessionBrandChrome.tsx` is the load-bearing header pattern for
+operator/product index doors: session thinking PNG + living-TV invent strip +
+prefixed testids (`{prefix}-werner-brand`, `{prefix}-living-tv-art`). Prefer this
+component for new doors over hand-rolled invent chrome so invent never stays
+inventory-only.
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
+
+## Honest residuals (branding)
+
+- Pure Flipbook sole UI: **NO-GO** (HTML + adaptive hotspots is the path)
+- Curious v2 session PNG: alpha-honest candidate; product curious remains
+  CSS/SVG semantic reactions (Werner moods stay 4-slot: idle/thinking/empty/celebrate)
+- Operator merge wall on PR #2416
 
