@@ -7,6 +7,7 @@ export {
 } from "./waitHostLogic";
 export {
   LoadingGameHost,
+  waitHostBrandArt,
   type LoadingGameHostProps,
   type WaitGameKind,
 } from "./LoadingGameHost";

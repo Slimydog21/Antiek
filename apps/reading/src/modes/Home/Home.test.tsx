@@ -194,6 +194,19 @@ describe("Home (SPR-12 M1)", () => {
     expect(screen.getByText(/BIOGRAPHY SURFACE/)).toBeTruthy();
   });
 
+  it("emits living-TV piece_started when starting a biography", () => {
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    mount();
+    fireEvent.click(screen.getByTestId("home-biographies-cta"));
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("piece_started");
+  });
+
   it("features Werner's arcade and opens /arcade in one click (opt-in mini-games)", () => {
     const seen: string[] = [];
     const onExp = (e: Event) => {

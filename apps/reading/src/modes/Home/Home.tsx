@@ -155,7 +155,11 @@ export function Home() {
                 <button
                   type="button"
                   data-testid="home-biographies-cta"
-                  onClick={() => navigate("/biography")}
+                  onClick={() => {
+                    // Living-TV: biography is a craft start — happy penguin beat.
+                    emitWernerExperience("piece_started");
+                    navigate("/biography");
+                  }}
                   className={
                     "mt-3 inline-flex items-center rounded-hog border-edge border-sun " +
                     "bg-sun px-3 py-1.5 text-[13px] font-semibold text-ink shadow-z1 transition " +
