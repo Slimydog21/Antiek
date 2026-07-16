@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Cycle 76: hard-ceiling fallback orchestration</title></head>
+<body><main>
+<h1>Hard-ceiling fallback orchestration</h1>
+<p>Status: executable gateway substrate behind the closed provider-capability gate. Parent: Cycle 75 provider execution authority.</p>
+<section><h2>Invariant</h2><p>A fallback is a new paid attempt, never a continuation of the selected route's hold. Every route is independently projected, capability-checked, reserved, keyed, and persisted. The chain advances only after provider-authoritative evidence releases the preceding hold as not sent/not charged. Timeout, lost response, invalid evidence, or unavailable reconciliation stops the chain with the full hold retained.</p></section>
+<section><h2>Contract</h2><ul>
+<li>One immutable logical operation payload is shared across an ordered set of 1-16 unique provider/model routes.</li>
+<li>All routes must describe the same dispatch seam, operation, and bounded usage; only provider/model, rates, and snapshots may vary.</li>
+<li>Every route is preflighted before the first hold or provider call, so an invalid fallback cannot be discovered after spend begins.</li>
+<li>Attempt identity includes the fallback index. Each hold records its exact provider, model, projection digest, rate snapshot, operation digest, and provider idempotency key.</li>
+<li>A settled attempt returns requested route, actual route, fallback index, and ordered hold lineage. Exhaustion is explicit after every attempt is authoritatively released.</li>
+<li>An ambiguous attempt raises typed chain context and performs zero later sends.</li>
+</ul></section>
+<section><h2>Replay</h2><p>Released attempts replay without sending and advance. Settled attempts replay as the terminal actual route without sending. Changed order, route, projection, operation, or usage conflicts with persisted intent rather than borrowing an old hold.</p></section>
+<section><h2>Acceptance</h2><ul>
+<li>Primary success sends only primary; authoritative primary rejection sends one separately reserved fallback.</li>
+<li>Ambiguous primary never calls fallback, including concurrent/replay paths.</li>
+<li>All-invalid preflight makes no ledger mutation and no provider call.</li>
+<li>Replay preserves ordered route/hold lineage and makes no duplicate billable acceptance.</li>
+<li>Different fallback pricing cannot spend the primary hold.</li>
+</ul></section>
+<section><h2>Production posture</h2><p>No current production provider is qualified, so this orchestration has no mounted paid consumer. A future route may call it only after Cycle 75 returns executable authority for every attempted adapter.</p></section>
+</main></body></html>
