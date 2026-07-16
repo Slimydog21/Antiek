@@ -10,6 +10,7 @@ export const PRODUCT_EXPERIENCES = [
   "fail",
   "note_saved",
   "voice_recording_started",
+  "voice_playback_started",
 ] as const;
 
 export type ProductExperience = (typeof PRODUCT_EXPERIENCES)[number];
@@ -23,6 +24,7 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   fail: "dizzy",
   note_saved: "noted",
   voice_recording_started: "thinking",
+  voice_playback_started: "thinking",
 };
 
 export const WERNER_EXPERIENCE_EVENT = "antiek:werner-experience";

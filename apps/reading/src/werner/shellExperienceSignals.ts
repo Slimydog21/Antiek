@@ -36,6 +36,11 @@ export function notifyVoiceRecordingStarted(): void {
   emitWernerExperience("voice_recording_started");
 }
 
+/** Call only after the first HTMLMediaElement.play() promise resolves. */
+export function notifyVoicePlaybackStarted(): void {
+  emitWernerExperience("voice_playback_started");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);
