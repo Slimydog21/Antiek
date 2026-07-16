@@ -7,6 +7,7 @@ import { paginate, windowForTocPage } from "./paginate";
 import { usePosition } from "./usePosition";
 import { useReaderImpressions } from "./useReaderImpressions";
 import { useWorkspace } from "../../workspace/WorkspaceStore";
+import { WindowHostProvider } from "../../components/windows/windowHostContext";
 
 const {
   getBookMock,
@@ -258,6 +259,18 @@ async function renderReader() {
   );
 }
 
+async function renderWindowReader(documentId: string) {
+  listBooksMock.mockResolvedValue({ books: [], count: 0 });
+  const { default: BookReader } = await import("./index");
+  return render(
+    <MemoryRouter initialEntries={["/research"]}>
+      <WindowHostProvider value={true}>
+        <BookReader documentId={documentId} />
+      </WindowHostProvider>
+    </MemoryRouter>,
+  );
+}
+
 describe("BookReader", () => {
   beforeEach(() => {
     window.sessionStorage.clear();
@@ -278,6 +291,36 @@ describe("BookReader", () => {
       completedAt: null,
       reconnects: 0,
     });
+  });
+
+  it("uses the exact window payload identity and fills its host through loading and loaded states", async () => {
+    let resolveBook!: (book: BookDetail) => void;
+    getBookMock.mockReturnValue(new Promise<BookDetail>((resolve) => { resolveBook = resolve; }));
+    getFullTextMock.mockResolvedValue(makeBody({ document_id: "doc/window 1" }));
+
+    await renderWindowReader("doc/window 1");
+    const loading = screen.getByTestId("book-reader-status");
+    expect(loading.className).toContain("h-full");
+    expect(loading.className).toContain("bg-transparent");
+    expect(loading.className).not.toContain("h-screen");
+
+    resolveBook(makeDetail({ document_id: "doc/window 1" }));
+    const root = await screen.findByTestId("book-reader-root");
+    expect(getBookMock).toHaveBeenCalledWith("doc/window 1");
+    expect(getFullTextMock).toHaveBeenCalledWith("doc/window 1");
+    expect(root.className).toContain("h-full");
+    expect(root.className).toContain("bg-transparent");
+    expect(root.className).not.toContain("h-screen");
+  });
+
+  it("keeps the full-page route contract unchanged", async () => {
+    getBookMock.mockResolvedValue(makeDetail());
+    getFullTextMock.mockResolvedValue(makeBody());
+    await renderReader();
+    const root = await screen.findByTestId("book-reader-root");
+    expect(root.className).toContain("h-screen");
+    expect(root.className).toContain("bg-ice-0");
+    expect(root.className).not.toContain("bg-transparent");
   });
 
   it("renders a servable book's full text with a working pager", async () => {

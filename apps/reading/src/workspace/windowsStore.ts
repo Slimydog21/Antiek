@@ -111,6 +111,10 @@ export type OpenWindowOptions = {
   rect?: Partial<WindowRect>;
   /** Open already expanded to full. */
   mode?: WindowMode;
+  /** At the hard cap, replace the oldest window instead of redirecting this
+   * exact-identity open to an unrelated surface. Opt-in because replacement
+   * is appropriate only when showing the requested asset is load-bearing. */
+  replaceOldestAtLimit?: boolean;
 };
 
 export type WindowsActions = {
@@ -187,10 +191,14 @@ export const useWindows = create<Store>()((set, get) => ({
     }
     // Bounded fan-out — at the cap, focus the oldest rather than exceeding it.
     // Returning the existing id keeps callers honest (no phantom new window).
-    if (get().order.length >= MAX_WINDOWS) {
+    if (get().order.length >= MAX_WINDOWS && !opts.replaceOldestAtLimit) {
       const oldest = get().order[0];
       if (oldest) get().focus(oldest);
       return oldest ?? id;
+    }
+    if (get().order.length >= MAX_WINDOWS) {
+      const oldest = get().order[0];
+      if (oldest) get().close(oldest);
     }
     set((s) => {
       const z = s.zCounter + 1;

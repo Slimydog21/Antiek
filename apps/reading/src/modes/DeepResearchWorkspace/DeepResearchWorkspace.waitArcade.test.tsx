@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const arcadeRender = vi.hoisted(() => vi.fn());
 const motion = vi.hoisted(() => ({ reduced: false }));
 const track = vi.hoisted(() => vi.fn());
+const openWindowMock = vi.hoisted(() => vi.fn());
 const sessionView = vi.hoisted(() => ({
   current: {
     researches: [
@@ -68,10 +69,26 @@ vi.mock("./ResearchWaitArcade", () => ({
 }));
 
 vi.mock("./Canvas/Canvas", () => ({
-  default: ({ investigationId }: { investigationId: string }) => (
-    <div data-testid="selected-organism-canvas">{investigationId}</div>
+  default: ({
+    investigationId,
+    onCiteSource,
+  }: {
+    investigationId: string;
+    onCiteSource?: (node: { source_document_id: string | null }) => void;
+  }) => (
+    <div data-testid="selected-organism-canvas">
+      <span data-testid="selected-organism-id">{investigationId}</span>
+      <button onClick={() => onCiteSource?.({ source_document_id: " doc/evidence 1 " })}>
+        Read grounded source
+      </button>
+      <button onClick={() => onCiteSource?.({ source_document_id: "   " })}>
+        Read ungrounded source
+      </button>
+    </div>
   ),
 }));
+
+vi.mock("../../components/windows/openWindow", () => ({ openWindow: openWindowMock }));
 
 vi.mock("../../lib/analytics", () => ({ track }));
 
@@ -111,6 +128,7 @@ afterEach(() => {
   cleanup();
   arcadeRender.mockClear();
   track.mockClear();
+  openWindowMock.mockClear();
   motion.reduced = false;
   sessionView.current = {
     researches: [
@@ -249,9 +267,7 @@ describe("Deep Research wait arcade gate", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Open broadcast result" }),
     );
-    expect(screen.getByTestId("selected-organism-canvas").textContent).toBe(
-      "done-2",
-    );
+    expect(screen.getByTestId("selected-organism-id").textContent).toBe("done-2");
     expect(track).toHaveBeenCalledWith("deep_research_canvas_opened", {
       investigation_id: "done-2",
       source: "werner_broadcast",
@@ -263,15 +279,38 @@ describe("Deep Research wait arcade gate", () => {
     await waitFor(() => expect(document.activeElement).toBe(card));
   });
 
+  it("opens a grounded Canvas source in one identity-stable reader window without replacing the Canvas", async () => {
+    render(
+      <Monitor sessionId="session-source" sessionGeneration={1} busy={false} />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open broadcast result" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Read grounded source" }));
+
+    expect(openWindowMock).toHaveBeenCalledWith(
+      "reader",
+      { documentId: " doc/evidence 1 " },
+      {
+        id: "win:reader:%20doc%2Fevidence%201%20",
+        title: "Research source",
+        replaceOldestAtLimit: true,
+      },
+    );
+    expect(screen.getByTestId("selected-organism-canvas").textContent).toContain("done-2");
+
+    fireEvent.click(screen.getByRole("button", { name: "Read ungrounded source" }));
+    expect(openWindowMock).toHaveBeenCalledTimes(1);
+  });
+
   it("opens the exact terminal-card result and restores focus to its action", async () => {
     render(
       <Monitor sessionId="session-card" sessionGeneration={1} busy={false} />,
     );
     const actions = screen.getAllByRole("button", { name: "View result" });
     fireEvent.click(actions[1]);
-    expect(screen.getByTestId("selected-organism-canvas").textContent).toBe(
-      "done-2",
-    );
+    expect(screen.getByTestId("selected-organism-id").textContent).toBe("done-2");
 
     fireEvent.click(screen.getByRole("button", { name: /back to monitor/i }));
     await waitFor(() => {

@@ -5,7 +5,7 @@
  *  - an insight block and a question block render VISUALLY DISTINCT (asserted
  *    by the kind data-attribute + the kind label), from real node types;
  *  - clicking a block opens its detail (the SPR-04 seam) carrying the node;
- *  - the §9 provenance affordance is reachable (cite source when grounded;
+ *  - the §9 provenance affordance is reachable (read source when grounded;
  *    an honest "no source on record" when not) — never a raw id leak.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -73,10 +73,10 @@ describe("BlockCard — click-to-detail seam (M1 / SPR-04)", () => {
 });
 
 describe("BlockCard — provenance affordance (M1 / §9)", () => {
-  it("surfaces a cite-source control when the node is grounded, never the raw id", () => {
+  it("surfaces a read-source control when the node is grounded, never the raw id", () => {
     const onCiteSource = vi.fn();
     render(<BlockCard node={insight({ source_document_id: "doc-1" })} onCiteSource={onCiteSource} />);
-    const cite = screen.getByRole("button", { name: "cite source" });
+    const cite = screen.getByRole("button", { name: "read source" });
     fireEvent.click(cite);
     expect(onCiteSource).toHaveBeenCalledTimes(1);
     // The raw document id must never appear as a label.
@@ -85,6 +85,12 @@ describe("BlockCard — provenance affordance (M1 / §9)", () => {
 
   it("says 'no source on record' honestly when ungrounded", () => {
     render(<BlockCard node={question({ source_document_id: null })} />);
+    expect(screen.getByText("no source on record")).toBeTruthy();
+  });
+
+  it("does not expose an action for a whitespace-only source identity", () => {
+    render(<BlockCard node={question({ source_document_id: "   " })} onCiteSource={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "read source" })).toBeNull();
     expect(screen.getByText("no source on record")).toBeTruthy();
   });
 

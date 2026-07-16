@@ -218,6 +218,24 @@ describe("WorkspaceWindow — focus management on mount/unmount (M8)", () => {
     expect(document.activeElement).toBe(opener);
     document.body.removeChild(opener);
   });
+
+  it("moves DOM focus into an already-mounted stable-id window when it is reopened", async () => {
+    const a = w().open("reader", {}, { id: "reader:a" });
+    const b = w().open("library", {}, { id: "library:b" });
+    render(
+      <>
+        <WorkspaceWindow id={a}><div>A</div></WorkspaceWindow>
+        <WorkspaceWindow id={b}><input data-testid="window-b-input" /></WorkspaceWindow>
+      </>,
+    );
+    const input = screen.getByTestId("window-b-input");
+    input.focus();
+
+    act(() => { w().open("reader", {}, { id: "reader:a" }); });
+
+    const rootA = document.querySelector("[data-workspace-window='reader:a']") as HTMLElement;
+    await waitFor(() => expect(document.activeElement).toBe(rootA));
+  });
 });
 
 describe("WorkspaceWindow — reduced motion (M8)", () => {
