@@ -135,10 +135,15 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | VisualReviewPanel craft beats | `d0858ed01` | visual authorize/submit/register living-TV |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
+| KnowledgePanel twin invent + beats | `08fa94dbc` | knowledge-twin invent strip; finalize/open/fail living-TV |
+| LocalProduction / LocalAudible / Reconciliation | `08fa94dbc` | produce/attest/recover living-TV beats |
+| CascadeProposal propose/fail | `08fa94dbc` | highlight on propose; DR error on fail |
+| FloatMenu deep-research start | `08fa94dbc` | deep_research_start when spawn text launchable |
+| Igloo ice-arcade invent product-map | `08fa94dbc` | LGH + wait-arcade + cabinet ice card CRT+cursor invent |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
-**Honest residuals still open:** pure Flipbook sole UI NO-GO; curious v2 candidate alpha-honest but not product-mapped (reactions are CSS/SVG); invent `living_tv_imagine_v1` superseded by promoted refedit v2; cursor-bait invent inventory-only; CF Pages external-pending often; operator merge; Imagine intermittent 503.
+**Honest residuals still open:** pure Flipbook sole UI NO-GO; curious v2 candidate alpha-honest but not product-mapped (reactions are CSS/SVG); prior ice cursor-bait invent superseded by igloo ice-arcade invent on product surfaces (cursor-bait retained in inventory); CF Pages external-pending often; operator merge; Imagine intermittent 503.
 
 ## Living-TV product-door emotes (choreography)
 
