@@ -1,17 +1,5 @@
-"""Public durable twin-recursion authority."""
+"""Durable twin-recursion internals.
 
-from .ledger import (
-    FailureCode,
-    SourceRevision,
-    TwinConflictError,
-    TwinIntegrityError,
-    TwinLedgerError,
-    TwinRecursionLedger,
-    TwinSnapshot,
-    UniversalityReport,
-)
-
-__all__ = [
-    "FailureCode", "SourceRevision", "TwinConflictError", "TwinIntegrityError", "TwinLedgerError",
-    "TwinRecursionLedger", "TwinSnapshot", "UniversalityReport",
-]
+The product-facing authority is mounted by the canonical source-registration
+layer. Until then, callers must depend on the ledger module explicitly.
+"""

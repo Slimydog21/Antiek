@@ -19,14 +19,14 @@ from substrate.twin_note_taker import (
     proposal_receipt_hash,
     source_asset_receipt_hash,
 )
-from substrate.twin_recursion import (
+from substrate.twin_recursion.ledger import (
     FailureCode,
     SourceRevision,
+    TRIGGERS,
     TwinConflictError,
     TwinIntegrityError,
     TwinRecursionLedger,
 )
-from substrate.twin_recursion.ledger import TRIGGERS
 
 
 @pytest.fixture
