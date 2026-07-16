@@ -71,6 +71,18 @@ describe("ambientExperienceAfterQuiet", () => {
       ),
     ).toBeNull();
   });
+
+  it("continues arcade highlight episode as soft idle (no ambient spam)", () => {
+    // Arcade / minigame door emits highlight; ambient TV show rests until next
+    // product beat — cursor never auto-starts games.
+    expect(
+      ambientExperienceAfterQuiet(
+        DEFAULT_AMBIENT_QUIET_MS,
+        DEFAULT_AMBIENT_QUIET_MS,
+        "highlight",
+      ),
+    ).toBe("idle");
+  });
 });
 
 describe("installLivingTvAmbient", () => {
