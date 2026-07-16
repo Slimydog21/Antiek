@@ -1,6 +1,7 @@
 import { useState } from "react";
 
 import type { DeliverableKind } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * ProjectType — open-ended project type, presets SEED (do not GATE) (SPR-09 M4).
@@ -87,7 +88,7 @@ export function ProjectTypeField({ value, onChange, disabled }: ProjectTypeField
             key={p.kind}
             type="button"
             disabled={disabled}
-            onClick={() => commit(p.label)}
+            onClick={() => { emitWernerExperience("highlight"); commit(p.label) }}
             className={
               "rounded-full border px-2 py-0.5 text-[11px] disabled:opacity-60 " +
               (resolveKind(text) === p.kind && text.trim()

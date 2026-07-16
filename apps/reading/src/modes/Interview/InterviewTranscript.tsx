@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * InterviewTranscript panel (S10 row 10.10; Speak SPR-02 M5).
@@ -89,13 +90,19 @@ export default function InterviewTranscript({
   const saveEdit = useCallback(
     async (index: number) => {
       const corrected = draft.trim();
-      setTurns((prev) =>
-        prev.map((t, i) =>
-          i === index ? { ...t, text: corrected, pending: false } : t,
-        ),
-      );
-      setEditingIndex(null);
-      if (onCorrect) await onCorrect(index, corrected);
+      try {
+        setTurns((prev) =>
+          prev.map((t, i) =>
+            i === index ? { ...t, text: corrected, pending: false } : t,
+          ),
+        );
+        setEditingIndex(null);
+        if (onCorrect) await onCorrect(index, corrected);
+        // Living-TV: transcript correction saved — noted.
+        emitWernerExperience("note_saved");
+      } catch {
+        emitWernerExperience("fail");
+      }
     },
     [draft, onCorrect],
   );
@@ -198,7 +205,7 @@ export default function InterviewTranscript({
                     {correctable && (
                       <button
                         type="button"
-                        onClick={() => beginEdit(i, t.text)}
+                        onClick={() => { emitWernerExperience("highlight"); beginEdit(i, t.text); }}
                         className="ml-2 text-[10px] font-mono text-sun-deep dark:text-sun hover:underline align-middle"
                       >
                         correct
