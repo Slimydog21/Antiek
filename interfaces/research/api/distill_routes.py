@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import os
 import sys
+from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -42,10 +43,16 @@ if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
 from roles.challenger import ChallengeUnavailable, make_dispatch_resolver  # noqa: E402
-from roles.note_taker import distillation_for  # noqa: E402
+from roles.note_taker import (  # noqa: E402
+    LivingNoteHistoryIntegrityError,
+    LivingNoteHistoryNotFound,
+    distillation_for,
+    living_note_history,
+)
 from roles.note_taker.living_note import (  # noqa: E402
     ChallengeRequestConflict,
     ChallengeRequestInProgress,
+    LivingNoteScopeConflict,
     challenge_note,
 )
 from runtime.db_lock import connect_read  # noqa: E402
@@ -100,6 +107,30 @@ class ChallengeOut(BaseModel):
     reserved_child_investigation_id: str | None = None
 
 
+class NoteHistoryEntryOut(BaseModel):
+    event_id: str
+    sequence: int
+    previous_sequence: int
+    previous_text: str
+    new_text: str
+    reason: str
+    outcome: Literal["applied", "superseded"]
+    delivery_state: Literal["pending", "delivered"]
+    emitted_at: str
+
+
+class NoteHistoryOut(BaseModel):
+    investigation_id: str
+    node_id: str
+    current_text: str
+    current_sequence: int
+    refinement_count: int
+    authoritative_applied_count: int
+    superseded_count: int
+    complete: bool
+    entries: list[NoteHistoryEntryOut]
+
+
 # ---------------------------------------------------------------------------
 # M2 — read the distilled insights + open questions
 # ---------------------------------------------------------------------------
@@ -149,6 +180,8 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         ) from None
     except (ChallengeRequestConflict, ChallengeRequestInProgress) as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from None
+    except LivingNoteScopeConflict:
+        raise HTTPException(status_code=404, detail="no such note") from None
     except ValueError as exc:
         # ``note.refined`` / ``question.escalated_to_research`` require the
         # note's source document on the envelope (schema invariant §9.1). A
@@ -170,6 +203,30 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
         new_text=result.new_text,
         escalated=result.escalated,
         reserved_child_investigation_id=result.reserved_child_investigation_id,
+    )
+
+
+@distill_router.get("/notes/{node_id}/history", response_model=NoteHistoryOut)
+async def note_history(node_id: str, investigation_id: str) -> NoteHistoryOut:
+    try:
+        history = living_note_history(investigation_id, node_id, db_path=_db())
+    except LivingNoteHistoryNotFound:
+        raise HTTPException(status_code=404, detail="no such note") from None
+    except LivingNoteHistoryIntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="living-note history failed its integrity check",
+        ) from None
+    return NoteHistoryOut(
+        investigation_id=history.investigation_id,
+        node_id=history.node_id,
+        current_text=history.current_text,
+        current_sequence=history.current_sequence,
+        refinement_count=history.refinement_count,
+        authoritative_applied_count=history.authoritative_applied_count,
+        superseded_count=history.superseded_count,
+        complete=history.complete,
+        entries=[NoteHistoryEntryOut(**vars(entry)) for entry in history.entries],
     )
 
 

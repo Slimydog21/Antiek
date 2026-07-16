@@ -17,14 +17,20 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 
 import type { DistilledNode } from "../../lib/api";
 
-const { getDistillationMock, challengeNoteMock } = vi.hoisted(() => ({
+const { getDistillationMock, challengeNoteMock, getNoteHistoryMock } = vi.hoisted(() => ({
   getDistillationMock: vi.fn(),
   challengeNoteMock: vi.fn(),
+  getNoteHistoryMock: vi.fn(),
 }));
 
 vi.mock("../../lib/api", async (orig) => {
   const actual = await orig<typeof import("../../lib/api")>();
-  return { ...actual, getDistillation: getDistillationMock, challengeNote: challengeNoteMock };
+  return {
+    ...actual,
+    getDistillation: getDistillationMock,
+    challengeNote: challengeNoteMock,
+    getNoteHistory: getNoteHistoryMock,
+  };
 });
 
 import DistillView from "./DistillView";
@@ -38,6 +44,7 @@ afterEach(() => {
   cleanup();
   getDistillationMock.mockReset();
   challengeNoteMock.mockReset();
+  getNoteHistoryMock.mockReset();
 });
 
 function insight(node_id: string, text: string, extra: Partial<DistilledNode> = {}): DistilledNode {
@@ -131,5 +138,72 @@ describe("DistillView — challenge a completed-research insight (M3 + M4)", () 
     fireEvent.click(screen.getByText("Try again"));
     await waitFor(() => expect(challengeNoteMock).toHaveBeenCalledTimes(2));
     expect(challengeNoteMock.mock.calls[1][1].idempotency_key).toBe(firstKey);
+  });
+});
+
+describe("DistillView — authoritative living-note history", () => {
+  const history = {
+    investigation_id: "inv-1",
+    node_id: "i1",
+    current_text: "v2",
+    current_sequence: 2,
+    refinement_count: 2,
+    authoritative_applied_count: 1,
+    superseded_count: 1,
+    complete: false,
+    entries: [
+      {
+        event_id: "e-applied", sequence: 2, previous_sequence: 1,
+        previous_text: "v1", new_text: "v2", reason: "challenge_resolved",
+        outcome: "applied", delivery_state: "delivered", emitted_at: "2026-07-16T00:00:00Z",
+      },
+      {
+        event_id: "e-loser", sequence: 1, previous_sequence: 2,
+        previous_text: "v2", new_text: "stale proposal", reason: "background",
+        outcome: "superseded", delivery_state: "pending", emitted_at: "2026-07-16T00:00:01Z",
+      },
+    ],
+  } as const;
+
+  it("loads on disclosure and distinguishes applied from rejected attempts", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "v2", { refinement_count: 2 })],
+      questions: [],
+    });
+    getNoteHistoryMock.mockResolvedValue(history);
+    render(<DistillView investigationId="inv-1" />);
+    await waitFor(() => expect(screen.getByText("2 changes")).toBeTruthy());
+    expect(getNoteHistoryMock).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByText("2 changes"));
+    await waitFor(() => expect(screen.getByText("stale proposal")).toBeTruthy());
+    expect(screen.getByText("Changed")).toBeTruthy();
+    expect(screen.getByText("Attempt did not replace the note")).toBeTruthy();
+    expect(screen.getByText(/Earlier changes predate/)).toBeTruthy();
+    expect(getNoteHistoryMock).toHaveBeenCalledWith("i1", "inv-1");
+
+    fireEvent.click(screen.getByText("2 changes"));
+    expect(screen.queryByText("stale proposal")).toBeNull();
+    fireEvent.click(screen.getByText("2 changes"));
+    expect(screen.getByText("stale proposal")).toBeTruthy();
+    expect(getNoteHistoryMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers a retry when history integrity transport fails", async () => {
+    getDistillationMock.mockResolvedValue({
+      investigation_id: "inv-1",
+      insights: [insight("i1", "v2", { refinement_count: 1 })],
+      questions: [],
+    });
+    getNoteHistoryMock.mockRejectedValueOnce(new ApiError("integrity", 409, "failed"));
+    getNoteHistoryMock.mockResolvedValueOnce({ ...history, refinement_count: 1, complete: true });
+    render(<DistillView investigationId="inv-1" />);
+    await waitFor(() => expect(screen.getByText("1 change")).toBeTruthy());
+    fireEvent.click(screen.getByText("1 change"));
+    await waitFor(() => expect(screen.getByText(/Couldn.t load change history/)).toBeTruthy());
+    fireEvent.click(screen.getByText("Try again"));
+    await waitFor(() => expect(screen.getByText("stale proposal")).toBeTruthy());
+    expect(getNoteHistoryMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -25,6 +25,8 @@ from fastapi.testclient import TestClient
 
 import interfaces.research.api.distill_routes as dr
 from interfaces.research.api.app import create_app
+from roles.note_taker import apply_refinement
+from runtime.db_lock import connect_write
 from substrate.event_log import trajectory
 from substrate.graph import ensure_initialized
 from substrate.graph.insight_question import promote_insight, promote_question
@@ -287,6 +289,111 @@ def test_challenge_rejects_malformed_key_before_resolver(env):
         json=_challenge_body("really?", key="bad key"),
     )
     assert response.status_code == 422
+    assert calls == 0
+
+
+def test_note_history_returns_applied_and_superseded_outcomes(env):
+    nid = _seed(env, insights=["Acme is small."])["insights"][0]
+    apply_refinement(
+        nid, "Acme is mid-sized.", seq=2, investigation_id="inv-1",
+        document_id="doc-1", events_dir=env["events"],
+    )
+    apply_refinement(
+        nid, "Acme is tiny.", seq=1, investigation_id="inv-1",
+        document_id="doc-1", events_dir=env["events"],
+    )
+
+    response = env["client"].get(
+        f"/research/notes/{nid}/history", params={"investigation_id": "inv-1"}
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["current_text"] == "Acme is mid-sized."
+    assert body["complete"] is True
+    assert body["authoritative_applied_count"] == 1
+    assert body["superseded_count"] == 1
+    assert [entry["outcome"] for entry in body["entries"]] == ["applied", "superseded"]
+    assert body["entries"][1]["new_text"] == "Acme is tiny."
+
+
+def test_note_history_reads_committed_pending_outcome(env):
+    nid = _seed(env, insights=["Acme is small."])["insights"][0]
+
+    def fail(stage):
+        if stage == "after_commit_before_delivery":
+            raise RuntimeError("injected delivery gap")
+
+    with pytest.raises(RuntimeError, match="delivery gap"):
+        apply_refinement(
+            nid, "Acme is mid-sized.", seq=1, investigation_id="inv-1",
+            document_id="doc-1", events_dir=env["events"], _checkpoint=fail,
+        )
+    response = env["client"].get(
+        f"/research/notes/{nid}/history", params={"investigation_id": "inv-1"}
+    )
+    assert response.status_code == 200
+    assert response.json()["entries"][0]["delivery_state"] == "pending"
+
+
+def test_note_history_marks_legacy_gap_incomplete(env):
+    nid = _seed(env, insights=["Acme is small."])["insights"][0]
+    apply_refinement(
+        nid, "Acme is mid-sized.", seq=2, investigation_id="inv-1",
+        document_id="doc-1", events_dir=env["events"],
+    )
+    with connect_write(env["db"], purpose="test/history_legacy_gap") as con:
+        row = con.execute("SELECT metadata FROM nodes WHERE node_id=?", [nid]).fetchone()
+        import json
+        metadata = json.loads(row[0])
+        metadata["refinement_count"] = 2
+        con.execute("UPDATE nodes SET metadata=? WHERE node_id=?", [json.dumps(metadata), nid])
+    response = env["client"].get(
+        f"/research/notes/{nid}/history", params={"investigation_id": "inv-1"}
+    )
+    assert response.status_code == 200
+    assert response.json()["complete"] is False
+
+
+def test_note_history_corruption_fails_closed(env):
+    nid = _seed(env, insights=["Acme is small."])["insights"][0]
+    apply_refinement(
+        nid, "Acme is mid-sized.", seq=1, investigation_id="inv-1",
+        document_id="doc-1", events_dir=env["events"],
+    )
+    with connect_write(env["db"], purpose="test/history_corruption") as con:
+        con.execute(
+            "UPDATE write_event_outbox SET event_sha256='0' WHERE aggregate_id=?",
+            [nid],
+        )
+    response = env["client"].get(
+        f"/research/notes/{nid}/history", params={"investigation_id": "inv-1"}
+    )
+    assert response.status_code == 409
+    assert "Acme" not in response.text
+
+
+def test_foreign_investigation_cannot_read_or_challenge_note(env):
+    nid = _seed(env, insights=["A private hypothesis."])["insights"][0]
+    calls = 0
+
+    def resolver(current, challenge):
+        nonlocal calls
+        calls += 1
+        return "substituted"
+
+    env["mp"].setattr(dr, "make_dispatch_resolver", lambda inv, **k: resolver)
+    history = env["client"].get(
+        f"/research/notes/{nid}/history", params={"investigation_id": "inv-foreign"}
+    )
+    challenge = env["client"].post(
+        f"/research/notes/{nid}/challenge",
+        json={
+            "investigation_id": "inv-foreign",
+            "challenge_text": "replace it",
+            "idempotency_key": "foreign-challenge-0001",
+        },
+    )
+    assert history.status_code == challenge.status_code == 404
     assert calls == 0
 
 
