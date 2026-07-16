@@ -380,7 +380,8 @@ async def test_cancelled_waiter_releases_lock_after_blocked_acquire(tmp_path) ->
 
 
 def test_proven_unsent_completion_never_uses_sending_state(tmp_path) -> None:
-    journal = DistillationDispatchJournal(str(tmp_path / "graph.duckdb"))
+    db_path = str(tmp_path / "graph.duckdb")
+    journal = DistillationDispatchJournal(db_path)
     journal.reserve(
         "evt-request",
         {"prompt": "bound"},
@@ -394,6 +395,14 @@ def test_proven_unsent_completion_never_uses_sending_state(tmp_path) -> None:
         policy_id="wrestling-fallback/memory-integrity",
     )
     assert completed.state is CommandState.COMPLETED
+    import duckdb
+
+    with duckdb.connect(db_path, read_only=True) as connection:
+        persisted = connection.execute(
+            "SELECT state,sending_at FROM distillation_dispatch_commands "
+            "WHERE request_event_id='evt-request'"
+        ).fetchone()
+    assert persisted == ("reserved", None)
 
     journal.reserve(
         "evt-sending",

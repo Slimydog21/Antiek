@@ -93,6 +93,17 @@ CREATE TABLE IF NOT EXISTS distillation_dispatch_commands (
 )
 """
 
+_LOCAL_COMPLETION_DDL = """
+CREATE TABLE IF NOT EXISTS distillation_dispatch_local_completions (
+    request_event_id TEXT PRIMARY KEY,
+    delivery_payload_json TEXT NOT NULL,
+    delivery_payload_sha256 TEXT NOT NULL,
+    policy_id TEXT NOT NULL CHECK (starts_with(policy_id, 'wrestling-fallback/')),
+    completed_at TEXT NOT NULL,
+    delivered_at TEXT
+)
+"""
+
 
 def _canonical(value: Mapping[str, object] | dict[str, object]) -> str:
     return json.dumps(value, ensure_ascii=True, separators=(",", ":"), sort_keys=True)
@@ -132,6 +143,7 @@ class DistillationDispatchJournal:
         self.db_path = db_path
         with connect_write(db_path, purpose="distillation-dispatch-init") as connection:
             connection.execute(_DDL)
+            connection.execute(_LOCAL_COMPLETION_DDL)
 
     @contextmanager
     def execution_guard(self, request_event_id: str) -> Iterator[None]:
@@ -264,26 +276,32 @@ class DistillationDispatchJournal:
         with connect_write(
             self.db_path, purpose="distillation-dispatch-complete-proven-unsent"
         ) as connection:
-            updated = connection.execute(
-                "UPDATE distillation_dispatch_commands SET state='completed',"
-                "delivery_payload_json=?,delivery_payload_sha256=?,policy_id=?,"
-                "sending_at=?,completed_at=?,updated_at=? "
-                "WHERE request_event_id=? AND state='reserved' RETURNING request_event_id",
-                [
-                    payload_json,
-                    _sha256(payload_json),
-                    policy_id,
-                    now,
-                    now,
-                    now,
-                    request_event_id,
-                ],
+            state = connection.execute(
+                "SELECT state FROM distillation_dispatch_commands WHERE request_event_id=?",
+                [request_event_id],
             ).fetchone()
-            if updated is None:
+            if state is None or state[0] != CommandState.RESERVED.value:
                 raise InvalidCommandTransition("only reserved can complete proven-unsent")
+            connection.execute(
+                "INSERT INTO distillation_dispatch_local_completions "
+                "(request_event_id,delivery_payload_json,delivery_payload_sha256,"
+                "policy_id,completed_at) VALUES (?,?,?,?,?)",
+                [request_event_id, payload_json, _sha256(payload_json), policy_id, now],
+            )
             return self._load(connection, request_event_id)
 
     def mark_delivered(self, request_event_id: str) -> CommandSnapshot:
+        now = _now()
+        with connect_write(
+            self.db_path, purpose="distillation-dispatch-deliver-local"
+        ) as connection:
+            updated = connection.execute(
+                "UPDATE distillation_dispatch_local_completions SET delivered_at=? "
+                "WHERE request_event_id=? AND delivered_at IS NULL RETURNING request_event_id",
+                [now, request_event_id],
+            ).fetchone()
+            if updated is not None:
+                return self._load(connection, request_event_id)
         return self._transition(request_event_id, CommandState.COMPLETED, CommandState.DELIVERED)
 
     def load(self, request_event_id: str) -> CommandSnapshot:
@@ -320,6 +338,35 @@ class DistillationDispatchJournal:
             raise KeyError(request_event_id)
         columns = [item[0] for item in cursor.description]
         value = dict(zip(columns, row, strict=True))
+        local_row = connection.execute(  # type: ignore[attr-defined]
+            "SELECT * FROM distillation_dispatch_local_completions WHERE request_event_id=?",
+            [request_event_id],
+        ).fetchone()
+        if local_row is not None:
+            if value["state"] != CommandState.RESERVED.value:
+                raise RuntimeError("local completion command is not reserved")
+            local_columns = [item[0] for item in connection.description]  # type: ignore[attr-defined]
+            local = dict(zip(local_columns, local_row, strict=True))
+            payload_json = local["delivery_payload_json"]
+            if _sha256(payload_json) != local["delivery_payload_sha256"]:
+                raise RuntimeError("stored local completion digest mismatch")
+            local_payload = DistillationDeliveredPayload.model_validate_json(payload_json)
+            if local_payload.request_event_id != request_event_id:
+                raise RuntimeError("stored local completion request identity mismatch")
+            return CommandSnapshot(
+                request_event_id=value["request_event_id"],
+                binding_sha256=value["binding_sha256"],
+                state=(
+                    CommandState.DELIVERED
+                    if local["delivered_at"] is not None
+                    else CommandState.COMPLETED
+                ),
+                delivery_event_id=value["delivery_event_id"],
+                delivery_payload=local_payload,
+                policy_id=local["policy_id"],
+                investigation_id=value["investigation_id"],
+                document_id=value["document_id"],
+            )
         payload_json = value["delivery_payload_json"]
         payload = None
         if payload_json is not None:
