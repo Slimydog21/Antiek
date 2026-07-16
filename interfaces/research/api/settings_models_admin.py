@@ -104,6 +104,13 @@ from runtime.byok.store import (
     load_credential,
     store_credential,
 )
+from runtime.research_runner.provider_route_authority import (
+    EMPTY_PROVIDER_ROUTE_AUTHORITY,
+    ProviderRouteAuthority,
+    ProviderRouteAuthorityResolver,
+    ProviderRouteIdentity,
+    RouteExecutionStatus,
+)
 from substrate.dispatch.base import Provider, ProviderError
 from substrate.dispatch.providers.anthropic import AnthropicProvider
 from substrate.dispatch.providers.openai_compat import OpenAICompatProvider
@@ -543,6 +550,8 @@ class UserModelRow(BaseModel):
     route_eligible: bool
     pricing_status: Literal["known", "unknown"] = "unknown"
     hard_ceiling_eligible: bool = False
+    execution_status: RouteExecutionStatus = RouteExecutionStatus.BLOCKED_UNKNOWN_PRICING
+    rate_snapshot: str | None = None
 
 
 class UserModelsResponse(BaseModel):
@@ -573,8 +582,10 @@ class ResolvedUserModelRoute:
     provider_id: str
     model_id: str
     credential_ref: str
-    pricing_status: Literal["unknown"] = "unknown"
-    hard_ceiling_eligible: bool = False
+    pricing_status: Literal["known", "unknown"]
+    hard_ceiling_eligible: bool
+    execution_status: RouteExecutionStatus
+    rate_snapshot: str | None
 
 
 class UserModelChoiceUnavailable(ValueError):
@@ -585,6 +596,26 @@ class UserModelChoiceUnavailable(ValueError):
 class UserModelAuthoritySnapshot:
     model_id: str
     route_eligible: bool
+    pricing_status: Literal["known", "unknown"]
+    hard_ceiling_eligible: bool
+    execution_status: RouteExecutionStatus
+    rate_snapshot: str | None
+
+
+def _route_execution_authority(
+    app: FastAPI, record: UserModelRecord
+) -> ProviderRouteAuthority:
+    raw = getattr(app.state, "provider_route_authority", None)
+    resolver = raw if isinstance(raw, ProviderRouteAuthorityResolver) else EMPTY_PROVIDER_ROUTE_AUTHORITY
+    endpoint = record.base_url or "https://api.anthropic.com"
+    identity = ProviderRouteIdentity(
+        provider_kind=record.provider_kind,
+        model_id=record.model_id,
+        endpoint=endpoint,
+        seam_id="user.prompt.generate",
+        operation="generate",
+    )
+    return resolver.resolve(identity, provider_id=record.id)
 
 
 def user_model_authority_snapshot(
@@ -595,19 +626,29 @@ def user_model_authority_snapshot(
     metadata = _credential_metadata()
     seam = _seam_names(app)
     fingerprints = _registration_fingerprints(app)
-    return {
-        record.id: UserModelAuthoritySnapshot(
-            model_id=record.model_id,
-            route_eligible=(
-                record.enabled
-                and _credential_matches_record(record, metadata)
-                and record.id in seam
-                and fingerprints.get(record.id) == _record_fingerprint(record)
-                and _live_adapter_matches(app, record.id)
-            ),
+    snapshots: dict[str, UserModelAuthoritySnapshot] = {}
+    for record in registry.values():
+        route_eligible = (
+            record.enabled
+            and _credential_matches_record(record, metadata)
+            and record.id in seam
+            and fingerprints.get(record.id) == _record_fingerprint(record)
+            and _live_adapter_matches(app, record.id)
         )
-        for record in registry.values()
-    }
+        authority = _route_execution_authority(app, record)
+        snapshots[record.id] = UserModelAuthoritySnapshot(
+            model_id=record.model_id,
+            route_eligible=route_eligible,
+            pricing_status=authority.pricing_status,
+            hard_ceiling_eligible=route_eligible and authority.hard_ceiling_eligible,
+            execution_status=(
+                authority.execution_status
+                if route_eligible
+                else RouteExecutionStatus.BLOCKED_SELECTION_AUTHORITY
+            ),
+            rate_snapshot=authority.rate_snapshot,
+        )
+    return snapshots
 
 
 def resolve_user_model_choice(app: FastAPI, choice: UserModelChoice) -> ResolvedUserModelRoute:
@@ -627,11 +668,16 @@ def resolve_user_model_choice(app: FastAPI, choice: UserModelChoice) -> Resolved
         or not _live_adapter_matches(app, record.id)
     ):
         raise UserModelChoiceUnavailable("user model route is unavailable")
+    authority = _route_execution_authority(app, record)
     return ResolvedUserModelRoute(
         authority="user_model",
         provider_id=record.id,
         model_id=record.model_id,
         credential_ref=record.cred_ref,
+        pricing_status=authority.pricing_status,
+        hard_ceiling_eligible=authority.hard_ceiling_eligible,
+        execution_status=authority.execution_status,
+        rate_snapshot=authority.rate_snapshot,
     )
 
 
@@ -639,9 +685,10 @@ class UserModelRouteResponse(BaseModel):
     authority: Literal["user_model"]
     provider_id: str
     model_id: str
-    pricing_status: Literal["unknown"]
-    hard_ceiling_eligible: Literal[False]
-    execution_status: Literal["blocked_missing_hard_ceiling_adapter"]
+    pricing_status: Literal["known", "unknown"]
+    hard_ceiling_eligible: bool
+    execution_status: RouteExecutionStatus
+    rate_snapshot: str | None
 
 
 @dataclass(frozen=True)
@@ -768,6 +815,12 @@ def _row(
         and fingerprints.get(record.id) == _record_fingerprint(record)
         and _live_adapter_matches(app, record.id)
     )
+    authority = _route_execution_authority(app, record)
+    execution_status = (
+        authority.execution_status
+        if route_eligible
+        else RouteExecutionStatus.BLOCKED_SELECTION_AUTHORITY
+    )
     return UserModelRow(
         id=record.id,
         provider_kind=record.provider_kind,
@@ -778,6 +831,10 @@ def _row(
         key_present=record.cred_ref in present,
         registered=record.id in seam,
         route_eligible=route_eligible,
+        pricing_status=authority.pricing_status,
+        hard_ceiling_eligible=route_eligible and authority.hard_ceiling_eligible,
+        execution_status=execution_status,
+        rate_snapshot=authority.rate_snapshot,
     )
 
 
@@ -887,8 +944,9 @@ async def resolve_user_model_route(request: Request) -> UserModelRouteResponse:
         provider_id=route.provider_id,
         model_id=route.model_id,
         pricing_status=route.pricing_status,
-        hard_ceiling_eligible=False,
-        execution_status="blocked_missing_hard_ceiling_adapter",
+        hard_ceiling_eligible=route.hard_ceiling_eligible,
+        execution_status=route.execution_status,
+        rate_snapshot=route.rate_snapshot,
     )
 
 
@@ -924,6 +982,14 @@ def register_settings_models_admin_routes(app: FastAPI) -> None:
     a startup handler because ``create_app`` assigns
     ``app.state.registered_providers`` after route registration."""
     app.include_router(user_models_router)
+    # Production begins with no qualified paid route. Future provider-specific
+    # bootstrap code must install exact catalog and adapter authorities here;
+    # generic BYOK registration never mutates this execution authority.
+    if not isinstance(
+        getattr(app.state, "provider_route_authority", None),
+        ProviderRouteAuthorityResolver,
+    ):
+        app.state.provider_route_authority = ProviderRouteAuthorityResolver()
 
     def _reload_at_startup() -> None:
         reload_user_providers(app)
