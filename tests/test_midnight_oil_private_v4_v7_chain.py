@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 from collections.abc import Iterator, Mapping
 
@@ -36,11 +37,25 @@ from substrate.midnight_oil.private_provider_capability_v4 import (
     private_provider_capability_v4_sha256,
     verify_private_provider_capability_v4,
 )
+from substrate.midnight_oil.private_provider_request_core_v4 import (
+    _IDEMPOTENCY_V4_DOMAIN,
+    _PRIVATE_INPUT_COMMITMENT_V4_DOMAIN,
+    _REQUEST_CORE_V4_DOMAIN,
+    Cycle32SourceReceiptPairV1,
+    PreparedOwnerPrivateRequestCoreV4,
+    build_owner_private_request_core_v4,
+    owner_private_request_core_v4_sha256,
+    private_input_commitment_v4_sha256,
+    provider_scoped_idempotency_v4_sha256,
+    verify_owner_private_request_core_v4,
+)
 from tests.support.owner_private_v4 import (
     V4_KEY_ID,
     V4_PRIVATE,
     capability_v4,
+    core_v4,
     public_key,
+    source_pair,
 )
 
 
@@ -584,6 +599,272 @@ def test_capability_v4_route_identity_requires_canonical_ascii(
         raw["route_key"] = f"{value}/{raw['model_id']}"
     with pytest.raises(ValidationError):
         PrivateProviderProcessingCapabilityV4.model_validate(raw)
+
+
+def test_core_v4_identity_domains_request_commitment_and_quarantine() -> None:
+    core = core_v4()
+    assert core.request_core_sha256 == (
+        "cc9af423b86e6cedd9d4879f6119fb46d61c0f84c017148e8e63e1c5c310dff1"
+    )
+    assert core.private_input_commitment_sha256 == (
+        "bbce5bd8c53848314a86abf3f89af43db7f2b69981b130e5d7fb07d68125bbf4"
+    )
+    assert core.provider_scoped_idempotency_sha256 == (
+        "1eed74c8d80b8c80b3c095c11034e9e982d55007edb83f072efa7c47b55a7df7"
+    )
+    assert _REQUEST_CORE_V4_DOMAIN == (
+        b"antiek.midnight-oil.owner-private-request-core.v4\x00"
+    )
+    assert _PRIVATE_INPUT_COMMITMENT_V4_DOMAIN.endswith(b"commitment.v4\x00")
+    assert _IDEMPOTENCY_V4_DOMAIN.endswith(b"idempotency.v4\x00")
+    assert core.request_core_id == "oprc4_" + core.request_core_sha256[:24]
+    assert core.request_core_sha256 == owner_private_request_core_v4_sha256(core)
+    assert core.provider_request_sha256 == hashlib.sha256(core.provider_request_bytes).hexdigest()
+    assert core.private_input_commitment_sha256 == private_input_commitment_v4_sha256(
+        core.source_receipt_pairs
+    )
+    assert core.provider_scoped_idempotency_sha256 == (
+        provider_scoped_idempotency_v4_sha256(core)
+    )
+    assert "redacted=True" in repr(core)
+    for field in (
+        "live_migration_verified",
+        "user_accounting_effect",
+        "transport_reachable",
+        "confers_execution_authority",
+        "confers_checkpoint_authority",
+        "confers_sink_authority",
+        "confers_transition_authority",
+        "production_consumer_enabled",
+    ):
+        assert getattr(core, field) is False
+
+
+@pytest.mark.parametrize(("role", "count"), (("planner", 0), ("gatherer", 1), ("verifier", 8)))
+def test_core_v4_source_cardinality_boundaries(role: str, count: int) -> None:
+    core = core_v4(role=role, pair_count=count)
+    assert len(core.source_receipt_pairs) == count
+    assert tuple(pair.ordinal for pair in core.source_receipt_pairs) == tuple(
+        range(1, count + 1)
+    )
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "owner_path_discriminator",
+        "operation_id",
+        "job_id",
+        "execution_id",
+        "stage_key",
+        "capability_id",
+        "capability_v4_sha256",
+        "output_policy_v4_sha256",
+        "cycle_35_contract_sha256",
+        "provider_id",
+        "model_id",
+        "route_key",
+        "processing_region",
+        "account_scope_blind_id",
+        "project_scope_blind_id",
+        "provider_request_bytes",
+        "provider_request_sha256",
+        "provider_request_bytes_count",
+        "private_input_commitment_sha256",
+        "private_input_bytes",
+        "source_registry_id",
+        "source_head_sha256",
+        "source_epoch",
+        "opaque_source_bundle_id",
+        "source_selector",
+        "required_until_ms",
+        "projected_max_cents",
+        "max_output_bytes",
+        "provider_scoped_idempotency_sha256",
+        "request_core_sha256",
+    ),
+)
+def test_core_v4_identity_substitution_rejects(field: str) -> None:
+    raw = core_v4().model_dump(mode="python")
+    original = raw[field]
+    if isinstance(original, bytes):
+        raw[field] = original + b"x" if field == "provider_request_bytes" else bytes(
+            [original[0] ^ 1]
+        ) + original[1:]
+    elif isinstance(original, int):
+        raw[field] = original + 1
+    else:
+        raw[field] = f"x{original}"
+    with pytest.raises((ValidationError, ValueError)):
+        PreparedOwnerPrivateRequestCoreV4.model_validate(raw)
+
+
+def test_core_v4_pair_gap_duplicate_and_coordinated_rehash_reject() -> None:
+    core = core_v4(pair_count=2)
+    raw = core.model_dump(mode="python")
+    first = raw["source_receipt_pairs"][0]
+    second = dict(raw["source_receipt_pairs"][1])
+    second["ordinal"] = 3
+    raw["source_receipt_pairs"] = (first, second)
+    with pytest.raises((ValidationError, ValueError)):
+        PreparedOwnerPrivateRequestCoreV4.model_validate(raw)
+    raw = core.model_dump(mode="python")
+    raw["source_receipt_pairs"] = (first, first)
+    with pytest.raises((ValidationError, ValueError)):
+        PreparedOwnerPrivateRequestCoreV4.model_validate(raw)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "paired_field", "paired_value"),
+    (
+        ("projected_max_cents", 999_999_999, None, None),
+        ("required_until_ms", 90_001, None, None),
+        ("provider_id", "anthropic", "route_key", "anthropic/gpt-5.6"),
+        ("capability_id", "ppcap4_" + "0" * 24, "capability_v4_sha256", "0" * 64),
+    ),
+)
+def test_core_v4_coordinated_rehash_remains_nonconferring_without_signed_join(
+    field: str, value: object, paired_field: str | None, paired_value: object
+) -> None:
+    cap = capability_v4()
+    raw = core_v4(capability=cap).model_dump(mode="python")
+    raw[field] = value
+    if paired_field is not None:
+        raw[paired_field] = paired_value
+    raw["provider_scoped_idempotency_sha256"] = provider_scoped_idempotency_v4_sha256(raw)
+    digest = owner_private_request_core_v4_sha256(raw)
+    raw["request_core_sha256"] = digest
+    raw["request_core_id"] = "oprc4_" + digest[:24]
+    internally_canonical = PreparedOwnerPrivateRequestCoreV4.model_validate(raw)
+    with pytest.raises(ValueError, match="unavailable"):
+        verify_owner_private_request_core_v4(
+            internally_canonical,
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+        )
+@pytest.mark.parametrize(
+    ("role", "count"),
+    (("planner", 1), ("gatherer", 0), ("gatherer", 9)),
+)
+def test_core_v4_invalid_source_cardinality_rejects(role: str, count: int) -> None:
+    with pytest.raises((ValidationError, ValueError)):
+        core_v4(role=role, pair_count=count)
+
+
+@pytest.mark.parametrize(
+    ("required_until_ms", "projected_max_cents", "max_output_bytes"),
+    ((2_001, 1_250, 500_000), (80_000, 2_501, 500_000), (80_000, 1_250, 1_000_001)),
+)
+def test_core_v4_builder_cannot_widen_capability_bounds(
+    required_until_ms: int, projected_max_cents: int, max_output_bytes: int
+) -> None:
+    cap = capability_v4()
+    with pytest.raises(ValueError, match="unavailable"):
+        build_owner_private_request_core_v4(
+            capability=cap,
+            capability_verification_keys={V4_KEY_ID: public_key()},
+            operation_id="operation",
+            job_id="job",
+            execution_id="execution",
+            stage_key="2" * 64,
+            provider_request_bytes=b"{}",
+            source_registry_id="registry",
+            source_head_sha256="3" * 64,
+            source_epoch=4,
+            opaque_source_bundle_id="bundle",
+            source_selector="active",
+            source_receipt_pairs=(source_pair(),),
+            required_until_ms=required_until_ms,
+            projected_max_cents=projected_max_cents,
+            max_output_bytes=max_output_bytes,
+        )
+
+
+@pytest.mark.parametrize(
+    "field",
+    (
+        "live_migration_verified",
+        "user_accounting_effect",
+        "transport_reachable",
+        "confers_execution_authority",
+        "confers_checkpoint_authority",
+        "confers_sink_authority",
+        "confers_transition_authority",
+        "production_consumer_enabled",
+    ),
+)
+def test_core_v4_authority_substitution_rejects(field: str) -> None:
+    raw = core_v4().model_dump(mode="python")
+    raw[field] = True
+    with pytest.raises(ValidationError):
+        PreparedOwnerPrivateRequestCoreV4.model_validate(raw)
+
+
+def test_core_v4_expiry_equality_is_a_nonempty_narrow_horizon() -> None:
+    cap = capability_v4()
+    core = build_owner_private_request_core_v4(
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+        operation_id="operation",
+        job_id="job",
+        execution_id="execution",
+        stage_key="2" * 64,
+        provider_request_bytes=b"{}",
+        source_registry_id="registry",
+        source_head_sha256="3" * 64,
+        source_epoch=4,
+        opaque_source_bundle_id="bundle",
+        source_selector="active",
+        source_receipt_pairs=(source_pair(),),
+        required_until_ms=cap.expires_at_ms,
+        projected_max_cents=1,
+        max_output_bytes=1,
+    )
+    assert core.required_until_ms == cap.expires_at_ms
+
+
+def test_cycle32_pair_id_must_match_receipt_digest() -> None:
+    raw = source_pair().model_dump(mode="python")
+    raw["receipt_id"] = "opsr5_" + "0" * 24
+    with pytest.raises((ValidationError, ValueError)):
+        Cycle32SourceReceiptPairV1.model_validate(raw)
+
+
+def test_core_v4_source_collection_is_bounded_before_iteration() -> None:
+    class HostileList(list[Cycle32SourceReceiptPairV1]):
+        def __iter__(self) -> Iterator[Cycle32SourceReceiptPairV1]:
+            raise RuntimeError("must not iterate")
+
+    cap = capability_v4()
+    base = dict(
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+        operation_id="operation",
+        job_id="job",
+        execution_id="execution",
+        stage_key="2" * 64,
+        provider_request_bytes=b"{}",
+        source_registry_id="registry",
+        source_head_sha256="3" * 64,
+        source_epoch=4,
+        opaque_source_bundle_id="bundle",
+        source_selector="active",
+        required_until_ms=80_000,
+        projected_max_cents=1,
+        max_output_bytes=1,
+    )
+    for hostile in (
+        HostileList([source_pair()]),
+        (source_pair(),) * 9,
+        (source_pair() for _ in iter(int, 1)),
+    ):
+        with pytest.raises(ValueError, match="unavailable"):
+            build_owner_private_request_core_v4(
+                **base,
+                source_receipt_pairs=hostile,  # type: ignore[arg-type]
+            )
+    with pytest.raises(ValueError, match="commitment v4 is unavailable"):
+        private_input_commitment_v4_sha256([source_pair()])  # type: ignore[arg-type]
     raw = build_owner_private_output_policy_v4().model_dump(mode="python")
     raw["predecessor_kind"] = "policy_v3_execution_authority"
     with pytest.raises(ValidationError):

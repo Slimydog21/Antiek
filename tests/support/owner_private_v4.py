@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
 )
@@ -14,6 +17,11 @@ from substrate.midnight_oil.private_provider_capability_v4 import (
     _SIGNATURE_V4_DOMAIN,
     PrivateProviderProcessingCapabilityV4,
     private_provider_capability_v4_sha256,
+)
+from substrate.midnight_oil.private_provider_request_core_v4 import (
+    Cycle32SourceReceiptPairV1,
+    PreparedOwnerPrivateRequestCoreV4,
+    build_owner_private_request_core_v4,
 )
 
 V4_KEY_ID = "private-capability-v4-fixture-issuer"
@@ -94,6 +102,57 @@ def capability_v4(
     )
 
 
+def source_pair(ordinal: int = 1) -> Cycle32SourceReceiptPairV1:
+    marker = f"cycle32-source-{ordinal}".encode("ascii")
+    digest = hashlib.sha256(marker).hexdigest()
+    return Cycle32SourceReceiptPairV1(
+        ordinal=ordinal,
+        receipt_id=f"opsr5_{digest[:24]}",
+        receipt_sha256=digest,
+        private_input_member_sha256=hashlib.sha256(b"private-input:" + marker).hexdigest(),
+        private_input_member_bytes=128 * ordinal,
+    )
+
+
+def core_v4(
+    *,
+    role: str = "gatherer",
+    pair_count: int | None = None,
+    capability: PrivateProviderProcessingCapabilityV4 | None = None,
+) -> PreparedOwnerPrivateRequestCoreV4:
+    cap = capability or capability_v4(role=role)
+    count = (0 if role == "planner" else 1) if pair_count is None else pair_count
+    pairs = tuple(source_pair(ordinal) for ordinal in range(1, count + 1))
+    request = {
+        "question": "What follows from the sealed source evidence?",
+        "role": role,
+        "schema_version": 4,
+        "source_count": count,
+        "tools_enabled": False,
+    }
+    request_bytes = json.dumps(
+        request, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return build_owner_private_request_core_v4(
+        capability=cap,
+        capability_verification_keys={V4_KEY_ID: public_key()},
+        operation_id="operation-v4-fixture",
+        job_id="job-v4-fixture",
+        execution_id="execution-v4-fixture",
+        stage_key="2" * 64,
+        provider_request_bytes=request_bytes,
+        source_registry_id="owner-private-source-registry-v1",
+        source_head_sha256="3" * 64,
+        source_epoch=4,
+        opaque_source_bundle_id="opaque-source-bundle-v4-fixture",
+        source_selector="active-revision",
+        source_receipt_pairs=pairs,
+        required_until_ms=80_000,
+        projected_max_cents=1_250,
+        max_output_bytes=500_000,
+    )
+
+
 __all__ = [
     "ACCOUNT_SCOPE_BLIND_ID",
     "OWNER_PATH_DISCRIMINATOR",
@@ -101,5 +160,7 @@ __all__ = [
     "V4_KEY_ID",
     "V4_PRIVATE",
     "capability_v4",
+    "core_v4",
     "public_key",
+    "source_pair",
 ]
