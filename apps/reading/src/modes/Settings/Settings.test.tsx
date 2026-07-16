@@ -246,6 +246,8 @@ describe("Settings SPR-01", () => {
         manifest_sha256: "a".repeat(64),
         outcome: "settled",
         created_at: "2026-07-16T10:00:00Z",
+        approval_id: `fallback-approval:${"d".repeat(64)}`,
+        approved_at: "2026-07-16T09:59:00Z",
         routes: [{
           fallback_index: 0,
           provider: "zai",

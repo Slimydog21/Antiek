@@ -141,11 +141,17 @@ def _manifest_hold(route: FallbackRouteManifest) -> PaidHoldIntent:
     )
 
 
-def test_v2_to_v3_fallback_migration_is_atomic(tmp_path: Path) -> None:
+def test_v2_to_v4_fallback_and_approval_migrations_are_atomic(tmp_path: Path) -> None:
     db_path = tmp_path / "research-spend.sqlite3"
     ledger = ResearchSpendLedger(db_path)
     ledger.ensure_schema()
     with sqlite3.connect(db_path) as connection:
+        for name in (
+            "research_fallback_approvals_no_update",
+            "research_fallback_approvals_no_delete",
+        ):
+            connection.execute(f"DROP TRIGGER {name}")
+        connection.execute("DROP TABLE research_fallback_approvals")
         for name in (
             "research_fallback_chains_no_update",
             "research_fallback_chains_no_delete",
@@ -165,13 +171,16 @@ def test_v2_to_v3_fallback_migration_is_atomic(tmp_path: Path) -> None:
         ResearchSpendLedger(db_path, failure_injector=fail).ensure_schema()
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
-        assert connection.execute(
-            "SELECT 1 FROM sqlite_master WHERE name='research_fallback_chains'"
-        ).fetchone() is None
+        assert (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='research_fallback_chains'"
+            ).fetchone()
+            is None
+        )
 
     ledger.ensure_schema()
     with sqlite3.connect(db_path) as connection:
-        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
         names = {
             row[0]
             for row in connection.execute(
@@ -187,7 +196,210 @@ def test_v2_to_v3_fallback_migration_is_atomic(tmp_path: Path) -> None:
         "research_fallback_routes_no_delete",
         "research_fallback_history_owner_idx",
         "research_fallback_routes_reservation_idx",
+        "research_fallback_approvals",
+        "research_fallback_approvals_no_update",
+        "research_fallback_approvals_no_delete",
     } <= names
+
+
+def test_v3_to_v4_approval_migration_is_atomic(tmp_path: Path) -> None:
+    db_path = tmp_path / "research-spend.sqlite3"
+    ledger = ResearchSpendLedger(db_path)
+    ledger.ensure_schema()
+    with sqlite3.connect(db_path) as connection:
+        connection.execute("DROP TRIGGER research_fallback_approvals_no_update")
+        connection.execute("DROP TRIGGER research_fallback_approvals_no_delete")
+        connection.execute("DROP TABLE research_fallback_approvals")
+        connection.execute("PRAGMA user_version=3")
+
+    def fail(checkpoint: str) -> None:
+        if checkpoint == "schema:3:after_migration:2":
+            raise RuntimeError("v4 migration crash")
+
+    with pytest.raises(RuntimeError, match="v4 migration crash"):
+        ResearchSpendLedger(db_path, failure_injector=fail).ensure_schema()
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert (
+            connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='research_fallback_approvals'"
+            ).fetchone()
+            is None
+        )
+
+    ledger.ensure_schema()
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='research_fallback_approvals'"
+        ).fetchone() == (1,)
+
+
+def test_fallback_approval_is_exact_atomic_and_replayable(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    manifest_sha256 = ledger.fallback_history("owner-1").items[0].manifest_sha256
+
+    def fail(checkpoint: str) -> None:
+        if checkpoint == "issue_fallback_approval:after_command":
+            raise RuntimeError("approval write crash")
+
+    crashing = ResearchSpendLedger(tmp_path / "research-spend.sqlite3", failure_injector=fail)
+    with pytest.raises(RuntimeError, match="approval write crash"):
+        crashing.issue_fallback_approval(
+            "approve-chain-1",
+            _binding(),
+            manifest.chain_id,
+            expected_manifest_sha256=manifest_sha256,
+            expected_ceiling_cents=1_000,
+        )
+    with sqlite3.connect(tmp_path / "research-spend.sqlite3") as connection:
+        assert (
+            connection.execute("SELECT COUNT(*) FROM research_fallback_approvals").fetchone()[0]
+            == 0
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM research_spend_commands WHERE command_key='approve-chain-1'"
+            ).fetchone()[0]
+            == 0
+        )
+
+    approval = ledger.issue_fallback_approval(
+        "approve-chain-1",
+        _binding(),
+        manifest.chain_id,
+        expected_manifest_sha256=manifest_sha256,
+        expected_ceiling_cents=1_000,
+    )
+    assert approval.maximum_chain_exposure_cents == 100
+    assert (
+        ledger.issue_fallback_approval(
+            "approve-chain-1",
+            _binding(),
+            manifest.chain_id,
+            expected_manifest_sha256=manifest_sha256,
+            expected_ceiling_cents=1_000,
+        )
+        == approval
+    )
+    assert ledger.require_fallback_approval(approval.approval_id, _binding(), manifest) == approval
+    with pytest.raises(IdempotencyConflict):
+        ledger.issue_fallback_approval(
+            "approve-chain-1",
+            _binding(),
+            manifest.chain_id,
+            expected_manifest_sha256="f" * 64,
+            expected_ceiling_cents=1_000,
+        )
+
+
+def test_concurrent_fallback_approval_replays_and_conflicts_atomically(
+    tmp_path: Path,
+) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    manifest_sha256 = ledger.fallback_history("owner-1").items[0].manifest_sha256
+
+    def issue(command_key: str):  # type: ignore[no-untyped-def]
+        return ResearchSpendLedger(tmp_path / "research-spend.sqlite3").issue_fallback_approval(
+            command_key,
+            _binding(),
+            manifest.chain_id,
+            expected_manifest_sha256=manifest_sha256,
+            expected_ceiling_cents=1_000,
+        )
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        identical = list(pool.map(lambda _: issue("approve-shared"), range(8)))
+    assert len({approval.approval_id for approval in identical}) == 1
+
+    other_manifest = _fallback_manifest(chain_id="chain-2", logical_operation_id="logical-2")
+    _register_manifest(ledger, other_manifest)
+    other_sha256 = next(
+        item.manifest_sha256
+        for item in ledger.fallback_history("owner-1").items
+        if item.chain_id == other_manifest.chain_id
+    )
+    barrier = threading.Barrier(2)
+
+    def contend(command_key: str):  # type: ignore[no-untyped-def]
+        barrier.wait()
+        return ResearchSpendLedger(tmp_path / "research-spend.sqlite3").issue_fallback_approval(
+            command_key,
+            _binding(),
+            other_manifest.chain_id,
+            expected_manifest_sha256=other_sha256,
+            expected_ceiling_cents=1_000,
+        )
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [pool.submit(contend, key) for key in ("approve-a", "approve-b")]
+        outcomes = []
+        for future in futures:
+            try:
+                outcomes.append(future.result())
+            except IdempotencyConflict as exc:
+                outcomes.append(exc)
+
+    assert sum(not isinstance(value, Exception) for value in outcomes) == 1
+    assert sum(isinstance(value, IdempotencyConflict) for value in outcomes) == 1
+    with sqlite3.connect(tmp_path / "research-spend.sqlite3") as connection:
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM research_fallback_approvals WHERE chain_id='chain-2'"
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            connection.execute(
+                "SELECT COUNT(*) FROM research_spend_commands "
+                "WHERE command_key IN ('approve-a','approve-b')"
+            ).fetchone()[0]
+            == 1
+        )
+
+
+def test_fallback_approval_cannot_retroactively_bless_a_hold(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    route = manifest.routes[0]
+    ledger.reserve_paid(
+        "reserve-before-approval",
+        _binding(),
+        _manifest_hold(route),
+        route.projected_max_cents,
+    )
+
+    with pytest.raises(InvalidTransition, match="approve fallback spend"):
+        ledger.issue_fallback_approval(
+            "approve-after-hold",
+            _binding(),
+            manifest.chain_id,
+            expected_manifest_sha256=ledger.fallback_history("owner-1").items[0].manifest_sha256,
+            expected_ceiling_cents=1_000,
+        )
+
+
+def test_fallback_approval_integrity_is_revalidated_on_dispatch(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    approval = ledger.issue_fallback_approval(
+        "approve-chain-1",
+        _binding(),
+        manifest.chain_id,
+        expected_manifest_sha256=ledger.fallback_history("owner-1").items[0].manifest_sha256,
+        expected_ceiling_cents=1_000,
+    )
+    with sqlite3.connect(tmp_path / "research-spend.sqlite3") as connection:
+        connection.execute("DROP TRIGGER research_fallback_approvals_no_update")
+        connection.execute(
+            "UPDATE research_fallback_approvals SET ceiling_cents=999 WHERE approval_id=?",
+            (approval.approval_id,),
+        )
+
+    with pytest.raises(LedgerIntegrityError, match="approval columns conflict"):
+        ledger.require_fallback_approval(approval.approval_id, _binding(), manifest)
 
 
 def test_fallback_manifest_history_is_private_ordered_and_integrity_checked(
@@ -255,9 +467,7 @@ def test_final_cent_race_has_one_winner_across_100_connections(tmp_path: Path) -
         contender = ResearchSpendLedger(db_path)
         barrier.wait()
         try:
-            contender.reserve_paid(
-                f"command-{worker}", _binding(), _paid(f"worker-{worker}"), 1
-            )
+            contender.reserve_paid(f"command-{worker}", _binding(), _paid(f"worker-{worker}"), 1)
             return "won"
         except SpendCeilingExceeded:
             return "ceiling"
@@ -300,9 +510,7 @@ def test_session_balance_lookup_is_owner_scoped(tmp_path: Path) -> None:
         replace(_binding(), approval_revision=8),
     ],
 )
-def test_reservation_rejects_stale_full_run_binding(
-    tmp_path: Path, binding: RunBinding
-) -> None:
+def test_reservation_rejects_stale_full_run_binding(tmp_path: Path, binding: RunBinding) -> None:
     ledger = _ledger(tmp_path)
     with pytest.raises(BindingConflict):
         ledger.reserve_paid("stale", binding, _paid(), 10)
@@ -392,12 +600,15 @@ def test_dispatch_unknown_and_authoritative_release_rules(tmp_path: Path) -> Non
     )
     assert released.held_cents == 0
     assert ledger.hold(hold_id).state is PaidHoldState.RELEASED
-    assert ledger.release(
-        "release-authoritative",
-        hold_id,
-        {"provider_lookup": "not_found"},
-        provider_authoritative=True,
-    ) == released
+    assert (
+        ledger.release(
+            "release-authoritative",
+            hold_id,
+            {"provider_lookup": "not_found"},
+            provider_authoritative=True,
+        )
+        == released
+    )
 
 
 def test_settlement_is_exactly_once_and_evidence_bound(tmp_path: Path) -> None:
@@ -436,9 +647,7 @@ def test_above_hold_breach_freezes_work_and_preserves_ambiguous_spend(
     assert closed.status is RunStatus.CLOSED_UNRESOLVED
     assert closed.held_cents == 100
     assert ledger.hold(reserved.hold_id).state is PaidHoldState.RELEASED
-    reconciled = ledger.settle(
-        "settle-ambiguous", ambiguous_id, 70, {"receipt": "r-2"}
-    )
+    reconciled = ledger.settle("settle-ambiguous", ambiguous_id, 70, {"receipt": "r-2"})
     assert reconciled.status is RunStatus.CLOSED_RECONCILED
     assert reconciled.ceiling_breached
     assert reconciled.authorized_spent_cents == 170
@@ -468,9 +677,7 @@ def test_zero_cost_work_is_replayable_without_balance_mutation(tmp_path: Path) -
         )
     completed = ledger.complete_zero_cost("complete", prepared.attempt_id, "output-sha")
     assert completed.state is ZeroCostState.COMPLETED
-    assert ledger.complete_zero_cost(
-        "complete", prepared.attempt_id, "output-sha"
-    ) == completed
+    assert ledger.complete_zero_cost("complete", prepared.attempt_id, "output-sha") == completed
     with pytest.raises(InvalidTransition):
         ledger.fail_zero_cost("fail-late", prepared.attempt_id, "failure-sha")
     run = ledger.balance("run-1")
@@ -505,9 +712,7 @@ def test_close_events_replay_sequential_held_balances(tmp_path: Path) -> None:
     ledger.reserve_paid("reserve-two", _binding(), _paid("two"), 200)
     ledger.close_execution("close", "run-1", "done")
     releases = [
-        event
-        for event in ledger.events("run-1")
-        if event.event_kind == "hold_released_on_close"
+        event for event in ledger.events("run-1") if event.event_kind == "hold_released_on_close"
     ]
     assert sorted(event.held_delta_cents for event in releases) == [-200, -100]
     running = 300
@@ -573,9 +778,7 @@ else:
     ).returncode
 
 
-def _run_other_crashing_child(
-    db_path: Path, target: str, operation: str, entity_id: str
-) -> int:
+def _run_other_crashing_child(db_path: Path, target: str, operation: str, entity_id: str) -> int:
     source = f"""
 import os
 from substrate.research_spend import ResearchSpendLedger
@@ -628,9 +831,12 @@ def test_reservation_process_crash_after_commit_is_exactly_replayable(
     tmp_path: Path,
 ) -> None:
     ledger = _ledger(tmp_path)
-    assert _run_crashing_child(
-        tmp_path / "research-spend.sqlite3", "reserve_paid:after_commit", "reserve"
-    ) == 71
+    assert (
+        _run_crashing_child(
+            tmp_path / "research-spend.sqlite3", "reserve_paid:after_commit", "reserve"
+        )
+        == 71
+    )
     first = ledger.reserve_paid("crash-command", _binding(), _paid("crash-hold"), 100)
     assert first.state is PaidHoldState.RESERVED
     assert ledger.balance("run-1").held_cents == 100
@@ -655,9 +861,7 @@ def test_settlement_process_crash_before_commit_preserves_ambiguous_hold(
 ) -> None:
     ledger = _ledger(tmp_path)
     hold_id = _dispatch(ledger, key="crash-hold", cents=100)
-    assert _run_crashing_child(
-        tmp_path / "research-spend.sqlite3", checkpoint, hold_id
-    ) == 71
+    assert _run_crashing_child(tmp_path / "research-spend.sqlite3", checkpoint, hold_id) == 71
     assert ledger.hold(hold_id).state is PaidHoldState.DISPATCH_POSSIBLE
     run = ledger.balance("run-1")
     assert (run.authorized_spent_cents, run.observed_provider_spend_cents, run.held_cents) == (
@@ -670,9 +874,10 @@ def test_settlement_process_crash_before_commit_preserves_ambiguous_hold(
 def test_settlement_process_crash_after_commit_does_not_double_charge(tmp_path: Path) -> None:
     ledger = _ledger(tmp_path)
     hold_id = _dispatch(ledger, key="crash-hold", cents=100)
-    assert _run_crashing_child(
-        tmp_path / "research-spend.sqlite3", "settle:after_commit", hold_id
-    ) == 71
+    assert (
+        _run_crashing_child(tmp_path / "research-spend.sqlite3", "settle:after_commit", hold_id)
+        == 71
+    )
     first = ledger.settle("crash-settle", hold_id, 80, {"receipt": "crash"})
     assert first.authorized_spent_cents == 80
     assert first.observed_provider_spend_cents == 80
@@ -709,9 +914,12 @@ def test_other_process_crashes_before_commit_roll_back_atomically(
     else:
         entity_id = ledger.prepare_zero_cost("prepare", _binding(), _zero()).attempt_id
     before = ledger.balance("run-1")
-    assert _run_other_crashing_child(
-        case_path / "research-spend.sqlite3", checkpoint, operation, entity_id
-    ) == 71
+    assert (
+        _run_other_crashing_child(
+            case_path / "research-spend.sqlite3", checkpoint, operation, entity_id
+        )
+        == 71
+    )
     assert ledger.balance("run-1") == before
     if operation == "zero":
         assert ledger.zero_attempt(entity_id).state is ZeroCostState.PREPARED
@@ -736,9 +944,12 @@ def test_other_process_crashes_after_commit_are_exactly_replayable(
         "zero": "complete_zero:after_commit",
         "close": "close_execution:after_commit",
     }[operation]
-    assert _run_other_crashing_child(
-        case_path / "research-spend.sqlite3", checkpoint, operation, entity_id
-    ) == 71
+    assert (
+        _run_other_crashing_child(
+            case_path / "research-spend.sqlite3", checkpoint, operation, entity_id
+        )
+        == 71
+    )
     if operation == "dispatch":
         assert ledger.mark_dispatch_possible("crash-dispatch", entity_id).state is (
             PaidHoldState.DISPATCH_POSSIBLE
@@ -771,8 +982,7 @@ def test_schema_migration_failure_rolls_back_atomically(
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("PRAGMA user_version").fetchone()[0] == 0
         tables = connection.execute(
-            "SELECT name FROM sqlite_master WHERE type = 'table' "
-            "AND name LIKE 'research_spend_%'"
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name LIKE 'research_spend_%'"
         ).fetchall()
         assert tables == []
     ResearchSpendLedger(db_path).ensure_schema()
@@ -841,9 +1051,7 @@ def test_populated_schema_one_run_and_hold_replay_after_mode_migration(
     with sqlite3.connect(legacy) as connection:
         for statement in _DDL:
             connection.execute(
-                statement.replace(
-                    "        mode TEXT NOT NULL CHECK (mode = 'hard_ceiling'),\n", ""
-                )
+                statement.replace("        mode TEXT NOT NULL CHECK (mode = 'hard_ceiling'),\n", "")
             )
         connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
         connection.execute("PRAGMA user_version = 1")
@@ -940,8 +1148,7 @@ def test_replay_rejects_corrupt_result_and_balance_rejects_cross_table_drift(
     with sqlite3.connect(db_path) as connection:
         connection.execute("DROP TRIGGER research_spend_commands_no_update")
         connection.execute(
-            "UPDATE research_spend_commands SET result_json = '{}' "
-            "WHERE command_key = 'reserve'"
+            "UPDATE research_spend_commands SET result_json = '{}' WHERE command_key = 'reserve'"
         )
     with pytest.raises(LedgerIntegrityError, match="corrupt result"):
         ledger.reserve_paid("reserve", _binding(), _paid(), 100)
@@ -951,9 +1158,7 @@ def test_replay_rejects_corrupt_result_and_balance_rejects_cross_table_drift(
     drift_ledger = _ledger(drift)
     drift_ledger.reserve_paid("reserve", _binding(), _paid(), 100)
     with sqlite3.connect(drift / "research-spend.sqlite3") as connection:
-        connection.execute(
-            "UPDATE research_spend_runs SET held_cents = 0 WHERE run_id = 'run-1'"
-        )
+        connection.execute("UPDATE research_spend_runs SET held_cents = 0 WHERE run_id = 'run-1'")
     with pytest.raises(LedgerIntegrityError, match="unresolved holds"):
         drift_ledger.balance("run-1")
     with pytest.raises(LedgerIntegrityError, match="unresolved holds"):

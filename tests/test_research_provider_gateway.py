@@ -406,17 +406,39 @@ def _fallback_route(adapter: FakeAdapter) -> PaidFallbackRoute[str]:
     )
 
 
+def _approve_fallbacks(
+    gateway: ResearchProviderGateway,
+    routes: tuple[PaidFallbackRoute[str], ...],
+    *,
+    logical_operation_id: str = "op",
+    operation: object | None = None,
+) -> str:
+    operation_payload = {"prompt": "bounded"} if operation is None else operation
+    preparation = gateway.prepare_paid_fallbacks(
+        _binding(),
+        logical_operation_id=logical_operation_id,
+        operation=operation_payload,
+        routes=routes,
+    )
+    return gateway.approve_paid_fallbacks(
+        f"approve-{preparation.chain_id}", _binding(), preparation
+    ).approval_id
+
+
 def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> None:
     gateway = _gateway(tmp_path)
     primary = FakeAdapter()
     fallback = FakeAdapter()
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
 
     result = gateway.dispatch_paid_fallbacks(
         _binding(),
         logical_operation_id="op",
         operation={"prompt": "bounded"},
-        routes=(_fallback_route(primary), _fallback_route(fallback)),
+        routes=routes,
+        approval_id=approval_id,
     )
 
     assert result.outcome is PaidFallbackOutcome.SETTLED
@@ -432,11 +454,30 @@ def test_primary_success_never_reserves_or_sends_fallback(tmp_path: Path) -> Non
     assert len(gateway.ledger.events("run-1")) == 4
 
 
+def test_valid_fallback_chain_without_approval_never_reserves_or_sends(tmp_path: Path) -> None:
+    gateway = _gateway(tmp_path)
+    adapter = FakeAdapter()
+
+    with pytest.raises(DispatchIneligible, match="durable fallback approval"):
+        gateway.dispatch_paid_fallbacks(
+            _binding(),
+            logical_operation_id="op",
+            operation={"prompt": "bounded"},
+            routes=(_fallback_route(adapter),),
+        )
+
+    assert gateway.ledger.fallback_history("owner-1").items[0].outcome.value == "unattempted"
+    assert [event.event_kind for event in gateway.ledger.events("run-1")] == ["run_created"]
+    assert adapter.send_calls == []
+
+
 def test_fallback_manifest_is_durable_before_first_reservation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     gateway = _gateway(tmp_path)
     adapter = FakeAdapter()
+    routes = (_fallback_route(adapter),)
+    approval_id = _approve_fallbacks(gateway, routes)
 
     def fail_before_reservation(*args: object, **kwargs: object) -> None:
         raise RuntimeError("simulated reserve crash")
@@ -447,7 +488,8 @@ def test_fallback_manifest_is_durable_before_first_reservation(
             _binding(),
             logical_operation_id="op",
             operation={"prompt": "bounded"},
-            routes=(_fallback_route(adapter),),
+            routes=routes,
+            approval_id=approval_id,
         )
 
     chain = gateway.ledger.fallback_history("owner-1").items[0]
@@ -489,11 +531,13 @@ def test_changed_endpoint_authority_conflicts_with_existing_lineage(tmp_path: Pa
     adapter = FakeAdapter()
     route = _fallback_route(adapter)
     adapter.endpoint = endpoint[0]
+    approval_id = _approve_fallbacks(gateway, (route,))
     gateway.dispatch_paid_fallbacks(
         _binding(),
         logical_operation_id="op",
         operation={"prompt": "bounded"},
         routes=(route,),
+        approval_id=approval_id,
     )
     endpoint[0] = "https://replacement.example/v1"
     adapter.endpoint = endpoint[0]
@@ -504,6 +548,7 @@ def test_changed_endpoint_authority_conflicts_with_existing_lineage(tmp_path: Pa
             logical_operation_id="op",
             operation={"prompt": "bounded"},
             routes=(route,),
+            approval_id=approval_id,
         )
 
 
@@ -555,13 +600,16 @@ def test_concurrent_replay_cannot_reconcile_before_sender_finishes(tmp_path: Pat
             return ProviderSuccess("answer", 80, {"provider_receipt": "slow"})
 
     adapter = SlowAdapter()
+    routes = (_fallback_route(adapter),)
+    approval_id = _approve_fallbacks(gateway, routes)
 
     def dispatch():
         return gateway.dispatch_paid_fallbacks(
             _binding(),
             logical_operation_id="op",
             operation={"prompt": "bounded"},
-            routes=(_fallback_route(adapter),),
+            routes=routes,
+            approval_id=approval_id,
         )
 
     with ThreadPoolExecutor(max_workers=2) as pool:
@@ -620,12 +668,14 @@ def test_fallback_recovery_requires_unchanged_live_authority(tmp_path: Path) -> 
     adapter.send_result = TimeoutError("lost response")
     route = _fallback_route(adapter)
     adapter.endpoint = endpoint[0]
+    approval_id = _approve_fallbacks(gateway, (route,))
     with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
         gateway.dispatch_paid_fallbacks(
             _binding(),
             logical_operation_id="op",
             operation={"prompt": "bounded"},
             routes=(route,),
+            approval_id=approval_id,
         )
 
     with pytest.raises(DispatchIneligible, match="requires exact"):
@@ -677,12 +727,15 @@ def test_authoritative_release_uses_separate_fallback_hold_and_key(tmp_path: Pat
     fallback.send_result = ProviderSuccess(
         "fallback-answer", 55, {"provider_receipt": "fallback-receipt"}
     )
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
 
     result = gateway.dispatch_paid_fallbacks(
         _binding(),
         logical_operation_id="op",
         operation={"prompt": "bounded"},
-        routes=(_fallback_route(primary), _fallback_route(fallback)),
+        routes=routes,
+        approval_id=approval_id,
     )
 
     assert result.outcome is PaidFallbackOutcome.SETTLED
@@ -707,13 +760,16 @@ def test_ambiguous_primary_halts_before_fallback_send(tmp_path: Path) -> None:
     primary.send_result = TimeoutError("lost response")
     fallback = FakeAdapter()
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
+    routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
 
     with pytest.raises(PaidFallbackOutcomeUnknown) as unknown:
         gateway.dispatch_paid_fallbacks(
             _binding(),
             logical_operation_id="op",
             operation={"prompt": "bounded"},
-            routes=(_fallback_route(primary), _fallback_route(fallback)),
+            routes=routes,
+            approval_id=approval_id,
         )
     assert unknown.value.fallback_index == 0
     assert unknown.value.completed_attempts == ()
@@ -752,13 +808,16 @@ def test_replay_reuses_released_and_settled_route_lineage_without_send(
     fallback = FakeAdapter()
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
     routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
     first = gateway.dispatch_paid_fallbacks(
-        _binding(), logical_operation_id="op", operation={"prompt": "bounded"}, routes=routes
+        _binding(), logical_operation_id="op", operation={"prompt": "bounded"},
+        routes=routes, approval_id=approval_id,
     )
     primary_calls, fallback_calls = len(primary.send_calls), len(fallback.send_calls)
 
     replay = gateway.dispatch_paid_fallbacks(
-        _binding(), logical_operation_id="op", operation={"prompt": "bounded"}, routes=routes
+        _binding(), logical_operation_id="op", operation={"prompt": "bounded"},
+        routes=routes, approval_id=approval_id,
     )
     assert replay.outcome is PaidFallbackOutcome.SETTLED
     assert replay.fallback_index == 1
@@ -781,8 +840,10 @@ def test_replay_with_shortened_chain_conflicts_before_another_send(tmp_path: Pat
     fallback = FakeAdapter()
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
     routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
     gateway.dispatch_paid_fallbacks(
-        _binding(), logical_operation_id="op", operation={"prompt": "bounded"}, routes=routes
+        _binding(), logical_operation_id="op", operation={"prompt": "bounded"},
+        routes=routes, approval_id=approval_id,
     )
     calls = (len(primary.send_calls), len(fallback.send_calls))
 
@@ -792,6 +853,7 @@ def test_replay_with_shortened_chain_conflicts_before_another_send(tmp_path: Pat
             logical_operation_id="op",
             operation={"prompt": "bounded"},
             routes=routes[:1],
+            approval_id=approval_id,
         )
     assert (len(primary.send_calls), len(fallback.send_calls)) == calls
 
@@ -846,6 +908,7 @@ def test_process_death_after_primary_release_replays_into_one_fallback_hold(
     fallback = FakeAdapter()
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
     routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
 
     with pytest.raises(RuntimeError, match="before fallback reserve"):
         gateway.dispatch_paid_fallbacks(
@@ -853,6 +916,7 @@ def test_process_death_after_primary_release_replays_into_one_fallback_hold(
             logical_operation_id="op",
             operation={"prompt": "bounded"},
             routes=routes,
+            approval_id=approval_id,
         )
     assert len(primary.send_calls) == 1
     assert fallback.send_calls == []
@@ -868,6 +932,7 @@ def test_process_death_after_primary_release_replays_into_one_fallback_hold(
         logical_operation_id="op",
         operation={"prompt": "bounded"},
         routes=routes,
+        approval_id=approval_id,
     )
     assert replay.fallback_index == 1
     assert replay.attempts[0].recovered is True
@@ -924,6 +989,7 @@ def test_concurrent_same_plan_has_one_provider_acceptance_per_route(tmp_path: Pa
     fallback = IdempotentSuccessAdapter()
     fallback.provider, fallback.model = "fallback-provider", "fallback-model"
     routes = (_fallback_route(primary), _fallback_route(fallback))
+    approval_id = _approve_fallbacks(gateway, routes)
     barrier = threading.Barrier(2)
 
     def run_chain(_worker: int):
@@ -933,6 +999,7 @@ def test_concurrent_same_plan_has_one_provider_acceptance_per_route(tmp_path: Pa
             logical_operation_id="op",
             operation={"prompt": "bounded"},
             routes=routes,
+            approval_id=approval_id,
         )
 
     with ThreadPoolExecutor(max_workers=2) as pool:

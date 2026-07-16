@@ -68,6 +68,7 @@ def test_history_is_owner_derived_bounded_and_value_minimized(tmp_path: Path, mo
     response = TestClient(_app()).get("/settings/fallback-receipts?limit=1")
 
     assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
     body = response.json()
     assert body["authority"] == "read_only_fallback_receipt_history"
     assert body["items"][0]["outcome"] == "unattempted"
@@ -101,6 +102,7 @@ def test_cursor_and_integrity_fail_value_free(tmp_path: Path, monkeypatch) -> No
     invalid = client.get("/settings/fallback-receipts?cursor=not-base64!!")
     assert invalid.status_code == 422
     assert invalid.json() == {"detail": "fallback history cursor is invalid"}
+    assert invalid.headers["cache-control"] == "private, no-store"
 
     forged = (
         base64.urlsafe_b64encode(
@@ -112,6 +114,7 @@ def test_cursor_and_integrity_fail_value_free(tmp_path: Path, monkeypatch) -> No
     tampered = client.get(f"/settings/fallback-receipts?cursor={forged}")
     assert tampered.status_code == 422
     assert tampered.json() == {"detail": "fallback history cursor is invalid"}
+    assert tampered.headers["cache-control"] == "private, no-store"
 
     with sqlite3.connect(db_path) as connection:
         connection.execute("DROP TRIGGER research_fallback_chains_no_update")
@@ -151,3 +154,129 @@ def test_conflicting_registration_receipt_fails_value_free(tmp_path: Path, monke
     assert response.status_code == 503
     assert response.json() == {"detail": "fallback receipt history is unavailable"}
     assert "register-a" not in response.text
+
+
+def test_approval_is_exact_replayable_minimized_and_creates_no_hold(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    db_path = tmp_path / "spend.sqlite3"
+    _configure(monkeypatch, db_path)
+    _seed(db_path)
+    client = TestClient(_app())
+    manifest_sha256 = client.get("/settings/fallback-receipts").json()["items"][0][
+        "manifest_sha256"
+    ]
+    payload = {
+        "expected_manifest_sha256": manifest_sha256,
+        "expected_ceiling_cents": 200,
+    }
+
+    first = client.post("/settings/fallback-receipts/chain-a/approval", json=payload)
+    replay = client.post("/settings/fallback-receipts/chain-a/approval", json=payload)
+
+    assert first.status_code == replay.status_code == 200
+    assert first.json() == replay.json()
+    assert first.headers["cache-control"] == "private, no-store"
+    assert set(first.json()) == {
+        "authority",
+        "approval_id",
+        "chain_id",
+        "manifest_sha256",
+        "currency",
+        "ceiling_cents",
+        "maximum_chain_exposure_cents",
+        "approved_at",
+    }
+    assert first.json()["maximum_chain_exposure_cents"] == 75
+    history = client.get("/settings/fallback-receipts").json()["items"][0]
+    assert history["approval_id"] == first.json()["approval_id"]
+    assert history["approved_at"] == first.json()["approved_at"]
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("SELECT count(*) FROM research_spend_holds").fetchone()[0] == 0
+
+
+def test_approval_rejects_foreign_or_changed_authority_value_free(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    db_path = tmp_path / "spend.sqlite3"
+    _configure(monkeypatch, db_path)
+    _seed(db_path)
+    client = TestClient(_app())
+    digest = client.get("/settings/fallback-receipts").json()["items"][0]["manifest_sha256"]
+
+    foreign = TestClient(_app("owner-b")).post(
+        "/settings/fallback-receipts/chain-a/approval",
+        json={"expected_manifest_sha256": digest, "expected_ceiling_cents": 200},
+    )
+    changed = client.post(
+        "/settings/fallback-receipts/chain-a/approval",
+        json={"expected_manifest_sha256": "0" * 64, "expected_ceiling_cents": 200},
+    )
+    extra = client.post(
+        "/settings/fallback-receipts/chain-a/approval",
+        json={
+            "expected_manifest_sha256": digest,
+            "expected_ceiling_cents": 200,
+            "owner_id": "owner-a",
+        },
+    )
+
+    assert foreign.status_code == 404
+    assert changed.status_code == 409
+    assert extra.status_code == 422
+    assert foreign.headers["cache-control"] == "private, no-store"
+    assert changed.headers["cache-control"] == "private, no-store"
+    assert extra.headers["cache-control"] == "private, no-store"
+    assert "owner-a" not in foreign.text + changed.text
+
+
+def test_approval_validation_failures_are_private_and_value_free(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    db_path = tmp_path / "spend.sqlite3"
+    _configure(monkeypatch, db_path)
+    _seed(db_path)
+    client = TestClient(_app())
+
+    missing = client.post("/settings/fallback-receipts/chain-a/approval", json={})
+    malformed = client.post(
+        "/settings/fallback-receipts/chain-a/approval",
+        content=b'{"expected_manifest_sha256":',
+        headers={"content-type": "application/json"},
+    )
+
+    for response in (missing, malformed):
+        assert response.status_code == 422
+        assert response.headers["cache-control"] == "private, no-store"
+        assert response.json() == {"detail": "fallback approval request is invalid"}
+
+
+def test_approval_rejects_declared_and_streamed_oversized_bodies_without_caching(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    db_path = tmp_path / "spend.sqlite3"
+    _configure(monkeypatch, db_path)
+    _seed(db_path)
+    client = TestClient(_app())
+    oversized = b"{" + b" " * 4_096 + b"}"
+
+    declared = client.post(
+        "/settings/fallback-receipts/chain-a/approval",
+        content=oversized,
+        headers={"content-type": "application/json"},
+    )
+
+    def chunks():  # type: ignore[no-untyped-def]
+        yield oversized[:3_000]
+        yield oversized[3_000:]
+
+    streamed = client.post(
+        "/settings/fallback-receipts/chain-a/approval",
+        content=chunks(),
+        headers={"content-type": "application/json", "transfer-encoding": "chunked"},
+    )
+
+    for response in (declared, streamed):
+        assert response.status_code == 413
+        assert response.headers["cache-control"] == "private, no-store"
+        assert response.json() == {"detail": "fallback approval request is too large"}
