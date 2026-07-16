@@ -27,6 +27,15 @@ export function notifyShellFailure(): void {
   emitWernerExperience("fail");
 }
 
+/**
+ * A microphone button press is intent, not evidence that recording began.
+ * Call this only after MediaRecorder.start() returns successfully so Werner
+ * never performs a listening beat for denied consent or failed hardware.
+ */
+export function notifyVoiceRecordingStarted(): void {
+  emitWernerExperience("voice_recording_started");
+}
+
 export function notifyResearchStarted(sessionId: string): void {
   const startedAt = Date.now();
   locallyStartedResearchSessions.set(sessionId, startedAt);

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Werner Listening Beat — executable UI contract</title>
+</head>
+<body>
+  <main>
+    <h1>Werner Listening Beat</h1>
+    <p><strong>Status:</strong> executable implementation contract.</p>
+    <p><strong>Intent:</strong> when Antiek has proof that microphone capture began, Werner becomes an attentive listener. A click or permission prompt alone is not proof.</p>
+
+    <section>
+      <h2>Hard-to-vary event contract</h2>
+      <ol>
+        <li>The canonical experience is <code>voice_recording_started</code>.</li>
+        <li>Its authored reaction is the existing <code>thinking</code> pose; no redundant bitmap is introduced.</li>
+        <li>The single emission boundary is immediately after <code>MediaRecorder.start()</code> returns successfully in the shared recorder hook.</li>
+        <li>Permission denial, stale permission resolution, unmount, constructor failure, and synchronous <code>start()</code> failure emit nothing.</li>
+        <li>Choreography is observational: an observer failure after recorder start must not stop the stream or rewrite the recorder state as an error.</li>
+        <li>One successful start emits exactly once. Re-rendering and recorder-state observation never emit.</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>Coverage and ownership</h2>
+      <p>The shared hook carries the beat into Reading voice notes, Research voice chase, Multimedia steering, and shared capture flows. Consumers must not add parallel start emissions. The separate invitee recorder remains explicitly outside this sprint.</p>
+    </section>
+
+    <section>
+      <h2>Accessibility and motion</h2>
+      <p>The event changes no focus, label, live region, microphone consent, or keyboard behavior. The already-centralized Werner stage owns reduced-motion downshifting and latest-wins interruption.</p>
+    </section>
+
+    <section>
+      <h2>Acceptance evidence</h2>
+      <ul>
+        <li>Reaction allowlist and exhaustive map tests.</li>
+        <li>Signal helper event test.</li>
+        <li>Recorder success, synchronous failure, stale permission, and unmount tests.</li>
+        <li>Focused Vitest, TypeScript, production build, heterogeneous review, and hardenx.</li>
+      </ul>
+    </section>
+  </main>
+</body>
+</html>

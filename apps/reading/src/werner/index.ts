@@ -99,6 +99,7 @@ export {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
+  notifyVoiceRecordingStarted,
   type ResearchReactionPhase,
 } from "./shellExperienceSignals";
 
