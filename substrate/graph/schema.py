@@ -348,12 +348,22 @@ CREATE INDEX IF NOT EXISTS idx_interviews_status ON interviews(status);
 
 # Tables this schema creates. Used by tests + the diagnostic CLI.
 SCHEMA_TABLES: tuple[str, ...] = (
-    "documents", "chunks", "nodes", "edges",
-    "syntheses", "synthesis_substrate_manifest",
-    "outcomes", "chunk_tier_overrides",
-    "deliverables", "deliverable_sections", "section_blocks",
-    "interview_projects", "interviews",
-    "ip_holders", "notebooks", "notebook_blocks",
+    "documents",
+    "chunks",
+    "nodes",
+    "edges",
+    "syntheses",
+    "synthesis_substrate_manifest",
+    "outcomes",
+    "chunk_tier_overrides",
+    "deliverables",
+    "deliverable_sections",
+    "section_blocks",
+    "interview_projects",
+    "interviews",
+    "ip_holders",
+    "notebooks",
+    "notebook_blocks",
     "discovery_cache",
     "url_alias",
     "discovery_summary",
@@ -372,6 +382,8 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "event_consumer_events",
     "event_consumer_receipts",
     "event_consumer_frontiers",
+    "note_taker_configurations",
+    "note_taker_windows",
 )
 
 
@@ -1341,9 +1353,18 @@ CREATE INDEX IF NOT EXISTS idx_write_event_outbox_pending
 """
 
 _V17_OUTBOX_COLUMNS = {
-    "outbox_sequence", "event_id", "operation_id", "investigation_id",
-    "aggregate_kind", "aggregate_id", "event_json", "event_sha256", "state",
-    "attempt_count", "created_at", "delivered_at",
+    "outbox_sequence",
+    "event_id",
+    "operation_id",
+    "investigation_id",
+    "aggregate_kind",
+    "aggregate_id",
+    "event_json",
+    "event_sha256",
+    "state",
+    "attempt_count",
+    "created_at",
+    "delivered_at",
 }
 
 
@@ -1411,10 +1432,294 @@ CREATE TABLE IF NOT EXISTS event_consumer_frontiers (
 );
 """
 
+ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL = """
+CREATE TABLE IF NOT EXISTS note_taker_configurations (
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    threshold INTEGER NOT NULL CHECK (threshold > 0),
+    prompt_sha256 TEXT NOT NULL CHECK (regexp_full_match(prompt_sha256, '[0-9a-f]{64}')),
+    configuration_sha256 TEXT NOT NULL
+        CHECK (regexp_full_match(configuration_sha256, '[0-9a-f]{64}')),
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (consumer_version, investigation_id)
+);
+
+CREATE TABLE IF NOT EXISTS note_taker_windows (
+    window_id TEXT PRIMARY KEY,
+    consumer_version INTEGER NOT NULL,
+    investigation_id TEXT NOT NULL,
+    threshold INTEGER NOT NULL CHECK (threshold > 0),
+    ordinal BIGINT NOT NULL CHECK (ordinal >= 0),
+    first_event_id TEXT NOT NULL,
+    last_event_id TEXT NOT NULL,
+    source_event_ids_json TEXT NOT NULL,
+    source_digest TEXT NOT NULL CHECK (regexp_full_match(source_digest, '[0-9a-f]{64}')),
+    request_json TEXT NOT NULL,
+    request_sha256 TEXT NOT NULL CHECK (regexp_full_match(request_sha256, '[0-9a-f]{64}')),
+    provider_idempotency_key TEXT NOT NULL,
+    state TEXT NOT NULL CHECK (state IN (
+        'prepared', 'calling', 'result_stored', 'materialized', 'completed', 'uncertain'
+    )),
+    raw_result TEXT,
+    raw_result_sha256 TEXT,
+    provider TEXT,
+    model TEXT,
+    policy_id TEXT,
+    attempt_count INTEGER NOT NULL DEFAULT 0 CHECK (attempt_count >= 0),
+    uncertainty_reason TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (consumer_version, investigation_id, threshold, ordinal),
+    UNIQUE (consumer_version, investigation_id, source_digest),
+    CHECK (
+        (state IN ('prepared', 'calling') AND raw_result IS NULL
+            AND raw_result_sha256 IS NULL)
+        OR (state IN ('result_stored', 'materialized', 'completed')
+            AND raw_result IS NOT NULL
+            AND regexp_full_match(raw_result_sha256, '[0-9a-f]{64}'))
+        OR (state = 'uncertain')
+    ),
+    CHECK (
+        (state = 'uncertain' AND uncertainty_reason IS NOT NULL)
+        OR (state <> 'uncertain' AND uncertainty_reason IS NULL)
+    )
+);
+CREATE INDEX IF NOT EXISTS idx_note_taker_windows_recovery
+    ON note_taker_windows(investigation_id, consumer_version, state, ordinal);
+"""
+
+_V20_NOTE_TAKER_COLUMNS = {
+    "window_id",
+    "consumer_version",
+    "investigation_id",
+    "threshold",
+    "ordinal",
+    "first_event_id",
+    "last_event_id",
+    "source_event_ids_json",
+    "source_digest",
+    "request_json",
+    "request_sha256",
+    "provider_idempotency_key",
+    "state",
+    "raw_result",
+    "raw_result_sha256",
+    "provider",
+    "model",
+    "policy_id",
+    "attempt_count",
+    "uncertainty_reason",
+    "created_at",
+    "updated_at",
+}
+
+_V20_NOTE_TAKER_REQUIRED_SHAPE = {
+    "window_id": ("VARCHAR", "NO", "PRI", None),
+    "consumer_version": ("INTEGER", "NO", "UNI", None),
+    "investigation_id": ("VARCHAR", "NO", "UNI", None),
+    "threshold": ("INTEGER", "NO", "UNI", None),
+    "ordinal": ("BIGINT", "NO", "UNI", None),
+    "first_event_id": ("VARCHAR", "NO", None, None),
+    "last_event_id": ("VARCHAR", "NO", None, None),
+    "source_event_ids_json": ("VARCHAR", "NO", None, None),
+    "source_digest": ("VARCHAR", "NO", "UNI", None),
+    "request_json": ("VARCHAR", "NO", None, None),
+    "request_sha256": ("VARCHAR", "NO", None, None),
+    "provider_idempotency_key": ("VARCHAR", "NO", None, None),
+    "state": ("VARCHAR", "NO", None, None),
+    "raw_result": ("VARCHAR", "YES", None, None),
+    "raw_result_sha256": ("VARCHAR", "YES", None, None),
+    "provider": ("VARCHAR", "YES", None, None),
+    "model": ("VARCHAR", "YES", None, None),
+    "policy_id": ("VARCHAR", "YES", None, None),
+    "attempt_count": ("INTEGER", "NO", None, "0"),
+    "uncertainty_reason": ("VARCHAR", "YES", None, None),
+    "created_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+    "updated_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+}
+
+_V20_NOTE_TAKER_KEY_CHECKS = {
+    ("PRIMARY KEY", ("window_id",), "PRIMARY KEY(window_id)"),
+    ("CHECK", ("threshold",), "CHECK((threshold > 0))"),
+    ("CHECK", ("ordinal",), "CHECK((ordinal >= 0))"),
+    (
+        "CHECK",
+        ("source_digest",),
+        "CHECK(regexp_full_match(source_digest, '[0-9a-f]{64}'))",
+    ),
+    (
+        "CHECK",
+        ("request_sha256",),
+        "CHECK(regexp_full_match(request_sha256, '[0-9a-f]{64}'))",
+    ),
+    (
+        "CHECK",
+        ("state",),
+        "CHECK((state IN ('prepared', 'calling', 'result_stored', "
+        "'materialized', 'completed', 'uncertain')))",
+    ),
+    ("CHECK", ("attempt_count",), "CHECK((attempt_count >= 0))"),
+    (
+        "UNIQUE",
+        ("consumer_version", "investigation_id", "threshold", "ordinal"),
+        "UNIQUE(consumer_version, investigation_id, threshold, ordinal)",
+    ),
+    (
+        "UNIQUE",
+        ("consumer_version", "investigation_id", "source_digest"),
+        "UNIQUE(consumer_version, investigation_id, source_digest)",
+    ),
+    (
+        "CHECK",
+        (
+            "state",
+            "raw_result",
+            "raw_result_sha256",
+            "state",
+            "raw_result",
+            "raw_result_sha256",
+            "state",
+        ),
+        "CHECK((((state IN ('prepared', 'calling')) AND (raw_result IS NULL) "
+        "AND (raw_result_sha256 IS NULL)) OR ((state IN ('result_stored', "
+        "'materialized', 'completed')) AND (raw_result IS NOT NULL) AND "
+        "regexp_full_match(raw_result_sha256, '[0-9a-f]{64}')) OR "
+        "(state = 'uncertain')))",
+    ),
+    (
+        "CHECK",
+        ("state", "uncertainty_reason", "state", "uncertainty_reason"),
+        "CHECK((((state = 'uncertain') AND (uncertainty_reason IS NOT NULL)) "
+        "OR ((state != 'uncertain') AND (uncertainty_reason IS NULL))))",
+    ),
+}
+
+_V20_CONFIGURATION_REQUIRED_SHAPE = {
+    "consumer_version": ("INTEGER", "NO", "PRI", None),
+    "investigation_id": ("VARCHAR", "NO", "PRI", None),
+    "threshold": ("INTEGER", "NO", None, None),
+    "prompt_sha256": ("VARCHAR", "NO", None, None),
+    "configuration_sha256": ("VARCHAR", "NO", None, None),
+    "created_at": ("TIMESTAMP", "NO", None, "CURRENT_TIMESTAMP"),
+}
+
+
+def _v20_configuration_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE note_taker_configurations").fetchall()
+    }
+    if described != _V20_CONFIGURATION_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='note_taker_configurations'"
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2])
+        for row in constraints
+        if row[0] in {"PRIMARY KEY", "CHECK"}
+    }
+    return key_checks == {
+        (
+            "PRIMARY KEY",
+            ("consumer_version", "investigation_id"),
+            "PRIMARY KEY(consumer_version, investigation_id)",
+        ),
+        ("CHECK", ("threshold",), "CHECK((threshold > 0))"),
+        (
+            "CHECK",
+            ("prompt_sha256",),
+            "CHECK(regexp_full_match(prompt_sha256, '[0-9a-f]{64}'))",
+        ),
+        (
+            "CHECK",
+            ("configuration_sha256",),
+            "CHECK(regexp_full_match(configuration_sha256, '[0-9a-f]{64}'))",
+        ),
+    }
+
+
+def _v20_note_taker_shape_is_valid(con: LockedConnection) -> bool:
+    described = {
+        row[0]: (row[1], row[2], row[3], row[4])
+        for row in con.execute("DESCRIBE note_taker_windows").fetchall()
+    }
+    if described != _V20_NOTE_TAKER_REQUIRED_SHAPE:
+        return False
+    constraints = con.execute(
+        "SELECT constraint_type, constraint_column_names, constraint_text "
+        "FROM duckdb_constraints() WHERE table_name='note_taker_windows'"
+    ).fetchall()
+    key_checks = {
+        (row[0], tuple(row[1]), row[2])
+        for row in constraints
+        if row[0] in {"PRIMARY KEY", "UNIQUE", "CHECK"}
+    }
+    indexes = con.execute(
+        "SELECT index_name, expressions FROM duckdb_indexes() "
+        "WHERE schema_name='main' AND table_name='note_taker_windows'"
+    ).fetchall()
+    return (
+        key_checks == _V20_NOTE_TAKER_KEY_CHECKS
+        and indexes
+        == [
+            (
+                "idx_note_taker_windows_recovery",
+                "[investigation_id, consumer_version, state, ordinal]",
+            )
+        ]
+    )
+
+
+def _repair_empty_partial_v20_note_taker(con: LockedConnection) -> None:
+    configuration_columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='note_taker_configurations'"
+        ).fetchall()
+    }
+    if configuration_columns and not _v20_configuration_shape_is_valid(con):
+        if con.execute(
+            "SELECT COUNT(*) FROM note_taker_configurations"
+        ).fetchone()[0]:
+            raise SchemaCorruptionError(
+                "populated partial V20 note-taker configurations require "
+                "explicit recovery"
+            )
+        con.execute("DROP TABLE note_taker_configurations")
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE "
+            "table_schema='main' AND table_name='note_taker_windows'"
+        ).fetchall()
+    }
+    if not columns:
+        return
+    if _v20_note_taker_shape_is_valid(con):
+        return
+    if con.execute("SELECT COUNT(*) FROM note_taker_windows").fetchone()[0]:
+        raise SchemaCorruptionError(
+            "populated partial V20 note-taker windows require explicit recovery"
+        )
+    con.execute("DROP TABLE note_taker_windows")
+
+
 _V19_RECEIPT_COLUMNS = {
-    "consumer_name", "consumer_version", "investigation_id", "event_id",
-    "action_type", "normalized_sha256", "status", "output_ref", "error_class",
-    "error_digest", "attempt_count", "processed_at",
+    "consumer_name",
+    "consumer_version",
+    "investigation_id",
+    "event_id",
+    "action_type",
+    "normalized_sha256",
+    "status",
+    "output_ref",
+    "error_class",
+    "error_digest",
+    "attempt_count",
+    "processed_at",
 }
 
 _V19_RECEIPT_REQUIRED_SHAPE = {
@@ -1443,9 +1748,17 @@ _V19_RECEIPT_CHECKS = {
 }
 
 _V19_EVENT_COLUMNS = {
-    "consumer_name", "consumer_version", "investigation_id", "logical_ordinal",
-    "event_id", "action_type", "normalized_sha256", "resolution",
-    "chain_sha256", "created_at", "resolved_at",
+    "consumer_name",
+    "consumer_version",
+    "investigation_id",
+    "logical_ordinal",
+    "event_id",
+    "action_type",
+    "normalized_sha256",
+    "resolution",
+    "chain_sha256",
+    "created_at",
+    "resolved_at",
 }
 
 _V19_EVENT_REQUIRED_SHAPE = {
@@ -1463,9 +1776,16 @@ _V19_EVENT_REQUIRED_SHAPE = {
 }
 
 _V19_FRONTIER_COLUMNS = {
-    "consumer_name", "consumer_version", "investigation_id", "next_ordinal",
-    "chain_sha256", "snapshot_generation", "snapshot_row_count",
-    "next_snapshot_row_offset", "jsonl_byte_offset", "updated_at",
+    "consumer_name",
+    "consumer_version",
+    "investigation_id",
+    "next_ordinal",
+    "chain_sha256",
+    "snapshot_generation",
+    "snapshot_row_count",
+    "next_snapshot_row_offset",
+    "jsonl_byte_offset",
+    "updated_at",
 }
 
 _V19_FRONTIER_REQUIRED_SHAPE = {
@@ -1528,9 +1848,9 @@ def _v19_frontier_shape_is_valid(
     ).fetchall()
     primary_keys = [tuple(row[1]) for row in constraints if row[0] == "PRIMARY KEY"]
     checks = {row[2] for row in constraints if row[0] == "CHECK"}
-    return primary_keys == [(
-        "consumer_name", "consumer_version", "investigation_id"
-    )] and checks == {
+    return primary_keys == [
+        ("consumer_name", "consumer_version", "investigation_id")
+    ] and checks == {
         "CHECK((next_ordinal >= 0))",
         "CHECK((snapshot_row_count >= 0))",
         "CHECK((next_snapshot_row_offset >= 0))",
@@ -1561,20 +1881,30 @@ def _v19_event_shape_is_valid(
         "SELECT expressions FROM duckdb_indexes() WHERE table_name='event_consumer_events' "
         "AND index_name='idx_event_consumer_events_investigation'"
     ).fetchall()
-    return keys == {
-        ("PRIMARY KEY", ("consumer_name", "consumer_version", "event_id")),
-        ("UNIQUE", ("consumer_name", "consumer_version", "investigation_id", "logical_ordinal")),
-    } and checks == {
-        "CHECK((logical_ordinal >= 0))",
-        "CHECK(regexp_full_match(normalized_sha256, '[0-9a-f]{64}'))",
-        "CHECK((resolution IN ('succeeded', 'quarantined', 'unsupported')))",
-        "CHECK(regexp_full_match(chain_sha256, '[0-9a-f]{64}'))",
-    } and indexes == [("[consumer_name, consumer_version, investigation_id]",)]
+    return (
+        keys
+        == {
+            ("PRIMARY KEY", ("consumer_name", "consumer_version", "event_id")),
+            (
+                "UNIQUE",
+                ("consumer_name", "consumer_version", "investigation_id", "logical_ordinal"),
+            ),
+        }
+        and checks
+        == {
+            "CHECK((logical_ordinal >= 0))",
+            "CHECK(regexp_full_match(normalized_sha256, '[0-9a-f]{64}'))",
+            "CHECK((resolution IN ('succeeded', 'quarantined', 'unsupported')))",
+            "CHECK(regexp_full_match(chain_sha256, '[0-9a-f]{64}'))",
+        }
+        and indexes == [("[consumer_name, consumer_version, investigation_id]",)]
+    )
 
 
 def _repair_empty_partial_v17_outbox(con: LockedConnection) -> None:
     columns = {
-        row[0] for row in con.execute(
+        row[0]
+        for row in con.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_schema='main' AND table_name='write_event_outbox'"
         ).fetchall()
@@ -1600,17 +1930,18 @@ def _repair_empty_partial_v19_receipts(con: LockedConnection) -> None:
         return
     count = con.execute("SELECT COUNT(*) FROM event_consumer_receipts").fetchone()[0]
     if count:
-        raise SchemaCorruptionError(
-            "populated partial V19 receipts require explicit recovery"
-        )
+        raise SchemaCorruptionError("populated partial V19 receipts require explicit recovery")
     con.execute("DROP TABLE event_consumer_receipts")
 
 
 def _repair_empty_partial_v19_events(con: LockedConnection) -> None:
-    columns = {row[0] for row in con.execute(
-        "SELECT column_name FROM information_schema.columns WHERE table_schema='main' "
-        "AND table_name='event_consumer_events'"
-    ).fetchall()}
+    columns = {
+        row[0]
+        for row in con.execute(
+            "SELECT column_name FROM information_schema.columns WHERE table_schema='main' "
+            "AND table_name='event_consumer_events'"
+        ).fetchall()
+    }
     if not columns:
         return
     if columns == _V19_EVENT_COLUMNS and _v19_event_shape_is_valid(con):
@@ -1622,7 +1953,8 @@ def _repair_empty_partial_v19_events(con: LockedConnection) -> None:
 
 def _repair_empty_partial_v19_frontiers(con: LockedConnection) -> None:
     columns = {
-        row[0] for row in con.execute(
+        row[0]
+        for row in con.execute(
             "SELECT column_name FROM information_schema.columns "
             "WHERE table_schema='main' AND table_name='event_consumer_frontiers'"
         ).fetchall()
@@ -1632,9 +1964,7 @@ def _repair_empty_partial_v19_frontiers(con: LockedConnection) -> None:
     if columns == _V19_FRONTIER_COLUMNS and _v19_frontier_shape_is_valid(con):
         return
     if con.execute("SELECT COUNT(*) FROM event_consumer_frontiers").fetchone()[0]:
-        raise SchemaCorruptionError(
-            "populated partial V19 frontiers require explicit recovery"
-        )
+        raise SchemaCorruptionError("populated partial V19 frontiers require explicit recovery")
     con.execute("DROP TABLE event_consumer_frontiers")
 
 
@@ -1687,6 +2017,7 @@ def init_database(con: LockedConnection) -> None:
     # soft ref, no FK). Lives in its own module — detect-and-rebuild logic,
     # not a static SQL string.
     from .migrate_v9_insight_question import migrate as _migrate_v9_insight_question
+
     _migrate_v9_insight_question(con)
     # SPR-04 — attribution_audit (append-only reproducible attribution record).
     # Pure idempotent CREATE IF NOT EXISTS; runs last, FK-references nothing.
@@ -1723,6 +2054,8 @@ def init_database(con: LockedConnection) -> None:
     _repair_empty_partial_v19_receipts(con)
     _repair_empty_partial_v19_frontiers(con)
     con.execute(ANTIEK_GRAPH_SCHEMA_V19_EVENT_CONSUMER_RECEIPTS_SQL)
+    _repair_empty_partial_v20_note_taker(con)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V20_NOTE_TAKER_REPLAY_SQL)
 
 
 # Per-process memo of db_paths known to already have the Antiek schema.
@@ -1795,6 +2128,8 @@ def _schema_is_present(db_path: str) -> bool:
             and _v19_receipt_shape_is_valid(con)
             and _v19_frontier_shape_is_valid(con)
             and _v19_event_shape_is_valid(con)
+            and _v20_configuration_shape_is_valid(con)
+            and _v20_note_taker_shape_is_valid(con)
         )
     except Exception:
         return False

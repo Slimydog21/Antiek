@@ -105,8 +105,15 @@ def enqueue_event(
         "INSERT INTO write_event_outbox "
         "(event_id, operation_id, investigation_id, aggregate_kind, aggregate_id, "
         "event_json, event_sha256) VALUES (?, ?, ?, ?, ?, ?, ?)",
-        [event.event_id, operation_id, event.investigation_id, aggregate_kind,
-         aggregate_id, encoded, digest],
+        [
+            event.event_id,
+            operation_id,
+            event.investigation_id,
+            aggregate_kind,
+            aggregate_id,
+            encoded,
+            digest,
+        ],
     )
     return event.event_id
 
@@ -135,8 +142,7 @@ def next_aggregate_operation_id(
     aggregate_id: str,
 ) -> str:
     ordinal = con.execute(
-        "SELECT COUNT(*) + 1 FROM write_event_outbox "
-        "WHERE aggregate_kind=? AND aggregate_id=?",
+        "SELECT COUNT(*) + 1 FROM write_event_outbox WHERE aggregate_kind=? AND aggregate_id=?",
         [aggregate_kind, aggregate_id],
     ).fetchone()[0]
     return f"{action}:{aggregate_id}:v{ordinal}"
@@ -172,9 +178,7 @@ def _existing_jsonl_events(root_fd: int, filename: str) -> dict[str, str]:
                 )
                 prior = found.setdefault(event_id, canonical)
                 if prior != canonical:
-                    raise EventOutboxError(
-                        "event JSONL contains conflicting event identities"
-                    )
+                    raise EventOutboxError("event JSONL contains conflicting event identities")
     finally:
         if fd >= 0:
             os.close(fd)
@@ -260,6 +264,64 @@ def dispatch_pending(
                 con.execute("ROLLBACK")
                 raise
             delivered.append(event_id)
+    return delivered
+
+
+def dispatch_aggregate_pending(
+    con: LockedConnection,
+    investigation_id: str,
+    *,
+    aggregate_kind: str,
+    aggregate_id: str,
+    events_dir: str | None = None,
+    checkpoint: Callable[[str, str], None] | None = None,
+) -> list[str]:
+    """Drain the stream prefix in order and report this aggregate's events.
+
+    Outbox sequence is the committed stream order.  An aggregate cannot skip
+    an older pending row without permanently inverting the physical trajectory,
+    so this function drains every pending row for the investigation while the
+    stream lock is held and filters only its return value.
+    """
+    if _events_disabled():
+        return []
+    root = events_dir or default_events_dir()
+    delivered: list[str] = []
+    with investigation_event_lock(investigation_id, events_dir=root) as root_fd:
+        rows = con.execute(
+            "SELECT event_id, event_json, event_sha256, aggregate_kind, "
+            "aggregate_id FROM write_event_outbox "
+            "WHERE investigation_id=? "
+            "AND state='pending' ORDER BY outbox_sequence",
+            [investigation_id],
+        ).fetchall()
+        filename = f"{investigation_id}.jsonl"
+        existing = _existing_jsonl_events(root_fd, filename)
+        for event_id, encoded, digest, row_kind, row_id in rows:
+            if hashlib.sha256(encoded.encode()).hexdigest() != digest:
+                raise EventOutboxError("stored outbox digest does not match event bytes")
+            prior = existing.get(event_id)
+            if prior is not None and prior != encoded:
+                raise EventOutboxError("event identity conflicts with durable trajectory bytes")
+            if prior is None:
+                if checkpoint:
+                    checkpoint("before_append", event_id)
+                _append_durable(root_fd, filename, encoded)
+                existing[event_id] = encoded
+                if checkpoint:
+                    checkpoint("after_append", event_id)
+            if checkpoint:
+                checkpoint("before_receipt", event_id)
+            changed = con.execute(
+                "UPDATE write_event_outbox SET state='delivered', "
+                "attempt_count=attempt_count+1, delivered_at=CURRENT_TIMESTAMP "
+                "WHERE event_id=? AND state='pending' RETURNING event_id",
+                [event_id],
+            ).fetchone()
+            if changed is None:
+                raise EventOutboxError("outbox delivery state changed unexpectedly")
+            if row_kind == aggregate_kind and row_id == aggregate_id:
+                delivered.append(event_id)
     return delivered
 
 
