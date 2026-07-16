@@ -34,11 +34,17 @@ def _app(owner_id: str | None = "owner-a") -> FastAPI:
     return app
 
 
-def _seed(path: Path, *, owner_id: str = "owner-a", chain_id: str = "chain-a") -> None:
+def _seed(
+    path: Path,
+    *,
+    owner_id: str = "owner-a",
+    chain_id: str = "chain-a",
+    ceiling_cents: int = 200,
+) -> None:
     ledger = ResearchSpendLedger(path)
     ledger.ensure_schema()
     binding = RunBinding("run-a", owner_id, "session-a", "plan-a", 1)
-    ledger.create_or_reopen_run("create-a", binding, 200)
+    ledger.create_or_reopen_run("create-a", binding, ceiling_cents)
     route = FallbackRouteManifest(
         fallback_index=0,
         seam_id="research.answer",
@@ -73,6 +79,10 @@ def test_history_is_owner_derived_bounded_and_value_minimized(tmp_path: Path, mo
     assert body["authority"] == "read_only_fallback_receipt_history"
     assert body["items"][0]["outcome"] == "unattempted"
     assert body["items"][0]["routes"][0]["projected_max_cents"] == 75
+    assert body["items"][0]["currency"] == "USD"
+    assert body["items"][0]["ceiling_cents"] == 200
+    assert body["items"][0]["maximum_chain_exposure_cents"] == 75
+    assert body["items"][0]["approval_eligible"] is True
     serialized = response.text
     for private in (
         "owner-a",
@@ -82,6 +92,22 @@ def test_history_is_owner_derived_bounded_and_value_minimized(tmp_path: Path, mo
         "private-provider-key",
     ):
         assert private not in serialized
+
+
+def test_over_ceiling_history_remains_visible_but_ineligible(
+    tmp_path: Path, monkeypatch
+) -> None:  # type: ignore[no-untyped-def]
+    db_path = tmp_path / "spend.sqlite3"
+    _configure(monkeypatch, db_path)
+    _seed(db_path, ceiling_cents=50)
+
+    response = TestClient(_app()).get("/settings/fallback-receipts")
+
+    assert response.status_code == 200
+    chain = response.json()["items"][0]
+    assert chain["maximum_chain_exposure_cents"] == 75
+    assert chain["ceiling_cents"] == 50
+    assert chain["approval_eligible"] is False
 
 
 def test_history_hides_other_owners_and_requires_identity(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
@@ -191,6 +217,9 @@ def test_approval_is_exact_replayable_minimized_and_creates_no_hold(
     history = client.get("/settings/fallback-receipts").json()["items"][0]
     assert history["approval_id"] == first.json()["approval_id"]
     assert history["approved_at"] == first.json()["approved_at"]
+    assert history["approval_eligible"] is False
+    assert history["ceiling_cents"] == 200
+    assert history["maximum_chain_exposure_cents"] == 75
     with sqlite3.connect(db_path) as connection:
         assert connection.execute("SELECT count(*) FROM research_spend_holds").fetchone()[0] == 0
 
