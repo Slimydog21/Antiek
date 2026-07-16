@@ -259,3 +259,149 @@ def test_canonical_app_mounts_reconciliation_route() -> None:
     assert "/research/distillation/commands/{request_event_id}/reconciliation" in (
         mounted_paths(create_app().routes)
     )
+
+
+def _release_terms(**overrides) -> dict[str, object]:
+    terms: dict[str, object] = {
+        "expected_command_state": "ambiguous",
+        "expected_spend_run_id": "run-1",
+        "expected_fallback_chain_id": "chain-1",
+        "expected_manifest_sha256": "",
+        "expected_fallback_index": 0,
+        "expected_hold_id": "",
+        "expected_hold_state": "reserved",
+    }
+    terms.update(overrides)
+    return terms
+
+
+def _authoritative_release_terms(runtime: DistillationReconciliationRuntime) -> dict[str, object]:
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.manifest_sha256 is not None
+    assert command.hold_id is not None
+    return _release_terms(
+        expected_manifest_sha256=command.manifest_sha256,
+        expected_hold_id=command.hold_id,
+    )
+
+
+def test_owner_releases_exact_reserved_hold_and_replay_is_idempotent(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    client = TestClient(
+        _app(runtime, owner_id="owner-1", method="antiek_session_cookie")
+    )
+    terms = _authoritative_release_terms(runtime)
+    path = (
+        "/research/distillation/commands/evt-request/reconciliation/"
+        "actions/release-proven-unsent"
+    )
+
+    first = client.post(path, json=terms)
+    second = client.post(path, json=terms)
+
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+    assert first.json()["next_action"] == "none"
+    assert first.json()["held_cents"] == 0
+    assert first.json()["holds"][-1]["state"] == "released"
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    assert [event.event_kind for event in ledger.events("run-1")].count(
+        "hold_released"
+    ) == 1
+
+
+@pytest.mark.parametrize(
+    "changed",
+    [
+        {"expected_manifest_sha256": "b" * 64},
+        {"expected_hold_id": "substituted-hold"},
+        {"expected_fallback_index": 1},
+    ],
+)
+def test_release_rejects_stale_or_substituted_terms(tmp_path, changed) -> None:
+    runtime = _seed(tmp_path)
+    terms = _authoritative_release_terms(runtime)
+    terms.update(changed)
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="bearer_token")
+    ).post(
+        "/research/distillation/commands/evt-request/reconciliation/"
+        "actions/release-proven-unsent",
+        json=terms,
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "reconciliation action conflicts"}
+    assert ResearchSpendLedger(runtime.spend_db_path).balance("run-1").held_cents == 80
+
+
+def test_foreign_owner_cannot_release_reserved_hold(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    response = TestClient(
+        _app(runtime, owner_id="owner-2", method="cloudflare_access_email")
+    ).post(
+        "/research/distillation/commands/evt-request/reconciliation/"
+        "actions/release-proven-unsent",
+        json=_authoritative_release_terms(runtime),
+    )
+    assert response.status_code == 404
+    assert response.json() == {"detail": "command unavailable"}
+    assert ResearchSpendLedger(runtime.spend_db_path).balance("run-1").held_cents == 80
+
+
+def test_release_requires_ambiguous_command_state(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    import duckdb
+
+    with duckdb.connect(runtime.command_db_path) as connection:
+        connection.execute(
+            "UPDATE distillation_dispatch_commands SET state='sending',ambiguous_at=NULL "
+            "WHERE request_event_id='evt-request'"
+        )
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="bearer_token")
+    ).post(
+        "/research/distillation/commands/evt-request/reconciliation/"
+        "actions/release-proven-unsent",
+        json=_authoritative_release_terms(runtime),
+    )
+    assert response.status_code == 409
+    assert ResearchSpendLedger(runtime.spend_db_path).balance("run-1").held_cents == 80
+
+
+def test_release_request_bounds_fail_before_mutation(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    terms = _authoritative_release_terms(runtime)
+    terms["expected_hold_id"] = "x" * 513
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="bearer_token")
+    ).post(
+        "/research/distillation/commands/evt-request/reconciliation/"
+        "actions/release-proven-unsent",
+        json=terms,
+    )
+    assert response.status_code == 422
+    assert ResearchSpendLedger(runtime.spend_db_path).balance("run-1").held_cents == 80
+
+
+@pytest.mark.parametrize("target_state", ["dispatch_possible", "unknown"])
+def test_release_never_restores_provider_possible_exposure(tmp_path, target_state) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+    if target_state == "unknown":
+        ledger.mark_unknown("mark-unknown", command.hold_id, {"timeout": True})
+
+    response = TestClient(
+        _app(runtime, owner_id="owner-1", method="bearer_token")
+    ).post(
+        "/research/distillation/commands/evt-request/reconciliation/"
+        "actions/release-proven-unsent",
+        json=_authoritative_release_terms(runtime),
+    )
+
+    assert response.status_code == 409
+    assert ledger.hold(command.hold_id).state.value == target_state
+    assert ledger.balance("run-1").held_cents == 80

@@ -1,10 +1,28 @@
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Event } from "../generated/types";
+vi.mock("../api/distillationReconciliation", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../api/distillationReconciliation")>();
+  return {
+    ...actual,
+    getDistillationReconciliation: vi.fn(),
+    releaseProvenUnsentHold: vi.fn(),
+  };
+});
+
+import {
+  getDistillationReconciliation,
+  releaseProvenUnsentHold,
+  type DistillationReconciliation,
+} from "../api/distillationReconciliation";
+import type { DistillationDeliveredPayload, Event } from "../generated/types";
 import NotesPanel from "./NotesPanel";
 
 afterEach(cleanup);
+beforeEach(() => {
+  vi.mocked(getDistillationReconciliation).mockReset();
+  vi.mocked(releaseProvenUnsentHold).mockReset();
+});
 
 function approvalEvent(reason: "approval_required" | "qualified_route_unavailable"): Event {
   const approvable = reason === "approval_required";
@@ -48,6 +66,57 @@ function deliveredEvent(): Event {
       token_count: 42,
     },
     policy_id: "wrestling/distillation",
+  };
+}
+
+function ambiguousEvent(): Event {
+  return {
+    ...deliveredEvent(),
+    event_id: "evt-ambiguous",
+    policy_id: "wrestling-fallback/ambiguous",
+    payload: {
+      ...deliveredEvent().payload,
+      request_event_id: "evt-request",
+      rendered_text: "Provider outcome is uncertain.",
+    } as DistillationDeliveredPayload,
+  };
+}
+
+function reconciliationView(
+  nextAction: DistillationReconciliation["next_action"] = "release_proven_unsent",
+): DistillationReconciliation {
+  const state = nextAction === "provider_lookup_required" ? "unknown" : "reserved";
+  return {
+    request_event_id: "evt-request",
+    command_state: "ambiguous",
+    spend_run_id: "run-1",
+    fallback_chain_id: "chain-1",
+    manifest_sha256: "a".repeat(64),
+    current_fallback_index: 0,
+    current_hold_id: "hold-1",
+    currency: "USD",
+    ceiling_cents: 200,
+    authorized_spent_cents: 0,
+    held_cents: 80,
+    available_cents: 120,
+    next_action: nextAction,
+    action_executable: false,
+    holds: [
+      {
+        fallback_index: 0,
+        hold_id: "hold-1",
+        provider: "provider",
+        model: "model",
+        state,
+        projected_max_cents: 80,
+        actual_cents: null,
+        is_current: true,
+        evidence_requirement:
+          state === "reserved"
+            ? "ledger_proven_unsent"
+            : "authoritative_provider_lookup",
+      },
+    ],
   };
 }
 
@@ -106,5 +175,80 @@ describe("NotesPanel distillation spend state", () => {
     renderPanel([approvalEvent("approval_required"), deliveredEvent()]);
     expect(screen.getByText("Spend approved · completed")).not.toBeNull();
     expect(screen.queryByRole("link", { name: "Review exact terms in Settings" })).toBeNull();
+  });
+
+  it("requires review of exact reserved-hold terms before release", async () => {
+    const before = reconciliationView();
+    const after = reconciliationView("none");
+    after.held_cents = 0;
+    after.available_cents = 200;
+    after.holds[0].state = "released";
+    vi.mocked(getDistillationReconciliation).mockResolvedValue(before);
+    vi.mocked(releaseProvenUnsentHold).mockResolvedValue(after);
+    renderPanel(ambiguousEvent());
+
+    fireEvent.click(screen.getByRole("button", { name: "Review held budget" }));
+    await screen.findByText("Reserved $0.80 USD");
+    expect(screen.getByText("Command state ambiguous")).not.toBeNull();
+    expect(screen.getByText(`Manifest ${"a".repeat(64)}`)).not.toBeNull();
+    expect(screen.getByText("Fallback route 0")).not.toBeNull();
+    expect(screen.getByText("Expected hold state reserved")).not.toBeNull();
+    expect(releaseProvenUnsentHold).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole("button", { name: "Release reserved hold" }));
+    await screen.findByText("Reserved hold released · budget restored");
+    expect(releaseProvenUnsentHold).toHaveBeenCalledWith(
+      "evt-request",
+      expect.objectContaining({
+        expected_manifest_sha256: "a".repeat(64),
+        expected_hold_id: "hold-1",
+        expected_hold_state: "reserved",
+      }),
+    );
+  });
+
+  it("never offers local release for provider-possible exposure", async () => {
+    vi.mocked(getDistillationReconciliation).mockResolvedValue(
+      reconciliationView("provider_lookup_required"),
+    );
+    renderPanel(ambiguousEvent());
+    fireEvent.click(screen.getByRole("button", { name: "Review held budget" }));
+
+    await screen.findByText("Provider verification required · budget remains held");
+    expect(screen.queryByRole("button", { name: "Release reserved hold" })).toBeNull();
+    expect(releaseProvenUnsentHold).not.toHaveBeenCalled();
+  });
+
+  it("keeps budget held and redacts transport failures", async () => {
+    vi.mocked(getDistillationReconciliation).mockRejectedValue(
+      new Error("secret provider response"),
+    );
+    renderPanel(ambiguousEvent());
+    fireEvent.click(screen.getByRole("button", { name: "Review held budget" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByText("Spend evidence is unavailable. Budget remains held."),
+      ).not.toBeNull(),
+    );
+    expect(screen.queryByText(/secret provider response/)).toBeNull();
+  });
+
+  it("discards stale release terms and requires a fresh review after rejection", async () => {
+    vi.mocked(getDistillationReconciliation).mockResolvedValue(reconciliationView());
+    vi.mocked(releaseProvenUnsentHold).mockRejectedValue(new Error("409 private detail"));
+    renderPanel(ambiguousEvent());
+
+    fireEvent.click(screen.getByRole("button", { name: "Review held budget" }));
+    await screen.findByText("Expected hold state reserved");
+    fireEvent.click(screen.getByRole("button", { name: "Release reserved hold" }));
+
+    await screen.findByText(
+      "Hold state changed. Review current terms before trying again. Budget remains held.",
+    );
+    expect(screen.queryByRole("button", { name: "Release reserved hold" })).toBeNull();
+    expect(screen.queryByText(/private detail/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry evidence check" }));
+    await waitFor(() => expect(getDistillationReconciliation).toHaveBeenCalledTimes(2));
   });
 });

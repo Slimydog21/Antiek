@@ -141,6 +141,76 @@ def _manifest_hold(route: FallbackRouteManifest) -> PaidHoldIntent:
     )
 
 
+def test_exact_reserved_fallback_release_is_atomic_and_replayable(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    history = ledger.fallback_history("owner-1").items[0]
+    hold = ledger.reserve_paid(
+        "reserve-route-0",
+        _binding(),
+        _manifest_hold(manifest.routes[0]),
+        manifest.routes[0].projected_max_cents,
+    )
+
+    first = ledger.release_reserved_fallback_hold(
+        "release-exact-route-0",
+        owner_id="owner-1",
+        request_event_id="evt-request",
+        run_id="run-1",
+        chain_id=manifest.chain_id,
+        manifest_sha256=history.manifest_sha256,
+        fallback_index=0,
+        hold_id=hold.hold_id,
+    )
+    second = ledger.release_reserved_fallback_hold(
+        "release-exact-route-0",
+        owner_id="owner-1",
+        request_event_id="evt-request",
+        run_id="run-1",
+        chain_id=manifest.chain_id,
+        manifest_sha256=history.manifest_sha256,
+        fallback_index=0,
+        hold_id=hold.hold_id,
+    )
+
+    assert first == second
+    assert second.held_cents == 0
+    assert ledger.hold(hold.hold_id).state is PaidHoldState.RELEASED
+    assert [event.event_kind for event in ledger.events("run-1")].count(
+        "hold_released"
+    ) == 1
+
+
+def test_reserved_fallback_release_rejects_private_route_substitution(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    history = ledger.fallback_history("owner-1").items[0]
+    substituted_intent = replace(
+        _manifest_hold(manifest.routes[0]), operation_digest="substituted-operation"
+    )
+    hold = ledger.reserve_paid(
+        "reserve-substituted",
+        _binding(),
+        substituted_intent,
+        manifest.routes[0].projected_max_cents,
+    )
+
+    with pytest.raises(LedgerIntegrityError, match="declared route|authority conflicts"):
+        ledger.release_reserved_fallback_hold(
+            "release-substituted",
+            owner_id="owner-1",
+            request_event_id="evt-request",
+            run_id="run-1",
+            chain_id=manifest.chain_id,
+            manifest_sha256=history.manifest_sha256,
+            fallback_index=0,
+            hold_id=hold.hold_id,
+        )
+
+    assert ledger.hold(hold.hold_id).state is PaidHoldState.RESERVED
+    assert ledger.balance("run-1").held_cents == manifest.routes[0].projected_max_cents
+
+
 def test_v2_to_v4_fallback_and_approval_migrations_are_atomic(tmp_path: Path) -> None:
     db_path = tmp_path / "research-spend.sqlite3"
     ledger = ResearchSpendLedger(db_path)
