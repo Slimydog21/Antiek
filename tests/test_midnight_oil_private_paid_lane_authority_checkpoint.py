@@ -831,6 +831,7 @@ def _attempt_child_recovery_barrier_sealing(
     result_fd: int,
     *,
     chain_prepare_copy: bool,
+    fault_boundary: str | None,
 ) -> None:
     session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
     try:
@@ -852,15 +853,75 @@ def _attempt_child_recovery_barrier_sealing(
             authority_pins=barrier_pins,
         )
         admission = session.admission
-        dropped_request = _canonical_json(
-            {
-                "command": "session_recover_barrier_acquired_to_sources_sealed",
-                "admission_sha256": admission.admission_sha256,
-                "handle_nonce": admission.handle_nonce,
-                "expected_barrier_acquired_state_sha256": barrier.state_sha256,
-            }
-        )
-        session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+        if fault_boundary is None:
+            dropped_request = _canonical_json(
+                {
+                    "command": "session_recover_barrier_acquired_to_sources_sealed",
+                    "admission_sha256": admission.admission_sha256,
+                    "handle_nonce": admission.handle_nonce,
+                    "expected_barrier_acquired_state_sha256": barrier.state_sha256,
+                }
+            )
+            session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+        else:
+            with pytest.raises(ValueError, match="source sealing rejected"):
+                session.recover_barrier_acquired_to_sources_sealed(
+                    expected_barrier_acquired_state_sha256=barrier.state_sha256
+                )
+            assert session._source_sealing_completion is None
+            operation_token = fault_boundary.split("_after_child_", 1)[0].removeprefix("seal_")
+            operation_index = ("deny", "drain", "revoke", "verify", "collect").index(
+                operation_token
+            )
+            child_token = fault_boundary.rsplit("_", 1)[1]
+            completed_children = ("owner", "paid", "provider").index(child_token) + 1
+            root_record = support_checkpoint._issuer_root_record(root_fd)
+            assert (
+                root_record["state"]
+                == (
+                    "quiesced",
+                    "admission_denied",
+                    "drained",
+                    "writers_revoked",
+                    "writers_verified",
+                )[operation_index]
+            )
+            assert len(root_record["transition_evidence"]) == operation_index + 1
+            child_evidence = root_record["child_adapter_evidence"]
+            assert type(child_evidence) is dict
+            if operation_token == "verify":
+                assert child_evidence["planted_mutator_rejections"] == []
+            if operation_token == "collect":
+                assert child_evidence["sealed_measurements"] is None
+            for ordinal, role in enumerate(support_checkpoint._CHILD_ROLES):
+                state = support_checkpoint._read_child_adapter_state(
+                    support_checkpoint._child_path(
+                        support_checkpoint._issuer_fd_path(root_fd), role
+                    )
+                )
+                expected_version = operation_index + (2 if ordinal < completed_children else 1)
+                assert state == support_checkpoint._expected_child_adapter_state(
+                    role, expected_version
+                )
+            journal = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=barrier.target_basename,
+                verification_key=verification_key,
+            )
+            assert journal == barrier
+            assert not list(support_checkpoint._issuer_fd_path(root_fd).glob(".*.tmp"))
+            assert not list(support_checkpoint._issuer_fd_path(parent_fd).glob(".*.tmp"))
+            observed_target = sqlite3.connect(target_path)
+            try:
+                assert observed_target.serialize() == schema_only_image
+            finally:
+                observed_target.close()
+            competing = sqlite3.connect(target_path, isolation_level=None, timeout=0.1)
+            try:
+                competing.execute("BEGIN IMMEDIATE")
+                competing.execute("ROLLBACK")
+            finally:
+                competing.close()
         session._close_local()
         session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
             socket_path=socket_path,
@@ -890,6 +951,27 @@ def _attempt_child_recovery_barrier_sealing(
         sources = sealing.sources_sealed_state
         root_record = support_checkpoint._issuer_root_record(root_fd)
         assert len(root_record["transition_evidence"]) == 6
+        assert [item["operation"] for item in root_record["transition_evidence"]] == [
+            "acquire_writer_barrier",
+            "deny_new_admission",
+            "drain_terminal_only",
+            "close_and_revoke_all_writers",
+            "checkpoint_and_plant_test_all_mutators",
+            "seal_and_collect",
+        ]
+        final_measurements = support_checkpoint._measure_child_adapters(
+            support_checkpoint._issuer_fd_path(root_fd)
+        )
+        support_checkpoint._audit_child_phase(root_record, final_measurements)
+        final_evidence = root_record["child_adapter_evidence"]
+        assert type(final_evidence) is dict
+        assert final_evidence["sealed_measurements"] == final_measurements
+        assert final_evidence["planted_mutator_rejections"] == [
+            f"{role}:{table}:{mutation}"
+            for role in support_checkpoint._CHILD_ROLES
+            for table in support_checkpoint._owned_child_tables(role)
+            for mutation in ("insert", "update", "delete")
+        ]
         compatible = dict(root_record)
         corpus = support_checkpoint._collect_sealed_corpus(
             support_checkpoint._issuer_fd_path(root_fd), compatible
@@ -4036,18 +4118,19 @@ class TestMigrationPrerequisites:
             "chain_prepare_copy",
             "mixed_operation",
             "mixed_children",
+            "fault_boundary",
         ),
         (
-            (0, False, False, None, 0),
-            (1, False, False, None, 0),
-            (2, False, False, None, 0),
-            (3, False, False, None, 0),
-            (4, False, False, None, 0),
-            (5, False, False, None, 0),
-            (0, True, False, None, 0),
-            (0, True, True, None, 0),
+            (0, False, False, None, 0, None),
+            (1, False, False, None, 0, None),
+            (2, False, False, None, 0, None),
+            (3, False, False, None, 0, None),
+            (4, False, False, None, 0, None),
+            (5, False, False, None, 0, None),
+            (0, True, False, None, 0, None),
+            (0, True, True, None, 0, None),
             *(
-                (step, False, False, operation, split)
+                (step, False, False, operation, split, None)
                 for step, operation in enumerate(
                     (
                         "deny_new_admission",
@@ -4058,6 +4141,18 @@ class TestMigrationPrerequisites:
                     )
                 )
                 for split in (1, 2)
+            ),
+            *(
+                (
+                    step,
+                    False,
+                    False,
+                    None,
+                    0,
+                    f"seal_{operation}_after_child_{role}",
+                )
+                for step, operation in enumerate(("deny", "drain", "revoke", "verify", "collect"))
+                for role in ("owner", "paid", "provider")
             ),
         ),
     )
@@ -4076,6 +4171,7 @@ class TestMigrationPrerequisites:
         ]
         | None,
         mixed_children: int,
+        fault_boundary: str | None,
     ) -> None:
         target = tmp_path / "paid-lane.sqlite3"
         _initialize_schema_only_copy_target(target)
@@ -4118,6 +4214,7 @@ class TestMigrationPrerequisites:
             expected_target_store_id=STORE_ID,
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            recovery_fault_boundary=fault_boundary,  # type: ignore[arg-type]
         )
         try:
             key = Ed25519PrivateKey.from_private_bytes(b"t" * 32)
@@ -4210,6 +4307,7 @@ class TestMigrationPrerequisites:
                     target_fd,
                     result_write,
                     chain_prepare_copy=chain_prepare_copy,
+                    fault_boundary=fault_boundary,
                 )
                 os._exit(0)
             os.close(result_write)

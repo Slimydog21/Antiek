@@ -142,6 +142,21 @@ _RecoveryFaultBoundary = Literal[
     "barrier_after_journal_rename",
     "barrier_after_journal_parent_fsync",
     "barrier_after_journal_reread",
+    "seal_deny_after_child_owner",
+    "seal_deny_after_child_paid",
+    "seal_deny_after_child_provider",
+    "seal_drain_after_child_owner",
+    "seal_drain_after_child_paid",
+    "seal_drain_after_child_provider",
+    "seal_revoke_after_child_owner",
+    "seal_revoke_after_child_paid",
+    "seal_revoke_after_child_provider",
+    "seal_verify_after_child_owner",
+    "seal_verify_after_child_paid",
+    "seal_verify_after_child_provider",
+    "seal_collect_after_child_owner",
+    "seal_collect_after_child_paid",
+    "seal_collect_after_child_provider",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -1289,6 +1304,29 @@ def _fixture_migration_lifecycle_issuer_main(
         )
         inject_recovery_fault(mapped)
 
+    def inject_sealing_child_fault(operation: str, role: str | None) -> None:
+        operation_token = {
+            "deny_new_admission": "deny",
+            "drain_terminal_only": "drain",
+            "close_and_revoke_all_writers": "revoke",
+            "checkpoint_and_plant_test_all_mutators": "verify",
+            "seal_and_collect": "collect",
+        }.get(operation)
+        role_token = {
+            "owner-private-source-v1": "owner",
+            "paid-lane-fixture-v1": "paid",
+            "provider-authority-v4": "provider",
+            None: "all_children",
+        }.get(role)
+        if operation_token is None or role_token is None:
+            raise ValueError("issuer sealing fault boundary")
+        boundary = cast(
+            _RecoveryFaultBoundary,
+            f"seal_{operation_token}_after_"
+            + (f"child_{role_token}" if role is not None else role_token),
+        )
+        inject_recovery_fault(boundary)
+
     def recover_schema_only_to_barrier_acquired(
         *,
         session_root_fd: int,
@@ -1622,7 +1660,11 @@ def _fixture_migration_lifecycle_issuer_main(
                     _audit_transition_evidence(working_root)
                     if operation == "seal_and_collect":
                         _execute_barrier_child_operation(
-                            root_path, working_root, operation, recovery_mode=True
+                            root_path,
+                            working_root,
+                            operation,
+                            recovery_mode=True,
+                            fault_hook=inject_sealing_child_fault,
                         )
                         measured = _measure_child_adapters(root_path)
                         evidence = working_root.get("child_adapter_evidence")
@@ -1662,7 +1704,11 @@ def _fixture_migration_lifecycle_issuer_main(
                             raise ValueError("issuer recovery source sealing root reread")
                     else:
                         _execute_barrier_child_operation(
-                            root_path, working_root, operation, recovery_mode=True
+                            root_path,
+                            working_root,
+                            operation,
+                            recovery_mode=True,
+                            fault_hook=inject_sealing_child_fault,
                         )
                         _append_transition_evidence(
                             working_root,
@@ -3764,6 +3810,21 @@ class FixtureMigrationLifecycleIssuerV1:
             "barrier_after_journal_rename",
             "barrier_after_journal_parent_fsync",
             "barrier_after_journal_reread",
+            "seal_deny_after_child_owner",
+            "seal_deny_after_child_paid",
+            "seal_deny_after_child_provider",
+            "seal_drain_after_child_owner",
+            "seal_drain_after_child_paid",
+            "seal_drain_after_child_provider",
+            "seal_revoke_after_child_owner",
+            "seal_revoke_after_child_paid",
+            "seal_revoke_after_child_provider",
+            "seal_verify_after_child_owner",
+            "seal_verify_after_child_paid",
+            "seal_verify_after_child_provider",
+            "seal_collect_after_child_owner",
+            "seal_collect_after_child_paid",
+            "seal_collect_after_child_provider",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")
@@ -4808,6 +4869,7 @@ def _execute_barrier_child_operation(
     operation: str,
     *,
     recovery_mode: bool,
+    fault_hook: Callable[[str, str | None], None] | None = None,
 ) -> bool:
     evidence = record.get("child_adapter_evidence")
     if type(evidence) is not dict:
@@ -4843,6 +4905,8 @@ def _execute_barrier_child_operation(
                 _apply_child_barrier_operation(role, path, operation)
             applied = True
         _verify_child_barrier_operation(role, path, operation, evidence=evidence)
+        if classification == "pre" and fault_hook is not None:
+            fault_hook(operation, role)
     if operation == "deny_new_admission":
         evidence["admission_denied"] = True
     elif operation == "drain_terminal_only":
