@@ -35,7 +35,7 @@ _PKG_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.p
 if _PKG_ROOT not in sys.path:
     sys.path.insert(0, _PKG_ROOT)
 
-from datetime import UTC
+from datetime import UTC  # noqa: E402
 
 from processing.embedding import (  # noqa: E402
     EmbeddingProvider,
@@ -43,9 +43,19 @@ from processing.embedding import (  # noqa: E402
 )
 from runtime.db_lock import connect_write  # noqa: E402
 from substrate.constants import ANTIEK_PARAM_VERSION  # noqa: E402
-from substrate.context_pack import LayerSource, assemble_context_pack  # noqa: E402
+from substrate.context_pack import (  # noqa: E402
+    LayerSource,
+    WorkingMemoryIntegrityError,
+    assemble_context_pack,
+    build_working_memory_layer,
+)
 from substrate.dispatch import ProviderError, dispatch  # noqa: E402
-from substrate.event_log import emit_typed, trajectory  # noqa: E402
+from substrate.event_log import (  # noqa: E402
+    PhysicalTrajectoryError,
+    emit_typed,
+    iter_physical_events,
+    trajectory,
+)
 from substrate.graph import (  # noqa: E402
     default_db_path,
     ensure_initialized,
@@ -64,7 +74,7 @@ from substrate.schemas import (  # noqa: E402
     Event,
 )
 
-from .broadcast import EventBroadcaster
+from .broadcast import EventBroadcaster  # noqa: E402
 
 # The role-tail prompt appended after the context pack. Asks for
 # structured JSON; the parser tolerates loose formatting (Markdown code
@@ -310,10 +320,18 @@ def make_distillation_handler(
         elif region_text is None:
             region_text = "(no region scope — whole-document distillation requested)"
 
-        # Build the layered pack. Three layers for now: param version
-        # stamp, phase metadata, and the source text + user question as
-        # the session layer. No graph or skill layers until those
-        # substrate pieces exist.
+        memory_integrity_failed = False
+        try:
+            memory_layer = build_working_memory_layer(
+                iter_physical_events(event.investigation_id),
+                investigation_id=event.investigation_id,
+                cutoff_event_id=event.event_id,
+            )
+        except (PhysicalTrajectoryError, WorkingMemoryIntegrityError, ValueError):
+            memory_layer = None
+            memory_integrity_failed = True
+
+        # The current source and question stay last and outrank working memory.
         layers = [
             LayerSource(
                 kind="param_version_stamp",
@@ -329,6 +347,7 @@ def make_distillation_handler(
                     f"region={request.region_id or '<whole_doc>'}"
                 ),
             ),
+            *([] if memory_layer is None else [memory_layer]),
             LayerSource(
                 kind="session",
                 source=f"region:{request.region_id or 'whole_doc'}",
@@ -353,24 +372,32 @@ def make_distillation_handler(
         # user sees something in the notes panel rather than silent
         # failure. A future refinement: emit a dedicated
         # ``distillation.failed`` event type.
-        try:
-            result = dispatch(
-                full_prompt,
-                "synthesizer",
-                investigation_id=event.investigation_id,
-                context_pack_event_id=pack.event_id,
-                parent_event_id=event.event_id,
-            )
-            response_text = result.text
-            token_count = result.usage.output_tokens
-            policy_id = f"{result.provider}/{result.model}"
-        except (ProviderError, KeyError) as exc:
+        if memory_integrity_failed:
             response_text = (
-                "Could not dispatch a synthesizer call: "
-                f"{type(exc).__name__}: {exc}"
+                "Investigation working memory could not be verified. "
+                "No synthesizer call was made."
             )
             token_count = 0
-            policy_id = "wrestling-fallback/no-provider"
+            policy_id = "wrestling-fallback/memory-integrity"
+        else:
+            try:
+                result = dispatch(
+                    full_prompt,
+                    "synthesizer",
+                    investigation_id=event.investigation_id,
+                    context_pack_event_id=pack.event_id,
+                    parent_event_id=event.event_id,
+                )
+                response_text = result.text
+                token_count = result.usage.output_tokens
+                policy_id = f"{result.provider}/{result.model}"
+            except (ProviderError, KeyError) as exc:
+                response_text = (
+                    "Could not dispatch a synthesizer call: "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                token_count = 0
+                policy_id = "wrestling-fallback/no-provider"
 
         claims, rendered_text = _parse_claims_response(
             response_text, region_id=request.region_id

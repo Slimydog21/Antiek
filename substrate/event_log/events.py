@@ -76,8 +76,11 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import fcntl
 import json
 import os
+import re
+import stat
 import sys
 import time
 import traceback
@@ -172,15 +175,93 @@ def _events_disabled() -> bool:
     return os.environ.get("ANTIEK_EVENTS_DISABLED", "").lower() in ("1", "true", "yes")
 
 
+@contextmanager
+def investigation_event_lock(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+    timeout_s: float = 10.0,
+) -> Iterator[None]:
+    """Serialize access to one investigation's durable event files."""
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}", investigation_id):
+        raise ValueError("investigation_id is not safe for event storage")
+    root = events_dir or default_events_dir()
+    try:
+        os.makedirs(root, mode=0o700, exist_ok=True)
+        root_stat = os.lstat(root)
+    except OSError as exc:
+        raise PhysicalTrajectoryError("event root cannot be secured") from exc
+    if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
+        raise PhysicalTrajectoryError("event root must be a real directory")
+    lock_path = os.path.join(root, f".{investigation_id}.delivery.lock")
+    try:
+        fd = os.open(lock_path, os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
+    except OSError as exc:
+        raise PhysicalTrajectoryError("event lock cannot be opened safely") from exc
+    try:
+        lock_stat = os.fstat(fd)
+        if not stat.S_ISREG(lock_stat.st_mode) or lock_stat.st_nlink != 1:
+            raise PhysicalTrajectoryError(
+                "event lock must be regular and singly linked"
+            )
+        deadline = time.monotonic() + timeout_s
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise PhysicalTrajectoryError(
+                        "timed out waiting for investigation event lock"
+                    ) from None
+                time.sleep(min(0.05, max(0.0, deadline - time.monotonic())))
+        yield
+    finally:
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+
+
 def _append_jsonl(path: str, row: dict[str, Any]) -> None:
     """Append a single JSON line. Open in 'a' mode — atomic at OS level for
     single-line writes ≤ PIPE_BUF. We never write multi-line payloads."""
-    os.makedirs(os.path.dirname(path), exist_ok=True)
+    root = os.path.dirname(path)
+    os.makedirs(root, mode=0o700, exist_ok=True)
     line = json.dumps(row, default=str, separators=(",", ":"))
     if "\n" in line:
         line = line.replace("\n", "\\n")
-    with open(path, "a", encoding="utf-8") as f:
-        f.write(line + "\n")
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    fd = -1
+    try:
+        fd = os.open(
+            os.path.basename(path),
+            os.O_WRONLY | os.O_APPEND | os.O_CREAT | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=root_fd,
+        )
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+            raise PhysicalTrajectoryError(
+                "event append target must be regular and singly linked"
+            )
+        data = (line + "\n").encode("utf-8")
+        written = 0
+        while written < len(data):
+            written += os.write(fd, data[written:])
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        os.close(root_fd)
+
+
+def _append_jsonl_locked(
+    investigation_id: str,
+    path: str,
+    row: dict[str, Any],
+    *,
+    events_dir: str | None,
+) -> None:
+    with investigation_event_lock(investigation_id, events_dir=events_dir):
+        _append_jsonl(path, row)
 
 
 def log_event(
@@ -224,7 +305,13 @@ def log_event(
         "document_id": document_id,
     }
     path = _jsonl_path(investigation_id, events_dir=events_dir)
-    if _safe(_append_jsonl, path, row) is None:
+    if _safe(
+        _append_jsonl_locked,
+        investigation_id,
+        path,
+        row,
+        events_dir=events_dir,
+    ) is None:
         return event_id
     return event_id
 
@@ -295,18 +382,22 @@ def emit_typed(
 
     row = event.model_dump(mode="json")
     path = _jsonl_path(investigation_id, events_dir=events_dir)
-    if idempotent and os.path.exists(path):
-        with open(path, encoding="utf-8") as existing:
-            for line in existing:
-                try:
-                    if json.loads(line).get("event_id") == event_id:
-                        return event_id
-                except (json.JSONDecodeError, AttributeError):
-                    continue
+    def append_once() -> None:
+        with investigation_event_lock(investigation_id, events_dir=events_dir):
+            if idempotent and os.path.exists(path):
+                with open(path, encoding="utf-8") as existing:
+                    for line in existing:
+                        try:
+                            if json.loads(line).get("event_id") == event_id:
+                                return
+                        except (json.JSONDecodeError, AttributeError):
+                            continue
+            _append_jsonl(path, row)
+
     if strict_write:
-        _append_jsonl(path, row)
+        append_once()
     else:
-        _safe(_append_jsonl, path, row)
+        _safe(append_once)
     return event_id
 
 
@@ -494,6 +585,20 @@ def seal_investigation(
     Idempotent: if the Parquet already exists, we re-seal (overwrite) only
     if the JSONL is newer (mtime check).
     """
+    with investigation_event_lock(investigation_id, events_dir=events_dir):
+        return _seal_investigation_unlocked(
+            investigation_id,
+            events_dir=events_dir,
+            delete_jsonl=delete_jsonl,
+        )
+
+
+def _seal_investigation_unlocked(
+    investigation_id: str,
+    *,
+    events_dir: str | None,
+    delete_jsonl: bool,
+) -> str | None:
     jl = _jsonl_path(investigation_id, events_dir=events_dir)
     pq = _parquet_path(investigation_id, events_dir=events_dir)
 
@@ -515,7 +620,14 @@ def seal_investigation(
 
     # Reopened streams have an existing snapshot plus a live tail. Seal the
     # merged trajectory, not merely the tail, or resealing would erase history.
-    rows = trajectory(investigation_id, events_dir=events_dir)
+    tail_before = os.lstat(jl) if os.path.lexists(jl) else None
+    rows = list(
+        iter_physical_events(
+            investigation_id,
+            events_dir=events_dir,
+            _lock_already_held=True,
+        )
+    )
     if not rows:
         return None
 
@@ -524,12 +636,47 @@ def seal_investigation(
             r["payload"] = json.dumps(r["payload"], default=str)
 
     table = pa.Table.from_pylist(rows)
-    tmp = pq + ".tmp"
-    pq_writer.write_table(table, tmp, compression="zstd")
-    os.replace(tmp, pq)
+    root = os.path.dirname(pq)
+    root_fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    tmp_name = f".{os.path.basename(pq)}.{uuid.uuid4().hex}.tmp"
+    tmp_fd = -1
+    try:
+        tmp_fd = os.open(
+            tmp_name,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o600,
+            dir_fd=root_fd,
+        )
+        with os.fdopen(tmp_fd, "wb") as tmp_stream:
+            tmp_fd = -1
+            pq_writer.write_table(table, tmp_stream, compression="zstd")
+            tmp_stream.flush()
+            os.fsync(tmp_stream.fileno())
+        os.replace(
+            tmp_name,
+            os.path.basename(pq),
+            src_dir_fd=root_fd,
+            dst_dir_fd=root_fd,
+        )
 
-    if delete_jsonl:
-        os.remove(jl)
+        if delete_jsonl and tail_before is not None:
+            tail_name = os.path.basename(jl)
+            tail_after = os.stat(tail_name, dir_fd=root_fd, follow_symlinks=False)
+            if (
+                tail_after.st_dev != tail_before.st_dev
+                or tail_after.st_ino != tail_before.st_ino
+                or not stat.S_ISREG(tail_after.st_mode)
+                or tail_after.st_nlink != 1
+            ):
+                raise PhysicalTrajectoryError("event tail changed during seal")
+            os.unlink(tail_name, dir_fd=root_fd)
+    finally:
+        if tmp_fd >= 0:
+            os.close(tmp_fd)
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(tmp_name, dir_fd=root_fd)
+        os.close(root_fd)
+
     return pq
 
 
@@ -593,6 +740,145 @@ def trajectory(
     merged = [*by_id.values(), *without_id]
     merged.sort(key=lambda r: (r.get("emitted_at") or "", r.get("event_id") or ""))
     return merged
+
+
+class PhysicalTrajectoryError(RuntimeError):
+    """The durable event trajectory cannot be traversed without guessing."""
+
+
+def _open_regular_event_file(path: str) -> int | None:
+    if not os.path.lexists(path):
+        return None
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+    except OSError as exc:
+        raise PhysicalTrajectoryError(
+            f"event file must be regular and singly linked: {path}"
+        ) from exc
+    info = os.fstat(fd)
+    if not stat.S_ISREG(info.st_mode) or info.st_nlink != 1:
+        os.close(fd)
+        raise PhysicalTrajectoryError(
+            f"event file must be regular and singly linked: {path}"
+        )
+    return fd
+
+
+def _physical_identity(row: dict[str, Any]) -> str:
+    return json.dumps(
+        row, sort_keys=True, separators=(",", ":"), ensure_ascii=True, default=str
+    )
+
+
+def iter_physical_events(
+    investigation_id: str,
+    *,
+    events_dir: str | None = None,
+    lock_timeout_s: float = 10.0,
+    _lock_already_held: bool = False,
+) -> Iterator[dict[str, Any]]:
+    """Yield completed durable events in physical snapshot-then-tail order.
+
+    Delivery authority cannot use presentation timestamps. Incomplete final
+    appends remain invisible until newline completion; malformed completed
+    records and conflicting immutable identities fail closed.
+    """
+    if not re.fullmatch(r"[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}", investigation_id):
+        raise ValueError("investigation_id is not safe for event storage")
+    root = events_dir or default_events_dir()
+    if os.path.lexists(root) and (os.path.islink(root) or not os.path.isdir(root)):
+        raise PhysicalTrajectoryError("event root must be a real directory")
+    lock = (
+        contextlib.nullcontext()
+        if _lock_already_held
+        else investigation_event_lock(
+            investigation_id, events_dir=root, timeout_s=lock_timeout_s
+        )
+    )
+    captured: list[dict[str, Any]] = []
+    with lock:
+        pq = _parquet_path(investigation_id, events_dir=root)
+        jl = _jsonl_path(investigation_id, events_dir=root)
+        seen: dict[str, str] = {}
+        snapshot_fd = _open_regular_event_file(pq)
+        if snapshot_fd is not None:
+            try:
+                import pyarrow.parquet as pq_reader
+            except ImportError as exc:  # pragma: no cover - optional dependency
+                os.close(snapshot_fd)
+                raise PhysicalTrajectoryError(
+                    "reading a snapshot requires pyarrow"
+                ) from exc
+            try:
+                with os.fdopen(snapshot_fd, "rb") as snapshot:
+                    snapshot_fd = -1
+                    parquet = pq_reader.ParquetFile(snapshot)
+                    for batch in parquet.iter_batches(batch_size=128):
+                        for row in batch.to_pylist():
+                            if not isinstance(row, dict):
+                                raise PhysicalTrajectoryError(
+                                    "snapshot contains a non-object event"
+                                )
+                            if isinstance(row.get("payload"), str):
+                                with contextlib.suppress(TypeError, ValueError):
+                                    row["payload"] = json.loads(row["payload"])
+                            event_id = row.get("event_id")
+                            if not isinstance(event_id, str) or not event_id:
+                                raise PhysicalTrajectoryError(
+                                    "snapshot event is missing event_id"
+                                )
+                            identity = _physical_identity(row)
+                            prior = seen.get(event_id)
+                            if prior is not None:
+                                if prior != identity:
+                                    raise PhysicalTrajectoryError(
+                                        "snapshot contains conflicting event identities"
+                                    )
+                                continue
+                            seen[event_id] = identity
+                            captured.append(row)
+            except PhysicalTrajectoryError:
+                raise
+            except Exception as exc:
+                raise PhysicalTrajectoryError(
+                    f"unreadable event snapshot: {pq}"
+                ) from exc
+            finally:
+                if snapshot_fd >= 0:
+                    os.close(snapshot_fd)
+
+        tail_fd = _open_regular_event_file(jl)
+        if tail_fd is not None:
+            with os.fdopen(tail_fd, "rb") as stream:
+                for line_number, raw_line in enumerate(stream, start=1):
+                    if not raw_line.endswith(b"\n"):
+                        break
+                    try:
+                        row = json.loads(raw_line)
+                    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+                        raise PhysicalTrajectoryError(
+                            f"malformed completed JSONL record at {jl}:{line_number}"
+                        ) from exc
+                    if not isinstance(row, dict):
+                        raise PhysicalTrajectoryError(
+                            f"non-object JSONL record at {jl}:{line_number}"
+                        )
+                    event_id = row.get("event_id")
+                    if not isinstance(event_id, str) or not event_id:
+                        raise PhysicalTrajectoryError(
+                            f"event missing event_id at {jl}:{line_number}"
+                        )
+                    identity = _physical_identity(row)
+                    prior = seen.get(event_id)
+                    if prior is not None:
+                        if prior != identity:
+                            raise PhysicalTrajectoryError(
+                                "event identity conflicts between snapshot and tail"
+                            )
+                        continue
+                    seen[event_id] = identity
+                    captured.append(row)
+    yield from captured
 
 
 def action_counts(

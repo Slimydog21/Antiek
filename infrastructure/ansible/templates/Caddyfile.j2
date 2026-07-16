@@ -50,10 +50,18 @@
     # serves JSON; SPA shows a UI page at the same URL. Disambiguate
     # by Accept header: browser top-level navigation includes
     # `text/html`; fetch / XHR / WS / asset loads don't.
-    @spa_browser_nav header Accept *text/html*
+    #
+    # `/auth/*` is deliberately excluded. Magic-link callbacks ARE browser
+    # navigations, but they must reach FastAPI to verify the token and mint the
+    # session cookie. Serving index.html for `/auth/callback` leaves the token
+    # in the address bar and sends the operator straight back to Login.
+    @spa_browser_nav {
+        header Accept *text/html*
+        not path /auth/*
+    }
 
     route {
-        # 1. Browser top-level navigation → SPA, regardless of path.
+        # 1. Browser top-level navigation → SPA, except the auth control plane.
         #    This is what lets typing /investigations/<uuid> in the
         #    address bar load the React route — without this rule
         #    the request matches @api_routes and uvicorn's auth
