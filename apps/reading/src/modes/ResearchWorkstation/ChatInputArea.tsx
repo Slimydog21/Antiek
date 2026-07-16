@@ -5,6 +5,7 @@ import LemonButton from "../../components/lemon/LemonButton";
 import LemonTextarea from "../../components/lemon/LemonTextarea";
 import { track, trackException } from "../../lib/analytics";
 import { startInvestigation } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Bottom-of-center chat input. Submit on Cmd/Ctrl+Enter; click "Ask"
