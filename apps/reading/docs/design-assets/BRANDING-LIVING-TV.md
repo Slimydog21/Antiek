@@ -84,6 +84,21 @@ UI-consumed invent strips (not inventory-only):
 - Residual doors via `SessionBrandChrome` — Trust, Billing, Pricing, Map,
   Stats, Replay, Federation, Loop3, Payouts, SkillRules, Interviews, Multimedia
 
+## Product-door emote map (expanded 2026-07-16)
+
+| Product id family | Emote |
+|---|---|
+| research, library, investigations, documents, notebooks | thinking |
+| read, speak, arcade, sources | curious |
+| write, home, create | happy |
+| more, settings, billing, pricing | noted |
+| midnight-oil / midnight_oil | sleeping |
+| (other) | hit |
+
+DRW glass-box densify: ComposeBar CRT invent + PlanEditor living-TV strip;
+cascade create → `piece_started`; plan approve → `highlight`; launch →
+`notifyResearchStarted` / deep_research_start.
+
 ## Ambient living-TV heartbeat (2026-07-16)
 
 `installLivingTvAmbient` (wired in `PenguinMascot`) emits a soft `idle` →

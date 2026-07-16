@@ -71,17 +71,28 @@ function defaultResolveTarget(detail: ProductActivateDetail): Element | null {
 export function emoteForProductDoor(productId: string): EmoteKind {
   switch (productId) {
     case "research":
+    case "library":
+    case "investigations":
+    case "documents":
+    case "notebooks":
       return "thinking";
     case "read":
+    case "speak":
+    case "arcade":
+    case "sources":
       return "curious";
     case "write":
-      return "happy";
-    case "speak":
-      return "curious";
     case "home":
+    case "create":
       return "happy";
     case "more":
+    case "settings":
+    case "billing":
+    case "pricing":
       return "noted";
+    case "midnight-oil":
+    case "midnight_oil":
+      return "sleeping";
     default:
       return "hit";
   }

@@ -45,6 +45,8 @@ import Canvas from "./Canvas/Canvas";
 import BlockDetail from "./BlockDetail";
 import { useResearchSession } from "./useResearchSession";
 import { useWernerResearchReactions } from "./useWernerResearchReactions";
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_crt_living_tv_session_v1.webp";
 import { emitWernerExperience, notifyResearchStarted } from "../../werner";
 import { wernerResearchWaitArcadeEnabled } from "../../arcade/waitArcadeFlag";
 import { usePrefersReducedMotion } from "../../workspace/usePrefersReducedMotion";
@@ -101,6 +103,8 @@ function Workspace() {
       track("deep_research_cascade_created", {
         problem_length: q.length,
       });
+      // Living-TV: starting a cascade plan is happy craft (piece started).
+      emitWernerExperience("piece_started");
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: false });
       setSessionId(null);
     });
@@ -118,6 +122,8 @@ function Workspace() {
       await approvePlan(plan.rootNodeId);
       const r = await getPlan(plan.rootNodeId); // refresh tree + launchable
       track("deep_research_plan_approved");
+      // Living-TV: approving the cascade is a craft beat (curious glance).
+      emitWernerExperience("highlight");
       setPlan({ rootNodeId: r.root_node_id, tree: r.tree, launchable: r.launchable });
     });
 
@@ -173,21 +179,57 @@ function ComposeBar({
   onCreate: () => void;
 }) {
   return (
-    <form
-      className="flex gap-2"
-      onSubmit={(e) => { e.preventDefault(); onCreate(); }}
-    >
-      <input
-        className="min-w-0 flex-1 rounded-md border-2 border-sun bg-ice-0 px-3 py-2 text-sm text-ink dark:bg-charcoal-2 dark:text-bright"
-        placeholder="State one problem — it cascades into focused, steerable deep researches…"
-        value={problem}
-        onChange={(e) => setProblem(e.target.value)}
-        aria-label="research problem"
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <img
+          src={thinkingArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="drw-compose-werner-brand"
+          className="h-9 w-9 shrink-0 object-contain"
+        />
+        <div className="min-w-0">
+          <h1 className="text-sm font-semibold text-ink dark:text-bright">
+            Deep research cascade
+          </h1>
+          <p className="text-[11px] text-shadow-1 dark:text-moonlight">
+            One problem → glass-box plan → N steerable researches. Antiek is the
+            home of the penguin.
+          </p>
+        </div>
+      </div>
+      <img
+        src={livingTvArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="drw-compose-living-tv-art"
+        className="h-14 w-full max-w-xl rounded-md object-cover object-center"
+        loading="lazy"
+        decoding="async"
       />
-      <LemonButton variant="primary" type="submit" disabled={busy || !problem.trim()}>
-        Cascade
-      </LemonButton>
-    </form>
+      <form
+        className="flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onCreate();
+        }}
+      >
+        <input
+          className="min-w-0 flex-1 rounded-md border-2 border-sun bg-ice-0 px-3 py-2 text-sm text-ink dark:bg-charcoal-2 dark:text-bright"
+          placeholder="State one problem — it cascades into focused, steerable deep researches…"
+          value={problem}
+          onChange={(e) => setProblem(e.target.value)}
+          aria-label="research problem"
+        />
+        <LemonButton
+          variant="primary"
+          type="submit"
+          disabled={busy || !problem.trim()}
+        >
+          Cascade
+        </LemonButton>
+      </form>
+    </div>
   );
 }
 
@@ -237,10 +279,23 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   // connecting state rather than a bare "0 researches".
   if (session.loading && session.researches.length === 0) {
     return (
-      <div className="flex flex-col items-center gap-2 py-8" role="status" aria-live="polite">
-        <p className="text-sm font-serif text-ink dark:text-bright">Connecting to your researches…</p>
+      <div
+        className="flex flex-col items-center gap-2 py-8"
+        role="status"
+        aria-live="polite"
+      >
+        <img
+          src={thinkingArt}
+          alt=""
+          aria-hidden="true"
+          data-testid="drw-connecting-werner-brand"
+          className="h-10 w-10 object-contain"
+        />
+        <p className="text-sm font-serif text-ink dark:text-bright">
+          Connecting to your researches…
+        </p>
         <p className="text-[11px] font-mono text-shadow-1 dark:text-moonlight">
-          they’re starting in parallel
+          they&rsquo;re starting in parallel
         </p>
       </div>
     );

@@ -11,6 +11,8 @@
 
 import { useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import LemonButton from "../../components/lemon/LemonButton";
 import type { PlanNode, PlanTree } from "../../api/research";
 
@@ -31,15 +33,28 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
   const leafCount = countLeaves(tree.root);
   return (
     <div className="flex h-full flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <div>
-          <h2 className="text-sm font-semibold text-ink dark:text-bright">Cascade plan</h2>
-          <p className="text-[11px] text-shadow-1 dark:text-moonlight">
-            {leafCount} focused {leafCount === 1 ? "research" : "researches"} ·{" "}
-            {tree.approval.state === "approved" ? "approved" : "draft (edit, then approve)"}
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="plan-editor-werner-brand"
+            className="mt-0.5 h-8 w-8 shrink-0 object-contain"
+          />
+          <div>
+            <h2 className="text-sm font-semibold text-ink dark:text-bright">
+              Cascade plan
+            </h2>
+            <p className="text-[11px] text-shadow-1 dark:text-moonlight">
+              {leafCount} focused {leafCount === 1 ? "research" : "researches"} ·{" "}
+              {tree.approval.state === "approved"
+                ? "approved"
+                : "draft (edit, then approve)"}
+            </p>
+          </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex shrink-0 gap-2">
           <LemonButton size="sm" variant="secondary" disabled={busy} onClick={onApprove}>
             {tree.approval.state === "approved" ? "Re-approve" : "Approve"}
           </LemonButton>
@@ -54,6 +69,15 @@ export default function PlanEditor({ tree, launchable, busy, onEdit, onApprove, 
           </LemonButton>
         </div>
       </div>
+      <img
+        src={livingTvArt}
+        alt=""
+        aria-hidden="true"
+        data-testid="plan-editor-living-tv-art"
+        className="h-14 w-full max-w-lg rounded-md object-cover object-center"
+        loading="lazy"
+        decoding="async"
+      />
 
       <div className="flex-1 overflow-auto rounded-md border-2 border-sun bg-ice-0 p-2 dark:bg-charcoal-2">
         <PlanNodeRow node={tree.root} depth={0} isRoot busy={busy} onEdit={onEdit} />
