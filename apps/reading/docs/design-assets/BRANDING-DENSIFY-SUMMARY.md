@@ -226,4 +226,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 knowledge twin cursor | `f1f411fdd` | KnowledgePanel invent |
 | Imagine invent polish v2 antiek-bench celebrate | `125880b58` | AntiekBenchPanel product invent |
 | Imagine invent polish v2 CRT igloo cursor TV | `348a9571a` | LoadingGameHost default living-TV invent |
-| Explicit invent reframe class densify | (next tip) | stamp antiek-living-tv-invent on residual product invent doors + LGH; densify tests |
+| Explicit invent reframe class densify | `359f415c1` | stamp antiek-living-tv-invent on residual product invent doors + LGH; densify tests |
