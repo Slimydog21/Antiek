@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 78 - Durable Paid Fallback Receipt History</title>
+  <style>
+    body { margin: 28px auto; max-width: 980px; padding: 0 16px; background: #fffdf7; color: #171717; font: 15px/1.5 system-ui; }
+    h1, h2 { letter-spacing: 0; }
+    h2 { border-bottom: 2px solid #171717; }
+    code { background: #f0eee6; padding: 1px 4px; }
+    .bar { border: 2px solid #171717; border-left: 9px solid #e6542f; padding: 12px; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Cycle 78: Durable Paid Fallback Receipt History</h1>
+  <p><strong>Status:</strong> executable. <strong>Parent:</strong> <a href="operator-visible-fallback-plan.html">Cycle 77 operator-visible fallback plan</a>.</p>
+
+  <section>
+    <h2>Outcome</h2>
+    <p class="bar">Persist one immutable, owner-bound fallback-chain manifest before the first paid hold can exist, then project recent chain history by joining every declared route to its exact deterministic hold identity. The projection is read-only evidence, never execution authority.</p>
+  </section>
+
+  <section>
+    <h2>Manifest authority</h2>
+    <ul>
+      <li>The gateway preflights every route before registration. Registration records one to sixteen unique ordered routes in the same transaction as an immutable command receipt.</li>
+      <li>The chain identity is stable for one run and logical operation. Reusing it with a changed operation, route order, provider, model, seam, operation, projection digest, rate snapshot, projected maximum, reservation key, or provider idempotency key is an idempotency conflict.</li>
+      <li>The manifest stores digests and routing/accounting metadata only. It never stores prompts, operation payloads, provider evidence, credentials, endpoints, or API keys.</li>
+      <li>Each route declares the exact reservation identity that the existing gateway will use. Reads never infer fallback membership from timestamps or opaque hash similarity.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Durability and ordering</h2>
+    <ul>
+      <li>A crash after manifest commit and before reserve yields an honest unattempted chain. Replay uses the same manifest and may continue.</li>
+      <li>A crash after reserve is visible through the exact manifest-to-hold join. Existing hold recovery semantics remain authoritative.</li>
+      <li>Later attempts may exist only when all earlier attempts are authoritatively released. At most one attempt may be settled, and no later attempt may exist after settlement.</li>
+      <li>Concurrent equivalent registration converges. Concurrent changed registration conflicts before an additional provider send.</li>
+      <li>Manifest and route tables are immutable and non-deletable under the existing SQLite host-trust boundary. Reads recompute canonical manifests and validate every joined hold field.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Read model</h2>
+    <p>Each route has exactly one state: <code>unattempted</code>, <code>reserved_not_sent</code>, <code>dispatch_possible</code>, <code>unknown</code>, <code>released</code>, or <code>settled</code>. A settled route exposes actual cents, resolution time, settlement evidence SHA-256, and settlement intent SHA-256, but never evidence JSON or command keys.</p>
+    <p>Each chain has one derived outcome: <code>unattempted</code>, <code>in_progress</code>, <code>ambiguous</code>, <code>settled</code>, or <code>exhausted</code>. Any malformed manifest, missing/extra route, mismatched hold, impossible order, duplicate settlement, or receipt conflict fails value-free as an integrity error.</p>
+    <p>History is owner-scoped, newest first, bounded to at most 50 rows, and keyset-paginated by immutable creation time plus chain identity. A cursor can select a position but cannot override the owner predicate.</p>
+  </section>
+
+  <section>
+    <h2>Operator surface</h2>
+    <ul>
+      <li><code>GET /settings/fallback-receipts</code> reads the authenticated request identity and never accepts an owner ID.</li>
+      <li>The Decision tree presents recent execution history separately from the advisory preview, including ordered route states, projected/actual cents, and truncated receipt digests.</li>
+      <li>Unknown, unavailable, empty, and integrity-conflict states remain distinct. Failure to load history does not disable model comparison or the advisory preview.</li>
+      <li>No button, approval token, retry control, hold identifier, provider idempotency key, raw evidence, or dispatch input is exposed.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Acceptance evidence</h2>
+    <ul>
+      <li>Fresh-schema and v7-to-v8 migration tests prove immutable tables, indexes, triggers, rollback on injected migration failure, and legacy ledger replay.</li>
+      <li>Gateway tests prove manifest-before-hold, primary settlement, released fallback settlement, exhaustion, ambiguity, crash at every manifest/reserve boundary, equivalent replay, changed-chain conflict, and concurrent convergence.</li>
+      <li>Ledger read tests refute cross-owner reads, malformed canonical JSON/hash, route cardinality/index corruption, hold substitution, field substitution, impossible ordering, duplicate settlement, and receipt-evidence mutation.</li>
+      <li>API and frontend tests prove value-free errors, bounded pagination, strict client validation, independent loading, accessible empty/error/history states, and no execution controls.</li>
+      <li>Adjacent gateway, ledger, Settings, composer projection, typecheck, build, Ruff, security, and hostile-review gates remain green.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Out of scope</h2>
+    <p>No provider qualification, paid consumer mounting, approval, dispatch route, reconciliation action, retry, settlement mutation, evidence-body serving, invoice claim, refund accounting, prompt retention, merge, or deployment.</p>
+  </section>
+
+  <section>
+    <h2>Five-values rigor</h2>
+    <p>Truth comes from exact persisted identities, fairness keeps provider evidence private, rigor rejects impossible histories, diligence covers crash and migration boundaries, and defensibility keeps advisory planning separate from execution receipts.</p>
+  </section>
+
+  <section id="harness-hint" data-pattern="perspective-diverse-verify">
+    <h2>Harness hint</h2>
+    <p>Use separate storage/accounting, privacy/API, and frontend refuters. A reviewer must attempt to manufacture a plausible settled history from corrupted or cross-owner rows.</p>
+  </section>
+</main>
+</body>
+</html>

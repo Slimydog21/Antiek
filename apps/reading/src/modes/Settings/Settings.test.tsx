@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import {
+  fetchFallbackReceiptHistory,
   fetchModelDecision,
   type ModelDecisionResponse,
 } from "../../api/settings";
@@ -48,6 +49,11 @@ const budget = {
 vi.mock("../../api/settings", () => ({
   fetchSettingsModels: vi.fn(async () => models),
   fetchSettingsBudget: vi.fn(async () => budget),
+  fetchFallbackReceiptHistory: vi.fn(async () => ({
+    authority: "read_only_fallback_receipt_history",
+    next_cursor: null,
+    items: [],
+  })),
   fetchModelDecision: vi.fn(async () => ({
     authority: "advisory",
     task: "deep_research",
@@ -220,6 +226,49 @@ describe("Settings SPR-01", () => {
       seam_id: "user.prompt.generate",
       operation: "generate",
     });
+  });
+
+  it("renders durable fallback receipts independently from model comparison", async () => {
+    vi.mocked(fetchFallbackReceiptHistory).mockResolvedValueOnce({
+      authority: "read_only_fallback_receipt_history",
+      next_cursor: null,
+      items: [{
+        chain_id: "chain-1",
+        manifest_sha256: "a".repeat(64),
+        outcome: "settled",
+        created_at: "2026-07-16T10:00:00Z",
+        routes: [{
+          fallback_index: 0,
+          provider: "zai",
+          model: "glm-5.2",
+          seam_id: "user.prompt.generate",
+          operation: "generate",
+          projected_max_cents: 20,
+          state: "settled",
+          actual_cents: 12,
+          resolved_at: "2026-07-16T10:01:00Z",
+          settlement_evidence_sha256: "b".repeat(64),
+          settlement_intent_sha256: "c".repeat(64),
+        }],
+      }],
+    });
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    expect(await screen.findByText("Recent fallback executions")).toBeTruthy();
+    expect(await screen.findByText("glm-5.2")).toBeTruthy();
+    expect(screen.getByText(/actual \$0\.12/)).toBeTruthy();
+    expect(screen.getByText("Receipt bbbbbbbbbb")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /execute|retry|run/i })).toBeNull();
+  });
+
+  it("preserves decision controls when receipt history is unavailable", async () => {
+    vi.mocked(fetchFallbackReceiptHistory).mockRejectedValueOnce(new Error("down"));
+    const user = userEvent.setup();
+    render(<Settings />);
+    await user.click(screen.getByRole("tab", { name: "Decision tree" }));
+    expect(await screen.findByText("Execution receipts are unavailable.")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Compare models" })).toBeTruthy();
   });
 
   it("preserves model comparison when the supplemental fallback preview fails", async () => {

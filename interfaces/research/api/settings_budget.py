@@ -14,15 +14,18 @@ Honesty rules (load-bearing):
 
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import math
 import os
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from orchestration.continuous.budget import (
@@ -36,6 +39,12 @@ from substrate.dispatch.advisory_decision import (
     DecisionCandidate,
     DecisionTask,
     rank_model_candidates,
+)
+from substrate.research_spend import (
+    FallbackHistoryCursor,
+    LedgerIntegrityError,
+    ResearchSpendLedger,
+    default_research_spend_db_path,
 )
 
 settings_router = APIRouter(prefix="/settings", tags=["settings"])
@@ -103,6 +112,43 @@ class PromptCostEstimateResponse(BaseModel):
     tier: str | None = None
     provider: str | None = None
     model: str | None = None
+
+
+class FallbackReceiptRouteResponse(BaseModel):
+    fallback_index: int = Field(ge=0, le=15)
+    provider: str
+    model: str
+    seam_id: str
+    operation: str
+    projected_max_cents: int = Field(ge=1)
+    state: Literal[
+        "unattempted",
+        "reserved_not_sent",
+        "dispatch_possible",
+        "unknown",
+        "released",
+        "settled",
+    ]
+    actual_cents: int | None = Field(default=None, ge=0)
+    resolved_at: str | None = None
+    settlement_evidence_sha256: str | None = None
+    settlement_intent_sha256: str | None = None
+
+
+class FallbackReceiptChainResponse(BaseModel):
+    chain_id: str
+    manifest_sha256: str
+    outcome: Literal["unattempted", "in_progress", "ambiguous", "settled", "exhausted"]
+    routes: list[FallbackReceiptRouteResponse] = Field(min_length=1, max_length=16)
+    created_at: str
+
+
+class FallbackReceiptHistoryResponse(BaseModel):
+    authority: Literal["read_only_fallback_receipt_history"] = (
+        "read_only_fallback_receipt_history"
+    )
+    items: list[FallbackReceiptChainResponse] = Field(max_length=50)
+    next_cursor: str | None = None
 
 
 class BenchmarkMeasurement(BaseModel):
@@ -761,6 +807,90 @@ def post_prompt_cost_estimate(req: PromptCostEstimateRequest) -> PromptCostEstim
 @settings_router.post("/model-decision", response_model=ModelDecisionResponse)
 def post_model_decision(request: Request, req: ModelDecisionRequest) -> ModelDecisionResponse:
     return build_model_decision(request, req)
+
+
+def _history_cursor(value: str | None) -> FallbackHistoryCursor | None:
+    if value is None:
+        return None
+    if not value or len(value) > 1024:
+        raise HTTPException(status_code=422, detail="fallback history cursor is invalid")
+    try:
+        padding = "=" * (-len(value) % 4)
+        raw = base64.b64decode(value + padding, altchars=b"-_", validate=True)
+        if len(raw) > 512:
+            raise ValueError("cursor exceeds its bound")
+        payload = json.loads(raw)
+        if type(payload) is not dict or set(payload) != {"created_at", "chain_id"}:
+            raise ValueError("cursor shape differs")
+        if type(payload["created_at"]) is not str or type(payload["chain_id"]) is not str:
+            raise TypeError("cursor values differ")
+        return FallbackHistoryCursor(payload["created_at"], payload["chain_id"])
+    except (binascii.Error, UnicodeDecodeError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        raise HTTPException(status_code=422, detail="fallback history cursor is invalid") from exc
+
+
+def _encode_history_cursor(cursor: FallbackHistoryCursor | None) -> str | None:
+    if cursor is None:
+        return None
+    raw = json.dumps(
+        {"chain_id": cursor.chain_id, "created_at": cursor.created_at},
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
+
+
+@settings_router.get(
+    "/fallback-receipts",
+    response_model=FallbackReceiptHistoryResponse,
+)
+def get_fallback_receipts(
+    request: Request,
+    limit: int = Query(default=20, ge=1, le=50),
+    cursor: str | None = Query(default=None, max_length=1024),
+) -> FallbackReceiptHistoryResponse:
+    owner_id = getattr(request.state, "user_id", None)
+    if not isinstance(owner_id, str) or not owner_id.strip():
+        raise HTTPException(status_code=401, detail="operator identity is required")
+    try:
+        page = ResearchSpendLedger(default_research_spend_db_path()).fallback_history(
+            owner_id.strip(), limit=limit, cursor=_history_cursor(cursor)
+        )
+    except HTTPException:
+        raise
+    except (LedgerIntegrityError, sqlite3.Error, OSError, ValueError, TypeError) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="fallback receipt history is unavailable",
+        ) from exc
+    return FallbackReceiptHistoryResponse(
+        items=[
+            FallbackReceiptChainResponse(
+                chain_id=chain.chain_id,
+                manifest_sha256=chain.manifest_sha256,
+                outcome=chain.outcome.value,
+                routes=[
+                    FallbackReceiptRouteResponse(
+                        fallback_index=route.fallback_index,
+                        provider=route.provider,
+                        model=route.model,
+                        seam_id=route.seam_id,
+                        operation=route.operation,
+                        projected_max_cents=route.projected_max_cents,
+                        state=route.state.value,
+                        actual_cents=route.actual_cents,
+                        resolved_at=route.resolved_at,
+                        settlement_evidence_sha256=route.settlement_evidence_sha256,
+                        settlement_intent_sha256=route.settlement_intent_sha256,
+                    )
+                    for route in chain.routes
+                ],
+                created_at=chain.created_at,
+            )
+            for chain in page.items
+        ],
+        next_cursor=_encode_history_cursor(page.next_cursor),
+    )
 
 
 def register_settings_budget_routes(app: FastAPI) -> None:

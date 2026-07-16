@@ -17,6 +17,8 @@ from enum import StrEnum
 from typing import Any, Generic, Protocol, TypeVar
 
 from substrate.research_spend import (
+    FallbackChainManifest,
+    FallbackRouteManifest,
     IdempotencyConflict,
     InvalidTransition,
     PaidHoldIntent,
@@ -317,10 +319,62 @@ class ResearchProviderGateway:
                 for route, projection in zip(routes, projections, strict=True)
             ),
         }
+        operation_digest = canonical_digest(chain_identity)
+        chain_id = deterministic_key(
+            "research-fallback-chain", binding.run_id, logical_operation_id
+        )
+        route_intents: list[PaidHoldIntent] = []
+        route_manifests: list[FallbackRouteManifest] = []
+        for index, (route, projection) in enumerate(zip(routes, projections, strict=True)):
+            identity = (binding.run_id, logical_operation_id, f"fallback:{index}")
+            reservation_key = deterministic_key("research-reservation", *identity)
+            provider_key = deterministic_key(
+                "research-provider", route.adapter.provider, route.adapter.model, *identity
+            )
+            intent = PaidHoldIntent(
+                reservation_key=reservation_key,
+                seam_id=projection.seam_id,
+                provider=route.adapter.provider,
+                model=route.adapter.model,
+                operation=projection.operation,
+                operation_digest=operation_digest,
+                projection_digest=canonical_digest(projection),
+                rate_snapshot=projection.rate_snapshot,
+                provider_idempotency_key=provider_key,
+            )
+            route_intents.append(intent)
+            route_manifests.append(
+                FallbackRouteManifest(
+                    fallback_index=index,
+                    seam_id=intent.seam_id,
+                    provider=intent.provider,
+                    model=intent.model,
+                    operation=intent.operation,
+                    operation_digest=intent.operation_digest,
+                    projection_digest=intent.projection_digest,
+                    rate_snapshot=intent.rate_snapshot,
+                    projected_max_cents=projection.reservation_cents,
+                    reservation_key=intent.reservation_key,
+                    provider_idempotency_key=intent.provider_idempotency_key,
+                )
+            )
+        manifest = FallbackChainManifest(
+            chain_id=chain_id,
+            logical_operation_id=logical_operation_id,
+            operation_digest=operation_digest,
+            routes=tuple(route_manifests),
+        )
+        self.ledger.register_fallback_manifest(
+            deterministic_key("research-fallback-manifest-command", chain_id),
+            binding,
+            manifest,
+        )
 
         attempts: list[PaidFallbackAttempt] = []
         requested_provider, requested_model = route_keys[0]
-        for index, (route, projection) in enumerate(zip(routes, projections, strict=True)):
+        for index, (route, projection, route_intent) in enumerate(
+            zip(routes, projections, route_intents, strict=True)
+        ):
             try:
                 result = self._dispatch_paid_projected(
                     binding,
@@ -334,6 +388,7 @@ class ResearchProviderGateway:
                         logical_operation_id,
                         f"fallback:{index}",
                     ),
+                    precomputed_intent=route_intent,
                     adapter=route.adapter,
                 )
             except ProviderOutcomeUnknown as exc:
@@ -389,6 +444,7 @@ class ResearchProviderGateway:
         operation: object,
         identity_payload: object | None = None,
         reservation_identity: tuple[str, ...] | None = None,
+        precomputed_intent: PaidHoldIntent | None = None,
         adapter: HardCeilingProviderAdapter[T],
     ) -> ProviderDispatchResult[T]:
         self._require_eligible(projection, projection_request, adapter)
@@ -405,7 +461,7 @@ class ResearchProviderGateway:
         provider_key = deterministic_key(
             "research-provider", adapter.provider, adapter.model, *identity
         )
-        intent = PaidHoldIntent(
+        derived_intent = PaidHoldIntent(
             reservation_key=reservation_key,
             seam_id=projection.seam_id,
             provider=adapter.provider,
@@ -416,6 +472,9 @@ class ResearchProviderGateway:
             rate_snapshot=projection.rate_snapshot,
             provider_idempotency_key=provider_key,
         )
+        intent = precomputed_intent or derived_intent
+        if precomputed_intent is not None and precomputed_intent != derived_intent:
+            raise RuntimeError("precomputed fallback route identity drifted before dispatch")
         hold = self.ledger.reserve_paid(
             deterministic_key("research-reserve-command", reservation_key),
             binding,
