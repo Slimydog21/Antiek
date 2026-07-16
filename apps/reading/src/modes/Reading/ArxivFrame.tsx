@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { LemonButton } from "../../components/lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * ArxivFrame — the T2/T3 link-back surface (Read SPR-05 M2).
@@ -130,7 +131,11 @@ export default function ArxivFrame({
         <div>
           <LemonButton
             type="button"
-            onClick={() => window.open(canonicalUrl, "_blank", "noreferrer,noopener")}
+            onClick={() => {
+              // Living-TV: arXiv link-back is a curious highlight glance.
+              emitWernerExperience("highlight");
+              window.open(canonicalUrl, "_blank", "noreferrer,noopener");
+            }}
           >
             Read on arXiv ↗
           </LemonButton>
