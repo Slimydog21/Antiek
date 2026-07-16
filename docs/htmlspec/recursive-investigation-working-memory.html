@@ -31,7 +31,7 @@
       <li>Read only the triggering investigation's trajectory and cut it at the exact current <code>distillation.requested</code> event. Events appended after that causal boundary are invisible.</li>
       <li>Fold immutable <code>note.emerged</code> snapshots. Fold <code>question.identified</code> and remove questions resolved before the cutoff.</li>
       <li>Do not fold <code>note.refined</code>: the current event is an audit attempt, uses a different graph-node identity, and does not record whether the refinement won concurrency. Authoritative refined-note memory is deferred until that outcome is represented durably.</li>
-      <li>Select a fixed recent suffix, render it in chronological order, cap every item and aggregate bytes, and derive the layer source digest from the exact rendered bytes.</li>
+      <li>Select a fixed recent suffix, render it as one canonical JSON document in chronological order, cap every item and aggregate bytes, and derive the layer source digest from the exact rendered bytes.</li>
       <li>Insert one session-class working-memory layer immediately before the current-highlight session layer. It is labeled untrusted hypothesis memory, never source evidence or instruction authority.</li>
       <li>If no usable memory exists, preserve the existing three-layer prompt byte-for-byte.</li>
     </ol>
@@ -39,10 +39,10 @@
   <section>
     <h2>Authority boundaries</h2>
     <table><thead><tr><th>Concern</th><th>Required rule</th></tr></thead><tbody>
-      <tr><td>Ownership and scope</td><td>No caller supplies an investigation or owner to memory assembly. The handler uses the already validated triggering event's investigation and reads only that trajectory.</td></tr>
+      <tr><td>Ownership and scope</td><td>The current deployment is authenticated but single-operator. Memory is isolated by the triggering event's investigation ID and reads only that trajectory. This cycle does not claim multi-owner isolation because no durable investigation-to-owner authority exists.</td></tr>
       <tr><td>Causality</td><td>The cutoff event must exist exactly once in the physical durable trajectory. Later notes, concurrent requests, and later refinements cannot enter this prompt.</td></tr>
       <tr><td>Integrity</td><td>Malformed completed event records, conflicting duplicate event IDs, changed duplicate note identities, resolution of an unknown question, malformed relevant payloads, or cross-investigation rows fail memory assembly closed before provider dispatch.</td></tr>
-      <tr><td>Prompt safety</td><td>Memory is explicitly model/user-authored and untrusted. The model may use it to orient or challenge itself, but must not treat it as source evidence, system instruction, or support for a factual claim.</td></tr>
+      <tr><td>Prompt safety</td><td>Memory is one canonical JSON document with a fixed schema and trust label. Model/user text occupies escaped JSON string values and cannot create sibling records or context-pack headings. It remains untrusted and may orient or challenge the model, but is not source evidence or instruction authority.</td></tr>
       <tr><td>Spend</td><td>No additional dispatch, provider, embedding, graph query, reservation, or model call is introduced. Existing explicit dispatch remains the only paid boundary.</td></tr>
       <tr><td>Audit</td><td>The context-pack event records a source containing a lowercase SHA-256 digest and item count. The digest covers the exact rendered memory content the model saw.</td></tr>
     </tbody></table>
@@ -54,6 +54,7 @@
       <li>Each text is deterministically capped at 1,200 UTF-8 bytes without splitting code points and with an explicit truncation marker; total rendered memory is capped by UTF-8 bytes before context-pack token budgeting.</li>
       <li>A fixed safe-alphabet identity digest and confidence are included for notes; an identity digest is included for questions. Raw identities, owner, document path, provider, model, source-event list, and unrelated event payloads are omitted.</li>
       <li>Stable unchanged trajectories yield byte-identical memory and source digest.</li>
+      <li>NUL and other disallowed C0 controls fail closed. Quotes, backslashes, newlines, Unicode, pseudo-tags, JSON punctuation, and instruction-like text round-trip as one escaped item value.</li>
     </ul>
   </section>
   <section>
@@ -71,7 +72,7 @@
   </section>
   <section>
     <h2>Non-goals</h2>
-    <p>No cross-investigation reuse, owner-wide memory, embedding retrieval, graph promotion, automatic note acceptance, prompt editing UI, model routing, provider qualification, paid fallback, or new spend approval. Cross-investigation compounding requires owner-bearing graph authority or an owner-scoped verified twin-note source; this cycle does not manufacture that guarantee.</p>
+    <p>No cross-investigation reuse, owner-wide or multi-owner memory guarantee, embedding retrieval, graph promotion, automatic note acceptance, prompt editing UI, model routing, provider qualification, paid fallback, dispatch replay authority, or new spend approval. Cross-investigation compounding requires owner-bearing graph authority or an owner-scoped verified twin-note source; this cycle does not manufacture that guarantee. The existing distillation handler's crash-safe paid replay gap is specified separately and is not hidden by an in-memory lock or event scan.</p>
   </section>
   <section id="harness-hint" data-harness-pattern="causal-event-fold" data-harness-fanout-unit="memory reducer; wrestling integration; prompt-injection critic" data-harness-sharpen-floor="2">
     <h2>Harness hint</h2><p>Attack future-event leakage, cross-investigation substitution, duplicate identities, superseded refinement attempts, unknown resolutions, oversized text, prompt-instruction confusion, ordering drift, and a second hidden dispatch.</p>
