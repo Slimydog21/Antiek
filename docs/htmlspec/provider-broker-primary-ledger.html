@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BRK-02: Provider Broker Primary Ledger</title>
+  <style>
+    :root { font-family: system-ui, sans-serif; color-scheme: light; }
+    body { margin: 0; color: #151515; background: #fffdf6; }
+    main { max-width: 980px; margin: auto; padding: 32px 20px 64px; }
+    section { border-top: 2px solid #151515; padding: 18px 0; }
+    h1, h2 { line-height: 1.15; }
+    code { color: #1d4aff; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border: 2px solid #151515; padding: 8px; text-align: left; vertical-align: top; }
+    th { background: #f9bd2b; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>BRK-02: Provider broker primary ledger</h1>
+  <p><strong>Status:</strong> Executed persistence boundary. It performs no provider transport and qualifies no route.</p>
+
+  <section id="spec-lineage" data-spec-depth="1" data-parent-spec="antiek-durable-provider-broker.html">
+    <h2>Spec lineage</h2>
+    <p>Parent: <a href="antiek-durable-provider-broker.html">Antiek Durable Provider Broker</a>. Protocol parent: <a href="provider-broker-protocol.html">BRK-01 canonical authority</a>.</p>
+    <ul class="child-specs"></ul>
+  </section>
+
+  <section>
+    <h2>Outcome</h2>
+    <p>One primary SQLite ledger durably accepts canonical BRK-01 authorization before any future upstream boundary, serializes create and lookup on the same process-crossing tenant/key lock, executes version-conditional commands, and distinguishes authoritative missing from every unavailable or corrupt condition.</p>
+  </section>
+
+  <section>
+    <h2>Five-values rigor</h2>
+    <table>
+      <thead><tr><th>Value</th><th>BRK-02 obligation</th></tr></thead>
+      <tbody>
+        <tr><td>Honesty</td><td>Primary persistence is not signature verification, provider qualification, worker recovery, or proof that an upstream request ran.</td></tr>
+        <tr><td>Fairness</td><td>Client charge is capped at approved cents; a larger assessed provider charge is recorded separately as broker loss.</td></tr>
+        <tr><td>Rigor</td><td>Exact authorization and command bytes, resulting snapshots, state sequence, versions, identities, and evidence are canonical and hash-bound.</td></tr>
+        <tr><td>Diligence</td><td>Lock, database, migration, integrity, stale-version, substitution, and malformed-state failures all fail closed.</td></tr>
+        <tr><td>Defensibility</td><td>Database triggers enforce append-only commands/audit and terminal immutability; the verifier independently recomputes protocol and history authority.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Transactional contract</h2>
+    <ol>
+      <li><code>ensure_schema</code> applies schema version 1 atomically under a global migration lock and refuses unknown versions or missing immutability triggers.</li>
+      <li><code>authorize</code> accepts only currently valid canonical authority. Exact committed bytes replay to the same operation even after expiry; changed key bytes conflict; one tenant cannot bind one operation digest to multiple keys.</li>
+      <li><code>lookup</code> can return <code>authoritative_missing</code> only after acquiring the same tenant/key file lock as create, opening the primary database in read-write mode, beginning <code>IMMEDIATE</code>, and passing exact schema-version plus trigger-definition checks.</li>
+      <li>Lock timeout/failure, absent database, unknown schema, transaction failure, or corrupt authority raises unavailable/integrity and never returns missing.</li>
+      <li>Every transition exact-matches command ID and canonical bytes, expected version, closed source/target state, immutable attempt identity, and state-specific evidence. Delayed exact replay returns its originally committed historical result.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>State and money authority</h2>
+    <table>
+      <thead><tr><th>Target</th><th>Required evidence</th><th>Durable effect</th></tr></thead>
+      <tbody>
+        <tr><td><code>dispatch_possible</code></td><td>New immutable attempt ID only.</td><td>Monotonic send marker committed before future transport.</td></tr>
+        <tr><td><code>upstream_bound</code></td><td>Identity evidence digest only.</td><td>Preserves attempt; proves an upstream identity is known.</td></tr>
+        <tr><td><code>unknown</code></td><td>Optional evidence; no charge/output.</td><td>Preserves full uncertainty and send authority.</td></tr>
+        <tr><td><code>charged</code></td><td>Assessed provider cents, evidence digest, output digest.</td><td>Client cents are <code>min(assessed, ceiling)</code>; excess is broker loss; terminal.</td></tr>
+        <tr><td><code>not_found</code></td><td>Exact zero cents, absence evidence, no output.</td><td>Allowed only from unexpired <code>authorized</code> with no send marker; terminal.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Integrity evidence</h2>
+    <p>Each immutable command stores canonical JSON and its SHA-256 digest. Each audit sequence stores source/target state, command digest, canonical resulting-row JSON and digest, prior event hash, and event hash. Startup and explicit verification run full SQLite and foreign-key integrity scans; ordinary transactions use bounded schema/trigger checks. Verification recomputes BRK-01 authorization/route digests, row semantics, command bytes, result bytes, command-to-event joins, closed transitions, chain order, count, and final result-to-row equality.</p>
+  </section>
+
+  <section>
+    <h2>Rejected alternatives</h2>
+    <ul>
+      <li><strong>Replica-backed missing:</strong> rejected because lag can fabricate absence.</li>
+      <li><strong>Lookup without the create lock:</strong> rejected because an uncommitted create can race a false not-found.</li>
+      <li><strong>Opaque audit hashes:</strong> rejected because altered outcomes could remain structurally plausible without canonical command and result bytes.</li>
+      <li><strong>Current-state command replay:</strong> rejected because later transitions must not rewrite the original result attributed to an earlier command.</li>
+      <li><strong>Rejecting provider overage:</strong> rejected because it strands terminal truth; the user pays only the cap and the broker records its loss.</li>
+      <li><strong>Transport in BRK-02:</strong> rejected because lease, retry, provider identity, and crash recovery belong to later qualified sprints.</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>Acceptance proof</h2>
+    <p>Run Ruff, Python compilation, <code>PYTHONPATH=. uv run pytest -q tests/test_provider_broker_protocol.py tests/test_provider_broker_ledger.py</code>, HTML parsing, and diff hygiene. Tests cover exact and conflicting replay, delayed historical replay, thread concurrency, process lock timeout and OS failure, missing authority, migration refusal, closed transitions, expiry, overage, rollback injection, immutable triggers, and coherent authority/audit corruption.</p>
+  </section>
+
+  <section>
+    <h2>Out of scope and next sprint</h2>
+    <p>No HTTP API, authentication, signing key, receipt signature verification, worker lease, provider SDK, upstream request, retry, pricing evaluator, artifact storage, adapter qualification, resolver injection, merge, or deployment. BRK-03 may consume the exact conditional dispatch marker and operation identity, but may not weaken tenant/key serialization, rewrite terminal rows, or infer provider outcome from local state.</p>
+  </section>
+
+  <section id="harness-hint" data-pattern="adversarial-verification" data-owned-paths="runtime/provider_broker/ledger.py runtime/provider_broker/__init__.py tests/test_provider_broker_ledger.py docs/htmlspec/provider-broker-primary-ledger.html">
+    <h2>Harness hint</h2>
+    <p>Race exact and conflicting creates against missing lookup, kill between row/command/audit writes, mutate coherent money outcomes, remove triggers, replay old commands after terminal advancement, exhaust file locks, and prove every uncertainty remains unavailable rather than missing.</p>
+  </section>
+  <section id="harness-hint-run" data-pattern="adversarial-verification">
+    <h2>Execution seam</h2>
+    <p>Preserve this ledger as the only primary authority and execute BRK-03 without adding any provider transport to this module.</p>
+  </section>
+</main>
+</body>
+</html>
