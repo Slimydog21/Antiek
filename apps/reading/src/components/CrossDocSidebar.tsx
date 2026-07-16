@@ -5,6 +5,7 @@ import type {
   Event,
   QuestionIdentifiedPayload,
 } from "../generated/types";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 interface CrossDocSidebarProps {
   events: Event[];

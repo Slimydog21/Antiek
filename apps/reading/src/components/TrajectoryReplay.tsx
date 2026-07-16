@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { Event } from "../generated/types";
+import { emitWernerExperience } from "../werner/reactionBus";
 
 interface Props {
   events: Event[];
