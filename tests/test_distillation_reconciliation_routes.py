@@ -1,15 +1,32 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
 from interfaces.research.api.distillation_reconciliation_routes import (
+    DistillationProviderReconciliationAuthority,
     DistillationReconciliationRuntime,
     distillation_reconciliation_router,
     get_distillation_reconciliation_runtime,
 )
-from runtime.research_runner.provider_gateway import canonical_digest
+from runtime.research_runner.protocol import (
+    BillingUnit,
+    BoundedUsage,
+    CostProjection,
+    CostProjectionRequest,
+    ProjectionDisposition,
+    ProjectionRate,
+)
+from runtime.research_runner.provider_gateway import (
+    PaidRouteAuthorityIdentity,
+    ProviderCapabilities,
+    ProviderReconciliation,
+    ReconciliationStatus,
+    canonical_digest,
+)
 from substrate.distillation_dispatch import DistillationDispatchJournal
 from substrate.research_spend import (
     FallbackChainManifest,
@@ -20,6 +37,71 @@ from substrate.research_spend import (
 )
 
 
+def _projection_request() -> CostProjectionRequest:
+    return CostProjectionRequest(
+        seam_id="wrestling.distillation.synthesizer",
+        provider="provider-1",
+        model="model-1",
+        operation="synthesize",
+        bounded_usage=(BoundedUsage(BillingUnit.CALL, 1),),
+    )
+
+
+def _project(request: CostProjectionRequest) -> CostProjection:
+    return CostProjection(
+        seam_id=request.seam_id,
+        provider=request.provider,
+        model=request.model,
+        operation=request.operation,
+        bounded_usage=request.bounded_usage,
+        rates=(ProjectionRate(BillingUnit.CALL, Decimal("0.80")),),
+        rate_snapshot="rates-v1",
+        currency="USD",
+        maximum_cost_usd=Decimal("0.80"),
+        reservation_cents=80,
+        disposition=ProjectionDisposition.HOLD_ELIGIBLE,
+    )
+
+
+def _route_authorizer(request, adapter) -> PaidRouteAuthorityIdentity:
+    return PaidRouteAuthorityIdentity(
+        provider_kind="test",
+        provider_id=request.provider,
+        endpoint=adapter.endpoint,
+        model=request.model,
+        seam_id=request.seam_id,
+        operation=request.operation,
+        rate_snapshot="rates-v1",
+        currency="USD",
+        rates=(ProjectionRate(BillingUnit.CALL, Decimal("0.80")),),
+    )
+
+
+class FakeReconciliationAdapter:
+    provider = "provider-1"
+    model = "model-1"
+    endpoint = "https://provider-1.example/v1"
+    capabilities = ProviderCapabilities(True, True, True, frozenset({BillingUnit.CALL}))
+
+    def __init__(self, status: ReconciliationStatus, actual_cents: int | None = None):
+        self.status = status
+        self.actual_cents = actual_cents
+        self.reconcile_calls: list[tuple[str, str]] = []
+        self.send_calls = 0
+
+    def send_once(self, *args, **kwargs):
+        self.send_calls += 1
+        raise AssertionError("reconciliation action must never send")
+
+    def reconcile(self, *, provider_idempotency_key: str, authorized_endpoint: str):
+        self.reconcile_calls.append((provider_idempotency_key, authorized_endpoint))
+        return ProviderReconciliation(
+            self.status,
+            {"provider_lookup": self.status.value},
+            self.actual_cents,
+        )
+
+
 def _seed(tmp_path, *, owner_id: str = "owner-1") -> DistillationReconciliationRuntime:
     command_db = str(tmp_path / "graph.duckdb")
     spend_db = tmp_path / "spend.sqlite3"
@@ -27,6 +109,12 @@ def _seed(tmp_path, *, owner_id: str = "owner-1") -> DistillationReconciliationR
     ledger = ResearchSpendLedger(spend_db)
     ledger.ensure_schema()
     ledger.create_or_reopen_run("create-run", binding, 200)
+    projection_request = _projection_request()
+    projection = _project(projection_request)
+    authority = _route_authorizer(
+        projection_request,
+        FakeReconciliationAdapter(ReconciliationStatus.UNKNOWN),
+    )
     intent = PaidHoldIntent(
         reservation_key="reservation-1",
         seam_id="wrestling.distillation.synthesizer",
@@ -34,10 +122,10 @@ def _seed(tmp_path, *, owner_id: str = "owner-1") -> DistillationReconciliationR
         model="model-1",
         operation="synthesize",
         operation_digest="operation-digest",
-        projection_digest="projection-digest",
+        projection_digest=canonical_digest(projection),
         rate_snapshot="rates-v1",
         provider_idempotency_key="provider-key-1",
-        route_authority_digest="authority-digest",
+        route_authority_digest=canonical_digest(authority),
     )
     route = FallbackRouteManifest(
         fallback_index=0,
@@ -106,13 +194,11 @@ def test_owner_reads_redacted_non_executable_reserved_hold(tmp_path) -> None:
     runtime = _seed(tmp_path)
     ledger = ResearchSpendLedger(runtime.spend_db_path)
     before_events = ledger.events("run-1")
-    before_command = DistillationDispatchJournal(runtime.command_db_path).load(
-        "evt-request"
-    )
+    before_command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
 
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="antiek_session_cookie")
-    ).get("/research/distillation/commands/evt-request/reconciliation")
+    response = TestClient(_app(runtime, owner_id="owner-1", method="antiek_session_cookie")).get(
+        "/research/distillation/commands/evt-request/reconciliation"
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -143,25 +229,23 @@ def test_owner_reads_redacted_non_executable_reserved_hold(tmp_path) -> None:
     ):
         assert forbidden not in serialized
     assert ledger.events("run-1") == before_events
-    assert DistillationDispatchJournal(runtime.command_db_path).load(
-        "evt-request"
-    ) == before_command
+    assert (
+        DistillationDispatchJournal(runtime.command_db_path).load("evt-request") == before_command
+    )
 
 
 def test_unauthenticated_local_mode_is_rejected(tmp_path) -> None:
     runtime = _seed(tmp_path)
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="unauthenticated_local")
-    ).get("/research/distillation/commands/evt-request/reconciliation")
+    response = TestClient(_app(runtime, owner_id="owner-1", method="unauthenticated_local")).get(
+        "/research/distillation/commands/evt-request/reconciliation"
+    )
     assert response.status_code == 401
     assert response.json() == {"detail": "authentication required"}
 
 
 def test_foreign_owner_and_missing_command_are_indistinguishable(tmp_path) -> None:
     runtime = _seed(tmp_path)
-    client = TestClient(
-        _app(runtime, owner_id="owner-2", method="cloudflare_access_email")
-    )
+    client = TestClient(_app(runtime, owner_id="owner-2", method="cloudflare_access_email"))
     foreign = client.get("/research/distillation/commands/evt-request/reconciliation")
     missing = client.get("/research/distillation/commands/missing/reconciliation")
     assert foreign.status_code == missing.status_code == 404
@@ -177,9 +261,9 @@ def test_substituted_command_hold_returns_value_free_conflict(tmp_path) -> None:
             "UPDATE distillation_dispatch_commands SET hold_id='substituted' "
             "WHERE request_event_id='evt-request'"
         )
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="bearer_token")
-    ).get("/research/distillation/commands/evt-request/reconciliation")
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).get(
+        "/research/distillation/commands/evt-request/reconciliation"
+    )
     assert response.status_code == 409
     assert response.json() == {"detail": "reconciliation evidence conflicts"}
 
@@ -216,9 +300,9 @@ def test_view_derives_guidance_from_authoritative_hold_state(
         ledger.mark_dispatch_possible("mark-send", hold_id)
         ledger.settle("settle", hold_id, 60, {"provider_receipt": "receipt"})
 
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="bearer_token")
-    ).get("/research/distillation/commands/evt-request/reconciliation")
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).get(
+        "/research/distillation/commands/evt-request/reconciliation"
+    )
 
     assert response.status_code == 200
     body = response.json()
@@ -232,13 +316,9 @@ def test_view_derives_guidance_from_authoritative_hold_state(
 def test_openapi_declares_read_only_reconciliation_contract(tmp_path) -> None:
     runtime = _seed(tmp_path)
     schema = _app(runtime, owner_id="owner-1", method="bearer_token").openapi()
-    operation = schema["paths"][
-        "/research/distillation/commands/{request_event_id}/reconciliation"
-    ]
+    operation = schema["paths"]["/research/distillation/commands/{request_event_id}/reconciliation"]
     assert set(operation) == {"get"}
-    response_schema = operation["get"]["responses"]["200"]["content"][
-        "application/json"
-    ]["schema"]
+    response_schema = operation["get"]["responses"]["200"]["content"]["application/json"]["schema"]
     assert response_schema["$ref"].endswith("DistillationReconciliationResponse")
 
 
@@ -259,6 +339,19 @@ def test_canonical_app_mounts_reconciliation_route() -> None:
     assert "/research/distillation/commands/{request_event_id}/reconciliation" in (
         mounted_paths(create_app().routes)
     )
+
+
+def test_canonical_app_exposes_injected_provider_authority_resolver() -> None:
+    from interfaces.research.api.app import create_app
+
+    resolver = object()
+    app = create_app(
+        register_wrestling=False,
+        register_providers=False,
+        distillation_provider_authority_resolver=resolver,
+    )
+
+    assert app.state.distillation_provider_authority_resolver is resolver
 
 
 def _release_terms(**overrides) -> dict[str, object]:
@@ -285,15 +378,44 @@ def _authoritative_release_terms(runtime: DistillationReconciliationRuntime) -> 
     )
 
 
+def _provider_terms(runtime: DistillationReconciliationRuntime, *, state: str) -> dict[str, object]:
+    terms = _authoritative_release_terms(runtime)
+    terms["expected_hold_state"] = state
+    return terms
+
+
+def _provider_runtime(
+    runtime: DistillationReconciliationRuntime,
+    adapter: FakeReconciliationAdapter,
+    resolver_calls: list[dict[str, object]],
+) -> DistillationReconciliationRuntime:
+    history = ResearchSpendLedger(runtime.spend_db_path).fallback_history("owner-1")
+    approval_id = history.items[0].approval_id
+    assert approval_id is not None
+
+    def resolve(**identity):
+        resolver_calls.append(identity)
+        return DistillationProviderReconciliationAuthority(
+            adapter=adapter,
+            projection_request=_projection_request(),
+            approval_id=approval_id,
+            projector=_project,
+            route_authorizer=_route_authorizer,
+        )
+
+    return DistillationReconciliationRuntime(
+        runtime.command_db_path,
+        runtime.spend_db_path,
+        resolve,
+    )
+
+
 def test_owner_releases_exact_reserved_hold_and_replay_is_idempotent(tmp_path) -> None:
     runtime = _seed(tmp_path)
-    client = TestClient(
-        _app(runtime, owner_id="owner-1", method="antiek_session_cookie")
-    )
+    client = TestClient(_app(runtime, owner_id="owner-1", method="antiek_session_cookie"))
     terms = _authoritative_release_terms(runtime)
     path = (
-        "/research/distillation/commands/evt-request/reconciliation/"
-        "actions/release-proven-unsent"
+        "/research/distillation/commands/evt-request/reconciliation/actions/release-proven-unsent"
     )
 
     first = client.post(path, json=terms)
@@ -305,9 +427,7 @@ def test_owner_releases_exact_reserved_hold_and_replay_is_idempotent(tmp_path) -
     assert first.json()["held_cents"] == 0
     assert first.json()["holds"][-1]["state"] == "released"
     ledger = ResearchSpendLedger(runtime.spend_db_path)
-    assert [event.event_kind for event in ledger.events("run-1")].count(
-        "hold_released"
-    ) == 1
+    assert [event.event_kind for event in ledger.events("run-1")].count("hold_released") == 1
 
 
 @pytest.mark.parametrize(
@@ -322,11 +442,8 @@ def test_release_rejects_stale_or_substituted_terms(tmp_path, changed) -> None:
     runtime = _seed(tmp_path)
     terms = _authoritative_release_terms(runtime)
     terms.update(changed)
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="bearer_token")
-    ).post(
-        "/research/distillation/commands/evt-request/reconciliation/"
-        "actions/release-proven-unsent",
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/release-proven-unsent",
         json=terms,
     )
 
@@ -337,11 +454,8 @@ def test_release_rejects_stale_or_substituted_terms(tmp_path, changed) -> None:
 
 def test_foreign_owner_cannot_release_reserved_hold(tmp_path) -> None:
     runtime = _seed(tmp_path)
-    response = TestClient(
-        _app(runtime, owner_id="owner-2", method="cloudflare_access_email")
-    ).post(
-        "/research/distillation/commands/evt-request/reconciliation/"
-        "actions/release-proven-unsent",
+    response = TestClient(_app(runtime, owner_id="owner-2", method="cloudflare_access_email")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/release-proven-unsent",
         json=_authoritative_release_terms(runtime),
     )
     assert response.status_code == 404
@@ -358,11 +472,8 @@ def test_release_requires_ambiguous_command_state(tmp_path) -> None:
             "UPDATE distillation_dispatch_commands SET state='sending',ambiguous_at=NULL "
             "WHERE request_event_id='evt-request'"
         )
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="bearer_token")
-    ).post(
-        "/research/distillation/commands/evt-request/reconciliation/"
-        "actions/release-proven-unsent",
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/release-proven-unsent",
         json=_authoritative_release_terms(runtime),
     )
     assert response.status_code == 409
@@ -373,11 +484,8 @@ def test_release_request_bounds_fail_before_mutation(tmp_path) -> None:
     runtime = _seed(tmp_path)
     terms = _authoritative_release_terms(runtime)
     terms["expected_hold_id"] = "x" * 513
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="bearer_token")
-    ).post(
-        "/research/distillation/commands/evt-request/reconciliation/"
-        "actions/release-proven-unsent",
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/release-proven-unsent",
         json=terms,
     )
     assert response.status_code == 422
@@ -394,14 +502,147 @@ def test_release_never_restores_provider_possible_exposure(tmp_path, target_stat
     if target_state == "unknown":
         ledger.mark_unknown("mark-unknown", command.hold_id, {"timeout": True})
 
-    response = TestClient(
-        _app(runtime, owner_id="owner-1", method="bearer_token")
-    ).post(
-        "/research/distillation/commands/evt-request/reconciliation/"
-        "actions/release-proven-unsent",
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/release-proven-unsent",
         json=_authoritative_release_terms(runtime),
     )
 
     assert response.status_code == 409
     assert ledger.hold(command.hold_id).state.value == target_state
+    assert ledger.balance("run-1").held_cents == 80
+
+
+@pytest.mark.parametrize(
+    ("provider_status", "actual_cents", "expected_state", "expected_held"),
+    [
+        (ReconciliationStatus.CHARGED, 60, "settled", 0),
+        (ReconciliationStatus.NOT_FOUND, None, "released", 0),
+        (ReconciliationStatus.UNKNOWN, None, "unknown", 80),
+    ],
+)
+def test_provider_check_applies_only_authoritative_reconciliation(
+    tmp_path,
+    provider_status,
+    actual_cents,
+    expected_state,
+    expected_held,
+) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+    ledger.mark_unknown("mark-unknown", command.hold_id, {"timeout": True})
+    adapter = FakeReconciliationAdapter(provider_status, actual_cents)
+    resolver_calls: list[dict[str, object]] = []
+    runtime = _provider_runtime(runtime, adapter, resolver_calls)
+
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/check-provider",
+        json=_provider_terms(runtime, state="unknown"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["holds"][-1]["state"] == expected_state
+    assert response.json()["held_cents"] == expected_held
+    assert len(resolver_calls) == len(adapter.reconcile_calls) == 1
+    assert adapter.send_calls == 0
+
+
+def test_provider_check_fails_closed_without_server_authority(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/check-provider",
+        json=_provider_terms(runtime, state="dispatch_possible"),
+    )
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "reconciliation action conflicts"}
+    assert ledger.hold(command.hold_id).state.value == "dispatch_possible"
+    assert ledger.balance("run-1").held_cents == 80
+
+
+def test_provider_check_rejects_client_provider_authority_fields(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+    terms = _provider_terms(runtime, state="dispatch_possible")
+    terms.update(
+        {
+            "provider": "substituted",
+            "endpoint": "https://attacker.invalid",
+            "actual_cents": 0,
+            "evidence": {"provider_lookup": "not_found"},
+        }
+    )
+
+    response = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/check-provider",
+        json=terms,
+    )
+
+    assert response.status_code == 422
+    assert ledger.hold(command.hold_id).state.value == "dispatch_possible"
+
+
+def test_provider_check_terminal_replay_never_requeries_provider(tmp_path) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+    adapter = FakeReconciliationAdapter(ReconciliationStatus.NOT_FOUND)
+    resolver_calls: list[dict[str, object]] = []
+    runtime = _provider_runtime(runtime, adapter, resolver_calls)
+    client = TestClient(_app(runtime, owner_id="owner-1", method="bearer_token"))
+    path = "/research/distillation/commands/evt-request/reconciliation/actions/check-provider"
+    terms = _provider_terms(runtime, state="dispatch_possible")
+
+    first = client.post(path, json=terms)
+    replay = client.post(path, json=terms)
+
+    assert first.status_code == replay.status_code == 200
+    assert first.json() == replay.json()
+    assert len(resolver_calls) == 1
+    assert len(adapter.reconcile_calls) == 1
+    assert adapter.send_calls == 0
+
+
+@pytest.mark.parametrize(
+    ("owner_id", "changed", "expected_status"),
+    [
+        ("owner-1", {"expected_hold_id": "stale-hold"}, 409),
+        ("owner-1", {"expected_manifest_sha256": "b" * 64}, 409),
+        ("owner-2", {}, 404),
+    ],
+)
+def test_provider_check_rejects_stale_terms_and_foreign_owner(
+    tmp_path, owner_id, changed, expected_status
+) -> None:
+    runtime = _seed(tmp_path)
+    ledger = ResearchSpendLedger(runtime.spend_db_path)
+    command = DistillationDispatchJournal(runtime.command_db_path).load("evt-request")
+    assert command.hold_id is not None
+    ledger.mark_dispatch_possible("mark-send", command.hold_id)
+    adapter = FakeReconciliationAdapter(ReconciliationStatus.NOT_FOUND)
+    resolver_calls: list[dict[str, object]] = []
+    runtime = _provider_runtime(runtime, adapter, resolver_calls)
+    terms = _provider_terms(runtime, state="dispatch_possible")
+    terms.update(changed)
+
+    response = TestClient(_app(runtime, owner_id=owner_id, method="bearer_token")).post(
+        "/research/distillation/commands/evt-request/reconciliation/actions/check-provider",
+        json=terms,
+    )
+
+    assert response.status_code == expected_status
+    assert resolver_calls == []
+    assert adapter.reconcile_calls == []
     assert ledger.balance("run-1").held_cents == 80

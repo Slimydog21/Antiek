@@ -1329,6 +1329,7 @@ def create_app(
     wrestling_db_path: str | None = None,
     wrestling_embedder: Any = None,
     distillation_execution_authority: DistillationExecutionAuthority | None = None,
+    distillation_provider_authority_resolver: Any = None,
     register_providers: bool = True,
 ) -> FastAPI:
     """Create the FastAPI app. Pass ``broadcaster`` for tests that want to
@@ -1355,6 +1356,9 @@ def create_app(
             "WebSocket + typed event POST + trajectory queries. "
             "See docs/architecture_notes.md §11."
         ),
+    )
+    app.state.distillation_provider_authority_resolver = (
+        distillation_provider_authority_resolver
     )
 
     # Resolve CORS origins. Vite's dev server runs at :5173 by default;
