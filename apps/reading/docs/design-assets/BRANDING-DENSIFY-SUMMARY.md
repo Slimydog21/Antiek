@@ -185,4 +185,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | PersonalSpace/BlockRepository densify | `59c0f2600` | personal jumps + repo add/folder highlight |
 | CostConsent living-TV densify | `1d614b776` | reload highlight/fail |
 | SpeakInvite living-TV densify | `dbcaab839` | invitee take-part/mode/submit densify |
-| HTML book float invent → ReadingCompanion | pending | product-map HTML-first Flipbook-feel invent |
+| HTML book float invent → ReadingCompanion | `8d331c5e8` | product-map HTML-first Flipbook-feel invent |
