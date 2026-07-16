@@ -65,6 +65,8 @@ describe("LoadingGameHost mount contract", () => {
     ) as HTMLImageElement;
     expect(art.getAttribute("src") ?? "").toMatch(/werner_paperclip_zombies_arcade_session_v1/);
     expect(art.getAttribute("data-wait-game")).toBe("zombies");
+    // Flipbook-feel invent reframe class densify (explicit, not only global CSS).
+    expect(art.className).toMatch(/antiek-living-tv-invent/);
   });
 
   it("maps clam-catcher and ice-fishing wait-host brand art keys", () => {
