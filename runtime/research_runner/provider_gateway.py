@@ -17,6 +17,8 @@ from enum import StrEnum
 from typing import Any, Generic, Protocol, TypeVar
 
 from substrate.research_spend import (
+    IdempotencyConflict,
+    InvalidTransition,
     PaidHoldIntent,
     PaidHoldSnapshot,
     PaidHoldState,
@@ -146,6 +148,59 @@ class ProviderDispatchResult(Generic[T]):  # noqa: UP046 - Antiek supports Pytho
 
 
 @dataclass(frozen=True)
+class PaidFallbackRoute(Generic[T]):  # noqa: UP046 - Antiek supports Python 3.11
+    projection_request: CostProjectionRequest
+    adapter: HardCeilingProviderAdapter[T]
+
+
+@dataclass(frozen=True)
+class PaidFallbackAttempt:
+    fallback_index: int
+    provider: str
+    model: str
+    hold: PaidHoldSnapshot
+    recovered: bool
+
+
+class PaidFallbackOutcome(StrEnum):
+    SETTLED = "settled"
+    EXHAUSTED = "exhausted"
+
+
+@dataclass(frozen=True)
+class PaidFallbackResult(Generic[T]):  # noqa: UP046 - Antiek supports Python 3.11
+    outcome: PaidFallbackOutcome
+    requested_provider: str
+    requested_model: str
+    actual_provider: str | None
+    actual_model: str | None
+    fallback_index: int | None
+    attempts: tuple[PaidFallbackAttempt, ...]
+    run: RunSnapshot
+    value: T | None = None
+    value_available: bool = False
+
+
+class PaidFallbackOutcomeUnknown(ProviderOutcomeUnknown):
+    """One fallback attempt may be charged, so no later route may run."""
+
+    def __init__(
+        self,
+        hold_id: str,
+        *,
+        fallback_index: int,
+        provider: str,
+        model: str,
+        completed_attempts: tuple[PaidFallbackAttempt, ...],
+    ) -> None:
+        self.fallback_index = fallback_index
+        self.provider = provider
+        self.model = model
+        self.completed_attempts = completed_attempts
+        super().__init__(hold_id, "fallback outcome is unknown; reconcile before continuing")
+
+
+@dataclass(frozen=True)
 class ZeroCostReceipt:
     attempt: ZeroCostAttemptSnapshot
     replayed: bool
@@ -214,10 +269,145 @@ class ResearchProviderGateway:
         adapter: HardCeilingProviderAdapter[T],
     ) -> ProviderDispatchResult[T]:
         projection = self._projector(projection_request)
+        return self._dispatch_paid_projected(
+            binding,
+            logical_operation_id=logical_operation_id,
+            projection_request=projection_request,
+            projection=projection,
+            operation=operation,
+            adapter=adapter,
+        )
+
+    def dispatch_paid_fallbacks(
+        self,
+        binding: RunBinding,
+        *,
+        logical_operation_id: str,
+        operation: object,
+        routes: tuple[PaidFallbackRoute[T], ...],
+    ) -> PaidFallbackResult[T]:
+        """Dispatch ordered routes; only authoritative release advances."""
+        if not 1 <= len(routes) <= 16:
+            raise DispatchIneligible("paid fallback chain must contain 1 to 16 routes")
+        if not logical_operation_id:
+            raise DispatchIneligible("fallback logical operation id must be non-empty")
+
+        route_keys = [
+            (route.projection_request.provider, route.projection_request.model)
+            for route in routes
+        ]
+        if len(route_keys) != len(set(route_keys)):
+            raise DispatchIneligible("paid fallback routes must be unique")
+
+        projections: list[CostProjection] = []
+        workload: tuple[str, str, tuple[object, ...]] | None = None
+        for route in routes:
+            request = route.projection_request
+            projection = self._projector(request)
+            self._require_eligible(projection, request, route.adapter)
+            current_workload = (request.seam_id, request.operation, request.bounded_usage)
+            if workload is None:
+                workload = current_workload
+            elif current_workload != workload:
+                raise DispatchIneligible(
+                    "paid fallback routes must share seam, operation, and bounded usage"
+                )
+            projections.append(projection)
+
+        chain_identity = {
+            "operation": operation,
+            "routes": tuple(
+                {
+                    "projection_request": route.projection_request,
+                    "projection": projection,
+                }
+                for route, projection in zip(routes, projections, strict=True)
+            ),
+        }
+
+        attempts: list[PaidFallbackAttempt] = []
+        requested_provider, requested_model = route_keys[0]
+        for index, (route, projection) in enumerate(zip(routes, projections, strict=True)):
+            try:
+                result = self._dispatch_paid_projected(
+                    binding,
+                    logical_operation_id=f"{logical_operation_id}:fallback:{index}",
+                    projection_request=route.projection_request,
+                    projection=projection,
+                    operation=operation,
+                    identity_payload=chain_identity,
+                    reservation_identity=(
+                        binding.run_id,
+                        logical_operation_id,
+                        f"fallback:{index}",
+                    ),
+                    adapter=route.adapter,
+                )
+            except ProviderOutcomeUnknown as exc:
+                raise PaidFallbackOutcomeUnknown(
+                    exc.hold_id,
+                    fallback_index=index,
+                    provider=route.adapter.provider,
+                    model=route.adapter.model,
+                    completed_attempts=tuple(attempts),
+                ) from exc
+            attempt = PaidFallbackAttempt(
+                fallback_index=index,
+                provider=route.adapter.provider,
+                model=route.adapter.model,
+                hold=result.hold,
+                recovered=result.recovered,
+            )
+            attempts.append(attempt)
+            if result.hold.state is PaidHoldState.SETTLED:
+                return PaidFallbackResult(
+                    outcome=PaidFallbackOutcome.SETTLED,
+                    requested_provider=requested_provider,
+                    requested_model=requested_model,
+                    actual_provider=route.adapter.provider,
+                    actual_model=route.adapter.model,
+                    fallback_index=index,
+                    attempts=tuple(attempts),
+                    run=result.run,
+                    value=result.value,
+                    value_available=not result.recovered,
+                )
+            if result.hold.state is not PaidHoldState.RELEASED:
+                raise RuntimeError("paid fallback attempt ended in a non-terminal state")
+
+        return PaidFallbackResult(
+            outcome=PaidFallbackOutcome.EXHAUSTED,
+            requested_provider=requested_provider,
+            requested_model=requested_model,
+            actual_provider=None,
+            actual_model=None,
+            fallback_index=None,
+            attempts=tuple(attempts),
+            run=self.ledger.balance(binding.run_id),
+        )
+
+    def _dispatch_paid_projected(
+        self,
+        binding: RunBinding,
+        *,
+        logical_operation_id: str,
+        projection_request: CostProjectionRequest,
+        projection: CostProjection,
+        operation: object,
+        identity_payload: object | None = None,
+        reservation_identity: tuple[str, ...] | None = None,
+        adapter: HardCeilingProviderAdapter[T],
+    ) -> ProviderDispatchResult[T]:
         self._require_eligible(projection, projection_request, adapter)
-        operation_digest = canonical_digest(operation)
+        operation_digest = canonical_digest(
+            operation if identity_payload is None else identity_payload
+        )
         projection_digest = canonical_digest(projection)
-        identity = (binding.run_id, logical_operation_id, operation_digest)
+        identity = reservation_identity or (
+            binding.run_id,
+            logical_operation_id,
+            operation_digest,
+        )
         reservation_key = deterministic_key("research-reservation", *identity)
         provider_key = deterministic_key(
             "research-provider", adapter.provider, adapter.model, *identity
@@ -254,11 +444,10 @@ class ResearchProviderGateway:
                 operation, provider_idempotency_key=provider_key
             )
         except ProviderNotSent as exc:
-            self.ledger.release(
+            self._release_or_converge(
                 deterministic_key("research-not-sent-command", hold.hold_id),
-                hold.hold_id,
+                hold,
                 exc.evidence,
-                provider_authoritative=True,
             )
             return ProviderDispatchResult(
                 hold=self.ledger.hold(hold.hold_id),
@@ -277,9 +466,9 @@ class ResearchProviderGateway:
             raise ProviderOutcomeUnknown(
                 hold.hold_id, "provider returned non-authoritative billing evidence"
             ) from exc
-        run = self.ledger.settle(
+        run = self._settle_or_converge(
             deterministic_key("research-settle-command", hold.hold_id),
-            hold.hold_id,
+            hold,
             success.actual_cents,
             success.evidence,
         )
@@ -397,11 +586,10 @@ class ResearchProviderGateway:
                 raise ProviderOutcomeUnknown(
                     hold.hold_id, "not-found reconciliation included a billing amount"
                 )
-            run = self.ledger.release(
+            run = self._release_or_converge(
                 deterministic_key("research-reconcile-release", hold.hold_id),
-                hold.hold_id,
+                hold,
                 result.evidence,
-                provider_authoritative=True,
             )
         elif result.status is ReconciliationStatus.CHARGED:
             if result.actual_cents is None:
@@ -418,9 +606,9 @@ class ResearchProviderGateway:
                 raise ProviderOutcomeUnknown(
                     hold.hold_id, "provider billing amount is invalid"
                 )
-            run = self.ledger.settle(
+            run = self._settle_or_converge(
                 deterministic_key("research-reconcile-settle", hold.hold_id),
-                hold.hold_id,
+                hold,
                 result.actual_cents,
                 result.evidence,
             )
@@ -430,6 +618,46 @@ class ResearchProviderGateway:
         return ProviderDispatchResult(
             hold=self.ledger.hold(hold.hold_id), run=run, recovered=True
         )
+
+    def _release_or_converge(
+        self, command_key: str, hold: PaidHoldSnapshot, evidence: JsonEvidence
+    ) -> RunSnapshot:
+        try:
+            return self.ledger.release(
+                command_key,
+                hold.hold_id,
+                evidence,
+                provider_authoritative=True,
+            )
+        except (IdempotencyConflict, InvalidTransition) as exc:
+            current = self.ledger.hold(hold.hold_id)
+            if current.state is PaidHoldState.RELEASED:
+                return self.ledger.balance(hold.run_id)
+            raise ProviderOutcomeUnknown(
+                hold.hold_id, "provider terminal evidence conflicts with settled hold"
+            ) from exc
+
+    def _settle_or_converge(
+        self,
+        command_key: str,
+        hold: PaidHoldSnapshot,
+        actual_cents: int,
+        evidence: JsonEvidence,
+    ) -> RunSnapshot:
+        try:
+            return self.ledger.settle(
+                command_key,
+                hold.hold_id,
+                actual_cents,
+                evidence,
+            )
+        except (IdempotencyConflict, InvalidTransition) as exc:
+            current = self.ledger.hold(hold.hold_id)
+            if current.state is PaidHoldState.SETTLED and current.actual_cents == actual_cents:
+                return self.ledger.balance(hold.run_id)
+            raise ProviderOutcomeUnknown(
+                hold.hold_id, "provider terminal evidence conflicts with resolved hold"
+            ) from exc
 
     def _retain_unknown(self, hold: PaidHoldSnapshot, evidence: JsonEvidence) -> None:
         current = self.ledger.hold(hold.hold_id)
@@ -469,6 +697,20 @@ class ResearchProviderGateway:
         if projection.disposition is not ProjectionDisposition.HOLD_ELIGIBLE:
             reason = projection.ineligibility.value if projection.ineligibility else "ineligible"
             raise DispatchIneligible(f"hard-ceiling dispatch refused: {reason}")
+        if (
+            projection.seam_id,
+            projection.provider,
+            projection.model,
+            projection.operation,
+            projection.bounded_usage,
+        ) != (
+            request.seam_id,
+            request.provider,
+            request.model,
+            request.operation,
+            request.bounded_usage,
+        ):
+            raise DispatchIneligible("projection differs from requested route or workload")
         if (adapter.provider, adapter.model) != (request.provider, request.model):
             raise DispatchIneligible("adapter route differs from projected route")
         if not adapter.capabilities.hard_ceiling_eligible:
