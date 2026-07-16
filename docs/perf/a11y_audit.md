@@ -1,7 +1,9 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-16T13:06:49.648Z
-**Stories audited:** 90
+**Run:** 2026-07-16T18:59:59.353Z
+**Stories requested:** 102
+**Stories scanned by axe:** 102
+**Load errors:** 0
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -100,3 +102,15 @@
 | `research-investigation-replay-observatory--safe-failure` | 0 | — | — |
 | `research-investigation-replay-observatory--night-watch` | 0 | — | — |
 | `research-investigation-replay-observatory--narrow-instrument` | 0 | — | — |
+| `coordination-gatehouse-atlas--canonical-atlas` | 0 | — | — |
+| `coordination-gatehouse-atlas--both-failed` | 0 | — | — |
+| `coordination-gatehouse-atlas--narrow` | 0 | — | — |
+| `coordination-gatehouse-atlas--forced-night` | 0 | — | — |
+| `modes-operator-watch-room--populated` | 0 | — | — |
+| `modes-operator-watch-room--partial` | 0 | — | — |
+| `modes-operator-watch-room--safe-failure` | 0 | — | — |
+| `modes-operator-watch-room--empty` | 0 | — | — |
+| `modes-operator-watch-room--notifying` | 0 | — | — |
+| `modes-operator-watch-room--loading` | 0 | — | — |
+| `modes-operator-watch-room--night` | 0 | — | — |
+| `modes-operator-watch-room--narrow` | 0 | — | — |

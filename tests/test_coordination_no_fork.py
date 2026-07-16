@@ -58,9 +58,12 @@ def test_ledger_equals_independent_quick_status_parse() -> None:
         )
 
 
-def test_all_eight_gates_present() -> None:
+def test_all_canonical_gates_present() -> None:
     ledger = load_gate_ledger()
-    assert ledger.gate_ids() == ("G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8")
+    assert ledger.gate_ids() == (
+        "G1", "G2", "G3", "G4", "G5", "G6", "G7", "G8",
+        "G9", "G10", "G11", "G12", "G13",
+    )
 
 
 # ── 2. Mutation of a fixture copy is reflected (no stale second copy) ─────────
@@ -197,12 +200,78 @@ def test_gates_blocking_only_counts_open_gates() -> None:
     assert {"G2", "G3", "G7"} <= blocking_ids
 
 
+# ── G9-G12 impact map accuracy (grounded in product/legal specs) ────────────
+
+def test_impact_map_g9_arxiv_researcher_payout() -> None:
+    """G9 blocks the money-moving wave of the arXiv-ingest track (SPR-07/08).
+    Research owns arXiv ingestion; the payout track is on Research's side.
+    Gated in caffenagent state.json as BLOCKED-GATE."""
+    ledger = load_gate_ledger()
+    blocks = set(ledger.by_id("G9").blocks_products())
+    assert blocks == {Product.RESEARCH}, (
+        f"G9 should block Research (arXiv SPR-07/08 payout), got {blocks}"
+    )
+
+
+def test_impact_map_g10_stripe_press_opt_in() -> None:
+    """G10 blocks serving ANY in-copyright Stripe Press title. Read is the
+    servable-path workflow — titles must reach a servable content_class."""
+    ledger = load_gate_ledger()
+    blocks = set(ledger.by_id("G10").blocks_products())
+    assert blocks == {Product.READ}, (
+        f"G10 should block Read (Stripe Press servable path), got {blocks}"
+    )
+
+
+def test_impact_map_g11_x_no_training() -> None:
+    """G11 blocks training/RL export of BYOK X content. Write (edit-trajectory
+    SFT) and Speak (interviewer RL) are the two products with training tracks.
+    Status is 'enforced in code / standing operator duty' — classified CLOSED
+    because ✅ is present, but the standing-duty nuance is preserved in
+    status_raw (not flattened away)."""
+    ledger = load_gate_ledger()
+    blocks = set(ledger.by_id("G11").blocks_products())
+    assert blocks == {Product.WRITE, Product.SPEAK}, (
+        f"G11 should block Write+Speak (X no-training), got {blocks}"
+    )
+    # G11 contains ✅ → classified CLOSED, but the standing duty is real nuance.
+    gate = ledger.by_id("G11")
+    assert gate.status is GateStatus.CLOSED, (
+        f"G11 has ✅ in status → CLOSED, got {gate.status}"
+    )
+    # The nuance is NOT thrown away — status_raw carries the full string.
+    assert "standing" in gate.status_raw.lower(), (
+        f"G11 status_raw should carry the standing-duty nuance, got: {gate.status_raw}"
+    )
+    assert "enforced" in gate.status_raw.lower(), (
+        f"G11 status_raw should carry the enforced-in-code nuance, got: {gate.status_raw}"
+    )
+
+
+def test_impact_map_g12_bernays_renewal() -> None:
+    """G12 blocks making additional 1927–1930 Bernays titles servable. Read is
+    the servable-path workflow."""
+    ledger = load_gate_ledger()
+    blocks = set(ledger.by_id("G12").blocks_products())
+    assert blocks == {Product.READ}, (
+        f"G12 should block Read (Bernays per-title servable path), got {blocks}"
+    )
+
+
+def test_impact_map_g13_infra_only() -> None:
+    """G13 (auth diagnostic matrix) is infra, closed, no per-product block."""
+    ledger = load_gate_ledger()
+    assert ledger.by_id("G13").blocks_products() == ()
+    assert ledger.by_id("G13").is_closed
+
+
 # ── M5 accuracy snapshot: the canonical gate states ──────────────────────────
 
 def test_accuracy_snapshot_matches_canonical_states() -> None:
     """Pin the documented gate states so a parsing/rendering regression is
-    caught: G1/G4/G5 closed, G2/G3/G6 open, G7 calendar, G8 data-bound; G5 is
-    provisionally closed."""
+    caught: G1/G4/G5/G11/G13 closed, G2/G3/G6/G9/G10/G12 open, G7 calendar,
+    G8 data-bound; G5 is provisionally closed. G11 carries standing-duty
+    nuance in status_raw despite being classified CLOSED (✅ is present)."""
     ledger = load_gate_ledger()
     expected = {
         "G1": GateStatus.CLOSED,
@@ -213,6 +282,11 @@ def test_accuracy_snapshot_matches_canonical_states() -> None:
         "G6": GateStatus.OPEN,
         "G7": GateStatus.CALENDAR,
         "G8": GateStatus.DATA_BOUND,
+        "G9": GateStatus.OPEN,
+        "G10": GateStatus.OPEN,
+        "G11": GateStatus.CLOSED,  # ✅ enforced in code — standing duty nuance in status_raw
+        "G12": GateStatus.OPEN,
+        "G13": GateStatus.CLOSED,
     }
     actual = {g.gate_id: g.status for g in ledger.gates}
     assert actual == expected, f"gate-state snapshot drifted: {actual}"
@@ -224,6 +298,9 @@ def test_accuracy_snapshot_matches_canonical_states() -> None:
     assert ledger.by_id("G4").closure_record == "docs/decisions/g4-lemon-ui-verdict.md"
     assert ledger.by_id("G5").closure_record is not None
     assert ledger.by_id("G5").closure_record.startswith("docs/decisions/")
+    # G13 is closed with a diagnostics evidence path (not docs/decisions/).
+    assert ledger.by_id("G13").is_closed
+    assert ledger.by_id("G13").closure_record == "docs/diagnostics/auth-failure-mode-matrix.md"
 
 
 # ── M2 roadmap: count reconciliation + critical path + unblocked-now ─────────
@@ -280,3 +357,32 @@ def test_roadmap_reads_rosters_from_fixture_via_env(tmp_path: Path, monkeypatch:
     assert by_spec["read"] == 2
     # Specs with no fixture dir contribute 0 (read-only, no invention).
     assert by_spec["write"] == 0
+
+
+def test_roadmap_rejects_duplicate_sprint_identity(tmp_path: Path) -> None:
+    """Two filenames cannot claim the same canonical ``<spec>:<sprint>`` node."""
+    spec_dir = tmp_path / "deep-research-workspace"
+    spec_dir.mkdir()
+    (spec_dir / "sprint-01-first.html").write_text("x")
+    (spec_dir / "sprint-01-contradiction.html").write_text("x")
+
+    with pytest.raises(ValueError, match="duplicate sprint identity 01"):
+        build_roadmap(specs_root=tmp_path)
+
+
+def test_default_roadmap_falls_back_per_missing_canonical_roster(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unrelated directory in the operator specs root must not suppress the
+    committed canonical roster manifest and collapse the atlas to zero."""
+    (tmp_path / "unrelated-future-spec").mkdir()
+    monkeypatch.setenv("ANTIEK_SPECS_ROOT", str(tmp_path))
+    roadmap = build_roadmap()
+    assert roadmap.total_sprints == 45
+    assert {r.spec: r.count for r in roadmap.rosters} == {
+        "drw": 10,
+        "read": 9,
+        "write": 9,
+        "speak": 9,
+        "unified": 8,
+    }

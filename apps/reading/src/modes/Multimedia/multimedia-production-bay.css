@@ -48,6 +48,11 @@
 }
 
 @media (prefers-color-scheme: dark) {
+  .multimedia-production-bay .text-shadow-1,
+  .multimedia-production-bay .text-shadow-2 {
+    color: var(--starlight);
+  }
+
   .multimedia-production-bay__environment {
     filter: brightness(0.44) saturate(0.78);
   }

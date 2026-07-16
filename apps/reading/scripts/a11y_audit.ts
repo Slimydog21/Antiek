@@ -17,7 +17,9 @@
  * non-zero if any story has ≥ 1 "serious" or "critical" violation.
  */
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { readFile } from "node:fs/promises";
+import { createServer, type Server } from "node:http";
+import { dirname, extname, join, relative, resolve, sep } from "node:path";
 import { argv, exit } from "node:process";
 
 type Args = {
@@ -26,7 +28,7 @@ type Args = {
 };
 
 const DEFAULTS: Args = {
-  storybook: "http://localhost:6006",
+  storybook: "static://storybook",
   out: "../../docs/perf/a11y_audit.md",
 };
 
@@ -153,6 +155,11 @@ const STORIES: string[] = [
   "research-investigation-replay-observatory--safe-failure",
   "research-investigation-replay-observatory--night-watch",
   "research-investigation-replay-observatory--narrow-instrument",
+  // Coordination Gatehouse Atlas — canonical, failure, responsive, and night.
+  "coordination-gatehouse-atlas--canonical-atlas",
+  "coordination-gatehouse-atlas--both-failed",
+  "coordination-gatehouse-atlas--narrow",
+  "coordination-gatehouse-atlas--forced-night",
   "modes-operator-watch-room--populated",
   "modes-operator-watch-room--partial",
   "modes-operator-watch-room--safe-failure",
@@ -179,6 +186,54 @@ type StoryResult = {
 
 async function main() {
   const args = parseArgs();
+  let staticServer: Server | null = null;
+  if (args.storybook === DEFAULTS.storybook) {
+    const root = resolve(process.cwd(), "storybook-static");
+    const contentTypes: Record<string, string> = {
+      ".css": "text/css; charset=utf-8",
+      ".html": "text/html; charset=utf-8",
+      ".js": "text/javascript; charset=utf-8",
+      ".json": "application/json; charset=utf-8",
+      ".mjs": "text/javascript; charset=utf-8",
+      ".png": "image/png",
+      ".svg": "image/svg+xml",
+      ".webp": "image/webp",
+      ".woff2": "font/woff2",
+    };
+    staticServer = createServer(async (request, response) => {
+      try {
+        const pathname = decodeURIComponent(
+          new URL(request.url ?? "/", "http://127.0.0.1").pathname,
+        );
+        const requested = pathname === "/" ? "index.html" : pathname.slice(1);
+        const filePath = resolve(root, requested);
+        const rel = relative(root, filePath);
+        if (rel.startsWith(`..${sep}`) || rel === "..") {
+          response.writeHead(403).end();
+          return;
+        }
+        const body = await readFile(filePath);
+        response.writeHead(200, {
+          "cache-control": "no-store",
+          "content-type": contentTypes[extname(filePath)] ?? "application/octet-stream",
+        });
+        response.end(body);
+      } catch {
+        response.writeHead(404).end();
+      }
+    });
+    await new Promise<void>((resolveListening, reject) => {
+      staticServer?.once("error", reject);
+      staticServer?.listen(0, "127.0.0.1", resolveListening);
+    });
+    const address = staticServer.address();
+    if (!address || typeof address === "string") {
+      throw new Error("static Storybook server did not expose a TCP address");
+    }
+    args.storybook = `http://127.0.0.1:${address.port}`;
+    const stopServer = () => staticServer?.close();
+    process.once("exit", stopServer);
+  }
   console.log("== a11y audit ==");
   console.log(`  storybook : ${args.storybook}`);
   console.log(`  stories   : ${STORIES.length}`);
@@ -216,6 +271,7 @@ async function main() {
       story === "outcomes-verdict-chamber--narrow" ||
       story === "cross-graph-citation-attribution-switchyard--narrow" ||
       story === "research-investigation-replay-observatory--narrow-instrument" ||
+      story === "coordination-gatehouse-atlas--narrow" ||
       story === "modes-operator-watch-room--narrow";
     const dark =
       story === "modes-igloo-directory--night" ||
@@ -224,6 +280,7 @@ async function main() {
       story === "outcomes-verdict-chamber--night" ||
       story === "cross-graph-citation-attribution-switchyard--night" ||
       story === "research-investigation-replay-observatory--night-watch" ||
+      story === "coordination-gatehouse-atlas--forced-night" ||
       story === "modes-operator-watch-room--night";
     const ctx = await browser.newContext({
       viewport: narrow
@@ -240,6 +297,9 @@ async function main() {
       if (story.startsWith("modes-operator-watch-room")) {
         await page.waitForSelector(".operator-watch-room", { timeout: 5_000 });
       }
+      if (story.startsWith("coordination-gatehouse-atlas")) {
+        await page.waitForSelector(".cga-shell", { timeout: 5_000 });
+      }
       if (narrow) {
         const componentSelector = story.startsWith(
           "modes-expedition-cost-planner",
@@ -255,6 +315,8 @@ async function main() {
                   ? ".citation-switchyard"
                   : story.startsWith("research-investigation-replay-observatory")
                     ? ".replay-observatory"
+                    : story.startsWith("coordination-gatehouse-atlas")
+                      ? ".cga-shell"
                     : story.startsWith("modes-operator-watch-room")
                       ? ".operator-watch-room"
                 : ".igloo-directory";
@@ -338,6 +400,7 @@ async function main() {
   }
 
   await browser.close();
+  staticServer?.close();
 
   // ── Aggregation ────────────────────────────────────────
   const seriousOrCritical: { story: string; v: AxeViolation }[] = [];
@@ -357,7 +420,9 @@ async function main() {
   const lines: string[] = [];
   lines.push("# axe-core a11y audit\n");
   lines.push(`**Run:** ${ts}`);
-  lines.push(`**Stories audited:** ${results.length}`);
+  lines.push(`**Stories requested:** ${STORIES.length}`);
+  lines.push(`**Stories scanned by axe:** ${results.length - loadErrors.length}`);
+  lines.push(`**Load errors:** ${loadErrors.length}`);
   lines.push(
     `**Serious / critical violations:** ${seriousOrCritical.length}\n`,
   );
