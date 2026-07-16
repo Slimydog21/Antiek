@@ -56,6 +56,8 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     Epoch0RecoveryAbortPreparedAuthorityPinsV1,
     Epoch0RecoveryAbortRenameCompletionV1,
     Epoch0RecoveryAbortRenamedAuthorityPinsV1,
+    Epoch0RecoveryAbortRenameFsyncCompletionV1,
+    Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1,
     Epoch0RecoveryAuthorityPinsV1,
     Epoch0RecoveryBarrierAcquisitionCompletionV1,
     Epoch0RecoveryCopyCompletionV1,
@@ -87,6 +89,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     VerificationKeyV1,
     _audit_schema,
     _authenticate_epoch0_recovery_abort_prepared_state_for_rename_v1,
+    _authenticate_epoch0_recovery_abort_rename_fsynced_state_v1,
     _authenticate_epoch0_recovery_abort_renamed_state_v1,
     _authenticate_epoch0_recovery_state_v1,
     _canonical_json,
@@ -117,6 +120,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _source_snapshot_sha256,
     _verify_epoch0_recovery_abort_preparation_completion_v1,
     _verify_epoch0_recovery_abort_rename_completion_v1,
+    _verify_epoch0_recovery_abort_rename_fsync_completion_v1,
     _verify_epoch0_recovery_barrier_acquisition_completion_v1,
     _verify_epoch0_recovery_copy_completion_v1,
     _verify_epoch0_recovery_copy_preparation_completion_v1,
@@ -197,6 +201,11 @@ _RecoveryFaultBoundary = Literal[
     "abort_rename_after_journal_rename",
     "abort_rename_after_journal_parent_fsync",
     "abort_rename_after_journal_reread",
+    "abort_rename_fsync_after_intent",
+    "abort_rename_fsync_after_parent_fsync",
+    "abort_rename_fsync_after_journal_rename",
+    "abort_rename_fsync_after_journal_parent_fsync",
+    "abort_rename_fsync_after_journal_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -512,6 +521,40 @@ def _parse_issuer_recovery_abort_rename_completion_document(
     completion = Epoch0RecoveryAbortRenameCompletionV1.model_validate(material)
     if document != _issuer_recovery_abort_rename_completion_document(completion):
         raise ValueError("issuer recovery abort rename completion canonical")
+    return completion
+
+
+def _issuer_recovery_abort_rename_fsync_completion_document(
+    completion: Epoch0RecoveryAbortRenameFsyncCompletionV1,
+) -> bytes:
+    material = completion.model_dump(mode="python")
+    for state_field in ("abort_renamed_to_tombstone_state", "abort_rename_fsynced_state"):
+        state = cast(dict[str, object], material[state_field])
+        signature = state.get("signature_ed25519")
+        if type(signature) is not bytes:
+            raise ValueError("issuer recovery abort rename fsync completion signature")
+        state["signature_ed25519"] = signature.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer recovery abort rename fsync completion bound")
+    return encoded
+
+
+def _parse_issuer_recovery_abort_rename_fsync_completion_document(
+    document: bytes,
+) -> Epoch0RecoveryAbortRenameFsyncCompletionV1:
+    material = _parse_strict_json(document, _ISSUER_MAX_PACKET)
+    for state_field in ("abort_renamed_to_tombstone_state", "abort_rename_fsynced_state"):
+        state = material.get(state_field)
+        if type(state) is not dict:
+            raise ValueError("issuer recovery abort rename fsync completion state")
+        signature = state.get("signature_ed25519")
+        if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+            raise ValueError("issuer recovery abort rename fsync completion signature")
+        state["signature_ed25519"] = bytes.fromhex(signature)
+    completion = Epoch0RecoveryAbortRenameFsyncCompletionV1.model_validate(material)
+    if document != _issuer_recovery_abort_rename_fsync_completion_document(completion):
+        raise ValueError("issuer recovery abort rename fsync completion canonical")
     return completion
 
 
@@ -1283,6 +1326,7 @@ def _issuer_authenticate_recovery_descriptors(
     Epoch0RecoveryAuthorityPinsV1
     | Epoch0RecoveryAbortPreparedAuthorityPinsV1
     | Epoch0RecoveryAbortRenamedAuthorityPinsV1
+    | Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1
 ):
     root_info = os.fstat(root_fd)
     root_record = _issuer_root_record(root_fd)
@@ -1337,6 +1381,27 @@ def _issuer_authenticate_recovery_descriptors(
             expected=renamed_pins,
         )
         return renamed_pins
+    if lifecycle_phase == "abort_rename_fsynced":
+        fsynced_pins = Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1.model_validate(raw_pins)
+        if (
+            fsynced_pins.target_store_id != ticket.target_store_id
+            or fsynced_pins.root_id != ticket.root_id
+            or fsynced_pins.root_manifest_sha256 != ticket.root_manifest_sha256
+            or (fsynced_pins.target_parent_dev, fsynced_pins.target_parent_ino)
+            != (ticket.target_parent_dev, ticket.target_parent_ino)
+            or fsynced_pins.target_basename != ticket.target_basename
+            or (fsynced_pins.target_dev, fsynced_pins.target_ino)
+            != (ticket.target_dev, ticket.target_ino)
+            or fsynced_pins.issuer_sequence > ticket.maximum_issuer_sequence
+        ):
+            raise ValueError("issuer recovery ticket rename fsynced abort pins")
+        _authenticate_epoch0_recovery_abort_rename_fsynced_state_v1(
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            verification_key=verification_key,
+            expected=fsynced_pins,
+        )
+        return fsynced_pins
     pins = Epoch0RecoveryAuthorityPinsV1.model_validate(raw_pins)
     if (
         pins.target_store_id != ticket.target_store_id
@@ -1403,6 +1468,36 @@ def _issuer_recovery_abort_renamed_pins_from_state(
         {
             name: getattr(state, name)
             for name in Epoch0RecoveryAbortRenamedAuthorityPinsV1.model_fields
+        }
+    )
+
+
+def _issuer_expected_abort_renamed_pins_from_origin(
+    origin: Epoch0RecoveryAuthorityPinsV1,
+    *,
+    expected_abort_renamed_state_sha256: str,
+) -> Epoch0RecoveryAbortRenamedAuthorityPinsV1:
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_abort_renamed_state_sha256):
+        raise ValueError("issuer expected abort renamed state hash")
+    material = origin.model_dump(mode="python")
+    material.update(
+        {
+            "lifecycle_phase": "abort_renamed_to_tombstone",
+            "phase_version": origin.phase_version + 2,
+            "issuer_sequence": origin.issuer_sequence + 2,
+            "state_sha256": expected_abort_renamed_state_sha256,
+        }
+    )
+    return Epoch0RecoveryAbortRenamedAuthorityPinsV1.model_validate(material)
+
+
+def _issuer_recovery_abort_rename_fsynced_pins_from_state(
+    state: SignedMigrationLifecycleStateV1,
+) -> Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1:
+    return Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1.model_validate(
+        {
+            name: getattr(state, name)
+            for name in Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1.model_fields
         }
     )
 
@@ -1688,6 +1783,7 @@ def _fixture_migration_lifecycle_issuer_main(
     recovery_source_sealing_completion: Epoch0RecoverySourceSealingCompletionV1 | None = None
     recovery_abort_preparation_completion: Epoch0RecoveryAbortPreparationCompletionV1 | None = None
     recovery_abort_rename_completion: Epoch0RecoveryAbortRenameCompletionV1 | None = None
+    recovery_abort_rename_fsync_completion: Epoch0RecoveryAbortRenameFsyncCompletionV1 | None = None
     recovery_peer_exited = False
     recovery_peer_pid: int | None = None
     pending_recovery_peer_pid: int | None = None
@@ -1721,6 +1817,18 @@ def _fixture_migration_lifecycle_issuer_main(
             ):
                 completion_document = _issuer_recovery_abort_preparation_completion_document(
                     recovery_abort_preparation_completion
+                )
+            elif (
+                boundary
+                in {
+                    "abort_rename_fsync_after_journal_rename",
+                    "abort_rename_fsync_after_journal_parent_fsync",
+                    "abort_rename_fsync_after_journal_reread",
+                }
+                and recovery_abort_rename_fsync_completion is not None
+            ):
+                completion_document = _issuer_recovery_abort_rename_fsync_completion_document(
+                    recovery_abort_rename_fsync_completion
                 )
             elif (
                 boundary.startswith("abort_rename_")
@@ -1762,6 +1870,19 @@ def _fixture_migration_lifecycle_issuer_main(
                 "after_rename": "abort_rename_after_journal_rename",
                 "after_parent_fsync": "abort_rename_after_journal_parent_fsync",
                 "after_reread": "abort_rename_after_journal_reread",
+            }[boundary],
+        )
+        inject_recovery_fault(mapped)
+
+    def inject_abort_rename_fsync_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "abort_rename_fsync_after_journal_rename",
+                "after_parent_fsync": "abort_rename_fsync_after_journal_parent_fsync",
+                "after_reread": "abort_rename_fsync_after_journal_reread",
             }[boundary],
         )
         inject_recovery_fault(mapped)
@@ -2970,6 +3091,156 @@ def _fixture_migration_lifecycle_issuer_main(
                 fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
                 os.close(locked_parent_fd)
 
+    def recover_abort_renamed_to_rename_fsynced(
+        *,
+        session_root_fd: int,
+        session_parent_fd: int,
+        session_target_fd: int,
+        expected_abort_renamed_state_sha256: str,
+        expected_renamed_pins: Epoch0RecoveryAbortRenamedAuthorityPinsV1,
+    ) -> Epoch0RecoveryAbortRenameFsyncCompletionV1:
+        nonlocal committed, pending_candidate, pending_state
+        nonlocal recovery_abort_rename_fsync_completion
+        if (
+            committed is None
+            or expected_renamed_pins.lifecycle_phase != "abort_renamed_to_tombstone"
+            or expected_renamed_pins.state_sha256 != expected_abort_renamed_state_sha256
+            or pending_state is not None
+        ):
+            raise ValueError("issuer recovery abort rename fsync phase")
+        durable = _read_signed_migration_lifecycle_state(
+            parent_fd=session_parent_fd,
+            target_basename=expected_renamed_pins.target_basename,
+            verification_key=verification_key,
+        )
+        if (
+            recovery_abort_rename_fsync_completion is not None
+            and durable == recovery_abort_rename_fsync_completion.abort_rename_fsynced_state
+        ):
+            with _issuer_transition_lock(session_root_fd):
+                durable = _confirm_signed_migration_lifecycle_state_durable(
+                    parent_fd=session_parent_fd,
+                    expected_state=(
+                        recovery_abort_rename_fsync_completion.abort_rename_fsynced_state
+                    ),
+                    verification_key=verification_key,
+                )
+                fsynced_pins = _issuer_recovery_abort_rename_fsynced_pins_from_state(durable)
+                _authenticate_epoch0_recovery_abort_rename_fsynced_state_v1(
+                    parent_fd=session_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=fsynced_pins,
+                )
+                committed = durable
+                return recovery_abort_rename_fsync_completion
+        if (
+            committed.lifecycle_phase != "abort_renamed_to_tombstone"
+            or committed.state_sha256 != expected_abort_renamed_state_sha256
+            or durable != committed
+        ):
+            raise ValueError("issuer recovery abort rename fsync journal")
+        renamed = committed
+        with _issuer_transition_lock(session_root_fd):
+            locked_parent_fd = os.open(
+                ".",
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=session_parent_fd,
+            )
+            try:
+                fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+                renamed = _authenticate_epoch0_recovery_abort_renamed_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=expected_renamed_pins,
+                )
+                if recovery_abort_rename_fsync_completion is None:
+                    material = renamed.model_dump(
+                        mode="python",
+                        exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                    )
+                    next_version = renamed.phase_version + 1
+                    material.update(
+                        {
+                            "lifecycle_phase": "abort_rename_fsynced",
+                            "phase_version": next_version,
+                            "issuer_sequence": next_version,
+                            "updated_at_ms": max(
+                                renamed.updated_at_ms, time.time_ns() // 1_000_000
+                            ),
+                            "previous_state_sha256": renamed.state_sha256,
+                            "issuer_key_id": key_id,
+                        }
+                    )
+                    state_sha256 = _migration_lifecycle_state_sha256(material)
+                    material["state_sha256"] = state_sha256
+                    material["signature_ed25519"] = private_key.sign(
+                        _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                    )
+                    fsynced = SignedMigrationLifecycleStateV1.model_validate(material)
+                    recovery_abort_rename_fsync_completion = (
+                        Epoch0RecoveryAbortRenameFsyncCompletionV1(
+                            abort_renamed_to_tombstone_state=renamed,
+                            abort_rename_fsynced_state=fsynced,
+                        )
+                    )
+                else:
+                    if (
+                        recovery_abort_rename_fsync_completion.abort_renamed_to_tombstone_state
+                        != renamed
+                    ):
+                        raise ValueError("issuer recovery abort rename fsync cached completion")
+                    fsynced = recovery_abort_rename_fsync_completion.abort_rename_fsynced_state
+                _verify_epoch0_recovery_abort_rename_fsync_completion_v1(
+                    recovery_abort_rename_fsync_completion,
+                    issuer_verification_key=verification_key,
+                    expected_renamed_pins=expected_renamed_pins,
+                )
+                inject_recovery_fault("abort_rename_fsync_after_intent")
+                os.fsync(locked_parent_fd)
+                if _migration_lifecycle_parent_identity(locked_parent_fd) != (
+                    renamed.target_parent_dev,
+                    renamed.target_parent_ino,
+                ):
+                    raise ValueError("issuer recovery abort rename fsync parent changed")
+                _authenticate_epoch0_recovery_abort_renamed_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=expected_renamed_pins,
+                )
+                inject_recovery_fault("abort_rename_fsync_after_parent_fsync")
+                _persist_signed_migration_lifecycle_state(
+                    parent_fd=session_parent_fd,
+                    state=fsynced,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=renamed.state_sha256,
+                    _fault_hook=inject_abort_rename_fsync_persistence_fault,
+                    locked_parent_fd=locked_parent_fd,
+                )
+                reread = _read_signed_migration_lifecycle_state(
+                    parent_fd=locked_parent_fd,
+                    target_basename=renamed.target_basename,
+                    verification_key=verification_key,
+                )
+                if reread != fsynced:
+                    raise ValueError("issuer recovery abort rename fsync journal reread")
+                fsynced_pins = _issuer_recovery_abort_rename_fsynced_pins_from_state(fsynced)
+                _authenticate_epoch0_recovery_abort_rename_fsynced_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=fsynced_pins,
+                )
+                committed = fsynced
+                pending_candidate = None
+                pending_state = None
+                return recovery_abort_rename_fsync_completion
+            finally:
+                fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+                os.close(locked_parent_fd)
+
     try:
         process_watch.control(
             [
@@ -3215,7 +3486,8 @@ def _fixture_migration_lifecycle_issuer_main(
                     authentication_pins: object = request["authority_pins"]
                     if (
                         (
-                            recovery_abort_rename_completion is not None
+                            recovery_abort_rename_fsync_completion is not None
+                            or recovery_abort_rename_completion is not None
                             or recovery_abort_preparation_completion is not None
                             or recovery_copy_completion is not None
                             or recovery_copy_preparation_completion is not None
@@ -3226,7 +3498,23 @@ def _fixture_migration_lifecycle_issuer_main(
                         and recovery_admission is not None
                         and peer_pid == recovery_admission.authenticated_peer_pid
                     ):
-                        if recovery_abort_rename_completion is not None:
+                        if recovery_abort_rename_fsync_completion is not None:
+                            observed_recovery_state = _read_signed_migration_lifecycle_state(
+                                parent_fd=received_descriptors[1],
+                                target_basename=(
+                                    recovery_abort_rename_fsync_completion.abort_renamed_to_tombstone_state.target_basename
+                                ),
+                                verification_key=verification_key,
+                            )
+                            if observed_recovery_state not in (
+                                recovery_abort_rename_fsync_completion.abort_renamed_to_tombstone_state,
+                                recovery_abort_rename_fsync_completion.abort_rename_fsynced_state,
+                            ):
+                                raise ValueError(
+                                    "issuer recovery abort rename fsync effective state"
+                                )
+                            effective_state = observed_recovery_state
+                        elif recovery_abort_rename_completion is not None:
                             observed_recovery_state = _read_signed_migration_lifecycle_state(
                                 parent_fd=received_descriptors[1],
                                 target_basename=(
@@ -3303,7 +3591,13 @@ def _fixture_migration_lifecycle_issuer_main(
                                     "issuer recovery barrier acquisition effective state"
                                 )
                             effective_state = observed_recovery_state
-                        if effective_state.lifecycle_phase == "abort_renamed_to_tombstone":
+                        if effective_state.lifecycle_phase == "abort_rename_fsynced":
+                            authentication_pins = (
+                                _issuer_recovery_abort_rename_fsynced_pins_from_state(
+                                    effective_state
+                                ).model_dump(mode="json")
+                            )
+                        elif effective_state.lifecycle_phase == "abort_renamed_to_tombstone":
                             authentication_pins = _issuer_recovery_abort_renamed_pins_from_state(
                                 effective_state
                             ).model_dump(mode="json")
@@ -3468,6 +3762,12 @@ def _fixture_migration_lifecycle_issuer_main(
                                 expected_fields = common_fields | {
                                     "expected_abort_prepared_state_sha256"
                                 }
+                            elif (
+                                session_command == "session_recover_abort_renamed_to_rename_fsynced"
+                            ):
+                                expected_fields = common_fields | {
+                                    "expected_abort_renamed_state_sha256"
+                                }
                             else:
                                 expected_fields = common_fields
                             if set(session_request) != expected_fields or (
@@ -3480,7 +3780,34 @@ def _fixture_migration_lifecycle_issuer_main(
                             if supervisor_exited() or recovery_peer_exited:
                                 return
                             effective_descriptor_pins = pins
-                            if recovery_abort_rename_completion is not None:
+                            if recovery_abort_rename_fsync_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_abort_rename_fsync_completion.abort_renamed_to_tombstone_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_abort_rename_fsync_completion.abort_renamed_to_tombstone_state,
+                                    recovery_abort_rename_fsync_completion.abort_rename_fsynced_state,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort rename fsync effective state"
+                                    )
+                                if durable_recovery_state.lifecycle_phase == "abort_rename_fsynced":
+                                    effective_descriptor_pins = (
+                                        _issuer_recovery_abort_rename_fsynced_pins_from_state(
+                                            durable_recovery_state
+                                        )
+                                    )
+                                else:
+                                    effective_descriptor_pins = (
+                                        _issuer_recovery_abort_renamed_pins_from_state(
+                                            durable_recovery_state
+                                        )
+                                    )
+                            elif recovery_abort_rename_completion is not None:
                                 durable_recovery_state = _read_signed_migration_lifecycle_state(
                                     parent_fd=session_parent_fd,
                                     target_basename=(
@@ -3916,6 +4243,65 @@ def _fixture_migration_lifecycle_issuer_main(
                                         b"Y"
                                         + _issuer_recovery_abort_rename_completion_document(
                                             rename_completion
+                                        )
+                                    )
+                                )
+                                continue
+                            if session_command == "session_recover_abort_renamed_to_rename_fsynced":
+                                expected_abort_renamed_state_sha256 = session_request.get(
+                                    "expected_abort_renamed_state_sha256"
+                                )
+                                if type(
+                                    expected_abort_renamed_state_sha256
+                                ) is not str or not re.fullmatch(
+                                    r"[0-9a-f]{64}", expected_abort_renamed_state_sha256
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort rename fsync expected state"
+                                    )
+                                expected_renamed_pins = (
+                                    _issuer_expected_abort_renamed_pins_from_origin(
+                                        recovery_admission.authority_pins,
+                                        expected_abort_renamed_state_sha256=(
+                                            expected_abort_renamed_state_sha256
+                                        ),
+                                    )
+                                )
+                                try:
+                                    _issuer_authenticate_recovery_descriptors(
+                                        root_fd=session_root_fd,
+                                        parent_fd=session_parent_fd,
+                                        target_fd=session_target_fd,
+                                        ticket=recovery_ticket,
+                                        verification_key=verification_key,
+                                        raw_pins=effective_descriptor_pins.model_dump(mode="json"),
+                                    )
+                                    fsync_completion = recover_abort_renamed_to_rename_fsynced(
+                                        session_root_fd=session_root_fd,
+                                        session_parent_fd=session_parent_fd,
+                                        session_target_fd=session_target_fd,
+                                        expected_abort_renamed_state_sha256=(
+                                            expected_abort_renamed_state_sha256
+                                        ),
+                                        expected_renamed_pins=expected_renamed_pins,
+                                    )
+                                    if supervisor_exited() or recovery_peer_exited:
+                                        return
+                                except _InjectedRecoveryFault as error:
+                                    connection.sendall(
+                                        _issuer_session_frame(
+                                            b"E" + (error.completion_document or b"")
+                                        )
+                                    )
+                                    continue
+                                except Exception:
+                                    connection.sendall(_issuer_session_frame(b"E"))
+                                    continue
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"Y"
+                                        + _issuer_recovery_abort_rename_fsync_completion_document(
+                                            fsync_completion
                                         )
                                     )
                                 )
@@ -4365,6 +4751,7 @@ class FixtureMigrationRecoverySessionV1:
     _lock: threading.Lock
     _abort_preparation_completion: Epoch0RecoveryAbortPreparationCompletionV1 | None
     _abort_rename_completion: Epoch0RecoveryAbortRenameCompletionV1 | None
+    _abort_rename_fsync_completion: Epoch0RecoveryAbortRenameFsyncCompletionV1 | None
     _barrier_acquisition_completion: Epoch0RecoveryBarrierAcquisitionCompletionV1 | None
     _preparation_completion: Epoch0RecoveryCopyPreparationCompletionV1 | None
     _source_sealing_completion: Epoch0RecoverySourceSealingCompletionV1 | None
@@ -4374,6 +4761,7 @@ class FixtureMigrationRecoverySessionV1:
     __slots__ = (
         "_abort_preparation_completion",
         "_abort_rename_completion",
+        "_abort_rename_fsync_completion",
         "_admission",
         "_barrier_acquisition_completion",
         "_boot_nonce",
@@ -4506,6 +4894,7 @@ class FixtureMigrationRecoverySessionV1:
         object.__setattr__(session, "_lock", threading.Lock())
         object.__setattr__(session, "_abort_preparation_completion", None)
         object.__setattr__(session, "_abort_rename_completion", None)
+        object.__setattr__(session, "_abort_rename_fsync_completion", None)
         object.__setattr__(session, "_barrier_acquisition_completion", None)
         object.__setattr__(session, "_preparation_completion", None)
         object.__setattr__(session, "_source_sealing_completion", None)
@@ -4980,6 +5369,75 @@ class FixtureMigrationRecoverySessionV1:
                 raise
             return completion
 
+    def recover_abort_renamed_to_rename_fsynced(
+        self, *, expected_abort_renamed_state_sha256: str
+    ) -> Epoch0RecoveryAbortRenameFsyncCompletionV1:
+        self._validate()
+        renamed_pins = _issuer_expected_abort_renamed_pins_from_origin(
+            self._admission.authority_pins,
+            expected_abort_renamed_state_sha256=expected_abort_renamed_state_sha256,
+        )
+        if (
+            self._abort_rename_completion is not None
+            and self._abort_rename_completion.abort_renamed_to_tombstone_state.state_sha256
+            != expected_abort_renamed_state_sha256
+        ):
+            raise ValueError("fixture recovery abort renamed state")
+        request = _canonical_json(
+            {
+                "command": "session_recover_abort_renamed_to_rename_fsynced",
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+                "expected_abort_renamed_state_sha256": expected_abort_renamed_state_sha256,
+            }
+        )
+        with self._lock:
+            try:
+                self._connection.sendall(_issuer_session_frame(request))
+                response = _issuer_session_receive_frame(self._connection)
+            except Exception:
+                self._close_local()
+                raise
+            if response[:1] == b"E":
+                try:
+                    if response[1:]:
+                        fault_completion = (
+                            _parse_issuer_recovery_abort_rename_fsync_completion_document(
+                                response[1:]
+                            )
+                        )
+                        _verify_epoch0_recovery_abort_rename_fsync_completion_v1(
+                            fault_completion,
+                            issuer_verification_key=self._verification_key,
+                            expected_renamed_pins=renamed_pins,
+                        )
+                        object.__setattr__(self, "_abort_rename_fsync_completion", fault_completion)
+                except Exception:
+                    self._close_local()
+                    raise
+                raise ValueError("fixture recovery abort rename fsync rejected")
+            try:
+                if response[:1] != b"Y":
+                    raise ValueError("fixture recovery abort rename fsync response")
+                completion = _parse_issuer_recovery_abort_rename_fsync_completion_document(
+                    response[1:]
+                )
+                _verify_epoch0_recovery_abort_rename_fsync_completion_v1(
+                    completion,
+                    issuer_verification_key=self._verification_key,
+                    expected_renamed_pins=renamed_pins,
+                )
+                if (
+                    self._abort_rename_fsync_completion is not None
+                    and completion != self._abort_rename_fsync_completion
+                ):
+                    raise ValueError("fixture recovery abort rename fsync replay")
+                object.__setattr__(self, "_abort_rename_fsync_completion", completion)
+            except Exception:
+                self._close_local()
+                raise
+            return completion
+
     def close(self) -> None:
         if self._closed:
             return
@@ -5106,6 +5564,11 @@ class FixtureMigrationLifecycleIssuerV1:
             "abort_rename_after_journal_rename",
             "abort_rename_after_journal_parent_fsync",
             "abort_rename_after_journal_reread",
+            "abort_rename_fsync_after_intent",
+            "abort_rename_fsync_after_parent_fsync",
+            "abort_rename_fsync_after_journal_rename",
+            "abort_rename_fsync_after_journal_parent_fsync",
+            "abort_rename_fsync_after_journal_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")
