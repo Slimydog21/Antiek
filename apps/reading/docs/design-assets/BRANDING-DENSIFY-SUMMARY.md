@@ -105,6 +105,10 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | TrajectoryView living-TV | `22f01168c` | invent strip + terminal complete/error beats |
 | ChunkModal open/fail beats | `0c6ae5403` | highlight on chunk open; fail on fetch error |
 | ChatInputArea DR beats | `c909aed01` | docked composer start/error living-TV |
+| InvestigationSidebar brand | `bc4032924` | thinking mark + nav highlight |
+| VoiceToDraft note_saved | `d1a9aacb8` | user-sourced voice draft living-TV |
+| ConnectResearch link/spawn | `d16f53357` | highlight + deep_research_start/error |
+| CRT igloo cursor-TV invent | (local) | Flipbook-feel CRT+igloo+cursor invent inventory |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
