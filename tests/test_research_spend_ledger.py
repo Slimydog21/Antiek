@@ -15,6 +15,10 @@ import pytest
 
 from substrate.research_spend import (
     BindingConflict,
+    FallbackChainManifest,
+    FallbackChainOutcome,
+    FallbackRouteManifest,
+    FallbackRouteState,
     IdempotencyConflict,
     InvalidTransition,
     LedgerIntegrityError,
@@ -69,6 +73,41 @@ def _zero(key: str = "zero-1") -> ZeroCostIntent:
     )
 
 
+def _fallback_manifest(
+    *, chain_id: str = "chain-1", logical_operation_id: str = "logical-1"
+) -> FallbackChainManifest:
+    routes = tuple(
+        FallbackRouteManifest(
+            fallback_index=index,
+            seam_id="provider-call",
+            provider=f"provider-{index}",
+            model=f"model-{index}",
+            operation="deep-research",
+            operation_digest="chain-operation-digest",
+            projection_digest=f"projection-{index}",
+            rate_snapshot=f"rates-{index}",
+            projected_max_cents=100 - index * 10,
+            reservation_key=f"reservation-{chain_id}-{index}",
+            provider_idempotency_key=f"provider-key-{chain_id}-{index}",
+            route_authority_digest=f"authority-{chain_id}-{index}",
+        )
+        for index in range(2)
+    )
+    return FallbackChainManifest(
+        chain_id=chain_id,
+        logical_operation_id=logical_operation_id,
+        operation_digest="chain-operation-digest",
+        routes=routes,
+    )
+
+
+def _register_manifest(
+    ledger: ResearchSpendLedger, manifest: FallbackChainManifest | None = None
+) -> FallbackChainManifest:
+    value = manifest or _fallback_manifest()
+    return ledger.register_fallback_manifest("register-" + value.chain_id, _binding(), value)
+
+
 def _ledger(tmp_path: Path, *, ceiling: int = 1_000) -> ResearchSpendLedger:
     ledger = ResearchSpendLedger(tmp_path / "research-spend.sqlite3")
     ledger.ensure_schema()
@@ -85,6 +124,124 @@ def _dispatch(
     hold = ledger.reserve_paid(f"reserve-{key}", _binding(), _paid(key), cents)
     ledger.mark_dispatch_possible(f"dispatch-{key}", hold.hold_id)
     return hold.hold_id
+
+
+def _manifest_hold(route: FallbackRouteManifest) -> PaidHoldIntent:
+    return PaidHoldIntent(
+        reservation_key=route.reservation_key,
+        seam_id=route.seam_id,
+        provider=route.provider,
+        model=route.model,
+        operation=route.operation,
+        operation_digest=route.operation_digest,
+        projection_digest=route.projection_digest,
+        rate_snapshot=route.rate_snapshot,
+        provider_idempotency_key=route.provider_idempotency_key,
+        route_authority_digest=route.route_authority_digest,
+    )
+
+
+def test_v2_to_v3_fallback_migration_is_atomic(tmp_path: Path) -> None:
+    db_path = tmp_path / "research-spend.sqlite3"
+    ledger = ResearchSpendLedger(db_path)
+    ledger.ensure_schema()
+    with sqlite3.connect(db_path) as connection:
+        for name in (
+            "research_fallback_chains_no_update",
+            "research_fallback_chains_no_delete",
+            "research_fallback_routes_no_update",
+            "research_fallback_routes_no_delete",
+        ):
+            connection.execute(f"DROP TRIGGER {name}")
+        connection.execute("DROP TABLE research_fallback_routes")
+        connection.execute("DROP TABLE research_fallback_chains")
+        connection.execute("PRAGMA user_version=2")
+
+    def fail(checkpoint: str) -> None:
+        if checkpoint == "schema:2:after_migration:2":
+            raise RuntimeError("migration crash")
+
+    with pytest.raises(RuntimeError, match="migration crash"):
+        ResearchSpendLedger(db_path, failure_injector=fail).ensure_schema()
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE name='research_fallback_chains'"
+        ).fetchone() is None
+
+    ledger.ensure_schema()
+    with sqlite3.connect(db_path) as connection:
+        assert connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        names = {
+            row[0]
+            for row in connection.execute(
+                "SELECT name FROM sqlite_master WHERE name LIKE 'research_fallback_%'"
+            )
+        }
+    assert {
+        "research_fallback_chains",
+        "research_fallback_routes",
+        "research_fallback_chains_no_update",
+        "research_fallback_chains_no_delete",
+        "research_fallback_routes_no_update",
+        "research_fallback_routes_no_delete",
+        "research_fallback_history_owner_idx",
+        "research_fallback_routes_reservation_idx",
+    } <= names
+
+
+def test_fallback_manifest_history_is_private_ordered_and_integrity_checked(
+    tmp_path: Path,
+) -> None:
+    ledger = _ledger(tmp_path)
+    manifest = _register_manifest(ledger)
+    assert _register_manifest(ledger, manifest) == manifest
+    assert ledger.fallback_history("other-owner").items == ()
+
+    first, second = manifest.routes
+    first_hold = ledger.reserve_paid(
+        "reserve-first", _binding(), _manifest_hold(first), first.projected_max_cents
+    )
+    ledger.mark_dispatch_possible("dispatch-first", first_hold.hold_id)
+    ledger.release(
+        "release-first",
+        first_hold.hold_id,
+        {"accepted": False},
+        provider_authoritative=True,
+    )
+    second_hold = ledger.reserve_paid(
+        "reserve-second", _binding(), _manifest_hold(second), second.projected_max_cents
+    )
+    ledger.mark_dispatch_possible("dispatch-second", second_hold.hold_id)
+    ledger.settle("settle-second", second_hold.hold_id, 70, {"receipt": "private-body"})
+
+    chain = ledger.fallback_history("owner-1").items[0]
+    assert chain.outcome is FallbackChainOutcome.SETTLED
+    assert [route.state for route in chain.routes] == [
+        FallbackRouteState.RELEASED,
+        FallbackRouteState.SETTLED,
+    ]
+    assert chain.routes[1].settlement_evidence_sha256
+    assert "private-body" not in repr(chain)
+    assert first.reservation_key not in repr(chain)
+
+    with sqlite3.connect(tmp_path / "research-spend.sqlite3") as connection:
+        connection.execute(
+            "UPDATE research_spend_holds SET resolution_intent_sha256='bad' WHERE hold_id=?",
+            (second_hold.hold_id,),
+        )
+    with pytest.raises(LedgerIntegrityError, match="settlement receipt"):
+        ledger.fallback_history("owner-1")
+
+
+def test_fallback_history_rejects_impossible_later_attempt(tmp_path: Path) -> None:
+    ledger = _ledger(tmp_path)
+    second = _register_manifest(ledger).routes[1]
+    ledger.reserve_paid(
+        "reserve-second", _binding(), _manifest_hold(second), second.projected_max_cents
+    )
+    with pytest.raises(LedgerIntegrityError, match="order is impossible"):
+        ledger.fallback_history("owner-1")
 
 
 def test_final_cent_race_has_one_winner_across_100_connections(tmp_path: Path) -> None:

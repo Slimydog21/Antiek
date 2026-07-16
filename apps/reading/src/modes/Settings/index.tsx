@@ -13,10 +13,12 @@ import {
 } from "../../lib/auth";
 import {
   estimatePromptCost,
+  fetchFallbackReceiptHistory,
   fetchModelDecision,
   fetchSettingsBudget,
   fetchSettingsModels,
   type BudgetResponse,
+  type FallbackReceiptChain,
   type ModelDecisionResponse,
   type ModelDecisionTask,
   type ModelRow,
@@ -491,8 +493,52 @@ function DecisionTreePanel({
   const [selected, setSelected] = useState<ComposerChoice | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [receiptHistory, setReceiptHistory] = useState<FallbackReceiptChain[]>([]);
+  const [receiptCursor, setReceiptCursor] = useState<string | null>(null);
+  const [receiptLoading, setReceiptLoading] = useState(true);
+  const [receiptError, setReceiptError] = useState(false);
   const requestVersion = useRef(0);
   const usageValid = inputChars >= 1 && outputTokens >= 1;
+  const receiptRequestVersion = useRef(0);
+
+  useEffect(() => {
+    const version = receiptRequestVersion.current + 1;
+    receiptRequestVersion.current = version;
+    void fetchFallbackReceiptHistory().then(
+      (history) => {
+        if (receiptRequestVersion.current !== version) return;
+        setReceiptHistory(history.items);
+        setReceiptCursor(history.next_cursor);
+        setReceiptLoading(false);
+      },
+      () => {
+        if (receiptRequestVersion.current !== version) return;
+        setReceiptError(true);
+        setReceiptLoading(false);
+      },
+    );
+    return () => {
+      receiptRequestVersion.current += 1;
+    };
+  }, []);
+
+  async function loadOlderReceipts() {
+    if (receiptCursor === null || receiptLoading) return;
+    const version = receiptRequestVersion.current + 1;
+    receiptRequestVersion.current = version;
+    setReceiptLoading(true);
+    setReceiptError(false);
+    try {
+      const history = await fetchFallbackReceiptHistory(receiptCursor);
+      if (receiptRequestVersion.current !== version) return;
+      setReceiptHistory((current) => [...current, ...history.items]);
+      setReceiptCursor(history.next_cursor);
+    } catch {
+      if (receiptRequestVersion.current === version) setReceiptError(true);
+    } finally {
+      if (receiptRequestVersion.current === version) setReceiptLoading(false);
+    }
+  }
 
   function invalidateDecision() {
     requestVersion.current += 1;
@@ -659,6 +705,63 @@ function DecisionTreePanel({
           {decision.notes.map((note) => <p key={note} className="text-xs text-ink-soft dark:text-starlight">{note}</p>)}
         </div>
       )}
+      <FallbackReceiptHistory
+        chains={receiptHistory}
+        cursor={receiptCursor}
+        loading={receiptLoading}
+        unavailable={receiptError}
+        onLoadOlder={() => void loadOlderReceipts()}
+      />
+    </section>
+  );
+}
+
+function FallbackReceiptHistory({
+  chains,
+  cursor,
+  loading,
+  unavailable,
+  onLoadOlder,
+}: {
+  chains: FallbackReceiptChain[];
+  cursor: string | null;
+  loading: boolean;
+  unavailable: boolean;
+  onLoadOlder: () => void;
+}) {
+  return (
+    <section aria-labelledby="fallback-receipt-history-title" className="border-t border-ink/15 pt-5 dark:border-bright/15">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="fallback-receipt-history-title" className="font-serif text-lg text-ink dark:text-bright">Recent fallback executions</h3>
+        <span className="font-mono text-[11px] uppercase text-ink-soft dark:text-starlight">Read only</span>
+      </div>
+      {loading && chains.length === 0 && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Loading execution receipts...</p>}
+      {unavailable && <p role="status" className="mt-3 text-sm text-ink-soft dark:text-starlight">Execution receipts are unavailable.</p>}
+      {!loading && !unavailable && chains.length === 0 && <p className="mt-3 text-sm text-ink-soft dark:text-starlight">No fallback executions recorded.</p>}
+      {chains.length > 0 && (
+        <ol className="mt-4 divide-y divide-ink/10 border-y border-ink/10 dark:divide-bright/10 dark:border-bright/10">
+          {chains.map((chain) => (
+            <li key={chain.chain_id} className="py-4" data-testid="fallback-receipt-chain">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                <time className="text-ink-soft dark:text-starlight" dateTime={chain.created_at}>{new Date(chain.created_at).toLocaleString()}</time>
+                <span className="font-mono font-semibold text-ink dark:text-bright">{chain.outcome.replace("_", " ")}</span>
+              </div>
+              <p className="mt-1 font-mono text-[11px] text-ink-soft dark:text-starlight">Manifest {chain.manifest_sha256.slice(0, 10)}</p>
+              <ol className="mt-3 space-y-2">
+                {chain.routes.map((route) => (
+                  <li key={route.fallback_index} className="grid gap-x-3 text-xs sm:grid-cols-[2rem_1fr_auto]">
+                    <span className="font-mono text-ink-soft dark:text-starlight">#{route.fallback_index + 1}</span>
+                    <span className="min-w-0 text-ink dark:text-bright"><strong className="break-words">{route.model}</strong><span className="block break-words text-ink-soft dark:text-starlight">{route.provider}</span></span>
+                    <span className="font-mono text-right text-ink-soft dark:text-starlight">{route.state.replace("_", " ")} · cap ${(route.projected_max_cents / 100).toFixed(2)}{route.actual_cents === null ? "" : ` · actual $${(route.actual_cents / 100).toFixed(2)}`}</span>
+                    {route.settlement_evidence_sha256 && <span className="col-start-2 font-mono text-[11px] text-ink-soft dark:text-starlight">Receipt {route.settlement_evidence_sha256.slice(0, 10)}</span>}
+                  </li>
+                ))}
+              </ol>
+            </li>
+          ))}
+        </ol>
+      )}
+      {cursor && <LemonButton type="button" variant="secondary" size="sm" disabled={loading} onClick={onLoadOlder} className="mt-4">{loading ? "Loading..." : "Load older"}</LemonButton>}
     </section>
   );
 }

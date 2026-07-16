@@ -2,6 +2,14 @@
 
 from .ledger import (
     BindingConflict,
+    FallbackChainHistory,
+    FallbackChainHistoryPage,
+    FallbackChainManifest,
+    FallbackChainOutcome,
+    FallbackHistoryCursor,
+    FallbackRouteHistory,
+    FallbackRouteManifest,
+    FallbackRouteState,
     IdempotencyConflict,
     InvalidTransition,
     LedgerIntegrityError,
@@ -20,10 +28,20 @@ from .ledger import (
     ZeroCostIntent,
     ZeroCostState,
     ZeroReplayClass,
+    default_research_spend_db_path,
 )
 
 __all__ = [
     "BindingConflict",
+    "FallbackChainHistory",
+    "FallbackChainHistoryPage",
+    "FallbackChainManifest",
+    "FallbackChainOutcome",
+    "FallbackHistoryCursor",
+    "FallbackRouteHistory",
+    "FallbackRouteManifest",
+    "FallbackRouteState",
+    "default_research_spend_db_path",
     "IdempotencyConflict",
     "InvalidTransition",
     "LedgerIntegrityError",

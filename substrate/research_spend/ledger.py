@@ -28,6 +28,15 @@ from typing import Final, cast
 
 __all__ = [
     "BindingConflict",
+    "FallbackChainHistory",
+    "FallbackChainHistoryPage",
+    "FallbackChainManifest",
+    "FallbackChainOutcome",
+    "FallbackHistoryCursor",
+    "FallbackRouteHistory",
+    "FallbackRouteManifest",
+    "FallbackRouteState",
+    "default_research_spend_db_path",
     "IdempotencyConflict",
     "InvalidTransition",
     "LedgerIntegrityError",
@@ -49,13 +58,24 @@ __all__ = [
 ]
 
 APPLICATION_ID: Final = 0x52535044  # RSPD
-SCHEMA_VERSION: Final = 2
+SCHEMA_VERSION: Final = 3
 MAX_AUTHORITY_CENTS: Final = (1 << 62) - 1
 MAX_ACTUAL_CENTS: Final = (1 << 63) - 1
 BUSY_TIMEOUT_MS: Final = 30_000
 
 JsonScalar = str | int | bool | None
 FailureInjector = Callable[[str], None]
+
+
+def default_research_spend_db_path() -> Path:
+    """Resolve the authority ledger shared by fallback execution and Settings."""
+    configured = os.environ.get("ANTIEK_RESEARCH_SPEND_DB")
+    if configured:
+        return Path(configured).expanduser()
+    from substrate.graph import default_db_path
+
+    graph = Path(default_db_path())
+    return graph.with_name(f"{graph.name}.research-spend.sqlite3")
 
 
 class RunStatus(StrEnum):
@@ -82,6 +102,23 @@ class ZeroCostState(StrEnum):
 class ZeroReplayClass(StrEnum):
     PURE = "pure"
     CHECKPOINT_RESUMABLE = "checkpoint_resumable"
+
+
+class FallbackRouteState(StrEnum):
+    UNATTEMPTED = "unattempted"
+    RESERVED_NOT_SENT = "reserved_not_sent"
+    DISPATCH_POSSIBLE = "dispatch_possible"
+    UNKNOWN = "unknown"
+    RELEASED = "released"
+    SETTLED = "settled"
+
+
+class FallbackChainOutcome(StrEnum):
+    UNATTEMPTED = "unattempted"
+    IN_PROGRESS = "in_progress"
+    AMBIGUOUS = "ambiguous"
+    SETTLED = "settled"
+    EXHAUSTED = "exhausted"
 
 
 class LedgerIntegrityError(RuntimeError):
@@ -176,6 +213,140 @@ class PaidHoldIntent:
             if name == "route_authority_digest" and getattr(self, name) is None:
                 continue
             _required_text(name, cast(str, getattr(self, name)))
+
+
+@dataclass(frozen=True)
+class FallbackRouteManifest:
+    fallback_index: int
+    seam_id: str
+    provider: str
+    model: str
+    operation: str
+    operation_digest: str
+    projection_digest: str
+    rate_snapshot: str
+    projected_max_cents: int
+    reservation_key: str
+    provider_idempotency_key: str
+    route_authority_digest: str
+
+    def __post_init__(self) -> None:
+        _bounded_int("fallback_index", self.fallback_index, minimum=0, maximum=15)
+        _bounded_int(
+            "projected_max_cents",
+            self.projected_max_cents,
+            minimum=1,
+            maximum=MAX_AUTHORITY_CENTS,
+        )
+        for name in (
+            "seam_id", "provider", "model", "operation", "operation_digest",
+            "projection_digest", "rate_snapshot", "reservation_key",
+            "provider_idempotency_key", "route_authority_digest",
+        ):
+            _required_text(name, cast(str, getattr(self, name)))
+
+
+@dataclass(frozen=True)
+class FallbackChainManifest:
+    chain_id: str
+    logical_operation_id: str
+    operation_digest: str
+    routes: tuple[FallbackRouteManifest, ...]
+
+    def __post_init__(self) -> None:
+        for name in ("chain_id", "logical_operation_id", "operation_digest"):
+            _required_text(name, cast(str, getattr(self, name)))
+        if not 1 <= len(self.routes) <= 16:
+            raise ValueError("fallback manifest must contain 1 to 16 routes")
+        if tuple(route.fallback_index for route in self.routes) != tuple(range(len(self.routes))):
+            raise ValueError("fallback manifest routes must have contiguous ordered indexes")
+        identities = tuple((route.provider, route.model) for route in self.routes)
+        if len(identities) != len(set(identities)):
+            raise ValueError("fallback manifest routes must be unique")
+
+
+@dataclass(frozen=True)
+class FallbackHistoryCursor:
+    created_at: str
+    chain_id: str
+
+    def __post_init__(self) -> None:
+        _required_text("created_at", self.created_at)
+        _required_text("chain_id", self.chain_id)
+
+
+@dataclass(frozen=True)
+class FallbackRouteHistory:
+    fallback_index: int
+    provider: str
+    model: str
+    seam_id: str
+    operation: str
+    projected_max_cents: int
+    state: FallbackRouteState
+    actual_cents: int | None = None
+    resolved_at: str | None = None
+    settlement_evidence_sha256: str | None = None
+    settlement_intent_sha256: str | None = None
+
+    def __post_init__(self) -> None:
+        _bounded_int("fallback_index", self.fallback_index, minimum=0, maximum=15)
+        _bounded_int(
+            "projected_max_cents",
+            self.projected_max_cents,
+            minimum=1,
+            maximum=MAX_AUTHORITY_CENTS,
+        )
+        for name in ("provider", "model", "seam_id", "operation"):
+            _required_text(name, cast(str, getattr(self, name)))
+        if not isinstance(self.state, FallbackRouteState):
+            raise TypeError("state must be FallbackRouteState")
+        if self.actual_cents is not None:
+            _bounded_int(
+                "actual_cents", self.actual_cents, minimum=0, maximum=MAX_ACTUAL_CENTS
+            )
+        receipt_fields = (
+            self.actual_cents,
+            self.resolved_at,
+            self.settlement_evidence_sha256,
+            self.settlement_intent_sha256,
+        )
+        if self.state is FallbackRouteState.SETTLED:
+            if any(value is None for value in receipt_fields):
+                raise ValueError("settled fallback history requires complete receipt bindings")
+        elif any(value is not None for value in receipt_fields[2:]):
+            raise ValueError("only settled fallback history may expose receipt digests")
+
+
+@dataclass(frozen=True)
+class FallbackChainHistory:
+    chain_id: str
+    manifest_sha256: str
+    outcome: FallbackChainOutcome
+    routes: tuple[FallbackRouteHistory, ...]
+    created_at: str
+
+    def __post_init__(self) -> None:
+        for name in ("chain_id", "manifest_sha256", "created_at"):
+            _required_text(name, cast(str, getattr(self, name)))
+        if not isinstance(self.outcome, FallbackChainOutcome):
+            raise TypeError("outcome must be FallbackChainOutcome")
+        if not 1 <= len(self.routes) <= 16:
+            raise ValueError("fallback history must contain 1 to 16 routes")
+        if tuple(route.fallback_index for route in self.routes) != tuple(
+            range(len(self.routes))
+        ):
+            raise ValueError("fallback history routes must remain contiguous")
+
+
+@dataclass(frozen=True)
+class FallbackChainHistoryPage:
+    items: tuple[FallbackChainHistory, ...]
+    next_cursor: FallbackHistoryCursor | None
+
+    def __post_init__(self) -> None:
+        if len(self.items) > 50:
+            raise ValueError("fallback history page exceeds its bound")
 
 
 @dataclass(frozen=True)
@@ -477,6 +648,72 @@ _MIGRATIONS: Final[dict[int, tuple[str, ...]]] = {
         "ALTER TABLE research_spend_runs ADD COLUMN mode TEXT NOT NULL "
         "DEFAULT 'hard_ceiling' CHECK (mode = 'hard_ceiling')",
     ),
+    2: (
+        """
+        CREATE TABLE research_fallback_chains (
+            chain_id TEXT PRIMARY KEY,
+            run_id TEXT NOT NULL REFERENCES research_spend_runs(run_id),
+            owner_id TEXT NOT NULL,
+            logical_operation_id TEXT NOT NULL,
+            operation_digest TEXT NOT NULL,
+            manifest_json TEXT NOT NULL,
+            manifest_sha256 TEXT NOT NULL,
+            route_count INTEGER NOT NULL CHECK(route_count BETWEEN 1 AND 16),
+            registration_command_key TEXT NOT NULL UNIQUE
+                REFERENCES research_spend_commands(command_key),
+            created_at TEXT NOT NULL,
+            UNIQUE(run_id, logical_operation_id)
+        ) STRICT
+        """,
+        """
+        CREATE TABLE research_fallback_routes (
+            chain_id TEXT NOT NULL REFERENCES research_fallback_chains(chain_id),
+            fallback_index INTEGER NOT NULL CHECK(fallback_index BETWEEN 0 AND 15),
+            seam_id TEXT NOT NULL,
+            provider TEXT NOT NULL,
+            model TEXT NOT NULL,
+            operation TEXT NOT NULL,
+            operation_digest TEXT NOT NULL,
+            projection_digest TEXT NOT NULL,
+            rate_snapshot TEXT NOT NULL,
+            projected_max_cents INTEGER NOT NULL CHECK(
+                projected_max_cents BETWEEN 1 AND 4611686018427387903
+            ),
+            reservation_key TEXT NOT NULL,
+            provider_idempotency_key TEXT NOT NULL,
+            route_authority_digest TEXT NOT NULL,
+            PRIMARY KEY(chain_id, fallback_index),
+            UNIQUE(chain_id, provider, model),
+            UNIQUE(chain_id, reservation_key),
+            UNIQUE(chain_id, provider_idempotency_key),
+            UNIQUE(chain_id, route_authority_digest)
+        ) STRICT
+        """,
+        "CREATE INDEX research_fallback_history_owner_idx "
+        "ON research_fallback_chains(owner_id,created_at DESC,chain_id DESC)",
+        "CREATE INDEX research_fallback_routes_reservation_idx "
+        "ON research_fallback_routes(reservation_key)",
+        """
+        CREATE TRIGGER research_fallback_chains_no_update
+        BEFORE UPDATE ON research_fallback_chains
+        BEGIN SELECT RAISE(ABORT, 'fallback chains are immutable'); END
+        """,
+        """
+        CREATE TRIGGER research_fallback_chains_no_delete
+        BEFORE DELETE ON research_fallback_chains
+        BEGIN SELECT RAISE(ABORT, 'fallback chains are durable'); END
+        """,
+        """
+        CREATE TRIGGER research_fallback_routes_no_update
+        BEFORE UPDATE ON research_fallback_routes
+        BEGIN SELECT RAISE(ABORT, 'fallback routes are immutable'); END
+        """,
+        """
+        CREATE TRIGGER research_fallback_routes_no_delete
+        BEFORE DELETE ON research_fallback_routes
+        BEGIN SELECT RAISE(ABORT, 'fallback routes are durable'); END
+        """,
+    ),
 }
 
 
@@ -496,6 +733,20 @@ def _canonical(payload: Mapping[str, JsonScalar]) -> str:
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _fallback_manifest_json(manifest: FallbackChainManifest) -> str:
+    return json.dumps(
+        {
+            "chain_id": manifest.chain_id,
+            "logical_operation_id": manifest.logical_operation_id,
+            "operation_digest": manifest.operation_digest,
+            "routes": [route.__dict__ for route in manifest.routes],
+        },
+        sort_keys=True,
+        separators=(",", ":"),
+        ensure_ascii=True,
+    )
 
 
 def _binding_payload(binding: RunBinding) -> dict[str, JsonScalar]:
@@ -612,7 +863,9 @@ class ResearchSpendLedger:
                 raise LedgerIntegrityError("research spend schema has no matching application id")
             if version == 0:
                 connection.execute(f"PRAGMA application_id = {APPLICATION_ID}")
-                for index, statement in enumerate(_DDL, start=1):
+                for index, statement in enumerate(
+                    (*_DDL, *_MIGRATIONS[2]), start=1
+                ):
                     connection.execute(statement)
                     self._checkpoint(f"schema:after_statement:{index}")
                 connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
@@ -802,6 +1055,141 @@ class ResearchSpendLedger:
             )
             self._checkpoint("reserve_paid:after_event")
             return hold
+
+    def register_fallback_manifest(
+        self,
+        command_key: str,
+        binding: RunBinding,
+        manifest: FallbackChainManifest,
+    ) -> FallbackChainManifest:
+        """Atomically persist immutable fallback intent and its command receipt."""
+        _required_text("command_key", command_key)
+        manifest_json = _fallback_manifest_json(manifest)
+        manifest_sha256 = _sha256(manifest_json)
+        intent_json = _canonical(
+            {
+                **_binding_payload(binding),
+                "chain_id": manifest.chain_id,
+                "logical_operation_id": manifest.logical_operation_id,
+                "manifest_sha256": manifest_sha256,
+            }
+        )
+        result_json = _canonical(
+            {"chain_id": manifest.chain_id, "manifest_sha256": manifest_sha256}
+        )
+        with self._write("register_fallback_manifest") as connection:
+            replay = self._replay(
+                connection,
+                command_key,
+                "register_fallback_manifest",
+                manifest.chain_id,
+                intent_json,
+            )
+            if replay is not None:
+                self._validate_fallback_manifest_row(connection, binding, manifest)
+                return manifest
+            self._require_binding(connection, binding)
+            collision = connection.execute(
+                "SELECT chain_id,manifest_json FROM research_fallback_chains "
+                "WHERE chain_id=? OR (run_id=? AND logical_operation_id=?)",
+                (manifest.chain_id, binding.run_id, manifest.logical_operation_id),
+            ).fetchone()
+            if collision is not None:
+                raise IdempotencyConflict("fallback chain identity already has changed intent")
+            self._record_command(
+                connection,
+                command_key,
+                "register_fallback_manifest",
+                manifest.chain_id,
+                intent_json,
+                result_json,
+            )
+            self._checkpoint("register_fallback_manifest:after_command")
+            now = _now()
+            connection.execute(
+                "INSERT INTO research_fallback_chains "
+                "(chain_id,run_id,owner_id,logical_operation_id,operation_digest,"
+                "manifest_json,manifest_sha256,route_count,registration_command_key,created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?)",
+                (
+                    manifest.chain_id,
+                    binding.run_id,
+                    binding.owner_id,
+                    manifest.logical_operation_id,
+                    manifest.operation_digest,
+                    manifest_json,
+                    manifest_sha256,
+                    len(manifest.routes),
+                    command_key,
+                    now,
+                ),
+            )
+            self._checkpoint("register_fallback_manifest:after_chain")
+            connection.executemany(
+                "INSERT INTO research_fallback_routes "
+                "(chain_id,fallback_index,seam_id,provider,model,operation,operation_digest,"
+                "projection_digest,rate_snapshot,projected_max_cents,reservation_key,"
+                "provider_idempotency_key,route_authority_digest) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [
+                    (
+                        manifest.chain_id,
+                        route.fallback_index,
+                        route.seam_id,
+                        route.provider,
+                        route.model,
+                        route.operation,
+                        route.operation_digest,
+                        route.projection_digest,
+                        route.rate_snapshot,
+                        route.projected_max_cents,
+                        route.reservation_key,
+                        route.provider_idempotency_key,
+                        route.route_authority_digest,
+                    )
+                    for route in manifest.routes
+                ],
+            )
+            self._checkpoint("register_fallback_manifest:after_routes")
+            return manifest
+
+    def fallback_history(
+        self,
+        owner_id: str,
+        *,
+        limit: int = 50,
+        cursor: FallbackHistoryCursor | None = None,
+    ) -> FallbackChainHistoryPage:
+        """Read a bounded owner-scoped projection; persisted evidence stays private."""
+        _required_text("owner_id", owner_id)
+        _bounded_int("limit", limit, minimum=1, maximum=50)
+        if cursor is not None:
+            _required_text("cursor.created_at", cursor.created_at)
+            _required_text("cursor.chain_id", cursor.chain_id)
+        connection = self._connect()
+        try:
+            predicate = "owner_id=?"
+            parameters: list[object] = [owner_id]
+            if cursor is not None:
+                predicate += " AND (created_at < ? OR (created_at = ? AND chain_id < ?))"
+                parameters.extend((cursor.created_at, cursor.created_at, cursor.chain_id))
+            parameters.append(limit + 1)
+            rows = connection.execute(
+                "SELECT * FROM research_fallback_chains WHERE " + predicate
+                + " ORDER BY created_at DESC,chain_id DESC LIMIT ?",
+                parameters,
+            ).fetchall()
+            visible = rows[:limit]
+            items = tuple(self._fallback_history_row(connection, row, owner_id) for row in visible)
+            next_cursor = None
+            if len(rows) > limit and visible:
+                last = visible[-1]
+                next_cursor = FallbackHistoryCursor(
+                    created_at=str(last["created_at"]), chain_id=str(last["chain_id"])
+                )
+            return FallbackChainHistoryPage(items=items, next_cursor=next_cursor)
+        finally:
+            connection.close()
 
     def prepare_zero_cost(
         self,
@@ -1462,6 +1850,11 @@ class ResearchSpendLedger:
             ).fetchall()
             for row in run_ids:
                 self._load_run(connection, str(row["run_id"]))
+            chains = connection.execute(
+                "SELECT * FROM research_fallback_chains ORDER BY chain_id"
+            ).fetchall()
+            for row in chains:
+                self._fallback_history_row(connection, row, str(row["owner_id"]))
             return str(connection.execute("PRAGMA integrity_check").fetchone()[0])
         finally:
             connection.close()
@@ -1490,6 +1883,187 @@ class ResearchSpendLedger:
         if run.binding != binding:
             raise BindingConflict("owner, session, plan, revision, mode, or currency changed")
         return run
+
+    def _validate_fallback_manifest_row(
+        self,
+        connection: sqlite3.Connection,
+        binding: RunBinding,
+        manifest: FallbackChainManifest,
+    ) -> sqlite3.Row:
+        row = connection.execute(
+            "SELECT * FROM research_fallback_chains WHERE chain_id=?",
+            (manifest.chain_id,),
+        ).fetchone()
+        manifest_json = _fallback_manifest_json(manifest)
+        if row is None or (
+            str(row["run_id"]) != binding.run_id
+            or str(row["owner_id"]) != binding.owner_id
+            or str(row["logical_operation_id"]) != manifest.logical_operation_id
+            or str(row["operation_digest"]) != manifest.operation_digest
+            or str(row["manifest_json"]) != manifest_json
+            or str(row["manifest_sha256"]) != _sha256(manifest_json)
+            or int(row["route_count"]) != len(manifest.routes)
+        ):
+            raise LedgerIntegrityError("fallback manifest conflicts with persisted columns")
+        route_rows = connection.execute(
+            "SELECT * FROM research_fallback_routes WHERE chain_id=? ORDER BY fallback_index",
+            (manifest.chain_id,),
+        ).fetchall()
+        if len(route_rows) != len(manifest.routes):
+            raise LedgerIntegrityError("fallback manifest route cardinality conflicts")
+        fields = tuple(FallbackRouteManifest.__dataclass_fields__)
+        for expected, persisted in zip(manifest.routes, route_rows, strict=True):
+            if any(persisted[name] != getattr(expected, name) for name in fields):
+                raise LedgerIntegrityError("fallback manifest route columns conflict")
+        command_key = str(row["registration_command_key"])
+        intent_json = _canonical(
+            {
+                **_binding_payload(binding),
+                "chain_id": manifest.chain_id,
+                "logical_operation_id": manifest.logical_operation_id,
+                "manifest_sha256": _sha256(manifest_json),
+            }
+        )
+        try:
+            replay = self._replay(
+                connection,
+                command_key,
+                "register_fallback_manifest",
+                manifest.chain_id,
+                intent_json,
+            )
+        except IdempotencyConflict as exc:
+            raise LedgerIntegrityError("fallback manifest command receipt conflicts") from exc
+        if replay is None:
+            raise LedgerIntegrityError("fallback manifest has no command receipt")
+        return cast(sqlite3.Row, row)
+
+    def _fallback_history_row(
+        self, connection: sqlite3.Connection, row: sqlite3.Row, owner_id: str
+    ) -> FallbackChainHistory:
+        if str(row["owner_id"]) != owner_id:
+            raise LedgerIntegrityError("fallback history owner binding conflicts")
+        raw = str(row["manifest_json"])
+        try:
+            value = json.loads(raw)
+            if type(value) is not dict or set(value) != {
+                "chain_id", "logical_operation_id", "operation_digest", "routes"
+            }:
+                raise TypeError("fallback manifest shape differs")
+            if any(
+                type(value[name]) is not str
+                for name in ("chain_id", "logical_operation_id", "operation_digest")
+            ):
+                raise TypeError("fallback manifest identity types differ")
+            route_values = value["routes"]
+            route_keys = set(FallbackRouteManifest.__dataclass_fields__)
+            if type(route_values) is not list or any(
+                type(item) is not dict or set(item) != route_keys for item in route_values
+            ):
+                raise TypeError("fallback manifest route shape differs")
+            manifest = FallbackChainManifest(
+                chain_id=value["chain_id"],
+                logical_operation_id=value["logical_operation_id"],
+                operation_digest=value["operation_digest"],
+                routes=tuple(FallbackRouteManifest(**item) for item in route_values),
+            )
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
+            raise LedgerIntegrityError("fallback manifest JSON is invalid") from exc
+        run = self._load_run(connection, str(row["run_id"]))
+        if run.binding.owner_id != owner_id:
+            raise LedgerIntegrityError("fallback manifest run owner conflicts")
+        self._validate_fallback_manifest_row(connection, run.binding, manifest)
+
+        public_routes: list[FallbackRouteHistory] = []
+        prior_states: list[FallbackRouteState] = []
+        settled = False
+        for route in manifest.routes:
+            hold_rows = connection.execute(
+                "SELECT * FROM research_spend_holds WHERE run_id=? AND reservation_key=?",
+                (run.binding.run_id, route.reservation_key),
+            ).fetchall()
+            if len(hold_rows) > 1:
+                raise LedgerIntegrityError("fallback route has duplicate holds")
+            if not hold_rows:
+                state = FallbackRouteState.UNATTEMPTED
+                public = FallbackRouteHistory(
+                    route.fallback_index, route.provider, route.model, route.seam_id,
+                    route.operation, route.projected_max_cents, state,
+                )
+            else:
+                if any(state is not FallbackRouteState.RELEASED for state in prior_states):
+                    raise LedgerIntegrityError("fallback hold order is impossible")
+                if settled:
+                    raise LedgerIntegrityError("fallback hold exists after settlement")
+                hold_row = hold_rows[0]
+                hold = self._load_hold(connection, str(hold_row["hold_id"]))
+                expected_intent = PaidHoldIntent(
+                    reservation_key=route.reservation_key,
+                    seam_id=route.seam_id,
+                    provider=route.provider,
+                    model=route.model,
+                    operation=route.operation,
+                    operation_digest=route.operation_digest,
+                    projection_digest=route.projection_digest,
+                    rate_snapshot=route.rate_snapshot,
+                    provider_idempotency_key=route.provider_idempotency_key,
+                    route_authority_digest=route.route_authority_digest,
+                )
+                if hold.intent != expected_intent or hold.projected_max_cents != route.projected_max_cents:
+                    raise LedgerIntegrityError("fallback hold does not match its declared route")
+                state = (
+                    FallbackRouteState.RESERVED_NOT_SENT
+                    if hold.state is PaidHoldState.RESERVED
+                    else FallbackRouteState(hold.state.value)
+                )
+                evidence_sha256 = intent_sha256 = None
+                if state is FallbackRouteState.SETTLED:
+                    evidence_json = str(hold_row["resolution_evidence_json"])
+                    intent_json = str(hold_row["resolution_intent_json"])
+                    expected_resolution = _canonical(
+                        {
+                            "actual_cents": hold.actual_cents,
+                            "evidence_sha256": _sha256(evidence_json),
+                            "hold_id": hold.hold_id,
+                        }
+                    )
+                    if (
+                        intent_json != expected_resolution
+                        or str(hold_row["resolution_intent_sha256"]) != _sha256(intent_json)
+                    ):
+                        raise LedgerIntegrityError("fallback settlement receipt conflicts")
+                    evidence_sha256 = _sha256(evidence_json)
+                    intent_sha256 = _sha256(intent_json)
+                    settled = True
+                public = FallbackRouteHistory(
+                    route.fallback_index, route.provider, route.model, route.seam_id,
+                    route.operation, route.projected_max_cents, state, hold.actual_cents,
+                    hold.resolved_at, evidence_sha256, intent_sha256,
+                )
+            prior_states.append(state)
+            public_routes.append(public)
+
+        states = tuple(item.state for item in public_routes)
+        if all(state is FallbackRouteState.UNATTEMPTED for state in states):
+            outcome = FallbackChainOutcome.UNATTEMPTED
+        elif FallbackRouteState.SETTLED in states:
+            outcome = FallbackChainOutcome.SETTLED
+        elif any(
+            state in (FallbackRouteState.DISPATCH_POSSIBLE, FallbackRouteState.UNKNOWN)
+            for state in states
+        ):
+            outcome = FallbackChainOutcome.AMBIGUOUS
+        elif all(state is FallbackRouteState.RELEASED for state in states):
+            outcome = FallbackChainOutcome.EXHAUSTED
+        else:
+            outcome = FallbackChainOutcome.IN_PROGRESS
+        return FallbackChainHistory(
+            manifest.chain_id,
+            _sha256(raw),
+            outcome,
+            tuple(public_routes),
+            str(row["created_at"]),
+        )
 
     def _load_run(self, connection: sqlite3.Connection, run_id: str) -> RunSnapshot:
         row = connection.execute(
