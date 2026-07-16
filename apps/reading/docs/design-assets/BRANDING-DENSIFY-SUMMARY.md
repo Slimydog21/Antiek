@@ -141,7 +141,8 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | FloatMenu deep-research start | `08fa94dbc` | deep_research_start when spawn text launchable |
 | Igloo ice-arcade invent product-map | `08fa94dbc` | LGH + wait-arcade + cabinet ice card CRT+cursor invent |
 | ActiveListening research prepare | `432431ccf` | listen→research deep_research_start/error |
-| CommandPalette / AISidecar / IdeaDump | craft134 | palette highlight; thought-partner note_saved; brainstorm piece_started |
+| CommandPalette / AISidecar / IdeaDump | `c4ef69275` | palette highlight; thought-partner note_saved; brainstorm piece_started |
+| Paperclip zombies arcade invent product-map | `e3810ac85` | LGH + wait-arcade + cabinet zombies CRT invent |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
