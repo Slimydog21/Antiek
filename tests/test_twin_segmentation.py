@@ -173,3 +173,16 @@ def test_integrity_rejects_manifest_identity_substitution(tmp_path, asset):
         con.execute(TRIGGERS["segmentation_manifest_no_update"])
     with pytest.raises(TwinSegmentationIntegrityError, match="invalid"):
         ledger.verify_integrity()
+
+
+def test_live_ledger_rechecks_schema_before_register_and_read(tmp_path, asset):
+    path = tmp_path / "segments.sqlite"
+    manifest = build_segmentation_manifest(account_id="acct", asset=asset)
+    ledger = TwinSegmentationLedger(path)
+    ledger.register(manifest, account_id="acct", asset=asset)
+    with sqlite3.connect(path) as con:
+        con.execute("DROP TRIGGER segmentation_manifest_no_update")
+    with pytest.raises(TwinSegmentationIntegrityError, match="schema object"):
+        ledger.register(manifest, account_id="acct", asset=asset)
+    with pytest.raises(TwinSegmentationIntegrityError, match="schema object"):
+        ledger.get("acct", asset.asset_id, manifest.parent_source_hash)

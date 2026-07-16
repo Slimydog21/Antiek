@@ -148,6 +148,7 @@ class TwinSegmentationLedger:
         con = self._connect()
         try:
             con.execute("BEGIN IMMEDIATE")
+            self._verify_schema(con)
             key = (manifest.account_id, manifest.asset_id, manifest.parent_source_hash)
             row = con.execute(
                 "SELECT * FROM segmentation_manifests "
@@ -186,6 +187,7 @@ class TwinSegmentationLedger:
 
     def get(self, account_id: str, asset_id: str, parent_source_hash: str) -> SegmentationSnapshot:
         with self._connect() as con:
+            self._verify_schema(con)
             row = con.execute(
                 "SELECT * FROM segmentation_manifests "
                 "WHERE account_id=? AND asset_id=? AND parent_source_hash=?",
