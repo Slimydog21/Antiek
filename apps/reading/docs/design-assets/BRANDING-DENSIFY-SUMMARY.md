@@ -192,3 +192,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Shell launcher/tree densify | `2d03f38b0` | ProductsLauncher/ProjectTree/SubActionList/NavRail search |
 | PanelHandle/PdfViewer densify | `332953d6f` | dock modes highlight; PDF note_saved |
 | Import repair after densify inject | `37b248a86` | multi-line import blocks restored |
+| AIActionFailure living-TV densify | `86d6c8044` | retry highlight |
