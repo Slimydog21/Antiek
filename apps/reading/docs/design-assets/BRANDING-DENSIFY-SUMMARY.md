@@ -270,6 +270,6 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2c collective merge | `f85ebb7a4` | SubAgentProposal + FloatMenu invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c book marketplace port | `41a79a11b` | HouseSlot invent refresh on FULL GREEN tip |
 | Imagine invent polish v2c float research merge | `4fcf3bed2` | TwinNotes float-merge invent refresh on FULL GREEN tip |
-| Imagine invent polish v2c knowledge twin cursor | `TBD` | KnowledgePanel invent refresh on FULL GREEN tip |
-| Imagine invent polish v2c antiek-bench celebrate | `TBD` | AntiekBenchPanel invent refresh on FULL GREEN tip |
-| Imagine invent polish v2c model decision tree | `TBD` | ModelDecisionBar invent refresh on FULL GREEN tip |
+| Imagine invent polish v2c knowledge twin cursor | `c614911a4` | KnowledgePanel invent refresh on FULL GREEN tip |
+| Imagine invent polish v2c antiek-bench celebrate | `c614911a4` | AntiekBenchPanel invent refresh on FULL GREEN tip |
+| Imagine invent polish v2c model decision tree | `c614911a4` | ModelDecisionBar invent refresh on FULL GREEN tip |
