@@ -11,6 +11,7 @@
 
 import { useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import LemonButton from "../../components/lemon/LemonButton";
 import {
   TERMINAL_STATES,
@@ -61,7 +62,18 @@ export default function ResearchPanel({ research, costUsd, onSteer, busy }: Rese
       aria-label={`research ${research.investigation_id}`}
     >
       <header className="flex items-start justify-between gap-2">
-        <p className="line-clamp-3 text-sm text-ink dark:text-bright">{research.sub_question}</p>
+        <div className="flex min-w-0 items-start gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="research-panel-werner-brand"
+            className="mt-0.5 h-7 w-7 shrink-0 object-contain"
+          />
+          <p className="line-clamp-3 text-sm text-ink dark:text-bright">
+            {research.sub_question}
+          </p>
+        </div>
         <span
           className={`shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] ${STATE_CLASS[research.state]}`}
           aria-label="research state"
