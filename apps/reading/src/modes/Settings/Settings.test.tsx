@@ -1,7 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { fetchModelDecision, type ModelDecisionResponse } from "../../api/settings";
+import {
+  fetchModelDecision,
+  fetchSettingsBudget,
+  fetchSettingsModels,
+  type ModelDecisionResponse,
+} from "../../api/settings";
 import Settings from "./index";
 
 vi.mock("../../workspace/useViewportTier", () => ({
@@ -170,5 +175,29 @@ describe("Settings SPR-01", () => {
       candidates: [],
     });
     await waitFor(() => expect(screen.queryByText(/Recommended tier:/)).toBeNull());
+  });
+
+  it("does not announce unknown budget usage as zero", async () => {
+    vi.mocked(fetchSettingsBudget).mockResolvedValueOnce({
+      ...budget,
+      daily_cap_usd: null,
+      reserved_estimated_usd: null,
+      remaining_usd: null,
+      spent_status: "unknown",
+      spend_basis: "unknown",
+    });
+    render(<Settings />);
+    const progress = await screen.findByRole("progressbar", { name: "Budget usage" });
+    expect(progress.hasAttribute("aria-valuenow")).toBe(false);
+    expect(progress.getAttribute("aria-valuetext")).toBe("Budget usage unknown");
+  });
+
+  it("keeps provider failures safe for display", async () => {
+    vi.mocked(fetchSettingsModels).mockRejectedValueOnce(
+      new Error("secret upstream host: internal.example"),
+    );
+    render(<Settings />);
+    expect(await screen.findByText(/Providers are unavailable right now/)).toBeTruthy();
+    expect(screen.queryByText(/internal\.example/)).toBeNull();
   });
 });

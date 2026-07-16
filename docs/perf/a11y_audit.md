@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-05-22T18:21:45.880Z
-**Stories audited:** 38
+**Run:** 2026-07-16T08:16:54.757Z
+**Stories audited:** 45
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -45,6 +45,13 @@
 | `design-moodboard--typography` | 0 | — | — |
 | `design-moodboard--outlined-card` | 0 | — | — |
 | `brand-werner-animations--all-poses` | 0 | — | — |
+| `brand-werner-igloomark-spr-06--on-rail-button` | 0 | — | — |
+| `navigation-appshell--empty` | 0 | — | — |
+| `shell-navrail-spr-04--bottom-rail` | 0 | — | — |
+| `settings-model-observatory--production` | 0 | — | — |
+| `settings-model-observatory--wide` | 0 | — | — |
+| `settings-model-observatory--tablet` | 0 | — | — |
+| `settings-model-observatory--mobile` | 0 | — | — |
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |
