@@ -69,6 +69,13 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     compute_private_paid_lane_contract_sha256,
     compute_private_paid_lane_semantic_sha256,
 )
+from tests.support.certified_private_paid_lane_34e import (
+    CERTIFIED_34E_CHECKPOINT_SOURCE_SHA256,
+    CERTIFIED_34E_COMMIT,
+    CERTIFIED_34E_CONTRACT_SHA256,
+    CERTIFIED_34E_SEMANTIC_SHA256,
+    probe_certified_34e_runtime,
+)
 from tests.support.private_paid_lane_authority_checkpoint_v1 import (
     OWNER_PATH_DISCRIMINATOR,
     SOURCE_KEY_VERSION,
@@ -3183,6 +3190,20 @@ class TestIdentities:
         assert (
             compute_private_paid_lane_semantic_sha256()
             == checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2
+        )
+
+    def test_certified_34e_runtime_is_detached_and_source_pinned(self) -> None:
+        assert CERTIFIED_34E_COMMIT == "68f2547c72d7a5351dde67f4fb83daac6fc45508"
+        assert probe_certified_34e_runtime(Path(__file__).resolve().parents[1]) == {
+            "contract_sha256": CERTIFIED_34E_CONTRACT_SHA256,
+            "semantic_sha256": CERTIFIED_34E_SEMANTIC_SHA256,
+            "source_sha256": CERTIFIED_34E_CHECKPOINT_SOURCE_SHA256,
+        }
+        assert checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_SEMANTIC_SHA256_V2 != (
+            CERTIFIED_34E_SEMANTIC_SHA256
+        )
+        assert checkpoint_module.PRIVATE_PAID_LANE_CHECKPOINT_CONTRACT_SHA256_V2 != (
+            CERTIFIED_34E_CONTRACT_SHA256
         )
 
     def test_exported_v2_contract_matches_computed(self) -> None:
