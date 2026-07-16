@@ -387,6 +387,7 @@ SCHEMA_TABLES: tuple[str, ...] = (
     "derived_evidence_manifest_operations",
     "challenge_request_journal",
     "node_investigation_memberships",
+    "node_investigation_observations",
 )
 
 
@@ -1502,6 +1503,29 @@ WHERE node_type IN ('insight', 'question')
 ON CONFLICT (node_id, investigation_id) DO NOTHING;
 """
 
+# Cycle 87: one member node can be observed repeatedly inside an investigation.
+ANTIEK_GRAPH_SCHEMA_V26_NODE_INVESTIGATION_OBSERVATION_SQL = """
+CREATE TABLE IF NOT EXISTS node_investigation_observations (
+    node_id TEXT NOT NULL,
+    investigation_id TEXT NOT NULL,
+    origin_note_id TEXT NOT NULL,
+    source_document_id TEXT,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (node_id, investigation_id, origin_note_id)
+);
+CREATE INDEX IF NOT EXISTS idx_node_investigation_observations_lookup
+    ON node_investigation_observations(investigation_id, node_id, created_at, origin_note_id);
+
+INSERT INTO node_investigation_observations
+    (node_id, investigation_id, origin_note_id, source_document_id)
+SELECT m.node_id, m.investigation_id, m.origin_note_id,
+       try(json_extract_string(n.metadata, '$.source_document_id'))
+FROM node_investigation_memberships m
+JOIN nodes n ON n.node_id = m.node_id
+WHERE m.origin_note_id IS NOT NULL AND length(trim(m.origin_note_id)) > 0
+ON CONFLICT (node_id, investigation_id, origin_note_id) DO NOTHING;
+"""
+
 _V22_REQUIRED_DESCRIBE = {
     "twin_note_compositions": [
         ("composition_id", "VARCHAR", "NO", "PRI", None), ("account_id", "VARCHAR", "NO", "UNI", None),
@@ -2007,6 +2031,7 @@ def init_database(con: LockedConnection) -> None:
     con.execute(ANTIEK_GRAPH_SCHEMA_V23_TWIN_NOTE_WORKFLOW_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V24_CHALLENGE_REQUEST_JOURNAL_SQL)
     con.execute(ANTIEK_GRAPH_SCHEMA_V25_NODE_INVESTIGATION_MEMBERSHIP_SQL)
+    con.execute(ANTIEK_GRAPH_SCHEMA_V26_NODE_INVESTIGATION_OBSERVATION_SQL)
     from .derived_asset_schema import install as _install_derived_asset_schema
 
     _install_derived_asset_schema(con)

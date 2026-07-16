@@ -70,6 +70,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
   const byId = new Map<string, LiveNote>();
   const order: string[] = [];
   const seenEvents = new Set<string>();
+  const nodeSequences = new Map<string, number>();
 
   for (const e of events) {
     const id = e.event_id;
@@ -167,7 +168,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
       if (
         !existing.refinementEligible ||
         (existing.nodeId !== null && existing.nodeId !== graphNodeId) ||
-        (existing.lastAppliedSequence !== null && previousSequence !== existing.lastAppliedSequence)
+        (nodeSequences.has(graphNodeId) && previousSequence !== nodeSequences.get(graphNodeId))
       ) {
         continue;
       }
@@ -178,6 +179,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
           nodeId: graphNodeId,
           lastAppliedSequence: previousSequence,
         });
+        nodeSequences.set(graphNodeId, previousSequence);
         continue;
       }
       byId.set(noteId, {
@@ -188,6 +190,7 @@ export function deriveNotes(events: Event[]): LiveNote[] {
         refinements: existing.refinements + 1,
         lastAppliedSequence: sequence,
       });
+      nodeSequences.set(graphNodeId, sequence);
     }
   }
 
@@ -279,6 +282,7 @@ function NoteRow({ note, investigationId }: { note: LiveNote; investigationId: s
       const res = await challengeNote(note.nodeId, {
         investigation_id: investigationId,
         idempotency_key: challengeKey,
+        origin_note_id: note.noteId,
       });
       if (res.applied && res.new_text) {
         setChallengeKey(crypto.randomUUID());

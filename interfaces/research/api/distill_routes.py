@@ -95,6 +95,7 @@ class ChallengeRequest(BaseModel):
     investigation_id: str = Field(..., min_length=1)
     challenge_text: str = Field(default="", max_length=2000)
     idempotency_key: str = Field(..., min_length=16, max_length=128, pattern=r"^[A-Za-z0-9._:-]+$")
+    origin_note_id: str | None = Field(default=None, min_length=1, max_length=256)
 
 
 class ChallengeOut(BaseModel):
@@ -170,6 +171,7 @@ async def challenge(node_id: str, req: ChallengeRequest) -> ChallengeOut:
             seq=seq,
             investigation_id=req.investigation_id,
             idempotency_key=req.idempotency_key,
+            origin_note_id=req.origin_note_id,
             unavailable_errors=(ChallengeUnavailable,),
         )
     except ChallengeUnavailable:

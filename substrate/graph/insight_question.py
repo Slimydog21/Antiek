@@ -62,7 +62,7 @@ try:
         validate_insight_question_edge,
     )
     from ...runtime.db_lock import LockedConnection, connect_write
-    from .node_membership import ensure_membership
+    from .node_membership import ensure_membership, ensure_observation
     from .ops import content_addressed_id, insert_edge, insert_node
 except ImportError:  # pragma: no cover — direct-script fallback
     _here = os.path.dirname(os.path.abspath(__file__))
@@ -72,7 +72,10 @@ except ImportError:  # pragma: no cover — direct-script fallback
         DUCKDB_PATH,
         validate_insight_question_edge,
     )
-    from substrate.graph.node_membership import ensure_membership  # type: ignore[no-redef]
+    from substrate.graph.node_membership import (  # type: ignore[no-redef]
+        ensure_membership,
+        ensure_observation,
+    )
     from substrate.graph.ops import (  # type: ignore[no-redef]
         content_addressed_id,
         insert_edge,
@@ -165,9 +168,20 @@ def _verify_private_node(
         "FROM nodes WHERE node_id=?",
         [node_id],
     ).fetchone()
-    expected = (label, node_type, _PROMOTION_GRAPH_SCOPE, metadata, owner_user_id)
-    actual = None if row is None else (row[0], row[1], row[2], json.loads(row[3]), row[4])
-    if actual != expected:
+    if row is None:
+        raise ValueError("private promoted graph node conflicts")
+    actual_meta = json.loads(row[3])
+    immutable_keys = ("promoted_kind", "canonical_text", "identity_scope", "source_kind")
+    immutable_meta_matches = all(
+        actual_meta.get(key) == metadata.get(key) for key in immutable_keys
+    )
+    if (
+        row[0] != label
+        or row[1] != node_type
+        or row[2] != _PROMOTION_GRAPH_SCOPE
+        or row[4] != owner_user_id
+        or not immutable_meta_matches
+    ):
         raise ValueError("private promoted graph node conflicts")
 
 
@@ -380,6 +394,12 @@ def promote_insight(
                     owner_user_id=owner_user_id,
                     origin_note_id=node_meta.get("origin_note_id"),
                 )
+                ensure_observation(
+                    c, node_id=match.existing_unit_id,
+                    investigation_id=investigation_id,
+                    origin_note_id=node_meta.get("origin_note_id"),
+                    source_document_id=source_document_id,
+                )
                 return match.existing_unit_id
         emb = provider.encode(text)
         insert_node(
@@ -407,6 +427,11 @@ def promote_insight(
             c, node_id=nid, investigation_id=investigation_id,
             node_type="insight", owner_user_id=owner_user_id,
             origin_note_id=node_meta.get("origin_note_id"),
+        )
+        ensure_observation(
+            c, node_id=nid, investigation_id=investigation_id,
+            origin_note_id=node_meta.get("origin_note_id"),
+            source_document_id=source_document_id,
         )
         _written, dangling = _add_provenance_edges(
             c,
