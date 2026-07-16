@@ -55,7 +55,12 @@ from substrate.dispatch import (  # noqa: E402
     register_provider,
     reset_provider_registry,
 )
+from substrate.distillation_dispatch import (  # noqa: E402
+    CommandState,
+    DistillationDispatchJournal,
+)
 from substrate.event_log import trajectory  # noqa: E402
+from substrate.graph import default_db_path  # noqa: E402
 from substrate.schemas import (  # noqa: E402
     DistillationDeliveredPayload,
     Event,
@@ -454,8 +459,18 @@ async def test_physical_trajectory_corruption_prevents_provider_dispatch(
         for row in trajectory("inv-physical-corruption")
         if row["action_type"] == "distillation.delivered"
     ]
-    assert len(delivered) == 1
-    assert delivered[0].policy_id == "wrestling-fallback/memory-integrity"
+    assert delivered == []
+    requested = [
+        row
+        for row in trajectory("inv-physical-corruption")
+        if row["action_type"] == "distillation.requested"
+    ]
+    assert len(requested) == 1
+    command = DistillationDispatchJournal(default_db_path()).load(
+        requested[0]["event_id"]
+    )
+    assert command.state is CommandState.COMPLETED
+    assert command.policy_id == "wrestling-fallback/memory-integrity"
 
 
 # ---------------------------------------------------------------------------

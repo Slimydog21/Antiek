@@ -602,8 +602,55 @@ def make_distillation_handler(
                 "Investigation working memory could not be verified. "
                 "No synthesizer call was made."
             )
-            token_count = 0
             policy_id = "wrestling-fallback/memory-integrity"
+            dispatch_journal = DistillationDispatchJournal(resolved_db)
+            async with dispatch_journal.async_execution_guard(event.event_id):
+                command = dispatch_journal.reserve(
+                    event.event_id,
+                    _dispatch_binding(event, full_prompt),
+                    investigation_id=event.investigation_id,
+                    document_id=event.document_id,
+                )
+                if command.state is CommandState.SENDING:
+                    command = dispatch_journal.mark_ambiguous(event.event_id)
+                    await _publish_ambiguous_distillation_notice(command, broadcaster)
+                    return
+                if command.state is CommandState.AMBIGUOUS:
+                    await _publish_ambiguous_distillation_notice(command, broadcaster)
+                    return
+                if command.state in (CommandState.COMPLETED, CommandState.DELIVERED):
+                    await _publish_distillation_delivery(
+                        command, dispatch_journal, broadcaster
+                    )
+                    return
+                rendered_text = response_text
+                claims = [
+                    Claim(
+                        claim_id="c-memory-"
+                        + _sha256_prefix(event.event_id, 12).removeprefix("sha256:"),
+                        text=response_text,
+                        confidence="unknown",
+                        attribution_region_ids=(
+                            [request.region_id] if request.region_id else []
+                        ),
+                    )
+                ]
+                payload = DistillationDeliveredPayload(
+                    request_event_id=event.event_id,
+                    claims=claims,
+                    rendered_text=rendered_text,
+                    rendered_text_hash=_sha256_prefix(rendered_text),
+                    token_count=0,
+                )
+                command = dispatch_journal.mark_proven_unsent_completed(
+                    event.event_id,
+                    payload,
+                    policy_id=policy_id,
+                )
+                await _publish_distillation_delivery(
+                    command, dispatch_journal, broadcaster
+                )
+                return
         else:
             dispatch_journal = DistillationDispatchJournal(resolved_db)
             async with dispatch_journal.async_execution_guard(event.event_id):
@@ -692,39 +739,6 @@ def make_distillation_handler(
                 await _publish_distillation_delivery(
                     command, dispatch_journal, broadcaster
                 )
-                return
-
-        claims, rendered_text = _parse_claims_response(
-            response_text, region_id=request.region_id
-        )
-
-        delivered_event_id = emit_typed(
-            event.investigation_id,
-            DistillationDeliveredPayload(
-                request_event_id=event.event_id,
-                claims=claims,
-                rendered_text=rendered_text,
-                rendered_text_hash=_sha256_prefix(rendered_text),
-                token_count=token_count,
-            ),
-            parent_event_id=event.event_id,
-            role="synthesizer",
-            document_id=event.document_id,
-            policy_id=policy_id,
-        )
-
-        # Broadcast the delivered event so WS subscribers (the reading
-        # UI) see it without waiting for a polling fetch. Look up the
-        # row we just wrote — the trajectory is authoritative.
-        if delivered_event_id is None:
-            return  # events disabled
-        for row in trajectory(event.investigation_id):
-            if row.get("event_id") == delivered_event_id:
-                try:
-                    delivered_event = Event.model_validate(row)
-                    await broadcaster.broadcast(delivered_event)
-                except Exception:  # pragma: no cover — never block on broadcast
-                    pass
                 return
 
     return handle_distillation_requested

@@ -452,6 +452,48 @@ def test_proven_unsent_completion_never_uses_sending_state(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_memory_integrity_fallback_replay_uses_one_durable_delivery(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("ANTIEK_RESEARCH_EVENTS_DIR", str(tmp_path / "events"))
+    calls: list[str] = []
+    authority = _patch_handler_dependencies(monkeypatch, calls)
+
+    def corrupt_memory(*args, **kwargs):
+        raise PhysicalTrajectoryError("memory evidence conflicts")
+
+    monkeypatch.setattr(wrestling, "build_working_memory_layer", corrupt_memory)
+    broadcaster = _Broadcaster()
+    handler = wrestling.make_distillation_handler(
+        broadcaster,
+        db_path=str(tmp_path / "graph.duckdb"),
+        execution_authority=authority,
+    )
+
+    event = _request_event()
+    await handler(event)
+    await handler(event)
+
+    assert calls == []
+    delivered = [
+        row
+        for row in wrestling.trajectory("inv-1")
+        if row["action_type"] == "distillation.delivered"
+    ]
+    assert len(delivered) == 1
+    assert delivered[0]["policy_id"] == "wrestling-fallback/memory-integrity"
+    command = DistillationDispatchJournal(str(tmp_path / "graph.duckdb")).load(
+        "evt-request"
+    )
+    assert command.state is CommandState.DELIVERED
+    assert command.delivery_event_id == delivered[0]["event_id"]
+    assert command.delivery_payload is not None
+    assert command.delivery_payload.claims[0].claim_id == "c-memory-" + hashlib.sha256(
+        b"evt-request"
+    ).hexdigest()[:12]
+
+
+@pytest.mark.asyncio
 async def test_malformed_completed_event_tail_fails_closed_on_replay(
     tmp_path, monkeypatch
 ) -> None:
