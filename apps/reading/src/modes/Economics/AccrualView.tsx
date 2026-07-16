@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
 import { LemonButton } from "../../components/lemon";
 import AIActionFailure from "../../shared/AIActionFailure";
 import {
@@ -213,9 +214,18 @@ export default function AccrualView({ synthesisId, onPayoutRefused }: AccrualVie
     <div className="space-y-5 rounded-md border-2 border-ink bg-ice-0 p-4 shadow-z1 dark:border-charcoal-1 dark:bg-charcoal-1 dark:shadow-z1-night">
       {/* What this is — honest framing up top */}
       <section>
-        <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
-          What would be owed for this answer
-        </h3>
+        <div className="flex items-center gap-2">
+          <img
+            src={thinkingArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="accrual-view-werner-brand"
+            className="h-7 w-7 shrink-0 object-contain"
+          />
+          <h3 className="font-mono text-[11px] font-semibold uppercase tracking-wider text-ink-mute dark:text-moonlight">
+            What would be owed for this answer
+          </h3>
+        </div>
         <p className="mt-1 font-serif text-[13px] text-ink dark:text-bright">
           This is who grounds this answer and how attribution would split across
           their work — shown as the promise, not a payment. No ad revenue flows
