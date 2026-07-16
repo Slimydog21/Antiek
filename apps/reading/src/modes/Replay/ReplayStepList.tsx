@@ -121,6 +121,7 @@ export default function ReplayStepList({ investigationId }: Props) {
               // TrajectoryReplay is a slider, not a scrollable list —
               // we dispatch a custom event with the target event_id;
               // the slider component listens + jumps its currentIndex.
+              emitWernerExperience("highlight");
               window.dispatchEvent(
                 new CustomEvent("antiek:replay:goto", {
                   detail: { eventId: s.event_id },
