@@ -10,7 +10,7 @@ from typing import Any, Literal
 from runtime.db_lock import LockedConnection
 from substrate.twin_note_taker import MAX_CONTENT_CHARS, MIN_CONTENT_CHARS, AssetContent
 
-from .ledger import SourceRevision, TwinRecursionLedger
+from .ledger import SourceRevision, TwinLedgerError, TwinRecursionLedger
 from .segmentation import build_segmentation_manifest
 from .segmentation_ledger import TwinSegmentationLedger
 
@@ -118,7 +118,7 @@ def build_twin_source_envelope(
             None,
             "no_substantive_body",
         )
-    if document_type == "multimedia_twin":
+    if document_type in {"multimedia_twin", "canonical_twin"}:
         return TwinSourceEnvelope(
             ENVELOPE_SCHEMA,
             "requires_binding",
@@ -129,7 +129,11 @@ def build_twin_source_envelope(
             body_sha,
             source_event_id,
             None,
-            "legacy_twin_requires_canonical_binding",
+            (
+                "canonical_twin_is_derived"
+                if document_type == "canonical_twin"
+                else "legacy_twin_requires_canonical_binding"
+            ),
         )
     if stripped_length < MIN_CONTENT_CHARS:
         return TwinSourceEnvelope(
@@ -292,6 +296,7 @@ def project_twin_sources(
     selected = [envelope for envelope, _asset_value in selected_rows]
     snapshots = []
     segmentation_snapshots = []
+    verified_derived = 0
     for envelope, asset in selected_rows:
         if envelope.status == "eligible":
             assert asset is not None
@@ -302,9 +307,16 @@ def project_twin_sources(
             segmentation_snapshots.append(
                 segmentation_ledger.register(manifest, account_id=account_id, asset=asset)
             )
+        elif (
+            envelope.status == "requires_binding"
+            and envelope.reason == "canonical_twin_is_derived"
+            and _verify_canonical_twin_publication(con, ledger, envelope)
+        ):
+            verified_derived += 1
     eligible = sum(envelope.status == "eligible" for envelope in selected)
     metadata_only = sum(envelope.status == "metadata_only" for envelope in selected)
     binding = sum(envelope.status == "requires_binding" for envelope in selected)
+    binding -= verified_derived
     enrichment = sum(envelope.status == "requires_enrichment" for envelope in selected)
     segmentation = sum(envelope.status == "requires_segmentation" for envelope in selected)
     if eligible == 0 and not (binding or enrichment or segmentation):
@@ -327,6 +339,75 @@ def project_twin_sources(
         len(segmentation_snapshots),
         verdict,
     )
+
+
+def _verify_canonical_twin_publication(
+    con: LockedConnection,
+    ledger: TwinRecursionLedger,
+    envelope: TwinSourceEnvelope,
+) -> bool:
+    row = con.execute(
+        "SELECT raw_text,metadata FROM documents WHERE document_id=? "
+        "AND owner_user_id=? AND document_type='canonical_twin'",
+        [envelope.document_id, envelope.account_id],
+    ).fetchone()
+    if row is None or row[0] is None or row[1] is None:
+        return False
+    try:
+        metadata = json.loads(str(row[1]))
+        if (
+            type(metadata) is not dict
+            or set(metadata)
+            != {
+                "authority",
+                "binding_id",
+                "body_hash",
+                "chunk_id",
+                "chunk_sha256",
+                "completion_digest",
+                "schema",
+                "source_asset_id",
+                "source_hash",
+            }
+            or _canonical_json(metadata) != str(row[1])
+            or metadata["schema"] != "antiek.canonical-twin-publication.v1"
+            or metadata["authority"] != "advisory_twin_v1"
+        ):
+            return False
+        chunks = con.execute(
+            "SELECT chunk_id,chunk_index,section_path,text,token_count FROM chunks "
+            "WHERE document_id=? ORDER BY chunk_id",
+            [envelope.document_id],
+        ).fetchall()
+        if len(chunks) != 1:
+            return False
+        chunk = chunks[0]
+        if (
+            chunk[0] != metadata["chunk_id"]
+            or chunk[1] != 0
+            or chunk[2] != "Advisory twin notes"
+            or type(chunk[3]) is not str
+            or _sha(str(chunk[3])) != metadata["chunk_sha256"]
+            or chunk[4] != 0
+        ):
+            return False
+        with ledger.canonical_publication(str(metadata["binding_id"])) as publication:
+            if (
+                publication.account_id != envelope.account_id
+                or publication.twin_id != envelope.document_id
+                or publication.rendered_html != str(row[0])
+                or publication.body_hash != metadata["body_hash"]
+                or publication.completion_digest != metadata["completion_digest"]
+                or publication.source_asset_id != metadata["source_asset_id"]
+                or publication.source_hash != metadata["source_hash"]
+            ):
+                return False
+            verified_binding_id = publication.binding_id
+            verified_twin_id = publication.twin_id
+        child = ledger.register_materialized_twin(verified_binding_id)
+        return child.asset_id == verified_twin_id and not child.twinnable
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError, TwinLedgerError):
+        return False
 
 
 def _require_locked(con: LockedConnection) -> None:

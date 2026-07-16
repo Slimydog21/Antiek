@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 110 - Canonical Twin Graph Publication</title>
+  <style>body{font:16px/1.55 system-ui,sans-serif;max-width:980px;margin:40px auto;padding:0 24px;color:#17202a}h1,h2{line-height:1.2}code{background:#eef1f4;padding:2px 5px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #ccd3da;padding:8px;text-align:left;vertical-align:top}.must{border-left:5px solid #a61b1b;padding-left:14px}</style>
+</head>
+<body>
+<h1>Cycle 110: Canonical Twin Graph Publication</h1>
+<p><strong>Parent:</strong> Cycle 109 canonical paid aggregate projection. <strong>Outcome:</strong> one ready canonical advisory twin becomes an HTML document and deterministic retrieval chunk in the existing DuckDB substrate.</p>
+
+<h2>1. Product Contract</h2>
+<p>The twin is a first-class information asset users can read and retrieve. It remains advisory: generated insights, questions and synthesis live only in document HTML and chunk text. They do not become graph nodes, edges, grounded findings or gaps until a later evidence-backed promotion action.</p>
+
+<h2>2. Authorities</h2>
+<table><tr><th>Authority</th><th>Responsibility</th></tr>
+<tr><td><code>TwinRecursionLedger</code></td><td>Exact ready source, binding, twin identity, canonical body, aggregate provenance and non-recursive derivation.</td></tr>
+<tr><td><code>LockedConnection</code></td><td>Single DuckDB writer and transaction owner.</td></tr>
+<tr><td><code>insert_document</code></td><td>Canonical document row, owner/content gate and twin source envelope in the same row.</td></tr>
+<tr><td><code>insert_chunk</code></td><td>Deterministic unembedded retrieval text tied to the document.</td></tr></table>
+
+<h2>3. Canonical Snapshot</h2>
+<p>The lifecycle exposes a context-managed <code>CanonicalTwinPublication</code>. It opens one SQLite read transaction, verifies schema and complete ledger integrity, requires a ready twinnable parent binding, reconstructs exact source and twin commitments, and keeps that snapshot open through DuckDB commit.</p>
+<p class="must">Callers cannot submit body, HTML, title, owner, document ID, binding ID claims other than the exact lookup ID, content class, chunk text or publication metadata.</p>
+
+<h2>4. One Transaction</h2>
+<ol>
+  <li>Require an exact <code>LockedConnection</code> and exact canonical ledger.</li>
+  <li>Acquire the canonical publication snapshot before opening the DuckDB transaction.</li>
+  <li>Begin one DuckDB transaction.</li>
+  <li>Insert document ID equal to the canonical twin ID, source URI identifying the immutable binding, rendered HTML as <code>raw_text</code>, owner from the canonical account, <code>canonical_twin</code> document type and owner-only <code>personal_reading</code> content class.</li>
+  <li>Insert one deterministic chunk containing the canonical advisory notes. Embedding remains NULL; this sprint never calls an embedding provider.</li>
+  <li>Commit both rows together. Any error rolls back both.</li>
+</ol>
+
+<h2>5. Replay and Conflict</h2>
+<ul>
+  <li>Exact replay verifies every persisted document/chunk field and returns the same publication.</li>
+  <li>An existing document or chunk with any different field conflicts; <code>on_conflict=ignore</code> is insufficient authority.</li>
+  <li>Concurrent calls serialize through the existing write lock and converge on one document and one chunk.</li>
+  <li>Crash before commit leaves neither row.</li>
+  <li>Lifecycle corruption, missing binding, failed/pending state, derived-child lookup or authority change refuses before graph mutation.</li>
+</ul>
+
+<h2>6. Recursion and Retrieval</h2>
+<p><code>canonical_twin</code> documents receive a <code>requires_binding</code> envelope whose reason is <code>canonical_twin_is_derived</code>; source projection never creates a new generation obligation. The <code>personal_reading</code> chunk is owner-retrievable under the <code>private_research</code> policy tag and excluded from public/attribution paths. Without an embedding it is honestly absent from vector ranking; a later authorized embedding job may index it without changing publication identity.</p>
+
+<h2>7. Acceptance</h2>
+<ol>
+  <li>One ready paid aggregate binding publishes one HTML document and one advisory chunk.</li>
+  <li>Document metadata binds owner, canonical source, canonical binding, body hash and authority.</li>
+  <li>No nodes, edges, findings or gaps are added.</li>
+  <li>Exact replay is stable; substituted rows fail closed.</li>
+  <li>Injected failure after document insertion rolls back document and chunk.</li>
+  <li>Derived publication cannot create a recursive twin obligation.</li>
+  <li>Owner retrieval gate includes it; public/attribution retrieval excludes it.</li>
+  <li>Coupled tests, strict typing, Ruff, HTML parse, HardenX and hostile review pass.</li>
+</ol>
+
+<h2>8. Non-Goals</h2>
+<p>No embedding call, graph node/edge promotion, grounding, API/UI, provider call, spend, production corpus mutation, merge, deployment or live spend.</p>
+
+<h2>9. Next</h2>
+<p>Add authenticated reader navigation to the published HTML twin and an explicit evidence-backed promotion workflow for selected advisory insights/questions. Then mount canonical short-form twins through the same publication authority.</p>
+</body></html>

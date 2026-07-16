@@ -5,7 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from enum import StrEnum
 from pathlib import Path
@@ -125,6 +126,21 @@ class UniversalityReport:
     @property
     def universal(self) -> bool:
         return self.verdict == "universal"
+
+
+@dataclass(frozen=True)
+class CanonicalTwinPublication:
+    account_id: str
+    source_asset_id: str
+    source_hash: str
+    binding_id: str
+    twin_id: str
+    title: str
+    body_json: str
+    body_hash: str
+    rendered_html: str
+    chunk_text: str
+    completion_digest: str
 
 
 def _canonical_json(value: object) -> str:
@@ -912,6 +928,89 @@ class TwinRecursionLedger:
             if row is None:
                 raise KeyError(binding_id)
             return render_html(ResearchArtifactBody.model_validate_json(row["body_json"]))
+
+    @contextmanager
+    def canonical_publication(
+        self, binding_id: str
+    ) -> Iterator[CanonicalTwinPublication]:
+        """Hold one verified paid aggregate binding through graph publication."""
+        if type(binding_id) is not str or not binding_id:
+            raise ValueError("binding_id must be an exact non-empty string")
+        with self._connect() as con:
+            con.execute("BEGIN")
+            self._verify_schema(con)
+            binding = con.execute(
+                "SELECT * FROM twin_bindings WHERE binding_id=?", (binding_id,)
+            ).fetchone()
+            if binding is None:
+                raise TwinConflictError("canonical binding does not exist")
+            source = con.execute(
+                "SELECT * FROM twin_sources WHERE account_id=? AND asset_id=? "
+                "AND source_hash=?",
+                (binding["account_id"], binding["asset_id"], binding["source_hash"]),
+            ).fetchone()
+            if (
+                source is None
+                or source["state"] != "ready"
+                or source["parent_binding_id"] is not None
+                or source["job_id"] != binding["job_id"]
+            ):
+                raise TwinIntegrityError("publication source is not a ready parent")
+            commitment = _asset_commitment(str(source["asset_commitment_json"]))
+            completion_value = json.loads(str(binding["completion_json"]))
+            if (
+                _canonical_json(completion_value) != binding["completion_json"]
+                or _sha(str(binding["completion_json"])) != binding["completion_digest"]
+                or completion_value.get("kind") != "paid_aggregate_v2"
+            ):
+                raise TwinIntegrityError("publication requires paid aggregate provenance")
+            proposal = _proposal_from_value(completion_value["proposal"])
+            body = ResearchArtifactBody.model_validate_json(str(binding["body_json"]))
+            body_json = _canonical_json(body.model_dump(mode="json"))
+            if body_json != binding["body_json"] or _sha(body_json) != binding["body_hash"]:
+                raise TwinIntegrityError("publication body is not canonical")
+            self._verify_paid_aggregate_binding(
+                source, commitment, binding, completion_value, proposal
+            )
+            expected_twin = _digest(
+                "twin", source["account_id"], source["asset_id"], source["source_hash"]
+            )
+            if (
+                binding["twin_id"] != expected_twin
+                or binding["binding_id"]
+                != _digest("binding", source["job_id"], expected_twin)
+            ):
+                raise TwinIntegrityError("publication identity is not canonical")
+            event = con.execute(
+                "SELECT event_data FROM twin_events WHERE account_id=? AND asset_id=? "
+                "AND source_hash=? AND event_type='completion_bound'",
+                (source["account_id"], source["asset_id"], source["source_hash"]),
+            ).fetchall()
+            expected_event = _canonical_json(
+                {
+                    "binding_id": binding_id,
+                    "completion_digest": binding["completion_digest"],
+                }
+            )
+            if len(event) != 1 or event[0]["event_data"] != expected_event:
+                raise TwinIntegrityError("publication completion event is absent or changed")
+            chunk_lines = [body.problem_question, *body.agent_notes]
+            chunk_text = "\n\n".join(line.strip() for line in chunk_lines if line.strip())
+            if not chunk_text:
+                raise TwinIntegrityError("publication has no retrievable advisory text")
+            yield CanonicalTwinPublication(
+                str(source["account_id"]),
+                str(source["asset_id"]),
+                str(source["source_hash"]),
+                binding_id,
+                str(binding["twin_id"]),
+                f"Twin notes: {commitment['title']}",
+                body_json,
+                str(binding["body_hash"]),
+                render_html(body),
+                chunk_text,
+                str(binding["completion_digest"]),
+            )
 
     def verify_integrity(self) -> None:
         with self._connect() as con:
