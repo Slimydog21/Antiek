@@ -129,6 +129,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | HouseSlot next-read | `4d188debe` | zero-buyer house promo highlight |
 | VoiceSteeringInput transcript | `293118fda` | multimedia steer note_saved/fail |
 | SlashMenu piece_started | `0199c8b08` | notebook slash insert craft beat |
+| ArtifactOutlineShelf export | `ab92a59f7` | HTML artifact export piece_started/fail |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
