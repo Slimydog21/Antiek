@@ -225,3 +225,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 html book float | `f1f411fdd` | ReadingCompanion invent |
 | Imagine invent polish v2 knowledge twin cursor | `f1f411fdd` | KnowledgePanel invent |
 | Imagine invent polish v2 antiek-bench celebrate | `125880b58` | AntiekBenchPanel product invent |
+| Imagine invent polish v2 CRT igloo cursor TV | (next tip) | LoadingGameHost default living-TV invent |
