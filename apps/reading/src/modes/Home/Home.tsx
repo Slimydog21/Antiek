@@ -4,6 +4,7 @@ import Werner from "../../brand/Werner";
 import { emitProductActivate } from "../../components/hotkeys";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import homeEnvironment from "../../brand/werner/home/antiek-knowledge-home-v1.webp";
+import iglooArcadeArt from "../../brand/werner/poses/session/werner_igloo_arcade_session_v1.webp";
 import GlassSurface from "../../shell/GlassSurface";
 import { WORKFLOWS, WORKFLOW_ORDER } from "../../shell/workflowTaxonomy";
 
@@ -176,10 +177,23 @@ export function Home() {
         <section
           aria-label="Werner arcade"
           data-testid="home-arcade"
-          className="mt-6 rounded-hog border-edge border-rule bg-ice-0/90 p-5 dark:border-charcoal-1 dark:bg-charcoal-2/90"
+          className="mt-6 overflow-hidden rounded-hog border-edge border-rule bg-ice-0/90 dark:border-charcoal-1 dark:bg-charcoal-2/90"
         >
-          <div className="flex items-start gap-4">
-            <Werner mood="idle" size={48} label="" />
+          <img
+            src={iglooArcadeArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="home-arcade-igloo-art"
+            className="h-28 w-full object-cover object-center"
+            loading="lazy"
+            decoding="async"
+          />
+          <div className="flex items-start gap-4 p-5">
+            {/* Session thinking mark — arcade is Werner's home; densify with
+                living-TV chrome (same path as Library/Research doors). */}
+            <span data-testid="home-arcade-werner-brand">
+              <Werner mood="thinking" size={48} label="Arcade" />
+            </span>
             <div className="min-w-0">
               <h2 className="font-serif text-lg font-semibold text-ink dark:text-bright">
                 Play in Werner&rsquo;s igloo

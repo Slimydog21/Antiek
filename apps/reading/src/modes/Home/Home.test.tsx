@@ -216,6 +216,12 @@ describe("Home (SPR-12 M1)", () => {
     window.addEventListener("antiek:werner-experience", onExp);
     mount();
     expect(screen.getByTestId("home-arcade")).toBeTruthy();
+    // Session thinking brand chrome + igloo invent scene art (not inventory-only).
+    expect(screen.getByTestId("home-arcade-werner-brand")).toBeTruthy();
+    const igloo = screen.getByTestId("home-arcade-igloo-art") as HTMLImageElement;
+    expect(igloo.getAttribute("src") ?? "").toMatch(
+      /werner_igloo_arcade_session_v1/,
+    );
     fireEvent.click(screen.getByTestId("home-arcade-cta"));
     expect(screen.getByText(/ARCADE SURFACE/)).toBeTruthy();
     expect(seen).toContain("highlight");

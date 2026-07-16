@@ -70,6 +70,7 @@ describe("LoadingGameHost mount contract", () => {
     expect(waitHostBrandArt("ice-fishing")).toMatch(
       /werner_ice_fishing_session_v1/,
     );
+    expect(waitHostBrandArt("zombies")).toMatch(/werner_zombies_session_v1/);
   });
 
   it("primary control remains clickable while host is visible", () => {
