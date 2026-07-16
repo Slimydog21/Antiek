@@ -60,6 +60,31 @@ def _response(request, idempotency_key=None):
     )
 
 
+def test_historical_discovery_releases_writer_lock_between_windows(tmp_path):
+    db = str(tmp_path / "graph.duckdb")
+    events = tmp_path / "events"
+    events.mkdir()
+    _qualifying(events, 10)
+    observed: list[str] = []
+
+    def checkpoint(name: str, window_id: str) -> None:
+        if name != "prepared":
+            return
+        with connect_write(
+            db, purpose="test/interleaved_deploy_verifier", timeout_s=0.2
+        ) as con:
+            assert con.execute("SELECT 1").fetchone() == (1,)
+        observed.append(window_id)
+
+    DurableNoteTakerReplay(
+        _response,
+        db_path=db,
+        events_dir=str(events),
+        checkpoint=checkpoint,
+    ).catch_up("inv-1")
+    assert len(observed) == 2
+
+
 def test_restart_combines_events_into_one_deterministic_window(tmp_path):
     db = str(tmp_path / "graph.duckdb")
     events = tmp_path / "events"

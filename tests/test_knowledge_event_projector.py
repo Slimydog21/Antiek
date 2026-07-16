@@ -249,6 +249,43 @@ def test_bounded_recovery_then_drain(graph_db: str, tmp_path: Path) -> None:
         con.close()
 
 
+def test_frontier_snapshot_releases_writer_lock_between_bounded_pages(
+    graph_db: str, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    events_dir = tmp_path / "events"
+    events_dir.mkdir()
+    with connect_write(graph_db, purpose="test/frontier-pages") as con:
+        for index in range(3):
+            (events_dir / f"inv-{index}.jsonl").touch()
+            con.execute(
+                "INSERT INTO event_consumer_frontiers "
+                "(consumer_name, consumer_version, investigation_id, next_ordinal) "
+                "VALUES (?, ?, ?, 0)",
+                [projector.CONSUMER_NAME, projector.CONSUMER_VERSION, f"inv-{index}"],
+            )
+
+    original = projector._connect_write_with_handoff_retry
+    snapshot_pages: list[str] = []
+
+    def observed_connect(db_path: str, *, purpose: str, deadline: float):
+        if purpose == "knowledge_event_frontier_snapshot_page":
+            snapshot_pages.append(purpose)
+        return original(db_path, purpose=purpose, deadline=deadline)
+
+    monkeypatch.setattr(projector, "_connect_write_with_handoff_retry", observed_connect)
+    report = projector.recover(
+        db_path=graph_db,
+        events_dir=str(events_dir),
+        candidate_limit=2,
+        wall_time_s=10,
+    )
+    assert not report.catching_up
+    assert snapshot_pages == [
+        "knowledge_event_frontier_snapshot_page",
+        "knowledge_event_frontier_snapshot_page",
+    ]
+
+
 def test_v19_repairs_empty_partial_and_rejects_populated_partial(tmp_path: Path) -> None:
     empty_path = str(tmp_path / "empty.duckdb")
     init_database_at_path(empty_path)
@@ -733,6 +770,7 @@ def test_recovery_wall_time_is_one_deadline_for_snapshot_lock(
 ) -> None:
     events_dir = tmp_path / "events"
     events_dir.mkdir()
+    (events_dir / "inv-lock.jsonl").touch()
     # Prime the schema fast path so this regression measures recovery's
     # receipt/projection deadline rather than DuckDB's cold read-only probe.
     init_database_at_path(graph_db)
