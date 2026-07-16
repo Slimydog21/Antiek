@@ -232,3 +232,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 igloo ice arcade cursor | `69087de78` | cabinet/LGH/wait ice-fishing invent |
 | Imagine invent polish v2 clam catcher cursor | `cf9208541` | cabinet/LGH/wait clam invent |
 | ThoughtPartner invent reframe densify | `2a0dfd2f0` | living-tv-art testid + antiek-living-tv-invent class |
+| Imagine invent polish v2 living-TV session | (next tip) | SessionBrandChrome residual doors invent |
