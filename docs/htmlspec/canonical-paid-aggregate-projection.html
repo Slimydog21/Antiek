@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Cycle 109 - Canonical Paid Aggregate Projection</title>
+  <style>
+    body{font:16px/1.55 system-ui,sans-serif;max-width:980px;margin:40px auto;padding:0 24px;color:#17202a;background:#fff}
+    h1,h2{line-height:1.2}code{background:#eef1f4;padding:2px 5px}table{border-collapse:collapse;width:100%}
+    th,td{border:1px solid #ccd3da;padding:8px;text-align:left;vertical-align:top}.must{border-left:5px solid #a61b1b;padding-left:14px}
+  </style>
+</head>
+<body>
+<h1>Cycle 109: Canonical Paid Aggregate Projection</h1>
+<p><strong>Parent:</strong> Cycle 108 budgeted crash-safe twin dispatch. <strong>Outcome:</strong> one oversized canonical source can acquire one canonical advisory twin binding from its verified paid aggregate completion.</p>
+
+<h2>1. Product Truth</h2>
+<p>Segmentation is an execution detail. The user owns one source asset and receives one advisory twin information asset. Segment proposals are private intermediate reasoning: they are never canonical documents, grounded graph claims, search results, or independent twins.</p>
+
+<h2>2. Authorities</h2>
+<table><tr><th>Authority</th><th>Required proof</th></tr>
+<tr><td>Canonical source bytes</td><td>Exact account, asset, title, content class, source events and complete oversized body.</td></tr>
+<tr><td>Segmentation registry</td><td>Current deterministic manifest covers every source character exactly once.</td></tr>
+<tr><td>Completion ledger</td><td>Every ordered segment has trusted paid-v2 proof and one trusted paid-v2 aggregate binds their exact ordered completion set.</td></tr>
+<tr><td>Canonical twin lifecycle</td><td>One immutable source revision, one job, one binding, one advisory body, one derived non-recursive twin.</td></tr></table>
+
+<h2>3. Distinct Provenance</h2>
+<p class="must">The importer MUST NOT manufacture a <code>TwinGenerationReceipt</code> from an aggregate receipt. Canonical completion JSON is tagged as either <code>direct_v1</code> or <code>paid_aggregate_v2</code>. The aggregate form retains the exact manifest, aggregate binding, proposal, signed receipt and canonical body commitments.</p>
+<p>The existing SQLite schema remains pinned. Historical direct bindings are interpreted as <code>direct_v1</code>; new aggregate bindings carry an explicit kind inside immutable canonical completion JSON.</p>
+
+<h2>4. Import Protocol</h2>
+<ol>
+  <li>Reverify complete source bytes and derive the exact <code>SourceRevision</code>.</li>
+  <li>Reverify the manifest and current segmentation registry.</li>
+  <li>Read the completion ledger through an export method that rechecks schema, all paid segment receipts, the paid aggregate receipt, ordered hashes, body and proposal.</li>
+  <li>Require account and asset equality, then rederive the segmentation parent identity from the canonical revision's title, class, events and body commitments. The account-scoped segmentation parent hash and canonical receipt-compatible source hash remain distinct, explicitly bound identities.</li>
+  <li>Register or exact-replay the oversized source in the canonical lifecycle.</li>
+  <li>Inside one canonical-ledger write transaction, bind the aggregate export to the existing deterministic job and twin identities, persist the canonical advisory body, transition the source to ready and append one hash-chained completion event.</li>
+  <li>Re-read and verify both authorities before returning success. Any substitution fails closed.</li>
+</ol>
+
+<h2>5. Replay, Crash, and Concurrency</h2>
+<ul>
+  <li>Crash before canonical commit leaves the source pending and no binding/event.</li>
+  <li>Exact replay returns the same binding and performs no provider work or spend.</li>
+  <li>Concurrent exact imports converge on one job, binding, twin and event.</li>
+  <li>Changed source, manifest, segment set, aggregate proposal, receipt, body, account or asset conflicts.</li>
+  <li>Completion-ledger unavailability or corruption cannot be replaced by caller claims.</li>
+</ul>
+
+<h2>6. Integrity</h2>
+<p>Canonical integrity verification accepts oversized source commitments, detects completion kind, and independently re-derives identity, proposal hash, receipt claims, manifest/source commitments, canonical advisory body, completion digest and event lifecycle. Historical direct bindings retain their existing verifier.</p>
+
+<h2>7. Acceptance</h2>
+<ol>
+  <li>A complete paid aggregate imports one canonical parent binding and renders HTML.</li>
+  <li>Pending or legacy/unpaid aggregate state refuses.</li>
+  <li>Exact replay after key rotation succeeds only while historical public-key trust remains configured.</li>
+  <li>Crash and concurrent imports preserve one binding/event.</li>
+  <li>Offline mutation of kind, manifest, proposal, receipt, body or digest is detected.</li>
+  <li>The derived twin remains non-twinnable.</li>
+  <li>No segment proposal is inserted into the canonical lifecycle or graph.</li>
+  <li>Coupled Cycle104-108 tests, Ruff, HTML parse and HardenX pass; type blockers are reported honestly.</li>
+</ol>
+
+<h2>8. Non-Goals</h2>
+<p>No provider call, reservation, settlement, signing, retry, API/UI, production corpus mutation, grounded claim promotion, merge, deployment or live spend. Graph document insertion and search indexing require a later same-row/outbox authority if they cannot be made atomic with the canonical graph store; this cycle does not claim them from a separate SQLite commit.</p>
+
+<h2>9. Next</h2>
+<p>Mount the canonical parent binding into the graph document write boundary through a durable same-store declaration/outbox, then expose the one HTML twin in the reader while keeping all advisory statements visibly ungrounded until evidence-backed promotion.</p>
+</body>
+</html>
