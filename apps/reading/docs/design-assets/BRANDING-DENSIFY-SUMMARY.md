@@ -217,3 +217,5 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Imagine invent polish v2 CRT + igloo trio | `4639f4ec2` | product-mapped reframe of living-TV home invent + minigame trio cabinet banner |
 | Imagine invent polish v2 paperclip zombies | `cd2e143d4` | wait-arcade/cabinet/LGH zombies key art |
 | Imagine invent polish v2 model decision tree | `cd2e143d4` | ModelDecisionBar product invent strip |
+| Imagine invent polish v2 midnight oil swarm | (next tip) | MidnightOilPanel product invent |
+| Imagine invent polish v2 float research merge | (next tip) | TwinNotes float-merge product invent |
