@@ -56,4 +56,14 @@ describe("Login session brand", () => {
     expect(mark).toBeTruthy();
     expect(mark.getAttribute("src")).toBeTruthy();
   });
+
+  it("renders living-TV session invent on the sign-in desk", () => {
+    render(
+      <MemoryRouter>
+        <Login />
+      </MemoryRouter>,
+    );
+    const art = screen.getByTestId("login-living-tv-art") as HTMLImageElement;
+    expect(art.getAttribute("src") ?? "").toMatch(/werner_living_tv_session_v1/);
+  });
 });
