@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, cast
 
-from runtime.db_lock import connect_write
+from runtime.db_lock import connect_read, connect_write
 from substrate.event_log import default_events_dir, iter_physical_events
 from substrate.graph import default_db_path
 from substrate.graph.schema import init_database_at_path
@@ -198,46 +198,73 @@ class DurableNoteTakerReplay:
                 qualifying.append(event)
 
         complete = len(qualifying) // self.threshold
-        with connect_write(self.db_path, purpose="note_taker/replay_discovery") as con:
-            prompt_sha256, configuration_sha256 = _configuration_fingerprint(
-                self.threshold
-            )
+        prompt_sha256, configuration_sha256 = _configuration_fingerprint(self.threshold)
+        expected_configuration = (
+            self.threshold,
+            prompt_sha256,
+            configuration_sha256,
+        )
+        with connect_read(self.db_path) as con:
             existing_configuration = con.execute(
                 "SELECT threshold, prompt_sha256, configuration_sha256 "
                 "FROM note_taker_configurations WHERE consumer_version=? "
                 "AND investigation_id=?",
                 [CONSUMER_VERSION, investigation_id],
             ).fetchone()
-            expected_configuration = (
-                self.threshold,
-                prompt_sha256,
-                configuration_sha256,
-            )
-            if existing_configuration is None:
-                con.execute(
-                    "INSERT INTO note_taker_configurations (consumer_version, "
-                    "investigation_id, threshold, prompt_sha256, "
-                    "configuration_sha256) VALUES (?, ?, ?, ?, ?)",
-                    [
-                        CONSUMER_VERSION,
-                        investigation_id,
-                        self.threshold,
-                        prompt_sha256,
-                        configuration_sha256,
-                    ],
-                )
-            elif existing_configuration != expected_configuration:
-                raise NoteTakerReplayCorruption(
-                    "note-taker configuration drift requires an explicit "
-                    "consumer-version migration"
-                )
-            con.execute(
-                "UPDATE note_taker_windows SET state='uncertain', "
-                "uncertainty_reason='process ownership lost while provider outcome was unknown', "
-                "updated_at=CURRENT_TIMESTAMP WHERE investigation_id=? AND consumer_version=? "
-                "AND state='calling'",
+            calling_row = con.execute(
+                "SELECT EXISTS (SELECT 1 FROM note_taker_windows "
+                "WHERE investigation_id=? AND consumer_version=? AND state='calling')",
                 [investigation_id, CONSUMER_VERSION],
+            ).fetchone()
+            has_calling_window = bool(calling_row and calling_row[0])
+        if (
+            existing_configuration is not None
+            and existing_configuration != expected_configuration
+        ):
+            raise NoteTakerReplayCorruption(
+                "note-taker configuration drift requires an explicit "
+                "consumer-version migration"
             )
+        # Streams without one complete synthesis window have no replay state to
+        # configure or recover. Most production investigations are in this
+        # category; keeping this path read-only prevents an idle recovery sweep
+        # from monopolizing the global DuckDB writer.
+        if complete == 0 and not has_calling_window:
+            return []
+
+        if existing_configuration is None or has_calling_window:
+            with connect_write(self.db_path, purpose="note_taker/replay_discovery") as con:
+                existing_configuration = con.execute(
+                    "SELECT threshold, prompt_sha256, configuration_sha256 "
+                    "FROM note_taker_configurations WHERE consumer_version=? "
+                    "AND investigation_id=?",
+                    [CONSUMER_VERSION, investigation_id],
+                ).fetchone()
+                if existing_configuration is None:
+                    con.execute(
+                        "INSERT INTO note_taker_configurations (consumer_version, "
+                        "investigation_id, threshold, prompt_sha256, "
+                        "configuration_sha256) VALUES (?, ?, ?, ?, ?)",
+                        [
+                            CONSUMER_VERSION,
+                            investigation_id,
+                            self.threshold,
+                            prompt_sha256,
+                            configuration_sha256,
+                        ],
+                    )
+                elif existing_configuration != expected_configuration:
+                    raise NoteTakerReplayCorruption(
+                        "note-taker configuration drift requires an explicit "
+                        "consumer-version migration"
+                    )
+                con.execute(
+                    "UPDATE note_taker_windows SET state='uncertain', "
+                    "uncertainty_reason='process ownership lost while provider outcome was unknown', "
+                    "updated_at=CURRENT_TIMESTAMP WHERE investigation_id=? AND consumer_version=? "
+                    "AND state='calling'",
+                    [investigation_id, CONSUMER_VERSION],
+                )
         # Historical streams can contain thousands of windows. Never hold the
         # global DuckDB writer lock across the complete backfill: one bounded
         # transaction per window lets API writes and deploy verifiers make

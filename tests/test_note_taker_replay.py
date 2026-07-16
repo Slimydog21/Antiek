@@ -379,3 +379,29 @@ def test_startup_recovery_enumerates_physical_streams_on_daemon(tmp_path, monkey
     stop.set()
     thread.join(5)
     assert seen == ["inv-a", "inv-b"]
+
+
+def test_zero_window_recovery_never_opens_replay_writer(tmp_path, monkeypatch):
+    from roles.note_taker import replay
+
+    db = str(tmp_path / "graph.duckdb")
+    events = tmp_path / "events"
+    events.mkdir()
+    init_database_at_path(db)
+    service = DurableNoteTakerReplay(
+        _response,
+        db_path=db,
+        events_dir=str(events),
+    )
+    purposes = []
+    original = replay.connect_write
+
+    def observed_connect(db_path, *, purpose, **kwargs):
+        purposes.append(purpose)
+        return original(db_path, purpose=purpose, **kwargs)
+
+    monkeypatch.setattr(replay, "connect_write", observed_connect)
+    assert service.catch_up("inv-a") == []
+    assert purposes == []
+    with connect_read(db) as con:
+        assert con.execute("SELECT COUNT(*) FROM note_taker_configurations").fetchone() == (0,)
