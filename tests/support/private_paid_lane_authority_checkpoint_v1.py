@@ -52,6 +52,8 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     ConsentClaimMigrationRowV1,
     CopyAuditV1,
     EncryptedSourceBundleMigrationRowV1,
+    Epoch0RecoveryAbortBarrierReleaseCompletionV1,
+    Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1,
     Epoch0RecoveryAbortDeletionFsyncCompletionV1,
     Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1,
     Epoch0RecoveryAbortPreparationCompletionV1,
@@ -94,6 +96,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     SourceHeadMigrationRowV1,
     VerificationKeyV1,
     _audit_schema,
+    _authenticate_epoch0_recovery_abort_barrier_released_state_v1,
     _authenticate_epoch0_recovery_abort_deletion_fsynced_state_v1,
     _authenticate_epoch0_recovery_abort_prepared_state_for_rename_v1,
     _authenticate_epoch0_recovery_abort_rename_fsynced_state_v1,
@@ -127,6 +130,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _revocation_head_document_sha256,
     _source_head_document_sha256,
     _source_snapshot_sha256,
+    _verify_epoch0_recovery_abort_barrier_release_completion_v1,
     _verify_epoch0_recovery_abort_deletion_fsync_completion_v1,
     _verify_epoch0_recovery_abort_preparation_completion_v1,
     _verify_epoch0_recovery_abort_rename_completion_v1,
@@ -235,6 +239,13 @@ _RecoveryFaultBoundary = Literal[
     "abort_sources_revalidation_after_journal_rename",
     "abort_sources_revalidation_after_journal_parent_fsync",
     "abort_sources_revalidation_after_journal_reread",
+    "abort_barrier_release_after_intent",
+    "abort_barrier_release_after_root_rename",
+    "abort_barrier_release_after_root_parent_fsync",
+    "abort_barrier_release_after_root_release",
+    "abort_barrier_release_after_journal_rename",
+    "abort_barrier_release_after_journal_parent_fsync",
+    "abort_barrier_release_after_journal_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -686,6 +697,40 @@ def _parse_issuer_recovery_abort_sources_revalidation_completion_document(
     completion = Epoch0RecoveryAbortSourcesRevalidationCompletionV1.model_validate(material)
     if document != _issuer_recovery_abort_sources_revalidation_completion_document(completion):
         raise ValueError("issuer recovery abort sources revalidation completion canonical")
+    return completion
+
+
+def _issuer_recovery_abort_barrier_release_completion_document(
+    completion: Epoch0RecoveryAbortBarrierReleaseCompletionV1,
+) -> bytes:
+    material = completion.model_dump(mode="python")
+    for state_field in ("abort_sources_revalidated_state", "abort_barrier_released_state"):
+        state = cast(dict[str, object], material[state_field])
+        signature = state.get("signature_ed25519")
+        if type(signature) is not bytes:
+            raise ValueError("issuer recovery abort barrier release completion signature")
+        state["signature_ed25519"] = signature.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer recovery abort barrier release completion bound")
+    return encoded
+
+
+def _parse_issuer_recovery_abort_barrier_release_completion_document(
+    document: bytes,
+) -> Epoch0RecoveryAbortBarrierReleaseCompletionV1:
+    material = _parse_strict_json(document, _ISSUER_MAX_PACKET)
+    for state_field in ("abort_sources_revalidated_state", "abort_barrier_released_state"):
+        state = material.get(state_field)
+        if type(state) is not dict:
+            raise ValueError("issuer recovery abort barrier release completion state")
+        signature = state.get("signature_ed25519")
+        if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+            raise ValueError("issuer recovery abort barrier release completion signature")
+        state["signature_ed25519"] = bytes.fromhex(signature)
+    completion = Epoch0RecoveryAbortBarrierReleaseCompletionV1.model_validate(material)
+    if document != _issuer_recovery_abort_barrier_release_completion_document(completion):
+        raise ValueError("issuer recovery abort barrier release completion canonical")
     return completion
 
 
@@ -1461,6 +1506,7 @@ def _issuer_authenticate_recovery_descriptors(
     | Epoch0RecoveryAbortTombstoneUnlinkedAuthorityPinsV1
     | Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1
     | Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1
+    | Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1
 ):
     root_info = os.fstat(root_fd)
     root_record = _issuer_root_record(root_fd)
@@ -1601,6 +1647,27 @@ def _issuer_authenticate_recovery_descriptors(
             expected=revalidated_pins,
         )
         return revalidated_pins
+    if lifecycle_phase == "abort_barrier_released":
+        released_pins = Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1.model_validate(raw_pins)
+        if (
+            released_pins.target_store_id != ticket.target_store_id
+            or released_pins.root_id != ticket.root_id
+            or released_pins.root_manifest_sha256 != ticket.root_manifest_sha256
+            or (released_pins.target_parent_dev, released_pins.target_parent_ino)
+            != (ticket.target_parent_dev, ticket.target_parent_ino)
+            or released_pins.target_basename != ticket.target_basename
+            or (released_pins.target_dev, released_pins.target_ino)
+            != (ticket.target_dev, ticket.target_ino)
+            or released_pins.issuer_sequence > ticket.maximum_issuer_sequence
+        ):
+            raise ValueError("issuer recovery ticket barrier released abort pins")
+        _authenticate_epoch0_recovery_abort_barrier_released_state_v1(
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            verification_key=verification_key,
+            expected=released_pins,
+        )
+        return released_pins
     pins = Epoch0RecoveryAuthorityPinsV1.model_validate(raw_pins)
     if (
         pins.target_store_id != ticket.target_store_id
@@ -1772,6 +1839,17 @@ def _issuer_recovery_abort_sources_revalidated_pins_from_state(
     )
 
 
+def _issuer_recovery_abort_barrier_released_pins_from_state(
+    state: SignedMigrationLifecycleStateV1,
+) -> Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1:
+    return Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1.model_validate(
+        {
+            name: getattr(state, name)
+            for name in Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1.model_fields
+        }
+    )
+
+
 def _issuer_expected_abort_deletion_fsynced_pins_from_origin(
     origin: Epoch0RecoveryAuthorityPinsV1,
     *,
@@ -1808,6 +1886,25 @@ def _issuer_expected_abort_sources_revalidated_pins_from_origin(
         }
     )
     return Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1.model_validate(material)
+
+
+def _issuer_expected_abort_barrier_released_pins_from_origin(
+    origin: Epoch0RecoveryAuthorityPinsV1,
+    *,
+    expected_abort_barrier_released_state_sha256: str,
+) -> Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1:
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_abort_barrier_released_state_sha256):
+        raise ValueError("issuer expected abort barrier released state hash")
+    material = origin.model_dump(mode="python")
+    material.update(
+        {
+            "lifecycle_phase": "abort_barrier_released",
+            "phase_version": origin.phase_version + 7,
+            "issuer_sequence": origin.issuer_sequence + 7,
+            "state_sha256": expected_abort_barrier_released_state_sha256,
+        }
+    )
+    return Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1.model_validate(material)
 
 
 def _issuer_require_target_abort_sidecars_absent(
@@ -2159,6 +2256,106 @@ def _issuer_revalidate_abort_source_authority(
         raise ValueError("issuer recovery abort source revalidation audit")
 
 
+def _issuer_authenticated_abort_completion_proof(
+    *,
+    state: SignedMigrationLifecycleStateV1,
+    target_database_path: Path,
+) -> dict[str, object]:
+    if state.barrier_id is None or state.freeze_nonce is None:
+        raise ValueError("issuer recovery abort barrier release proof pins")
+    return {
+        "root_id": state.root_id,
+        "root_manifest_sha256": state.root_manifest_sha256,
+        "barrier_id": state.barrier_id,
+        "freeze_nonce": state.freeze_nonce,
+        "abort_sources_revalidated_state_sha256": state.previous_state_sha256,
+        "abort_barrier_released_state_sha256": state.state_sha256,
+        "abort_barrier_released_phase_version": state.phase_version,
+        "aborted_at_ms": state.updated_at_ms,
+        "target_store_id": state.target_store_id,
+        "target_parent_dev": state.target_parent_dev,
+        "target_parent_ino": state.target_parent_ino,
+        "target_basename": state.target_basename,
+        "target_dev": state.target_dev,
+        "target_ino": state.target_ino,
+        "target_database_path": os.fspath(target_database_path),
+        "source_manifest_sha256": state.source_manifest_sha256,
+        "copy_audit_sha256": state.copy_audit_sha256,
+        "witness_sha256": state.witness_sha256,
+        "target_absent": True,
+        "sidecars_absent": True,
+        "parent_fsynced": True,
+        "sources_unchanged": True,
+    }
+
+
+def _issuer_verify_released_abort_root(
+    *,
+    session_root_fd: int,
+    expected_root_id: str,
+    expected_root_manifest_sha256: str,
+    expected_proof: Mapping[str, object],
+) -> None:
+    record = _issuer_authenticate_schema_recovery_root(
+        session_root_fd,
+        expected_root_id=expected_root_id,
+        expected_root_manifest_sha256=expected_root_manifest_sha256,
+        _allow_mixed_children=True,
+    )
+    evidence = record.get("transition_evidence")
+    phase_version = expected_proof.get("abort_barrier_released_phase_version")
+    expected_prior_state = "quiesced" if phase_version == 8 else "sealed"
+    if (
+        record.get("state") != "released"
+        or record.get("migration_aborted") is not True
+        or record.get("authenticated_abort_completion") != expected_proof
+        or type(evidence) is not list
+        or not evidence
+        or evidence[-1].get("operation") != "release_after_authenticated_abort"
+        or evidence[-1].get("prior_state") != expected_prior_state
+        or evidence[-1].get("next_state") != "released"
+    ):
+        raise ValueError("issuer recovery abort barrier release released root mismatch")
+
+
+def _issuer_release_root_after_authenticated_abort(
+    *,
+    session_root_fd: int,
+    revalidated_state: SignedMigrationLifecycleStateV1,
+    target_database_path: Path,
+    fault_hook: Callable[[Literal["after_rename", "after_parent_fsync"]], None] | None = None,
+) -> None:
+    expected_proof = _issuer_authenticated_abort_completion_proof(
+        state=revalidated_state,
+        target_database_path=target_database_path,
+    )
+    record = _issuer_root_record(session_root_fd)
+    if record.get("state") == "released":
+        if (
+            record.get("migration_aborted") is not True
+            or record.get("authenticated_abort_completion") != expected_proof
+        ):
+            raise ValueError("issuer recovery abort barrier release root replay mismatch")
+        return
+    expected_pre_release_state = "quiesced" if revalidated_state.phase_version == 8 else "sealed"
+    if (
+        record.get("state") != expected_pre_release_state
+        or record.get("migration_aborted") is True
+        or record.get("authenticated_abort_completion") is not None
+    ):
+        raise ValueError("issuer recovery abort barrier release hostile root state")
+    _append_transition_evidence(
+        record,
+        operation="release_after_authenticated_abort",
+        prior_state=str(record["state"]),
+        next_state="released",
+    )
+    record["authenticated_abort_completion"] = expected_proof
+    record["migration_aborted"] = True
+    record["state"] = "released"
+    _issuer_durable_write_root_record(session_root_fd, record, fault_hook=fault_hook)
+
+
 def _fixture_migration_lifecycle_issuer_main(
     socket_path: str,
     supervisor_pid: int,
@@ -2206,6 +2403,9 @@ def _fixture_migration_lifecycle_issuer_main(
     ) = None
     recovery_abort_sources_revalidation_completion: (
         Epoch0RecoveryAbortSourcesRevalidationCompletionV1 | None
+    ) = None
+    recovery_abort_barrier_release_completion: (
+        Epoch0RecoveryAbortBarrierReleaseCompletionV1 | None
     ) = None
     recovery_peer_exited = False
     recovery_peer_pid: int | None = None
@@ -2299,6 +2499,18 @@ def _fixture_migration_lifecycle_issuer_main(
                         recovery_abort_sources_revalidation_completion
                     )
                 )
+            elif (
+                boundary
+                in {
+                    "abort_barrier_release_after_journal_rename",
+                    "abort_barrier_release_after_journal_parent_fsync",
+                    "abort_barrier_release_after_journal_reread",
+                }
+                and recovery_abort_barrier_release_completion is not None
+            ):
+                completion_document = _issuer_recovery_abort_barrier_release_completion_document(
+                    recovery_abort_barrier_release_completion
+                )
             raise _InjectedRecoveryFault(
                 f"injected issuer recovery fault: {boundary}",
                 completion_document=completion_document,
@@ -2384,6 +2596,31 @@ def _fixture_migration_lifecycle_issuer_main(
                 "after_rename": "abort_sources_revalidation_after_journal_rename",
                 "after_parent_fsync": "abort_sources_revalidation_after_journal_parent_fsync",
                 "after_reread": "abort_sources_revalidation_after_journal_reread",
+            }[boundary],
+        )
+        inject_recovery_fault(mapped)
+
+    def inject_abort_barrier_release_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "abort_barrier_release_after_journal_rename",
+                "after_parent_fsync": "abort_barrier_release_after_journal_parent_fsync",
+                "after_reread": "abort_barrier_release_after_journal_reread",
+            }[boundary],
+        )
+        inject_recovery_fault(mapped)
+
+    def inject_abort_barrier_release_root_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "abort_barrier_release_after_root_rename",
+                "after_parent_fsync": "abort_barrier_release_after_root_parent_fsync",
             }[boundary],
         )
         inject_recovery_fault(mapped)
@@ -4222,6 +4459,249 @@ def _fixture_migration_lifecycle_issuer_main(
                 fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
                 os.close(locked_parent_fd)
 
+    def recover_abort_sources_revalidated_to_abort_barrier_released(
+        *,
+        session_root_fd: int,
+        session_parent_fd: int,
+        session_target_fd: int,
+        expected_abort_sources_revalidated_state_sha256: str,
+        expected_revalidated_pins: Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1,
+        origin_pins: Epoch0RecoveryAuthorityPinsV1,
+    ) -> Epoch0RecoveryAbortBarrierReleaseCompletionV1:
+        nonlocal committed, pending_candidate, pending_state
+        nonlocal recovery_abort_barrier_release_completion
+        if (
+            committed is None
+            or expected_revalidated_pins.lifecycle_phase != "abort_sources_revalidated"
+            or expected_revalidated_pins.state_sha256
+            != expected_abort_sources_revalidated_state_sha256
+            or pending_state is not None
+        ):
+            raise ValueError("issuer recovery abort barrier release phase")
+        durable = _read_signed_migration_lifecycle_state(
+            parent_fd=session_parent_fd,
+            target_basename=expected_revalidated_pins.target_basename,
+            verification_key=verification_key,
+        )
+        if (
+            recovery_abort_barrier_release_completion is not None
+            and durable == recovery_abort_barrier_release_completion.abort_barrier_released_state
+        ):
+            with _issuer_transition_lock(session_root_fd):
+                locked_parent_fd = os.open(
+                    ".",
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=session_parent_fd,
+                )
+                try:
+                    fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+                    expected_durable = (
+                        recovery_abort_barrier_release_completion.abort_barrier_released_state
+                    )
+                    released_pins = _issuer_recovery_abort_barrier_released_pins_from_state(
+                        expected_durable
+                    )
+                    durable = _authenticate_epoch0_recovery_abort_barrier_released_state_v1(
+                        parent_fd=locked_parent_fd,
+                        target_fd=session_target_fd,
+                        verification_key=verification_key,
+                        expected=released_pins,
+                    )
+                    if durable != expected_durable:
+                        raise ValueError("issuer recovery abort barrier release replay state")
+                    if durable.barrier_id is None:
+                        root_record = _issuer_authenticate_schema_recovery_root(
+                            session_root_fd,
+                            expected_root_id=durable.root_id,
+                            expected_root_manifest_sha256=durable.root_manifest_sha256,
+                        )
+                        if (
+                            root_record.get("state") != "open"
+                            or root_record.get("barrier_id") is not None
+                            or root_record.get("freeze_nonce") is not None
+                            or root_record.get("migration_aborted") is True
+                            or root_record.get("authenticated_abort_completion") is not None
+                        ):
+                            raise ValueError(
+                                "issuer recovery abort barrier release schema replay root"
+                            )
+                    else:
+                        expected_proof = _issuer_authenticated_abort_completion_proof(
+                            state=durable,
+                            target_database_path=(
+                                _issuer_fd_path(locked_parent_fd) / durable.target_basename
+                            ),
+                        )
+                        _issuer_verify_released_abort_root(
+                            session_root_fd=session_root_fd,
+                            expected_root_id=durable.root_id,
+                            expected_root_manifest_sha256=durable.root_manifest_sha256,
+                            expected_proof=expected_proof,
+                        )
+                    committed = durable
+                    return recovery_abort_barrier_release_completion
+                finally:
+                    fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+                    os.close(locked_parent_fd)
+        if (
+            committed.lifecycle_phase != "abort_sources_revalidated"
+            or committed.state_sha256 != expected_abort_sources_revalidated_state_sha256
+            or durable != committed
+        ):
+            raise ValueError("issuer recovery abort barrier release journal")
+        revalidated = committed
+        with _issuer_transition_lock(session_root_fd):
+            locked_parent_fd = os.open(
+                ".",
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=session_parent_fd,
+            )
+            try:
+                fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+                revalidated = _authenticate_epoch0_recovery_abort_sources_revalidated_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=expected_revalidated_pins,
+                )
+                if recovery_abort_barrier_release_completion is None:
+                    released_at_ms = max(revalidated.updated_at_ms, time.time_ns() // 1_000_000)
+                    material = revalidated.model_dump(
+                        mode="python",
+                        exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                    )
+                    next_version = revalidated.phase_version + 1
+                    material.update(
+                        {
+                            "lifecycle_phase": "abort_barrier_released",
+                            "phase_version": next_version,
+                            "issuer_sequence": next_version,
+                            "updated_at_ms": released_at_ms,
+                            "previous_state_sha256": revalidated.state_sha256,
+                            "issuer_key_id": key_id,
+                        }
+                    )
+                    state_sha256 = _migration_lifecycle_state_sha256(material)
+                    material["state_sha256"] = state_sha256
+                    material["signature_ed25519"] = private_key.sign(
+                        _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                    )
+                    released = SignedMigrationLifecycleStateV1.model_validate(material)
+                    abort_result = QuarantinedAbortUncutResultV1(
+                        store_id=revalidated.target_store_id,
+                        source_manifest_sha256=revalidated.source_manifest_sha256,
+                        copy_audit_sha256=revalidated.copy_audit_sha256,
+                        aborted_at_ms=released_at_ms,
+                    )
+                    recovery_abort_barrier_release_completion = (
+                        Epoch0RecoveryAbortBarrierReleaseCompletionV1(
+                            abort_sources_revalidated_state=revalidated,
+                            abort_barrier_released_state=released,
+                            abort_result=abort_result,
+                        )
+                    )
+                else:
+                    if (
+                        recovery_abort_barrier_release_completion.abort_sources_revalidated_state
+                        != revalidated
+                    ):
+                        raise ValueError("issuer recovery abort barrier release cached completion")
+                    released = (
+                        recovery_abort_barrier_release_completion.abort_barrier_released_state
+                    )
+                _verify_epoch0_recovery_abort_barrier_release_completion_v1(
+                    recovery_abort_barrier_release_completion,
+                    issuer_verification_key=verification_key,
+                    expected_revalidated_pins=expected_revalidated_pins,
+                )
+                inject_recovery_fault("abort_barrier_release_after_intent")
+                if origin_pins.barrier_id is None:
+                    root_record = _issuer_authenticate_schema_recovery_root(
+                        session_root_fd,
+                        expected_root_id=revalidated.root_id,
+                        expected_root_manifest_sha256=revalidated.root_manifest_sha256,
+                    )
+                    if (
+                        root_record.get("state") != "open"
+                        or root_record.get("barrier_id") is not None
+                        or root_record.get("freeze_nonce") is not None
+                        or root_record.get("migration_aborted") is True
+                        or root_record.get("authenticated_abort_completion") is not None
+                    ):
+                        raise ValueError(
+                            "issuer recovery abort barrier release schema durable root"
+                        )
+                else:
+                    target_database_path = (
+                        _issuer_fd_path(locked_parent_fd) / revalidated.target_basename
+                    )
+                    if revalidated.barrier_id is None or revalidated.freeze_nonce is None:
+                        raise ValueError("issuer recovery abort barrier release barrier pins")
+                    root_record = _issuer_root_record(session_root_fd)
+                    if root_record.get("state") == "released":
+                        expected_proof = _issuer_authenticated_abort_completion_proof(
+                            state=released,
+                            target_database_path=target_database_path,
+                        )
+                        _issuer_verify_released_abort_root(
+                            session_root_fd=session_root_fd,
+                            expected_root_id=revalidated.root_id,
+                            expected_root_manifest_sha256=revalidated.root_manifest_sha256,
+                            expected_proof=expected_proof,
+                        )
+                    else:
+                        _issuer_revalidate_abort_source_authority(
+                            session_root_fd=session_root_fd,
+                            origin=origin_pins,
+                            provider_capability_verification_keys=(
+                                provider_capability_verification_keys
+                            ),
+                            provider_revocation_verification_keys=(
+                                provider_revocation_verification_keys
+                            ),
+                            source_head_verification_keys=source_head_verification_keys,
+                            provider_revocation_floor_pins=provider_revocation_floor_pins,
+                            source_floor_pins=source_floor_pins,
+                            expected_semantic_source_sha256=expected_semantic_source_sha256,
+                            expected_contract_sha256=expected_contract_sha256,
+                        )
+                        _issuer_release_root_after_authenticated_abort(
+                            session_root_fd=session_root_fd,
+                            revalidated_state=released,
+                            target_database_path=target_database_path,
+                            fault_hook=inject_abort_barrier_release_root_persistence_fault,
+                        )
+                    inject_recovery_fault("abort_barrier_release_after_root_release")
+                _persist_signed_migration_lifecycle_state(
+                    parent_fd=session_parent_fd,
+                    state=released,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=revalidated.state_sha256,
+                    _fault_hook=inject_abort_barrier_release_persistence_fault,
+                    locked_parent_fd=locked_parent_fd,
+                )
+                reread = _read_signed_migration_lifecycle_state(
+                    parent_fd=locked_parent_fd,
+                    target_basename=revalidated.target_basename,
+                    verification_key=verification_key,
+                )
+                if reread != released:
+                    raise ValueError("issuer recovery abort barrier release journal reread")
+                released_pins = _issuer_recovery_abort_barrier_released_pins_from_state(released)
+                _authenticate_epoch0_recovery_abort_barrier_released_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=released_pins,
+                )
+                committed = released
+                pending_candidate = None
+                pending_state = None
+                return recovery_abort_barrier_release_completion
+            finally:
+                fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+                os.close(locked_parent_fd)
+
     try:
         process_watch.control(
             [
@@ -4467,7 +4947,8 @@ def _fixture_migration_lifecycle_issuer_main(
                     authentication_pins: object = request["authority_pins"]
                     if (
                         (
-                            recovery_abort_sources_revalidation_completion is not None
+                            recovery_abort_barrier_release_completion is not None
+                            or recovery_abort_sources_revalidation_completion is not None
                             or recovery_abort_deletion_fsync_completion is not None
                             or recovery_abort_tombstone_unlink_completion is not None
                             or recovery_abort_rename_fsync_completion is not None
@@ -4482,7 +4963,23 @@ def _fixture_migration_lifecycle_issuer_main(
                         and recovery_admission is not None
                         and peer_pid == recovery_admission.authenticated_peer_pid
                     ):
-                        if recovery_abort_sources_revalidation_completion is not None:
+                        if recovery_abort_barrier_release_completion is not None:
+                            observed_recovery_state = _read_signed_migration_lifecycle_state(
+                                parent_fd=received_descriptors[1],
+                                target_basename=(
+                                    recovery_abort_barrier_release_completion.abort_sources_revalidated_state.target_basename
+                                ),
+                                verification_key=verification_key,
+                            )
+                            if observed_recovery_state not in (
+                                recovery_abort_barrier_release_completion.abort_sources_revalidated_state,
+                                recovery_abort_barrier_release_completion.abort_barrier_released_state,
+                            ):
+                                raise ValueError(
+                                    "issuer recovery abort barrier release effective state"
+                                )
+                            effective_state = observed_recovery_state
+                        elif recovery_abort_sources_revalidation_completion is not None:
                             observed_recovery_state = _read_signed_migration_lifecycle_state(
                                 parent_fd=received_descriptors[1],
                                 target_basename=(
@@ -4626,6 +5123,12 @@ def _fixture_migration_lifecycle_issuer_main(
                         if effective_state.lifecycle_phase == "abort_deletion_fsynced":
                             authentication_pins = (
                                 _issuer_recovery_abort_deletion_fsynced_pins_from_state(
+                                    effective_state
+                                ).model_dump(mode="json")
+                            )
+                        elif effective_state.lifecycle_phase == "abort_barrier_released":
+                            authentication_pins = (
+                                _issuer_recovery_abort_barrier_released_pins_from_state(
                                     effective_state
                                 ).model_dump(mode="json")
                             )
@@ -4839,6 +5342,13 @@ def _fixture_migration_lifecycle_issuer_main(
                                 expected_fields = common_fields | {
                                     "expected_abort_deletion_fsynced_state_sha256"
                                 }
+                            elif (
+                                session_command
+                                == "session_recover_abort_sources_revalidated_to_abort_barrier_released"
+                            ):
+                                expected_fields = common_fields | {
+                                    "expected_abort_sources_revalidated_state_sha256"
+                                }
                             else:
                                 expected_fields = common_fields
                             if set(session_request) != expected_fields or (
@@ -4858,8 +5368,39 @@ def _fixture_migration_lifecycle_issuer_main(
                                 | Epoch0RecoveryAbortTombstoneUnlinkedAuthorityPinsV1
                                 | Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1
                                 | Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1
+                                | Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1
                             ) = pins
-                            if recovery_abort_sources_revalidation_completion is not None:
+                            if recovery_abort_barrier_release_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_abort_barrier_release_completion.abort_sources_revalidated_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_abort_barrier_release_completion.abort_sources_revalidated_state,
+                                    recovery_abort_barrier_release_completion.abort_barrier_released_state,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort barrier release effective state"
+                                    )
+                                if (
+                                    durable_recovery_state.lifecycle_phase
+                                    == "abort_barrier_released"
+                                ):
+                                    effective_descriptor_pins = (
+                                        _issuer_recovery_abort_barrier_released_pins_from_state(
+                                            durable_recovery_state
+                                        )
+                                    )
+                                else:
+                                    effective_descriptor_pins = (
+                                        _issuer_recovery_abort_sources_revalidated_pins_from_state(
+                                            durable_recovery_state
+                                        )
+                                    )
+                            elif recovery_abort_sources_revalidation_completion is not None:
                                 durable_recovery_state = _read_signed_migration_lifecycle_state(
                                     parent_fd=session_parent_fd,
                                     target_basename=(
@@ -5680,6 +6221,76 @@ def _fixture_migration_lifecycle_issuer_main(
                                     )
                                 )
                                 continue
+                            if (
+                                session_command
+                                == "session_recover_abort_sources_revalidated_to_abort_barrier_released"
+                            ):
+                                expected_abort_sources_revalidated_state_sha256 = (
+                                    session_request.get(
+                                        "expected_abort_sources_revalidated_state_sha256"
+                                    )
+                                )
+                                if type(
+                                    expected_abort_sources_revalidated_state_sha256
+                                ) is not str or not re.fullmatch(
+                                    r"[0-9a-f]{64}",
+                                    expected_abort_sources_revalidated_state_sha256,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort barrier release expected state"
+                                    )
+                                expected_revalidated_pins_release = (
+                                    _issuer_expected_abort_sources_revalidated_pins_from_origin(
+                                        recovery_admission.authority_pins,
+                                        expected_abort_sources_revalidated_state_sha256=(
+                                            expected_abort_sources_revalidated_state_sha256
+                                        ),
+                                    )
+                                )
+                                try:
+                                    _issuer_authenticate_recovery_descriptors(
+                                        root_fd=session_root_fd,
+                                        parent_fd=session_parent_fd,
+                                        target_fd=session_target_fd,
+                                        ticket=recovery_ticket,
+                                        verification_key=verification_key,
+                                        raw_pins=effective_descriptor_pins.model_dump(mode="json"),
+                                    )
+                                    barrier_release_completion = (
+                                        recover_abort_sources_revalidated_to_abort_barrier_released(
+                                            session_root_fd=session_root_fd,
+                                            session_parent_fd=session_parent_fd,
+                                            session_target_fd=session_target_fd,
+                                            expected_abort_sources_revalidated_state_sha256=(
+                                                expected_abort_sources_revalidated_state_sha256
+                                            ),
+                                            expected_revalidated_pins=(
+                                                expected_revalidated_pins_release
+                                            ),
+                                            origin_pins=recovery_admission.authority_pins,
+                                        )
+                                    )
+                                    if supervisor_exited() or recovery_peer_exited:
+                                        return
+                                except _InjectedRecoveryFault as error:
+                                    connection.sendall(
+                                        _issuer_session_frame(
+                                            b"E" + (error.completion_document or b"")
+                                        )
+                                    )
+                                    continue
+                                except Exception:
+                                    connection.sendall(_issuer_session_frame(b"E"))
+                                    continue
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"Y"
+                                        + _issuer_recovery_abort_barrier_release_completion_document(
+                                            barrier_release_completion
+                                        )
+                                    )
+                                )
+                                continue
                             if session_command == "session_close":
                                 if supervisor_exited() or recovery_peer_exited:
                                     return
@@ -6125,6 +6736,7 @@ class FixtureMigrationRecoverySessionV1:
     _lock: threading.Lock
     _abort_preparation_completion: Epoch0RecoveryAbortPreparationCompletionV1 | None
     _abort_deletion_fsync_completion: Epoch0RecoveryAbortDeletionFsyncCompletionV1 | None
+    _abort_barrier_release_completion: Epoch0RecoveryAbortBarrierReleaseCompletionV1 | None
     _abort_sources_revalidation_completion: (
         Epoch0RecoveryAbortSourcesRevalidationCompletionV1 | None
     )
@@ -6140,6 +6752,7 @@ class FixtureMigrationRecoverySessionV1:
     __slots__ = (
         "_abort_preparation_completion",
         "_abort_deletion_fsync_completion",
+        "_abort_barrier_release_completion",
         "_abort_sources_revalidation_completion",
         "_abort_rename_completion",
         "_abort_rename_fsync_completion",
@@ -6276,6 +6889,7 @@ class FixtureMigrationRecoverySessionV1:
         object.__setattr__(session, "_lock", threading.Lock())
         object.__setattr__(session, "_abort_preparation_completion", None)
         object.__setattr__(session, "_abort_deletion_fsync_completion", None)
+        object.__setattr__(session, "_abort_barrier_release_completion", None)
         object.__setattr__(session, "_abort_sources_revalidation_completion", None)
         object.__setattr__(session, "_abort_rename_completion", None)
         object.__setattr__(session, "_abort_rename_fsync_completion", None)
@@ -7048,6 +7662,81 @@ class FixtureMigrationRecoverySessionV1:
                 raise
             return completion
 
+    def recover_abort_sources_revalidated_to_abort_barrier_released(
+        self, *, expected_abort_sources_revalidated_state_sha256: str
+    ) -> Epoch0RecoveryAbortBarrierReleaseCompletionV1:
+        self._validate()
+        revalidated_pins = _issuer_expected_abort_sources_revalidated_pins_from_origin(
+            self._admission.authority_pins,
+            expected_abort_sources_revalidated_state_sha256=(
+                expected_abort_sources_revalidated_state_sha256
+            ),
+        )
+        if (
+            self._abort_sources_revalidation_completion is not None
+            and self._abort_sources_revalidation_completion.abort_sources_revalidated_state.state_sha256
+            != expected_abort_sources_revalidated_state_sha256
+        ):
+            raise ValueError("fixture recovery abort sources revalidated state")
+        request = _canonical_json(
+            {
+                "command": "session_recover_abort_sources_revalidated_to_abort_barrier_released",
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+                "expected_abort_sources_revalidated_state_sha256": (
+                    expected_abort_sources_revalidated_state_sha256
+                ),
+            }
+        )
+        with self._lock:
+            try:
+                self._connection.sendall(_issuer_session_frame(request))
+                response = _issuer_session_receive_frame(self._connection)
+            except Exception:
+                self._close_local()
+                raise
+            if response[:1] == b"E":
+                try:
+                    if response[1:]:
+                        fault_completion = (
+                            _parse_issuer_recovery_abort_barrier_release_completion_document(
+                                response[1:]
+                            )
+                        )
+                        _verify_epoch0_recovery_abort_barrier_release_completion_v1(
+                            fault_completion,
+                            issuer_verification_key=self._verification_key,
+                            expected_revalidated_pins=revalidated_pins,
+                        )
+                        object.__setattr__(
+                            self, "_abort_barrier_release_completion", fault_completion
+                        )
+                except Exception:
+                    self._close_local()
+                    raise
+                raise ValueError("fixture recovery abort barrier release rejected")
+            try:
+                if response[:1] != b"Y":
+                    raise ValueError("fixture recovery abort barrier release response")
+                completion = _parse_issuer_recovery_abort_barrier_release_completion_document(
+                    response[1:]
+                )
+                _verify_epoch0_recovery_abort_barrier_release_completion_v1(
+                    completion,
+                    issuer_verification_key=self._verification_key,
+                    expected_revalidated_pins=revalidated_pins,
+                )
+                if (
+                    self._abort_barrier_release_completion is not None
+                    and completion != self._abort_barrier_release_completion
+                ):
+                    raise ValueError("fixture recovery abort barrier release replay")
+                object.__setattr__(self, "_abort_barrier_release_completion", completion)
+            except Exception:
+                self._close_local()
+                raise
+            return completion
+
     def close(self) -> None:
         if self._closed:
             return
@@ -7195,6 +7884,13 @@ class FixtureMigrationLifecycleIssuerV1:
             "abort_sources_revalidation_after_journal_rename",
             "abort_sources_revalidation_after_journal_parent_fsync",
             "abort_sources_revalidation_after_journal_reread",
+            "abort_barrier_release_after_intent",
+            "abort_barrier_release_after_root_rename",
+            "abort_barrier_release_after_root_parent_fsync",
+            "abort_barrier_release_after_root_release",
+            "abort_barrier_release_after_journal_rename",
+            "abort_barrier_release_after_journal_parent_fsync",
+            "abort_barrier_release_after_journal_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")

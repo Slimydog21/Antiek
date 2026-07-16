@@ -4000,6 +4000,86 @@ class Epoch0RecoveryAbortSourcesRevalidationCompletionV1(_Closed):
     production_consumer_enabled: Literal[False] = False
 
 
+class Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1(_Closed):
+    schema_version: Literal[1] = 1
+    target_store_id: str
+    root_id: str
+    root_manifest_sha256: str
+    target_parent_dev: int = Field(ge=0, le=MAX_I63)
+    target_parent_ino: int = Field(ge=1, le=MAX_I63)
+    target_basename: str
+    target_dev: int = Field(ge=0, le=MAX_I63)
+    target_ino: int = Field(ge=1, le=MAX_I63)
+    lifecycle_phase: Literal["abort_barrier_released"] = "abort_barrier_released"
+    phase_version: int = Field(ge=7, le=11)
+    issuer_sequence: int = Field(ge=7, le=11)
+    state_sha256: str
+    barrier_id: str | None
+    freeze_nonce: str | None
+    source_manifest_sha256: str | None
+    copy_audit_sha256: str | None
+    witness_sha256: str | None
+
+    @model_validator(mode="after")
+    def _closed_abort_barrier_released_recovery_pins(
+        self,
+    ) -> Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1:
+        optional_hashes = (
+            self.freeze_nonce,
+            self.source_manifest_sha256,
+            self.copy_audit_sha256,
+            self.witness_sha256,
+        )
+        expected_presence = {
+            7: (False, False, False, False, False),
+            8: (True, True, False, False, True),
+            9: (True, True, True, False, True),
+            10: (True, True, True, True, True),
+            11: (True, True, True, True, True),
+        }
+        actual_presence = (
+            self.barrier_id is not None,
+            self.freeze_nonce is not None,
+            self.source_manifest_sha256 is not None,
+            self.copy_audit_sha256 is not None,
+            self.witness_sha256 is not None,
+        )
+        if (
+            not _STORE_ID.fullmatch(self.target_store_id)
+            or not _REGISTRY_ID.fullmatch(self.root_id)
+            or not _HEX64.fullmatch(self.root_manifest_sha256)
+            or not _HEX64.fullmatch(self.state_sha256)
+            or not _MIGRATION_BASENAME.fullmatch(self.target_basename)
+            or self.target_basename in {".", ".."}
+            or any(value is not None and not _HEX64.fullmatch(value) for value in optional_hashes)
+            or (self.barrier_id is not None and not _REGISTRY_ID.fullmatch(self.barrier_id))
+            or (
+                self.freeze_nonce is not None
+                and self.barrier_id != _migration_barrier_id(self.freeze_nonce)
+            )
+            or self.phase_version != self.issuer_sequence
+            or actual_presence != expected_presence[self.phase_version]
+        ):
+            raise ValueError("epoch0 recovery abort barrier released authority pins")
+        return self
+
+
+class Epoch0RecoveryAbortBarrierReleaseCompletionV1(_Closed):
+    schema_version: Literal[1] = 1
+    abort_sources_revalidated_state: SignedMigrationLifecycleStateV1
+    abort_barrier_released_state: SignedMigrationLifecycleStateV1
+    abort_result: QuarantinedAbortUncutResultV1
+    synthetic_fixture_eligibility_only: Literal[True] = True
+    live_migration_verified: Literal[False] = False
+    user_accounting_effect: Literal[False] = False
+    transport_reachable: Literal[False] = False
+    confers_execution_authority: Literal[False] = False
+    confers_checkpoint_authority: Literal[False] = False
+    confers_sink_authority: Literal[False] = False
+    confers_transition_authority: Literal[False] = False
+    production_consumer_enabled: Literal[False] = False
+
+
 def _verify_signed_migration_recovery_ticket(
     ticket: SignedMigrationRecoveryTicketV1, verification_key: VerificationKeyV1
 ) -> None:
@@ -4907,6 +4987,110 @@ def _verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
         raise ValueError("epoch0 recovery abort sources revalidation completion mismatch")
 
 
+def _verify_epoch0_recovery_abort_barrier_release_completion_v1(
+    completion: Epoch0RecoveryAbortBarrierReleaseCompletionV1,
+    *,
+    issuer_verification_key: VerificationKeyV1,
+    expected_revalidated_pins: Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1,
+) -> None:
+    if (
+        type(completion) is not Epoch0RecoveryAbortBarrierReleaseCompletionV1
+        or type(issuer_verification_key) is not VerificationKeyV1
+        or type(expected_revalidated_pins)
+        is not Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1
+        or expected_revalidated_pins.lifecycle_phase != "abort_sources_revalidated"
+    ):
+        raise ValueError("epoch0 recovery abort barrier release completion type")
+    completion = Epoch0RecoveryAbortBarrierReleaseCompletionV1.model_validate(
+        completion.model_dump(mode="python")
+    )
+    revalidated = completion.abort_sources_revalidated_state
+    released = completion.abort_barrier_released_state
+    abort_result = completion.abort_result
+    _verify_signed_migration_lifecycle_state(revalidated, issuer_verification_key)
+    _verify_migration_lifecycle_transition(revalidated, released, issuer_verification_key)
+    revalidated_pins = Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1.model_validate(
+        {
+            "target_store_id": revalidated.target_store_id,
+            "root_id": revalidated.root_id,
+            "root_manifest_sha256": revalidated.root_manifest_sha256,
+            "target_parent_dev": revalidated.target_parent_dev,
+            "target_parent_ino": revalidated.target_parent_ino,
+            "target_basename": revalidated.target_basename,
+            "target_dev": revalidated.target_dev,
+            "target_ino": revalidated.target_ino,
+            "lifecycle_phase": revalidated.lifecycle_phase,
+            "phase_version": revalidated.phase_version,
+            "issuer_sequence": revalidated.issuer_sequence,
+            "state_sha256": revalidated.state_sha256,
+            "barrier_id": revalidated.barrier_id,
+            "freeze_nonce": revalidated.freeze_nonce,
+            "source_manifest_sha256": revalidated.source_manifest_sha256,
+            "copy_audit_sha256": revalidated.copy_audit_sha256,
+            "witness_sha256": revalidated.witness_sha256,
+        }
+    )
+    inherited_pins = (
+        released.barrier_id,
+        released.freeze_nonce,
+        released.source_manifest_sha256,
+        released.copy_audit_sha256,
+        released.witness_sha256,
+    )
+    revalidated_pin_tuple = (
+        revalidated.barrier_id,
+        revalidated.freeze_nonce,
+        revalidated.source_manifest_sha256,
+        revalidated.copy_audit_sha256,
+        revalidated.witness_sha256,
+    )
+    if (
+        revalidated_pins != expected_revalidated_pins
+        or revalidated.lifecycle_phase != "abort_sources_revalidated"
+        or released.lifecycle_phase != "abort_barrier_released"
+        or released.phase_version != revalidated.phase_version + 1
+        or released.issuer_sequence != revalidated.issuer_sequence + 1
+        or released.previous_state_sha256 != revalidated.state_sha256
+        or (
+            released.target_store_id,
+            released.root_id,
+            released.root_manifest_sha256,
+            released.target_parent_dev,
+            released.target_parent_ino,
+            released.target_basename,
+            released.target_dev,
+            released.target_ino,
+            released.tombstone_basename,
+        )
+        != (
+            revalidated.target_store_id,
+            revalidated.root_id,
+            revalidated.root_manifest_sha256,
+            revalidated.target_parent_dev,
+            revalidated.target_parent_ino,
+            revalidated.target_basename,
+            revalidated.target_dev,
+            revalidated.target_ino,
+            revalidated.tombstone_basename,
+        )
+        or inherited_pins != revalidated_pin_tuple
+        or abort_result.store_id != released.target_store_id
+        or abort_result.source_manifest_sha256 != released.source_manifest_sha256
+        or abort_result.copy_audit_sha256 != released.copy_audit_sha256
+        or abort_result.aborted_at_ms != released.updated_at_ms
+        or completion.synthetic_fixture_eligibility_only is not True
+        or completion.live_migration_verified is not False
+        or completion.user_accounting_effect is not False
+        or completion.transport_reachable is not False
+        or completion.confers_execution_authority is not False
+        or completion.confers_checkpoint_authority is not False
+        or completion.confers_sink_authority is not False
+        or completion.confers_transition_authority is not False
+        or completion.production_consumer_enabled is not False
+    ):
+        raise ValueError("epoch0 recovery abort barrier release completion mismatch")
+
+
 def _authenticate_epoch0_recovery_abort_prepared_state_v1(
     *,
     parent_fd: int,
@@ -5617,6 +5801,88 @@ def _authenticate_epoch0_recovery_abort_sources_revalidated_state_v1(
     ):
         raise ValueError(
             "epoch0 recovery abort sources revalidated target changed during authentication"
+        )
+    _verify_migration_abort_unlinked_target_layout(
+        parent_fd=parent_fd,
+        target_fd=target_fd,
+        target_basename=expected.target_basename,
+        tombstone_basename=tombstone_basename,
+        expected_target_identity=expected_target_identity,
+    )
+    return state
+
+
+def _authenticate_epoch0_recovery_abort_barrier_released_state_v1(
+    *,
+    parent_fd: int,
+    target_fd: int,
+    verification_key: VerificationKeyV1,
+    expected: Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1,
+) -> SignedMigrationLifecycleStateV1:
+    if (
+        type(parent_fd) is not int
+        or type(target_fd) is not int
+        or type(expected) is not Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1
+    ):
+        raise ValueError("epoch0 recovery abort barrier released descriptor type")
+    expected = Epoch0RecoveryAbortBarrierReleasedAuthorityPinsV1.model_validate(
+        expected.model_dump(mode="python")
+    )
+    if _migration_lifecycle_parent_identity(parent_fd) != (
+        expected.target_parent_dev,
+        expected.target_parent_ino,
+    ):
+        raise ValueError("epoch0 recovery abort barrier released parent identity")
+    expected_target_identity = (expected.target_dev, expected.target_ino)
+    tombstone_basename = f".{expected.target_basename}.abort-v1"
+    _require_migration_abort_target_sidecars_absent(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        tombstone_basename=tombstone_basename,
+    )
+    _verify_migration_abort_unlinked_target_layout(
+        parent_fd=parent_fd,
+        target_fd=target_fd,
+        target_basename=expected.target_basename,
+        tombstone_basename=tombstone_basename,
+        expected_target_identity=expected_target_identity,
+    )
+    state = _read_signed_migration_lifecycle_state(
+        parent_fd=parent_fd,
+        target_basename=expected.target_basename,
+        verification_key=verification_key,
+    )
+    fields = (
+        "target_store_id",
+        "root_id",
+        "root_manifest_sha256",
+        "target_parent_dev",
+        "target_parent_ino",
+        "target_basename",
+        "target_dev",
+        "target_ino",
+        "lifecycle_phase",
+        "phase_version",
+        "issuer_sequence",
+        "state_sha256",
+        "barrier_id",
+        "freeze_nonce",
+        "source_manifest_sha256",
+        "copy_audit_sha256",
+        "witness_sha256",
+    )
+    if any(getattr(state, field) != getattr(expected, field) for field in fields):
+        raise ValueError("epoch0 recovery abort barrier released signed state mismatch")
+    target_after = os.fstat(target_fd)
+    if (
+        not stat.S_ISREG(target_after.st_mode)
+        or target_after.st_uid != os.getuid()
+        or target_after.st_nlink != 0
+        or stat.S_IMODE(target_after.st_mode) != 0o600
+        or (target_after.st_dev, target_after.st_ino) != expected_target_identity
+    ):
+        raise ValueError(
+            "epoch0 recovery abort barrier released target changed during authentication"
         )
     _verify_migration_abort_unlinked_target_layout(
         parent_fd=parent_fd,
