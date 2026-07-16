@@ -50,7 +50,7 @@ describe("ArcadeCabinet host entry", () => {
     render(<ArcadeCabinet />);
     const art = screen.getByTestId("cabinet-igloo-art") as HTMLImageElement;
     expect(art.getAttribute("src") ?? "").toMatch(
-      /werner_igloo_arcade_session_v1/,
+      /werner_igloo_minigame_trio_session_v1/,
     );
   });
 

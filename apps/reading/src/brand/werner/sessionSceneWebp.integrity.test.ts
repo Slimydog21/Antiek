@@ -31,6 +31,7 @@ const PRODUCT_SCENE_WEBPS = [
   "./poses/session/werner_model_decision_tree_session_v1.webp",
   "./poses/session/werner_book_marketplace_port_session_v1.webp",
   "./poses/session/werner_arxiv_substack_dens_session_v1.webp",
+  "./poses/session/werner_igloo_minigame_trio_session_v1.webp",
 ] as const;
 
 describe("session scene webp product invent", () => {
