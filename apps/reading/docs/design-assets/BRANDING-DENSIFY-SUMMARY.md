@@ -64,6 +64,9 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Speak create | `7462661ae` | piece_started happy craft beat |
 | Research absorb | `639ae47b0` | highlight on corpus attach |
 | Home igloo arcade invent | `145cb173f` | scene webp + thinking mark on Home arcade card |
+| Cabinet igloo banner | `77862e281` | same invent on ArcadeCabinet chrome |
+| Antiek-bench desk strip | `c86a6a9fd` | thought-partner desk webp in Settings |
+| Midnight Oil living-TV | `385909143` | living-TV invent + highlight on goal add |
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.
 
