@@ -74,7 +74,10 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | MetaReading / PersonalSpace | `062f54e23`–`b89d4f9f9` | living-TV invent strips on reading surfaces |
 | Outcomes / Notebooks / Wrestle empty | `d0894b8a3` | thinking + living-TV brand chrome on audit, notebooks, wrestle doors |
 | Documents / Investigations / Settings / Home living-TV | (wave) | substrate index doors + settings + home invent strip; inv start → deep_research_start |
-| Sources / Brainstorm empty | (wave) | arXiv ingest door + watch-for-later empty; ingest highlight; launch deep_research_start | |
+| Sources / Brainstorm empty | (wave) | arXiv ingest door + watch-for-later empty; ingest highlight; launch deep_research_start |
+| Midnight Oil invent promote | `306c12c65` | late-night desk webp on Midnight Oil panel |
+| SessionBrandChrome + residual doors | `30479746b` | shared chrome; Trust/Billing/Pricing/Map/Stats/Replay/Fed/Loop3 |
+| Payouts / SkillRules / Interviews | (wave) | audit + skill + interview doors via SessionBrandChrome | |
 
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.

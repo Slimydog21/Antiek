@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -83,20 +84,20 @@ export default function PayoutsAudit() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Payout transfers audit
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="payouts-home"
+            title="Payout transfers audit"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Persistent log of every Stripe Connect transfer the
               substrate initiated. Per master-spec §13.7: the
               operator can reconstruct the full transfer history from
-              this surface without touching Stripe's dashboard.
+              this surface without touching Stripe&rsquo;s dashboard.
               Pre-onboarded publisher transfers are held in escrow
               per §9.10; platform residual is recorded but no
               transfer fires.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           <section className="border border-rule dark:border-charcoal-1 rounded-md p-4 space-y-3">
             <div className="flex flex-wrap items-center gap-2">

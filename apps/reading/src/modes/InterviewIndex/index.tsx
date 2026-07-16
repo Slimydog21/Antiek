@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 
+import SessionBrandChrome from "../../brand/SessionBrandChrome";
 import { apiFetch } from "../../lib/api";
 
 /**
@@ -109,17 +110,17 @@ export default function InterviewIndex() {
     <div className="flex flex-col h-screen">
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-8">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Interviews
-            </h1>
+          <SessionBrandChrome
+            testIdPrefix="interviews-home"
+            title="Interviews"
+          >
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Operator-facing index of interview projects + invited
               informants. Per master-spec §11.5: every Loop 4 interview
               is scoped to a project that defines the must-cover
               questions and framing.
             </p>
-          </header>
+          </SessionBrandChrome>
 
           {error && (
             <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
