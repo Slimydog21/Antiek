@@ -1,5 +1,17 @@
 """Durable provider-broker protocol primitives."""
 
+from .ledger import (
+    BrokerConflict,
+    BrokerIntegrityError,
+    BrokerLedgerError,
+    BrokerLookup,
+    BrokerOperationSnapshot,
+    BrokerTransition,
+    BrokerTransitionRefused,
+    BrokerUnavailable,
+    LookupDisposition,
+    PrimaryBrokerLedger,
+)
 from .protocol import (
     BrokerAuthorization,
     BrokerReceipt,
@@ -19,10 +31,20 @@ from .protocol import (
 
 __all__ = [
     "BrokerAuthorization",
+    "BrokerConflict",
+    "BrokerIntegrityError",
+    "BrokerLedgerError",
+    "BrokerLookup",
+    "BrokerOperationSnapshot",
     "BrokerReceipt",
     "BrokerReceiptState",
     "BrokerRoute",
     "BrokerUsageBound",
+    "BrokerTransition",
+    "BrokerTransitionRefused",
+    "BrokerUnavailable",
+    "LookupDisposition",
+    "PrimaryBrokerLedger",
     "ReceiptAlgorithm",
     "SignedBrokerReceipt",
     "authorization_digest",
