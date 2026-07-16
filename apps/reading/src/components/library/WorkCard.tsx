@@ -1,4 +1,5 @@
 import { LemonTag } from "../lemon";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import { cardLift } from "../../design/motion";
 import type { BookSummary } from "../../api/books";
 import { servabilityLabel } from "../../api/books";
@@ -69,6 +70,8 @@ export default function WorkCard({ work, onRead, onClaim }: WorkCardProps) {
 
   const action = () => {
     if (removed) return;
+    // Living-TV: shelf open / claim — curious glance (marketplace→read door).
+    emitWernerExperience("highlight");
     if (servable) onRead?.(work.document_id);
     else onClaim?.(work.document_id);
   };
