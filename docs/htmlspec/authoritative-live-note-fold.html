@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Antiek Cycle 83 - Authoritative live-note fold</title></head>
+<body>
+  <h1>Authoritative live-note presentation</h1>
+  <p>The research workstation must render the durable winner of living-note refinement, never a losing or historically ambiguous attempt.</p>
+  <h2>Identity and authority</h2>
+  <ul>
+    <li><code>note.emerged.note_id</code> is the visible note identity.</li>
+    <li><code>note.refined.note_id</code> is graph-node identity; <code>origin_note_id</code> attaches the outcome to its emerged note.</li>
+    <li>A complete <code>applied</code> outcome contributes <code>new_text</code>; a complete <code>superseded</code> outcome contributes authoritative <code>previous_text</code>, never the losing attempt.</li>
+    <li>The refinement graph node must agree with the visible note's known graph identity; the first complete outcome may establish a missing identity.</li>
+    <li>Only a row created by <code>note.emerged</code> is refinement-eligible; questions and user-authored marginalia cannot be targeted through origin substitution.</li>
+    <li>Legacy null outcomes, partial/impossible authority, identity substitutions, broken chains, and unattached outcomes remain audit evidence but do not become visible truth.</li>
+    <li>After the first authoritative rebase, <code>previous_sequence</code> must equal the row's settled sequence, making reconnect and reordered delivery safe.</li>
+    <li>Visible row identity is first-write-only across emerged notes, questions, and user marginalia; later cross-kind collisions cannot replace a row.</li>
+  </ul>
+  <h2>Acceptance</h2>
+  <ul>
+    <li>An applied outcome updates one existing note through <code>origin_note_id</code> and increments its visible refinement count once.</li>
+    <li>A superseded attempt can rebase stale legacy text to its authoritative prior text, but cannot expose losing text or increment the count.</li>
+    <li>Duplicate, stale, malformed, legacy, and unknown-origin outcomes cannot create or mutate a row.</li>
+    <li>The latest accepted prior text remains available through the existing change disclosure.</li>
+    <li>No backend mutation, provider call, challenge dispatch, graph write, event schema change, or spend authority is added.</li>
+  </ul>
+</body>
+</html>
