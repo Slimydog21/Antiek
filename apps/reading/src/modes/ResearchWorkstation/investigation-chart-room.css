@@ -1,0 +1,117 @@
+/**
+ * investigation-chart-room.css — the Chart Room environment frame for
+ * standalone MyResearch.
+ *
+ * A polar cartographic room behind a legibility veil. The image supplies
+ * atmosphere only; every title, cost, status, link, and launch control
+ * remains live HTML. Token-only: every colour, font, and shadow reference
+ * uses existing design tokens. No hardcoded hex, rgb, or font stacks.
+ *
+ * The frame is a `div`, not a nested route-level `main`. The art is
+ * decorative: empty-alt, aria-hidden, non-draggable, pointer-inert.
+ */
+
+.investigation-chart-room {
+  position: relative;
+  isolation: isolate;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 100%;
+  overflow: auto;
+  padding: clamp(1rem, 3vw, 2.5rem);
+  color: var(--ink);
+}
+
+/* Full-bleed decorative art. Absolute-positioned behind content. */
+.investigation-chart-room > img {
+  position: absolute;
+  inset: 0;
+  z-index: -3;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+  filter: saturate(0.86) contrast(0.94);
+}
+
+/* Legibility veil: gradient from translucent to more opaque, ensuring
+   text in the masthead and content area is always readable. */
+.investigation-chart-room__veil {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--ice-0) 34%, transparent),
+    color-mix(in srgb, var(--ice-0) 72%, transparent)
+  );
+  pointer-events: none;
+}
+
+/* Compact masthead: eyebrow + title + description. Single column. */
+.investigation-chart-room__masthead {
+  width: min(100%, 70rem);
+  margin: 0 auto clamp(1rem, 2.5vw, 2rem);
+}
+
+.investigation-chart-room__eyebrow {
+  font: 700 0.68rem / 1.2 var(--mono);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--shadow-1);
+}
+
+.investigation-chart-room__masthead h1 {
+  max-width: 40rem;
+  margin-top: 0.25rem;
+  font: 700 clamp(1.5rem, 3.5vw, 2.4rem) / 0.98 var(--serif);
+  letter-spacing: -0.04em;
+}
+
+.investigation-chart-room__masthead p {
+  max-width: 38rem;
+  margin-top: 0.5rem;
+  color: var(--shadow-1);
+  font: 0.875rem / 1.55 var(--serif);
+}
+
+/* Content region: the live HTML (launch bar, concurrency, lineage). */
+.investigation-chart-room__content {
+  width: min(100%, 70rem);
+  margin: 0 auto;
+}
+
+/* Fixture mode: hide the real image, show a token background gradient
+   so Storybook snapshots are deterministic (no asset I/O dependency). */
+.investigation-chart-room--fixture > img {
+  visibility: hidden;
+}
+.investigation-chart-room--fixture {
+  background: linear-gradient(145deg, var(--ice-1), var(--ice-2));
+}
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+
+@media (max-width: 767px) {
+  .investigation-chart-room {
+    padding: 1rem;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) {
+  .investigation-chart-room {
+    padding-inline: 1.5rem;
+  }
+}
+
+/* ── Dark mode ───────────────────────────────────────────────────────── */
+
+@media (prefers-color-scheme: dark) {
+  .investigation-chart-room__veil {
+    background: linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--ice-2) 54%, transparent),
+      color-mix(in srgb, var(--ice-2) 82%, transparent)
+    );
+  }
+}

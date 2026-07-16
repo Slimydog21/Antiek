@@ -451,3 +451,126 @@ describe("ResearchLineageBoard — tree structure", () => {
     expect(document.querySelectorAll('[data-lineage-role="standalone"]')).toHaveLength(1);
   });
 });
+
+// ── Chart Room environment (investigation-chart-room) ──────────────────
+//
+// Focused tests for the decorative Chart Room frame on standalone
+// MyResearch. Embedded mode must be visually and behaviourally unchanged.
+
+describe("Chart Room — standalone frame and art", () => {
+  it("renders the Chart Room frame with decorative art on standalone MyResearch", () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-cr01", status: "completed" }),
+    ];
+    renderMonitor();
+    const frame = screen.getByTestId("chart-room-frame");
+    expect(frame).toBeTruthy();
+    expect(frame.classList.contains("investigation-chart-room")).toBe(true);
+    const art = screen.getByTestId("investigation-chart-room-art");
+    expect(art).toBeTruthy();
+    expect(art.tagName).toBe("IMG");
+    expect(art.getAttribute("alt")).toBe("");
+    expect(art.getAttribute("aria-hidden")).toBe("true");
+    expect(art.getAttribute("loading")).toBe("lazy");
+    expect(art.getAttribute("decoding")).toBe("async");
+    expect(art.getAttribute("draggable")).toBe("false");
+  });
+
+  it("shows the masthead heading and subtitle on standalone MyResearch", () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-cr02", status: "completed" }),
+    ];
+    renderMonitor();
+    expect(screen.getByText("My research")).toBeTruthy();
+    expect(
+      screen.getByText(/Every research you have running and finished/),
+    ).toBeTruthy();
+  });
+});
+
+describe("Chart Room — embedded absence", () => {
+  it("does not render the Chart Room frame or art when embedded", () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-cr03", status: "completed" }),
+    ];
+    render(
+      <MemoryRouter>
+        <MyResearch embedded />
+      </MemoryRouter>,
+    );
+    expect(screen.queryByTestId("chart-room-frame")).toBeNull();
+    expect(screen.queryByTestId("investigation-chart-room-art")).toBeNull();
+    expect(screen.getByText("Your research")).toBeTruthy();
+  });
+});
+
+describe("Chart Room — root launch navigation", () => {
+  it("launch bar navigates to root / on 'Start a research'", async () => {
+    listState.current.investigations = [
+      inv({ investigation_id: "inv-cr04", status: "completed" }),
+    ];
+    const { default: userEventModule } =
+      await import("@testing-library/user-event");
+    const user = userEventModule.setup();
+    renderMonitor();
+    await user.click(
+      screen.getByRole("button", { name: "Start a research" }),
+    );
+    expect(navigateMock).toHaveBeenCalledWith("/");
+  });
+});
+
+describe("Chart Room — encoded workstation and replay links", () => {
+  it("encodes investigation id in the workstation link", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: "inv/slash id",
+        question: "Encoded question",
+        status: "completed",
+      }),
+    ];
+    renderMonitor();
+    const link = screen.getByText("Encoded question").closest("a");
+    expect(link).toBeTruthy();
+    expect(link!.getAttribute("href")).toBe(
+      "/inv/" + encodeURIComponent("inv/slash id"),
+    );
+  });
+
+  it("encodes investigation id in the replay link", () => {
+    listState.current.investigations = [
+      inv({
+        investigation_id: "inv/slash id",
+        question: "Encoded question",
+        status: "completed",
+      }),
+    ];
+    renderMonitor();
+    const replayLink = screen.getByText("replay →").closest("a");
+    expect(replayLink).toBeTruthy();
+    expect(replayLink!.getAttribute("href")).toBe(
+      "/replay/" + encodeURIComponent("inv/slash id"),
+    );
+  });
+});
+
+describe("Chart Room — private-safe list failure", () => {
+  it("shows the honest no-result state with AIActionFailure when the list is empty", () => {
+    listState.current.investigations = [];
+    renderMonitor();
+    expect(screen.getByText(/the engine returned no result/i)).toBeTruthy();
+    expect(screen.getByText(/model provider isn/i)).toBeTruthy();
+  });
+
+  it("shows fixed recovery copy without exposing the API error reason", () => {
+    listState.current = {
+      investigations: [],
+      loading: false,
+      error: "Forbidden: private investigation list",
+      refetch: () => {},
+    };
+    renderMonitor();
+    expect(screen.getByText(/Couldn\u2019t load your research/)).toBeTruthy();
+    expect(screen.queryByText(/Forbidden: private investigation list/)).toBeNull();
+  });
+});
