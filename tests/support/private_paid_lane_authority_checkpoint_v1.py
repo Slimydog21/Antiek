@@ -60,6 +60,8 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     Epoch0RecoveryAbortRenamedAuthorityPinsV1,
     Epoch0RecoveryAbortRenameFsyncCompletionV1,
     Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1,
+    Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1,
+    Epoch0RecoveryAbortSourcesRevalidationCompletionV1,
     Epoch0RecoveryAbortTombstoneUnlinkCompletionV1,
     Epoch0RecoveryAbortTombstoneUnlinkedAuthorityPinsV1,
     Epoch0RecoveryAuthorityPinsV1,
@@ -96,6 +98,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _authenticate_epoch0_recovery_abort_prepared_state_for_rename_v1,
     _authenticate_epoch0_recovery_abort_rename_fsynced_state_v1,
     _authenticate_epoch0_recovery_abort_renamed_state_v1,
+    _authenticate_epoch0_recovery_abort_sources_revalidated_state_v1,
     _authenticate_epoch0_recovery_abort_tombstone_unlinked_state_v1,
     _authenticate_epoch0_recovery_state_v1,
     _canonical_json,
@@ -128,6 +131,7 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
     _verify_epoch0_recovery_abort_preparation_completion_v1,
     _verify_epoch0_recovery_abort_rename_completion_v1,
     _verify_epoch0_recovery_abort_rename_fsync_completion_v1,
+    _verify_epoch0_recovery_abort_sources_revalidation_completion_v1,
     _verify_epoch0_recovery_abort_tombstone_unlink_completion_v1,
     _verify_epoch0_recovery_barrier_acquisition_completion_v1,
     _verify_epoch0_recovery_copy_completion_v1,
@@ -226,6 +230,11 @@ _RecoveryFaultBoundary = Literal[
     "abort_deletion_fsync_after_journal_rename",
     "abort_deletion_fsync_after_journal_parent_fsync",
     "abort_deletion_fsync_after_journal_reread",
+    "abort_sources_revalidation_after_intent",
+    "abort_sources_revalidation_after_parent_fsync",
+    "abort_sources_revalidation_after_journal_rename",
+    "abort_sources_revalidation_after_journal_parent_fsync",
+    "abort_sources_revalidation_after_journal_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -643,6 +652,40 @@ def _parse_issuer_recovery_abort_deletion_fsync_completion_document(
     completion = Epoch0RecoveryAbortDeletionFsyncCompletionV1.model_validate(material)
     if document != _issuer_recovery_abort_deletion_fsync_completion_document(completion):
         raise ValueError("issuer recovery abort deletion fsync completion canonical")
+    return completion
+
+
+def _issuer_recovery_abort_sources_revalidation_completion_document(
+    completion: Epoch0RecoveryAbortSourcesRevalidationCompletionV1,
+) -> bytes:
+    material = completion.model_dump(mode="python")
+    for state_field in ("abort_deletion_fsynced_state", "abort_sources_revalidated_state"):
+        state = cast(dict[str, object], material[state_field])
+        signature = state.get("signature_ed25519")
+        if type(signature) is not bytes:
+            raise ValueError("issuer recovery abort sources revalidation completion signature")
+        state["signature_ed25519"] = signature.hex()
+    encoded = _canonical_json(material)
+    if len(encoded) > _ISSUER_MAX_PACKET:
+        raise ValueError("issuer recovery abort sources revalidation completion bound")
+    return encoded
+
+
+def _parse_issuer_recovery_abort_sources_revalidation_completion_document(
+    document: bytes,
+) -> Epoch0RecoveryAbortSourcesRevalidationCompletionV1:
+    material = _parse_strict_json(document, _ISSUER_MAX_PACKET)
+    for state_field in ("abort_deletion_fsynced_state", "abort_sources_revalidated_state"):
+        state = material.get(state_field)
+        if type(state) is not dict:
+            raise ValueError("issuer recovery abort sources revalidation completion state")
+        signature = state.get("signature_ed25519")
+        if type(signature) is not str or not re.fullmatch(r"[0-9a-f]{128}", signature):
+            raise ValueError("issuer recovery abort sources revalidation completion signature")
+        state["signature_ed25519"] = bytes.fromhex(signature)
+    completion = Epoch0RecoveryAbortSourcesRevalidationCompletionV1.model_validate(material)
+    if document != _issuer_recovery_abort_sources_revalidation_completion_document(completion):
+        raise ValueError("issuer recovery abort sources revalidation completion canonical")
     return completion
 
 
@@ -1417,6 +1460,7 @@ def _issuer_authenticate_recovery_descriptors(
     | Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1
     | Epoch0RecoveryAbortTombstoneUnlinkedAuthorityPinsV1
     | Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1
+    | Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1
 ):
     root_info = os.fstat(root_fd)
     root_record = _issuer_root_record(root_fd)
@@ -1534,6 +1578,29 @@ def _issuer_authenticate_recovery_descriptors(
             expected=deletion_pins,
         )
         return deletion_pins
+    if lifecycle_phase == "abort_sources_revalidated":
+        revalidated_pins = Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1.model_validate(
+            raw_pins
+        )
+        if (
+            revalidated_pins.target_store_id != ticket.target_store_id
+            or revalidated_pins.root_id != ticket.root_id
+            or revalidated_pins.root_manifest_sha256 != ticket.root_manifest_sha256
+            or (revalidated_pins.target_parent_dev, revalidated_pins.target_parent_ino)
+            != (ticket.target_parent_dev, ticket.target_parent_ino)
+            or revalidated_pins.target_basename != ticket.target_basename
+            or (revalidated_pins.target_dev, revalidated_pins.target_ino)
+            != (ticket.target_dev, ticket.target_ino)
+            or revalidated_pins.issuer_sequence > ticket.maximum_issuer_sequence
+        ):
+            raise ValueError("issuer recovery ticket sources revalidated abort pins")
+        _authenticate_epoch0_recovery_abort_sources_revalidated_state_v1(
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            verification_key=verification_key,
+            expected=revalidated_pins,
+        )
+        return revalidated_pins
     pins = Epoch0RecoveryAuthorityPinsV1.model_validate(raw_pins)
     if (
         pins.target_store_id != ticket.target_store_id
@@ -1692,6 +1759,55 @@ def _issuer_recovery_abort_deletion_fsynced_pins_from_state(
             for name in Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1.model_fields
         }
     )
+
+
+def _issuer_recovery_abort_sources_revalidated_pins_from_state(
+    state: SignedMigrationLifecycleStateV1,
+) -> Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1:
+    return Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1.model_validate(
+        {
+            name: getattr(state, name)
+            for name in Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1.model_fields
+        }
+    )
+
+
+def _issuer_expected_abort_deletion_fsynced_pins_from_origin(
+    origin: Epoch0RecoveryAuthorityPinsV1,
+    *,
+    expected_abort_deletion_fsynced_state_sha256: str,
+) -> Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1:
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_abort_deletion_fsynced_state_sha256):
+        raise ValueError("issuer expected abort deletion fsynced state hash")
+    material = origin.model_dump(mode="python")
+    material.update(
+        {
+            "lifecycle_phase": "abort_deletion_fsynced",
+            "phase_version": origin.phase_version + 5,
+            "issuer_sequence": origin.issuer_sequence + 5,
+            "state_sha256": expected_abort_deletion_fsynced_state_sha256,
+        }
+    )
+    return Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1.model_validate(material)
+
+
+def _issuer_expected_abort_sources_revalidated_pins_from_origin(
+    origin: Epoch0RecoveryAuthorityPinsV1,
+    *,
+    expected_abort_sources_revalidated_state_sha256: str,
+) -> Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1:
+    if not re.fullmatch(r"[0-9a-f]{64}", expected_abort_sources_revalidated_state_sha256):
+        raise ValueError("issuer expected abort sources revalidated state hash")
+    material = origin.model_dump(mode="python")
+    material.update(
+        {
+            "lifecycle_phase": "abort_sources_revalidated",
+            "phase_version": origin.phase_version + 6,
+            "issuer_sequence": origin.issuer_sequence + 6,
+            "state_sha256": expected_abort_sources_revalidated_state_sha256,
+        }
+    )
+    return Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1.model_validate(material)
 
 
 def _issuer_require_target_abort_sidecars_absent(
@@ -1937,6 +2053,112 @@ def _issuer_validate_abort_origin_custody(
             raise ValueError("issuer abort preparation target audit")
 
 
+def _issuer_revalidate_abort_source_authority(
+    *,
+    session_root_fd: int,
+    origin: Epoch0RecoveryAuthorityPinsV1,
+    provider_capability_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_verification_keys: tuple[VerificationKeyV1, ...],
+    source_head_verification_keys: tuple[VerificationKeyV1, ...],
+    provider_revocation_floor_pins: tuple[ProviderRevocationFloorPinV1, ...],
+    source_floor_pins: tuple[OwnerPrivateSourceFloorPinV1, ...],
+    expected_semantic_source_sha256: str,
+    expected_contract_sha256: str,
+) -> None:
+    phase = origin.lifecycle_phase
+    if phase == "schema_only":
+        record = _issuer_authenticate_schema_recovery_root(
+            session_root_fd,
+            expected_root_id=origin.root_id,
+            expected_root_manifest_sha256=origin.root_manifest_sha256,
+        )
+        if (
+            record.get("state") != "open"
+            or record.get("barrier_id") is not None
+            or record.get("freeze_nonce") is not None
+            or any(
+                value is not None
+                for value in (
+                    origin.barrier_id,
+                    origin.freeze_nonce,
+                    origin.source_manifest_sha256,
+                    origin.copy_audit_sha256,
+                    origin.witness_sha256,
+                )
+            )
+        ):
+            raise ValueError("issuer recovery abort source revalidation schema authority")
+        return
+    if phase == "barrier_acquired":
+        if (
+            origin.barrier_id is None
+            or origin.freeze_nonce is None
+            or origin.witness_sha256 is None
+            or origin.source_manifest_sha256 is not None
+            or origin.copy_audit_sha256 is not None
+        ):
+            raise ValueError("issuer recovery abort source revalidation barrier pins")
+        record = _issuer_authenticate_barrier_recovery_root(
+            session_root_fd,
+            expected_root_id=origin.root_id,
+            expected_root_manifest_sha256=origin.root_manifest_sha256,
+            expected_barrier_id=origin.barrier_id,
+            expected_freeze_nonce=origin.freeze_nonce,
+        )
+        measured = _measure_child_adapters(_issuer_root_path(session_root_fd))
+        _audit_child_phase(record, measured)
+        if (
+            record.get("state") != "quiesced"
+            or _issuer_witness_sha256(
+                root_record=record,
+                target_parent_identity=(origin.target_parent_dev, origin.target_parent_ino),
+                target_basename=origin.target_basename,
+                target_identity=(origin.target_dev, origin.target_ino),
+            )
+            != origin.witness_sha256
+        ):
+            raise ValueError("issuer recovery abort source revalidation frozen authority")
+        return
+    if phase not in {"sources_sealed", "copy_prepared", "copied_epoch0"}:
+        raise ValueError("issuer recovery abort source revalidation origin phase")
+    if (
+        origin.barrier_id is None
+        or origin.freeze_nonce is None
+        or origin.source_manifest_sha256 is None
+        or origin.witness_sha256 is None
+    ):
+        raise ValueError("issuer recovery abort source revalidation sealed pins")
+    record = _issuer_compatible_root_record(session_root_fd, phase)
+    if (
+        record.get("barrier_id") != origin.barrier_id
+        or record.get("freeze_nonce") != origin.freeze_nonce
+        or record.get("sealed_sources_revalidated") is not False
+    ):
+        raise ValueError("issuer recovery abort source revalidation sealed root")
+    corpus = _collect_sealed_corpus(_issuer_root_path(session_root_fd), record)
+    if corpus.source_manifest_sha256 != origin.source_manifest_sha256:
+        raise ValueError("issuer recovery abort source revalidation manifest")
+    if phase == "sources_sealed":
+        if origin.copy_audit_sha256 is not None:
+            raise ValueError("issuer recovery abort source revalidation sealed audit")
+        return
+    if origin.copy_audit_sha256 is None:
+        raise ValueError("issuer recovery abort source revalidation audit pin")
+    intent = _copy_audit_intent_v1(
+        corpus=corpus,
+        target_store_id=origin.target_store_id,
+        semantic_source_sha256=expected_semantic_source_sha256,
+        contract_sha256=expected_contract_sha256,
+        provider_capability_verification_keys=provider_capability_verification_keys,
+        provider_revocation_verification_keys=provider_revocation_verification_keys,
+        source_head_verification_keys=source_head_verification_keys,
+        provider_revocation_floor_pins=provider_revocation_floor_pins,
+        source_floor_pins=source_floor_pins,
+    )
+    if _copy_audit_sha256(intent) != origin.copy_audit_sha256:
+        raise ValueError("issuer recovery abort source revalidation audit")
+
+
 def _fixture_migration_lifecycle_issuer_main(
     socket_path: str,
     supervisor_pid: int,
@@ -1981,6 +2203,9 @@ def _fixture_migration_lifecycle_issuer_main(
     ) = None
     recovery_abort_deletion_fsync_completion: (
         Epoch0RecoveryAbortDeletionFsyncCompletionV1 | None
+    ) = None
+    recovery_abort_sources_revalidation_completion: (
+        Epoch0RecoveryAbortSourcesRevalidationCompletionV1 | None
     ) = None
     recovery_peer_exited = False
     recovery_peer_pid: int | None = None
@@ -2060,6 +2285,20 @@ def _fixture_migration_lifecycle_issuer_main(
                 completion_document = _issuer_recovery_abort_deletion_fsync_completion_document(
                     recovery_abort_deletion_fsync_completion
                 )
+            elif (
+                boundary
+                in {
+                    "abort_sources_revalidation_after_journal_rename",
+                    "abort_sources_revalidation_after_journal_parent_fsync",
+                    "abort_sources_revalidation_after_journal_reread",
+                }
+                and recovery_abort_sources_revalidation_completion is not None
+            ):
+                completion_document = (
+                    _issuer_recovery_abort_sources_revalidation_completion_document(
+                        recovery_abort_sources_revalidation_completion
+                    )
+                )
             raise _InjectedRecoveryFault(
                 f"injected issuer recovery fault: {boundary}",
                 completion_document=completion_document,
@@ -2132,6 +2371,19 @@ def _fixture_migration_lifecycle_issuer_main(
                 "after_rename": "abort_deletion_fsync_after_journal_rename",
                 "after_parent_fsync": "abort_deletion_fsync_after_journal_parent_fsync",
                 "after_reread": "abort_deletion_fsync_after_journal_reread",
+            }[boundary],
+        )
+        inject_recovery_fault(mapped)
+
+    def inject_abort_sources_revalidation_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "abort_sources_revalidation_after_journal_rename",
+                "after_parent_fsync": "abort_sources_revalidation_after_journal_parent_fsync",
+                "after_reread": "abort_sources_revalidation_after_journal_reread",
             }[boundary],
         )
         inject_recovery_fault(mapped)
@@ -3789,6 +4041,187 @@ def _fixture_migration_lifecycle_issuer_main(
                 fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
                 os.close(locked_parent_fd)
 
+    def recover_abort_deletion_fsynced_to_abort_sources_revalidated(
+        *,
+        session_root_fd: int,
+        session_parent_fd: int,
+        session_target_fd: int,
+        expected_abort_deletion_fsynced_state_sha256: str,
+        expected_fsynced_pins: Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1,
+        origin_pins: Epoch0RecoveryAuthorityPinsV1,
+    ) -> Epoch0RecoveryAbortSourcesRevalidationCompletionV1:
+        nonlocal committed, pending_candidate, pending_state
+        nonlocal recovery_abort_sources_revalidation_completion
+        if (
+            committed is None
+            or expected_fsynced_pins.lifecycle_phase != "abort_deletion_fsynced"
+            or expected_fsynced_pins.state_sha256 != expected_abort_deletion_fsynced_state_sha256
+            or pending_state is not None
+        ):
+            raise ValueError("issuer recovery abort sources revalidation phase")
+        durable = _read_signed_migration_lifecycle_state(
+            parent_fd=session_parent_fd,
+            target_basename=expected_fsynced_pins.target_basename,
+            verification_key=verification_key,
+        )
+        if (
+            recovery_abort_sources_revalidation_completion is not None
+            and durable
+            == recovery_abort_sources_revalidation_completion.abort_sources_revalidated_state
+        ):
+            with _issuer_transition_lock(session_root_fd):
+                locked_parent_fd = os.open(
+                    ".",
+                    os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                    dir_fd=session_parent_fd,
+                )
+                try:
+                    fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+                    expected_durable = recovery_abort_sources_revalidation_completion.abort_sources_revalidated_state
+                    revalidated_pins = _issuer_recovery_abort_sources_revalidated_pins_from_state(
+                        expected_durable
+                    )
+                    durable = _authenticate_epoch0_recovery_abort_sources_revalidated_state_v1(
+                        parent_fd=locked_parent_fd,
+                        target_fd=session_target_fd,
+                        verification_key=verification_key,
+                        expected=revalidated_pins,
+                    )
+                    if durable != expected_durable:
+                        raise ValueError("issuer recovery abort sources revalidation replay state")
+                    _issuer_revalidate_abort_source_authority(
+                        session_root_fd=session_root_fd,
+                        origin=origin_pins,
+                        provider_capability_verification_keys=(
+                            provider_capability_verification_keys
+                        ),
+                        provider_revocation_verification_keys=(
+                            provider_revocation_verification_keys
+                        ),
+                        source_head_verification_keys=source_head_verification_keys,
+                        provider_revocation_floor_pins=provider_revocation_floor_pins,
+                        source_floor_pins=source_floor_pins,
+                        expected_semantic_source_sha256=expected_semantic_source_sha256,
+                        expected_contract_sha256=expected_contract_sha256,
+                    )
+                    os.fsync(locked_parent_fd)
+                    durable = _authenticate_epoch0_recovery_abort_sources_revalidated_state_v1(
+                        parent_fd=locked_parent_fd,
+                        target_fd=session_target_fd,
+                        verification_key=verification_key,
+                        expected=revalidated_pins,
+                    )
+                    if durable != expected_durable:
+                        raise ValueError("issuer recovery abort sources revalidation replay reread")
+                    committed = durable
+                    return recovery_abort_sources_revalidation_completion
+                finally:
+                    fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+                    os.close(locked_parent_fd)
+        if (
+            committed.lifecycle_phase != "abort_deletion_fsynced"
+            or committed.state_sha256 != expected_abort_deletion_fsynced_state_sha256
+            or durable != committed
+        ):
+            raise ValueError("issuer recovery abort sources revalidation journal")
+        fsynced = committed
+        with _issuer_transition_lock(session_root_fd):
+            locked_parent_fd = os.open(
+                ".",
+                os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=session_parent_fd,
+            )
+            try:
+                fcntl.flock(locked_parent_fd, fcntl.LOCK_EX)
+                fsynced = _authenticate_epoch0_recovery_abort_deletion_fsynced_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=expected_fsynced_pins,
+                )
+                _issuer_revalidate_abort_source_authority(
+                    session_root_fd=session_root_fd,
+                    origin=origin_pins,
+                    provider_capability_verification_keys=(provider_capability_verification_keys),
+                    provider_revocation_verification_keys=(provider_revocation_verification_keys),
+                    source_head_verification_keys=source_head_verification_keys,
+                    provider_revocation_floor_pins=provider_revocation_floor_pins,
+                    source_floor_pins=source_floor_pins,
+                    expected_semantic_source_sha256=expected_semantic_source_sha256,
+                    expected_contract_sha256=expected_contract_sha256,
+                )
+                material = fsynced.model_dump(
+                    mode="python",
+                    exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                )
+                next_version = fsynced.phase_version + 1
+                material.update(
+                    {
+                        "lifecycle_phase": "abort_sources_revalidated",
+                        "phase_version": next_version,
+                        "issuer_sequence": next_version,
+                        "updated_at_ms": max(fsynced.updated_at_ms, time.time_ns() // 1_000_000),
+                        "previous_state_sha256": fsynced.state_sha256,
+                        "issuer_key_id": key_id,
+                    }
+                )
+                state_sha256 = _migration_lifecycle_state_sha256(material)
+                material["state_sha256"] = state_sha256
+                material["signature_ed25519"] = private_key.sign(
+                    _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                )
+                revalidated = SignedMigrationLifecycleStateV1.model_validate(material)
+                completion = Epoch0RecoveryAbortSourcesRevalidationCompletionV1(
+                    abort_deletion_fsynced_state=fsynced,
+                    abort_sources_revalidated_state=revalidated,
+                )
+                _verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
+                    completion,
+                    issuer_verification_key=verification_key,
+                    expected_fsynced_pins=expected_fsynced_pins,
+                )
+                recovery_abort_sources_revalidation_completion = completion
+                inject_recovery_fault("abort_sources_revalidation_after_intent")
+                os.fsync(locked_parent_fd)
+                inject_recovery_fault("abort_sources_revalidation_after_parent_fsync")
+                fsynced = _authenticate_epoch0_recovery_abort_deletion_fsynced_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=expected_fsynced_pins,
+                )
+                _persist_signed_migration_lifecycle_state(
+                    parent_fd=session_parent_fd,
+                    state=revalidated,
+                    verification_key=verification_key,
+                    expected_prior_state_sha256=fsynced.state_sha256,
+                    _fault_hook=inject_abort_sources_revalidation_persistence_fault,
+                    locked_parent_fd=locked_parent_fd,
+                )
+                reread = _read_signed_migration_lifecycle_state(
+                    parent_fd=locked_parent_fd,
+                    target_basename=fsynced.target_basename,
+                    verification_key=verification_key,
+                )
+                if reread != revalidated:
+                    raise ValueError("issuer recovery abort sources revalidation journal reread")
+                revalidated_pins = _issuer_recovery_abort_sources_revalidated_pins_from_state(
+                    revalidated
+                )
+                _authenticate_epoch0_recovery_abort_sources_revalidated_state_v1(
+                    parent_fd=locked_parent_fd,
+                    target_fd=session_target_fd,
+                    verification_key=verification_key,
+                    expected=revalidated_pins,
+                )
+                committed = revalidated
+                pending_candidate = None
+                pending_state = None
+                return recovery_abort_sources_revalidation_completion
+            finally:
+                fcntl.flock(locked_parent_fd, fcntl.LOCK_UN)
+                os.close(locked_parent_fd)
+
     try:
         process_watch.control(
             [
@@ -4034,7 +4467,8 @@ def _fixture_migration_lifecycle_issuer_main(
                     authentication_pins: object = request["authority_pins"]
                     if (
                         (
-                            recovery_abort_deletion_fsync_completion is not None
+                            recovery_abort_sources_revalidation_completion is not None
+                            or recovery_abort_deletion_fsync_completion is not None
                             or recovery_abort_tombstone_unlink_completion is not None
                             or recovery_abort_rename_fsync_completion is not None
                             or recovery_abort_rename_completion is not None
@@ -4048,7 +4482,23 @@ def _fixture_migration_lifecycle_issuer_main(
                         and recovery_admission is not None
                         and peer_pid == recovery_admission.authenticated_peer_pid
                     ):
-                        if recovery_abort_deletion_fsync_completion is not None:
+                        if recovery_abort_sources_revalidation_completion is not None:
+                            observed_recovery_state = _read_signed_migration_lifecycle_state(
+                                parent_fd=received_descriptors[1],
+                                target_basename=(
+                                    recovery_abort_sources_revalidation_completion.abort_deletion_fsynced_state.target_basename
+                                ),
+                                verification_key=verification_key,
+                            )
+                            if observed_recovery_state not in (
+                                recovery_abort_sources_revalidation_completion.abort_deletion_fsynced_state,
+                                recovery_abort_sources_revalidation_completion.abort_sources_revalidated_state,
+                            ):
+                                raise ValueError(
+                                    "issuer recovery abort sources revalidation effective state"
+                                )
+                            effective_state = observed_recovery_state
+                        elif recovery_abort_deletion_fsync_completion is not None:
                             observed_recovery_state = _read_signed_migration_lifecycle_state(
                                 parent_fd=received_descriptors[1],
                                 target_basename=(
@@ -4176,6 +4626,12 @@ def _fixture_migration_lifecycle_issuer_main(
                         if effective_state.lifecycle_phase == "abort_deletion_fsynced":
                             authentication_pins = (
                                 _issuer_recovery_abort_deletion_fsynced_pins_from_state(
+                                    effective_state
+                                ).model_dump(mode="json")
+                            )
+                        elif effective_state.lifecycle_phase == "abort_sources_revalidated":
+                            authentication_pins = (
+                                _issuer_recovery_abort_sources_revalidated_pins_from_state(
                                     effective_state
                                 ).model_dump(mode="json")
                             )
@@ -4376,6 +4832,13 @@ def _fixture_migration_lifecycle_issuer_main(
                                 expected_fields = common_fields | {
                                     "expected_abort_tombstone_unlinked_state_sha256"
                                 }
+                            elif (
+                                session_command
+                                == "session_recover_abort_deletion_fsynced_to_abort_sources_revalidated"
+                            ):
+                                expected_fields = common_fields | {
+                                    "expected_abort_deletion_fsynced_state_sha256"
+                                }
                             else:
                                 expected_fields = common_fields
                             if set(session_request) != expected_fields or (
@@ -4394,8 +4857,39 @@ def _fixture_migration_lifecycle_issuer_main(
                                 | Epoch0RecoveryAbortRenameFsyncedAuthorityPinsV1
                                 | Epoch0RecoveryAbortTombstoneUnlinkedAuthorityPinsV1
                                 | Epoch0RecoveryAbortDeletionFsyncedAuthorityPinsV1
+                                | Epoch0RecoveryAbortSourcesRevalidatedAuthorityPinsV1
                             ) = pins
-                            if recovery_abort_deletion_fsync_completion is not None:
+                            if recovery_abort_sources_revalidation_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_abort_sources_revalidation_completion.abort_deletion_fsynced_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_abort_sources_revalidation_completion.abort_deletion_fsynced_state,
+                                    recovery_abort_sources_revalidation_completion.abort_sources_revalidated_state,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort sources revalidation effective state"
+                                    )
+                                if (
+                                    durable_recovery_state.lifecycle_phase
+                                    == "abort_sources_revalidated"
+                                ):
+                                    effective_descriptor_pins = (
+                                        _issuer_recovery_abort_sources_revalidated_pins_from_state(
+                                            durable_recovery_state
+                                        )
+                                    )
+                                else:
+                                    effective_descriptor_pins = (
+                                        _issuer_recovery_abort_deletion_fsynced_pins_from_state(
+                                            durable_recovery_state
+                                        )
+                                    )
+                            elif recovery_abort_deletion_fsync_completion is not None:
                                 durable_recovery_state = _read_signed_migration_lifecycle_state(
                                     parent_fd=session_parent_fd,
                                     target_basename=(
@@ -5120,6 +5614,72 @@ def _fixture_migration_lifecycle_issuer_main(
                                     )
                                 )
                                 continue
+                            if (
+                                session_command
+                                == "session_recover_abort_deletion_fsynced_to_abort_sources_revalidated"
+                            ):
+                                expected_abort_deletion_fsynced_state_sha256 = session_request.get(
+                                    "expected_abort_deletion_fsynced_state_sha256"
+                                )
+                                if type(
+                                    expected_abort_deletion_fsynced_state_sha256
+                                ) is not str or not re.fullmatch(
+                                    r"[0-9a-f]{64}",
+                                    expected_abort_deletion_fsynced_state_sha256,
+                                ):
+                                    raise ValueError(
+                                        "issuer recovery abort sources revalidation expected state"
+                                    )
+                                expected_fsynced_pins_reval = (
+                                    _issuer_expected_abort_deletion_fsynced_pins_from_origin(
+                                        recovery_admission.authority_pins,
+                                        expected_abort_deletion_fsynced_state_sha256=(
+                                            expected_abort_deletion_fsynced_state_sha256
+                                        ),
+                                    )
+                                )
+                                try:
+                                    _issuer_authenticate_recovery_descriptors(
+                                        root_fd=session_root_fd,
+                                        parent_fd=session_parent_fd,
+                                        target_fd=session_target_fd,
+                                        ticket=recovery_ticket,
+                                        verification_key=verification_key,
+                                        raw_pins=effective_descriptor_pins.model_dump(mode="json"),
+                                    )
+                                    revalidation_completion = (
+                                        recover_abort_deletion_fsynced_to_abort_sources_revalidated(
+                                            session_root_fd=session_root_fd,
+                                            session_parent_fd=session_parent_fd,
+                                            session_target_fd=session_target_fd,
+                                            expected_abort_deletion_fsynced_state_sha256=(
+                                                expected_abort_deletion_fsynced_state_sha256
+                                            ),
+                                            expected_fsynced_pins=expected_fsynced_pins_reval,
+                                            origin_pins=recovery_admission.authority_pins,
+                                        )
+                                    )
+                                    if supervisor_exited() or recovery_peer_exited:
+                                        return
+                                except _InjectedRecoveryFault as error:
+                                    connection.sendall(
+                                        _issuer_session_frame(
+                                            b"E" + (error.completion_document or b"")
+                                        )
+                                    )
+                                    continue
+                                except Exception:
+                                    connection.sendall(_issuer_session_frame(b"E"))
+                                    continue
+                                connection.sendall(
+                                    _issuer_session_frame(
+                                        b"Y"
+                                        + _issuer_recovery_abort_sources_revalidation_completion_document(
+                                            revalidation_completion
+                                        )
+                                    )
+                                )
+                                continue
                             if session_command == "session_close":
                                 if supervisor_exited() or recovery_peer_exited:
                                     return
@@ -5565,6 +6125,9 @@ class FixtureMigrationRecoverySessionV1:
     _lock: threading.Lock
     _abort_preparation_completion: Epoch0RecoveryAbortPreparationCompletionV1 | None
     _abort_deletion_fsync_completion: Epoch0RecoveryAbortDeletionFsyncCompletionV1 | None
+    _abort_sources_revalidation_completion: (
+        Epoch0RecoveryAbortSourcesRevalidationCompletionV1 | None
+    )
     _abort_rename_completion: Epoch0RecoveryAbortRenameCompletionV1 | None
     _abort_rename_fsync_completion: Epoch0RecoveryAbortRenameFsyncCompletionV1 | None
     _abort_tombstone_unlink_completion: Epoch0RecoveryAbortTombstoneUnlinkCompletionV1 | None
@@ -5577,6 +6140,7 @@ class FixtureMigrationRecoverySessionV1:
     __slots__ = (
         "_abort_preparation_completion",
         "_abort_deletion_fsync_completion",
+        "_abort_sources_revalidation_completion",
         "_abort_rename_completion",
         "_abort_rename_fsync_completion",
         "_abort_tombstone_unlink_completion",
@@ -5712,6 +6276,7 @@ class FixtureMigrationRecoverySessionV1:
         object.__setattr__(session, "_lock", threading.Lock())
         object.__setattr__(session, "_abort_preparation_completion", None)
         object.__setattr__(session, "_abort_deletion_fsync_completion", None)
+        object.__setattr__(session, "_abort_sources_revalidation_completion", None)
         object.__setattr__(session, "_abort_rename_completion", None)
         object.__setattr__(session, "_abort_rename_fsync_completion", None)
         object.__setattr__(session, "_abort_tombstone_unlink_completion", None)
@@ -6408,6 +6973,81 @@ class FixtureMigrationRecoverySessionV1:
                 raise
             return completion
 
+    def recover_abort_deletion_fsynced_to_abort_sources_revalidated(
+        self, *, expected_abort_deletion_fsynced_state_sha256: str
+    ) -> Epoch0RecoveryAbortSourcesRevalidationCompletionV1:
+        self._validate()
+        fsynced_pins = _issuer_expected_abort_deletion_fsynced_pins_from_origin(
+            self._admission.authority_pins,
+            expected_abort_deletion_fsynced_state_sha256=(
+                expected_abort_deletion_fsynced_state_sha256
+            ),
+        )
+        if (
+            self._abort_deletion_fsync_completion is not None
+            and self._abort_deletion_fsync_completion.abort_deletion_fsynced_state.state_sha256
+            != expected_abort_deletion_fsynced_state_sha256
+        ):
+            raise ValueError("fixture recovery abort deletion fsynced state")
+        request = _canonical_json(
+            {
+                "command": "session_recover_abort_deletion_fsynced_to_abort_sources_revalidated",
+                "admission_sha256": self._admission.admission_sha256,
+                "handle_nonce": self._handle_nonce,
+                "expected_abort_deletion_fsynced_state_sha256": (
+                    expected_abort_deletion_fsynced_state_sha256
+                ),
+            }
+        )
+        with self._lock:
+            try:
+                self._connection.sendall(_issuer_session_frame(request))
+                response = _issuer_session_receive_frame(self._connection)
+            except Exception:
+                self._close_local()
+                raise
+            if response[:1] == b"E":
+                try:
+                    if response[1:]:
+                        fault_completion = (
+                            _parse_issuer_recovery_abort_sources_revalidation_completion_document(
+                                response[1:]
+                            )
+                        )
+                        _verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
+                            fault_completion,
+                            issuer_verification_key=self._verification_key,
+                            expected_fsynced_pins=fsynced_pins,
+                        )
+                        object.__setattr__(
+                            self, "_abort_sources_revalidation_completion", fault_completion
+                        )
+                except Exception:
+                    self._close_local()
+                    raise
+                raise ValueError("fixture recovery abort sources revalidation rejected")
+            try:
+                if response[:1] != b"Y":
+                    raise ValueError("fixture recovery abort sources revalidation response")
+                completion = _parse_issuer_recovery_abort_sources_revalidation_completion_document(
+                    response[1:]
+                )
+                _verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
+                    completion,
+                    issuer_verification_key=self._verification_key,
+                    expected_fsynced_pins=fsynced_pins,
+                )
+                if (
+                    self._abort_sources_revalidation_completion is not None
+                    and completion != self._abort_sources_revalidation_completion
+                ):
+                    raise ValueError("fixture recovery abort sources revalidation replay")
+                object.__setattr__(self, "_abort_sources_revalidation_completion", completion)
+            except Exception:
+                self._close_local()
+                raise
+            return completion
+
     def close(self) -> None:
         if self._closed:
             return
@@ -6550,6 +7190,11 @@ class FixtureMigrationLifecycleIssuerV1:
             "abort_deletion_fsync_after_journal_rename",
             "abort_deletion_fsync_after_journal_parent_fsync",
             "abort_deletion_fsync_after_journal_reread",
+            "abort_sources_revalidation_after_intent",
+            "abort_sources_revalidation_after_parent_fsync",
+            "abort_sources_revalidation_after_journal_rename",
+            "abort_sources_revalidation_after_journal_parent_fsync",
+            "abort_sources_revalidation_after_journal_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")

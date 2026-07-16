@@ -1848,6 +1848,14 @@ def _attempt_child_recovery_fsync_abort_deletion(
         "abort_deletion_fsync_after_journal_reread",
     ]
     | None,
+    abort_sources_revalidation_fault_boundary: Literal[
+        "abort_sources_revalidation_after_intent",
+        "abort_sources_revalidation_after_parent_fsync",
+        "abort_sources_revalidation_after_journal_rename",
+        "abort_sources_revalidation_after_journal_parent_fsync",
+        "abort_sources_revalidation_after_journal_reread",
+    ]
+    | None = None,
 ) -> None:
     session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
     try:
@@ -1950,6 +1958,78 @@ def _attempt_child_recovery_fsync_abort_deletion(
                 expected=deletion_pins,
             )
             == completion.abort_deletion_fsynced_state
+        )
+        fsynced = completion.abort_deletion_fsynced_state
+        if abort_sources_revalidation_fault_boundary is None:
+            dropped_request = _canonical_json(
+                {
+                    "command": (
+                        "session_recover_abort_deletion_fsynced_to_abort_sources_revalidated"
+                    ),
+                    "admission_sha256": admission.admission_sha256,
+                    "handle_nonce": admission.handle_nonce,
+                    "expected_abort_deletion_fsynced_state_sha256": fsynced.state_sha256,
+                }
+            )
+            session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+        else:
+            with pytest.raises(ValueError, match="abort sources revalidation rejected"):
+                session.recover_abort_deletion_fsynced_to_abort_sources_revalidated(
+                    expected_abort_deletion_fsynced_state_sha256=fsynced.state_sha256
+                )
+            intermediate = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=fsynced.target_basename,
+                verification_key=verification_key,
+            )
+            if abort_sources_revalidation_fault_boundary in {
+                "abort_sources_revalidation_after_intent",
+                "abort_sources_revalidation_after_parent_fsync",
+            }:
+                assert intermediate == fsynced
+                assert session._abort_sources_revalidation_completion is None
+            else:
+                assert intermediate.lifecycle_phase == "abort_sources_revalidated"
+                assert session._abort_sources_revalidation_completion is not None
+        session._close_local()
+        session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+            socket_path=socket_path,
+            expected_issuer_pid=issuer_pid,
+            recovery_ticket=ticket,
+            admission=admission,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+        )
+        revalidation = session.recover_abort_deletion_fsynced_to_abort_sources_revalidated(
+            expected_abort_deletion_fsynced_state_sha256=fsynced.state_sha256
+        )
+        checkpoint_module._verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
+            revalidation,
+            issuer_verification_key=verification_key,
+            expected_fsynced_pins=deletion_pins,
+        )
+        assert revalidation.abort_deletion_fsynced_state == fsynced
+        assert (
+            session.recover_abort_deletion_fsynced_to_abort_sources_revalidated(
+                expected_abort_deletion_fsynced_state_sha256=fsynced.state_sha256
+            )
+            == revalidation
+        )
+        revalidated_pins = (
+            support_checkpoint._issuer_recovery_abort_sources_revalidated_pins_from_state(
+                revalidation.abort_sources_revalidated_state
+            )
+        )
+        assert (
+            checkpoint_module._authenticate_epoch0_recovery_abort_sources_revalidated_state_v1(
+                parent_fd=parent_fd,
+                target_fd=target_fd,
+                verification_key=verification_key,
+                expected=revalidated_pins,
+            )
+            == revalidation.abort_sources_revalidated_state
         )
         assert (
             checkpoint_module._migration_lifecycle_entry_identity(
@@ -4092,6 +4172,133 @@ class TestMigrationPrerequisites:
                 ),
                 issuer_verification_key=verification_key,
                 expected_unlinked_pins=unlinked_pins,
+            )
+
+    def test_epoch0_recovery_abort_sources_revalidation_completion_verifier(self) -> None:
+        private_key = Ed25519PrivateKey.from_private_bytes(b"f" * 32)
+        verification_key = checkpoint_module.VerificationKeyV1(
+            key_id="migration-lifecycle-key",
+            public_key_bytes=private_key.public_key().public_bytes_raw(),
+        )
+        # Five origin classes: schema_only (v6), barrier_acquired (v7),
+        # sources_sealed (v8), copy_prepared (v9), copied_epoch0 (v10)
+        freeze_nonce = "b2" * 32
+        proper_barrier_id = checkpoint_module._migration_barrier_id(freeze_nonce)
+        for _origin_phase, barrier, freeze, source_manifest, copy_audit, witness, pv in (
+            ("schema_only", None, None, None, None, None, 6),
+            ("barrier_acquired", proper_barrier_id, freeze_nonce, None, None, "b4" * 32, 7),
+            ("sources_sealed", proper_barrier_id, freeze_nonce, "b3" * 32, None, "b4" * 32, 8),
+            ("copy_prepared", proper_barrier_id, freeze_nonce, "b3" * 32, "b5" * 32, "b4" * 32, 9),
+            ("copied_epoch0", proper_barrier_id, freeze_nonce, "b3" * 32, "b5" * 32, "b4" * 32, 10),
+        ):
+            if pv > 5:
+                fsynced = _signed_lifecycle_state(
+                    private_key,
+                    lifecycle_phase="abort_deletion_fsynced",
+                    barrier_id=barrier,
+                    freeze_nonce=freeze,
+                    source_manifest_sha256=source_manifest,
+                    copy_audit_sha256=copy_audit,
+                    witness_sha256=witness,
+                    phase_version=pv - 1,
+                    issuer_sequence=pv - 1,
+                    updated_at_ms=pv + 5,
+                    previous_state_sha256="a1" * 32,
+                )
+            else:
+                fsynced = _signed_lifecycle_state(
+                    private_key,
+                    lifecycle_phase="abort_deletion_fsynced",
+                    phase_version=5,
+                    issuer_sequence=5,
+                    updated_at_ms=10,
+                    previous_state_sha256="a1" * 32,
+                )
+            revalidated = _signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="abort_sources_revalidated",
+                barrier_id=fsynced.barrier_id,
+                freeze_nonce=fsynced.freeze_nonce,
+                source_manifest_sha256=fsynced.source_manifest_sha256,
+                copy_audit_sha256=fsynced.copy_audit_sha256,
+                witness_sha256=fsynced.witness_sha256,
+                phase_version=pv,
+                issuer_sequence=pv,
+                updated_at_ms=pv + 6,
+                previous_state_sha256=fsynced.state_sha256,
+            )
+            completion = checkpoint_module.Epoch0RecoveryAbortSourcesRevalidationCompletionV1(
+                abort_deletion_fsynced_state=fsynced,
+                abort_sources_revalidated_state=revalidated,
+            )
+            fsynced_pins = (
+                support_checkpoint._issuer_recovery_abort_deletion_fsynced_pins_from_state(fsynced)
+            )
+            checkpoint_module._verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
+                completion,
+                issuer_verification_key=verification_key,
+                expected_fsynced_pins=fsynced_pins,
+            )
+            revalidated_pins = (
+                support_checkpoint._issuer_recovery_abort_sources_revalidated_pins_from_state(
+                    revalidated
+                )
+            )
+            assert revalidated_pins.lifecycle_phase == "abort_sources_revalidated"
+            assert revalidated_pins.phase_version == pv
+            assert revalidated_pins.barrier_id == fsynced.barrier_id
+            assert revalidated_pins.freeze_nonce == fsynced.freeze_nonce
+            assert revalidated_pins.source_manifest_sha256 == fsynced.source_manifest_sha256
+            assert revalidated_pins.copy_audit_sha256 == fsynced.copy_audit_sha256
+            assert revalidated_pins.witness_sha256 == fsynced.witness_sha256
+        # Adversarial: mismatched freeze_nonce should fail
+        bad_freeze_nonce = "ff" * 32
+        bad_barrier_id = checkpoint_module._migration_barrier_id(bad_freeze_nonce)
+        bad_revalidated = _signed_lifecycle_state(
+            private_key,
+            lifecycle_phase="abort_sources_revalidated",
+            barrier_id=bad_barrier_id,
+            freeze_nonce=bad_freeze_nonce,
+            source_manifest_sha256=fsynced.source_manifest_sha256,
+            copy_audit_sha256=fsynced.copy_audit_sha256,
+            witness_sha256=fsynced.witness_sha256,
+            phase_version=pv,
+            issuer_sequence=pv,
+            updated_at_ms=pv + 6,
+            previous_state_sha256=fsynced.state_sha256,
+        )
+        bad_completion = checkpoint_module.Epoch0RecoveryAbortSourcesRevalidationCompletionV1(
+            abort_deletion_fsynced_state=fsynced,
+            abort_sources_revalidated_state=bad_revalidated,
+        )
+        with pytest.raises(ValueError, match="migration abort"):
+            checkpoint_module._verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
+                bad_completion,
+                issuer_verification_key=verification_key,
+                expected_fsynced_pins=fsynced_pins,
+            )
+        # Adversarial: broken chain should fail
+        bad_chain = checkpoint_module.Epoch0RecoveryAbortSourcesRevalidationCompletionV1(
+            abort_deletion_fsynced_state=fsynced,
+            abort_sources_revalidated_state=_signed_lifecycle_state(
+                private_key,
+                lifecycle_phase="abort_sources_revalidated",
+                barrier_id=fsynced.barrier_id,
+                freeze_nonce=fsynced.freeze_nonce,
+                source_manifest_sha256=fsynced.source_manifest_sha256,
+                copy_audit_sha256=fsynced.copy_audit_sha256,
+                witness_sha256=fsynced.witness_sha256,
+                phase_version=pv,
+                issuer_sequence=pv,
+                updated_at_ms=pv + 6,
+                previous_state_sha256="ee" * 32,
+            ),
+        )
+        with pytest.raises(ValueError, match="chain mismatch"):
+            checkpoint_module._verify_epoch0_recovery_abort_sources_revalidation_completion_v1(
+                bad_chain,
+                issuer_verification_key=verification_key,
+                expected_fsynced_pins=fsynced_pins,
             )
 
     def test_migration_lifecycle_rejects_hash_signature_chain_and_pin_forgery(self) -> None:
@@ -7068,18 +7275,27 @@ class TestMigrationPrerequisites:
             issuer.close()
 
     @pytest.mark.parametrize(
-        ("origin_phase", "abort_deletion_fsync_fault_boundary"),
         (
-            ("schema_only", None),
-            ("barrier_acquired", None),
-            ("sources_sealed", None),
-            ("copy_prepared", None),
-            ("copied_epoch0", None),
-            ("schema_only", "abort_deletion_fsync_after_intent"),
-            ("schema_only", "abort_deletion_fsync_after_parent_fsync"),
-            ("schema_only", "abort_deletion_fsync_after_journal_rename"),
-            ("schema_only", "abort_deletion_fsync_after_journal_parent_fsync"),
-            ("schema_only", "abort_deletion_fsync_after_journal_reread"),
+            "origin_phase",
+            "abort_deletion_fsync_fault_boundary",
+            "abort_sources_revalidation_fault_boundary",
+        ),
+        (
+            ("schema_only", None, None),
+            ("barrier_acquired", None, None),
+            ("sources_sealed", None, None),
+            ("copy_prepared", None, None),
+            ("copied_epoch0", None, None),
+            ("schema_only", "abort_deletion_fsync_after_intent", None),
+            ("schema_only", "abort_deletion_fsync_after_parent_fsync", None),
+            ("schema_only", "abort_deletion_fsync_after_journal_rename", None),
+            ("schema_only", "abort_deletion_fsync_after_journal_parent_fsync", None),
+            ("schema_only", "abort_deletion_fsync_after_journal_reread", None),
+            ("schema_only", None, "abort_sources_revalidation_after_intent"),
+            ("schema_only", None, "abort_sources_revalidation_after_parent_fsync"),
+            ("schema_only", None, "abort_sources_revalidation_after_journal_rename"),
+            ("schema_only", None, "abort_sources_revalidation_after_journal_parent_fsync"),
+            ("schema_only", None, "abort_sources_revalidation_after_journal_reread"),
         ),
     )
     def test_recovery_fsync_abort_deletion_from_each_unlinked_class(
@@ -7100,8 +7316,16 @@ class TestMigrationPrerequisites:
             "abort_deletion_fsync_after_journal_reread",
         ]
         | None,
+        abort_sources_revalidation_fault_boundary: Literal[
+            "abort_sources_revalidation_after_intent",
+            "abort_sources_revalidation_after_parent_fsync",
+            "abort_sources_revalidation_after_journal_rename",
+            "abort_sources_revalidation_after_journal_parent_fsync",
+            "abort_sources_revalidation_after_journal_reread",
+        ]
+        | None,
     ) -> None:
-        with_rows = origin_phase in {"copy_prepared", "copied_epoch0"}
+        with_rows = origin_phase in {"sources_sealed", "copy_prepared", "copied_epoch0"}
         target = tmp_path / "paid-lane.sqlite3"
         _initialize_schema_only_copy_target(target)
         target.chmod(0o600)
@@ -7140,7 +7364,9 @@ class TestMigrationPrerequisites:
             expected_target_store_id=STORE_ID,
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
-            recovery_fault_boundary=abort_deletion_fsync_fault_boundary,
+            recovery_fault_boundary=(
+                abort_deletion_fsync_fault_boundary or abort_sources_revalidation_fault_boundary
+            ),
         )
         target_fd = result_read = result_write = -1
         child = -1
@@ -7307,6 +7533,9 @@ class TestMigrationPrerequisites:
                     target_fd,
                     result_write,
                     abort_deletion_fsync_fault_boundary=abort_deletion_fsync_fault_boundary,
+                    abort_sources_revalidation_fault_boundary=(
+                        abort_sources_revalidation_fault_boundary
+                    ),
                 )
                 os._exit(0)
             os.close(result_write)
@@ -7321,11 +7550,11 @@ class TestMigrationPrerequisites:
                 target_basename=target.name,
                 verification_key=issuer.verification_key,
             )
-            assert fsynced.lifecycle_phase == "abort_deletion_fsynced"
+            assert fsynced.lifecycle_phase == "abort_sources_revalidated"
             checkpoint_module._verify_signed_migration_lifecycle_state(
                 fsynced, issuer.verification_key
             )
-            assert fsynced.phase_version == origin.phase_version + 5
+            assert fsynced.phase_version == origin.phase_version + 6
             assert (
                 fsynced.barrier_id,
                 fsynced.freeze_nonce,
