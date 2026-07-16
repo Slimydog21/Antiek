@@ -125,15 +125,19 @@ export function ReadAloud({
       };
       await audio.play();
       setState("playing");
+      // Living-TV: narration started — curious glance.
+      emitWernerExperience("highlight");
     } catch (e: unknown) {
       if (e instanceof TtsError && e.kind === "withheld") {
         // §9.0 — never narrated. Honest, distinct state (not a generic error).
         setState("withheld");
         setError(e.message);
+        emitWernerExperience("fail");
         return;
       }
       setError(e instanceof Error ? e.message : String(e));
       setState("error");
+      emitWernerExperience("fail");
     }
   }, [state, text, chunkId, minutes, voice, makeAudio, cleanup]);
 
