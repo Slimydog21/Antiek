@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 
+import thinkingArt from "../../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { LemonButton } from "../../../components/lemon";
 import { generateMetaReading, getSavedMetaReading } from "../../../api/books";
 import type { BookCitation, MetaReadingResponse } from "../../../api/books";
 import ReadAloud from "../../../components/voice/ReadAloud";
 import { acceptPromotion, suggestPromotion } from "../../../lib/researchSuggestion";
+import {
+  emitWernerExperience,
+  notifyResearchStarted,
+} from "../../../werner";
 
 /**
  * MetaReading — the one-shot, READ-ONLY, page-cited synthesis over the OWNED
@@ -119,8 +125,11 @@ export default function MetaReading() {
         length_amount: amount,
       });
       setDeliverable(res);
+      // Living-TV: a saved meta-reading is a noted craft beat.
+      emitWernerExperience("note_saved");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     } finally {
       setBusy(false);
     }
@@ -143,8 +152,11 @@ export default function MetaReading() {
         documentId: deliverable.corpus_document_ids[0],
       });
       setPromoted(res.investigation_id);
+      // Living-TV: promote into Research is a real DR start.
+      notifyResearchStarted(res.investigation_id);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
+      emitWernerExperience("fail");
     } finally {
       setPromoting(false);
     }
@@ -155,8 +167,28 @@ export default function MetaReading() {
       <ProposedBanner />
       <main className="flex-1 min-h-0 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-3xl mx-auto px-8 py-8 space-y-5">
-          <header className="space-y-1">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">Meta-read your corpus</h1>
+          <header className="space-y-2">
+            <div className="flex items-center gap-3">
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="meta-reading-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Meta-read your corpus
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="meta-reading-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               Deep-read across the books you own and get one cited report — built
               to the length you choose. It reads only your corpus, never the open

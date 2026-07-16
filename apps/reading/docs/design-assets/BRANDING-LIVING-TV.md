@@ -66,6 +66,9 @@ UI-consumed invent strips (not inventory-only):
 - Midnight Oil panel — living-TV webp
 - ReadingCompanion (in-book glass-box) — thinking mark + living-TV webp
 - ResearchThis page spin — `notifyResearchStarted` → deep_research_start
+- TalkToBook open/answer — highlight / note_saved / fail
+- VoiceNote save — note_saved
+- Biography landing — session thinking brand mark
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
 
