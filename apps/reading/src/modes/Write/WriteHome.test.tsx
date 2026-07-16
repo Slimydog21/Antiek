@@ -103,6 +103,12 @@ describe("WriteHome — the re-homed door", () => {
     expect(surface, "the Write home must render through GlassSurface").toBeTruthy();
     // Session celebrate mark UI-consumed on the Write door (living-TV).
     expect(screen.getByTestId("write-home-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "write-home-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
     expect(surface!.getAttribute("data-glass-variant")).toBe("glass");
   });
 

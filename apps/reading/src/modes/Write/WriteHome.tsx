@@ -11,6 +11,7 @@ import {
 } from "../../lib/api";
 import GlassSurface from "../../shell/GlassSurface";
 import celebrateArt from "../../brand/werner/poses/session/werner_celebrate_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import Canvas from "../DeepResearchWorkspace/Canvas/Canvas";
 import BlockRepository from "./BlockRepository";
@@ -170,6 +171,15 @@ export default function WriteHome() {
               Write a piece
             </h1>
           </div>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="write-home-living-tv-art"
+            className="mt-3 h-16 w-full max-w-md rounded-md object-cover object-center"
+            loading="lazy"
+            decoding="async"
+          />
           <p className="mt-1 text-sm text-ink-soft dark:text-moonlight">
             Pull your research notes into an outline, generate a first draft
             from them, then edit. Or dump a raw idea and let the blocks fall
