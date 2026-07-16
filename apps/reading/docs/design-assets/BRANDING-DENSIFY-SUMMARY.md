@@ -215,5 +215,5 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | ResearchWaitArcadeGame living-TV inject | `c97af31d7` | onWernerBeat=emitLivingTvHostBeat like cabinet/LGH |
 | sessionAssets product-map assert | `b8a286871` | cabinet densify asserts cursor webp invents (ice/clam/zombies), not inventory fringe PNG |
 | Imagine invent polish v2 CRT + igloo trio | `4639f4ec2` | product-mapped reframe of living-TV home invent + minigame trio cabinet banner |
-| Imagine invent polish v2 paperclip zombies | (next tip) | wait-arcade/cabinet/LGH zombies key art |
-| Imagine invent polish v2 model decision tree | (next tip) | ModelDecisionBar product invent strip |
+| Imagine invent polish v2 paperclip zombies | `cd2e143d4` | wait-arcade/cabinet/LGH zombies key art |
+| Imagine invent polish v2 model decision tree | `cd2e143d4` | ModelDecisionBar product invent strip |
