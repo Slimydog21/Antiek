@@ -172,6 +172,10 @@ _RecoveryFaultBoundary = Literal[
     "seal_collect_after_root_rename",
     "seal_collect_after_root_fsync",
     "seal_collect_after_root_reread",
+    "seal_after_manifest_completion_cache",
+    "seal_after_journal_rename",
+    "seal_after_journal_parent_fsync",
+    "seal_after_journal_reread",
 ]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
@@ -1371,6 +1375,19 @@ def _fixture_migration_lifecycle_issuer_main(
             )
         )
 
+    def inject_sealing_journal_fault(
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        mapped = cast(
+            _RecoveryFaultBoundary,
+            {
+                "after_rename": "seal_after_journal_rename",
+                "after_parent_fsync": "seal_after_journal_parent_fsync",
+                "after_reread": "seal_after_journal_reread",
+            }[boundary],
+        )
+        inject_recovery_fault(mapped)
+
     def recover_schema_only_to_barrier_acquired(
         *,
         session_root_fd: int,
@@ -1746,6 +1763,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             issuer_verification_key=verification_key,
                             expected_barrier_acquired_pins=expected_pins,
                         )
+                        inject_recovery_fault("seal_after_manifest_completion_cache")
                         evidence["sealed_measurements"] = measured
                         _append_transition_evidence(
                             working_root,
@@ -1813,6 +1831,7 @@ def _fixture_migration_lifecycle_issuer_main(
                 state=sources_sealed,
                 verification_key=verification_key,
                 expected_prior_state_sha256=barrier_acquired.state_sha256,
+                _fault_hook=inject_sealing_journal_fault,
             )
             reread = _read_signed_migration_lifecycle_state(
                 parent_fd=session_parent_fd,
@@ -3937,6 +3956,10 @@ class FixtureMigrationLifecycleIssuerV1:
             "seal_collect_after_root_rename",
             "seal_collect_after_root_fsync",
             "seal_collect_after_root_reread",
+            "seal_after_manifest_completion_cache",
+            "seal_after_journal_rename",
+            "seal_after_journal_parent_fsync",
+            "seal_after_journal_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")

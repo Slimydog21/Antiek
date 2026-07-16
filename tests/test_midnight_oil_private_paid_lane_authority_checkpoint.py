@@ -870,8 +870,17 @@ def _attempt_child_recovery_barrier_sealing(
                     expected_barrier_acquired_state_sha256=barrier.state_sha256
                 )
             fault_completion = session._source_sealing_completion
-            split_marker = "_after_child_" if "_after_child_" in fault_boundary else "_after_root_"
-            operation_token = fault_boundary.split(split_marker, 1)[0].removeprefix("seal_")
+            if fault_boundary == "seal_after_manifest_completion_cache":
+                split_marker = "_after_cache_"
+                operation_token = "collect"
+            elif fault_boundary.startswith("seal_after_journal_"):
+                split_marker = "_after_journal_"
+                operation_token = "collect"
+            else:
+                split_marker = (
+                    "_after_child_" if "_after_child_" in fault_boundary else "_after_root_"
+                )
+                operation_token = fault_boundary.split(split_marker, 1)[0].removeprefix("seal_")
             operation_index = ("deny", "drain", "revoke", "verify", "collect").index(
                 operation_token
             )
@@ -880,7 +889,10 @@ def _attempt_child_recovery_barrier_sealing(
                 child_token = fault_boundary.rsplit("_", 1)[1]
                 completed_children = ("owner", "paid", "provider").index(child_token) + 1
             else:
-                assert (fault_completion is not None) == (operation_token == "collect")
+                if split_marker == "_after_root_":
+                    assert (fault_completion is not None) == (operation_token == "collect")
+                else:
+                    assert fault_completion is not None
                 completed_children = len(support_checkpoint._CHILD_ROLES)
             root_record = support_checkpoint._issuer_root_record(root_fd)
             expected_root_state = (
@@ -891,7 +903,7 @@ def _attempt_child_recovery_barrier_sealing(
                     "writers_revoked",
                     "writers_verified",
                 )
-                if split_marker == "_after_child_"
+                if split_marker in {"_after_child_", "_after_cache_"}
                 else (
                     "admission_denied",
                     "drained",
@@ -902,14 +914,17 @@ def _attempt_child_recovery_barrier_sealing(
             )
             assert root_record["state"] == expected_root_state[operation_index]
             expected_evidence_count = operation_index + (
-                1 if split_marker == "_after_child_" else 2
+                1 if split_marker in {"_after_child_", "_after_cache_"} else 2
             )
             assert len(root_record["transition_evidence"]) == expected_evidence_count
             child_evidence = root_record["child_adapter_evidence"]
             assert type(child_evidence) is dict
             if operation_token == "verify" and split_marker == "_after_child_":
                 assert child_evidence["planted_mutator_rejections"] == []
-            if operation_token == "collect" and split_marker == "_after_child_":
+            if operation_token == "collect" and split_marker in {
+                "_after_child_",
+                "_after_cache_",
+            }:
                 assert child_evidence["sealed_measurements"] is None
             for ordinal, role in enumerate(support_checkpoint._CHILD_ROLES):
                 state = support_checkpoint._read_child_adapter_state(
@@ -926,7 +941,11 @@ def _attempt_child_recovery_barrier_sealing(
                 target_basename=barrier.target_basename,
                 verification_key=verification_key,
             )
-            assert journal == barrier
+            if split_marker == "_after_journal_":
+                assert fault_completion is not None
+                assert journal == fault_completion.sources_sealed_state
+            else:
+                assert journal == barrier
             assert not list(support_checkpoint._issuer_fd_path(root_fd).glob(".*.tmp"))
             assert not list(support_checkpoint._issuer_fd_path(parent_fd).glob(".*.tmp"))
             observed_target = sqlite3.connect(target_path)
@@ -4186,6 +4205,10 @@ class TestMigrationPrerequisites:
                 for step, operation in enumerate(("deny", "drain", "revoke", "verify", "collect"))
                 for boundary in ("rename", "fsync", "reread")
             ),
+            (4, False, False, None, 0, "seal_after_manifest_completion_cache"),
+            (4, False, False, None, 0, "seal_after_journal_rename"),
+            (4, False, False, None, 0, "seal_after_journal_parent_fsync"),
+            (4, False, False, None, 0, "seal_after_journal_reread"),
         ),
     )
     def test_recovery_barrier_acquired_to_sources_sealed(
