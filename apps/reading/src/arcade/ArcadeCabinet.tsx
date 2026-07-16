@@ -5,6 +5,7 @@ import {
   createArcadeCartridge,
   type ArcadeGameKind,
 } from "./cartridgeFactory";
+import { emitProductActivate } from "../components/hotkeys";
 import { usePrefersReducedMotion } from "../workspace/usePrefersReducedMotion";
 import { emitWernerExperience } from "../werner/reactionBus";
 // Session brand PNGs — UI-consumed cabinet key art + chrome marks.
@@ -38,7 +39,8 @@ export function ArcadeCabinet() {
   );
 
   function playGame(game: CabinetGame) {
-    // Living-TV: cabinet play is a curious glance from the home of the penguin.
+    // Living-TV: product-activate choreography (arcade → curious) + experience.
+    emitProductActivate({ productId: "arcade", source: "click" });
     emitWernerExperience("highlight");
     setActive(game);
   }
@@ -169,6 +171,7 @@ function CabinetCard({
     <button
       type="button"
       data-testid={testId}
+      data-product-id="arcade"
       data-werner-target="curious"
       onClick={onPlay}
       className={

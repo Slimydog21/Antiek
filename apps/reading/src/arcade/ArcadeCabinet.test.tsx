@@ -59,6 +59,14 @@ describe("ArcadeCabinet host entry", () => {
     expect(screen.getByTestId("cabinet-ice-fishing")).toBeTruthy();
     expect(screen.getByTestId("cabinet-clam-catcher")).toBeTruthy();
     expect(screen.getByTestId("cabinet-zombies")).toBeTruthy();
+    // Living-TV geometry: cards stamp data-product-id so penguin choreography
+    // can resolve the arcade control (emoteForProductDoor → curious).
+    expect(
+      screen.getByTestId("cabinet-ice-fishing").getAttribute("data-product-id"),
+    ).toBe("arcade");
+    expect(
+      screen.getByTestId("cabinet-zombies").getAttribute("data-product-id"),
+    ).toBe("arcade");
   });
 
   it("starts clam-catcher cartridge from cabinet click via shared factory", () => {
