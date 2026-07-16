@@ -47,8 +47,16 @@ const entries: readonly AtlasEntry[] = [
     id: "ice-fishing",
     workflow: "Shared + unknown",
     route: "/settings · unknown fallback",
-    job: "Keep Werner’s original cursor-bait relationship as the safe default.",
+    job: "Keep Werner's original cursor-bait relationship as the safe default.",
     boundary: "No route, product, network, or mascot-position authority.",
+  },
+  {
+    id: "brass-balance",
+    workflow: "Cost planning",
+    route: "/pricing (exact)",
+    job: "Weigh cost trade-offs with a settling brass scale at the pointer.",
+    boundary:
+      "No pricing data, API, navigation, content, or cost-calculation authority.",
   },
 ] as const;
 
@@ -84,7 +92,7 @@ export function StationInstrumentAtlas() {
           Werner stays home. The cursor changes jobs.
         </h1>
         <p className="mt-4 max-w-3xl font-serif text-lg leading-8">
-          One deterministic grammar across Antiek’s four workflows. Select a
+          One deterministic grammar across Antiek’s workstation. Select a
           station instrument, move it over the real HTML desk, and audit the
           capability it deliberately does not receive.
         </p>
@@ -156,4 +164,4 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const FourWorkflowGrammar: Story = {};
+export const FiveInstrumentGrammar: Story = {};

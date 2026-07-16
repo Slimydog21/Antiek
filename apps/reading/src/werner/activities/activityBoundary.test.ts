@@ -17,6 +17,10 @@ const activityDirectory = dirname(fileURLToPath(import.meta.url));
 const implementationFiles = readdirSync(activityDirectory)
   .filter((name) => name.endsWith(".tsx") && !name.endsWith(".test.tsx"))
   .sort();
+const instrumentSource = readFileSync(
+  join(activityDirectory, "..", "BrassBalanceCursor.tsx"),
+  "utf8",
+);
 
 const forbidden = [
   /from\s+["'][^"']*WernerStage["']/,
@@ -36,8 +40,26 @@ describe("station activity source boundary", () => {
     it(`${filename} does not claim movement, navigation, or network authority`, () => {
       const source = readFileSync(join(activityDirectory, filename), "utf8");
       for (const pattern of forbidden) {
-        expect(source, `${filename} matched forbidden ${pattern}`).not.toMatch(pattern);
+        expect(source, `${filename} matched forbidden ${pattern}`).not.toMatch(
+          pattern,
+        );
       }
     });
   }
+
+  it("audits the brass instrument behind its declarative wrapper", () => {
+    const forbiddenInstrumentCapabilities = [
+      /from\s+["'][^"']*(?:WernerStage|PenguinMascot)["']/,
+      /\b(?:fetch|XMLHttpRequest|WebSocket)\b/,
+      /\b(?:navigate|useNavigate|location\.assign|location\.replace)\b/,
+      /document\.(?:querySelector|getElementById)/,
+      /from\s+["'][^"']*(?:modes\/Pricing|pricingApi)["']/,
+    ];
+    for (const pattern of forbiddenInstrumentCapabilities) {
+      expect(
+        instrumentSource,
+        `BrassBalanceCursor.tsx matched forbidden ${pattern}`,
+      ).not.toMatch(pattern);
+    }
+  });
 });

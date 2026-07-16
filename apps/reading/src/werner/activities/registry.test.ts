@@ -10,6 +10,7 @@ import {
   registerActivity,
   speakingResonanceActivity,
   writingNibActivity,
+  brassBalanceActivity,
   type CursorInstrumentProps,
 } from "./index";
 import { WernerFishingLayer } from "../WernerFishingLayer";
@@ -42,6 +43,7 @@ describe("station activity registry", () => {
       researchLensActivity,
       writingNibActivity,
       speakingResonanceActivity,
+      brassBalanceActivity,
     ]);
     expect(getDefaultActivity()).toBe(iceFishingActivity);
   });
@@ -159,6 +161,27 @@ describe("station activity registry", () => {
 
     it("reads only the cursor seam", () => {
       expect(speakingResonanceActivity.instrument.reads).toEqual([
+        "live",
+        "pointerIdle",
+        "tabHidden",
+      ]);
+    });
+  });
+
+  describe("brass-balance activity shape", () => {
+    it("declares the cost-planning route policy and no mascot ambient", () => {
+      expect(brassBalanceActivity.unlock).toEqual({
+        kind: "route",
+        policyId: "cost-planning",
+      });
+      expect(brassBalanceActivity.ambient).toEqual({
+        activeClass: null,
+        idleClass: null,
+      });
+    });
+
+    it("reads only the cursor seam", () => {
+      expect(brassBalanceActivity.instrument.reads).toEqual([
         "live",
         "pointerIdle",
         "tabHidden",

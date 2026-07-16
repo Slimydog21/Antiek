@@ -117,6 +117,10 @@ const STORIES: string[] = [
   "modes-expedition-cost-planner--cap-crossing",
   "modes-expedition-cost-planner--night",
   "modes-expedition-cost-planner--narrow",
+  // Werner's exact /pricing instrument and the complete station grammar.
+  "werner-station-instruments-brass-balance--cost-planning",
+  "werner-station-instruments-brass-balance--reduced-motion",
+  "werner-station-instruments-complete-atlas--five-instrument-grammar",
   // S5 + S6 + S7 — mode panels
   "loop-1-notebookeditor--blank",
   "loop-1-notebookeditor--with-sample-content",

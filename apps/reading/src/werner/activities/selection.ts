@@ -51,6 +51,13 @@ function knownWorkflowForPathname(pathname: string): Workflow | null {
 }
 
 export function activityIdForPathname(pathname: string): ActivityId {
+  const normalized =
+    pathname.length > 1 ? pathname.replace(/\/+$/, "") : pathname;
+
+  // Cost planning is deliberately an exact route capability. Pricing detail
+  // or adjacent future routes must opt in rather than inheriting by prefix.
+  if (normalized === "/pricing") return "brass-balance";
+
   const workflow = knownWorkflowForPathname(pathname);
   if (workflow === "write") return "writing-nib";
   if (workflow === "speak") return "speaking-resonance";

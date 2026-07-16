@@ -1,7 +1,7 @@
 # axe-core a11y audit
 
-**Run:** 2026-07-16T10:13:50.572Z
-**Stories audited:** 62
+**Run:** 2026-07-16T10:53:21.936Z
+**Stories audited:** 65
 **Serious / critical violations:** 0
 
 **Rule set:** wcag2a + wcag2aa + wcag21a + wcag21aa + best-practice
@@ -69,6 +69,9 @@
 | `modes-expedition-cost-planner--cap-crossing` | 0 | — | — |
 | `modes-expedition-cost-planner--night` | 0 | — | — |
 | `modes-expedition-cost-planner--narrow` | 0 | — | — |
+| `werner-station-instruments-brass-balance--cost-planning` | 0 | — | — |
+| `werner-station-instruments-brass-balance--reduced-motion` | 0 | — | — |
+| `werner-station-instruments-complete-atlas--five-instrument-grammar` | 0 | — | — |
 | `loop-1-notebookeditor--blank` | 0 | — | — |
 | `loop-1-notebookeditor--with-sample-content` | 0 | — | — |
 | `workspace-demo--scene` | 0 | — | — |
