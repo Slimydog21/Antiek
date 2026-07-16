@@ -8,6 +8,7 @@ import type { InvestigationSummary } from "../../lib/api";
 import { useInWindow } from "../../components/windows/windowHostContext";
 import GlassSurface from "../../shell/GlassSurface";
 import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import { emitWernerExperience } from "../../werner/reactionBus";
 import BookCard from "./BookCard";
 import CorpusSearch from "./CorpusSearch";
 import CuratePrompt from "./CuratePrompt";
@@ -144,7 +145,11 @@ export default function Library() {
   }, [curatedOrder, books, status, investigations]);
 
   const open = useCallback(
-    (documentId: string) => navigate(`/read/${encodeURIComponent(documentId)}`),
+    (documentId: string) => {
+      // Living-TV: opening a book is a curious glance from the home of the penguin.
+      emitWernerExperience("highlight");
+      navigate(`/read/${encodeURIComponent(documentId)}`);
+    },
     [navigate],
   );
 
@@ -161,6 +166,7 @@ export default function Library() {
           /* private mode — the reader still opens, just at the saved page */
         }
       }
+      emitWernerExperience("highlight");
       navigate(`/read/${encodeURIComponent(documentId)}`);
     },
     [navigate],

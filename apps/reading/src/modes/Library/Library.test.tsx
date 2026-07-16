@@ -162,6 +162,23 @@ describe("Library", () => {
     expect(navigateMock).toHaveBeenCalledWith("/read/doc-pd");
   });
 
+  it("emits living-TV highlight when opening a book from the shelf", async () => {
+    listBooksMock.mockResolvedValue({ books: [servableBook], count: 1 });
+    const seen: string[] = [];
+    const onExp = (e: Event) => {
+      const d = (e as CustomEvent<{ experience?: string }>).detail?.experience;
+      if (d) seen.push(d);
+    };
+    window.addEventListener("antiek:werner-experience", onExp);
+    renderLibrary();
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: /Open Meditations/ })).toBeTruthy(),
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Open Meditations/ }));
+    window.removeEventListener("antiek:werner-experience", onExp);
+    expect(seen).toContain("highlight");
+  });
+
   it("switching to Preview reloads the gated set", async () => {
     listBooksMock
       .mockResolvedValueOnce({ books: [servableBook], count: 1 })
