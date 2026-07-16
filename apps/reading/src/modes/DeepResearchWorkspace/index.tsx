@@ -261,7 +261,10 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   // block-canvas view of that research's insight/question graph. Null = the
   // default live-card monitor (non-breaking: the existing shell is unchanged
   // until the operator opts into the canvas).
-  const [canvasFor, setCanvasFor] = useState<string | null>(null);
+  const [resultView, setResultView] = useState<{
+    investigationId: string;
+    returnFocusId: string;
+  } | null>(null);
   // SPR-04: the block whose detail (the SECOND FloatMenu host) is open, or null.
   // Clicking a BlockCard on the canvas opens its detail as an overlay panel —
   // a highlight inside it mounts the SAME shared FloatMenu the synthesis host
@@ -269,6 +272,59 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   // overlay, dismissed back to the canvas.
   const [openNode, setOpenNode] = useState<DistilledNode | null>(null);
   const monitorHeadingRef = useRef<HTMLHeadingElement | null>(null);
+  const pendingReturnFocusRef = useRef<string | null>(null);
+
+  const focusResearchCard = useCallback((investigationId: string) => {
+    window.requestAnimationFrame(() => {
+      document.getElementById(`research-${investigationId}`)?.focus();
+    });
+  }, []);
+
+  const openInvestigation = useCallback((
+    investigationId: string,
+    source: "werner_broadcast" | "terminal_card",
+  ) => {
+    const research = session.researches.find(
+      (candidate) => candidate.investigation_id === investigationId,
+    );
+    if (!research || !TERMINAL_STATES.has(research.state)) return;
+    if (research.state !== "done") {
+      focusResearchCard(investigationId);
+      return;
+    }
+    track("deep_research_canvas_opened", {
+      investigation_id: investigationId,
+      source,
+      outcome: "done",
+    });
+    setOpenNode(null);
+    setResultView({
+      investigationId,
+      returnFocusId:
+        source === "terminal_card"
+          ? `research-result-action-${investigationId}`
+          : `research-${investigationId}`,
+    });
+  }, [focusResearchCard, session.researches]);
+
+  useEffect(() => {
+    if (resultView || !pendingReturnFocusRef.current) return;
+    const returnFocusId = pendingReturnFocusRef.current;
+    pendingReturnFocusRef.current = null;
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(returnFocusId);
+      if (target) target.focus();
+      else monitorHeadingRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [resultView]);
+
+  const closeResultView = () => {
+    if (!resultView) return;
+    pendingReturnFocusRef.current = resultView.returnFocusId;
+    setOpenNode(null);
+    setResultView(null);
+  };
 
   const steer = (iid: string) => async (kind: SteerKind, payload?: Record<string, unknown>) => {
     setSteering(iid);
@@ -298,11 +354,11 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
   }
 
   // SPR-03: render the organism canvas for the chosen completed research.
-  if (canvasFor) {
+  if (resultView) {
     return (
       <div className="flex h-full flex-col gap-2">
         <div className="flex items-center gap-3">
-          <LemonButton variant="tertiary" size="sm" onClick={() => setCanvasFor(null)}>
+          <LemonButton variant="tertiary" size="sm" onClick={closeResultView}>
             ← back to monitor
           </LemonButton>
           <span className="font-mono text-[11px] text-shadow-1 dark:text-moonlight">
@@ -310,7 +366,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           </span>
         </div>
         <div className="relative min-h-[480px] flex-1 overflow-hidden rounded-hog border-edge border-sun">
-          <Canvas investigationId={canvasFor} onOpenDetail={setOpenNode} />
+          <Canvas investigationId={resultView.investigationId} onOpenDetail={setOpenNode} />
           {/* SPR-04: the block detail is the SECOND live FloatMenu host. It
               opens off a BlockCard click as an overlay over the canvas (the
               canvas stays mounted underneath — non-breaking) and dismisses
@@ -319,7 +375,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
             <div className="absolute inset-0 z-10 overflow-auto bg-ice-0 dark:bg-charcoal-1">
               <BlockDetail
                 node={openNode}
-                investigationId={canvasFor}
+                investigationId={resultView.investigationId}
                 onClose={() => setOpenNode(null)}
               />
             </div>
@@ -342,24 +398,6 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           )}
         </h2>
         <div className="flex items-center gap-3">
-          {/* SPR-03 entry: open the first completed research as the organism
-              canvas. A completed research's insight/question graph is the
-              durable product the canvas lays out. */}
-          {session.researches.some((r) => r.state === "done") && (
-            <LemonButton
-              variant="tertiary"
-              size="sm"
-              onClick={() => {
-                const done = session.researches.find((r) => r.state === "done");
-                if (done) {
-                  track("deep_research_canvas_opened", { investigation_id: done.investigation_id });
-                  setCanvasFor(done.investigation_id);
-                }
-              }}
-            >
-              view as canvas
-            </LemonButton>
-          )}
           <div className="w-64"><CostMeter cost={session.cost} /></div>
         </div>
       </div>
@@ -384,9 +422,7 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
           state: research.state,
         }))}
         onViewResearch={(investigationId) => {
-          window.requestAnimationFrame(() => {
-            document.getElementById(`research-${investigationId}`)?.focus();
-          });
+          openInvestigation(investigationId, "werner_broadcast");
         }}
         returnFocusRef={monitorHeadingRef}
       />
@@ -398,6 +434,11 @@ export function Monitor({ sessionId, sessionGeneration, busy }: {
             costUsd={session.cost?.per_research[r.investigation_id] ?? 0}
             busy={busy || steering === r.investigation_id}
             onSteer={steer(r.investigation_id)}
+            onViewResult={
+              r.state === "done"
+                ? () => openInvestigation(r.investigation_id, "terminal_card")
+                : undefined
+            }
           />
         ))}
       </div>

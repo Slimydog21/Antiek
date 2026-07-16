@@ -395,7 +395,7 @@ describe("ResearchWaitArcade", () => {
     expect(screen.getByTestId("research-wait-arcade-canvas")).toBe(canvas);
   });
 
-  it("keeps final completion mounted until View results and focuses that action", () => {
+  it("keeps final completion mounted until View result and focuses that action", () => {
     const returnFocusRef = createRef<HTMLElement>();
     const onViewResearch = vi.fn();
     const running = [
@@ -435,7 +435,7 @@ describe("ResearchWaitArcade", () => {
     expect(screen.getByText("Research arrived")).toBeTruthy();
     expect(screen.getByText("Synthesize the answer")).toBeTruthy();
     expect(screen.getByTestId("research-wait-arcade-canvas")).toBe(canvas);
-    const viewResults = screen.getByRole("button", { name: "View results" });
+    const viewResults = screen.getByRole("button", { name: "View result" });
     expect(viewResults).toBe(document.activeElement);
     expect(receivedPaused).toHaveBeenLastCalledWith(true);
 
@@ -445,7 +445,7 @@ describe("ResearchWaitArcade", () => {
     expect(isStationInstrumentSuspended()).toBe(false);
   });
 
-  it("walks simultaneous final arrivals in order before offering View results", () => {
+  it("walks simultaneous final arrivals in order before offering View result", () => {
     const returnFocusRef = createRef<HTMLElement>();
     const running = [
       {
@@ -489,16 +489,16 @@ describe("ResearchWaitArcade", () => {
 
     expect(screen.getByText("First line")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Next arrival" })).toBeTruthy();
-    expect(screen.queryByRole("button", { name: "View results" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "View result" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Next arrival" }));
     act(() => vi.runOnlyPendingTimers());
     expect(screen.getByText("Second line")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "View results" })).toBe(
+    expect(screen.getByRole("button", { name: "View result" })).toBe(
       document.activeElement,
     );
   });
 
-  it("consumes a partial broadcast when View research is chosen", () => {
+  it("consumes a partial broadcast when View this result is chosen", () => {
     const returnFocusRef = createRef<HTMLElement>();
     const onViewResearch = vi.fn();
     const running = [
@@ -538,7 +538,7 @@ describe("ResearchWaitArcade", () => {
         allTerminal={false}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "View research" }));
+    fireEvent.click(screen.getByRole("button", { name: "View this result" }));
     expect(onViewResearch).toHaveBeenCalledWith("viewed");
     fireEvent.click(screen.getByRole("button", { name: "Play while waiting" }));
     expect(

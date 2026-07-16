@@ -378,7 +378,11 @@ function ResearchArrivalBroadcast({
           variant="primary"
           onClick={onView}
         >
-          {final ? "View results" : "View research"}
+          {broadcast.kind === "arrived"
+            ? final
+              ? "View result"
+              : "View this result"
+            : "View details"}
         </LemonButton>
       </div>
     </section>

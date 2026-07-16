@@ -34,7 +34,11 @@ export type AnalyticsEvents = {
   deep_research_cascade_created: { problem_length: number };
   deep_research_plan_approved: EmptyProps;
   deep_research_cascade_launched: { session_id: string };
-  deep_research_canvas_opened: { investigation_id: string };
+  deep_research_canvas_opened: {
+    investigation_id: string;
+    source: "werner_broadcast" | "terminal_card";
+    outcome: "done";
+  };
   brainstorm_question_launched: EmptyProps;
 
   // Read
