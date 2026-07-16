@@ -122,6 +122,8 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | NotDiamond toggle living-TV | `6280f9274` | advisor mode note_saved/highlight |
 | Library BookCard/CorpusSearch | `c385ca5b8` | shelf open + corpus search living-TV |
 | ParkedQuestion + VoiceNoteCapture | `aa8596a02` | parked launch DR start; voice note_saved |
+| CuratePrompt highlight | `a519c13d1` | prompt-to-curate living-TV |
+| WatchForLater select | `df7e8e2d1` | parked folder select highlight |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
