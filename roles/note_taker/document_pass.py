@@ -87,16 +87,6 @@ async def run_document_pass(
         if not note.source_event_ids and not document_id:
             result.dropped_provenance_free += 1
             continue
-        if emit_events:
-            emit_typed(
-                investigation_id,
-                NoteEmergedPayload(
-                    note_id=note.note_id, note_text=note.text,
-                    source_event_ids=list(note.source_event_ids),
-                    confidence=note.confidence,
-                ),
-                role="note_taker", document_id=document_id, events_dir=events_dir,
-            )
         nid = promote_insight(
             text=note.text, investigation_id=investigation_id,
             confidence=note.confidence, supported_by=supported_by,
@@ -109,6 +99,18 @@ async def run_document_pass(
             owner_user_id=owner_user_id,
             emit_graph_events=emit_graph_events,
         )
+        if emit_events:
+            emit_typed(
+                investigation_id,
+                NoteEmergedPayload(
+                    note_id=note.note_id, note_text=note.text,
+                    source_event_ids=list(note.source_event_ids),
+                    # A caller-owned transaction may still roll back after this
+                    # external event write; only publish committed identities.
+                    confidence=note.confidence, node_id=nid if con is None else None,
+                ),
+                role="note_taker", document_id=document_id, events_dir=events_dir,
+            )
         result.insight_node_ids.append(nid)
 
     for q in distillation.questions:

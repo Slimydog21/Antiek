@@ -23,6 +23,7 @@ class LivingNoteHistoryIntegrityError(RuntimeError):
 @dataclass(frozen=True)
 class LivingNoteHistoryEntry:
     event_id: str
+    source_investigation_id: str
     sequence: int
     previous_sequence: int
     previous_text: str
@@ -75,7 +76,12 @@ def living_note_history(
             raise LivingNoteHistoryNotFound("no such living note")
         node_type, current_text, metadata_raw = node
         metadata = _strict_metadata(metadata_raw)
-        if node_type != "insight" or metadata.get("investigation_id") != investigation_id:
+        membership = con.execute(
+            "SELECT node_type FROM node_investigation_memberships "
+            "WHERE node_id=? AND investigation_id=?",
+            [node_id, investigation_id],
+        ).fetchone()
+        if node_type != "insight" or membership is None or membership[0] != "insight":
             raise LivingNoteHistoryNotFound("no such living note")
 
         refinement_count = metadata.get("refinement_count", 0)
@@ -93,12 +99,20 @@ def living_note_history(
             raise LivingNoteHistoryIntegrityError("living-note counters disagree")
 
         rows = con.execute(
-            "SELECT event_id, event_json, event_sha256, state "
-            "FROM write_event_outbox WHERE investigation_id=? "
-            "AND aggregate_kind='living_note' AND aggregate_id=? "
+            "SELECT event_id, investigation_id, event_json, event_sha256, state "
+            "FROM write_event_outbox WHERE "
+            "aggregate_kind='living_note' AND aggregate_id=? "
             "ORDER BY outbox_sequence",
-            [investigation_id, node_id],
+            [node_id],
         ).fetchall()
+        member_investigations = {
+            row[0]
+            for row in con.execute(
+                "SELECT investigation_id FROM node_investigation_memberships "
+                "WHERE node_id=? AND node_type='insight'",
+                [node_id],
+            ).fetchall()
+        }
     finally:
         con.close()
 
@@ -107,7 +121,7 @@ def living_note_history(
     chain_text: str | None = None
     applied_count = 0
     superseded_count = 0
-    for event_id, encoded, digest, delivery_state in rows:
+    for event_id, row_investigation_id, encoded, digest, delivery_state in rows:
         if delivery_state not in {"pending", "delivered"}:
             raise LivingNoteHistoryIntegrityError("living-note delivery state is invalid")
         if hashlib.sha256(encoded.encode()).hexdigest() != digest:
@@ -116,8 +130,10 @@ def living_note_history(
             event = Event.model_validate_json(encoded)
         except Exception as exc:
             raise LivingNoteHistoryIntegrityError("living-note history event is invalid") from exc
-        if event.event_id != event_id or event.investigation_id != investigation_id:
+        if event.event_id != event_id or event.investigation_id != row_investigation_id:
             raise LivingNoteHistoryIntegrityError("living-note history identity conflicts")
+        if event.investigation_id not in member_investigations:
+            raise LivingNoteHistoryIntegrityError("living-note history source is not a member")
         payload = event.payload
         if not isinstance(payload, NoteRefinedPayload):
             continue
@@ -149,6 +165,7 @@ def living_note_history(
         entries.append(
             LivingNoteHistoryEntry(
                 event_id=event.event_id,
+                source_investigation_id=event.investigation_id,
                 sequence=payload.sequence,
                 previous_sequence=payload.previous_sequence,
                 previous_text=payload.previous_text,
