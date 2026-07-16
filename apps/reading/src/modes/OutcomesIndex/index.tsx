@@ -141,9 +141,10 @@ export default function OutcomesIndex() {
             <LemonTable
               rows={rows}
               rowKey={(r) => r.outcome_id}
-              onRowClick={(r) =>
-                emitWernerExperience("highlight"); navigate(`/outcomes/${encodeURIComponent(r.synthesis_id)}`)
-              }
+              onRowClick={(r) => {
+                emitWernerExperience("highlight");
+                navigate(`/outcomes/${encodeURIComponent(r.synthesis_id)}`);
+              }}
               columns={[
                 {
                   key: "synthesis",
