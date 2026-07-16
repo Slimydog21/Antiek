@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Billing Usage Observatory — Antiek htmlspec</title>
+  <style>
+    :root { --ink: #0f1419; --muted: #4f5f70; --rule: #788596; --sun: #f5df24; --sun-deep: #9c8636; --page: #f4f7fa; --card: #fff; --glass: rgba(251,252,253,0.72); --glass-border: rgba(15,20,25,0.12); --mono: "JetBrains Mono", monospace; --serif: "Charter", Georgia, serif; --sans: "Inter", system-ui, sans-serif; }
+    @media (prefers-color-scheme: dark) { :root { --ink: #eef1f6; --muted: #6b7585; --rule: #606c7e; --sun-deep: #84722f; --page: #0d1019; --card: #1b202a; --glass: rgba(27,32,42,0.66); --glass-border: rgba(238,241,246,0.14); } }
+    body { margin: 0; padding: clamp(34px, 6vw, 82px) clamp(20px, 4vw, 60px); background: var(--page); color: var(--ink); font: 400 15px/1.6 var(--sans); }
+    h1 { font: 600 clamp(34px, 6vw, 54px)/0.98 var(--serif); letter-spacing: -0.045em; margin: 0 0 12px; }
+    h2 { font: 600 clamp(23px, 3vw, 32px)/1.15 var(--serif); margin: 32px 0 12px; }
+    h3 { font: 600 18px/1.3 var(--serif); margin: 24px 0 8px; }
+    p { margin: 0 0 12px; max-width: 72ch; }
+    code, pre { font-family: var(--mono); font-size: 13px; }
+    pre { background: var(--card); border: 1px solid var(--glass-border); border-radius: 12px; padding: 16px 20px; overflow-x: auto; }
+    .eyebrow { font: 700 11px/1.4 var(--mono); letter-spacing: 0.13em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; }
+    .boundary { border-left: 3px solid var(--sun-deep); padding: 14px 18px; margin: 18px 0; background: rgba(232,217,140,0.08); border-radius: 0 12px 12px 0; }
+    .boundary p { margin: 0; color: var(--muted); }
+    .boundary strong { color: var(--ink); }
+    table { width: 100%; border-collapse: collapse; margin: 16px 0; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--glass-border); font-size: 14px; }
+    th { font-weight: 600; color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: 0.1em; text-transform: uppercase; }
+    ul { padding-left: 20px; }
+    li { margin: 6px 0; }
+    a { color: var(--sun-deep); }
+    hr { border: none; border-top: 1px solid var(--glass-border); margin: 32px 0; }
+  </style>
+</head>
+<body>
+
+<p class="eyebrow">Antiek · htmlspec · billing</p>
+<h1>Billing Usage Observatory</h1>
+
+<div class="boundary">
+  <p><strong>Scope:</strong> Replace <code>apps/reading/src/modes/Billing/index.tsx</code> with a pure exported <code>BillingView</code> + controller pattern. Dedicated CSS. Comprehensive tests and Storybook stories. No backend changes.</p>
+</div>
+
+<h2>1. Goal</h2>
+<p>Build an operator-facing Billing Usage Observatory page that displays the event-derived billable estimate from <code>GET /billing/summary/{user_id}/{period}</code>. The page must be honest about what it is (an estimate, not an invoice), honest about what it doesn't know (no completeness metadata), and rigorous about never inferring zero from absence.</p>
+
+<h2>2. Truth contract (from live code)</h2>
+<table>
+  <tr><th>Fact</th><th>Implication for UI</th></tr>
+  <tr><td>Only <code>__operator__</code> scans event logs</td><td>Non-operator user IDs return empty; say so</td></tr>
+  <tr><td>Every DispatchCall is classified PAID_PRIVATE</td><td>Free/public values are zero today; explain why</td></tr>
+  <tr><td>Aggregation is on-demand and may be slow</td><td>Loading state must be patient; no timeout</td></tr>
+  <tr><td>Response has no completeness metadata</td><td>Cannot distinguish "empty" from "incomplete"; say so</td></tr>
+</table>
+
+<h2>3. Architecture</h2>
+<h3>3.1 Files</h3>
+<table>
+  <tr><th>File</th><th>Purpose</th></tr>
+  <tr><td><code>apps/reading/src/modes/Billing/index.tsx</code></td><td>Controller (default export) + pure <code>BillingView</code> (named export)</td></tr>
+  <tr><td><code>apps/reading/src/modes/Billing/billing-usage-observatory.css</code></td><td>Dedicated CSS — semantic responsive, no Tailwind utilities</td></tr>
+  <tr><td><code>apps/reading/src/modes/Billing/Billing.test.tsx</code></td><td>Deterministic Vitest tests</td></tr>
+  <tr><td><code>apps/reading/src/modes/Billing/Billing.stories.tsx</code></td><td>Storybook stories tagged <code>a11y-audit</code></td></tr>
+  <tr><td><code>apps/reading/src/brand/werner/billing/README.md</code></td><td>Asset provenance</td></tr>
+</table>
+
+<h3>3.2 Component split</h3>
+<ul>
+  <li><strong><code>BillingView</code></strong> (named export): Pure presentational. Props: <code>state</code>, <code>userId</code>, <code>period</code>, <code>data</code>, validation errors, callbacks. No hooks that call the API.</li>
+  <li><strong><code>Billing</code></strong> (default export): Controller. Owns state, validation, API calls with stale-response and unmount guards.</li>
+</ul>
+
+<h2>4. Acceptance criteria</h2>
+
+<h3>4.1 Semantic HTML</h3>
+<ul>
+  <li>Use <code>&lt;main&gt;</code>, <code>&lt;header&gt;</code>, <code>&lt;section&gt;</code>, <code>&lt;article&gt;</code>, <code>&lt;aside&gt;</code>, <code>&lt;dl&gt;</code> appropriately.</li>
+  <li><code>role="search"</code> on the form.</li>
+  <li><code>role="progressbar"</code> with <code>aria-valuenow/min/max</code> on free-tier bar.</li>
+  <li><code>aria-live="polite"</code> on loading and empty states.</li>
+  <li><code>role="alert"</code> on error state and validation hints.</li>
+  <li><code>aria-label</code> on truth-boundary aside.</li>
+  <li><code>aria-invalid</code> + <code>aria-describedby</code> on form inputs with errors.</li>
+</ul>
+
+<h3>4.2 Responsive layout</h3>
+<ul>
+  <li>Dedicated CSS file — no Tailwind utilities (the Pricing/PayoutsAudit pattern).</li>
+  <li>Grid-based layout that collapses to single column at 640px.</li>
+  <li>Content width capped at <code>min(960px, calc(100% - 40px))</code>.</li>
+</ul>
+
+<h3>4.3 Validation</h3>
+<ul>
+  <li><strong>Period:</strong> strict YYYY-MM regex — months 01–12 only.</li>
+  <li><strong>User ID:</strong> nonempty after trim.</li>
+  <li>Explicit Apply button (no refetch per keystroke).</li>
+  <li>Submit disabled when form is invalid or loading.</li>
+</ul>
+
+<h3>4.4 Safe payload validation</h3>
+<ul>
+  <li>Integers: <code>Number.isFinite(n) &amp;&amp; n >= 0 &amp;&amp; Number.isInteger(n)</code>.</li>
+  <li>USD strings: regex <code>/^(?:0|[1-9]\d*)(?:\.\d+)?$/</code> — canonical nonnegative decimal.</li>
+  <li>Malformed payload → error state, never inferred zero.</li>
+</ul>
+
+<h3>4.5 Guards</h3>
+<ul>
+  <li><strong>Stale-response:</strong> monotonically incrementing request token; discard responses whose token no longer matches.</li>
+  <li><strong>Unmount:</strong> cleanup effect bumps the token so in-flight responses are discarded.</li>
+</ul>
+
+<h3>4.6 Naming and boundaries</h3>
+<ul>
+  <li>Total labelled "Event-derived billable estimate" — never "invoice", "charged amount", "settled amount", "API-key budget", or "full provider ledger".</li>
+  <li>Truth-boundary panel prominently states: what this instrument is, what it is not, current limitations.</li>
+  <li>Non-operator empty state explicitly noted.</li>
+  <li>Paid-private classification explicitly noted.</li>
+</ul>
+
+<h3>4.7 Visual</h3>
+<ul>
+  <li>Werner environment image as decorative background (same pattern as Pricing/PayoutsAudit).</li>
+  <li>Canonical Werner moods only: <code>idle</code>, <code>thinking</code>, <code>empty</code>, <code>celebrate</code>.</li>
+  <li>Glass-panel stations with backdrop-filter blur.</li>
+  <li>Day and night theme via <code>prefers-color-scheme</code>.</li>
+  <li>Reduced-motion safe (no intrinsic animation).</li>
+</ul>
+
+<h2>5. Verification gates</h2>
+<table>
+  <tr><th>Gate</th><th>Command</th></tr>
+  <tr><td>TypeScript</td><td><code>npx tsc -b --noEmit</code></td></tr>
+  <tr><td>Vitest</td><td><code>npx vitest run src/modes/Billing/Billing.test.tsx</code></td></tr>
+</table>
+
+<h2>6. Stories (tagged a11y-audit)</h2>
+<table>
+  <tr><th>Story</th><th>Covers</th></tr>
+  <tr><td>Ready</td><td>Default data display</td></tr>
+  <tr><td>Empty</td><td>Zero records, no zero inference</td></tr>
+  <tr><td>Loading</td><td>Aggregation in progress</td></tr>
+  <tr><td>Failure</td><td>Backend unavailable, no raw errors</td></tr>
+  <tr><td>Idle</td><td>Waiting for query</td></tr>
+  <tr><td>InvalidPeriod</td><td>Bad format validation</td></tr>
+  <tr><td>InvalidUserId</td><td>Empty user validation</td></tr>
+  <tr><td>MalformedPayload</td><td>Reject bad payload</td></tr>
+  <tr><td>Narrow</td><td>Mobile viewport</td></tr>
+  <tr><td>Night</td><td>Dark theme</td></tr>
+  <tr><td>LongValues</td><td>Large amounts and long identifiers</td></tr>
+  <tr><td>HighConsumption</td><td>≥90% free-tier, red bar</td></tr>
+</table>
+
+<h2>7. Test matrix</h2>
+<table>
+  <tr><th>Test</th><th>Asserts</th></tr>
+  <tr><td>Truth boundaries stated</td><td>Not an invoice, non-operator empty, paid-private only</td></tr>
+  <tr><td>Ready state renders data</td><td>Record count, amounts, progress bar</td></tr>
+  <tr><td>Labels total correctly</td><td>"Event-derived billable estimate"</td></tr>
+  <tr><td>Empty state</td><td>No zero inference</td></tr>
+  <tr><td>Loading state</td><td>aria-live polite, no zero inference</td></tr>
+  <tr><td>Error state</td><td>No raw backend errors rendered</td></tr>
+  <tr><td>Retry button</td><td>Triggers onRetry</td></tr>
+  <tr><td>Period validation</td><td>Rejects bad format, shows hint</td></tr>
+  <tr><td>User validation</td><td>Rejects empty, shows hint</td></tr>
+  <tr><td>Submit disabled</td><td>When invalid or loading</td></tr>
+  <tr><td>Apply button (not keystroke)</td><td>No API call until explicit submit</td></tr>
+  <tr><td>Stale-response guard</td><td>Discards old responses</td></tr>
+  <tr><td>Unmount guard</td><td>No crash on late response</td></tr>
+  <tr><td>Malformed payload</td><td>Error state, not inferred empty</td></tr>
+  <tr><td>Negative integers</td><td>Rejected</td></tr>
+  <tr><td>Non-canonical decimals</td><td>Rejected (scientific notation)</td></tr>
+  <tr><td>Network errors</td><td>Error state, no raw error text</td></tr>
+  <tr><td>URL encoding</td><td>Special characters encoded</td></tr>
+  <tr><td>Singular record</td><td>"1 usage record" not "1 usage records"</td></tr>
+  <tr><td>Long values</td><td>No truncation errors</td></tr>
+  <tr><td>Werner moods</td><td>empty on error, thinking on loading, idle otherwise</td></tr>
+</table>
+
+<hr>
+
+<p class="eyebrow">End of spec</p>
+<p>This spec is self-contained. The implementing agent should read the existing PayoutsAudit and Pricing patterns for visual and structural conventions, then implement as specified above.</p>
+
+</body>
+</html>
