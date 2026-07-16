@@ -206,4 +206,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | FloatMenu collective invent product-map | `8100985a9` | float research windows invent strip |
 | Flipbook invent reframe CSS | `036391eb0` | soft living imagery motion; reduced-motion safe |
 | TwinNotes/MidnightOil/Bench/Companion reframe densify | `893e483fa` | invent reframe class on residual invent strips |
-| Global invent reframe via main.tsx | (craft161) | all *-living-tv-art strips inherit Flipbook motion |
+| Global invent reframe via main.tsx | `615beda18` | all *-living-tv-art strips inherit Flipbook motion |
