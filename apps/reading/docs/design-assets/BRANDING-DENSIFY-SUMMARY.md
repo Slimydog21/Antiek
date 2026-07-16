@@ -214,3 +214,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Arcade core free of reactionBus | `5c763e0e5` | inject living-TV via host emit + onWernerBeat; boundary suite green |
 | ResearchWaitArcadeGame living-TV inject | `c97af31d7` | onWernerBeat=emitLivingTvHostBeat like cabinet/LGH |
 | sessionAssets product-map assert | `b8a286871` | cabinet densify asserts cursor webp invents (ice/clam/zombies), not inventory fringe PNG |
+| Imagine invent polish v2 CRT + igloo trio | (next tip) | product-mapped reframe of living-TV home invent + minigame trio cabinet banner |

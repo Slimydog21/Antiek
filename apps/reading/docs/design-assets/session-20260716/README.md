@@ -12,3 +12,10 @@ Candidates retained as `*_session_candidate_v1.webp` beside refedits.
 
 | werner_arxiv_substack_dens_refedit_v1.jpg | **PROMOTED** → poses/session/werner_arxiv_substack_dens_session_v1.webp (Sources) |
 | werner_igloo_minigame_trio_refedit_v1.jpg | **PROMOTED** → poses/session/werner_igloo_minigame_trio_session_v1.webp (ArcadeCabinet) |
+
+## Imagine polish wave (2026-07-16 evening)
+
+| Asset | Status |
+|---|---|
+| werner_crt_living_tv_refedit_v2.jpg | **PROMOTED** → poses/session/werner_crt_living_tv_session_v1.webp (Home + DR compose living-TV invent) |
+| werner_igloo_minigame_trio_refedit_v2.jpg | **PROMOTED** → poses/session/werner_igloo_minigame_trio_session_v1.webp (ArcadeCabinet + Home arcade banner) |
