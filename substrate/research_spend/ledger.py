@@ -1936,7 +1936,7 @@ class ResearchSpendLedger:
             raise LedgerIntegrityError("fallback manifest command receipt conflicts") from exc
         if replay is None:
             raise LedgerIntegrityError("fallback manifest has no command receipt")
-        return row
+        return cast(sqlite3.Row, row)
 
     def _fallback_history_row(
         self, connection: sqlite3.Connection, row: sqlite3.Row, owner_id: str

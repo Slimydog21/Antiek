@@ -421,7 +421,7 @@ class ResearchProviderGateway:
                     projected_max_cents=projection.reservation_cents,
                     reservation_key=intent.reservation_key,
                     provider_idempotency_key=intent.provider_idempotency_key,
-                    route_authority_digest=intent.route_authority_digest,
+                    route_authority_digest=authority_digest,
                 )
             )
         manifest = FallbackChainManifest(
