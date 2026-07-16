@@ -11,7 +11,8 @@
 import { useEffect, useState } from "react";
 
 import thinkingArt from "../../../brand/werner/poses/session/werner_thinking_session_v1.png";
-import livingTvArt from "../../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
+// Float-merge invent — recursive note-taker + multi-agent merge product door.
+import livingTvArt from "../../../brand/werner/poses/session/werner_float_research_merge_session_v1.webp";
 import { emitWernerExperience } from "../../../werner/reactionBus";
 import { fetchTwinForAsset } from "./fetchTwin";
 import type { TwinDocument } from "./twinDocument";

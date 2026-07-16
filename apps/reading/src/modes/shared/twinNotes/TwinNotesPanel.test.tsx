@@ -28,7 +28,7 @@ describe("TwinNotesPanel", () => {
       "twin-notes-living-tv-art",
     ) as HTMLImageElement;
     expect(livingTv.getAttribute("src") ?? "").toMatch(
-      /werner_living_tv_session_v1/,
+      /werner_float_research_merge_session_v1/,
     );
   });
 
