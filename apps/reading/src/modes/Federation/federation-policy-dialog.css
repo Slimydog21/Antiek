@@ -1,0 +1,11 @@
+.fpa-scrim {
+  position: fixed;
+  z-index: 4;
+  inset: 0;
+  background: #020a0dcc;
+}
+
+.fpa-confirm {
+  z-index: 5;
+  box-shadow: 0 30px 90px #000;
+}

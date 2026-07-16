@@ -1,279 +1,174 @@
-import { useCallback, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 
+import Werner from "../../brand/Werner";
+import environment from "../../brand/werner/federation/federation_policy_airlock_environment_v1.webp";
 import { apiFetch } from "../../lib/api";
+import "./federation-policy-airlock.css";
+import "./federation-policy-dialog.css";
 
-/**
- * Federation config UI (master-spec §13.9 Phase 3).
- *
- * Operator-facing surface for the substrate-wide federation policy.
- * Reads/writes /cross-graph/federation-config. The strict default
- * (no partners, opt-in + attribution required) is the starting
- * posture; this page is how the operator deviates from it.
- *
- * Partner-substrate IDs are validated server-side against
- * [a-zA-Z0-9_-]+ for path safety; the UI surfaces the 422 message
- * verbatim so the operator can correct.
- */
-
-interface FederationConfig {
+export interface FederationConfig {
   allowed_partner_substrates: string[];
   require_opt_in_for_outbound_citations: boolean;
   require_attribution_for_outbound_citations: boolean;
 }
 
-export default function Federation() {
-  const [config, setConfig] = useState<FederationConfig | null>(null);
-  const [draft, setDraft] = useState<FederationConfig | null>(null);
-  const [partnerInput, setPartnerInput] = useState<string>("");
-  const [error, setError] = useState<string | null>(null);
-  const [savedAt, setSavedAt] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState<boolean>(false);
+export type FederationPolicyViewProps = {
+  current: FederationConfig | null;
+  draft: FederationConfig | null;
+  state?: "ready" | "loading" | "saving" | "load-error" | "save-error";
+  notice?: "saved" | null;
+  confirmationOpen?: boolean;
+  onDraftChange: (draft: FederationConfig) => void;
+  onRequestSave: () => void;
+  onConfirmSave: () => void;
+  onCancelConfirm: () => void;
+  onDiscard: () => void;
+  onRetry: () => void;
+};
 
-  const reload = useCallback(async () => {
-    setError(null);
+const PARTNER_ID = /^[a-zA-Z0-9_-]+$/;
+const safeConfig = (value: unknown): FederationConfig | null => {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (
+    !Array.isArray(row.allowed_partner_substrates) ||
+    !row.allowed_partner_substrates.every((id) => typeof id === "string" && PARTNER_ID.test(id)) ||
+    typeof row.require_opt_in_for_outbound_citations !== "boolean" ||
+    typeof row.require_attribution_for_outbound_citations !== "boolean"
+  ) return null;
+  if (new Set(row.allowed_partner_substrates).size !== row.allowed_partner_substrates.length) return null;
+  return {
+    allowed_partner_substrates: [...row.allowed_partner_substrates],
+    require_opt_in_for_outbound_citations: row.require_opt_in_for_outbound_citations,
+    require_attribution_for_outbound_citations: row.require_attribution_for_outbound_citations,
+  };
+};
+
+const sameConfig = (a: FederationConfig | null, b: FederationConfig | null) =>
+  Boolean(a && b) &&
+  a!.require_opt_in_for_outbound_citations === b!.require_opt_in_for_outbound_citations &&
+  a!.require_attribution_for_outbound_citations === b!.require_attribution_for_outbound_citations &&
+  JSON.stringify([...a!.allowed_partner_substrates].sort()) === JSON.stringify([...b!.allowed_partner_substrates].sort());
+
+const expandsRisk = (current: FederationConfig, draft: FederationConfig) =>
+  draft.allowed_partner_substrates.some((id) => !current.allowed_partner_substrates.includes(id)) ||
+  (current.require_opt_in_for_outbound_citations && !draft.require_opt_in_for_outbound_citations) ||
+  (current.require_attribution_for_outbound_citations && !draft.require_attribution_for_outbound_citations);
+
+export function FederationPolicyView({
+  current, draft, state = "ready", notice = null, confirmationOpen = false,
+  onDraftChange, onRequestSave, onConfirmSave, onCancelConfirm, onDiscard, onRetry,
+}: FederationPolicyViewProps) {
+  const [partnerInput, setPartnerInput] = useState("");
+  const [inputError, setInputError] = useState<string | null>(null);
+  const cancelConfirmRef = useRef<HTMLButtonElement>(null);
+  const confirmRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const dirty = !sameConfig(current, draft);
+  const risky = Boolean(current && draft && expandsRisk(current, draft));
+  useEffect(() => {
+    if (!confirmationOpen) return;
+    previousFocusRef.current = document.activeElement as HTMLElement | null;
+    cancelConfirmRef.current?.focus();
+    return () => previousFocusRef.current?.focus();
+  }, [confirmationOpen]);
+  const addPartner = (event: FormEvent) => {
+    event.preventDefault();
+    if (!draft) return;
+    const id = partnerInput.trim();
+    if (!PARTNER_ID.test(id)) {
+      setInputError("Use letters, numbers, hyphens, or underscores only.");
+      return;
+    }
+    if (draft.allowed_partner_substrates.includes(id)) {
+      setInputError("That partner is already in the draft.");
+      return;
+    }
+    onDraftChange({ ...draft, allowed_partner_substrates: [...draft.allowed_partner_substrates, id].sort() });
+    setPartnerInput("");
+    setInputError(null);
+  };
+  return (
+    <main className="fpa-shell">
+      <img className="fpa-environment" src={environment} alt="" aria-hidden="true" />
+      <div className="fpa-veil" aria-hidden="true" />
+      <div className="fpa-content">
+        <header className="fpa-hero">
+          <div><p className="fpa-eyebrow">Cross-substrate policy · operator airlock</p><h1>Federation Airlock</h1><p>Control which partner substrates may exchange citations with this installation, and preserve the consent and attribution gates applied to outbound work.</p></div>
+          <Werner mood={state.endsWith("error") ? "empty" : state === "saving" ? "thinking" : "idle"} size={58} label="Werner monitors the policy airlock" />
+        </header>
+
+        <aside className="fpa-truth" aria-label="Policy boundary"><p className="fpa-eyebrow">What this policy establishes</p><p>The allow-list gates <strong>both outbound eligibility and inbound acceptance</strong>. It does not register a partner, prove trust, inspect content safety, grant legal clearance, or execute attribution or payouts. Partner identity and trust are separate controls.</p></aside>
+
+        {state === "loading" && <section className="fpa-state" aria-live="polite"><h2>Reading the enforced policy…</h2><p>No policy is inferred while the substrate responds.</p></section>}
+        {state === "load-error" && <section className="fpa-state fpa-state--error" role="alert"><h2>Policy unavailable</h2><p>The airlock could not verify the current substrate policy. No local draft was presented as enforced.</p><button type="button" onClick={onRetry}>Try again</button></section>}
+        {state === "save-error" && <section className="fpa-state fpa-state--error" role="alert"><h2>Policy was not confirmed</h2><p>The substrate did not confirm this write. Your draft remains here for review; the previously read policy remains the enforced reference.</p><button type="button" onClick={onRequestSave}>Try saving again</button></section>}
+        {notice === "saved" && !state.endsWith("error") && <p className="fpa-notice" role="status">Policy saved and read back from the substrate.</p>}
+
+        {draft && current && <>
+          <section className="fpa-board" aria-labelledby="partners-title">
+            <header><div><p className="fpa-eyebrow">Gate 01 · bidirectional allow-list</p><h2 id="partners-title">Partner passages</h2></div><strong>{draft.allowed_partner_substrates.length}</strong></header>
+            <p>Each identifier permits outbound federation attempts and inbound citation acceptance at the config layer. Separate registration and trusted status are still required.</p>
+            {draft.allowed_partner_substrates.length ? <ul className="fpa-partners">{draft.allowed_partner_substrates.map((id) => <li key={id}><code>{id}</code><button type="button" onClick={() => onDraftChange({ ...draft, allowed_partner_substrates: draft.allowed_partner_substrates.filter((item) => item !== id) })} aria-label={`Remove ${id} from draft`}>Remove</button></li>)}</ul> : <p className="fpa-empty">No partner passages are allowed. This is the strict default.</p>}
+            <form className="fpa-add" onSubmit={addPartner} noValidate><label htmlFor="federation-partner">Partner substrate identifier</label><div><input id="federation-partner" value={partnerInput} onChange={(event) => { setPartnerInput(event.target.value); setInputError(null); }} aria-describedby={inputError ? "partner-error" : "partner-hint"} aria-invalid={Boolean(inputError)} placeholder="partner-research-coop" /><button type="submit">Add to draft</button></div><small id="partner-hint">Letters, numbers, hyphens, and underscores.</small>{inputError && <small id="partner-error" role="alert">{inputError}</small>}</form>
+          </section>
+
+          <section className="fpa-board" aria-labelledby="discipline-title"><p className="fpa-eyebrow">Gate 02 · outbound discipline</p><h2 id="discipline-title">Consent and attribution</h2><p>These safeguards apply to outbound citations only. Inbound citation acceptance does not re-check them.</p>
+            <label className="fpa-switch"><input type="checkbox" checked={draft.require_opt_in_for_outbound_citations} onChange={(event) => onDraftChange({ ...draft, require_opt_in_for_outbound_citations: event.target.checked })} /><span><strong>Require explicit opt-in</strong><small>Refuse outbound federation when the referenced user has not opted in.</small></span></label>
+            <label className="fpa-switch"><input type="checkbox" checked={draft.require_attribution_for_outbound_citations} onChange={(event) => onDraftChange({ ...draft, require_attribution_for_outbound_citations: event.target.checked })} /><span><strong>Require attribution consent</strong><small>Refuse outbound federation when attribution metadata is not consented to.</small></span></label>
+          </section>
+
+          <section className="fpa-diff" aria-labelledby="review-title"><div><p className="fpa-eyebrow">Gate 03 · review</p><h2 id="review-title">{dirty ? "Draft differs from enforced policy" : "Draft matches enforced policy"}</h2><p>{risky ? "This draft expands passage or weakens an outbound safeguard. A second review is required." : dirty ? "This draft only narrows the current policy." : "Nothing will be written until the draft changes."}</p></div><div className="fpa-actions"><button type="button" className="fpa-secondary" onClick={onDiscard} disabled={!dirty || state === "saving"}>Discard draft</button><button type="button" onClick={onRequestSave} disabled={!dirty || state === "saving"}>{state === "saving" ? "Sealing policy…" : risky ? "Review expanded risk" : "Save narrower policy"}</button></div></section>
+
+          {confirmationOpen && <><div className="fpa-scrim" aria-hidden="true" onMouseDown={onCancelConfirm} /><section className="fpa-confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title" onKeyDown={(event) => { if (event.key === "Escape") { event.preventDefault(); onCancelConfirm(); } if (event.key === "Tab") { if (event.shiftKey && document.activeElement === cancelConfirmRef.current) { event.preventDefault(); confirmRef.current?.focus(); } else if (!event.shiftKey && document.activeElement === confirmRef.current) { event.preventDefault(); cancelConfirmRef.current?.focus(); } } }}><p className="fpa-eyebrow">Second seal required</p><h2 id="confirm-title">Confirm the expanded policy boundary</h2><p>This change may admit inbound citations, permit outbound attempts, or remove a user safeguard. It still does not establish partner registration or trust.</p><div className="fpa-actions"><button ref={cancelConfirmRef} type="button" className="fpa-secondary" onClick={onCancelConfirm}>Keep reviewing</button><button ref={confirmRef} type="button" onClick={onConfirmSave}>Confirm and save</button></div></section></>}
+        </>}
+      </div>
+    </main>
+  );
+}
+
+export default function Federation() {
+  const [current, setCurrent] = useState<FederationConfig | null>(null);
+  const [draft, setDraft] = useState<FederationConfig | null>(null);
+  const [state, setState] = useState<"ready" | "loading" | "saving" | "load-error" | "save-error">("loading");
+  const [notice, setNotice] = useState<"saved" | null>(null);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const requestRef = useRef(0);
+  const load = useCallback(async () => {
+    const token = ++requestRef.current;
+    setState("loading"); setNotice(null); setConfirmationOpen(false);
     try {
-      const resp = await apiFetch("/cross-graph/federation-config");
-      if (!resp.ok) {
-        throw new Error(`GET federation-config: HTTP ${resp.status}`);
-      }
-      const data: FederationConfig = await resp.json();
-      setConfig(data);
-      setDraft(data);
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      const response = await apiFetch("/cross-graph/federation-config");
+      if (!response.ok) throw new Error("load");
+      const parsed = safeConfig(await response.json());
+      if (token !== requestRef.current) return;
+      if (!parsed) throw new Error("shape");
+      setCurrent(parsed); setDraft(parsed); setState("ready");
+    } catch {
+      if (token !== requestRef.current) return;
+      setCurrent(null); setDraft(null); setState("load-error");
     }
   }, []);
-
-  useEffect(() => {
-    void reload();
-  }, [reload]);
-
-  const save = async () => {
-    if (!draft || submitting) return;
-    setSubmitting(true);
-    setError(null);
-    setSavedAt(null);
+  useEffect(() => { void load(); return () => { requestRef.current += 1; }; }, [load]);
+  const save = useCallback(async () => {
+    if (!draft || state === "saving") return;
+    const token = ++requestRef.current;
+    setState("saving"); setNotice(null); setConfirmationOpen(false);
     try {
-      const resp = await apiFetch("/cross-graph/federation-config", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(draft),
-      });
-      if (!resp.ok) {
-        const errorBody = await resp.json().catch(() => null);
-        const detail =
-          errorBody?.detail?.message ?? `PUT failed: HTTP ${resp.status}`;
-        throw new Error(detail);
-      }
-      const updated: FederationConfig = await resp.json();
-      setConfig(updated);
-      setDraft(updated);
-      setSavedAt(new Date().toISOString());
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSubmitting(false);
+      const response = await apiFetch("/cross-graph/federation-config", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(draft) });
+      if (!response.ok) throw new Error("save");
+      const parsed = safeConfig(await response.json());
+      if (token !== requestRef.current) return;
+      if (!parsed) throw new Error("shape");
+      setCurrent(parsed); setDraft(parsed); setState("ready"); setNotice("saved");
+    } catch {
+      if (token !== requestRef.current) return;
+      setState("save-error"); setNotice(null);
     }
+  }, [draft, state]);
+  const requestSave = () => {
+    if (!current || !draft) return;
+    if (expandsRisk(current, draft)) setConfirmationOpen(true); else void save();
   };
-
-  const addPartner = () => {
-    if (!draft) return;
-    const next = partnerInput.trim();
-    if (!next) return;
-    if (draft.allowed_partner_substrates.includes(next)) return;
-    setDraft({
-      ...draft,
-      allowed_partner_substrates: [...draft.allowed_partner_substrates, next],
-    });
-    setPartnerInput("");
-  };
-
-  const removePartner = (id: string) => {
-    if (!draft) return;
-    setDraft({
-      ...draft,
-      allowed_partner_substrates: draft.allowed_partner_substrates.filter(
-        (p) => p !== id,
-      ),
-    });
-  };
-
-  const isDirty =
-    !!config &&
-    !!draft &&
-    (JSON.stringify(config.allowed_partner_substrates) !==
-      JSON.stringify(draft.allowed_partner_substrates) ||
-      config.require_opt_in_for_outbound_citations !==
-        draft.require_opt_in_for_outbound_citations ||
-      config.require_attribution_for_outbound_citations !==
-        draft.require_attribution_for_outbound_citations);
-
-  return (
-    <div className="flex flex-col h-screen">
-      <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
-        <div className="max-w-3xl mx-auto px-8 py-10 space-y-6">
-          <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Federation config
-            </h1>
-            <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
-              Substrate-wide cross-graph federation policy (master-spec
-              §13.9 Phase 3). Default is strict: no partners, opt-in
-              and attribution required. Adding a partner here authorizes
-              outbound citations to that partner's substrate; the
-              attribution + rev-share path picks up the federated_substrate_id
-              automatically.
-            </p>
-          </header>
-
-          {error && (
-            <p className="text-sm text-emperor border border-red-200 bg-red-50 px-3 py-2 rounded">
-              {error}
-            </p>
-          )}
-
-          {savedAt && !error && (
-            <p className="text-sm text-emerald-700 border border-emerald-200 bg-emerald-50 px-3 py-2 rounded">
-              Saved at {savedAt}
-            </p>
-          )}
-
-          {draft && (
-            <>
-              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-ink dark:text-bright">
-                  Allowed partner substrates
-                </h2>
-                <p className="text-xs text-ink-soft dark:text-starlight">
-                  Each id must match{" "}
-                  <code className="font-mono">[a-zA-Z0-9_-]+</code>{" "}
-                  (path-safe). Server validates on PUT.
-                </p>
-
-                {draft.allowed_partner_substrates.length === 0 ? (
-                  <p className="text-sm italic text-shadow-1 dark:text-moonlight">
-                    No partners yet. Adding the first one transitions
-                    the substrate out of strict-default mode.
-                  </p>
-                ) : (
-                  <ul className="space-y-1">
-                    {draft.allowed_partner_substrates.map((p) => (
-                      <li
-                        key={p}
-                        className="flex items-center justify-between gap-2 py-1 border-b border-rule dark:border-charcoal-1"
-                      >
-                        <code className="text-sm font-mono text-ink dark:text-bright">
-                          {p}
-                        </code>
-                        <button
-                          type="button"
-                          onClick={() => removePartner(p)}
-                          className="text-[10px] uppercase tracking-wider font-mono text-emperor hover:bg-red-50 px-1.5 py-0.5 rounded"
-                        >
-                          remove
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-
-                <div className="flex gap-2 pt-2">
-                  <input
-                    type="text"
-                    value={partnerInput}
-                    onChange={(e) => setPartnerInput(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addPartner();
-                      }
-                    }}
-                    placeholder="e.g. partner-research-coop"
-                    className="flex-1 text-sm font-mono text-ink dark:text-bright border border-rule dark:border-charcoal-1 rounded p-2"
-                  />
-                  <button
-                    type="button"
-                    onClick={addPartner}
-                    disabled={!partnerInput.trim()}
-                    className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
-                  >
-                    Add
-                  </button>
-                </div>
-              </section>
-
-              <section className="border border-rule dark:border-charcoal-1 rounded-md p-5 space-y-3">
-                <h2 className="text-base font-serif text-ink dark:text-bright">
-                  Cross-graph discipline
-                </h2>
-                <label className="flex items-start gap-3 text-sm text-ink dark:text-bright">
-                  <input
-                    type="checkbox"
-                    checked={draft.require_opt_in_for_outbound_citations}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        require_opt_in_for_outbound_citations: e.target.checked,
-                      })
-                    }
-                    className="mt-0.5 accent-ink dark:accent-bright"
-                  />
-                  <span>
-                    <strong>Require opt-in for outbound citations.</strong>{" "}
-                    A user's note can't be cited from another substrate
-                    unless they explicitly opt in. Strict default; only
-                    flip after explicit policy review.
-                  </span>
-                </label>
-                <label className="flex items-start gap-3 text-sm text-ink dark:text-bright">
-                  <input
-                    type="checkbox"
-                    checked={draft.require_attribution_for_outbound_citations}
-                    onChange={(e) =>
-                      setDraft({
-                        ...draft,
-                        require_attribution_for_outbound_citations:
-                          e.target.checked,
-                      })
-                    }
-                    className="mt-0.5 accent-ink dark:accent-bright"
-                  />
-                  <span>
-                    <strong>Require attribution for outbound citations.</strong>{" "}
-                    Federated citations must carry the originating
-                    user_id so the §13.9 attribution + rev-share path
-                    can route revenue back. Strict default.
-                  </span>
-                </label>
-              </section>
-
-              <section className="flex items-center justify-between">
-                <p className="text-xs font-mono text-shadow-1 dark:text-moonlight">
-                  {isDirty ? "unsaved changes" : "in sync with substrate"}
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void reload()}
-                    disabled={submitting}
-                    className="px-3 py-1.5 rounded-md border border-rule dark:border-charcoal-1 text-ink dark:text-bright text-xs font-medium hover:bg-ice-1 dark:bg-charcoal-2 transition-colors disabled:opacity-50"
-                  >
-                    Discard
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void save()}
-                    disabled={submitting || !isDirty}
-                    className="px-3 py-1.5 rounded-md bg-ink text-white text-xs font-medium hover:bg-shadow-2 transition-colors disabled:opacity-50"
-                  >
-                    {submitting ? "Saving…" : "Save"}
-                  </button>
-                </div>
-              </section>
-            </>
-          )}
-        </div>
-      </main>
-    </div>
-  );
+  return <FederationPolicyView current={current} draft={draft} state={state} notice={notice} confirmationOpen={confirmationOpen} onDraftChange={(next) => { setDraft(next); setNotice(null); setConfirmationOpen(false); }} onRequestSave={requestSave} onConfirmSave={() => void save()} onCancelConfirm={() => setConfirmationOpen(false)} onDiscard={() => { setDraft(current); setConfirmationOpen(false); setNotice(null); }} onRetry={() => void load()} />;
 }
