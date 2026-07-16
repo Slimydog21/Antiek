@@ -8,6 +8,7 @@ export const PRODUCT_EXPERIENCES = [
   "deep_research_error",
   "idle",
   "fail",
+  "thought_partner_reply_received",
 ] as const;
 
 export type ProductExperience = (typeof PRODUCT_EXPERIENCES)[number];
@@ -19,6 +20,7 @@ const REACTION_MAP: Readonly<Record<ProductExperience, EmoteKind>> = {
   deep_research_error: "dizzy",
   idle: "sleeping",
   fail: "dizzy",
+  thought_partner_reply_received: "happy",
 };
 
 export const WERNER_EXPERIENCE_EVENT = "antiek:werner-experience";

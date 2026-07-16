@@ -6,6 +6,7 @@ import {
   notifyResearchPhaseEdge,
   notifyResearchStarted,
   notifyShellFailure,
+  notifyThoughtPartnerReplyReceived,
 } from "./shellExperienceSignals";
 import {
   WERNER_EXPERIENCE_EVENT,
@@ -59,6 +60,13 @@ describe("Werner shell experience edges", () => {
     const capture = captureExperiences();
     notifyShellFailure();
     expect(capture.seen).toEqual(["fail"]);
+    capture.teardown();
+  });
+
+  it("maps a parsed thought-partner reply to one received experience", () => {
+    const capture = captureExperiences();
+    notifyThoughtPartnerReplyReceived();
+    expect(capture.seen).toEqual(["thought_partner_reply_received"]);
     capture.teardown();
   });
 
