@@ -78,7 +78,7 @@ describe("LoadingGameHost mount contract", () => {
     // Default invent is CRT living-TV (penguin as asynchronous TV show).
     expect(
       waitHostBrandArt("unknown" as Parameters<typeof waitHostBrandArt>[0]),
-    ).toMatch(/werner_crt_living_tv_session_v1/);
+    ).toMatch(/werner_crt_igloo_cursor_tv_session_v1/);
   });
 
   it("offer blurbs name Club Penguin ice/clam and BO1 zombies egg", () => {
