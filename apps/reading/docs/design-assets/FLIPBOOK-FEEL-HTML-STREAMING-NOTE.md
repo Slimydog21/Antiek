@@ -1,0 +1,39 @@
+# Flipbook-feel on HTML — cost-intelligent streaming note
+
+**Status:** design note for future agents (branding session densify).  
+**Binding constraint:** pure Flipbook sole UI is **NO-GO**. Antiek stays HTML-first.
+
+## What Flipbook.page demonstrates (study, do not clone as sole UI)
+
+- Streamed imagery reshapes with the viewport (no fixed layout engine).
+- Regions of the image can become interactive (not only pre-declared buttons).
+- Live demos use optimized video streaming (LTXStudio lineage) via websockets to Modal serverless GPU for ~1080p @ 24fps.
+
+## Antiek posture (hard to vary)
+
+| Layer | Decision | Why |
+|---|---|---|
+| Document substrate | HTML for every human-viewable asset | Agent-controllable, twin-notes, merge/float research |
+| Living imagery | `sessionLivingTv.css` invent reframe + product invent webps | Flipbook *feel* without abandoning layout engine |
+| Pure Flipbook sole UI | NO-GO | Would discard HTML twin / recursive note substrate |
+| Mascot living-TV | `emitWernerExperience` + ambient episode continuity | Async TV show at home of the penguin |
+| Arcade / wait | Club Penguin minigames + paperclip zombies wait egg | Product invents, host-beat inject free of reactionBus in arcade core |
+
+## Cost-intelligent streaming (future sprint seed)
+
+When product wants *optional* streamed invent motion (not sole UI):
+
+1. **Prefer CSS invent reframe first** (already shipping) — zero GPU cost.
+2. **Optional short video invents** only for opt-in hero surfaces (Home CRT, wait arcade).
+3. **Infra ladder (cheapest that holds vision):**
+   - Pre-rendered looped webm/mp4 invent clips in CDN (cheapest, no live GPU).
+   - Krea API for offline invent polish batches (image; current Imagine path).
+   - Modal GPU websocket stream only if live generative reshape is load-bearing — price ceiling in Settings before enable.
+4. **Never** replace HTML reader/research document with pure image stream.
+
+## Acceptance for any future streaming sprint
+
+- HTML document remains the source of truth for reading/research assets.
+- Invent stream is decorative or opt-in; fails closed to invent webp + CSS reframe.
+- Budget projection for proposed stream session appears next to model budget bar.
+- densify pack + axe green; LP preferred.

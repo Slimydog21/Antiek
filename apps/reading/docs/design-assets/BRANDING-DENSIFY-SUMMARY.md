@@ -277,3 +277,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | sessionLivingTv densify product invent doors v2c | `cef3d3b44` | KnowledgePanel/Bench/ModelDecision/MidnightOil invent reframe densify |
 | AntiekBench living-tv-art densify | `67f5985fe` | rename desk invent testid to living-tv-art + invent class assert |
 | AntiekBench invent import honesty densify | `e19be5f9d` | rename misnamed thoughtPartnerDeskArt import to antiekBenchCelebrateArt |
+| Flipbook-feel HTML streaming design note | `TBD` | cost-intelligent Modal/Krea ladder; pure Flipbook sole UI NO-GO |
