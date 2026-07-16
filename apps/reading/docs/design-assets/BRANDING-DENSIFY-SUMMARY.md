@@ -126,6 +126,7 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | WatchForLater select | `df7e8e2d1` | parked folder select highlight |
 | TocPanel jump highlight | `9adfcf82e` | in-book TOC living-TV |
 | ArxivFrame link-back | `146eadef0` | T2/T3 arXiv CTA highlight |
+| HouseSlot next-read | `4d188debe` | zero-buyer house promo highlight |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
