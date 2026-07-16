@@ -9,6 +9,8 @@ import sqlite3
 import stat
 import time
 import unicodedata
+from collections.abc import Iterator
+from contextlib import contextmanager, suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal
@@ -113,6 +115,14 @@ class AcceptedTwinPromotionAuthority:
     authority: Literal["owner_reviewed_evidence_bound_candidate_v1"] = (
         "owner_reviewed_evidence_bound_candidate_v1"
     )
+
+
+@dataclass(frozen=True)
+class _PinnedAcceptedPromotion:
+    authority: AcceptedTwinPromotionAuthority
+    ledger: object
+    database_device: int
+    database_inode: int
 
 
 _DDL = (
@@ -831,6 +841,61 @@ class TwinEvidencePromotionLedger:
             raise
         finally:
             db.close()
+
+    @contextmanager
+    def accepted_snapshot(
+        self,
+        con: LockedConnection,
+        twins: TwinRecursionLedger,
+        *,
+        owner_id: str,
+        candidate_id: str,
+    ) -> Iterator[_PinnedAcceptedPromotion]:
+        """Pin one exact accepted ledger state through a caller's graph commit."""
+        db = self._connect()
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            self._verify_schema(db)
+            self.verify_integrity()
+            authority = self.accepted(con, twins, owner_id=owner_id, candidate_id=candidate_id)
+            database_stat = os.stat(self.path, follow_symlinks=False)
+            row = db.execute(
+                "SELECT c.candidate_json,c.candidate_digest,r.review_json "
+                "FROM promotion_candidates c JOIN promotion_reviews r USING(candidate_id) "
+                "WHERE c.candidate_id=? AND c.owner_id=? AND r.owner_id=?",
+                [candidate_id, owner_id, owner_id],
+            ).fetchone()
+            if (
+                row is None
+                or authority.authority != "owner_reviewed_evidence_bound_candidate_v1"
+                or row["candidate_json"] != _canonical(asdict(authority.candidate))
+                or row["candidate_digest"] != authority.review.candidate_digest
+                or row["review_json"] != _canonical(asdict(authority.review))
+            ):
+                raise TwinEvidencePromotionError("accepted promotion snapshot changed")
+            yield _PinnedAcceptedPromotion(
+                authority,
+                self,
+                database_stat.st_dev,
+                database_stat.st_ino,
+            )
+        finally:
+            with suppress(sqlite3.Error):
+                db.execute("ROLLBACK")
+            db.close()
+
+    def require_snapshot_current(self, snapshot: _PinnedAcceptedPromotion) -> None:
+        if type(snapshot) is not _PinnedAcceptedPromotion or snapshot.ledger is not self:
+            raise TwinEvidencePromotionError("accepted promotion snapshot is invalid")
+        try:
+            current = os.stat(self.path, follow_symlinks=False)
+        except OSError as exc:
+            raise TwinEvidencePromotionError("accepted promotion snapshot path changed") from exc
+        if (current.st_dev, current.st_ino) != (
+            snapshot.database_device,
+            snapshot.database_inode,
+        ):
+            raise TwinEvidencePromotionError("accepted promotion snapshot path changed")
 
     def verify_integrity(self) -> None:
         db = self._connect()
