@@ -103,6 +103,8 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | Cursor-bait invent inventory | `b50b145f3` / `bfbdf4acb` | ice-fishing cursor-bait jpg+webp invent |
 | Cursor-bait → LGH ice-fishing | `c64b69545` | wait-host ice-fishing strip uses cursor-bait session webp |
 | TrajectoryView living-TV | `22f01168c` | invent strip + terminal complete/error beats |
+| ChunkModal open/fail beats | `0c6ae5403` | highlight on chunk open; fail on fetch error |
+| ChatInputArea DR beats | `c909aed01` | docked composer start/error living-TV |
 | PasteIngest absorb beats | `6256fddad` | highlight on absorb; fail on error |
 | VoiceChase transcript beats | `62697398e` | note_saved on transcript; fail on error |
 
