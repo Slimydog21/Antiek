@@ -122,6 +122,16 @@ from substrate.midnight_oil.private_paid_lane_authority_checkpoint import (
 )
 
 _SUPPORT_ROOT_STATE = "legacy-root-state-v1.json"
+_RecoveryFaultBoundary = Literal[
+    "after_target_commit",
+    "after_rename",
+    "after_parent_fsync",
+    "after_reread",
+    "prepare_after_audit",
+    "prepare_after_rename",
+    "prepare_after_parent_fsync",
+    "prepare_after_reread",
+]
 _SUPPORT_PIN_STATE = "external-pin-state-v1.json"
 _CHILD_ROLES = (
     "owner-private-source-v1",
@@ -911,13 +921,7 @@ def _fixture_migration_lifecycle_issuer_main(
     expected_target_store_id: str,
     expected_semantic_source_sha256: str,
     expected_contract_sha256: str,
-    recovery_fault_boundary: Literal[
-        "after_target_commit",
-        "after_rename",
-        "after_parent_fsync",
-        "after_reread",
-    ]
-    | None,
+    recovery_fault_boundary: _RecoveryFaultBoundary | None,
 ) -> None:
     private_key = Ed25519PrivateKey.generate()
     public_key = private_key.public_key().public_bytes_raw()
@@ -947,18 +951,17 @@ def _fixture_migration_lifecycle_issuer_main(
     active_store_revoked = False
     pending_recovery_fault = recovery_fault_boundary
 
-    def inject_recovery_fault(
-        boundary: Literal[
-            "after_target_commit",
-            "after_rename",
-            "after_parent_fsync",
-            "after_reread",
-        ],
-    ) -> None:
+    def inject_recovery_fault(boundary: _RecoveryFaultBoundary) -> None:
         nonlocal pending_recovery_fault
         if pending_recovery_fault == boundary:
             pending_recovery_fault = None
             raise RuntimeError(f"injected issuer recovery fault: {boundary}")
+
+    def inject_prepare_persistence_fault(
+        boundary: Literal["after_rename", "after_parent_fsync", "after_reread"],
+    ) -> None:
+        mapped: _RecoveryFaultBoundary = cast(_RecoveryFaultBoundary, f"prepare_{boundary}")
+        inject_recovery_fault(mapped)
 
     def recover_sources_sealed_to_copy_prepared(
         *,
@@ -1016,8 +1019,7 @@ def _fixture_migration_lifecycle_issuer_main(
                 committed = durable
                 return recovery_copy_preparation_completion
         if (
-            recovery_copy_preparation_completion is not None
-            or committed.lifecycle_phase != "sources_sealed"
+            committed.lifecycle_phase != "sources_sealed"
             or committed.state_sha256 != expected_sources_sealed_state_sha256
             or durable != committed
         ):
@@ -1043,42 +1045,52 @@ def _fixture_migration_lifecycle_issuer_main(
                 expected_semantic_source_sha256=expected_semantic_source_sha256,
                 expected_contract_sha256=expected_contract_sha256,
             )
-            material = sealed.model_dump(
-                mode="python",
-                exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
-            )
-            material.update(
-                {
-                    "lifecycle_phase": "copy_prepared",
-                    "phase_version": 3,
-                    "issuer_sequence": 3,
-                    "updated_at_ms": max(sealed.updated_at_ms, time.time_ns() // 1_000_000),
-                    "previous_state_sha256": sealed.state_sha256,
-                    "copy_audit_sha256": _copy_audit_sha256(audit),
-                    "issuer_key_id": key_id,
-                }
-            )
-            state_sha256 = _migration_lifecycle_state_sha256(material)
-            material["state_sha256"] = state_sha256
-            material["signature_ed25519"] = private_key.sign(
-                _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
-            )
-            prepared = SignedMigrationLifecycleStateV1.model_validate(material)
-            recovery_copy_preparation_completion = Epoch0RecoveryCopyPreparationCompletionV1(
-                sealed_state=sealed,
-                prepared_state=prepared,
-                copy_audit=audit,
-            )
+            if recovery_copy_preparation_completion is None:
+                material = sealed.model_dump(
+                    mode="python",
+                    exclude={"issuer_key_id", "state_sha256", "signature_ed25519"},
+                )
+                material.update(
+                    {
+                        "lifecycle_phase": "copy_prepared",
+                        "phase_version": 3,
+                        "issuer_sequence": 3,
+                        "updated_at_ms": max(sealed.updated_at_ms, time.time_ns() // 1_000_000),
+                        "previous_state_sha256": sealed.state_sha256,
+                        "copy_audit_sha256": _copy_audit_sha256(audit),
+                        "issuer_key_id": key_id,
+                    }
+                )
+                state_sha256 = _migration_lifecycle_state_sha256(material)
+                material["state_sha256"] = state_sha256
+                material["signature_ed25519"] = private_key.sign(
+                    _MIGRATION_LIFECYCLE_SIGNATURE_DOMAIN + bytes.fromhex(state_sha256)
+                )
+                prepared = SignedMigrationLifecycleStateV1.model_validate(material)
+                recovery_copy_preparation_completion = Epoch0RecoveryCopyPreparationCompletionV1(
+                    sealed_state=sealed,
+                    prepared_state=prepared,
+                    copy_audit=audit,
+                )
+            else:
+                if (
+                    recovery_copy_preparation_completion.sealed_state != sealed
+                    or recovery_copy_preparation_completion.copy_audit != audit
+                ):
+                    raise ValueError("issuer recovery preparation cached completion")
+                prepared = recovery_copy_preparation_completion.prepared_state
             _verify_epoch0_recovery_copy_preparation_completion_v1(
                 recovery_copy_preparation_completion,
                 issuer_verification_key=verification_key,
                 expected_sealed_pins=expected_pins,
             )
+            inject_recovery_fault("prepare_after_audit")
             _persist_signed_migration_lifecycle_state(
                 parent_fd=session_parent_fd,
                 state=prepared,
                 verification_key=verification_key,
                 expected_prior_state_sha256=sealed.state_sha256,
+                _fault_hook=inject_prepare_persistence_fault,
             )
             reread = _read_signed_migration_lifecycle_state(
                 parent_fd=session_parent_fd,
@@ -1572,7 +1584,19 @@ def _fixture_migration_lifecycle_issuer_main(
                             effective_state = recovery_copy_completion.copied_state
                         else:
                             assert recovery_copy_preparation_completion is not None
-                            effective_state = recovery_copy_preparation_completion.prepared_state
+                            observed_recovery_state = _read_signed_migration_lifecycle_state(
+                                parent_fd=received_descriptors[1],
+                                target_basename=(
+                                    recovery_copy_preparation_completion.sealed_state.target_basename
+                                ),
+                                verification_key=verification_key,
+                            )
+                            if observed_recovery_state not in (
+                                recovery_copy_preparation_completion.sealed_state,
+                                recovery_copy_preparation_completion.prepared_state,
+                            ):
+                                raise ValueError("issuer recovery preparation effective state")
+                            effective_state = observed_recovery_state
                         authentication_pins = _issuer_recovery_pins_from_state(
                             effective_state
                         ).model_dump(mode="json")
@@ -1724,8 +1748,20 @@ def _fixture_migration_lifecycle_issuer_main(
                                     recovery_copy_completion.copied_state
                                 )
                             elif recovery_copy_preparation_completion is not None:
+                                durable_recovery_state = _read_signed_migration_lifecycle_state(
+                                    parent_fd=session_parent_fd,
+                                    target_basename=(
+                                        recovery_copy_preparation_completion.sealed_state.target_basename
+                                    ),
+                                    verification_key=verification_key,
+                                )
+                                if durable_recovery_state not in (
+                                    recovery_copy_preparation_completion.sealed_state,
+                                    recovery_copy_preparation_completion.prepared_state,
+                                ):
+                                    raise ValueError("issuer recovery preparation effective state")
                                 effective_descriptor_pins = _issuer_recovery_pins_from_state(
-                                    recovery_copy_preparation_completion.prepared_state
+                                    durable_recovery_state
                                 )
                             if session_command == "session_ping":
                                 _issuer_authenticate_recovery_descriptors(
@@ -2659,13 +2695,7 @@ class FixtureMigrationLifecycleIssuerV1:
         expected_target_store_id: str,
         expected_semantic_source_sha256: str,
         expected_contract_sha256: str,
-        recovery_fault_boundary: Literal[
-            "after_target_commit",
-            "after_rename",
-            "after_parent_fsync",
-            "after_reread",
-        ]
-        | None = None,
+        recovery_fault_boundary: _RecoveryFaultBoundary | None = None,
     ) -> FixtureMigrationLifecycleIssuerV1:
         if recovery_fault_boundary not in {
             None,
@@ -2673,6 +2703,10 @@ class FixtureMigrationLifecycleIssuerV1:
             "after_rename",
             "after_parent_fsync",
             "after_reread",
+            "prepare_after_audit",
+            "prepare_after_rename",
+            "prepare_after_parent_fsync",
+            "prepare_after_reread",
         }:
             raise ValueError("issuer recovery fault boundary")
         context = multiprocessing.get_context("spawn")

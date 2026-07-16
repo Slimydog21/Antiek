@@ -700,6 +700,13 @@ def _attempt_child_recovery_prepare_and_copy(
     parent_fd: int,
     target_fd: int,
     result_fd: int,
+    prepare_fault_boundary: Literal[
+        "prepare_after_audit",
+        "prepare_after_rename",
+        "prepare_after_parent_fsync",
+        "prepare_after_reread",
+    ]
+    | None,
 ) -> None:
     session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
     try:
@@ -721,15 +728,37 @@ def _attempt_child_recovery_prepare_and_copy(
             authority_pins=sealed_pins,
         )
         admission = session.admission
-        dropped_prepare = _canonical_json(
-            {
-                "command": "session_recover_sources_sealed_to_copy_prepared",
-                "admission_sha256": admission.admission_sha256,
-                "handle_nonce": admission.handle_nonce,
-                "expected_sources_sealed_state_sha256": sealed.state_sha256,
-            }
-        )
-        session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_prepare))
+        if prepare_fault_boundary is None:
+            dropped_prepare = _canonical_json(
+                {
+                    "command": "session_recover_sources_sealed_to_copy_prepared",
+                    "admission_sha256": admission.admission_sha256,
+                    "handle_nonce": admission.handle_nonce,
+                    "expected_sources_sealed_state_sha256": sealed.state_sha256,
+                }
+            )
+            session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_prepare))
+        else:
+            with pytest.raises(ValueError, match="preparation rejected"):
+                session.recover_sources_sealed_to_copy_prepared(
+                    expected_sources_sealed_state_sha256=sealed.state_sha256
+                )
+            intermediate = checkpoint_module._read_signed_migration_lifecycle_state(
+                parent_fd=parent_fd,
+                target_basename=sealed.target_basename,
+                verification_key=verification_key,
+            )
+            assert intermediate.lifecycle_phase == (
+                "sources_sealed"
+                if prepare_fault_boundary == "prepare_after_audit"
+                else "copy_prepared"
+            )
+            competing = sqlite3.connect(target_path, isolation_level=None, timeout=0.05)
+            try:
+                with pytest.raises(sqlite3.OperationalError, match="locked"):
+                    competing.execute("BEGIN IMMEDIATE")
+            finally:
+                competing.close()
         session._close_local()
         session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
             socket_path=socket_path,
@@ -779,8 +808,11 @@ def _attempt_child_recovery_prepare_and_copy(
         assert copied.prepared_state == prepared
         session.close()
         os.write(result_fd, b"1")
-    except BaseException:
-        os.write(result_fd, b"0")
+    except BaseException as error:
+        os.write(
+            result_fd,
+            b"0" + type(error).__name__.encode("ascii") + b":" + str(error).encode("utf-8"),
+        )
     finally:
         if session is not None:
             session.close()
@@ -3515,9 +3547,28 @@ class TestMigrationPrerequisites:
             os.close(root_fd)
             os.close(parent_fd)
 
-    @pytest.mark.parametrize("with_rows", (True, False))
+    @pytest.mark.parametrize(
+        ("with_rows", "prepare_fault_boundary"),
+        (
+            (True, None),
+            (False, None),
+            (True, "prepare_after_audit"),
+            (True, "prepare_after_rename"),
+            (True, "prepare_after_parent_fsync"),
+            (True, "prepare_after_reread"),
+        ),
+    )
     def test_recovery_chains_sources_sealed_through_prepared_and_copied(
-        self, tmp_path: Path, with_rows: bool
+        self,
+        tmp_path: Path,
+        with_rows: bool,
+        prepare_fault_boundary: Literal[
+            "prepare_after_audit",
+            "prepare_after_rename",
+            "prepare_after_parent_fsync",
+            "prepare_after_reread",
+        ]
+        | None,
     ) -> None:
         target = tmp_path / "paid-lane.sqlite3"
         _initialize_schema_only_copy_target(target)
@@ -3560,6 +3611,7 @@ class TestMigrationPrerequisites:
             expected_target_store_id=STORE_ID,
             expected_semantic_source_sha256=checkpoint_module._PREDECESSOR_CYCLE32_SOURCE_SHA256,
             expected_contract_sha256=checkpoint_module._PREDECESSOR_CYCLE33_CONTRACT_SHA256,
+            recovery_fault_boundary=prepare_fault_boundary,
         )
         try:
             key = Ed25519PrivateKey.from_private_bytes(b"r" * 32)
@@ -3658,11 +3710,13 @@ class TestMigrationPrerequisites:
                     parent_fd,
                     target_fd,
                     result_write,
+                    prepare_fault_boundary,
                 )
                 os._exit(0)
             os.close(result_write)
             result_write = -1
-            assert os.read(result_read, 1) == b"1"
+            recovery_result = os.read(result_read, 4_096)
+            assert recovery_result == b"1", recovery_result
             _, child_status = os.waitpid(child, 0)
             child = -1
             assert os.waitstatus_to_exitcode(child_status) == 0
