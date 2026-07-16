@@ -3,6 +3,10 @@
  * like Flipbook's reshape-with-window living imagery, while remaining HTML
  * (pure Flipbook sole UI is NO-GO).
  *
+ * Applied via:
+ *   - explicit class `.antiek-living-tv-invent`
+ *   - global invent testids (imported once from main.tsx)
+ *
  * Motion collapses under prefers-reduced-motion.
  */
 
@@ -21,15 +25,20 @@
   }
 }
 
-.antiek-living-tv-invent {
+.antiek-living-tv-invent,
+img[data-testid$="-living-tv-art"],
+img[data-testid$="-living-tv-brand"],
+img[data-testid="loading-game-living-tv-brand"] {
   object-fit: cover;
-  object-position: center;
   will-change: object-position, transform;
   animation: antiek-living-tv-reframe 12s ease-in-out infinite alternate;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .antiek-living-tv-invent {
+  .antiek-living-tv-invent,
+  img[data-testid$="-living-tv-art"],
+  img[data-testid$="-living-tv-brand"],
+  img[data-testid="loading-game-living-tv-brand"] {
     animation: none;
     transform: none;
     object-position: center;

@@ -28,9 +28,17 @@ Modal + Krea remain available for enrichment. Default path is HTML + tests +
 axe/LostPixel gates. Pure generative sole UI stays behind a future NO-GO
 revisit with cost ceilings operator-approved.
 
-## Living invent reframe (craft159)
+## Living invent reframe (craft159–161)
 
-Product invent strips use `.antiek-living-tv-invent` (`sessionLivingTv.css`) for a
-soft object-position + scale reframe loop — Flipbook *feel* of living imagery
-without leaving HTML. Collapses under `prefers-reduced-motion`. Wired on
-`SessionBrandChrome` and craft156 invent densify surfaces.
+Product invent strips use `sessionLivingTv.css` for a soft object-position +
+scale reframe loop — Flipbook *feel* of living imagery without leaving HTML.
+Collapses under `prefers-reduced-motion`.
+
+Applied globally from `main.tsx` to:
+
+- `.antiek-living-tv-invent`
+- `img[data-testid$="-living-tv-art"]`
+- `img[data-testid$="-living-tv-brand"]`
+- `img[data-testid="loading-game-living-tv-brand"]`
+
+so residual densify doors inherit living imagery without per-file class thrash.
