@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import { apiFetch } from "../../lib/api";
+import { emitWernerExperience } from "../../werner/reactionBus";
 
 /**
  * Investigations index — operator-facing list of past + in-flight
@@ -70,6 +73,8 @@ export default function InvestigationsIndex() {
       }
       const created = await resp.json();
       const newId = created.investigation_id as string | undefined;
+      // Living-TV: starting an investigation is a deep-research beat.
+      emitWernerExperience("deep_research_start");
       // Reset draft, then navigate into the new investigation's
       // workstation. Listing refreshes in the background.
       setDraftQuestion("");
@@ -118,9 +123,27 @@ export default function InvestigationsIndex() {
       <main className="flex-1 overflow-y-auto bg-ice-0 dark:bg-charcoal-2">
         <div className="max-w-5xl mx-auto px-8 py-10 space-y-6">
           <header className="space-y-2">
-            <h1 className="text-2xl font-serif text-ink dark:text-bright">
-              Investigations
-            </h1>
+            <div className="flex items-center gap-3">
+              <img
+                src={thinkingArt}
+                alt=""
+                aria-hidden="true"
+                data-testid="investigations-home-werner-brand"
+                className="h-12 w-12 shrink-0 object-contain"
+              />
+              <h1 className="text-2xl font-serif text-ink dark:text-bright">
+                Investigations
+              </h1>
+            </div>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="investigations-home-living-tv-art"
+              className="h-16 w-full max-w-md rounded-md object-cover object-center"
+              loading="lazy"
+              decoding="async"
+            />
             <p className="text-sm text-ink-soft dark:text-starlight leading-relaxed">
               All investigations the substrate has seen, newest first.
               Click an investigation to open it in the workstation;

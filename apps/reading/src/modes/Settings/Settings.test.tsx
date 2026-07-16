@@ -114,6 +114,18 @@ describe("Settings SPR-01", () => {
     expect(screen.queryByText("Spent today")).toBeNull();
   });
 
+  it("renders session thinking + living-TV brand chrome on Settings door", async () => {
+    render(<Settings />);
+    await waitFor(() => expect(screen.getByText("Operator settings")).toBeTruthy());
+    expect(screen.getByTestId("settings-home-werner-brand")).toBeTruthy();
+    const livingTv = screen.getByTestId(
+      "settings-home-living-tv-art",
+    ) as HTMLImageElement;
+    expect(livingTv.getAttribute("src") ?? "").toMatch(
+      /werner_living_tv_session_v1/,
+    );
+  });
+
   it("projects cost and shows honest unknown pricing", async () => {
     const user = userEvent.setup();
     render(<Settings />);

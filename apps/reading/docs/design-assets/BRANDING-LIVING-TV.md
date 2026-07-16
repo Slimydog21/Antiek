@@ -73,6 +73,10 @@ UI-consumed invent strips (not inventory-only):
 - Outcomes audit door — thinking mark + living-TV invent (`outcomes-home-*`)
 - Notebooks door — thinking mark + living-TV invent (`notebooks-home-*`)
 - Wrestle empty state — thinking mark + living-TV invent (`wrestle-empty-*`)
+- Documents / Investigations doors — thinking + living-TV invent
+- Settings operator door — thinking + living-TV invent
+- Home front door — living-TV invent strip under hero Werner
+- Investigations start → `deep_research_start` living-TV beat
 
 Cursor model: ice bait instrument (not chase). Station re-home on drag.
 

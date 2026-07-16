@@ -21,6 +21,8 @@ import {
   type ModelRow,
   type PromptCostEstimateResponse,
 } from "../../api/settings";
+import thinkingArt from "../../brand/werner/poses/session/werner_thinking_session_v1.png";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import AddModelPanel from "./AddModelPanel";
 import AntiekBenchPanel from "./AntiekBenchPanel";
 import { ModelDecisionTreeTab } from "./modelSelection/ModelDecisionTreeTab";
@@ -144,9 +146,27 @@ export default function Settings() {
     <div className="h-full overflow-y-auto bg-ice-2 dark:bg-space-2">
       <div className="max-w-3xl mx-auto px-6 py-8 space-y-6">
         <header>
-          <h1 className="text-2xl font-serif text-ink dark:text-bright">
-            Operator settings
-          </h1>
+          <div className="flex items-center gap-3">
+            <img
+              src={thinkingArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="settings-home-werner-brand"
+              className="h-12 w-12 shrink-0 object-contain"
+            />
+            <h1 className="text-2xl font-serif text-ink dark:text-bright">
+              Operator settings
+            </h1>
+          </div>
+          <img
+            src={livingTvArt}
+            alt=""
+            aria-hidden="true"
+            data-testid="settings-home-living-tv-art"
+            className="mt-2 h-16 w-full max-w-md rounded-md object-cover object-center"
+            loading="lazy"
+            decoding="async"
+          />
           <p className="text-sm text-ink-soft dark:text-starlight font-serif italic mt-1">
             Models, budget ceiling, and prompt cost projection. Numbers over
             placeholders — unknown spend stays unknown.

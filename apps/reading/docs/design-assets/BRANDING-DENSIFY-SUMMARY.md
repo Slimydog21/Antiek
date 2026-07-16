@@ -71,6 +71,9 @@ PR #2416 tip (at close of this note): `92dad8cbe` — axe+LP green.
 | ReadingCompanion glass-box | `68bd0c484` | thinking mark + living-TV invent on in-book rail |
 | ResearchThis spin | `68bd0c484` | notifyResearchStarted living-TV DR beat |
 | TalkToBook / VoiceNote / Biography | `61ee9273b` | open highlight, note_saved, thinking brand |
+| MetaReading / PersonalSpace | `062f54e23`–`b89d4f9f9` | living-TV invent strips on reading surfaces |
+| Outcomes / Notebooks / Wrestle empty | `d0894b8a3` | thinking + living-TV brand chrome on audit, notebooks, wrestle doors |
+| Documents / Investigations / Settings / Home living-TV | (wave) | substrate index doors + settings + home invent strip; inv start → deep_research_start | |
 
 
 PR tip tracks `goal/twin-autoload-session-alpha` (#2416). Operator merge wall remains.

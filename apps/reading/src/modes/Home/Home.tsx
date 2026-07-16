@@ -5,6 +5,7 @@ import { emitProductActivate } from "../../components/hotkeys";
 import { emitWernerExperience } from "../../werner/reactionBus";
 import homeEnvironment from "../../brand/werner/home/antiek-knowledge-home-v1.webp";
 import iglooArcadeArt from "../../brand/werner/poses/session/werner_igloo_arcade_session_v1.webp";
+import livingTvArt from "../../brand/werner/poses/session/werner_living_tv_session_v1.webp";
 import GlassSurface from "../../shell/GlassSurface";
 import { WORKFLOWS, WORKFLOW_ORDER } from "../../shell/workflowTaxonomy";
 
@@ -81,6 +82,15 @@ export function Home() {
             <span data-testid="home-werner-hero">
               <Werner mood="idle" size={72} label="Antiek" />
             </span>
+            <img
+              src={livingTvArt}
+              alt=""
+              aria-hidden="true"
+              data-testid="home-living-tv-art"
+              className="mt-3 h-16 w-full max-w-md rounded-md object-cover object-center"
+              loading="lazy"
+              decoding="async"
+            />
             <h1 className="mt-4 font-serif text-3xl font-semibold text-ink dark:text-bright">
               One workspace for everything you read, research, and write.
             </h1>
