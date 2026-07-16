@@ -230,4 +230,4 @@ Exported as `emoteForProductDoor` from `werner` barrel. Expanded 2026-07-16 on t
 | Mascot receives living-TV host beats | `c552362df` | PenguinMascot.reactions densify: arcade host emit → same emote stage |
 | Imagine invent polish v2 thought partner desk | `ed1a43c31` | ThoughtPartnerPanel invent |
 | Imagine invent polish v2 igloo ice arcade cursor | `69087de78` | cabinet/LGH/wait ice-fishing invent |
-| Imagine invent polish v2 clam catcher cursor | (next tip) | cabinet/LGH/wait clam invent |
+| Imagine invent polish v2 clam catcher cursor | `cf9208541` | cabinet/LGH/wait clam invent |
