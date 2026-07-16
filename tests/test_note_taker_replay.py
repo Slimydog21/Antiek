@@ -381,7 +381,7 @@ def test_startup_recovery_enumerates_physical_streams_on_daemon(tmp_path, monkey
     assert seen == ["inv-a", "inv-b"]
 
 
-def test_zero_window_recovery_never_opens_replay_writer(tmp_path, monkeypatch):
+def test_empty_qualifying_stream_never_opens_replay_writer(tmp_path, monkeypatch):
     from roles.note_taker import replay
 
     db = str(tmp_path / "graph.duckdb")
@@ -401,6 +401,11 @@ def test_zero_window_recovery_never_opens_replay_writer(tmp_path, monkeypatch):
         return original(db_path, purpose=purpose, **kwargs)
 
     monkeypatch.setattr(replay, "connect_write", observed_connect)
+    monkeypatch.setattr(
+        replay,
+        "init_database_at_path",
+        lambda _db_path: pytest.fail("empty stream must not probe schema"),
+    )
     assert service.catch_up("inv-a") == []
     assert purposes == []
     with connect_read(db) as con:
