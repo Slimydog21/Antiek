@@ -12,7 +12,7 @@ describe("MidnightOilPanel", () => {
       "midnight-oil-living-tv-art",
     ) as HTMLImageElement;
     expect(art.getAttribute("src") ?? "").toMatch(
-      /werner_midnight_oil_session_v1/,
+      /werner_midnight_oil_swarm_session_v1/,
     );
 
     fireEvent.change(screen.getByTestId("midnight-oil-goal-input"), {

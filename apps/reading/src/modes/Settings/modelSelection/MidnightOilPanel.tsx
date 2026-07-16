@@ -7,7 +7,7 @@
 
 import { useMemo, useState } from "react";
 
-import midnightOilArt from "../../../brand/werner/poses/session/werner_midnight_oil_session_v1.webp";
+import midnightOilArt from "../../../brand/werner/poses/session/werner_midnight_oil_swarm_session_v1.webp";
 import { emitWernerExperience } from "../../../werner/reactionBus";
 import {
   buildMidnightOilPreflight,
