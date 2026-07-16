@@ -837,14 +837,18 @@ def _fixture_migration_lifecycle_issuer_main(
     recovery_admission_request: bytes | None = None
     recovery_admission: SignedEpoch0RecoveryAdmissionV1 | None = None
     recovery_copy_completion: Epoch0RecoveryCopyCompletionV1 | None = None
-    recovery_session_consumed = False
+    recovery_peer_exited = False
+    recovery_peer_pid: int | None = None
+    pending_recovery_peer_pid: int | None = None
+    pending_recovery_peer_revoked = False
+    rejected_recovery_peer_pids: set[int] = set()
     copy_completed = False
     listener = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     process_watch = select.kqueue()
     active_store_revoked = False
 
     def supervisor_exited() -> bool:
-        nonlocal active_store_revoked
+        nonlocal active_store_revoked, pending_recovery_peer_revoked, recovery_peer_exited
         supervisor_is_gone = False
         for event in process_watch.control(None, 8, 0):
             if event.ident == supervisor_pid and event.fflags & select.KQ_NOTE_EXIT:
@@ -853,6 +857,18 @@ def _fixture_migration_lifecycle_issuer_main(
                 select.KQ_NOTE_EXIT | select.KQ_NOTE_FORK
             ):
                 active_store_revoked = True
+            if (
+                recovery_peer_pid is not None
+                and event.ident == recovery_peer_pid
+                and event.fflags & (select.KQ_NOTE_EXIT | select.KQ_NOTE_FORK)
+            ):
+                recovery_peer_exited = True
+            if (
+                pending_recovery_peer_pid is not None
+                and event.ident == pending_recovery_peer_pid
+                and event.fflags & (select.KQ_NOTE_EXIT | select.KQ_NOTE_FORK)
+            ):
+                pending_recovery_peer_revoked = True
         return supervisor_is_gone
 
     def recover_copy_prepared_epoch0(
@@ -1072,6 +1088,21 @@ def _fixture_migration_lifecycle_issuer_main(
             session_framed = False
             try:
                 peer_pid = struct.unpack("i", connection.getsockopt(0, 2, 4))[0]
+                if peer_pid != authorized_pid and recovery_peer_pid is None:
+                    pending_recovery_peer_pid = peer_pid
+                    pending_recovery_peer_revoked = False
+                    process_watch.control(
+                        [
+                            select.kevent(
+                                peer_pid,
+                                filter=select.KQ_FILTER_PROC,
+                                flags=select.KQ_EV_ADD | select.KQ_EV_ENABLE,
+                                fflags=select.KQ_NOTE_EXIT | select.KQ_NOTE_FORK,
+                            )
+                        ],
+                        0,
+                        0,
+                    )
                 connection.settimeout(0.1)
                 while True:
                     try:
@@ -1254,10 +1285,42 @@ def _fixture_migration_lifecycle_issuer_main(
                         or type(request["authority_pins"]) is not dict
                         or (command == "recover_session_open") != session_framed
                         or (command == "recover_session_open" and not active_store_revoked)
-                        or (command == "recover_session_open" and recovery_session_consumed)
+                        or (command == "recover_session_open" and recovery_peer_exited)
+                        or (
+                            command == "recover_session_open"
+                            and peer_pid in rejected_recovery_peer_pids
+                        )
                     ):
                         raise ValueError("issuer recovery open envelope")
                     request_bytes = _canonical_json(request)
+                    authentication_pins: object = request["authority_pins"]
+                    if (
+                        recovery_copy_completion is not None
+                        and recovery_admission_request == request_bytes
+                        and recovery_admission is not None
+                        and peer_pid == recovery_admission.authenticated_peer_pid
+                    ):
+                        copied_state = recovery_copy_completion.copied_state
+                        authentication_pins = {
+                            "schema_version": 1,
+                            "target_store_id": copied_state.target_store_id,
+                            "root_id": copied_state.root_id,
+                            "root_manifest_sha256": copied_state.root_manifest_sha256,
+                            "target_parent_dev": copied_state.target_parent_dev,
+                            "target_parent_ino": copied_state.target_parent_ino,
+                            "target_basename": copied_state.target_basename,
+                            "target_dev": copied_state.target_dev,
+                            "target_ino": copied_state.target_ino,
+                            "lifecycle_phase": copied_state.lifecycle_phase,
+                            "phase_version": copied_state.phase_version,
+                            "issuer_sequence": copied_state.issuer_sequence,
+                            "state_sha256": copied_state.state_sha256,
+                            "barrier_id": copied_state.barrier_id,
+                            "freeze_nonce": copied_state.freeze_nonce,
+                            "source_manifest_sha256": copied_state.source_manifest_sha256,
+                            "copy_audit_sha256": copied_state.copy_audit_sha256,
+                            "witness_sha256": copied_state.witness_sha256,
+                        }
                     recovery_root_fd = received_descriptors.pop(0)
                     recovery_parent_fd = received_descriptors.pop(0)
                     recovery_target_fd = received_descriptors.pop(0)
@@ -1269,7 +1332,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             target_fd=recovery_target_fd,
                             ticket=recovery_ticket,
                             verification_key=verification_key,
-                            raw_pins=request["authority_pins"],
+                            raw_pins=authentication_pins,
                         )
                         if command == "recover_session_open":
                             for recovery_fd in (
@@ -1293,6 +1356,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             or peer_pid != recovery_admission.authenticated_peer_pid
                         ):
                             raise ValueError("issuer recovery admission replay")
+                        admission_for_request = recovery_admission
                     else:
                         admission_material = {
                             "schema_version": 1,
@@ -1310,7 +1374,7 @@ def _fixture_migration_lifecycle_issuer_main(
                             _MIGRATION_RECOVERY_ADMISSION_DOMAIN
                             + _canonical_json(admission_material)
                         ).hexdigest()
-                        recovery_admission = SignedEpoch0RecoveryAdmissionV1.model_validate(
+                        admission_for_request = SignedEpoch0RecoveryAdmissionV1.model_validate(
                             {
                                 **admission_material,
                                 "admission_sha256": admission_sha256,
@@ -1320,9 +1384,28 @@ def _fixture_migration_lifecycle_issuer_main(
                                 ),
                             }
                         )
-                        recovery_admission_request = request_bytes
-                    if recovery_admission is None:
+                    if admission_for_request is None:
                         raise ValueError("issuer recovery admission missing")
+                    if command == "recover_session_open":
+                        if recovery_peer_pid is None:
+                            supervisor_is_gone = supervisor_exited()
+                            if pending_recovery_peer_revoked:
+                                rejected_recovery_peer_pids.add(peer_pid)
+                            if (
+                                pending_recovery_peer_pid != peer_pid
+                                or supervisor_is_gone
+                                or pending_recovery_peer_revoked
+                            ):
+                                raise ValueError("issuer recovery peer preadmission lifetime")
+                            recovery_peer_pid = peer_pid
+                            pending_recovery_peer_pid = None
+                        elif recovery_peer_pid != peer_pid or recovery_peer_exited:
+                            raise ValueError("issuer recovery peer lifetime")
+                        if supervisor_exited() or recovery_peer_exited:
+                            return
+                    if recovery_admission is None:
+                        recovery_admission = admission_for_request
+                        recovery_admission_request = request_bytes
                     admission_response = b"R" + _canonical_json(
                         {
                             **recovery_admission.model_dump(
@@ -1334,7 +1417,6 @@ def _fixture_migration_lifecycle_issuer_main(
                     if command == "recover_open":
                         _issuer_response(connection, admission_response)
                         continue
-                    recovery_session_consumed = True
                     for session_descriptor in session_descriptors:
                         received_descriptors.remove(session_descriptor)
                     try:
@@ -1343,7 +1425,7 @@ def _fixture_migration_lifecycle_issuer_main(
                         session_root_fd, session_parent_fd, session_target_fd = session_descriptors
                         connection.sendall(_issuer_session_frame(admission_response))
                         while True:
-                            if supervisor_exited():
+                            if supervisor_exited() or recovery_peer_exited:
                                 return
                             try:
                                 session_packet = _issuer_session_receive_frame(
@@ -1351,8 +1433,10 @@ def _fixture_migration_lifecycle_issuer_main(
                                 )
                             except BlockingIOError:
                                 continue
-                            except TimeoutError, ValueError:
+                            except (TimeoutError, ValueError):  # fmt: skip
                                 break
+                            if supervisor_exited() or recovery_peer_exited:
+                                return
                             session_request = _parse_strict_json(session_packet, _ISSUER_MAX_PACKET)
                             session_command = session_request.get("command")
                             common_fields = {
@@ -1372,6 +1456,8 @@ def _fixture_migration_lifecycle_issuer_main(
                                 != recovery_admission.handle_nonce
                             ):
                                 raise ValueError("issuer recovery session correlation")
+                            if supervisor_exited() or recovery_peer_exited:
+                                return
                             if session_command == "session_ping":
                                 _issuer_authenticate_recovery_descriptors(
                                     root_fd=session_root_fd,
@@ -1379,8 +1465,10 @@ def _fixture_migration_lifecycle_issuer_main(
                                     target_fd=session_target_fd,
                                     ticket=recovery_ticket,
                                     verification_key=verification_key,
-                                    raw_pins=request["authority_pins"],
+                                    raw_pins=pins.model_dump(mode="json"),
                                 )
+                                if supervisor_exited() or recovery_peer_exited:
+                                    return
                                 connection.sendall(
                                     _issuer_session_frame(
                                         b"P" + recovery_admission.admission_sha256.encode("ascii")
@@ -1404,7 +1492,7 @@ def _fixture_migration_lifecycle_issuer_main(
                                         target_fd=session_target_fd,
                                         ticket=recovery_ticket,
                                         verification_key=verification_key,
-                                        raw_pins=request["authority_pins"],
+                                        raw_pins=pins.model_dump(mode="json"),
                                     )
                                     completion = recover_copy_prepared_epoch0(
                                         session_root_fd=session_root_fd,
@@ -1415,6 +1503,8 @@ def _fixture_migration_lifecycle_issuer_main(
                                         ),
                                         expected_pins=recovery_admission.authority_pins,
                                     )
+                                    if supervisor_exited() or recovery_peer_exited:
+                                        return
                                 except Exception:
                                     connection.sendall(_issuer_session_frame(b"E"))
                                     continue
@@ -1425,6 +1515,8 @@ def _fixture_migration_lifecycle_issuer_main(
                                 )
                                 continue
                             if session_command == "session_close":
+                                if supervisor_exited() or recovery_peer_exited:
+                                    return
                                 connection.sendall(
                                     _issuer_session_frame(
                                         b"C" + recovery_admission.admission_sha256.encode("ascii")
@@ -1821,6 +1913,21 @@ def _fixture_migration_lifecycle_issuer_main(
                 else:
                     _issuer_response(connection, b"E")
             finally:
+                if pending_recovery_peer_pid is not None:
+                    with suppress(OSError):
+                        process_watch.control(
+                            [
+                                select.kevent(
+                                    pending_recovery_peer_pid,
+                                    filter=select.KQ_FILTER_PROC,
+                                    flags=select.KQ_EV_DELETE,
+                                )
+                            ],
+                            0,
+                            0,
+                        )
+                    pending_recovery_peer_pid = None
+                    pending_recovery_peer_revoked = False
                 if descriptor is not None:
                     os.close(descriptor)
                 for unexpected_descriptor in received_descriptors:
@@ -1881,6 +1988,7 @@ class FixtureMigrationRecoverySessionV1:
         parent_fd: int,
         target_fd: int,
         authority_pins: Epoch0RecoveryAuthorityPinsV1,
+        _exact_admission: SignedEpoch0RecoveryAdmissionV1 | None = None,
     ) -> FixtureMigrationRecoverySessionV1:
         if (
             type(socket_path) is not str
@@ -1888,11 +1996,28 @@ class FixtureMigrationRecoverySessionV1:
             or type(recovery_ticket) is not SignedMigrationRecoveryTicketV1
             or type(verification_key) is not VerificationKeyV1
             or type(authority_pins) is not Epoch0RecoveryAuthorityPinsV1
+            or (
+                _exact_admission is not None
+                and type(_exact_admission) is not SignedEpoch0RecoveryAdmissionV1
+            )
         ):
             raise ValueError("fixture recovery session open values")
         _verify_signed_migration_recovery_ticket(recovery_ticket, verification_key)
-        caller_boot_nonce = secrets.token_hex(32)
-        handle_nonce = secrets.token_hex(32)
+        if _exact_admission is None:
+            caller_boot_nonce = secrets.token_hex(32)
+            handle_nonce = secrets.token_hex(32)
+        else:
+            _verify_signed_epoch0_recovery_admission(_exact_admission, verification_key)
+            if (
+                _exact_admission.ticket_sha256 != recovery_ticket.ticket_sha256
+                or _exact_admission.issuer_generation_nonce
+                != recovery_ticket.issuer_generation_nonce
+                or _exact_admission.authenticated_peer_pid != os.getpid()
+                or _exact_admission.authority_pins != authority_pins
+            ):
+                raise ValueError("fixture recovery session exact admission")
+            caller_boot_nonce = _exact_admission.caller_boot_nonce
+            handle_nonce = _exact_admission.handle_nonce
         request = _canonical_json(
             {
                 "command": "recover_session_open",
@@ -1939,6 +2064,7 @@ class FixtureMigrationRecoverySessionV1:
                 or admission.handle_nonce != handle_nonce
                 or admission.descriptor_mode != "target"
                 or admission.authority_pins != authority_pins
+                or (_exact_admission is not None and admission != _exact_admission)
             ):
                 raise ValueError("fixture recovery session admission correlation")
             connection.settimeout(0.5)
@@ -1961,6 +2087,31 @@ class FixtureMigrationRecoverySessionV1:
         object.__setattr__(session, "_ticket", recovery_ticket)
         object.__setattr__(session, "_verification_key", verification_key)
         return session
+
+    @classmethod
+    def reopen_exact(
+        cls,
+        *,
+        socket_path: str,
+        expected_issuer_pid: int,
+        recovery_ticket: SignedMigrationRecoveryTicketV1,
+        admission: SignedEpoch0RecoveryAdmissionV1,
+        verification_key: VerificationKeyV1,
+        root_fd: int,
+        parent_fd: int,
+        target_fd: int,
+    ) -> FixtureMigrationRecoverySessionV1:
+        return cls.open(
+            socket_path=socket_path,
+            expected_issuer_pid=expected_issuer_pid,
+            recovery_ticket=recovery_ticket,
+            verification_key=verification_key,
+            root_fd=root_fd,
+            parent_fd=parent_fd,
+            target_fd=target_fd,
+            authority_pins=admission.authority_pins,
+            _exact_admission=admission,
+        )
 
     def __setattr__(self, name: str, value: object) -> Never:
         del name, value
@@ -2078,7 +2229,7 @@ class FixtureMigrationRecoverySessionV1:
                 response = self._live_request("session_close")
                 if response != b"C" + self._admission.admission_sha256.encode("ascii"):
                     raise ValueError("fixture recovery session close response")
-            except OSError, TimeoutError, ValueError:
+            except (OSError, TimeoutError, ValueError):  # fmt: skip
                 pass
             finally:
                 self._close_local()
@@ -2444,7 +2595,7 @@ class FixtureMigrationLifecycleIssuerV1:
                         response = self._request(_canonical_json({"command": "close"}))
                         if response != b"C":
                             raise ValueError("issuer close response")
-                    except OSError, ValueError:
+                    except (OSError, ValueError):  # fmt: skip
                         pass
             finally:
                 if self._supervisor_process.is_alive():

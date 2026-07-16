@@ -12,13 +12,16 @@ import json
 import multiprocessing
 import os
 import pickle
+import secrets
 import select
 import socket
 import sqlite3
+import struct
 import textwrap
 import threading
 import time
 import weakref
+from array import array
 from contextlib import suppress
 from pathlib import Path
 from typing import Any
@@ -370,9 +373,98 @@ def _attempt_child_recovery_session_death(
     ready_fd: int,
     release_fd: int,
     result_fd: int,
+    death_source: str,
 ) -> None:
     session: support_checkpoint.FixtureMigrationRecoverySessionV1 | None = None
     try:
+        if death_source == "recovery_preadmission_fork":
+            connection = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            try:
+                connection.settimeout(2.0)
+                connection.connect(socket_path)
+                assert struct.unpack("i", connection.getsockopt(0, 2, 4))[0] == issuer_pid
+                request = _canonical_json(
+                    {
+                        "command": "recover_session_open",
+                        "ticket_sha256": ticket.ticket_sha256,
+                        "issuer_generation_nonce": ticket.issuer_generation_nonce,
+                        "caller_boot_nonce": secrets.token_hex(32),
+                        "handle_nonce": secrets.token_hex(32),
+                        "authority_pins": pins.model_dump(mode="json"),
+                    }
+                )
+                rights = array("i", (root_fd, parent_fd, target_fd))
+                frame = support_checkpoint._issuer_session_frame(request)
+                assert connection.sendmsg(
+                    [frame], [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights.tobytes())]
+                ) == len(frame)
+                inherited_child = os.fork()
+                if inherited_child == 0:
+                    try:
+                        response = support_checkpoint._issuer_session_receive_frame(connection)
+                        if not response.startswith(b"R"):
+                            os._exit(0)
+                        admission = json.loads(response[1:])
+                        raw_ping = _canonical_json(
+                            {
+                                "command": "session_ping",
+                                "admission_sha256": admission["admission_sha256"],
+                                "handle_nonce": admission["handle_nonce"],
+                            }
+                        )
+                        connection.sendall(support_checkpoint._issuer_session_frame(raw_ping))
+                        ping = support_checkpoint._issuer_session_receive_frame(connection)
+                        os._exit(1 if ping.startswith(b"P") else 0)
+                    except BaseException:
+                        os._exit(0)
+                _, inherited_status = os.waitpid(inherited_child, 0)
+                assert os.waitstatus_to_exitcode(inherited_status) == 0
+                retry = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+                try:
+                    retry.settimeout(2.0)
+                    retry.connect(socket_path)
+                    assert retry.sendmsg(
+                        [frame],
+                        [(socket.SOL_SOCKET, socket.SCM_RIGHTS, rights.tobytes())],
+                    ) == len(frame)
+                    retry_response = support_checkpoint._issuer_session_receive_frame(retry)
+                    assert not retry_response.startswith(b"R")
+                except OSError, ValueError, TimeoutError:
+                    pass
+                finally:
+                    retry.close()
+                fresh_child = os.fork()
+                if fresh_child == 0:
+                    fresh_session = None
+                    try:
+                        fresh_session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
+                            socket_path=socket_path,
+                            expected_issuer_pid=issuer_pid,
+                            recovery_ticket=ticket,
+                            verification_key=verification_key,
+                            root_fd=root_fd,
+                            parent_fd=parent_fd,
+                            target_fd=target_fd,
+                            authority_pins=pins,
+                        )
+                        fresh_session.ping()
+                        fresh_session.close()
+                        os._exit(0)
+                    except BaseException:
+                        if fresh_session is not None:
+                            fresh_session.close()
+                        os._exit(1)
+                _, fresh_status = os.waitpid(fresh_child, 0)
+                assert os.waitstatus_to_exitcode(fresh_status) == 0
+            finally:
+                connection.close()
+                os.close(root_fd)
+                os.close(parent_fd)
+                os.close(target_fd)
+            os.write(ready_fd, b"R")
+            assert os.read(release_fd, 1) == b"G"
+            os.write(result_fd, b"1")
+            return
         session = support_checkpoint.FixtureMigrationRecoverySessionV1.open(
             socket_path=socket_path,
             expected_issuer_pid=issuer_pid,
@@ -390,6 +482,28 @@ def _attempt_child_recovery_session_death(
         session.ping()
         os.write(ready_fd, b"R")
         assert os.read(release_fd, 1) == b"G"
+        if death_source == "recovery_fork":
+            admission_sha256 = session.admission.admission_sha256
+            handle_nonce = session.admission.handle_nonce
+            inherited_child = os.fork()
+            if inherited_child == 0:
+                try:
+                    raw_request = _canonical_json(
+                        {
+                            "command": "session_ping",
+                            "admission_sha256": admission_sha256,
+                            "handle_nonce": handle_nonce,
+                        }
+                    )
+                    session._connection.sendall(
+                        support_checkpoint._issuer_session_frame(raw_request)
+                    )
+                    response = support_checkpoint._issuer_session_receive_frame(session._connection)
+                    os._exit(1 if response.startswith(b"P") else 0)
+                except BaseException:
+                    os._exit(0)
+            _, inherited_status = os.waitpid(inherited_child, 0)
+            assert os.waitstatus_to_exitcode(inherited_status) == 0
         with pytest.raises((OSError, ValueError)):
             session.ping()
         with pytest.raises(ValueError, match="unavailable"):
@@ -433,6 +547,27 @@ def _attempt_child_recovery_copy(
             authority_pins=pins,
         )
         try:
+            admission = session.admission
+            dropped_request = _canonical_json(
+                {
+                    "command": "session_recover_copy_prepared_epoch0",
+                    "admission_sha256": admission.admission_sha256,
+                    "handle_nonce": admission.handle_nonce,
+                    "expected_prepared_state_sha256": prepared.state_sha256,
+                }
+            )
+            session._connection.sendall(support_checkpoint._issuer_session_frame(dropped_request))
+            session._close_local()
+            session = support_checkpoint.FixtureMigrationRecoverySessionV1.reopen_exact(
+                socket_path=socket_path,
+                expected_issuer_pid=issuer_pid,
+                recovery_ticket=ticket,
+                admission=admission,
+                verification_key=verification_key,
+                root_fd=root_fd,
+                parent_fd=parent_fd,
+                target_fd=target_fd,
+            )
             completion = session.recover_copy_prepared_epoch0(
                 expected_prepared_state_sha256=prepared.state_sha256
             )
@@ -3172,7 +3307,10 @@ class TestMigrationPrerequisites:
             os.close(root_fd)
             os.close(parent_fd)
 
-    @pytest.mark.parametrize("death_source", ("issuer", "supervisor"))
+    @pytest.mark.parametrize(
+        "death_source",
+        ("issuer", "supervisor", "recovery_fork", "recovery_preadmission_fork"),
+    )
     def test_recovery_session_closes_owned_resources_when_generation_dies(
         self, tmp_path: Path, death_source: str
     ) -> None:
@@ -3254,6 +3392,7 @@ class TestMigrationPrerequisites:
                     ready_write,
                     release_read,
                     result_write,
+                    death_source,
                 )
                 os._exit(0)
             os.close(ready_write)
@@ -3264,20 +3403,30 @@ class TestMigrationPrerequisites:
             result_write = -1
             assert select.select([ready_read], [], [], 5)[0] == [ready_read]
             assert os.read(ready_read, 1) == b"R"
-            if death_source == "supervisor":
+            if death_source in {"recovery_fork", "recovery_preadmission_fork"}:
+                os.write(release_write, b"G")
+            elif death_source == "supervisor":
                 issuer._supervisor_process.terminate()
                 issuer._supervisor_process.join(timeout=5)
             else:
                 issuer._process.terminate()
-            issuer._process.join(timeout=5)
-            assert not issuer._process.is_alive()
-            os.write(release_write, b"G")
+            if death_source != "recovery_preadmission_fork":
+                issuer._process.join(timeout=5)
+                assert not issuer._process.is_alive()
+            if death_source not in {"recovery_fork", "recovery_preadmission_fork"}:
+                os.write(release_write, b"G")
             assert select.select([result_read], [], [], 5)[0] == [result_read]
             assert os.read(result_read, 1) == b"1"
             _, child_status = os.waitpid(child, 0)
             child = -1
             assert os.waitstatus_to_exitcode(child_status) == 0
-            if death_source == "supervisor":
+            if death_source == "recovery_preadmission_fork":
+                assert issuer._process.is_alive()
+                assert Path(socket_path).exists()
+            elif death_source in {
+                "supervisor",
+                "recovery_fork",
+            }:
                 assert not Path(socket_path).exists()
             else:
                 assert Path(socket_path).exists()
